@@ -28,11 +28,42 @@
  * table.
  */
 
-import { createMemo } from "solid-js"
+import { useRenderer } from "@opentui/solid"
+import { type Accessor, createMemo, createSignal } from "solid-js"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { type CommandPaletteContext, useCommandPalette } from "./command-palette"
+
+/**
+ * Ctrl+C double-tap window. Within this many ms of an "armed" Ctrl+C, a
+ * second Ctrl+C quits. Matches the muscle-memory window most TUIs (claude
+ * code, fish, ipython) use.
+ */
+const CTRL_C_QUIT_WINDOW_MS = 1500
+
+/**
+ * Module-level "armed to quit" signal. Singleton because the binding
+ * itself is global; UI surfaces (e.g. StatusBar) read it via
+ * `useCtrlCArmed()` to display a transient "Press Ctrl+C again to quit"
+ * hint. Module scope (rather than a context) is fine — the global
+ * keymap singleton owns the lifecycle.
+ */
+const [ctrlCArmed, setCtrlCArmed] = createSignal(false)
+let ctrlCArmTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Read the "Ctrl+C is armed for quit" flag. Reactive accessor. */
+export function useCtrlCArmed(): Accessor<boolean> {
+  return ctrlCArmed
+}
+
+function disarmCtrlC(): void {
+  if (ctrlCArmTimer !== null) {
+    clearTimeout(ctrlCArmTimer)
+    ctrlCArmTimer = null
+  }
+  setCtrlCArmed(false)
+}
 
 /**
  * A global binding row. `keys` lists every chord that triggers the action
@@ -89,6 +120,12 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["q"],
     category: "Global",
     description: "Quit (with confirm)",
+  },
+  {
+    id: "app.copy_or_quit",
+    keys: ["ctrl+c"],
+    category: "Global",
+    description: "Copy selection / press twice to quit",
   },
   {
     id: "focus.detach",
@@ -153,10 +190,43 @@ export type KobeKeybindingsOpts = {
 export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   const palette: CommandPaletteContext = useCommandPalette()
   const dialog: DialogContext = useDialog()
+  const renderer = useRenderer()
 
   const onQuit = opts.onQuit ?? (() => process.exit(0))
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
+
+  // Ctrl+C: three modes, in order of precedence.
+  //   1. Renderer has a text selection → copy via OSC52, clear selection,
+  //      and disarm any pending quit. Treats the press as "user wanted to
+  //      copy, not quit", same as a terminal would.
+  //   2. Already armed (previous Ctrl+C within CTRL_C_QUIT_WINDOW_MS) →
+  //      quit. Always quits even if a dialog is open — Ctrl+C twice is
+  //      the user explicitly demanding out, and the `q` confirm flow is
+  //      a different ergonomic contract.
+  //   3. Not armed → arm, schedule auto-disarm. UI surfaces (StatusBar)
+  //      read `useCtrlCArmed()` to show a transient hint chip.
+  function handleCtrlC(): void {
+    const sel = renderer?.getSelection()
+    const text = sel?.getSelectedText()
+    if (text && text.length > 0) {
+      renderer?.copyToClipboardOSC52(text)
+      renderer?.clearSelection()
+      disarmCtrlC()
+      return
+    }
+    if (ctrlCArmed()) {
+      disarmCtrlC()
+      onQuit()
+      return
+    }
+    setCtrlCArmed(true)
+    if (ctrlCArmTimer !== null) clearTimeout(ctrlCArmTimer)
+    ctrlCArmTimer = setTimeout(() => {
+      ctrlCArmTimer = null
+      setCtrlCArmed(false)
+    }, CTRL_C_QUIT_WINDOW_MS)
+  }
 
   // Memoize the bindings list so the closure passed to useBindings is
   // stable across renders. The hook re-evaluates the config function on
@@ -171,6 +241,12 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
     const list: Array<{ key: string; cmd: () => void }> = [
       { key: "ctrl+k", cmd: () => palette.show() },
       { key: "alt+k", cmd: () => palette.show() },
+      // ctrl+c is intentionally registered globally (modifier-prefixed,
+      // so it never collides with literal text the user types in the
+      // composer). DialogProvider's own ctrl+c binding sits higher on
+      // the stack and still wins while a dialog is open — that's the
+      // existing "ctrl+c closes dialog" behavior, unchanged.
+      { key: "ctrl+c", cmd: handleCtrlC },
       // `esc` universally closes the top dialog. DialogProvider owns
       // escape while a dialog is open (its handler sits higher on the
       // useBindings stack); this is the no-dialog fallback.
