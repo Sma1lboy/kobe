@@ -24,7 +24,7 @@ import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal } from "solid-js"
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -269,32 +269,86 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
 type PaneId = "sidebar" | "workspace" | "files" | "terminal"
 const PANE_ORDER = ["sidebar", "workspace", "files", "terminal"] as const satisfies readonly PaneId[]
 
-function StatusBar(props: { active?: string }) {
+/**
+ * `[Key]` chip — agent-deck-style key affordance. Key is BOLD inside a
+ * tinted background block; label sits next to it in muted text.
+ */
+function Hotkey(props: { keys: string; label: string }) {
   const { theme } = useTheme()
+  return (
+    <box flexDirection="row" gap={1} flexShrink={0}>
+      <box paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundElement} flexShrink={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+          {props.keys}
+        </text>
+      </box>
+      <text fg={theme.textMuted} wrapMode="none">
+        {props.label}
+      </text>
+    </box>
+  )
+}
+
+/**
+ * Bottom status bar — agent-deck style. Left side: focused-pane label +
+ * pane-local hotkeys. Right side: always-on global hotkeys.
+ */
+function StatusBar(props: { focusedPane: PaneId }) {
+  const { theme } = useTheme()
+  const sectionLabel = () => {
+    switch (props.focusedPane) {
+      case "sidebar":
+        return "Tasks:"
+      case "workspace":
+        return "Chat:"
+      case "files":
+        return "Files:"
+      case "terminal":
+        return "Terminal:"
+    }
+  }
   return (
     <box
       flexDirection="row"
-      gap={2}
+      justifyContent="space-between"
+      flexShrink={0}
       paddingLeft={1}
       paddingRight={1}
-      flexShrink={0}
       backgroundColor={theme.backgroundPanel}
     >
-      <text fg={theme.textMuted}>
-        <span style={{ fg: theme.accent }}>n</span> new task
-      </text>
-      <text fg={theme.textMuted}>
-        <span style={{ fg: theme.accent }}>enter</span> select / send
-      </text>
-      <text fg={theme.textMuted}>
-        <span style={{ fg: theme.accent }}>?</span> help
-      </text>
-      <text fg={theme.textMuted}>
-        <span style={{ fg: theme.accent }}>q</span> quit
-      </text>
-      <Show when={props.active}>
-        <text fg={theme.success}>active: {props.active}</text>
-      </Show>
+      {/* Left: section label + pane-local hotkeys */}
+      <box flexDirection="row" gap={2} flexShrink={1}>
+        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
+          {sectionLabel()}
+        </text>
+        <Switch>
+          <Match when={props.focusedPane === "sidebar"}>
+            <Hotkey keys="j/k" label="nav" />
+            <Hotkey keys="enter" label="select" />
+            <Hotkey keys="d" label="delete" />
+          </Match>
+          <Match when={props.focusedPane === "workspace"}>
+            <Hotkey keys="enter" label="send" />
+          </Match>
+          <Match when={props.focusedPane === "files"}>
+            <Hotkey keys="j/k" label="nav" />
+            <Hotkey keys="enter" label="open" />
+            <Hotkey keys="1/2/3" label="tab" />
+            <Hotkey keys="r" label="refresh" />
+          </Match>
+          <Match when={props.focusedPane === "terminal"}>
+            <Hotkey keys="ctrl+pgup" label="scroll" />
+          </Match>
+        </Switch>
+      </box>
+      {/* Right: global hotkeys (always available) */}
+      <box flexDirection="row" gap={2} flexShrink={0}>
+        <Hotkey keys="tab" label="cycle" />
+        <Hotkey keys="ctrl+1234" label="focus" />
+        <Hotkey keys="ctrl+n" label="new" />
+        <Hotkey keys="?" label="help" />
+        <Hotkey keys="q" label="quit" />
+      </box>
     </box>
   )
 }
@@ -651,7 +705,7 @@ function Shell(props: AppDeps) {
           </box>
         </box>
       </box>
-      <StatusBar active={activeTask()?.title} />
+      <StatusBar focusedPane={focusedPane()} />
     </box>
   )
 }
