@@ -397,21 +397,25 @@ describe("Orchestrator.archiveTask", () => {
 // ----------------------------------------------------------------------
 
 describe("Orchestrator.deleteTask", () => {
-  test("archives a backlog task as canceled and removes the worktree from disk", async () => {
-    const { orch, store } = await buildOrchestrator()
+  test("removes the task entry, the worktree, and the chat history", async () => {
+    const fake = new FakeAIEngine()
+    const deleteHistorySpy = vi.spyOn(fake, "deleteHistory")
+    const { orch, store } = await buildOrchestrator(fake)
     const t = await orch.createTask({ repo, title: "delete-backlog", prompt: "" })
     expect(fs.existsSync(t.worktreePath)).toBe(true)
+    // Stamp a sessionId so deleteHistory has something to target. The
+    // backlog path normally wouldn't have one, but `d` on a previously-
+    // run task will, and the orchestrator must hit it.
+    await store.update(t.id, { sessionId: "sess-1" })
 
     await orch.deleteTask(t.id)
 
-    // Task record persists, but its status is `canceled` — per the
-    // hard rule in CLAUDE.md, we never silently delete entries; the
-    // user keeps the row around to inspect later.
-    const after = store.get(t.id)
-    expect(after?.status).toBe("canceled")
-    // Worktree files are gone — the user pressed `d` for "I'm done
-    // with this branch, clear it" and confirmed.
+    // Task record is gone — Wave 4 reversed the prior "keep canceled
+    // row" behavior. Worktree files are gone too. Chat history was
+    // requested for cleanup.
+    expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(t.worktreePath)).toBe(false)
+    expect(deleteHistorySpy).toHaveBeenCalledWith("sess-1")
   })
 
   test("pauses an in_progress task before removing its worktree", async () => {
@@ -429,7 +433,7 @@ describe("Orchestrator.deleteTask", () => {
     // engine.stop) before the worktree was nuked, otherwise the
     // engine could still be holding open file handles inside it.
     expect(stopSpy).toHaveBeenCalled()
-    expect(store.get(t.id)?.status).toBe("canceled")
+    expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(t.worktreePath)).toBe(false)
   })
 
@@ -442,7 +446,7 @@ describe("Orchestrator.deleteTask", () => {
     await orch.deleteTask(t.id)
 
     expect(fs.existsSync(t.worktreePath)).toBe(false)
-    expect(store.get(t.id)?.status).toBe("canceled")
+    expect(store.get(t.id)).toBeUndefined()
   })
 
   test("is a no-op for unknown ids (defensive)", async () => {
@@ -477,6 +481,7 @@ describe("Orchestrator.deleteTask", () => {
       async readHistory() {
         return []
       },
+      async deleteHistory() {},
       async stop() {
         throw new Error("simulated stuck engine")
       },
@@ -491,7 +496,7 @@ describe("Orchestrator.deleteTask", () => {
     await expect(orch.deleteTask(t.id)).resolves.toBeUndefined()
     errSpy.mockRestore()
 
-    expect(store.get(t.id)?.status).toBe("canceled")
+    expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(t.worktreePath)).toBe(false)
   })
 })
@@ -596,6 +601,7 @@ describe("Orchestrator engine call shape", () => {
       async readHistory() {
         return []
       },
+      async deleteHistory() {},
       async stop() {},
     }
     const { orch } = await buildOrchestrator(stub)

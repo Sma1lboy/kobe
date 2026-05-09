@@ -2,7 +2,10 @@
  * Canonical filesystem layout for kobe-managed worktrees.
  *
  * Per DESIGN.md §11.3 (resolved) the worktree root is per-repo and lives
- * adjacent to the source tree at `<repo>/.kobe/worktrees/<task-id>/`.
+ * adjacent to the source tree at `<repo>/.claude/worktrees/<task-id>/`.
+ * (Wave 4: moved from `.kobe/worktrees/` to share namespace with Claude
+ * Code's own agent-spawn worktrees, per Jackson's request — same
+ * convention, one less hidden directory to gitignore.)
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
  * tool agree on where to look — no string concatenation scattered
@@ -21,13 +24,13 @@ import path from "node:path"
  * its enumeration to "kobe-managed only" without reaching into another
  * module's private constant.
  */
-export const KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
+export const KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
 
 /**
  * Absolute path of the worktree root for a given repo.
  *
  * Example: `worktreeRootFor("/Users/x/proj")` →
- * `/Users/x/proj/.kobe/worktrees`.
+ * `/Users/x/proj/.claude/worktrees`.
  */
 export function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {

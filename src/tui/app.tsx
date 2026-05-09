@@ -733,7 +733,7 @@ function Shell(props: AppDeps) {
     const ok = await DialogConfirm.show(
       dialog,
       `Delete '${task.title}'?`,
-      `Removes the worktree at ${task.worktreePath} and marks the task canceled. The branch and Claude Code session history are kept.`,
+      `Removes the worktree at ${task.worktreePath}, deletes the chat history, and removes the task. This cannot be undone. The git branch is kept.`,
       "cancel",
     )
     if (ok !== true) return

@@ -45,6 +45,16 @@ export type ChatRow =
       readonly output?: unknown
       readonly done: boolean
       readonly ts: string
+      /**
+       * Claude Code's `tool_use_id`. Set by history hydration so a
+       * later `tool_result` block can be paired by id (the live event
+       * path matches by name only — see `applyEvent`'s `tool.result`
+       * case — which is fine in-stream where one call rarely overlaps
+       * with another of the same name, but breaks for replay where
+       * the full session is on disk and parallel same-name calls are
+       * common). Optional: live tool rows leave it undefined.
+       */
+      readonly toolUseId?: string
     }
   | { readonly kind: "system"; readonly text: string; readonly ts: string }
 
@@ -70,12 +80,33 @@ export function createInitialState(): ChatState {
  * Replace messages from `engine.readHistory(sessionId)`. Called once
  * per task mount. Clears nothing else (history load is independent of
  * streaming state — typically nothing's streaming at mount anyway).
+ *
+ * Walks each message's content blocks and produces one or more
+ * ChatRows per message:
+ *   - `text` block → user/assistant/system row (per role)
+ *   - `tool_use` block → tool row with `done: false` + `toolUseId`
+ *   - `tool_result` block → patches the matching tool row (by
+ *     `tool_use_id`) to `done: true` + `output`; emits NO row of
+ *     its own (the tool result lives on the tool row, not as a
+ *     standalone user row)
+ *   - `thinking` and other unrecognised blocks → dropped
+ *
+ * Messages whose content is purely tool blocks produce no text row
+ * (so we don't litter the chat with empty `⏺`/`>` rows for assistant
+ * messages that only invoked tools or user messages that only
+ * carried tool results).
  */
 export function setMessagesFromHistory(state: ChatState, past: readonly Message[]): ChatState {
-  return {
-    ...state,
-    messages: past.map(messageToRow),
+  const rows: ChatRow[] = []
+  // tool_use_id → index into `rows`. Used to back-patch when the
+  // matching `tool_result` arrives on a later message.
+  const toolIndexById = new Map<string, number>()
+
+  for (const m of past) {
+    appendRowsFromMessage(rows, toolIndexById, m)
   }
+
+  return { ...state, messages: rows }
 }
 
 /** Append a freshly-submitted user prompt. Sets `isStreaming: true`. */
@@ -205,43 +236,96 @@ export function reset(): ChatState {
 /* --------------------------------------------------------------------- */
 
 /**
- * Convert a Claude-Code-shape `Message` (from `engine.readHistory`) to
- * a render-friendly `ChatRow`. We coerce the `unknown` content into a
- * string for display; tool blocks inside historical content are not
- * rendered as separate `tool` rows in v1 (they re-appear as live tool
- * events on resume runs).
+ * Walk one historical Message's content and append the appropriate
+ * ChatRows to `rows`. Tool_use creates a new tool row (recorded in
+ * `toolIndexById`); tool_result patches the matching row in place.
+ * Text blocks become role-typed text rows. Bare strings (the legacy
+ * `content: "..."` shape) become a single text row.
  */
-function messageToRow(m: Message): ChatRow {
-  const text = coerceContent(m.content)
-  if (m.role === "user") return { kind: "user", text, ts: m.timestamp }
-  if (m.role === "assistant") return { kind: "assistant", text, ts: m.timestamp }
-  // role === "system"
-  return { kind: "system", text, ts: m.timestamp }
+function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, number>, m: Message): void {
+  const ts = m.timestamp
+
+  // Legacy / simple shape: content is a bare string.
+  if (typeof m.content === "string") {
+    if (m.content.length === 0) return
+    rows.push(textRow(m.role, m.content, ts))
+    return
+  }
+
+  if (!Array.isArray(m.content)) return
+
+  // Buffer consecutive text blocks so a multi-`text` message renders as
+  // one chat row, but flush before each tool block so the document
+  // order (text, tool, text → text-row, tool-row, text-row) is
+  // preserved in the chat.
+  let textBuf = ""
+  const flushText = () => {
+    if (textBuf.length === 0) return
+    rows.push(textRow(m.role, textBuf, ts))
+    textBuf = ""
+  }
+
+  for (const block of m.content) {
+    if (typeof block === "string") {
+      textBuf += block
+      continue
+    }
+    if (!block || typeof block !== "object") continue
+    const b = block as Record<string, unknown>
+
+    if (b.type === "text" && typeof b.text === "string") {
+      textBuf += b.text
+      continue
+    }
+
+    if (b.type === "tool_use") {
+      flushText()
+      const id = typeof b.id === "string" ? b.id : undefined
+      const row: ChatRow = {
+        kind: "tool",
+        name: typeof b.name === "string" ? b.name : "",
+        input: b.input,
+        done: false,
+        ts,
+        toolUseId: id,
+      }
+      const idx = rows.length
+      rows.push(row)
+      if (id) toolIndexById.set(id, idx)
+      continue
+    }
+
+    if (b.type === "tool_result") {
+      flushText()
+      const id = typeof b.tool_use_id === "string" ? b.tool_use_id : undefined
+      const idx = id !== undefined ? toolIndexById.get(id) : undefined
+      const output = b.content
+      if (idx !== undefined) {
+        const target = rows[idx]
+        if (target && target.kind === "tool") {
+          rows[idx] = { ...target, done: true, output }
+        }
+      } else {
+        // Orphan tool_result (no matching tool_use seen). Render as a
+        // standalone result row so the user can still see what came
+        // back; matches the live `applyEvent` fallback for the same
+        // case.
+        rows.push({ kind: "tool", name: "", input: undefined, output, done: true, ts })
+      }
+      continue
+    }
+    // Other block types (thinking, image, redacted_thinking, …) are
+    // intentionally dropped: kobe doesn't render them yet, and the
+    // live stream parser drops them too, so hydration matches.
+  }
+
+  flushText()
 }
 
-/**
- * Best-effort string coercion of a Message's `content`. Claude Code's
- * JSONL stores it as either a string or a `[{type, text|...}]` block
- * array. We extract `text` blocks and concat; everything else is
- * dropped (tool blocks, thinking blocks).
- */
-function coerceContent(content: unknown): string {
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) {
-    const parts: string[] = []
-    for (const block of content) {
-      if (typeof block === "string") {
-        parts.push(block)
-        continue
-      }
-      if (block && typeof block === "object" && "text" in block) {
-        const t = (block as { text: unknown }).text
-        if (typeof t === "string") parts.push(t)
-      }
-    }
-    return parts.join("")
-  }
-  return ""
+function textRow(role: Message["role"], text: string, ts: string): ChatRow {
+  if (role === "user") return { kind: "user", text, ts }
+  if (role === "assistant") return { kind: "assistant", text, ts }
+  return { kind: "system", text, ts }
 }
 
 /** ES2023 `findLastIndex` polyfill (some target envs don't have it). */

@@ -101,6 +101,10 @@ export class FakeAIEngine implements AIEngine {
     return this.historyBySession.get(sessionId) ?? []
   }
 
+  async deleteHistory(sessionId: string): Promise<void> {
+    this.historyBySession.delete(sessionId)
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     this.stopped.add(handle.sessionId)
     const q = this.queues.get(handle.sessionId)

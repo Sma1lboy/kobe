@@ -89,9 +89,11 @@ describe("Message", () => {
 })
 
 describe("AIEngine", () => {
-  it("has the five documented methods", () => {
+  it("has the six documented methods", () => {
     type Methods = keyof AIEngine
-    expectTypeOf<Methods>().toEqualTypeOf<"spawn" | "resume" | "stream" | "readHistory" | "stop">()
+    expectTypeOf<Methods>().toEqualTypeOf<
+      "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "stop"
+    >()
   })
 
   it("spawn returns Promise<SessionHandle>", () => {
@@ -136,6 +138,7 @@ describe("AIEngine", () => {
       async readHistory(_sessionId: string): Promise<Message[]> {
         return []
       }
+      async deleteHistory(_sessionId: string): Promise<void> {}
       async stop(_h: SessionHandle): Promise<void> {}
     }
     expectTypeOf<Impl>().toMatchTypeOf<AIEngine>()

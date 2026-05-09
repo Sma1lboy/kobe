@@ -61,14 +61,147 @@ describe("setMessagesFromHistory", () => {
         content: [
           { type: "text", text: "hello " },
           { type: "text", text: "world" },
-          { type: "tool_use", id: "t1", name: "Bash" },
         ],
         timestamp: FIXED_TS,
         sessionId: "s",
       },
     ]
     const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(1)
     expect(s.messages[0]).toEqual({ kind: "assistant", text: "hello world", ts: FIXED_TS })
+  })
+
+  test("renders tool_use blocks as collapsed tool rows", () => {
+    const past: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "running ls" },
+          { type: "tool_use", id: "tu_1", name: "Bash", input: { cmd: "ls" } },
+        ],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(2)
+    expect(s.messages[0]).toMatchObject({ kind: "assistant", text: "running ls" })
+    expect(s.messages[1]).toMatchObject({
+      kind: "tool",
+      name: "Bash",
+      input: { cmd: "ls" },
+      done: false,
+      toolUseId: "tu_1",
+    })
+  })
+
+  test("pairs tool_result with its matching tool_use by id and marks it done", () => {
+    const past: Message[] = [
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tu_1", name: "Bash", input: { cmd: "ls" } }],
+        timestamp: "2026-05-09T00:00:00Z",
+        sessionId: "s",
+      },
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "tu_1", content: "file1\nfile2" }],
+        timestamp: "2026-05-09T00:00:01Z",
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    // No standalone user row for the message that only carried a tool_result.
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0]).toMatchObject({
+      kind: "tool",
+      name: "Bash",
+      done: true,
+      output: "file1\nfile2",
+      toolUseId: "tu_1",
+    })
+  })
+
+  test("pairs tool_use ↔ tool_result correctly when same name fires twice in parallel", () => {
+    // Two Bash calls; results arrive out-of-order. Name-only matching
+    // would mismatch — id matching gets it right.
+    const past: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool_use", id: "tu_a", name: "Bash", input: { cmd: "first" } },
+          { type: "tool_use", id: "tu_b", name: "Bash", input: { cmd: "second" } },
+        ],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "tu_b", content: "second-result" },
+          { type: "tool_result", tool_use_id: "tu_a", content: "first-result" },
+        ],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(2)
+    expect(s.messages[0]).toMatchObject({ toolUseId: "tu_a", output: "first-result", done: true })
+    expect(s.messages[1]).toMatchObject({ toolUseId: "tu_b", output: "second-result", done: true })
+  })
+
+  test("does not emit empty user/assistant rows for tool-only messages", () => {
+    const past: Message[] = [
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tu_1", name: "Read", input: { path: "x" } }],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "tu_1", content: "ok" }],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages.filter((r) => r.kind === "user")).toHaveLength(0)
+    expect(s.messages.filter((r) => r.kind === "assistant")).toHaveLength(0)
+    expect(s.messages.filter((r) => r.kind === "tool")).toHaveLength(1)
+  })
+
+  test("orphan tool_result (no matching tool_use) renders as a standalone tool row", () => {
+    const past: Message[] = [
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "missing", content: "stranded" }],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0]).toMatchObject({ kind: "tool", done: true, output: "stranded" })
+  })
+
+  test("drops thinking/unknown blocks silently", () => {
+    const past: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "internal reasoning" },
+          { type: "text", text: "answer" },
+          { type: "image", source: { type: "base64", data: "..." } },
+        ],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0]).toEqual({ kind: "assistant", text: "answer", ts: FIXED_TS })
   })
 })
 

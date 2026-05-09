@@ -34,7 +34,7 @@
  * sometimes a content-block array. Renderers narrow per-block.
  */
 
-import { readFile, readdir } from "node:fs/promises"
+import { readFile, readdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
@@ -114,6 +114,32 @@ export async function readHistory(sessionId: string, deps: HistoryDeps = default
     return sortByTimestamp(parseJsonl(raw, sessionId))
   }
   return []
+}
+
+/**
+ * Permanently delete the JSONL session file for `sessionId`.
+ *
+ * The file lives at `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`
+ * but the encoded-cwd isn't known at delete time (we don't track which
+ * cwd each session was opened in). Same algorithm as {@link readHistory}:
+ * scan every project dir, remove the matching file. Tolerates ENOENT
+ * (already gone). Returns silently on any other error; the orchestrator
+ * logs and proceeds — the user's intent is "discard," not "babysit FS."
+ */
+export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<void> {
+  const root = deps.projectsDir()
+  const projectDirs = await deps.readdir(root)
+  for (const dir of projectDirs) {
+    const candidate = path.join(root, dir, `${sessionId}.jsonl`)
+    try {
+      await unlink(candidate)
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue
+      // Anything else: surface to the caller. Permission denied / I/O
+      // error / etc. — let the orchestrator decide whether to log.
+      throw err
+    }
+  }
 }
 
 /**

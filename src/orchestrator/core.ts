@@ -450,34 +450,28 @@ export class Orchestrator {
   }
 
   /**
-   * Delete a task as the user understands the verb: stop the engine,
-   * remove the worktree files from disk, and mark the task `canceled`
-   * in the index.
+   * Fully delete a task: stop the engine, remove the worktree files,
+   * remove the persisted chat history (Claude Code's JSONL session
+   * file), and remove the task entry from the index.
    *
-   * Why "delete" here is not "remove from the index": CLAUDE.md's hard
-   * rule forbids destructive actions without explicit consent in the
-   * same conversation turn. The user pressing `d` IS that consent for
-   * the worktree's contents — they're explicitly saying "I'm done with
-   * this branch, clear it" — but the *task record* itself stays in the
-   * index, just under the Canceled group, so it's inspectable later
-   * (the sessionId still resolves Claude Code's history). If the user
-   * later wants the row gone too, that's a separate "purge" affordance
-   * we haven't designed yet.
+   * This is the "discard everything" verb the user gets when pressing
+   * `d`. Earlier versions kept the task as `canceled` so history was
+   * inspectable later — Jackson reversed that decision in Wave 4: if
+   * the user says delete, drop it all. The confirm dialog wording in
+   * `app.tsx` reflects that.
    *
    * Behavior:
    *   1. Defensive no-op if the task can't be resolved (UI may have a
    *      stale id after a fast-fingered cursor + key chord).
-   *   2. If the task is `in_progress`, pause it first to stop the
-   *      engine session cleanly. We surface engine stop failures as
-   *      console warnings rather than throw — the user has already
-   *      committed; bouncing on a half-stuck engine helps no one.
-   *   3. Force-remove the worktree (the user confirmed; if the
-   *      worktree is dirty they've accepted the loss). Worktree
-   *      removal failures are surfaced as console warnings AND the
-   *      archive still proceeds — we'd rather have a stale `.git/`
-   *      metadata entry than a task stuck in `in_progress` forever.
-   *   4. Archive as `canceled`. The store fires its listener bus and
-   *      the sidebar redraws the row under the Canceled group.
+   *   2. If the task is `in_progress`, pause it first so the engine
+   *      session unwinds cleanly. Engine-stop failures are logged and
+   *      we proceed — the user already committed.
+   *   3. Force-remove the worktree (the user confirmed; if the worktree
+   *      is dirty they've accepted the loss). Failures are logged.
+   *   4. Delete the persisted chat history if a sessionId exists.
+   *      Failures are logged.
+   *   5. Remove the task entry from the store. The listener bus fires
+   *      and the sidebar drops the row.
    */
   async deleteTask(id: TaskId | string): Promise<void> {
     const task = this.store.get(id)
@@ -501,15 +495,26 @@ export class Orchestrator {
         await this.worktrees.remove(task.worktreePath, { force: true })
       } catch (err) {
         // Disk-state cleanup failed (worktree directory missing, git
-        // metadata entry stale, EBUSY, etc.). We still flip the task
-        // to canceled so the UI reflects the user's intent. A future
-        // GC sweep can reconcile drift.
+        // metadata entry stale, EBUSY, etc.). We still drop the task
+        // so the UI reflects the user's intent. A future GC sweep can
+        // reconcile drift.
         // eslint-disable-next-line no-console
         console.error(`[kobe orchestrator] deleteTask: worktree remove failed for ${task.id}:`, err)
       }
     }
 
-    await this.store.archive(task.id, "canceled")
+    if (task.sessionId) {
+      try {
+        await this.engine.deleteHistory(task.sessionId)
+      } catch (err) {
+        // Best-effort: stale FS state (file already gone, permission
+        // issue) shouldn't block the index drop.
+        // eslint-disable-next-line no-console
+        console.error(`[kobe orchestrator] deleteTask: deleteHistory failed for ${task.id}:`, err)
+      }
+    }
+
+    await this.store.remove(task.id)
   }
 
   /**

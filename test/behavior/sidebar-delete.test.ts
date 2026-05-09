@@ -262,37 +262,22 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   await waitForCondition(() => !fs.existsSync(created.worktreePath), 10_000)
   expect(fs.existsSync(created.worktreePath)).toBe(false)
 
-  // The task record persists in the manifest (status flipped to
-  // `canceled`, not deleted from the index). This is the
-  // load-bearing CLAUDE.md guarantee: the orchestrator never
-  // silently drops a row.
+  // The task record is fully removed from the manifest. Wave 4
+  // reversed the prior "keep canceled row" semantics — Jackson wants
+  // `d` to mean "discard everything: worktree, chat history, and the
+  // task entry."
   await waitForCondition(() => {
     try {
       const raw = fs.readFileSync(manifestPath, "utf8")
-      const data = JSON.parse(raw) as { tasks: { id: string; status: string }[] }
-      const t = data.tasks.find((x) => x.id === created.id)
-      return t?.status === "canceled"
+      const data = JSON.parse(raw) as { tasks: { id: string }[] }
+      return data.tasks.find((x) => x.id === created.id) === undefined
     } catch {
       return false
     }
   }, 10_000)
   const afterRaw = fs.readFileSync(manifestPath, "utf8")
-  const after = JSON.parse(afterRaw) as { tasks: { id: string; status: string }[] }
-  const stillThere = after.tasks.find((t) => t.id === created.id)
-  expect(stillThere).toBeDefined()
-  expect(stillThere?.status).toBe("canceled")
-
-  // The sidebar still shows the repo header (status is `canceled`
-  // but the row still belongs to its repo — the W4.A repo-grouping
-  // contract). The repo header label `my-frontend` and the title
-  // `delete-me` both remain in the cumulative buffer because the
-  // store's archive() does not remove the row; it only flips the
-  // status. (The pre-W4.A test asserted on a `Canceled` group label
-  // appearing — that label no longer exists after dropping status
-  // grouping, so we anchor on the always-present repo header.)
-  const finalScreen = await kobe.capture()
-  expect(finalScreen).toContain("my-frontend")
-  expect(finalScreen).toContain("delete-me")
+  const after = JSON.parse(afterRaw) as { tasks: { id: string }[] }
+  expect(after.tasks.find((t) => t.id === created.id)).toBeUndefined()
 
   await kobe.exit()
   expect(kobe.closed).toBe(true)

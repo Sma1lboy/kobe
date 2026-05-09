@@ -166,6 +166,16 @@ export interface AIEngine {
   readHistory(sessionId: string): Promise<Message[]>
 
   /**
+   * Permanently remove the persisted history for a session.
+   *
+   * Guarantees: best-effort. Removes the on-disk JSONL (or its remote
+   * equivalent) and any related metadata. Idempotent — calling on a
+   * session with no persisted history is a no-op. Does NOT stop a live
+   * session; callers must `stop()` first if they want both.
+   */
+  deleteHistory(sessionId: string): Promise<void>
+
+  /**
    * Stop a running session.
    *
    * Guarantees: best-effort graceful shutdown (SIGTERM with grace, then

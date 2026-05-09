@@ -278,6 +278,21 @@ export class TaskIndexStore {
   }
 
   /**
+   * Permanently remove a task from the index. Used by the orchestrator's
+   * `deleteTask` flow alongside worktree + chat-history disposal — Jackson
+   * wants `d` to fully discard, not just mark canceled. Idempotent: a
+   * missing id is a no-op.
+   */
+  async remove(id: TaskId | string): Promise<void> {
+    this.assertLoaded()
+    const idx = this.cache.tasks.findIndex((t) => t.id === id)
+    if (idx < 0) return
+    this.cache.tasks.splice(idx, 1)
+    await this.save()
+    this.notifyListeners()
+  }
+
+  /**
    * Remove the manifest file from disk. Used in tests and at uninstall.
    * Tolerant of "already gone".
    */
