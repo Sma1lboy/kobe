@@ -159,6 +159,20 @@ type NewTaskInput = { repo: string; baseRef: string }
 const DEFAULT_BASE_REF = "main"
 
 /**
+ * Strip CR/LF from a single-line input value. opentui's `<input>`
+ * happily inserts a literal `\n` when the user presses enter inside a
+ * focused field — even though the same press also fires `onSubmit` —
+ * so the value rendered back to the field shows the stray newline as
+ * a glyph (looks like an extra "n" on macOS terminals). We sanitize at
+ * the onInput edge so the signal never carries a newline; the
+ * onSubmit handler still fires and commits the trimmed-but-newline-
+ * free value.
+ */
+function stripNewlines(v: string): string {
+  return v.replace(/[\r\n]+/g, "")
+}
+
+/**
  * Validate a repo path entered in the new-task dialog. Returns null
  * when the path looks like a usable git repo, or a human-readable
  * reason string otherwise. The dialog renders the reason inline and
@@ -437,7 +451,7 @@ function NewTaskDialog(props: {
           value={repo()}
           placeholder={props.defaultRepo}
           focused={field() === "repo"}
-          onInput={(v: string) => setRepo(v)}
+          onInput={(v: string) => setRepo(stripNewlines(v))}
           onSubmit={() => {
             // If the picker has a highlighted match, prefer it over
             // the typed text (matches the branch field's behavior).
@@ -496,7 +510,7 @@ function NewTaskDialog(props: {
           value={baseRef()}
           placeholder={DEFAULT_BASE_REF}
           focused={field() === "baseRef"}
-          onInput={(v: string) => setBaseRef(v)}
+          onInput={(v: string) => setBaseRef(stripNewlines(v))}
           onSubmit={() => {
             // Prefer the highlighted branch in the picker over the
             // typed text. Free-text only kicks in when nothing matches
@@ -622,7 +636,7 @@ function RenameTaskDialog(props: {
           value={title()}
           placeholder={props.currentTitle}
           focused={true}
-          onInput={(v: string) => setTitle(v)}
+          onInput={(v: string) => setTitle(stripNewlines(v))}
           onSubmit={() => commit()}
         />
       </box>
