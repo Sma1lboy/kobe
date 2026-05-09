@@ -962,6 +962,43 @@ function Shell(props: AppDeps) {
     ],
   }))
 
+  // Keyboard resize for the focused pane — fallback when mouse drag
+  // misfires on the splitter. ctrl+= / ctrl++ grows, ctrl+- / ctrl+_
+  // shrinks. The keymap normalizer (lib/keymap.tsx) drops the shift
+  // modifier on single-char names since shift+= already produces `+`,
+  // so we register both `+` and `=` on the grow side and both `-` and
+  // `_` on the shrink side to match whatever shape the terminal sends.
+  // Terminal pane grows by SHRINKING filesHeight (its height is the
+  // residual under filesHeight in the right column); the rest of the
+  // panes grow their own width/height directly.
+  const RESIZE_STEP = 2
+  function nudgeFocusedPane(delta: number): void {
+    switch (focusedPane()) {
+      case "sidebar":
+        setSidebarWidth(clampSidebar(sidebarWidth() + delta))
+        return
+      case "workspace":
+        setWorkspaceWidth(clampWorkspace(workspaceWidth() + delta))
+        return
+      case "files":
+        setFilesHeight(clampFiles(filesHeight() + delta))
+        return
+      case "terminal":
+        // Inverse: growing the terminal = shrinking files above it.
+        setFilesHeight(clampFiles(filesHeight() - delta))
+        return
+    }
+  }
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0,
+    bindings: [
+      { key: "ctrl+=", cmd: () => nudgeFocusedPane(RESIZE_STEP) },
+      { key: "ctrl++", cmd: () => nudgeFocusedPane(RESIZE_STEP) },
+      { key: "ctrl+-", cmd: () => nudgeFocusedPane(-RESIZE_STEP) },
+      { key: "ctrl+_", cmd: () => nudgeFocusedPane(-RESIZE_STEP) },
+    ],
+  }))
+
   // Tab / shift+tab cycle. Disabled when workspace is focused — opentui
   // inputs consume tab and we don't want focus-cycle racing with the
   // composer's own tab handling (e.g. dialog field switches).
