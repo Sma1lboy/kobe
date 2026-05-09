@@ -245,11 +245,27 @@ export type UserInputResolvedEvent = {
 }
 
 /**
+ * Synthesized informational note from the orchestrator, surfaced as a
+ * dim system row in chat. Used for lifecycle moments the user benefits
+ * from seeing — worktree allocated, branch renamed by the auto-namer
+ * — without making them look like errors. Engines never emit this.
+ */
+export type SystemInfoEvent = {
+  readonly type: "system.info"
+  readonly text: string
+}
+
+/**
  * Anything dispatched on the orchestrator's per-task subscriber bus.
  * UI subscribers (chat) consume this wider type; engine impls produce
  * only the {@link EngineEvent} subset.
  */
-export type OrchestratorEvent = EngineEvent | UserInjectEvent | UserInputRequestEvent | UserInputResolvedEvent
+export type OrchestratorEvent =
+  | EngineEvent
+  | UserInjectEvent
+  | UserInputRequestEvent
+  | UserInputResolvedEvent
+  | SystemInfoEvent
 
 /**
  * The single seam between kobe and "the thing running tasks."

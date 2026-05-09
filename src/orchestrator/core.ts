@@ -391,11 +391,18 @@ export class Orchestrator {
    *   - empty prompts (nothing to derive from)
    *   - claude binary missing / suggestion failed / timed out
    */
-  private async maybeRenameTempBranch(taskId: TaskId, prompt: string | undefined): Promise<void> {
+  private async maybeRenameTempBranch(taskId: TaskId, tabId: string, prompt: string | undefined): Promise<void> {
     if (!prompt || prompt.trim().length === 0) return
     const task = this.store.get(taskId)
     if (!task || !task.worktreePath) return
     if (!task.branch.startsWith("kobe/tmp-")) return
+
+    // Surface that the suggestion is in flight so the user sees what
+    // the temp branch name is going to become.
+    this.dispatchEvent(taskId, tabId, {
+      type: "system.info",
+      text: "branch: choosing a name…",
+    })
 
     const slug = await suggestBranchSlug(prompt)
     if (!slug) return
@@ -412,6 +419,10 @@ export class Orchestrator {
     try {
       await this.worktrees.renameBranch(fresh.worktreePath, fresh.branch, newBranch)
       await this.store.update(taskId, { branch: newBranch })
+      this.dispatchEvent(taskId, tabId, {
+        type: "system.info",
+        text: `branch: renamed to ${newBranch}`,
+      })
     } catch {
       /* leave the temp name; user can rename via `r` in sidebar */
     }
@@ -443,12 +454,21 @@ export class Orchestrator {
     const isFirstAllocation = !task.worktreePath
     if (isFirstAllocation) {
       task = await this.ensureWorktree(task)
+      // Surface the allocation as a dim system row so the user can
+      // see the lazy infra running underneath their first prompt.
+      const targetTabForInfo = this.resolveTab(task, tabId)
+      this.dispatchEvent(task.id, targetTabForInfo.id, {
+        type: "system.info",
+        text: `worktree: ${task.worktreePath} (branch ${task.branch})`,
+      })
     }
     // Background: kick off a `claude -p` suggestion to replace the
     // temp branch name with something meaningful. Fire-and-forget;
-    // never blocks the chat.
+    // never blocks the chat. The rename method emits its own
+    // system.info row when it succeeds.
     if (isFirstAllocation && prompt) {
-      void this.maybeRenameTempBranch(task.id, prompt)
+      const renameTabId = this.resolveTab(task, tabId).id
+      void this.maybeRenameTempBranch(task.id, renameTabId, prompt)
     }
 
     // Resolve the target tab. Default to the active one so existing

@@ -279,6 +279,16 @@ export function applyEvent(
         error: null,
         messages: [...state.messages, { kind: "user", text: ev.text, ts: nowIso }],
       }
+    case "system.info":
+      // Dim status note from the orchestrator (worktree allocated,
+      // branch renamed, etc). Renders as a `system` row in muted
+      // text — see MessageList's SystemRow / `isError` predicate
+      // which only flips to error styling on "error:"/"runTask
+      // failed" prefixes, neither of which we use here.
+      return {
+        ...state,
+        messages: [...state.messages, { kind: "system", text: ev.text, ts: nowIso }],
+      }
     case "user_input.request": {
       // Subprocess has exited (the tool runs to completion in -p mode
       // and just leaves a marker), so streaming flips off — the
