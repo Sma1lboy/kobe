@@ -1,11 +1,12 @@
 /**
  * Sidebar key bindings — Solid hook layer.
  *
- * j/k (and down/up) navigate between *navigable* tasks. Group headers and
- * empty groups are skipped — the cursor moves over a `flatTaskIds` array
- * the parent computes from {@link groupByStatus}. `enter` selects the
- * task at the current cursor index. `g g` (chord) jumps to the top, `G`
- * jumps to the bottom — vim conventions, matching opencode's lifted shell.
+ * j/k (and down/up) navigate between *navigable* tasks. Repo-group
+ * headers are skipped — the cursor moves over a `flatTaskIds` array
+ * the parent computes from {@link groupByRepo}+{@link buildRows}.
+ * `enter` selects the task at the current cursor index. `g g` (chord)
+ * jumps to the top, `G` jumps to the bottom — vim conventions, matching
+ * opencode's lifted shell.
  *
  * The bindings are gated on a `focused` accessor: kobe's focus model is
  * still owned by the parent (Stream E will manage focus globally in Wave

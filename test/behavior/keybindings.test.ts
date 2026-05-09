@@ -61,13 +61,16 @@ test("`esc` closes the help dialog", async () => {
   // ESC = 0x1b. The DialogProvider's escape binding (registered higher on
   // the binding stack) pops the top dialog.
   await kobe.sendKeys("\x1b")
-  // Poll the screen until the dialog has been redrawn over. The
-  // sidebar's status groups ("In progress", "In review", ...) are
-  // always rendered behind the dialog stack and repainted on dismiss.
-  // The assertion is "the post-dismiss UI is still painting", not a
-  // content check on the dialog disappearance.
-  const after = await kobe.waitFor((s) => s.includes("In progress"), 5_000)
-  expect(after).toContain("In progress")
+  // Poll the screen until the post-dismiss UI is repainting. The
+  // center column's CAPS pane header `WORKSPACE` is always rendered at
+  // the top of the workspace pane — outside the help dialog's centered
+  // overlay — so its presence in the cumulative buffer is a reliable
+  // "the underlying chrome is still painting" signal. The previous
+  // assertion used "In progress" — the status-group label from the
+  // pre-W4.A sidebar — which no longer exists because Wave 4 dropped
+  // status grouping in favor of repo grouping.
+  const after = await kobe.waitFor((s) => s.includes("WORKSPACE"), 5_000)
+  expect(after).toContain("WORKSPACE")
 }, 30_000)
 
 test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () => {

@@ -2,97 +2,122 @@
  * Pure grouping function for the sidebar pane.
  *
  * Tasks live in the {@link TaskIndex} as a flat ordered array. The sidebar
- * displays them grouped by status — matching Conductor's layout grammar
- * (DESIGN.md §1, §5.3). Empty groups are still listed (with count 0) so the
- * sidebar's row layout is visually stable as tasks transition between
- * statuses; users can predict where a row will appear before it arrives.
+ * displays them grouped by **repo** — Wave 4 direction shift, see HANDOFF.md
+ * §"Direction shift" #1 + #2. Top-level rows are repo headers (with the
+ * count of sessions belonging to that repo); nested rows are session rows
+ * carrying the task and its current status (rendered as a per-row badge,
+ * but no longer used for grouping).
  *
- * Group order is fixed in {@link STATUS_ORDER}: most actionable first
- * (`in_progress`, `in_review`), then `backlog`, then terminal states
- * (`done`, `canceled`, `error`). This is the reverse of Conductor's exact
- * order — Conductor leads with `Done` — but matches what F's brief
- * specifies and what we expect kobe users to scan first.
+ * Layout shape:
  *
- * Within a group, tasks keep their input order. The orchestrator owns
- * task ordering (typically by `createdAt` ULID); we do not re-sort.
+ *   my-frontend (3)
+ *     ● fix login redirect bug
+ *     ○ refactor auth service
+ *     ○ add password reset
+ *
+ *   api-server (1)
+ *     ● migrate to fastify
+ *
+ *   + Add repo
+ *
+ * **Why drop status grouping?** kobe doesn't manage PR-merge state — the
+ * 5-group `In progress / In review / Backlog / Done / Canceled / Error`
+ * shape was inherited from Conductor and didn't fit. `TaskStatus` stays
+ * on disk untouched (concurrency cap depends on it; future experimental
+ * flag will resurrect the UI), but the default sidebar groups by repo.
+ *
+ * **Repo display name**: we use `path.basename(repo)` — `/Users/jacksonc/i/foo`
+ * becomes `foo`. The full path is still the grouping key (so two repos
+ * with the same basename in different parents stay distinct) but the
+ * label is shortened for the 42-cell sidebar width.
+ *
+ * **Repo ordering**: first-seen wins. We iterate tasks in their input
+ * order and add a new repo group the first time we encounter it. The
+ * orchestrator's task ordering (typically by `createdAt` ULID) therefore
+ * drives repo ordering — the newest task's repo sits closest to the
+ * top of the list when the orchestrator prepends. (If the orchestrator
+ * appends instead, repos appear in creation order, which still feels
+ * stable to the user.)
+ *
+ * **Within a group**: tasks keep their input order. The orchestrator
+ * owns task ordering; we do not re-sort inside a repo.
  *
  * No reactivity here: this is a pure function over `readonly Task[]`. The
  * Solid component (`Sidebar.tsx`) wraps it in a `createMemo` so the
  * grouping recomputes only when the upstream task signal changes.
  */
 
-import type { Task, TaskStatus } from "@/types"
+import { basename } from "node:path"
+import type { Task } from "@/types"
 
 /**
- * One visible row in the sidebar body. Either a status group header
- * (with the count of tasks in that group) or a navigable task row that
+ * One visible row in the sidebar body. Either a repo-group header
+ * (with the count of tasks in that repo) or a navigable task row that
  * carries its position in the flat-id list (`flatIndex`).
+ *
+ * Repo headers carry both `repo` (the absolute path — the grouping key)
+ * and `label` (the basename, used for display). Tests can assert on the
+ * label without computing basenames themselves.
  */
 export type SidebarRow =
-  | { kind: "header"; status: TaskStatus; count: number }
+  | { kind: "repo-header"; repo: string; label: string; count: number }
   | { kind: "task"; task: Task; flatIndex: number }
 
 /**
- * The canonical group display order. The sidebar renders groups in this
- * sequence regardless of how many tasks each contains.
+ * Group a flat task list by repo path.
  *
- * Tuple typed as `readonly TaskStatus[]` (not a value) so TypeScript
- * keeps the literal-tuple narrowing for downstream `.map()` callers.
- */
-export const STATUS_ORDER = [
-  "in_progress",
-  "in_review",
-  "backlog",
-  "done",
-  "canceled",
-  "error",
-] as const satisfies readonly TaskStatus[]
-
-/**
- * Group a flat task list by status.
- *
- * Returns a complete record — every {@link TaskStatus} key is present,
- * empty arrays included. This is intentional: the sidebar iterates over
- * {@link STATUS_ORDER} and reads from this record, so callers never need
- * a `?? []` fallback.
+ * Returns a `Map` (preserves insertion order — first-seen wins) so the
+ * caller can iterate repos in a predictable sequence. The map's keys
+ * are the absolute repo paths (`Task.repo`); the values are arrays of
+ * tasks in input order.
  *
  * Mutation: returns fresh arrays. The input `tasks` is not mutated and
  * the returned arrays do not alias the input.
  */
-export function groupByStatus(tasks: readonly Task[]): Record<TaskStatus, Task[]> {
-  const out: Record<TaskStatus, Task[]> = {
-    in_progress: [],
-    in_review: [],
-    backlog: [],
-    done: [],
-    canceled: [],
-    error: [],
-  }
+export function groupByRepo(tasks: readonly Task[]): Map<string, Task[]> {
+  const out = new Map<string, Task[]>()
   for (const t of tasks) {
-    out[t.status].push(t)
+    const bucket = out.get(t.repo)
+    if (bucket) {
+      bucket.push(t)
+    } else {
+      out.set(t.repo, [t])
+    }
   }
   return out
 }
 
 /**
- * Build the flat row list for rendering. Headers are interleaved with
- * task rows in {@link STATUS_ORDER}. Tasks within a group keep their
- * input order. Empty groups still emit a header (with count 0) so the
- * list is visually stable when tasks transition statuses. Each task row
- * carries its `flatIndex` — its position in the navigable id list — so
- * the renderer can compare against the cursor without recounting
- * headers.
+ * Compute a display label for a repo path. Uses {@link basename} so
+ * `/Users/jacksonc/i/foo` becomes `foo`. Falls back to the full path
+ * when the basename is empty (e.g. a path ending in `/`) — defensive
+ * against unusual `Task.repo` values without crashing the renderer.
+ */
+export function repoLabel(repo: string): string {
+  const b = basename(repo)
+  return b.length > 0 ? b : repo
+}
+
+/**
+ * Build the flat row list for rendering. Repo headers are interleaved
+ * with task rows in first-seen repo order. Tasks within a repo keep
+ * their input order. Each task row carries its `flatIndex` — its
+ * position in the navigable id list — so the renderer can compare
+ * against the cursor without recounting headers.
+ *
+ * Empty input returns an empty array. The caller (`Sidebar.tsx`)
+ * handles the empty-state placeholder ("No tasks yet.") separately;
+ * we don't emit a synthetic header for that.
  *
  * Pure: no Solid, no opentui. Component code calls this inside a memo;
  * tests call it directly.
  */
 export function buildRows(tasks: readonly Task[]): SidebarRow[] {
-  const groups = groupByStatus(tasks)
+  const groups = groupByRepo(tasks)
   const rows: SidebarRow[] = []
   let flat = 0
-  for (const status of STATUS_ORDER) {
-    const bucket = groups[status]
-    rows.push({ kind: "header", status, count: bucket.length })
+  for (const [repo, bucket] of groups) {
+    rows.push({ kind: "repo-header", repo, label: repoLabel(repo), count: bucket.length })
     for (const t of bucket) {
       rows.push({ kind: "task", task: t, flatIndex: flat })
       flat++

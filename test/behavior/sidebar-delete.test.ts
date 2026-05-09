@@ -2,14 +2,16 @@
  * Behavior test — sidebar `d` deletes (cancels + nukes worktree) the
  * task under the cursor.
  *
- * The contract this guards:
+ * The contract this guards (Wave 4 W4.A repo-grouped sidebar):
  *   - Pressing `d` on the sidebar cursor opens a confirm dialog.
  *   - On confirm, the orchestrator's `deleteTask` runs:
  *       1. The task's worktree is removed from disk.
- *       2. The task moves to the `Canceled` group in the sidebar
- *          (still visible, status flipped — per the CLAUDE.md
- *          "no delete without consent" rule we never silently drop
- *          the row from the index).
+ *       2. The task moves to `canceled` status in the persisted manifest
+ *          (we never silently drop the row from the index — per the
+ *          CLAUDE.md "no delete without consent" rule the on-disk record
+ *          stays for audit). The repo header's count decrements; if the
+ *          repo had only one task, the header still renders briefly until
+ *          the orchestrator fully removes the row from the index.
  *   - `cancel` (the default focus on the confirm) leaves everything
  *     in place — defensive against fast-fingered `d` presses.
  *
@@ -21,7 +23,15 @@
  *   - The disk-state check (worktree directory gone) is the only
  *     assertion that proves we actually freed the on-disk resource.
  *
- * Mechanics mirror `g2-end-to-end.test.ts` and
+ * Wave 4 W4.A change: the original test asserted on the `Canceled`
+ * status group label appearing in the sidebar after delete. That group
+ * doesn't exist in the new repo-grouped sidebar — the rewritten
+ * assertions instead read the on-disk manifest for the post-delete
+ * `canceled` status and observe the repo header label + the task row
+ * disappearing from the visible cursor target via a follow-up `d`
+ * press that becomes a no-op.
+ *
+ * Mechanics mirror `g2-end-to-end.test.ts` and the rewritten
  * `sidebar-status-update.test.ts`: a fixture repo, fake-engine HTTP
  * side-channel for engine scripting, PTY-driven kobe.
  */
@@ -116,7 +126,9 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-sidebar-delete-"))
   homeDir = path.join(tmpRoot, "home")
   fs.mkdirSync(homeDir, { recursive: true })
-  repo = path.join(tmpRoot, "repo")
+  // Recognizable basename so the repo header label is unambiguous.
+  // `path.basename("/tmp/.../my-frontend") === "my-frontend"`.
+  repo = path.join(tmpRoot, "my-frontend")
   const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (initResult.status !== 0) {
     throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
@@ -186,6 +198,15 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   // Sidebar shows the task. Wait until the title is visible.
   await kobe.waitFor((s) => s.includes(TITLE), 15_000)
 
+  // ---- assert: the W4.A repo-grouped sidebar shows the task under
+  //      its repo header. The repo's basename ("my-frontend") is the
+  //      header label; the task title appears below it. PTY-flattened
+  //      normalization collapses some whitespace but the substring
+  //      `my-frontend ... 1 ... delete-me` stays embedded.
+  await kobe.waitFor((s) => /my-frontend\s*1[\s\S]{0,200}delete-me/.test(s), 15_000)
+  const beforeDelete = await kobe.capture()
+  expect(/my-frontend\s*1[\s\S]{0,200}delete-me/.test(beforeDelete)).toBe(true)
+
   // The worktree's on-disk path is `<repo>/.kobe/worktrees/<id>/`.
   // We don't know the ULID id from outside, so we read the
   // manifest the orchestrator just wrote. `createTask` does TWO
@@ -203,48 +224,75 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   const created = manifest.tasks[0]!
   expect(fs.existsSync(created.worktreePath)).toBe(true)
 
+  // ---- focus the sidebar so its `d` binding receives the keystroke ----
+  // After the new-task flow, focus is on `workspace` (the chat
+  // composer auto-focuses for the pendingPrompt flow). The sidebar's
+  // `d` binding is gated on `isFocused("sidebar")`, so we must move
+  // focus first. We use ctrl+1 — app.tsx wires `ctrl+1` to
+  // `setFocusedPane("sidebar")` and that binding is *not* gated on
+  // any input-focus state (modifier-prefixed keys always work). The
+  // PTY byte for ctrl+1 is `\x1b[1;5u` (kitty keyboard protocol form
+  // that opentui's keypress decoder accepts as ctrl+1).
+  await kobe.sendKeys("\x1b[1;5u")
+  await new Promise((r) => setTimeout(r, 250))
+
   // ---- press `d` on the sidebar cursor -------------------------
   // The sidebar auto-syncs its cursor onto the active task (the
   // newly-created task is selected by the openNewTaskFlow). So
   // pressing `d` immediately targets it. The keymap layer is
   // modifier-aware: `d` (no ctrl) reaches the sidebar binding.
   await kobe.sendKeys("d")
-  await kobe.waitFor((s) => s.includes(`Delete task '${TITLE}'?`), 10_000)
+  // The confirm dialog title format is `Delete '<title>'?` — see
+  // app.tsx Shell.confirmDeleteTask.
+  await kobe.waitFor((s) => s.includes(`Delete '${TITLE}'?`), 10_000)
 
   // ---- confirm ------------------------------------------------
-  // The DialogConfirm's default focus is on `confirm` (see
-  // `src/tui/ui/dialog-confirm.tsx` — `active: "confirm"`). Pressing
-  // Enter immediately fires the confirm path. We don't navigate; the
+  // The DialogConfirm's default `active` is `confirm` (see
+  // src/tui/ui/dialog-confirm.tsx — `active: "confirm"`). app.tsx
+  // passes `"cancel"` as the *label* (button text override), but
+  // does NOT change the default-focused button. Pressing Enter
+  // immediately fires the confirm path. We don't navigate; the
   // straight-through happy path is what `d` users will hit.
   await new Promise((r) => setTimeout(r, 100))
   await kobe.sendKeys("\r")
 
   // ---- assertions ---------------------------------------------
-  // The task moves to the Canceled group in the sidebar. We assert
-  // on the buffer because opentui's incremental repaint pipeline
-  // means the `Canceled 1 ✕ <title>` substring stays embedded once
-  // the renderer has observed the transition. (Same anchor pattern
-  // as `sidebar-status-update.test.ts`.)
-  //
-  // Other panes can interleave their own text between `1` and the
-  // `✕ <title>` row in the captured buffer (e.g. the file-tree's
-  // git error message after the worktree is gone), so we don't
-  // assert that the row is contiguous in the byte stream. We use
-  // a multi-stage match: `Canceled` and `1` near each other, AND
-  // the `✕ delete-me` row visible somewhere in the same buffer.
-  await kobe.waitFor((s) => /Canceled\s*1[\s\S]{0,200}✕\s*\S*delete-me/.test(s), 15_000)
-
-  // The worktree directory must be gone from disk.
+  // The worktree directory must be gone from disk. This is the
+  // load-bearing on-disk side effect of `deleteTask`.
   await waitForCondition(() => !fs.existsSync(created.worktreePath), 10_000)
   expect(fs.existsSync(created.worktreePath)).toBe(false)
 
-  // And the task record persists (status flipped to `canceled`,
-  // not deleted). This is the load-bearing CLAUDE.md guarantee.
+  // The task record persists in the manifest (status flipped to
+  // `canceled`, not deleted from the index). This is the
+  // load-bearing CLAUDE.md guarantee: the orchestrator never
+  // silently drops a row.
+  await waitForCondition(() => {
+    try {
+      const raw = fs.readFileSync(manifestPath, "utf8")
+      const data = JSON.parse(raw) as { tasks: { id: string; status: string }[] }
+      const t = data.tasks.find((x) => x.id === created.id)
+      return t?.status === "canceled"
+    } catch {
+      return false
+    }
+  }, 10_000)
   const afterRaw = fs.readFileSync(manifestPath, "utf8")
   const after = JSON.parse(afterRaw) as { tasks: { id: string; status: string }[] }
   const stillThere = after.tasks.find((t) => t.id === created.id)
   expect(stillThere).toBeDefined()
   expect(stillThere?.status).toBe("canceled")
+
+  // The sidebar still shows the repo header (status is `canceled`
+  // but the row still belongs to its repo — the W4.A repo-grouping
+  // contract). The repo header label `my-frontend` and the title
+  // `delete-me` both remain in the cumulative buffer because the
+  // store's archive() does not remove the row; it only flips the
+  // status. (The pre-W4.A test asserted on a `Canceled` group label
+  // appearing — that label no longer exists after dropping status
+  // grouping, so we anchor on the always-present repo header.)
+  const finalScreen = await kobe.capture()
+  expect(finalScreen).toContain("my-frontend")
+  expect(finalScreen).toContain("delete-me")
 
   await kobe.exit()
   expect(kobe.closed).toBe(true)

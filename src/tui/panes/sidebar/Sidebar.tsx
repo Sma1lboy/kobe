@@ -1,56 +1,61 @@
 /**
- * kobe sidebar pane (Stream F).
+ * kobe sidebar pane (Stream F + Wave 4 W4.A).
  *
- * Renders the status-grouped task list inside a 42-cell-wide column,
- * matching the lifted opencode sidebar primitive (`src/tui/component/sidebar.tsx`)
- * shape. Layout matches Conductor's screenshot grammar (DESIGN.md §1):
+ * Renders the **repo-grouped** task list inside a 42-cell-wide column.
+ * Wave 4 dropped the 5-status grouping per HANDOFF.md §"Direction shift"
+ * #1 + #2 — kobe doesn't manage PR-merge state and the In progress / In
+ * review / Backlog / Done / Canceled / Error shape didn't fit. Layout:
  *
- *   kobe  v<version>
+ *   kobe
  *
- *   In progress  <n>
- *     <badge> task title
- *     <badge> task title
- *   In review    <n>
- *   Backlog      <n>
- *   Done         <n>
- *   Canceled     <n>
- *   Error        <n>
+ *   my-frontend  3
+ *     ● fix login redirect bug
+ *     ○ refactor auth service
+ *     ○ add password reset
+ *
+ *   api-server   1
+ *     ● migrate to fastify
  *
  *   + Add repo
  *
- * Empty groups are still rendered with their count so the row layout is
- * stable as tasks transition between statuses (see groups.ts). Status
- * badges colour-code per status: ●green=done, ◐yellow=in_review,
- * ●blue=in_progress, ○muted=backlog, ✕red=error/canceled.
+ * The 42-cell sidebar width is a documented hardcode (CLAUDE.md
+ * "flex-first, hardcode last"): convention rationale — matches
+ * opencode/agent-deck precedent for "history rail" panes. We import the
+ * `SIDEBAR_WIDTH` constant from the lifted opencode primitive
+ * (`src/tui/component/sidebar.tsx`) so the convention has one source
+ * of truth across the codebase.
  *
- * On the layout primitive: the lifted `Sidebar` from
- * `src/tui/component/sidebar.tsx` exposes only an `entries: SidebarEntry[]`
- * API for its body — flat label+hint rows, no headers, no per-row colour
- * tokens. Status grouping doesn't fit that shape. We import the
- * `SIDEBAR_WIDTH` constant and replicate the outer-shell layout
- * (panel-coloured 42-cell box, header, scrollbox body, footer) here so
- * the primitive stays untouched (the brief forbids modifying Stream 0.2's
- * file). When the primitive grows a `children` slot — likely Wave 4
- * polish — we can switch to it without breaking this contract.
+ * Status badges (●○) still render on per-task rows as a visual hint of
+ * the underlying `task.status` value (which stays on disk untouched —
+ * the orchestrator's concurrency cap depends on it; a future
+ * experimental flag will resurrect a status-grouped view), but the
+ * sidebar no longer groups, sorts, or re-orders by status.
  *
- * Cursor / nav: a Solid signal `cursorIndex` indexes the *flat* navigable
- * task list (group headers are NOT navigable). j/k clamp inside the list,
- * `enter` invokes `props.onSelect`. The chord `g g` jumps to top, `G`
- * jumps to bottom — see `keys.ts` for the chord state machine. When
- * `props.selectedId` changes from outside (parent E sets it after a
- * task creation), we reflect that into the cursor; the cursor and the
- * selected id are kept loosely in sync — the cursor is "what you're
- * about to select", `selectedId` is "what's actually currently active".
+ * Cursor / nav: a Solid signal `cursorIndex` indexes the *flat*
+ * navigable task list (repo headers are NOT navigable; j/k step over
+ * them transparently). `enter` selects the cursor row, `d` requests
+ * delete via the parent-owned confirm dialog, `g g` (chord) jumps to
+ * top, `G` jumps to bottom — see `keys.ts` + `controller.ts`. Single-
+ * repo collapse: not implemented; the repo header always renders even
+ * when there's only one repo. This keeps layout stable as the user
+ * adds repos and makes the multi-repo nature of kobe visible from
+ * keystroke one. (Future polish could collapse the header in single-
+ * repo mode if Jackson asks.)
+ *
+ * `+ Add repo` affordance: rendered as the footer row. Pressing `n` or
+ * `ctrl+n` (the existing global bindings) opens the new-task dialog,
+ * which doubles as the new-repo path: typing a fresh repo path in the
+ * dialog's repo field creates a session under that repo. Wiring the
+ * mouse click on the footer to the same handler is left as a Wave 4
+ * follow-up — clicking the row is currently a no-op visual element.
  *
  * Reactivity: every prop is an `Accessor`. We never `.map()` arrays in
- * JSX — `For` is used so Solid keeps the row list reactive. The grouping
- * recomputes via `createMemo` only when the upstream `tasks` accessor
- * changes; cursor changes don't re-group.
+ * JSX — `For` is used so Solid keeps the row list reactive. The
+ * grouping recomputes via `createMemo` only when the upstream `tasks`
+ * accessor changes; cursor changes don't re-group.
  *
- * Focus: `props.focused` defaults to `() => true` because at G2 there's
- * only one focusable pane. Stream E's Wave 3 work will own focus
- * globally — when that lands, E threads the real signal through and the
- * default disappears.
+ * Focus: `props.focused` defaults to `() => true` so embedders that
+ * don't yet thread the focus signal still get a working sidebar.
  */
 
 import type { Task, TaskStatus } from "@/types"
@@ -80,19 +85,14 @@ export type SidebarProps = {
    * stripped-down embedder can leave delete unwired.
    */
   onDeleteRequest?: (taskId: string) => void
-}
-
-/** Hardcoded version label shown next to "kobe" in the header. Bump on release. */
-const KOBE_VERSION = "0.1.0"
-
-/** Human-readable status group titles. Match Conductor's labels. */
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  in_progress: "In progress",
-  in_review: "In review",
-  backlog: "Backlog",
-  done: "Done",
-  canceled: "Canceled",
-  error: "Error",
+  /**
+   * Optional callback for the `+ Add repo` footer affordance. When
+   * provided, clicking the footer row invokes this — typically the
+   * parent's existing new-task flow handler. Left undefined this
+   * stream; the global `n` / `ctrl+n` bindings remain the canonical
+   * entry point.
+   */
+  onAddRepo?: () => void
 }
 
 /**
@@ -100,7 +100,8 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
  * with the theme colour resolved at render time; storing the *tone* (not
  * the resolved RGBA) keeps badges reactive to theme switches.
  *
- * Token choice rationale:
+ * The badge is now a per-task hint only — no grouping reads from this
+ * map. Token choice rationale:
  *   - `done` → success (green check)
  *   - `in_review` → warning (amber, awaits user)
  *   - `in_progress` → primary (themeful "active" colour)
@@ -195,8 +196,8 @@ export function Sidebar(props: SidebarProps) {
         </text>
       </box>
 
-      {/* Body: scrollable group/task list. Stretching with flexGrow so
-         the footer always sits at the bottom. */}
+      {/* Body: scrollable repo-grouped task list. Stretching with
+         flexGrow so the footer always sits at the bottom. */}
       <scrollbox
         flexGrow={1}
         verticalScrollbarOptions={{
@@ -210,8 +211,8 @@ export function Sidebar(props: SidebarProps) {
         <box flexShrink={0} gap={0} paddingRight={1}>
           <For each={rows()}>
             {(row) => {
-              if (row.kind === "header") {
-                const status = row.status
+              if (row.kind === "repo-header") {
+                const label = row.label
                 const count = row.count
                 return (
                   <box
@@ -222,7 +223,7 @@ export function Sidebar(props: SidebarProps) {
                     paddingRight={1}
                   >
                     <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-                      {STATUS_LABEL[status]}
+                      {label}
                     </text>
                     <text fg={theme.textMuted} wrapMode="none">
                       {String(count)}
@@ -280,9 +281,12 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </scrollbox>
 
-      {/* Footer: placeholder Add repo command (wires up Wave 3+). */}
+      {/* Footer: "+ Add repo" affordance. Triggers `onAddRepo` if the
+         parent wires it; otherwise it's a visual placeholder and the
+         user opens the new-task dialog via the global `n`/`ctrl+n`
+         bindings. */}
       <box flexShrink={0} paddingTop={1}>
-        <text fg={theme.textMuted} wrapMode="none">
+        <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => props.onAddRepo?.()}>
           + Add repo
         </text>
       </box>

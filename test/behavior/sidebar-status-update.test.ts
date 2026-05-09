@@ -1,39 +1,35 @@
 /**
- * Behavior test — sidebar reactively reflects task status transitions.
+ * Behavior test — sidebar repo grouping is stable across status transitions.
  *
- * This test is the load-bearing proof for the bug fix in
- * `src/orchestrator/index/store.ts` and `src/orchestrator/core.ts`:
- * when the engine drives a task to `done`, the sidebar must redraw
- * the row under the `Done` group with the green `●` badge instead of
- * leaving it under `Backlog` with the muted `○` badge.
+ * Wave 4 W4.A direction shift: the sidebar no longer groups by status.
+ * Instead it groups by `Task.repo` — top-level repo headers, nested
+ * task rows. The original premise of this test (task moves to a `Done`
+ * group when the engine emits `done`) is obsolete because there is no
+ * `Done` group anymore.
  *
- * The original symptom (Jackson's screenshot): a task whose persisted
- * status in `~/.kobe/tasks.json` was `"done"` still rendered under
- * `Backlog` with `○`. The store mutated correctly, but the sidebar's
- * `Task[]` accessor never woke up — the in-memory mirror inside the
- * orchestrator was a stale snapshot.
+ * The new contract this test guards:
+ *   - When a task transitions backlog → done (engine emits `done`),
+ *     the row stays under its **repo header**. The status badge on
+ *     the row may flip from `○` (muted) to `●` (success), but the row
+ *     does NOT relocate across header boundaries.
+ *   - The repo header label (basename of the repo path) and the task
+ *     count under it remain visible before AND after the transition.
  *
- * What this test does:
- *   1. Spawn kobe in fake-engine mode.
- *   2. Open the new-task dialog and create one task.
- *   3. Observe the sidebar: the task should appear under `Backlog` with
- *      the muted `○` badge (initial status = backlog).
- *   4. Type a chat prompt + press enter — this triggers `runTask`, the
- *      engine spawns and the pump attaches. We pre-script `done` so the
- *      pump immediately sees terminal completion.
- *   5. POST `/finish` to close the queue cleanly.
- *   6. Wait for the sidebar to redraw: row must move under `Done` with
- *      the green `●` badge.
+ * Why this test still exists in the W4.A repo-grouping world:
+ *   - The reactive plumbing it originally proved (orchestrator's
+ *     `tasksSignal()` waking the sidebar after a `store.update` from
+ *     the pump's finally block) is still load-bearing — Wave 4 W4.A
+ *     didn't change that wiring. We rewrite the visible-state
+ *     assertions to match the new layout while keeping the same
+ *     fake-engine + PTY mechanics, so a regression in the orchestrator's
+ *     change-notifier wiring still breaks this test.
+ *   - It also doubles as the behavioral self-test for the new repo-
+ *     grouped sidebar (HARNESS.md §Behavioral self-test): we drive the
+ *     real binary, observe the visible repo header + task row, send a
+ *     status-changing event, and confirm the row stays put.
  *
- * Why this catches the H2 bug specifically:
- *   - On the unfixed code, the orchestrator's `setTasks` is fed a stale
- *     in-memory list because the store's mutations don't notify the
- *     orchestrator. The signal never re-fires; the sidebar memo never
- *     re-runs; the row stays under Backlog with `○`.
- *   - Once the store exposes a `subscribe(cb)` change notifier and the
- *     orchestrator wires it into `tasksSignal()`, every store mutation
- *     immediately refreshes the signal — including mutations from the
- *     pump's `finally` block.
+ * Mechanics mirror `g2-end-to-end.test.ts`: a fixture repo, fake-engine
+ * HTTP side-channel for engine scripting, PTY-driven kobe.
  */
 
 import { spawnSync } from "node:child_process"
@@ -96,8 +92,7 @@ async function scriptEngine(
  * `the renderer has observed the transition at least once`.
  *
  * Negative-match assertions ("the OLD state is no longer visible")
- * are intentionally avoided — partial repaints would race against
- * them.
+ * are intentionally avoided — partial repaints would race against them.
  */
 function bufferContains(screen: string, pattern: RegExp): boolean {
   return pattern.test(screen)
@@ -144,12 +139,15 @@ afterEach(async () => {
   }
 })
 
-test("sidebar reactively renders task status transition: backlog → done", async () => {
+test("sidebar keeps a task under its repo header across a backlog → done transition", async () => {
   // ---- fixtures -------------------------------------------------
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-sidebar-status-"))
   homeDir = path.join(tmpRoot, "home")
   fs.mkdirSync(homeDir, { recursive: true })
-  repo = path.join(tmpRoot, "repo")
+  // We deliberately give the fixture repo a recognizable basename so
+  // the sidebar's repo header label assertion is unambiguous. The
+  // basename is what `repoLabel()` returns (`path.basename`).
+  repo = path.join(tmpRoot, "my-frontend")
   const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (initResult.status !== 0) {
     throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
@@ -173,10 +171,22 @@ test("sidebar reactively renders task status transition: backlog → done", asyn
   // ---- create a task via the new-task dialog --------------------
   await kobe.sendKeys("n")
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
+  // Settle so the dialog's prompt input has its focused listener
+  // attached before we start typing. The first character can
+  // otherwise race with the input's stdin attach.
+  await new Promise((r) => setTimeout(r, 250))
+  // Belt-and-suspenders: clear any leaked keystrokes from the dialog
+  // open (the `n` that triggered the open can land on the prompt
+  // when the previously-focused renderable's keypress listener is
+  // still attached as the dialog mounts).
+  for (let i = 0; i < 4; i++) {
+    await kobe.sendKeys("\x7f")
+  }
 
   const TITLE = "status-transition"
   await kobe.typeText(TITLE)
   await kobe.sendKeys("\t")
+  await new Promise((r) => setTimeout(r, 250))
   // Clear the default repo input.
   for (let i = 0; i < 200; i++) {
     await kobe.sendKeys("\x7f")
@@ -184,24 +194,24 @@ test("sidebar reactively renders task status transition: backlog → done", asyn
   await kobe.typeText(repo)
   await kobe.sendKeys("\r")
 
-  // ---- assert task initially lives under the Backlog group ------
-  // Wait until the buffer shows the new task in the Backlog group
-  // with the muted `○` badge. PTY captures collapse whitespace so
-  // the badge sits adjacent to the title with no intervening header.
-  // We search the whole buffer: once the renderer paints `Backlog 1
-  // ○ <title>`, that substring stays visible until the next full
-  // repaint. This is the canonical pre-transition signal.
-  await kobe.waitFor((s) => bufferContains(s, /Backlog\s*1\s*○\s*\S*status-transition/), 15_000)
-  const backlogScreen = await kobe.capture()
-  expect(bufferContains(backlogScreen, /Backlog\s*1\s*○\s*\S*status-transition/)).toBe(true)
-  // No frame so far should contain `Done 1 ● <title>` — the engine
-  // hasn't run yet. This is a meaningful negative against a buffer
-  // that we know hasn't been polluted by a later transition because
-  // we haven't sent the prompt that starts the engine.
-  expect(bufferContains(backlogScreen, /Done\s*1\s*●\s*\S*status-transition/)).toBe(false)
+  // ---- assert the task lives under its repo header (initial state) ----
+  // Wait until the buffer shows the repo header `my-frontend` with
+  // count 1 followed by the task title. The W4.A sidebar layout puts
+  // the repo header above its task rows; PTY-flattened normalization
+  // collapses the line breaks but the repo label and task title remain
+  // close to each other in the byte stream.
+  await kobe.waitFor((s) => bufferContains(s, /my-frontend\s*1[\s\S]{0,200}status-transition/), 15_000)
+  const initialScreen = await kobe.capture()
+  expect(bufferContains(initialScreen, /my-frontend\s*1[\s\S]{0,200}status-transition/)).toBe(true)
+  // The status badge in the initial state should be the muted ○
+  // glyph (backlog status). We don't assert positionally — partial
+  // repaints make adjacency unreliable — but we do assert the badge
+  // glyph is somewhere in the buffer. Once the engine flips status to
+  // `done`, the post-transition assertion below will look for the
+  // green `●` glyph instead.
+  expect(initialScreen).toContain("○")
 
-  // ---- pre-script the engine: the next runTask spawns `fake-1`,
-  //      which we drive straight to `done`. Then close the stream.
+  // ---- pre-script the engine: drive the next runTask straight to `done` ----
   const doneEvents: EngineEvent[] = [{ type: "done" }]
   await scriptEngine(port, "/script", { sessionId: "fake-1", events: doneEvents })
   await scriptEngine(port, "/finish", { sessionId: "fake-1" })
@@ -215,28 +225,28 @@ test("sidebar reactively renders task status transition: backlog → done", asyn
   await kobe.typeText("go")
   await kobe.sendKeys("\r")
 
-  // ---- assert task moved to Done group with green `●` badge -----
+  // ---- assert the row stays under its repo header after the transition ----
   // The orchestrator's pump sees the scripted `done` event, calls
   // `store.update(id, { status: "done" })`, and the store fires its
   // change listener which feeds the orchestrator's task signal. The
-  // sidebar's `groupByStatus` re-buckets the row under `Done`, the
-  // badge mapping switches the glyph from `○` to `●`, and the row
-  // now appears beside the `Done` header in the PTY screen capture.
+  // sidebar's `groupByRepo` re-buckets the row but it's still under
+  // the same repo header (status no longer drives grouping in W4.A).
+  // The badge mapping switches the glyph from `○` to `●` (success
+  // tone), and the row's repo header still shows count 1.
   //
   // We assert against the buffer because once the renderer has drawn
-  // the post-transition state, the substring `Done 1 ● <title>` is
-  // permanently embedded somewhere in the cumulative bytes. The bug
-  // we are guarding against is the absence of that substring (i.e.
+  // the post-transition state, the substring `my-frontend 1 ● <title>`
+  // is permanently embedded somewhere in the cumulative bytes. The
+  // bug we are guarding against is the absence of that substring (i.e.
   // the sidebar never repainted after the store mutation).
-  // The transition is observable as soon as the renderer paints any
-  // frame containing `Done 1 ● <title>`. opentui repaints partially,
-  // so adjacent assertions about empty Backlog or absent `○` glyph
-  // would race against partial frames; we constrain the assertion to
-  // the only signal we can observe deterministically: the post-done
-  // sidebar row.
-  await kobe.waitFor((s) => bufferContains(s, /Done\s*1\s*●\s*\S*status-transition/), 20_000)
+  await kobe.waitFor((s) => bufferContains(s, /my-frontend\s*1[\s\S]{0,200}●\s*\S*status-transition/), 20_000)
   const doneScreen = await kobe.capture()
-  expect(bufferContains(doneScreen, /Done\s*1\s*●\s*\S*status-transition/)).toBe(true)
+  expect(bufferContains(doneScreen, /my-frontend\s*1[\s\S]{0,200}●\s*\S*status-transition/)).toBe(true)
+  // The repo count is still 1 — the row didn't disappear or duplicate.
+  // (The original status-grouped sidebar would have shown two
+  // headers — `Backlog 0` and `Done 1` — across the transition. The
+  // new repo-grouped sidebar shows one header that stays put.)
+  expect(bufferContains(doneScreen, /my-frontend\s*1/)).toBe(true)
 
   await kobe.exit()
   expect(kobe.closed).toBe(true)
