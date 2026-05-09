@@ -281,15 +281,20 @@ export function Chat(props: ChatProps) {
             trackOptions: { backgroundColor: theme.background, foregroundColor: theme.borderActive },
           }}
         >
-          <MessageList
-            messages={state().messages}
-            isStreaming={state().isStreaming}
-            lastAssistantIdx={lastAssistantIdx()}
-            expandedToolIndex={expandedToolIndex()}
-            onToggleTool={toggleExpand}
-            showThinking={showThinking()}
-            error={state().error}
-          />
+          <box paddingRight={1} gap={0}>
+            {/* Wave 4.B — message render delegated to MessageList for
+                Claude-Code parity (BLACK_CIRCLE prefix, markdown body,
+                tool banner shape, thinking spinner glyph set). */}
+            <MessageList
+              messages={state().messages}
+              isStreaming={state().isStreaming}
+              lastAssistantIdx={lastAssistantIdx()}
+              expandedToolIndex={expandedToolIndex()}
+              onToggleTool={toggleExpand}
+              showThinking={showThinking()}
+              error={state().error}
+            />
+          </box>
         </scrollbox>
       </Show>
 

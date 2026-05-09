@@ -1,172 +1,109 @@
 /**
- * Wave 4 chat split — render-side of the chat pane.
+ * Wave 4.B — message list renderer.
  *
- * Owns: the chronological message list, the per-row renderer, the
- * "thinking" spinner placement, the error banner, and the empty-state
- * placeholder. Stateless — receives `messages`, `isStreaming`,
- * `expandedToolIndex`, etc. as props from {@link Chat}.
+ * Goal: kobe's chat should *look* like Claude Code's, so a user moving
+ * between the GUI / Ink CLI / kobe doesn't notice the boundary. The
+ * conventions ported here come from the leaked Anthropic source under
+ * `refs/claude-code/src/components/`:
  *
- * Why split: `Chat.tsx` previously held both the render and the
- * composer in one ~500-line file, which created merge conflicts when
- * Wave-4 streams (chat-render parity vs. composer optimization) ran in
- * parallel. The split lets each stream own its own file.
+ *   - `Message.tsx`, `MessageRow.tsx`, `MessageResponse.tsx`
+ *   - `messages/AssistantTextMessage.tsx`         (BLACK_CIRCLE prefix
+ *                                                  + `<Markdown>` body)
+ *   - `messages/AssistantToolUseMessage.tsx`      (banner shape:
+ *                                                  prefix + bold name)
+ *   - `messages/SystemTextMessage.tsx`            (REFERENCE_MARK / dim)
+ *   - `messages/UserPromptMessage.tsx`            (block, optional bg)
+ *   - `tasks/renderToolActivity.tsx`              (tool name(args) shape)
+ *   - `Spinner/SpinnerGlyph.tsx`                  (spinner glyph set)
+ *   - `constants/figures.ts`                      (BLACK_CIRCLE etc.)
  *
- * What's load-bearing in this file (from Wave 3 G3):
- *   - The streaming cursor "▏" must trail the LAST assistant row
- *     while `isStreaming` is true.
- *   - Tool rows render as a single line `▶ <name>(<input>) — <status>`
- *     by default and expand on toggle.
- *   - The "thinking" spinner only renders when streaming AND there is
- *     no assistant text yet (caller computes via `showThinking`).
+ * Visual mapping (Claude Code → kobe):
  *
- * Wave 4 stream W4.B will re-style this file (markdown rendering, tool
- * banner shape, thinking dots animation). Don't add composer logic here.
+ *   - Assistant: leading `⏺` (or `●` non-darwin) in `theme.text`,
+ *     followed by markdown-rendered body. Streaming cursor `▏` appended
+ *     to the trailing assistant row mid-turn. Same as
+ *     `AssistantTextMessage` + `Markdown`.
+ *   - User prompt: leading `>` chip in `theme.accent`, body in
+ *     `theme.text`. Claude Code paints a `userMessageBackground`; we
+ *     use the accent `>` chip + plain bg to match agent-deck's
+ *     bracket-chip vocabulary kobe already uses elsewhere.
+ *   - Tool: prefix glyph + bold tool name + `(arg-preview)`. Status-aware:
+ *     spinner glyph while running, `⏺` once done. Indented `⎿` line
+ *     for the result preview when collapsed (mirrors `MessageResponse`'s
+ *     `⎿` continuation glyph). Expanded mode shows full input/output.
+ *   - System / error: `※` reference mark + dim text. Errors use
+ *     `theme.error` (mirrors `SystemAPIErrorMessage`'s color).
+ *
+ * The component is a pure render of `messages` — it does NOT subscribe
+ * to orchestrator events, manage focus, or own scroll state. The shell
+ * (`Chat.tsx`) provides those concerns + the streaming/error flags.
+ *
+ * Props are deliberately additive to what Chat.tsx already derives —
+ * passing `lastAssistantIdx` saves a re-scan of the list inside this
+ * component, and `expandedToolIndex` keeps the toggle state owned by
+ * the shell (tool toggles persist across re-renders of MessageList).
  */
 
 import { TextAttributes } from "@opentui/core"
 import { For, Show } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { Loading } from "./Loading"
+import { Markdown } from "./Markdown"
 import type { ChatRow } from "./store"
 
+/**
+ * Claude Code's `BLACK_CIRCLE` figure. Source:
+ * `refs/claude-code/src/constants/figures.ts:4`. Darwin gets the
+ * "media-stop" glyph (visually a filled circle), other platforms get
+ * the standard black-circle codepoint, which renders identically.
+ */
+const BLACK_CIRCLE = process.platform === "darwin" ? "⏺" : "●"
+
+/**
+ * Reference-mark figure used by Claude Code for system rows. Source:
+ * `refs/claude-code/src/constants/figures.ts:28`. We re-use it for
+ * kobe's system rows so error formatting matches.
+ */
+const REFERENCE_MARK = "※"
+
+/**
+ * Glyph used by `MessageResponse.tsx` to indent tool-result previews.
+ * Source: `refs/claude-code/src/components/MessageResponse.tsx:22`.
+ * Renders as a bracket-corner that visually says "this is a child of
+ * the line above."
+ */
+const RESULT_PREFIX = "⎿ "
+
+/**
+ * Streaming cursor — Claude Code uses a half-width cursor block on the
+ * trailing assistant text while the turn is mid-flight.
+ */
+const STREAMING_CURSOR = "▏"
+
 export interface MessageListProps {
+  /** Chronological list of chat rows. Render in array order. */
   messages: readonly ChatRow[]
+  /** True between user submit and `done`/`error`. */
   isStreaming: boolean
-  /** Index of the last assistant row, or -1 if none. Anchors the streaming cursor. */
+  /** Index of the trailing assistant row, or -1. Anchors the cursor. */
   lastAssistantIdx: number
-  /** Currently expanded tool row index, or null. */
+  /** Index of the tool row currently shown expanded, or null. */
   expandedToolIndex: number | null
-  /** Toggle expansion for the row at the given index. */
-  onToggleTool: (rowIndex: number) => void
-  /** True when we're streaming AND no assistant text has arrived yet. */
+  /** Toggle the expand/collapse state for the tool at `index`. */
+  onToggleTool: (index: number) => void
+  /** Whether to show the "thinking" spinner row at the bottom. */
   showThinking: boolean
-  /** Transient error banner text. Null when no error. */
+  /** Optional banner-state error message. Renders below the list. */
   error: string | null
 }
 
-export function MessageList(props: MessageListProps) {
-  const { theme } = useTheme()
-  return (
-    <box paddingRight={1} gap={0}>
-      {/* Empty placeholder when we have nothing to show. */}
-      <Show when={props.messages.length === 0}>
-        <box paddingTop={2}>
-          <text fg={theme.textMuted}>Type a prompt below.</text>
-        </box>
-      </Show>
-
-      {/* Single chronological list — user, assistant, tool, system rows in arrival order. */}
-      <For each={props.messages}>
-        {(row, i) => (
-          <MessageRow
-            row={row}
-            index={i()}
-            isLastAssistant={i() === props.lastAssistantIdx}
-            isStreaming={props.isStreaming}
-            expanded={row.kind === "tool" && props.expandedToolIndex === i()}
-            onToggle={() => props.onToggleTool(i())}
-          />
-        )}
-      </For>
-
-      {/* Loading spinner while we're waiting for the first token. */}
-      <Show when={props.showThinking}>
-        <Loading />
-      </Show>
-
-      {/* Error banner. */}
-      <Show when={props.error}>
-        <box paddingTop={1}>
-          <text fg={theme.error}>error: {props.error}</text>
-        </box>
-      </Show>
-    </box>
-  )
-}
-
 /**
- * Render a single chronological row from the unified `messages` array.
- * Tool rows are collapsed by default — `expanded` and `onToggle` thread
- * mouse + keyboard both into the same handler (kobe convention).
+ * One-line input preview for tool-call banners. Mirrors
+ * `renderToolActivity.tsx`: stringify, collapse whitespace, truncate.
+ * The 60-char cap matches what Claude Code's `userFacingToolName(...)`
+ * tends to emit for typical Bash / Read / Edit calls.
  */
-export function MessageRow(props: {
-  row: ChatRow
-  isLastAssistant: boolean
-  isStreaming: boolean
-  index: number
-  expanded: boolean
-  onToggle: () => void
-}) {
-  const { theme } = useTheme()
-  if (props.row.kind === "user") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-          you
-        </text>
-        <text fg={theme.text}>{props.row.text}</text>
-      </box>
-    )
-  }
-  if (props.row.kind === "assistant") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.success} attributes={TextAttributes.BOLD}>
-          assistant
-        </text>
-        <text fg={theme.text}>
-          {props.row.text}
-          {/* Streaming cursor on the last assistant row mid-turn. */}
-          {props.isLastAssistant && props.isStreaming ? "▏" : ""}
-        </text>
-      </box>
-    )
-  }
-  if (props.row.kind === "system") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.error} attributes={TextAttributes.BOLD}>
-          system
-        </text>
-        <text fg={theme.textMuted}>{props.row.text}</text>
-      </box>
-    )
-  }
-  // Tool row.
-  const r = props.row
-  const status = r.done ? "done" : "running"
-  const arrow = props.expanded ? "▼" : "▶"
-  return (
-    <box paddingTop={1}>
-      <text fg={theme.textMuted} onMouseUp={() => props.onToggle()}>
-        {arrow} {r.name}({previewToolInput(r.input)}) — {status}
-      </text>
-      <Show when={props.expanded}>
-        <box paddingLeft={2} paddingTop={0}>
-          <text fg={theme.textMuted}>input:</text>
-          <text fg={theme.text}>{safeStringify(r.input)}</text>
-          <Show when={r.done}>
-            <text fg={theme.textMuted}>output:</text>
-            <text fg={theme.text}>{safeStringify(r.output)}</text>
-          </Show>
-        </box>
-      </Show>
-      <Show when={!props.expanded && r.done}>
-        <text fg={theme.textMuted} onMouseUp={() => props.onToggle()}>
-          {" "}
-          {previewToolOutput(r.output)}
-        </text>
-      </Show>
-    </box>
-  )
-}
-
-/* --------------------------------------------------------------------- */
-/*  Formatting helpers — exported so future Wave 4 work can reuse them.   */
-/* --------------------------------------------------------------------- */
-
-/** One-line preview of a tool's input arg blob. */
-export function previewToolInput(input: unknown): string {
+function previewToolInput(input: unknown): string {
   if (input == null) return ""
   if (typeof input === "string") return collapseToOneLine(input, 60)
   try {
@@ -176,7 +113,10 @@ export function previewToolInput(input: unknown): string {
   }
 }
 
-export function previewToolOutput(output: unknown): string {
+function previewToolOutput(output: unknown): string {
+  // 60-char cap mirrors the prior chat render and keeps the G3c
+  // behavior test (FULLOUTPUT_SENTINEL_…, 65 chars) green by ensuring
+  // the full sentinel never lands in the collapsed preview.
   if (output == null) return ""
   if (typeof output === "string") return collapseToOneLine(output, 60)
   try {
@@ -186,13 +126,13 @@ export function previewToolOutput(output: unknown): string {
   }
 }
 
-export function collapseToOneLine(s: string, max: number): string {
+function collapseToOneLine(s: string, max: number): string {
   const oneLine = s.replace(/\s+/g, " ").trim()
   if (oneLine.length <= max) return oneLine
   return `${oneLine.slice(0, max)}…`
 }
 
-export function safeStringify(v: unknown): string {
+function safeStringify(v: unknown): string {
   if (v == null) return ""
   if (typeof v === "string") return v
   try {
@@ -200,4 +140,198 @@ export function safeStringify(v: unknown): string {
   } catch {
     return String(v)
   }
+}
+
+/**
+ * User prompt row.
+ *
+ * Claude Code's `UserPromptMessage` paints a subtle `userMessageBg`
+ * behind the text; kobe omits the bg (panes already paint
+ * theme.background) and uses an accent `>` chip in front instead.
+ * The chip mimics the agent-deck bracket-chip vocabulary used by the
+ * status bar — kobe-internal consistency over Claude-Code-exact mimicry
+ * here, because bg-on-row clashes with our 5-pane layout's per-pane bg.
+ */
+function UserRow(props: { text: string }) {
+  const { theme } = useTheme()
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+        &gt;
+      </text>
+      <box flexGrow={1}>
+        <text fg={theme.text}>{props.text}</text>
+      </box>
+    </box>
+  )
+}
+
+/**
+ * Assistant row.
+ *
+ * Mirrors `AssistantTextMessage`: BLACK_CIRCLE prefix + Markdown body.
+ * Streaming cursor is appended to the LAST assistant row in the list
+ * mid-turn; `Markdown` handles inline code / bold / lists / code
+ * blocks. The cursor lives outside the markdown so we don't hand it
+ * to the parser as a stray glyph.
+ */
+function AssistantRow(props: { text: string; isLast: boolean; isStreaming: boolean }) {
+  const { theme } = useTheme()
+  const showCursor = () => props.isLast && props.isStreaming
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      {/* width=2 mirrors `AssistantTextMessage`'s `minWidth={2}` on the
+          BLACK_CIRCLE prefix — `⏺` is rendered as a wide-glyph in many
+          terminals and bleeds into the body's leading character without
+          a reserved column. (Hardcoded width = terminal-grammar fixed
+          glyph, per CLAUDE.md flex-first exception.) */}
+      <box width={2} flexShrink={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {BLACK_CIRCLE}
+        </text>
+      </box>
+      <box flexGrow={1} flexDirection="column">
+        <Markdown source={props.text} />
+        <Show when={showCursor()}>
+          <text fg={theme.textMuted}>{STREAMING_CURSOR}</text>
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+/**
+ * Tool-call row.
+ *
+ * Banner shape from `AssistantToolUseMessage`: `<prefix> <bold name>(<args>)`.
+ * We swap the prefix glyph by status — running tools get a spinner
+ * (matches Claude Code's `ToolUseLoader`); finished tools get
+ * BLACK_CIRCLE. Click on the row toggles expansion.
+ *
+ * Collapsed: a `⎿` continuation line shows a one-line output preview.
+ * Expanded: full input + output blobs in a paddingLeft block, mirroring
+ * MessageResponse's child-indent shape.
+ */
+function ToolRow(props: {
+  row: Extract<ChatRow, { kind: "tool" }>
+  index: number
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { theme } = useTheme()
+  const r = () => props.row
+  const prefixGlyph = () => (r().done ? BLACK_CIRCLE : "✻")
+  const prefixColor = () => (r().done ? theme.success : theme.warning)
+  return (
+    <box paddingTop={1} flexDirection="column">
+      {/* Banner: prefix + tool name + (one-line args). */}
+      <box flexDirection="row" gap={1} onMouseUp={() => props.onToggle()}>
+        <text fg={prefixColor()} attributes={TextAttributes.BOLD}>
+          {prefixGlyph()}
+        </text>
+        <box flexGrow={1}>
+          <text fg={theme.text}>
+            <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
+            <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
+          </text>
+        </box>
+      </box>
+      {/* Result preview — collapsed view shows one indented line. */}
+      <Show when={!props.expanded && r().done && r().output !== undefined}>
+        <box paddingLeft={2} flexDirection="row" onMouseUp={() => props.onToggle()}>
+          <text fg={theme.textMuted}>
+            {RESULT_PREFIX}
+            {previewToolOutput(r().output)}
+          </text>
+        </box>
+      </Show>
+      {/* Expanded view — full input + output. */}
+      <Show when={props.expanded}>
+        <box paddingLeft={2} flexDirection="column" paddingTop={0}>
+          <text fg={theme.textMuted}>input:</text>
+          <text fg={theme.text}>{safeStringify(r().input)}</text>
+          <Show when={r().done}>
+            <text fg={theme.textMuted}>output:</text>
+            <text fg={theme.text}>{safeStringify(r().output)}</text>
+          </Show>
+        </box>
+      </Show>
+    </box>
+  )
+}
+
+/**
+ * System / error row.
+ *
+ * Mirrors Claude Code's `SystemTextMessage` "away_summary" / API-error
+ * shapes: a `※` reference mark in dim, followed by the message in
+ * theme.error (errors land here too — the store maps engine `error`
+ * events into `kind: "system"` rows prefixed with `error:`).
+ */
+function SystemRow(props: { text: string }) {
+  const { theme } = useTheme()
+  const isError = () => props.text.startsWith("error:") || props.text.startsWith("runTask failed")
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+        {REFERENCE_MARK}
+      </text>
+      <box flexGrow={1}>
+        <text fg={isError() ? theme.error : theme.textMuted}>{props.text}</text>
+      </box>
+    </box>
+  )
+}
+
+/**
+ * Public entry. Renders the full chronological list + the trailing
+ * thinking spinner + an optional error banner. The shell wraps this in
+ * a scrollbox so all the layout overflow is handled there.
+ */
+export function MessageList(props: MessageListProps) {
+  const { theme } = useTheme()
+  return (
+    <box flexDirection="column" gap={0}>
+      {/* Empty placeholder — same copy as before so behavior tests
+          asserting on substring "Type a prompt below" still pass. */}
+      <Show when={props.messages.length === 0 && !props.showThinking}>
+        <box paddingTop={2}>
+          <text fg={theme.textMuted}>Type a prompt below.</text>
+        </box>
+      </Show>
+
+      <For each={props.messages}>
+        {(row, i) => {
+          if (row.kind === "user") return <UserRow text={row.text} />
+          if (row.kind === "assistant")
+            return (
+              <AssistantRow text={row.text} isLast={i() === props.lastAssistantIdx} isStreaming={props.isStreaming} />
+            )
+          if (row.kind === "system") return <SystemRow text={row.text} />
+          // tool row
+          return (
+            <ToolRow
+              row={row}
+              index={i()}
+              expanded={props.expandedToolIndex === i()}
+              onToggle={() => props.onToggleTool(i())}
+            />
+          )
+        }}
+      </For>
+
+      <Show when={props.showThinking}>
+        <Loading />
+      </Show>
+
+      <Show when={props.error}>
+        <box paddingTop={1} flexDirection="row" gap={1}>
+          <text fg={theme.error} attributes={TextAttributes.BOLD}>
+            {REFERENCE_MARK}
+          </text>
+          <text fg={theme.error}>error: {props.error}</text>
+        </box>
+      </Show>
+    </box>
+  )
 }
