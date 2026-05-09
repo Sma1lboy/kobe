@@ -33,6 +33,7 @@ import type { AIEngine } from "../types/engine.ts"
 import { HSplitBorder, SplitBorder } from "./component/border"
 import { HelpDialog } from "./component/help-dialog"
 import { CommandPaletteProvider } from "./context/command-palette"
+import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
 import { KVProvider } from "./context/kv"
 import { SyncProvider } from "./context/sync"
@@ -245,23 +246,6 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
   )
 }
 
-/* --------------------------------------------------------------------- */
-/*  Pane focus model                                                       */
-/* --------------------------------------------------------------------- */
-/**
- * Which pane currently owns the keyboard. Cycles via `tab` / `shift+tab`
- * (per `useKobeKeybindings`'s reservation in `keybindings.ts`); jumps via
- * `ctrl+1/2/3/4` for explicit pane targeting. Pane-local bindings gate
- * on their own `focused` accessor so j/k/etc. only fire on the active
- * pane.
- *
- * Order matters — `PANE_ORDER` defines the tab-cycle sequence and the
- * 1-4 numeric mapping. Sidebar is `1` (leftmost), terminal is `4`
- * (bottom-right).
- */
-type PaneId = "sidebar" | "workspace" | "files" | "terminal"
-const PANE_ORDER = ["sidebar", "workspace", "files", "terminal"] as const satisfies readonly PaneId[]
-
 /**
  * `[Key]` chip — agent-deck-style key affordance. The key is wrapped in
  * literal brackets in BOLD accent color; label follows in muted text.
@@ -283,12 +267,14 @@ function Hotkey(props: { keys: string; label: string }) {
 
 /**
  * Bottom status bar — agent-deck style. Left side: focused-pane label +
- * pane-local hotkeys. Right side: always-on global hotkeys.
+ * pane-local hotkeys. Right side: always-on global hotkeys. Reads the
+ * focused pane from context so the parent doesn't need to thread it.
  */
-function StatusBar(props: { focusedPane: PaneId }) {
+function StatusBar() {
   const { theme } = useTheme()
+  const focus = useFocus()
   const sectionLabel = () => {
-    switch (props.focusedPane) {
+    switch (focus.focused()) {
       case "sidebar":
         return "Tasks:"
       case "workspace":
@@ -307,21 +293,21 @@ function StatusBar(props: { focusedPane: PaneId }) {
           {sectionLabel()}
         </text>
         <Switch>
-          <Match when={props.focusedPane === "sidebar"}>
+          <Match when={focus.focused() === "sidebar"}>
             <Hotkey keys="j/k" label="nav" />
             <Hotkey keys="enter" label="select" />
             <Hotkey keys="d" label="delete" />
           </Match>
-          <Match when={props.focusedPane === "workspace"}>
+          <Match when={focus.focused() === "workspace"}>
             <Hotkey keys="enter" label="send" />
           </Match>
-          <Match when={props.focusedPane === "files"}>
+          <Match when={focus.focused() === "files"}>
             <Hotkey keys="j/k" label="nav" />
             <Hotkey keys="enter" label="open" />
             <Hotkey keys="1/2/3" label="tab" />
             <Hotkey keys="r" label="refresh" />
           </Match>
-          <Match when={props.focusedPane === "terminal"}>
+          <Match when={focus.focused() === "terminal"}>
             <Hotkey keys="ctrl+pgup" label="scroll" />
           </Match>
         </Switch>
@@ -395,21 +381,16 @@ function Shell(props: AppDeps) {
   const [previewApi, setPreviewApi] = createSignal<PreviewApi | null>(null)
 
   /* ------------------------------------------------------------------- */
-  /*  Pane focus — ctrl+1/2/3/4 jump, tab/shift+tab cycle                 */
+  /*  Pane focus — backed by FocusContext (src/tui/context/focus.tsx)     */
   /* ------------------------------------------------------------------- */
-  const [focusedPane, setFocusedPane] = createSignal<PaneId>("workspace")
-  const isFocused = (id: PaneId) => () => focusedPane() === id
-
-  function cycleFocus(delta: 1 | -1): void {
-    const order = PANE_ORDER
-    const idx = order.indexOf(focusedPane())
-    const next = (idx + delta + order.length) % order.length
-    setFocusedPane(order[next] as PaneId)
-  }
+  const focus = useFocus()
+  const focusedPane = focus.focused
+  const setFocusedPane = focus.setFocused
+  const isFocused = focus.is
 
   // Numeric jumps: ctrl+1..4 pick a pane explicitly. `ctrl` prefix avoids
   // collision with FileTree's plain 1/2/3 tabs (All/Changes/Checks) and
-  // with composer typing.
+  // with composer typing. Always-on (modifier keys don't go to inputs).
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
@@ -420,13 +401,14 @@ function Shell(props: AppDeps) {
     ],
   }))
 
-  // Tab / shift+tab cycle in the order defined by PANE_ORDER. The
-  // existing kobe keymap reserved tab/shift+tab for exactly this.
+  // Tab / shift+tab cycle. Disabled when workspace is focused — opentui
+  // inputs consume tab and we don't want focus-cycle racing with the
+  // composer's own tab handling (e.g. dialog field switches).
   useBindings(() => ({
-    enabled: dialog.stack.length === 0,
+    enabled: dialog.stack.length === 0 && focusedPane() !== "workspace",
     bindings: [
-      { key: "tab", cmd: () => cycleFocus(1) },
-      { key: "shift+tab", cmd: () => cycleFocus(-1) },
+      { key: "tab", cmd: () => focus.cycle(1) },
+      { key: "shift+tab", cmd: () => focus.cycle(-1) },
     ],
   }))
 
@@ -516,6 +498,10 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
+    // When the chat composer is the active input (workspace focused),
+    // `?` / `q` shouldn't fire global shortcuts — let them pass through
+    // as typed characters.
+    inputFocused: () => focusedPane() === "workspace",
   })
 
   // Shared "open new-task dialog and create" handler. Bound to two
@@ -547,13 +533,12 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // `n` (bare letter) opens the new-task dialog when no task is
-  // selected — once one is, the chat input claims focus and a bare
-  // letter would type into the composer. The corresponding `ctrl+n`
-  // binding below covers the "task already selected, want to add
-  // another" case without colliding with input typing.
+  // `n` (bare letter) opens the new-task dialog when (a) no task is
+  // selected AND (b) the chat composer isn't focused. Otherwise the
+  // composer claims `n` as literal input. `ctrl+n` (below) is the
+  // always-on path for "task already selected, want to add another".
   useBindings(() => ({
-    enabled: dialog.stack.length === 0 && !selectedId(),
+    enabled: dialog.stack.length === 0 && !selectedId() && focusedPane() !== "workspace",
     bindings: [
       {
         key: "n",
@@ -583,32 +568,42 @@ function Shell(props: AppDeps) {
     <box flexDirection="column" flexGrow={1}>
       <TopBar activeTitle={activeTask()?.title} />
       <box flexDirection="row" flexGrow={1}>
-        {/* Left: task sidebar (42 cells fixed). The sidebar's own
-            "kobe v0.1.0" header serves as its pane identity. */}
-        <Sidebar
-          tasks={tasksAcc}
-          onSelect={(id: string) => {
-            setSelectedId(id)
-            // Selecting a task usually means "I want to look at it" —
-            // pull focus to workspace so the user can immediately type
-            // / scroll without another ctrl+2.
-            setFocusedPane("workspace")
-          }}
-          selectedId={selectedId}
-          focused={isFocused("sidebar")}
-        />
+        {/* Left: task sidebar. Click anywhere on the sidebar pane to
+            focus it. Border on the right edge lights up green when
+            sidebar is the active pane. */}
+        <box
+          flexShrink={0}
+          flexDirection="column"
+          onMouseUp={() => setFocusedPane("sidebar")}
+          border={["right"]}
+          customBorderChars={SplitBorder.customBorderChars}
+          borderColor={isFocused("sidebar")() ? theme.success : theme.border}
+        >
+          <Sidebar
+            tasks={tasksAcc}
+            onSelect={(id: string) => {
+              setSelectedId(id)
+              // Selecting a task usually means "I want to look at it" —
+              // pull focus to workspace so the user can immediately type
+              // / scroll without another ctrl+2.
+              setFocusedPane("workspace")
+            }}
+            selectedId={selectedId}
+            focused={isFocused("sidebar")}
+          />
+        </box>
         {/* Center: tabbed (chat | <file>...) — primary interaction surface.
-            `border={["left"]}` draws the agent-deck-style ┃ separator
-            against the sidebar. Center gets twice the flex share of the
-            right column so chat has visual weight. */}
+            Border lights up green when workspace is focused. Center gets
+            twice the flex share of the right column. */}
         <box
           flexDirection="column"
           flexGrow={2}
           flexShrink={1}
           flexBasis={0}
-          border={["left"]}
+          onMouseUp={() => setFocusedPane("workspace")}
+          border={["right"]}
           customBorderChars={SplitBorder.customBorderChars}
-          borderColor={theme.border}
+          borderColor={isFocused("workspace")() ? theme.success : theme.border}
         >
           <PaneHeader
             title="WORKSPACE"
@@ -655,16 +650,17 @@ function Shell(props: AppDeps) {
             twice the share (flexGrow={2}) of this right column
             (flexGrow={1}); shrink-allowed so very-narrow terminals don't
             blow up. No magic-constant pixel widths here. */}
-        <box
-          flexDirection="column"
-          flexGrow={1}
-          flexShrink={1}
-          flexBasis={0}
-          border={["left"]}
-          customBorderChars={SplitBorder.customBorderChars}
-          borderColor={theme.border}
-        >
-          <box flexGrow={2} flexShrink={1} flexBasis={0} flexDirection="column">
+        <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0}>
+          <box
+            flexGrow={2}
+            flexShrink={1}
+            flexBasis={0}
+            flexDirection="column"
+            onMouseUp={() => setFocusedPane("files")}
+            border={["bottom"]}
+            customBorderChars={HSplitBorder.customBorderChars}
+            borderColor={isFocused("files")() ? theme.success : theme.border}
+          >
             <PaneHeader title="FILES" focused={focusedPane() === "files"} />
             <box flexGrow={1}>
               <FileTree worktreePath={worktreePathAcc} onOpenFile={openFileInCenter} focused={isFocused("files")} />
@@ -675,9 +671,8 @@ function Shell(props: AppDeps) {
             flexShrink={1}
             flexBasis={0}
             flexDirection="column"
-            border={["top"]}
-            customBorderChars={HSplitBorder.customBorderChars}
-            borderColor={theme.border}
+            onMouseUp={() => setFocusedPane("terminal")}
+            borderColor={isFocused("terminal")() ? theme.success : theme.border}
           >
             <PaneHeader
               title="TERMINAL"
@@ -690,7 +685,7 @@ function Shell(props: AppDeps) {
           </box>
         </box>
       </box>
-      <StatusBar focusedPane={focusedPane()} />
+      <StatusBar />
     </box>
   )
 }
@@ -772,7 +767,9 @@ function App(props: AppDeps) {
         <SyncProvider>
           <DialogProvider>
             <CommandPaletteProvider>
-              <Shell {...props} />
+              <FocusProvider>
+                <Shell {...props} />
+              </FocusProvider>
             </CommandPaletteProvider>
           </DialogProvider>
         </SyncProvider>
