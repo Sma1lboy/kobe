@@ -372,6 +372,8 @@ export function Chat(props: ChatProps) {
         hasTask={props.taskId() !== undefined && !isCanceled()}
         noTaskMessage={isCanceled() ? "(task canceled — pick another or press ctrl+n to create)" : undefined}
         onSubmit={handleComposerSubmit}
+        focused={props.focused}
+        historyKey={props.taskId()}
       />
     </box>
   )

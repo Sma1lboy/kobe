@@ -49,7 +49,8 @@
  */
 
 import type { KeyEvent, TextareaRenderable } from "@opentui/core"
-import { Show, createEffect, on, onCleanup } from "solid-js"
+import { type Accessor, Show, createEffect, on, onCleanup } from "solid-js"
+import { EmptyBorder, SplitBorder } from "../../component/border"
 import { useTheme } from "../../context/theme"
 import { getHistory, pushHistory } from "./composer/history"
 import { composerKeyBindings } from "./composer/keybindings"
@@ -89,6 +90,18 @@ export interface ComposerProps {
    * use case better than a global pool of all your prompts).
    */
   historyKey?: string
+  /**
+   * When true, the composer's accent rail picks up `theme.primary`
+   * instead of `theme.border`. Optional: callers that don't thread
+   * focus get the unfocused (idle) styling.
+   */
+  focused?: Accessor<boolean>
+  /**
+   * Optional model label rendered on the right side of the inline
+   * footer (e.g. `"Claude Sonnet 4.6"`). Falls back to the literal
+   * `claude-code` when omitted.
+   */
+  modelLabel?: Accessor<string>
 }
 
 /**
@@ -347,39 +360,113 @@ export function Composer(props: ComposerProps) {
     textareaRef = undefined
   })
 
+  // Visual chrome lifted from refs/opencode/.../prompt/index.tsx (§ render
+  // tree at line 1459): a left-rail accent bar that connects the chat
+  // body to the composer, paired with a subtle `backgroundElement` fill
+  // around the textarea. The corner glyph (`bottomLeft: "╹"`) joins the
+  // rail to the footer hint row below — without it the rail just stops
+  // mid-air and looks unfinished. Border color upgrades to
+  // `theme.primary` when the workspace pane is focused so the active
+  // input stands out at a glance.
+  const railColor = () => (props.focused?.() ? theme.primary : theme.border)
+  const actionHint = () => {
+    if (!props.hasTask) return ""
+    if (props.isStreaming) return "streaming — wait for done"
+    return "enter send · shift+enter newline"
+  }
+  const modelLabel = () => props.modelLabel?.() ?? "claude-code"
+
   return (
-    <box flexShrink={0} paddingTop={1} flexDirection="row" gap={1} alignItems="flex-start">
-      <text fg={theme.textMuted}>{props.isStreaming ? "…" : ">"}</text>
-      <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
-        <Show
-          when={props.hasTask}
-          fallback={<text fg={theme.textMuted}>{props.noTaskMessage ?? "(no task — press n to create)"}</text>}
+    <box flexShrink={0} flexDirection="column" paddingTop={1}>
+      <box
+        border={["left"]}
+        borderColor={railColor()}
+        customBorderChars={{
+          ...SplitBorder.customBorderChars,
+          bottomLeft: "╹",
+        }}
+      >
+        <box
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={1}
+          paddingBottom={0}
+          flexDirection="column"
+          flexGrow={1}
+          backgroundColor={theme.backgroundElement}
         >
-          <textarea
-            ref={(r: TextareaRenderable) => {
-              textareaRef = r
-              // Seed the buffer if the parent already has a draft
-              // (uncommon, but harmless). `setText` on the empty
-              // string is also fine — it's a no-op when content
-              // matches.
-              if (props.draft) r.setText(props.draft)
-              // Auto-focus so the user can start typing immediately
-              // after the chat pane mounts. This mirrors the prior
-              // <input focused={true}> behavior.
-              r.focus()
-            }}
-            placeholder={resolvePlaceholder({ isStreaming: props.isStreaming, hasTask: props.hasTask })}
-            placeholderColor={theme.textMuted}
-            textColor={theme.text}
-            backgroundColor="transparent"
-            focusedBackgroundColor="transparent"
-            wrapMode="word"
-            keyBindings={composerKeyBindings}
-            onContentChange={handleContentChange}
-            onKeyDown={handleKeyDown}
-            onSubmit={handleSubmit}
-          />
-        </Show>
+          <box flexDirection="row" gap={1} alignItems="flex-start">
+            <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
+            <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
+              <Show
+                when={props.hasTask}
+                fallback={<text fg={theme.textMuted}>{props.noTaskMessage ?? "(no task — press n to create)"}</text>}
+              >
+                <textarea
+                  ref={(r: TextareaRenderable) => {
+                    textareaRef = r
+                    // Seed the buffer if the parent already has a draft
+                    // (uncommon, but harmless). `setText` on the empty
+                    // string is also fine — it's a no-op when content
+                    // matches.
+                    if (props.draft) r.setText(props.draft)
+                    // Auto-focus so the user can start typing immediately
+                    // after the chat pane mounts. This mirrors the prior
+                    // <input focused={true}> behavior.
+                    r.focus()
+                  }}
+                  placeholder={resolvePlaceholder({ isStreaming: props.isStreaming, hasTask: props.hasTask })}
+                  placeholderColor={theme.textMuted}
+                  textColor={theme.text}
+                  backgroundColor={theme.backgroundElement}
+                  focusedBackgroundColor={theme.backgroundElement}
+                  wrapMode="word"
+                  keyBindings={composerKeyBindings}
+                  onContentChange={handleContentChange}
+                  onKeyDown={handleKeyDown}
+                  onSubmit={handleSubmit}
+                />
+              </Show>
+            </box>
+          </box>
+          {/* Inline footer: action hint left, model right. Renders only
+              when a task is selected so the no-task fallback row has the
+              composer area to itself. */}
+          <Show when={props.hasTask}>
+            <box flexDirection="row" justifyContent="space-between" paddingTop={1} flexShrink={0}>
+              <text fg={theme.textMuted} wrapMode="none">
+                {actionHint()}
+              </text>
+              <text fg={theme.textMuted} wrapMode="none">
+                {modelLabel()}
+              </text>
+            </box>
+          </Show>
+        </box>
+      </box>
+      {/* One-row tail under the rail to terminate the accent stroke
+          cleanly with the same backgroundElement fill — opencode does
+          this with a `▀` half-block bottom border so the element panel
+          ends without a hard edge. EmptyBorder swaps in a space when
+          the theme's element bg is fully transparent. */}
+      <box
+        height={1}
+        border={["left"]}
+        borderColor={railColor()}
+        customBorderChars={{
+          ...EmptyBorder,
+          vertical: theme.backgroundElement.a !== 0 ? "╹" : " ",
+        }}
+      >
+        <box
+          height={1}
+          border={["bottom"]}
+          borderColor={theme.backgroundElement}
+          customBorderChars={{
+            ...EmptyBorder,
+            horizontal: theme.backgroundElement.a !== 0 ? "▀" : " ",
+          }}
+        />
       </box>
     </box>
   )
