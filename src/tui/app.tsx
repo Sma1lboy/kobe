@@ -380,6 +380,78 @@ function showNewTaskDialog(dialog: DialogContext, defaultRepo: string): Promise<
 }
 
 /* --------------------------------------------------------------------- */
+/*  Rename-task dialog                                                    */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Single-field rename dialog. Sidebar `r` opens this for the cursor task
+ * with the current title pre-filled in the input so the user can edit
+ * in place. Enter commits, esc cancels (handled by the dialog stack).
+ *
+ * Trim + empty-string guard: `enter` on an empty/whitespace-only value
+ * is a no-op (we don't dismiss, so the user notices nothing happened
+ * and can either type something or hit esc). The orchestrator's
+ * setTitle defends in depth.
+ */
+function RenameTaskDialog(props: {
+  currentTitle: string
+  onSubmit: (title: string) => void
+  onCancel: () => void
+}) {
+  const dialog = useDialog()
+  const { theme } = useTheme()
+  const [title, setTitle] = createSignal(props.currentTitle)
+
+  function commit() {
+    const t = title().trim()
+    if (!t) return
+    props.onSubmit(t)
+    dialog.clear()
+  }
+
+  return (
+    <box paddingLeft={2} paddingRight={2} gap={1}>
+      <box flexDirection="row" justifyContent="space-between">
+        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+          Rename task
+        </text>
+        <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
+          esc
+        </text>
+      </box>
+      <box gap={0}>
+        <text fg={theme.accent}>title</text>
+        <input
+          value={title()}
+          placeholder={props.currentTitle}
+          focused={true}
+          onInput={(v: string) => setTitle(v)}
+          onSubmit={() => commit()}
+        />
+      </box>
+      <box paddingBottom={1}>
+        <text fg={theme.textMuted}>enter rename · esc cancel</text>
+      </box>
+    </box>
+  )
+}
+
+function showRenameTaskDialog(dialog: DialogContext, currentTitle: string): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve) => {
+    dialog.replace(
+      () => (
+        <RenameTaskDialog
+          currentTitle={currentTitle}
+          onSubmit={(v) => resolve(v)}
+          onCancel={() => resolve(undefined)}
+        />
+      ),
+      () => resolve(undefined),
+    )
+  })
+}
+
+/* --------------------------------------------------------------------- */
 /*  Top-level Shell                                                       */
 /* --------------------------------------------------------------------- */
 
@@ -459,6 +531,7 @@ function StatusBar() {
           <Match when={focus.focused() === "sidebar"}>
             <Hotkey keys="j/k" label="nav" />
             <Hotkey keys="enter" label="select" />
+            <Hotkey keys="r" label="rename" />
             <Hotkey keys="a" label="archive" />
             <Hotkey keys="[/]" label="view" />
             <Hotkey keys="d" label="delete" />
@@ -867,6 +940,30 @@ function Shell(props: AppDeps) {
    * and out-of-frame state (other terminal windows, in-progress writes)
    * could mean "press the wrong key once" → "lose work."
    */
+  /**
+   * Open the rename dialog for a task and persist the new title.
+   * Mirrors `confirmDeleteTask` in shape: resolve task → run dialog →
+   * await orchestrator. The orchestrator's `setTitle` does its own
+   * empty-title rejection and same-as-current no-op, so we only need
+   * to gate on "did the user submit a value at all" here. The dialog
+   * itself rejects empty submits before calling onSubmit, so a
+   * resolved-with-string from the promise is always usable.
+   */
+  async function confirmRenameTask(taskId: string): Promise<void> {
+    const task = props.orchestrator.getTask(taskId)
+    if (!task) return
+    const next = await showRenameTaskDialog(dialog, task.title)
+    if (next === undefined) return
+    try {
+      await props.orchestrator.setTitle(taskId, next)
+    } catch (err) {
+      // Empty/whitespace-only — defensive: dialog's commit() filters
+      // these but a future code path could call this with anything.
+      // eslint-disable-next-line no-console
+      console.error("[kobe] setTitle failed:", err)
+    }
+  }
+
   async function confirmDeleteTask(taskId: string): Promise<void> {
     const task = props.orchestrator.getTask(taskId)
     if (!task) return
@@ -1005,6 +1102,9 @@ function Shell(props: AppDeps) {
                 // eslint-disable-next-line no-console
                 console.error("[kobe] setArchived failed:", err)
               })
+            }}
+            onRenameRequest={(id: string) => {
+              void confirmRenameTask(id)
             }}
             onAddTask={() => void openNewTaskFlow()}
             selectedId={selectedId}

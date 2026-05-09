@@ -502,6 +502,66 @@ describe("Orchestrator.deleteTask", () => {
 })
 
 // ----------------------------------------------------------------------
+// setTitle — sidebar `r` rename flow
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.setTitle", () => {
+  test("persists a new trimmed title", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const t = await orch.createTask({ repo, title: "old", prompt: "" })
+    await orch.setTitle(t.id, "  new title  ")
+    expect(store.get(t.id)?.title).toBe("new title")
+  })
+
+  test("rejects empty title", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const t = await orch.createTask({ repo, title: "keep", prompt: "" })
+    await expect(orch.setTitle(t.id, "")).rejects.toThrow(/title/i)
+    // Title unchanged after rejection.
+    expect(store.get(t.id)?.title).toBe("keep")
+  })
+
+  test("rejects whitespace-only title", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const t = await orch.createTask({ repo, title: "keep", prompt: "" })
+    await expect(orch.setTitle(t.id, "   \t\n  ")).rejects.toThrow(/title/i)
+    expect(store.get(t.id)?.title).toBe("keep")
+  })
+
+  test("same-as-current is a no-op (no store write)", async () => {
+    const fake = new FakeAIEngine()
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "same", prompt: "" })
+    const updateSpy = vi.spyOn(store, "update")
+    await orch.setTitle(t.id, "same")
+    expect(updateSpy).not.toHaveBeenCalled()
+    // Pre/post-trim equality also a no-op.
+    await orch.setTitle(t.id, "  same  ")
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(store.get(t.id)?.title).toBe("same")
+  })
+
+  test("throws TaskNotFoundError for unknown id", async () => {
+    const { orch } = await buildOrchestrator()
+    await expect(orch.setTitle("does-not-exist", "x")).rejects.toBeInstanceOf(TaskNotFoundError)
+  })
+
+  test("tasksSignal reflects the new title after setTitle", async () => {
+    // Regression guard: setTitle must flow through the listener bus so
+    // the sidebar redraws — same property archive/permission-mode/model
+    // depend on. If the implementation stopped going through
+    // store.update (e.g. mutated `task.title` in place), the sidebar
+    // would silently drift.
+    const { orch } = await buildOrchestrator()
+    const sig = orch.tasksSignal()
+    const t = await orch.createTask({ repo, title: "first", prompt: "" })
+    expect(sig().find((x) => x.id === t.id)?.title).toBe("first")
+    await orch.setTitle(t.id, "second")
+    expect(sig().find((x) => x.id === t.id)?.title).toBe("second")
+  })
+})
+
+// ----------------------------------------------------------------------
 // createTask — baseRef forwarding (new-task dialog "from branch" field)
 // ----------------------------------------------------------------------
 

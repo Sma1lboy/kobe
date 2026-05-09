@@ -68,6 +68,12 @@ export type SidebarProps = {
    */
   onArchiveRequest?: (taskId: string) => void
   /**
+   * Rename callback. Pressing `r` on the cursor task emits this with
+   * the task id; the parent (app.tsx) opens an input dialog defaulted
+   * to the current title and on submit calls `orchestrator.setTitle`.
+   */
+  onRenameRequest?: (taskId: string) => void
+  /**
    * Optional callback for the `+ New task` footer affordance. Left
    * undefined this stream; the global `n`/`ctrl+n` bindings remain the
    * canonical entry point.
@@ -183,6 +189,7 @@ export function Sidebar(props: SidebarProps) {
     onSelect: (id) => props.onSelect(id),
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
+    onRenameRequest: (id) => props.onRenameRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
   })
 
