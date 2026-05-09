@@ -272,11 +272,45 @@ export function Chat(props: ChatProps) {
     return -1
   })
 
-  const showThinking = createMemo(() => {
-    if (!state().isStreaming) return false
-    // Spinner only when no assistant text yet — once text streams in,
-    // the cursor takes over and the spinner gets out of the way.
-    return lastAssistantIdx() === -1
+  // Spinner shows whenever a turn is in flight — independent of how
+  // many assistant rows already exist. Earlier this was gated on
+  // `lastAssistantIdx() === -1` (intent: hide once the streaming cursor
+  // takes over). The gate misfired on every turn after the first
+  // because `lastAssistantIdx` scans the whole transcript, so a
+  // prior-turn assistant row kept the spinner suppressed forever.
+  // Claude Code itself keeps the spinner up alongside the streamed text
+  // (`refs/claude-code/src/components/Spinner/SpinnerAnimationRow.tsx`).
+  const showThinking = createMemo(() => state().isStreaming)
+
+  // Wall-clock turn start. Latched when isStreaming flips false→true,
+  // cleared on done/error/task-switch. Feeds Loading's elapsed timer.
+  const [turnStartedAt, setTurnStartedAt] = createSignal<number | undefined>(undefined)
+  createEffect(() => {
+    if (state().isStreaming) {
+      setTurnStartedAt((cur) => cur ?? Date.now())
+    } else {
+      setTurnStartedAt(undefined)
+    }
+  })
+
+  // Chars of assistant text in the *current* turn — sum after the most
+  // recent user row. Drives Loading's token estimate (chars/4, mirroring
+  // Claude Code's `SpinnerAnimationRow` `leaderTokens` heuristic).
+  const currentTurnChars = createMemo(() => {
+    const msgs = state().messages
+    let lastUserIdx = -1
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i]?.kind === "user") {
+        lastUserIdx = i
+        break
+      }
+    }
+    let chars = 0
+    for (let i = lastUserIdx + 1; i < msgs.length; i++) {
+      const r = msgs[i]
+      if (r && r.kind === "assistant") chars += r.text.length
+    }
+    return chars
   })
 
   const lastToolIndex = createMemo(() => {
@@ -358,6 +392,8 @@ export function Chat(props: ChatProps) {
               expandedToolIndex={expandedToolIndex()}
               onToggleTool={toggleExpand}
               showThinking={showThinking()}
+              thinkingStartedAt={turnStartedAt()}
+              thinkingResponseChars={currentTurnChars()}
               error={state().error}
             />
           </box>

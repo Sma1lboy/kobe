@@ -30,7 +30,7 @@
  *     glyph rendering offsets vary by terminal so this matters.
  */
 
-import { createSignal, onCleanup } from "solid-js"
+import { Show, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 
 /**
@@ -68,33 +68,83 @@ export interface LoadingProps {
    * (the chat header already says we're talking to Claude).
    */
   label?: string
+  /**
+   * Wall-clock timestamp (ms) marking the start of the current turn.
+   * When supplied, renders an elapsed timer next to the spinner —
+   * mirrors Claude Code's `SpinnerAnimationRow` `(2m 41s · …)`.
+   */
+  startedAt?: number
+  /**
+   * Total chars of assistant text streamed in the current turn. Token
+   * count is approximated as `chars / 4` (Claude Code's heuristic in
+   * `SpinnerAnimationRow.tsx` — `leaderTokens = Math.round(chars / 4)`).
+   * Omit (or pass 0) to suppress the token segment.
+   */
+  responseChars?: number
+}
+
+/** ms / chars formatters ported from `refs/claude-code/src/utils/format.ts`. */
+function formatDuration(ms: number): string {
+  if (ms < 1000) return "0s"
+  const totalSec = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSec / 60)
+  const seconds = totalSec % 60
+  if (minutes === 0) return `${seconds}s`
+  const hours = Math.floor(minutes / 60)
+  if (hours === 0) return `${minutes}m ${seconds}s`
+  return `${hours}h ${minutes % 60}m ${seconds}s`
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return String(n)
+  if (n < 1_000_000) {
+    const k = n / 1000
+    return `${k.toFixed(1).replace(/\.0$/, "")}k`
+  }
+  const m = n / 1_000_000
+  return `${m.toFixed(1).replace(/\.0$/, "")}m`
 }
 
 /**
- * Animated thinking indicator. Renders as `<spinner> <label>` on a
- * single line in `theme.textMuted` so it doesn't compete with the
+ * Animated thinking indicator. Renders as `<spinner> <label> (elapsed · ↓ N tokens)`
+ * on a single line in `theme.textMuted` so it doesn't compete with the
  * actual message content. Self-contained — drop it anywhere the
  * chat wants to say "we're working on it."
  */
 export function Loading(props: LoadingProps) {
   const { theme } = useTheme()
   const [frame, setFrame] = createSignal(0)
+  const [now, setNow] = createSignal(Date.now())
 
-  // Tick the frame index on a fixed interval. We use modular increment
-  // so the index stays small forever (no overflow concern in a TUI's
-  // lifetime, but tidy is tidy).
+  // Tick the frame index + clock on a fixed interval. Both ride the
+  // same setInterval — Claude Code does the same thing in its
+  // `SpinnerAnimationRow` (one `useAnimationFrame(50)`).
   const handle = setInterval(() => {
     setFrame((f) => (f + 1) % SPINNER_FRAMES.length)
+    setNow(Date.now())
   }, FRAME_MS)
 
   onCleanup(() => {
     clearInterval(handle)
   })
 
+  const elapsed = () => (props.startedAt !== undefined ? Math.max(0, now() - props.startedAt) : 0)
+  const tokens = () => Math.round((props.responseChars ?? 0) / 4)
+  const showStats = () => props.startedAt !== undefined
+  const stats = () => {
+    const parts = [formatDuration(elapsed())]
+    const t = tokens()
+    if (t > 0) parts.push(`↓ ${formatTokens(t)} tokens`)
+    return parts.join(" · ")
+  }
+
   return (
     <box flexDirection="row" gap={1} paddingTop={1}>
       <text fg={theme.accent}>{SPINNER_FRAMES[frame()] ?? SPINNER_FRAMES[0]}</text>
       <text fg={theme.textMuted}>{props.label ?? "thinking"}</text>
+      <Show when={showStats()}>
+        <text fg={theme.textMuted}>({stats()})</text>
+      </Show>
     </box>
   )
 }

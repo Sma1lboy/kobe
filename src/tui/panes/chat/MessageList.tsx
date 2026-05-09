@@ -101,6 +101,14 @@ export interface MessageListProps {
   onToggleTool: (index: number) => void
   /** Whether to show the "thinking" spinner row at the bottom. */
   showThinking: boolean
+  /**
+   * Wall-clock ms timestamp marking the start of the current turn.
+   * Threaded through to {@link Loading} so the spinner can render
+   * `(2m 41s · ↓ 2.0k tokens)` like Claude Code.
+   */
+  thinkingStartedAt?: number
+  /** Chars of assistant text streamed so far this turn (for token est). */
+  thinkingResponseChars?: number
   /** Optional banner-state error message. Renders below the list. */
   error: string | null
 }
@@ -334,7 +342,7 @@ export function MessageList(props: MessageListProps) {
       </For>
 
       <Show when={props.showThinking}>
-        <Loading />
+        <Loading startedAt={props.thinkingStartedAt} responseChars={props.thinkingResponseChars} />
       </Show>
 
       <Show when={props.error}>
