@@ -35,6 +35,7 @@ import type { AIEngine } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { CreatePRButton } from "./component/create-pr-button"
 import { HelpDialog } from "./component/help-dialog"
+import { SettingsDialog } from "./component/settings-dialog"
 import { UpdateDialog } from "./component/update-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
 import { CommandPaletteProvider } from "./context/command-palette"
@@ -1255,6 +1256,30 @@ function Shell(props: AppDeps) {
         key: "ctrl+n",
         cmd: () => {
           void openNewTaskFlow()
+        },
+      },
+      // ctrl+, opens the settings dialog from any pane (modifier
+      // chords don't go to inputs). Mirrors VS Code's command palette
+      // convention. Sidebar/files/terminal also accept bare `,` via
+      // the focus-scoped binding below.
+      {
+        key: "ctrl+,",
+        cmd: () => {
+          void SettingsDialog.show(dialog, kv)
+        },
+      },
+    ],
+  }))
+
+  // Bare `,` opens settings when the chat composer isn't focused.
+  // Composer claims literal commas as input.
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0 && focusedPane() !== "workspace",
+    bindings: [
+      {
+        key: ",",
+        cmd: () => {
+          void SettingsDialog.show(dialog, kv)
         },
       },
     ],

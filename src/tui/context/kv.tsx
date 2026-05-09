@@ -77,6 +77,17 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
         setStore(key, value)
         scheduleWrite()
       },
+      /**
+       * Wipe every persisted key and immediately schedule a write of
+       * the now-empty store. Used by the Dev settings panel's "reset
+       * UI state" affordance — drops persisted task selection, center
+       * tabs, pane sizes, etc., reverting kobe to a fresh-launch
+       * layout without touching `~/.kobe/tasks.json`.
+       */
+      clear() {
+        for (const k of Object.keys(store)) setStore(k, undefined as unknown)
+        scheduleWrite()
+      },
     }
     return result
   },
