@@ -1,10 +1,12 @@
 /**
  * kobe TUI bootstrap.
  *
- * Mounts the lifted opencode shell (theme + KV + sync + dialog + command
- * palette providers) and renders a themed banner with a stub sidebar. Real
- * task data lands in Wave 2+; this entry's job is to prove the providers
- * compose, the theme renders, and global keybindings are registered.
+ * Wave 2 Stream E: this file used to render a themed banner with a stub
+ * sidebar (Foundation 0.2 scaffolding). It now delegates to `app.tsx`,
+ * which wires the Orchestrator + Sidebar + chat placeholder for the G2
+ * end-to-end demo. The banner shell below (`Banner`, `Shell`) is kept
+ * for reference (CLAUDE.md hard rule: no deletion) but is no longer the
+ * mount target.
  *
  * Default theme is `tokyonight` — matches agent-deck's Tokyo Night palette
  * (Stream D resolved decision in PLAN.md). Switch via `theme.set("nord")`
@@ -22,8 +24,8 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { render } from "@opentui/solid"
 import { Show } from "solid-js"
+import { startApp } from "./app"
 import { HelpDialog } from "./component/help-dialog"
 import { Sidebar } from "./component/sidebar"
 import { CommandPaletteProvider } from "./context/command-palette"
@@ -119,5 +121,10 @@ function App() {
 }
 
 export async function startTui(): Promise<void> {
-  await render(() => <App />)
+  // Stream E: delegate to the new App that wires Orchestrator + panes.
+  // The Banner/Shell pair above is kept for the historical commit log
+  // but is no longer mounted.
+  void Banner
+  void App
+  await startApp()
 }

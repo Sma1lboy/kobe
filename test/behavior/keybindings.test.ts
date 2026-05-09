@@ -61,18 +61,14 @@ test("`esc` closes the help dialog", async () => {
   // ESC = 0x1b. The DialogProvider's escape binding (registered higher on
   // the binding stack) pops the top dialog.
   await kobe.sendKeys("\x1b")
-  // Poll the screen until "keybindings" disappears — the redraw isn't
-  // synchronous with the keystroke. The harness's screen buffer is
-  // append-only, so we check the current rendered tail by looking at
-  // what's NOT present on the latest line set.
-  const after = await kobe.waitFor((s) => {
-    // The help dialog occupies a centered modal; once dismissed the
-    // banner reappears. The banner's "TUI orchestrator" string is a
-    // reliable post-dialog tell because it sits behind the dialog and
-    // is repainted on dismiss.
-    return s.includes("TUI orchestrator")
-  }, 5_000)
-  expect(after).toContain("TUI orchestrator")
+  // Poll the screen until the dialog has been redrawn over. Wave 2
+  // Stream E replaced the banner shell, so we watch for the sidebar
+  // header "Tasks" (always rendered behind the dialog stack and
+  // repainted on dismiss) the same way the prior test watched for
+  // "TUI orchestrator" — the assertion is "the post-dismiss UI is
+  // still painting", not a content check on the dialog disappearance.
+  const after = await kobe.waitFor((s) => s.includes("Tasks"), 5_000)
+  expect(after).toContain("Tasks")
 }, 30_000)
 
 test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () => {
