@@ -1122,6 +1122,13 @@ function Shell(props: AppDeps) {
       })
       kv.set("lastNewTaskRepo", result.repo)
       setSelectedId(created.id)
+      // Pull focus to the chat pane so the user can immediately type
+      // / use chat-pane-scoped keybindings (ctrl+t for new chat tab,
+      // ctrl+1..9 / ctrl+tab to navigate tabs, ctrl+w to close one)
+      // without an extra ctrl+2. Mirrors the sidebar's onSelect
+      // behaviour — both "user wants to look at this task" entry
+      // points should land in the same place.
+      setFocusedPane("workspace")
     } catch (err) {
       // Surface failure as stderr; we don't have a global banner yet,
       // and the chat pane may not be subscribed (no task selected).

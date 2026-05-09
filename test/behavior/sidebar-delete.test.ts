@@ -230,9 +230,11 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   // focus first. We use ctrl+1 — app.tsx wires `ctrl+1` to
   // `setFocusedPane("sidebar")` and that binding is *not* gated on
   // any input-focus state (modifier-prefixed keys always work). The
-  // PTY byte for ctrl+1 is `\x1b[1;5u` (kitty keyboard protocol form
-  // that opentui's keypress decoder accepts as ctrl+1).
-  await kobe.sendKeys("\x1b[1;5u")
+  // PTY byte for ctrl+1 is `\x1b[49;5u` — kitty CSI-u where the
+  // first parameter is the ASCII codepoint of the digit '1' (49),
+  // NOT the integer 1. (The integer 1 in kitty form means "ctrl+\x01"
+  // which is a different chord and won't fire the binding.)
+  await kobe.sendKeys("\x1b[49;5u")
   await new Promise((r) => setTimeout(r, 250))
 
   // ---- press `d` on the sidebar cursor -------------------------

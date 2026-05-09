@@ -44,7 +44,7 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
+import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
 
@@ -53,18 +53,22 @@ export interface TaskIndexStoreOptions {
   readonly homeDir?: string
 }
 
-/** The shape we accept on `create()` — id and timestamps are auto-assigned. */
 /**
- * Input shape for {@link TaskIndexStore.create}. `archived` is optional —
- * new tasks always start in the working session ("active") view, so
- * callers don't need to specify it. The store fills in `false` on create.
+ * Input shape for {@link TaskIndexStore.create}. `id` and timestamps are
+ * auto-assigned. `archived` defaults to false. `tabs` / `activeTabId`
+ * are synthesised from the optional `sessionId` when omitted.
  */
-export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt" | "archived"> & {
+export type TaskCreateInput = Omit<
+  Task,
+  "id" | "createdAt" | "updatedAt" | "archived" | "tabs" | "activeTabId"
+> & {
   readonly archived?: boolean
+  readonly tabs?: readonly ChatTab[]
+  readonly activeTabId?: string
 }
 
 /** Empty manifest used as the recovery / first-run default. */
-const EMPTY_INDEX: TaskIndex = { version: 1, tasks: [] } as const
+const EMPTY_INDEX: TaskIndex = { version: 2, tasks: [] } as const
 
 /**
  * Callback invoked after every mutation to the store's in-memory list.
@@ -88,7 +92,7 @@ export class TaskIndexStore {
   private readonly kobeDir: string
   private readonly path: string
   private readonly tmpPath: string
-  private cache: { version: 1; tasks: Task[] } = { version: 1, tasks: [] }
+  private cache: { version: 2; tasks: Task[] } = { version: 2, tasks: [] }
   private loaded = false
   private listeners = new Set<TaskIndexListener>()
 
@@ -151,7 +155,7 @@ export class TaskIndexStore {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
       if (code === "ENOENT") {
-        this.cache = { version: 1, tasks: [] }
+        this.cache = { version: 2, tasks: [] }
         this.loaded = true
         this.notifyListeners()
         return this.snapshot()
@@ -167,7 +171,7 @@ export class TaskIndexStore {
       console.warn(
         `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index. The stale file is left in place.`,
       )
-      this.cache = { version: 1, tasks: [] }
+      this.cache = { version: 2, tasks: [] }
       this.loaded = true
       this.notifyListeners()
       return this.snapshot()
@@ -222,13 +226,33 @@ export class TaskIndexStore {
   /**
    * Create a new task. Assigns ulid id + ISO timestamps, persists, and
    * returns the new record.
+   *
+   * Tab synthesis: callers may pass `tabs` + `activeTabId` directly.
+   * When omitted (the common path) we synthesize a single tab from the
+   * provided `sessionId`. The deprecated `sessionId` field on Task is
+   * kept consistent with `tabs[0].sessionId` for v1 readers.
    */
   async create(partial: TaskCreateInput): Promise<Task> {
     this.assertLoaded()
     const now = new Date().toISOString()
+    const { tabs: tabsIn, activeTabId: activeIn, sessionId, ...rest } = partial
+    let tabs: readonly ChatTab[]
+    let activeTabId: string
+    if (tabsIn && tabsIn.length > 0) {
+      tabs = tabsIn
+      activeTabId = activeIn && tabsIn.some((t) => t.id === activeIn) ? activeIn : (tabsIn[0]?.id ?? "")
+    } else {
+      const tabId = ulid()
+      tabs = [{ id: tabId, sessionId: sessionId ?? null, createdAt: now }]
+      activeTabId = tabId
+    }
+    const firstSession = tabs[0]?.sessionId ?? null
     const task: Task = {
       archived: false,
-      ...partial,
+      ...rest,
+      sessionId: firstSession,
+      tabs,
+      activeTabId,
       id: toTaskId(ulid()),
       createdAt: now,
       updatedAt: now,
@@ -262,14 +286,36 @@ export class TaskIndexStore {
     void _ignoredId
     void _ignoredCreatedAt
 
-    const next: Task = {
+    // If the caller patched the deprecated top-level `sessionId` but
+    // did NOT explicitly patch `tabs`, we treat that as a v1-style
+    // write and propagate the new sessionId to the active tab. This
+    // preserves the old API semantics (orchestrator.runTask's spawn
+    // path used to do `update(id, { sessionId: handle.sessionId })`)
+    // until every caller is migrated to `updateTab`.
+    const sessionIdPatched = "sessionId" in patch
+    const tabsPatched = "tabs" in patch
+    let mergedTabs: readonly ChatTab[] = "tabs" in mutable && Array.isArray(mutable.tabs) ? (mutable.tabs as ChatTab[]) : existing.tabs
+    if (sessionIdPatched && !tabsPatched) {
+      const newSessionId = (patch.sessionId ?? null) as string | null
+      const activeId = (mutable.activeTabId ?? existing.activeTabId) as string
+      mergedTabs = mergedTabs.map((t) => (t.id === activeId ? { ...t, sessionId: newSessionId } : t))
+    }
+    const merged: Task = {
       ...existing,
       ...mutable,
+      tabs: mergedTabs,
       // Always preserve identity & creation; bump updatedAt.
       id: existing.id,
       createdAt: existing.createdAt,
       updatedAt: new Date().toISOString(),
     }
+    // Keep the deprecated `sessionId` alias coherent with the active
+    // tab. Lets v1 readers and the read-only alias on Task stay
+    // accurate without forcing every writer to remember to re-derive it.
+    const activeTab = merged.tabs.find((t) => t.id === merged.activeTabId) ?? merged.tabs[0]
+    const next: Task = activeTab && activeTab.sessionId !== merged.sessionId
+      ? { ...merged, sessionId: activeTab.sessionId }
+      : merged
     this.cache.tasks[idx] = next
     await this.save()
     this.notifyListeners()
@@ -315,7 +361,7 @@ export class TaskIndexStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
     }
-    this.cache = { version: 1, tasks: [] }
+    this.cache = { version: 2, tasks: [] }
     this.loaded = false
   }
 
@@ -329,7 +375,7 @@ export class TaskIndexStore {
 
   private snapshot(): TaskIndex {
     return {
-      version: 1,
+      version: 2,
       tasks: this.cache.tasks.slice(),
     }
   }
@@ -357,24 +403,27 @@ export class TaskIndexStore {
  * mutable cache. Tolerant of:
  *
  *   - Pre-versioned manifests (no `version` field) — assumed to be
- *     v1-shaped already, just stamped with `version: 1`.
- *   - Future manifests with `version > 1` — we log and refuse to load,
+ *     v1-shaped already; coerced + migrated to v2.
+ *   - v1 manifests — migrated to v2 (each task gets one synthesized
+ *     ChatTab carrying the v1 sessionId, activeTabId points at it).
+ *   - v2 manifests — loaded as-is.
+ *   - Future manifests with `version > 2` — we log and refuse to load,
  *     because guessing forward is worse than starting fresh.
  *   - Garbage at the task level — bad task entries are dropped with a
  *     warning, the rest of the index is kept.
  */
-function normalizeIndex(parsed: unknown, source: string): { version: 1; tasks: Task[] } {
+function normalizeIndex(parsed: unknown, source: string): { version: 2; tasks: Task[] } {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     console.warn(`[kobe] tasks.json at ${source} is not an object; recovering with empty index.`)
-    return { version: 1, tasks: [] }
+    return { version: 2, tasks: [] }
   }
   const obj = parsed as { version?: unknown; tasks?: unknown }
   const version = obj.version
-  if (version !== undefined && version !== 1) {
+  if (version !== undefined && version !== 1 && version !== 2) {
     console.warn(
       `[kobe] tasks.json at ${source} has unsupported version=${String(version)}; recovering with empty index.`,
     )
-    return { version: 1, tasks: [] }
+    return { version: 2, tasks: [] }
   }
 
   const rawTasks = Array.isArray(obj.tasks) ? obj.tasks : []
@@ -386,9 +435,15 @@ function normalizeIndex(parsed: unknown, source: string): { version: 1; tasks: T
       console.warn(`[kobe] dropping malformed task entry from ${source}: ${JSON.stringify(entry)}`)
     }
   }
-  return { version: 1, tasks }
+  return { version: 2, tasks }
 }
 
+/**
+ * Coerce one persisted task entry into a {@link Task}. Migrates v1
+ * shapes (no `tabs`/`activeTabId`) into v2 by synthesizing a single
+ * ChatTab from the legacy `sessionId`. Returns null for entries that
+ * are too malformed to recover.
+ */
 function coerceTask(value: unknown): Task | null {
   if (!value || typeof value !== "object") return null
   const v = value as Record<string, unknown>
@@ -398,7 +453,7 @@ function coerceTask(value: unknown): Task | null {
     typeof v.repo !== "string" ||
     typeof v.branch !== "string" ||
     typeof v.worktreePath !== "string" ||
-    !(v.sessionId === null || typeof v.sessionId === "string") ||
+    !(v.sessionId === null || typeof v.sessionId === "string" || v.sessionId === undefined) ||
     typeof v.status !== "string" ||
     typeof v.createdAt !== "string" ||
     typeof v.updatedAt !== "string"
@@ -406,13 +461,60 @@ function coerceTask(value: unknown): Task | null {
     return null
   }
   if (!isTaskStatus(v.status)) return null
+
+  const legacySessionId = (v.sessionId === undefined ? null : (v.sessionId as string | null)) ?? null
+
+  // v2 fields — present in v2 manifests, absent in v1.
+  const rawTabs = Array.isArray(v.tabs) ? (v.tabs as unknown[]) : null
+  let tabs: ChatTab[] | null = null
+  if (rawTabs) {
+    tabs = []
+    for (const t of rawTabs) {
+      if (!t || typeof t !== "object") continue
+      const tt = t as Record<string, unknown>
+      if (typeof tt.id !== "string") continue
+      if (!(tt.sessionId === null || typeof tt.sessionId === "string")) continue
+      if (typeof tt.createdAt !== "string") continue
+      const tab: ChatTab = {
+        id: tt.id,
+        sessionId: (tt.sessionId as string | null) ?? null,
+        createdAt: tt.createdAt,
+        ...(typeof tt.title === "string" ? { title: tt.title } : {}),
+      }
+      tabs.push(tab)
+    }
+  }
+
+  let finalTabs: readonly ChatTab[]
+  let finalActive: string
+  if (tabs && tabs.length > 0) {
+    finalTabs = tabs
+    const persisted = typeof v.activeTabId === "string" ? v.activeTabId : null
+    finalActive = persisted && tabs.some((t) => t.id === persisted) ? persisted : (tabs[0]?.id ?? "")
+  } else {
+    // v1 migration: synthesize one tab from the legacy sessionId. We
+    // reuse the task's createdAt as the tab's createdAt — for migrated
+    // tasks the tab effectively was-created when the task was.
+    const synthesizedId = ulid()
+    finalTabs = [{ id: synthesizedId, sessionId: legacySessionId, createdAt: v.createdAt }]
+    finalActive = synthesizedId
+  }
+
+  // Keep the deprecated alias coherent with the active tab. Falls back
+  // to the legacy field when the active tab can't be resolved (paranoia
+  // — not expected on valid data).
+  const activeTab = finalTabs.find((t) => t.id === finalActive) ?? finalTabs[0]
+  const aliasSessionId = activeTab?.sessionId ?? legacySessionId
+
   return {
     id: toTaskId(v.id),
     title: v.title,
     repo: v.repo,
     branch: v.branch,
     worktreePath: v.worktreePath,
-    sessionId: v.sessionId as string | null,
+    sessionId: aliasSessionId,
+    tabs: finalTabs,
+    activeTabId: finalActive,
     status: v.status,
     // Wave 4.5: `archived` is a new field. Records written before its
     // introduction don't have it; default to false (i.e. "active /

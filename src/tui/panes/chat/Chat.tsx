@@ -1,58 +1,49 @@
 /**
  * Chat pane — shell.
  *
- * After Wave 4's split, this file owns ONLY:
- *   - State: `state` (ChatState), `draft`, `expandedToolIndex`.
- *   - Effects: task-switch resubscribe + history reload, pending-prompt
- *     auto-submit, unmount tidy-up.
+ * After Wave 4's split, this file owns:
+ *   - State: `statesByTab` (Map<tabId, ChatState>), `activeTabId`,
+ *     `draft`, `expandedToolIndex`.
+ *   - Effects: task-switch resubscribe + history reload, tab list
+ *     reconciler, pending-prompt auto-submit, unmount tidy-up.
  *   - Submit pipeline: `send()` (used by both onSubmit + auto-prompt).
- *   - Layout: header, scrollbox container, MessageList, Composer.
- *
- * Render details (MessageRow, formatting helpers) live in
- * `./MessageList.tsx`. Composer details (input box, placeholder) live
- * in `./Composer.tsx`. Wave-4 streams editing those files do not need
- * to touch this shell.
+ *   - Tab lifecycle: `newTab`, `closeActiveTab`, `selectTabByIndex`,
+ *     `cycleTab`, plus pane-scoped keybindings (ctrl+t / ctrl+w /
+ *     ctrl+tab / ctrl+1..9 when multi-tab).
+ *   - Layout: header, tab bar, scrollbox container, MessageList, Composer.
  *
  * State model — see `./store.ts` top-of-file. Single chronological
- * `messages: ChatRow[]`; user submits append; assistant deltas append
- * or coalesce; tool starts/results pair by name. Pure-data, vitest-
- * friendly.
+ * `messages: ChatRow[]` PER TAB; user submits append; assistant deltas
+ * append or coalesce; tool starts/results pair by name. Pure-data,
+ * vitest-friendly.
  *
- * Lifecycle inside this component (still load-bearing):
- *
- *   - On `taskId()` change:
- *       1. Tear down the previous orchestrator subscription.
- *       2. Reset state (`createInitialState`).
- *       3. If the task has a `sessionId`, fire `engine.readHistory(sid)`
- *          and feed it to `setMessagesFromHistory`. Brand-new tasks have
- *          no sessionId yet — render an empty list.
- *       4. Subscribe to new task's events; each event flows into
- *          `applyEvent`.
- *
- *   - On user submit:
- *       1. `pushUser(state, prompt)` — sets `isStreaming: true` so the
- *          loading indicator appears that frame.
- *       2. `orchestrator.runTask(taskId, prompt)`. On rejection:
- *          `pushSystemError(state, message)`.
- *
- *   - On `pendingPrompt` (from new-task dialog): auto-submit it once,
- *     once the matching task is selected. Consumed via
- *     `onPendingPromptConsumed` so it doesn't re-fire on resubscribe.
+ * Multi-tab notes:
+ *   - Each tab subscribes independently to its (taskId, tabId) bus key.
+ *     Switching tabs swaps which tab's state we render — it does NOT
+ *     unsubscribe the inactive tabs, so events keep flowing in the
+ *     background and `done` lands even when the user isn't looking.
+ *   - Closing the active tab is delegated to the orchestrator, which
+ *     returns the next active tab id; we mirror that locally.
+ *   - ctrl+1..9 numeric jumps only register when there's >1 tab so
+ *     we don't shadow app.tsx's global "ctrl+1..4 = pane focus" muscle
+ *     memory in the common single-tab case.
  *
  * Load-bearing invariants (must NOT regress):
  *   - The "thinking" indicator must appear within one render frame of
  *     submit. The G3 behavior test asserts this.
  *   - Streaming text accumulates by appending each `assistant.delta`
  *     to the rolling render. We do NOT mutate.
- *   - Task switch tears down the prior subscription before subscribing
- *     to the new one (Solid `createEffect` returns the cleanup).
+ *   - Task switch tears down the prior subscriptions before subscribing
+ *     to the new ones.
  */
 
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
+import type { ChatTab } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
+import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
 import { type BuiltinSlash, BUILTIN_CLAUDE_SLASHES } from "./composer/builtin-slashes"
 import { ModelPicker } from "./composer/ModelPicker"
@@ -93,7 +84,12 @@ export type ChatProps = {
    * task gets re-selected after a switch) doesn't re-submit.
    */
   onPendingPromptConsumed?: () => void
-  /** Future: focus management when multiple panes share input. Unused in v1. */
+  /**
+   * Whether the chat pane currently owns the keyboard focus. Gates
+   * the pane-local tab keybindings (ctrl+t, ctrl+w, ctrl+1..9,
+   * ctrl+tab) so they don't fire while the sidebar / files / terminal
+   * own focus.
+   */
   focused?: Accessor<boolean>
 }
 
@@ -120,9 +116,6 @@ export function Chat(props: ChatProps) {
     on(
       () => props.taskId(),
       (taskId) => {
-        // Reload on task switch — project-scoped entries change with
-        // the worktree. Errors are swallowed inside loadUserSlashes;
-        // the catch here is just defense in depth.
         const task = taskId ? props.orchestrator.getTask(taskId) : undefined
         const wt = task?.worktreePath || undefined
         loadUserSlashes(wt)
@@ -133,8 +126,7 @@ export function Chat(props: ChatProps) {
   )
 
   const slashes = createMemo<readonly ComposerSlashEntry[]>(() => {
-    // User overrides built-in on name collision (mirrors vibe-kanban's
-    // HashMap.extend ordering: later writes win). We track origin
+    // User overrides built-in on name collision. We track origin
     // alongside the entry so the dropdown can surface a "user" tag —
     // a name collision where the user shadowed a built-in counts as
     // a user entry (their definition is what runs).
@@ -150,40 +142,129 @@ export function Chat(props: ChatProps) {
         aliases: entry.aliases?.map((a) => `/${a}`),
         source,
         onSelect: () => {
-          // Route through `send()` (declared below) so the user's slash
-          // command appears in the chat history just like a typed
-          // message — `runTask` directly would send it to the engine
-          // without populating the local message list.
           void send(`/${entry.name}`)
         },
       }))
   })
 
-  // The whole chat state lives in one signal. Solid's structural sharing
-  // makes whole-state updates cheap; we don't bother with finer-grained
-  // signals because the chat is small and the re-render cost is low.
-  const [state, setState] = createSignal<ChatState>(createInitialState())
+  // Per-tab chat state. Map<tabId, ChatState>. We update via copy-on-
+  // write helpers so Solid notices.
+  const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
+  const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
   const [draft, setDraft] = createSignal("")
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
 
-  // Reactive view of the active task's status. Read off the
-  // orchestrator's tasksSignal (single source of truth — the Sidebar
-  // mirrors the same data) so a delete-task / archive flips this in
-  // the same tick. `canceled` is the only terminal state that blocks
-  // the composer: the orchestrator rejects `canceled → in_progress`,
-  // so further user input would just produce a `runTask failed:
-  // illegal transition` system row.
+  // Reactive view of the active task's tabs, pulled from the
+  // orchestrator's signal so the tab bar redraws on createTab/closeTab
+  // without manual refresh.
+  const tasksAcc = props.orchestrator.tasksSignal()
+  const tabs = createMemo<readonly ChatTab[]>(() => {
+    const id = props.taskId()
+    if (!id) return []
+    const t = tasksAcc().find((x) => x.id === id)
+    return t?.tabs ?? []
+  })
+
+  const activeState = createMemo<ChatState>(() => {
+    const id = activeTabId()
+    if (!id) return createInitialState()
+    return statesByTab().get(id) ?? createInitialState()
+  })
+
+  function patchActiveState(updater: (s: ChatState) => ChatState): void {
+    const id = activeTabId()
+    if (!id) return
+    setStatesByTab((prev) => {
+      const next = new Map(prev)
+      next.set(id, updater(prev.get(id) ?? createInitialState()))
+      return next
+    })
+  }
+
+  function patchStateForTab(tabId: string, updater: (s: ChatState) => ChatState): void {
+    setStatesByTab((prev) => {
+      const next = new Map(prev)
+      next.set(tabId, updater(prev.get(tabId) ?? createInitialState()))
+      return next
+    })
+  }
+
+  // Subscriptions per tab id. Lives outside Solid's reactive system —
+  // it's a registry the effects mutate, never a value Solid renders.
+  let tabSubs: Map<string, () => void> = new Map()
+  /** Track the task whose subs are currently in `tabSubs`. */
+  let currentSubsTaskId: string | null = null
+
+  /**
+   * Synchronise tab subscriptions to `currentTabs`. Adds subs (and
+   * seeds state + history reload) for new tabs, drops subs (and state)
+   * for closed tabs.
+   */
+  function syncTabSubs(taskId: string, currentTabs: readonly ChatTab[]): void {
+    const seen = new Set<string>()
+    for (const tab of currentTabs) {
+      seen.add(tab.id)
+      if (tabSubs.has(tab.id)) continue
+      setStatesByTab((prev) => {
+        if (prev.has(tab.id)) return prev
+        const next = new Map(prev)
+        next.set(tab.id, createInitialState())
+        return next
+      })
+      const tabId = tab.id
+      const u = props.orchestrator.subscribeEvents(
+        taskId,
+        (ev: OrchestratorEvent) => {
+          patchStateForTab(tabId, (s) => applyEvent(s, ev))
+        },
+        tabId,
+      )
+      tabSubs.set(tabId, u)
+      if (tab.sessionId) {
+        const sid = tab.sessionId
+        props.orchestrator
+          .readHistory(sid)
+          .then((past) => {
+            if (props.taskId() !== taskId) return
+            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, past))
+            // History just landed on the active tab: snap to bottom.
+            if (activeTabId() === tabId) queueMicrotask(scrollToBottom)
+          })
+          .catch((err) => {
+            patchStateForTab(tabId, (s) => pushSystemError(s, `history load failed: ${stringifyErr(err)}`))
+          })
+      }
+    }
+    for (const [tabId, u] of tabSubs) {
+      if (seen.has(tabId)) continue
+      u()
+      tabSubs.delete(tabId)
+      setStatesByTab((prev) => {
+        if (!prev.has(tabId)) return prev
+        const next = new Map(prev)
+        next.delete(tabId)
+        return next
+      })
+    }
+  }
+
+  function teardownAllSubs(): void {
+    for (const u of tabSubs.values()) u()
+    tabSubs = new Map()
+  }
+
+  // Reactive view of the active task's status. `canceled` blocks the
+  // composer because the orchestrator rejects `canceled → in_progress`.
   const taskStatus = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return props.orchestrator
-      .tasksSignal()()
-      .find((t) => t.id === id)?.status
+    return tasksAcc().find((t) => t.id === id)?.status
   })
   const isCanceled = () => taskStatus() === "canceled"
 
-  // True when the message list ends with an unresolved approval/question
-  // row. While a user-input request is pending we lock the composer:
+  // True when the active tab's message list ends with an unresolved
+  // approval/question row. While a user-input request is pending we
+  // lock the composer:
   //   - The subprocess was killed (orchestrator.pumpEvents stops it on
   //     tool.start so the model can't yap past the picker).
   //   - The picker IS the only valid next action; typing a freeform
@@ -195,7 +276,7 @@ export function Chat(props: ChatProps) {
   // assistant row because anything newer than the picker means the
   // conversation moved on (i.e. the picker was already resolved).
   const hasPendingInput = createMemo(() => {
-    const msgs = state().messages
+    const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (!m) continue
@@ -206,23 +287,13 @@ export function Chat(props: ChatProps) {
     return false
   })
 
-  // Per-task permission mode read off the orchestrator's tasksSignal so
-  // shift+tab updates land in the indicator the same tick the store
-  // mutates. Undefined when no task is selected; the composer reads
-  // that as "default" for display.
+  // Per-task permission mode (shift+tab cycle in the composer).
   const permissionMode = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return props.orchestrator
-      .tasksSignal()()
-      .find((t) => t.id === id)?.permissionMode
+    return tasksAcc().find((t) => t.id === id)?.permissionMode
   })
 
-  // Cycle: default → acceptEdits → plan → default. Mirrors claude-code's
-  // own shift+tab cycle (refs/claude-code/src/utils/permissions/
-  // getNextPermissionMode.ts) minus the bypassPermissions / auto branches
-  // — those need their own UI gating before we expose them via the
-  // composer's mute hotkey.
   function cyclePermissionMode(): void {
     const id = props.taskId()
     if (!id) return
@@ -234,16 +305,11 @@ export function Chat(props: ChatProps) {
     })
   }
 
-  // Per-task model id. Like permissionMode, read off the orchestrator's
-  // tasksSignal so picker writes round-trip into the indicator the same
-  // tick. The composer's footer shows the human-readable label via
-  // {@link modelLabelFor}; clicking the label opens the picker dialog.
+  // Per-task model id + picker.
   const modelId = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return props.orchestrator
-      .tasksSignal()()
-      .find((t) => t.id === id)?.model
+    return tasksAcc().find((t) => t.id === id)?.model
   })
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
 
@@ -251,9 +317,7 @@ export function Chat(props: ChatProps) {
     const id = props.taskId()
     if (!id) return
     const result = await ModelPicker.show(dialog, modelId())
-    if (result === undefined) return // dismissed
-    // `null` from the picker = user picked the default row → clear the
-    // pinned model. A non-null result is the new model id.
+    if (result === undefined) return
     const next = result ?? undefined
     await props.orchestrator.setModel(id, next).catch((err: unknown) => {
       // eslint-disable-next-line no-console
@@ -261,68 +325,70 @@ export function Chat(props: ChatProps) {
     })
   }
 
-  // (Re)subscribe + reload history on task change. Solid's `on` makes
-  // the dep explicit so we don't re-run on every signal access in the
-  // body.
+  // Task-switch reset: drop ALL prior subs + state, set local active
+  // tab from the orchestrator, seed + subscribe immediately.
   createEffect(
     on(
       () => props.taskId(),
-      (taskId, _prev, prevCleanup?: () => void) => {
-        prevCleanup?.()
-        // Fresh state for the new task; the in-progress turn (if any)
-        // for the prior task is GC'd along with the prior subscription.
-        setState(createInitialState())
+      (taskId) => {
+        teardownAllSubs()
+        setStatesByTab(new Map())
         setDraft("")
         setExpandedToolIndex(null)
-        if (!taskId) return undefined
-
-        // Subscribe live events. Each event mutates the unified
-        // `messages` array (user submits append directly, assistant
-        // deltas append/coalesce, tool starts/results pair by name).
-        // No re-read on done — the messages array IS the chronological
-        // record while the session is live.
-        const unsubscribe = props.orchestrator.subscribeEvents(taskId, (ev: OrchestratorEvent) => {
-          setState((s) => applyEvent(s, ev))
-        })
-
-        // Load history if the task already has a sessionId. Brand-new
-        // tasks (just created via `n`) won't yet — that's fine, the
-        // `live` events from the first run will populate the chat.
-        const task = props.orchestrator.getTask(taskId)
-        const sessionId = task?.sessionId ?? null
-        if (sessionId) {
-          props.orchestrator
-            .readHistory(sessionId)
-            .then((past) => {
-              // Only apply if we haven't switched tasks since.
-              if (props.taskId() !== taskId) return
-              setState((s) => setMessagesFromHistory(s, past))
-              // History just landed: jump to the most recent message
-              // unconditionally. The follow-mode createEffect won't
-              // catch this case because the scrollbox was sitting at
-              // scrollTop=0 with a small scrollHeight before the load.
-              queueMicrotask(scrollToBottom)
-            })
-            .catch((err) => {
-              setState((s) => pushSystemError(s, `history load failed: ${stringifyErr(err)}`))
-            })
+        if (!taskId) {
+          setActiveTabIdLocal(null)
+          currentSubsTaskId = null
+          return
         }
-        // Task switch resets the viewport regardless of history outcome
-        // (e.g. brand-new task with no sessionId).
+        const task = props.orchestrator.getTask(taskId)
+        if (!task) {
+          setActiveTabIdLocal(null)
+          currentSubsTaskId = null
+          return
+        }
+        currentSubsTaskId = taskId
+        setActiveTabIdLocal(task.activeTabId)
+        syncTabSubs(taskId, task.tabs)
         queueMicrotask(scrollToBottom)
-
-        return unsubscribe
       },
     ),
   )
 
+  // Tabs-change reconciler: when the active task's tab list changes
+  // (createTab / closeTab in the orchestrator), add subs for new
+  // tabs and drop subs for closed ones.
+  createEffect(
+    on(
+      () => tabs(),
+      (currentTabs) => {
+        const taskId = props.taskId()
+        if (!taskId) return
+        // The task-switch effect above already runs the initial
+        // sync; skip to avoid double-subscribing on the same paint.
+        if (currentSubsTaskId !== taskId) return
+        syncTabSubs(taskId, currentTabs)
+      },
+    ),
+  )
+
+  // Mirror the orchestrator's persisted activeTabId only when local
+  // is null (initial seed) or the persisted one disappeared (external
+  // close). Don't clobber the user's local move.
+  createEffect(() => {
+    const id = props.taskId()
+    if (!id) return
+    const task = tasksAcc().find((t) => t.id === id)
+    if (!task) return
+    const local = activeTabId()
+    if (!local || !task.tabs.some((t) => t.id === local)) {
+      setActiveTabIdLocal(task.activeTabId)
+    }
+  })
+
   // Scroll anchor — used to force the message list back to the bottom
-  // when the chat tab (re)opens or the user switches tasks. opentui's
-  // `stickyScroll` keeps follow-mode working for *incremental* growth,
-  // but it doesn't re-anchor when content is loaded asynchronously
-  // (history fetch) or when the scrollbox is freshly mounted with
-  // pre-existing messages — both common paths here. We explicitly call
-  // `scrollTo` on mount, on task switch, and right after history lands.
+  // when the chat (re)opens, the user switches tasks, or history lands
+  // asynchronously. opentui's stickyScroll keeps follow-mode working
+  // for incremental growth but doesn't re-anchor across these paths.
   let scrollRef: ScrollBoxRenderable | undefined
   function scrollToBottom(): void {
     const r = scrollRef
@@ -334,13 +400,10 @@ export function Chat(props: ChatProps) {
     queueMicrotask(scrollToBottom)
   })
 
-  // After every render that could grow the list, snap to the bottom —
-  // BUT only while the user is still in follow mode (scrollTop near
-  // scrollHeight). If they've manually scrolled up to read history,
-  // don't yank them back. The 2-row tolerance accounts for the
-  // padding that lives at the top of the message list.
+  // After every render that could grow the active tab's list, snap to
+  // the bottom — only while the user is still in follow mode.
   createEffect(() => {
-    void state().messages.length
+    void activeState().messages.length
     queueMicrotask(() => {
       const r = scrollRef
       if (!r) return
@@ -349,65 +412,133 @@ export function Chat(props: ChatProps) {
     })
   })
 
-  // Pending-prompt watcher: separate from the task-switch effect
-  // because the orchestrator's auto-select-first-task logic in app.tsx
-  // can fire `setSelectedId` BEFORE the parent has staged the
-  // pending prompt. Watching the prompt accessor in its own effect
-  // means we react when EITHER the task or the prompt changes —
-  // whichever comes second triggers the auto-submit.
+  // Snap to bottom on tab switch too — the user expects to see the
+  // most recent message, not whatever the prior view's scroll was.
+  createEffect(() => {
+    void activeTabId()
+    queueMicrotask(scrollToBottom)
+  })
+
+  // Pending-prompt watcher — see top-of-file lifecycle notes.
   createEffect(() => {
     const pp = props.pendingPrompt?.()
     const taskId = props.taskId()
     if (!pp || !taskId) return
     if (pp.length === 0) return
-    if (state().isStreaming) return
-    // Consume immediately so a re-run (signal flicker, parent
-    // re-mount) doesn't double-submit.
+    if (activeState().isStreaming) return
     props.onPendingPromptConsumed?.()
     queueMicrotask(() => {
       void send(pp)
     })
   })
 
-  // Final unmount tidy-up — Solid runs the createEffect cleanup chain
-  // for us, but a defensive reset is cheap.
   onCleanup(() => {
-    setState(createInitialState())
+    teardownAllSubs()
+    setStatesByTab(new Map())
   })
 
   /**
-   * Submit a prompt. Pulls the active taskId from the accessor so this
-   * is safe to call from the auto-pending-prompt path AND the
-   * composer's onSubmit handler.
+   * Submit a prompt to the active tab. Pulls the active taskId + tabId
+   * from accessors so this is safe to call from both the auto-pending-
+   * prompt path and the composer's onSubmit handler.
    */
   async function send(promptText?: string): Promise<void> {
     const text = (promptText ?? draft()).trim()
     const taskId = props.taskId()
-    if (!text || !taskId) return
-    // Defense-in-depth: orchestrator rejects `canceled → in_progress`
-    // with IllegalTransitionError. The composer is hidden when
-    // canceled, but the pending-prompt path can still reach `send()`
-    // — bail before runTask so the chat doesn't pick up a stray error
-    // banner from a transition that's expected to fail.
+    const tabId = activeTabId()
+    if (!text || !taskId || !tabId) return
     if (isCanceled()) return
-    if (state().isStreaming) {
-      // Don't queue — keeping the model simple. We could buffer here
-      // later if multi-turn rapid-fire becomes a real workflow.
-      return
-    }
+    if (activeState().isStreaming) return
     setDraft("")
-    setState((s) => pushUser(s, text))
+    patchActiveState((s) => pushUser(s, text))
     try {
-      await props.orchestrator.runTask(taskId, text)
+      await props.orchestrator.runTask(taskId, text, tabId)
     } catch (err) {
-      setState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
+      patchActiveState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
     }
   }
+
+  /** Create a new tab and switch focus to it. Wired from `ctrl+t`. */
+  async function newTab(): Promise<void> {
+    const taskId = props.taskId()
+    if (!taskId) return
+    try {
+      const tab = await props.orchestrator.createTab(taskId)
+      setActiveTabIdLocal(tab.id)
+      setDraft("")
+      setExpandedToolIndex(null)
+      void props.orchestrator.setActiveTab(taskId, tab.id)
+    } catch (err) {
+      patchActiveState((s) => pushSystemError(s, `createTab failed: ${stringifyErr(err)}`))
+    }
+  }
+
+  /** Close the active tab (refuses to close the last one). */
+  async function closeActiveTab(): Promise<void> {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    if (!taskId || !tabId) return
+    if (tabs().length <= 1) return
+    try {
+      const nextActive = await props.orchestrator.closeTab(taskId, tabId)
+      if (nextActive) {
+        setActiveTabIdLocal(nextActive)
+        setDraft("")
+        setExpandedToolIndex(null)
+      }
+    } catch (err) {
+      patchActiveState((s) => pushSystemError(s, `closeTab failed: ${stringifyErr(err)}`))
+    }
+  }
+
+  /** Switch to the tab at the given 0-indexed position. Out-of-range = no-op. */
+  function selectTabByIndex(idx: number): void {
+    const t = tabs()[idx]
+    if (!t) return
+    setActiveTabIdLocal(t.id)
+    setDraft("")
+    setExpandedToolIndex(null)
+    const taskId = props.taskId()
+    if (taskId) void props.orchestrator.setActiveTab(taskId, t.id)
+  }
+
+  function cycleTab(delta: 1 | -1): void {
+    const list = tabs()
+    if (list.length <= 1) return
+    const cur = activeTabId()
+    const idx = cur ? list.findIndex((t) => t.id === cur) : 0
+    const next = (idx + delta + list.length) % list.length
+    selectTabByIndex(next)
+  }
+
+  // Pane-scoped keybindings: only fire when the chat pane is focused.
+  // Numeric ctrl+1..9 only register when there's >1 tab so we don't
+  // shadow app.tsx's global "ctrl+1..4 = pane focus" muscle memory.
+  useBindings(() => {
+    const en = props.focused?.() === true
+    const numericBindings: Array<{ key: string; cmd: () => void }> = []
+    if (tabs().length > 1) {
+      const max = Math.min(9, tabs().length)
+      for (let i = 0; i < max; i++) {
+        numericBindings.push({ key: `ctrl+${i + 1}`, cmd: () => selectTabByIndex(i) })
+      }
+    }
+    return {
+      enabled: en,
+      bindings: [
+        { key: "ctrl+t", cmd: () => void newTab() },
+        { key: "ctrl+w", cmd: () => void closeActiveTab() },
+        { key: "ctrl+tab", cmd: () => cycleTab(1) },
+        { key: "ctrl+shift+tab", cmd: () => cycleTab(-1) },
+        ...numericBindings,
+      ],
+    }
+  })
 
   // Render-derived: index of the trailing assistant row (anchor for the
   // streaming cursor) and trailing tool row (anchor for "enter expands").
   const lastAssistantIdx = createMemo(() => {
-    const msgs = state().messages
+    const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const r = msgs[i]
       if (r && r.kind === "assistant") return i
@@ -417,19 +548,17 @@ export function Chat(props: ChatProps) {
 
   // Spinner shows whenever a turn is in flight — independent of how
   // many assistant rows already exist. Earlier this was gated on
-  // `lastAssistantIdx() === -1` (intent: hide once the streaming cursor
-  // takes over). The gate misfired on every turn after the first
-  // because `lastAssistantIdx` scans the whole transcript, so a
-  // prior-turn assistant row kept the spinner suppressed forever.
-  // Claude Code itself keeps the spinner up alongside the streamed text
-  // (`refs/claude-code/src/components/Spinner/SpinnerAnimationRow.tsx`).
-  const showThinking = createMemo(() => state().isStreaming)
+  // `lastAssistantIdx() === -1`; that gate misfired on every turn
+  // after the first because `lastAssistantIdx` scans the whole
+  // transcript. Claude Code itself keeps the spinner up alongside the
+  // streamed text (refs/claude-code/src/components/Spinner/SpinnerAnimationRow.tsx).
+  const showThinking = createMemo(() => activeState().isStreaming)
 
   // Wall-clock turn start. Latched when isStreaming flips false→true,
-  // cleared on done/error/task-switch. Feeds Loading's elapsed timer.
+  // cleared on done/error/task/tab-switch. Feeds Loading's elapsed timer.
   const [turnStartedAt, setTurnStartedAt] = createSignal<number | undefined>(undefined)
   createEffect(() => {
-    if (state().isStreaming) {
+    if (activeState().isStreaming) {
       setTurnStartedAt((cur) => cur ?? Date.now())
     } else {
       setTurnStartedAt(undefined)
@@ -440,7 +569,7 @@ export function Chat(props: ChatProps) {
   // recent user row. Drives Loading's token estimate (chars/4, mirroring
   // Claude Code's `SpinnerAnimationRow` `leaderTokens` heuristic).
   const currentTurnChars = createMemo(() => {
-    const msgs = state().messages
+    const msgs = activeState().messages
     let lastUserIdx = -1
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i]?.kind === "user") {
@@ -457,7 +586,7 @@ export function Chat(props: ChatProps) {
   })
 
   const lastToolIndex = createMemo(() => {
-    const msgs = state().messages
+    const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const r = msgs[i]
       if (r && r.kind === "tool") return i
@@ -471,24 +600,20 @@ export function Chat(props: ChatProps) {
     setExpandedToolIndex((cur) => (cur === idx ? null : idx))
   }
 
-  // Per-row toggler — used by both the click-on-tool-row handler and
-  // the keyboard "enter on empty composer" path (which targets the
-  // most recent tool row). Both eventually flow through this so the
-  // expand/collapse model stays single-sourced.
   function toggleExpand(rowIndex: number): void {
     setExpandedToolIndex((cur) => (cur === rowIndex ? null : rowIndex))
   }
 
-  // Composer onSubmit: empty-string from the composer means "user hit
-  // enter on an empty draft". We translate that into "expand the most
-  // recent tool row" if there is one; otherwise it's a no-op (the
-  // composer already swallowed the keystroke).
   function handleComposerSubmit(trimmed: string): void {
     if (trimmed.length === 0) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
       return
     }
     void send()
+  }
+
+  function tabLabel(tab: ChatTab, idx: number): string {
+    return tab.title && tab.title.length > 0 ? tab.title : `chat ${idx + 1}`
   }
 
   return (
@@ -503,6 +628,30 @@ export function Chat(props: ChatProps) {
           <text fg={theme.text}>{props.title?.()}</text>
         </Show>
       </box>
+
+      {/* Tab bar — agent-deck-style bracket chips. Active tab fg is
+          theme.accent + bold; inactive in textMuted. Rendered always
+          (even with one tab) so users discover ctrl+t. Hidden when no
+          task is selected. */}
+      <Show when={props.taskId() && tabs().length > 0}>
+        <box flexDirection="row" flexShrink={0} gap={1} paddingBottom={1}>
+          <For each={tabs()}>
+            {(tab, i) => {
+              const isActive = () => activeTabId() === tab.id
+              return (
+                <text
+                  fg={isActive() ? theme.accent : theme.textMuted}
+                  attributes={isActive() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => selectTabByIndex(i())}
+                >
+                  [{i() + 1}] {tabLabel(tab, i())}
+                </text>
+              )
+            }}
+          </For>
+        </box>
+      </Show>
 
       {/* Empty state for "no task selected". */}
       <Show when={!props.taskId()}>
@@ -525,26 +674,23 @@ export function Chat(props: ChatProps) {
           }}
         >
           <box paddingRight={1} gap={0}>
-            {/* Wave 4.B — message render delegated to MessageList for
-                Claude-Code parity (BLACK_CIRCLE prefix, markdown body,
-                tool banner shape, thinking spinner glyph set). */}
             <MessageList
-              messages={state().messages}
-              isStreaming={state().isStreaming}
+              messages={activeState().messages}
+              isStreaming={activeState().isStreaming}
               lastAssistantIdx={lastAssistantIdx()}
               expandedToolIndex={expandedToolIndex()}
               onToggleTool={toggleExpand}
               showThinking={showThinking()}
               thinkingStartedAt={turnStartedAt()}
               thinkingResponseChars={currentTurnChars()}
-              error={state().error}
+              error={activeState().error}
               onApprove={(requestId, approve) => {
                 const taskId = props.taskId()
                 if (!taskId) return
                 props.orchestrator
                   .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
                   .catch((err: unknown) => {
-                    setState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+                    patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
                   })
               }}
               onAnswer={(requestId, answers) => {
@@ -553,7 +699,7 @@ export function Chat(props: ChatProps) {
                 props.orchestrator
                   .respondToInput(taskId, requestId, { kind: "ask_question", answers })
                   .catch((err: unknown) => {
-                    setState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+                    patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
                   })
               }}
             />
@@ -565,7 +711,7 @@ export function Chat(props: ChatProps) {
       <Composer
         draft={draft()}
         onDraftChange={setDraft}
-        isStreaming={state().isStreaming}
+        isStreaming={activeState().isStreaming}
         hasTask={props.taskId() !== undefined && !isCanceled() && !hasPendingInput()}
         noTaskMessage={
           isCanceled()
@@ -576,7 +722,8 @@ export function Chat(props: ChatProps) {
         }
         onSubmit={handleComposerSubmit}
         focused={props.focused}
-        historyKey={props.taskId()}
+        // Per-tab history scope — prompt history shouldn't bleed across tabs.
+        historyKey={activeTabId() ?? props.taskId()}
         slashes={slashes}
         permissionMode={permissionMode}
         onCyclePermissionMode={cyclePermissionMode}

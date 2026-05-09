@@ -51,6 +51,8 @@ describe("Task", () => {
       branch: "kobe/x",
       worktreePath: "/r/.claude/wt/x",
       sessionId: null,
+      tabs: [{ id: "tab1", sessionId: null, createdAt: "2026-05-08T00:00:00Z" }],
+      activeTabId: "tab1",
       status: "backlog",
       archived: false,
       createdAt: "2026-05-08T00:00:00Z",
@@ -65,10 +67,10 @@ describe("Task", () => {
 })
 
 describe("TaskIndex", () => {
-  it("pins version to literal 1", () => {
-    expectTypeOf<TaskIndex["version"]>().toEqualTypeOf<1>()
-    // @ts-expect-error — version 2 must wait for an explicit migration bump.
-    const _bad: TaskIndex = { version: 2, tasks: [] }
+  it("pins version to literal 2", () => {
+    expectTypeOf<TaskIndex["version"]>().toEqualTypeOf<2>()
+    // @ts-expect-error — version 3 must wait for an explicit migration bump.
+    const _bad: TaskIndex = { version: 3, tasks: [] }
     void _bad
   })
 

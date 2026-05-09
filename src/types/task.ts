@@ -2,9 +2,15 @@
  * Task data model — the orchestrator's unit of work.
  *
  * See DESIGN.md §2.4 ("One task ≈ one worktree ≈ one session") and §10
- * ("Data model"). The Task is a triple of (worktree, Claude Code session,
- * branch); this module is the on-disk shape for the manifest at
- * `~/.kobe/tasks.json`.
+ * ("Data model"). The Task is a (worktree, branch, [chat tabs]) triple;
+ * each chat tab owns its own Claude Code session. This module is the
+ * on-disk shape for the manifest at `~/.kobe/tasks.json`.
+ *
+ * Multi-tab note (v2): the original v1 schema had a single `sessionId`
+ * per Task (one session per task). v2 introduces `tabs: ChatTab[]` so a
+ * single task (= one worktree) can host multiple independent chat
+ * sessions. Same-worktree write conflicts are the user's concern;
+ * kobe does not coordinate writes across tabs.
  *
  * Messages are NOT in this index. Messages live in Claude Code's JSONL
  * files; we read them via {@link AIEngine.readHistory}.
@@ -51,6 +57,17 @@ export type { PermissionMode } from "./engine.ts"
 import type { PermissionMode } from "./engine.ts"
 
 /**
+ * One chat tab within a task. Each tab is a fully independent Claude
+ * Code session sharing the parent task's worktree.
+ */
+export interface ChatTab {
+  readonly id: string
+  readonly sessionId: string | null
+  readonly title?: string
+  readonly createdAt: string
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of the {@link TaskIndex}.
  *
  * Field invariants:
@@ -59,7 +76,11 @@ import type { PermissionMode } from "./engine.ts"
  *   the per-task worktree — that's `worktreePath`).
  * - `worktreePath` is an absolute path; may not yet exist if the task
  *   is still in `backlog`.
- * - `sessionId` is null until the engine has spawned at least once.
+ * - `tabs` is non-empty; the orchestrator refuses to close the last tab.
+ * - `activeTabId` is always a valid tab id within `tabs`.
+ * - `sessionId` (deprecated) is an alias for `tabs[0].sessionId`. Kept
+ *   readable so older code paths and v1 manifests still load. Writers
+ *   should update via tab APIs, not this field.
  * - `createdAt` and `updatedAt` are ISO-8601 strings (UTC).
  */
 export interface Task {
@@ -68,7 +89,14 @@ export interface Task {
   readonly repo: string
   readonly branch: string
   readonly worktreePath: string
+  /**
+   * @deprecated Read-only alias for `tabs[0]?.sessionId ?? null`.
+   * Kept for v1 manifest back-compat and code that hasn't been
+   * migrated to the multi-tab API. Do not write through this field.
+   */
   readonly sessionId: string | null
+  readonly tabs: readonly ChatTab[]
+  readonly activeTabId: string
   readonly status: TaskStatus
   /**
    * Wave 4.5 archive flag — orthogonal to `status`. The sidebar splits
@@ -103,11 +131,11 @@ export interface Task {
 /**
  * On-disk manifest at `~/.kobe/tasks.json`.
  *
- * `version` is a literal `1` so future migrations can branch on it.
- * When (not if) the schema changes, bump the literal and write a
- * migration — never silently mutate the shape.
+ * `version` bumps when the schema changes. v1 had `Task.sessionId` only;
+ * v2 introduces `tabs` and `activeTabId`. The store migrates v1→v2 on
+ * load by synthesizing one tab from the v1 sessionId.
  */
 export interface TaskIndex {
-  readonly version: 1
+  readonly version: 2
   readonly tasks: readonly Task[]
 }

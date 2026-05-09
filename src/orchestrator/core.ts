@@ -70,7 +70,8 @@ import type {
   UserInputPayload,
   UserInputResponse,
 } from "../types/engine.ts"
-import type { PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
+import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
+import { ulid } from "./index/ulid.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
@@ -184,6 +185,16 @@ export interface CreateTaskInput {
 export type Unsubscribe = () => void
 
 /**
+ * Composite (taskId, tabId) key for the engine's per-tab handle, the
+ * subscriber bus, and the pump map. Centralised so all three keep the
+ * same shape and a typo doesn't silently split a tab's stream from its
+ * subscribers.
+ */
+function tabKey(taskId: string, tabId: string): string {
+  return `${taskId}:${tabId}`
+}
+
+/**
  * Owner of the task lifecycle.
  *
  * The orchestrator is the only thing that touches the worktree manager,
@@ -194,10 +205,21 @@ export class Orchestrator {
   private readonly engine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
-  private readonly handles = new Map<TaskId, SessionHandle>()
-  private readonly subscribers = new Map<TaskId, Set<(ev: OrchestratorEvent) => void>>()
+  /**
+   * Engine session handles keyed by `${taskId}:${tabId}`. Each chat tab
+   * within a task owns an independent session; closing a tab tears down
+   * just its handle, leaving sibling tabs alive.
+   */
+  private readonly handles = new Map<string, SessionHandle>()
+  /**
+   * Event-bus subscribers keyed by `${taskId}:${tabId}`. Subscribers
+   * stay attached when the user switches tabs in the UI — the switch is
+   * a render-side change only; engine streams keep flowing in the
+   * background so a tab's "done" arrives even if the user isn't looking.
+   */
+  private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /** Background pump promises — kept so tests can `await` settle. */
-  private readonly pumps = new Map<TaskId, Promise<void>>()
+  private readonly pumps = new Map<string, Promise<void>>()
   /**
    * Pending user-input requests, keyed by taskId then by requestId.
    * Populated when the engine emits a tool that pauses for user input
@@ -347,15 +369,23 @@ export class Orchestrator {
    *     is continuing a finished session). Allowed.
    *   - `canceled` → `in_progress` is rejected; canceled is terminal.
    */
-  async runTask(id: TaskId | string, prompt?: string): Promise<void> {
+  async runTask(id: TaskId | string, prompt?: string, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
     if (task.status === "canceled") {
       throw new IllegalTransitionError(task.status, "in_progress", String(id))
     }
 
+    // Resolve the target tab. Default to the active one so existing
+    // single-tab callers keep working. We don't auto-create — the
+    // caller is expected to know the tab id (the active one is fine).
+    const targetTab = this.resolveTab(task, tabId)
+    const key = tabKey(task.id, targetTab.id)
+
     // Cap check covers both fresh runs and resumes — every running
-    // task counts as one slot.
-    if (this.handles.has(task.id) === false) {
+    // tab counts as one slot. (We deliberately count tabs not tasks:
+    // five concurrent tabs across one task is the same engine load as
+    // five tasks with one tab each.)
+    if (this.handles.has(key) === false) {
       const running = this.countRunning()
       if (running >= CONCURRENCY_CAP) {
         throw new ConcurrencyCapError()
@@ -370,8 +400,8 @@ export class Orchestrator {
     const promptToSend = prompt && prompt.length > 0 ? prompt : " "
 
     let handle: SessionHandle
-    if (task.sessionId) {
-      handle = await this.engine.resume(task.sessionId, promptToSend, {
+    if (targetTab.sessionId) {
+      handle = await this.engine.resume(targetTab.sessionId, promptToSend, {
         env: { KOBE_RESUME_CWD: task.worktreePath },
         permissionMode: task.permissionMode,
         model: task.model,
@@ -381,36 +411,33 @@ export class Orchestrator {
         permissionMode: task.permissionMode,
         model: task.model,
       })
-      // Persist the freshly-allocated session id so a future kobe
-      // restart can resume.
-      await this.store.update(task.id, { sessionId: handle.sessionId })
+      // Persist the freshly-allocated session id back onto the tab so
+      // a future kobe restart can resume.
+      await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
       // First user submit on a placeholder-titled task → derive the
-      // sidebar label from the prompt, same heuristic createTask used
-      // when the dialog still asked for the first prompt. Only fires
-      // when the title is the sentinel AND the prompt is non-empty
-      // (an empty fallback prompt shouldn't rewrite the placeholder).
+      // sidebar label from the prompt.
       if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
         const derived = deriveTitleFromPrompt(prompt)
         if (derived) await this.store.update(task.id, { title: derived })
       }
     }
-    this.handles.set(task.id, handle)
+    this.handles.set(key, handle)
 
     if (task.status !== "in_progress") {
       await this.store.update(task.id, { status: "in_progress" })
     }
 
-    // Spin the pump. Captures `task.id` so the closure references the
-    // right task even if the user creates more concurrently.
-    const pump = this.pumpEvents(task.id, handle)
-    this.pumps.set(task.id, pump)
+    // Spin the pump. Captures `key` so the closure references the
+    // right tab even if the user spawns more concurrently.
+    const pump = this.pumpEvents(task.id, targetTab.id, handle)
+    this.pumps.set(key, pump)
     // Don't await — the caller wants to return as soon as the engine
     // is started, not when it finishes. The pump runs to completion in
     // the background.
     pump.catch((err) => {
       // Surface pump failures via the event bus instead of unhandled
       // rejection. The test suite explicitly waits for terminal events.
-      this.dispatchEvent(task.id, {
+      this.dispatchEvent(task.id, targetTab.id, {
         type: "error",
         message: `pump failure: ${err instanceof Error ? err.message : String(err)}`,
       })
@@ -462,9 +489,12 @@ export class Orchestrator {
     // chat renders the injected prompt as a normal user row in the same
     // tick the streaming starts. Subscribers swallow their own errors
     // (see dispatchEvent), so an unrelated subscriber failure here
-    // can't poison the runTask call.
-    this.dispatchEvent(task.id, { type: "user.inject", text: prompt })
-    await this.runTask(task.id, prompt)
+    // can't poison the runTask call. PR injection always targets the
+    // task's currently-active tab (the user pressed the button while
+    // looking at it).
+    const activeTab = this.resolveTab(task)
+    this.dispatchEvent(task.id, activeTab.id, { type: "user.inject", text: prompt })
+    await this.runTask(task.id, prompt, activeTab.id)
   }
 
   /**
@@ -504,12 +534,20 @@ export class Orchestrator {
     // Tell the chat the row is no longer pending. Fire BEFORE the
     // synthetic user.inject so the approval banner flips to its final
     // state in the same render frame the new user row appears.
-    this.dispatchEvent(task.id, { type: "user_input.resolved", requestId, response })
+    // Multi-tab caveat: pendingInput is keyed by taskId only (not
+    // tabId) so we route the resolved/inject events through the
+    // task's active tab. In single-tab tasks this matches exactly;
+    // for multi-tab, an approval surfaced from a non-active tab will
+    // still resolve correctly but the chat banner update lands on the
+    // active tab. Tightening this requires storing tabId in
+    // pendingInput, which is a follow-up.
+    const tabId = task.activeTabId
+    this.dispatchEvent(task.id, tabId, { type: "user_input.resolved", requestId, response })
 
     const prompt = renderUserInputResponsePrompt(pending, response)
     if (!prompt) return
-    this.dispatchEvent(task.id, { type: "user.inject", text: prompt })
-    await this.runTask(task.id, prompt)
+    this.dispatchEvent(task.id, tabId, { type: "user.inject", text: prompt })
+    await this.runTask(task.id, prompt, tabId)
   }
 
   /**
@@ -522,11 +560,10 @@ export class Orchestrator {
     if (task.status !== "in_progress") {
       throw new IllegalTransitionError(task.status, "backlog", String(id))
     }
-    const handle = this.handles.get(task.id)
-    if (handle) {
-      await this.engine.stop(handle)
-      this.handles.delete(task.id)
-    }
+    // Stop every tab that has a live handle for this task. A task is
+    // "running" iff at least one of its tabs has an engine pump open;
+    // pausing means no tab should be live.
+    await this.stopAllTabsForTask(task.id)
     await this.store.update(task.id, { status: "backlog" })
   }
 
@@ -539,11 +576,7 @@ export class Orchestrator {
     if (status !== "done" && status !== "canceled") {
       throw new IllegalTransitionError(task.status, status, String(id))
     }
-    const handle = this.handles.get(task.id)
-    if (handle) {
-      await this.engine.stop(handle)
-      this.handles.delete(task.id)
-    }
+    await this.stopAllTabsForTask(task.id)
     await this.store.archive(task.id, status)
   }
 
@@ -728,20 +761,102 @@ export class Orchestrator {
    * orchestrator-driven prompt injections (e.g. `requestPR`). The
    * chat pane filters which to render.
    */
-  subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void): Unsubscribe {
-    const taskId = (this.store.get(id)?.id ?? id) as TaskId
-    let set = this.subscribers.get(taskId)
+  subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void, tabId?: string): Unsubscribe {
+    const task = this.store.get(id)
+    const taskId = (task?.id ?? id) as TaskId
+    // Resolve the tab id at subscription time. Falls back to the task's
+    // active tab so single-tab callers stay terse. If the task is
+    // unknown (caller subscribed eagerly with an id that the store
+    // hasn't seen yet), we use the literal taskId as the tab key
+    // suffix — this matches the orchestrator's defensive behaviour for
+    // unknown ids elsewhere.
+    const resolvedTabId = tabId ?? task?.activeTabId ?? String(taskId)
+    const key = tabKey(taskId, resolvedTabId)
+    let set = this.subscribers.get(key)
     if (!set) {
       set = new Set()
-      this.subscribers.set(taskId, set)
+      this.subscribers.set(key, set)
     }
     set.add(cb)
     return () => {
-      const cur = this.subscribers.get(taskId)
+      const cur = this.subscribers.get(key)
       if (!cur) return
       cur.delete(cb)
-      if (cur.size === 0) this.subscribers.delete(taskId)
+      if (cur.size === 0) this.subscribers.delete(key)
     }
+  }
+
+  /**
+   * Append a new chat tab to a task. The tab starts with no session
+   * (null sessionId); it spawns its own session on first `runTask` for
+   * that tab. The orchestrator does NOT auto-switch the active tab —
+   * that's a UI concern (the chat shell decides when to set focus on
+   * the new tab).
+   *
+   * Returns the freshly-created tab.
+   */
+  async createTab(id: TaskId | string, opts: { title?: string } = {}): Promise<ChatTab> {
+    const task = this.requireTask(id)
+    const tab: ChatTab = {
+      id: ulid(),
+      sessionId: null,
+      createdAt: new Date().toISOString(),
+      ...(opts.title ? { title: opts.title } : {}),
+    }
+    const tabs = [...task.tabs, tab]
+    await this.store.update(task.id, { tabs })
+    return tab
+  }
+
+  /**
+   * Close (= remove) a chat tab. Stops the tab's engine session if
+   * running. Refuses to close the last remaining tab — kobe's chat
+   * shell always has at least one tab. If the closed tab was the
+   * active one, the next-most-recent tab becomes active (index − 1,
+   * or 0 if we closed index 0). The new active tab id is returned so
+   * the UI can reconcile its focus signal.
+   */
+  async closeTab(id: TaskId | string, tabId: string): Promise<string> {
+    const task = this.requireTask(id)
+    if (task.tabs.length <= 1) {
+      throw new Error(`closeTab: refusing to close the last tab on task ${task.id}`)
+    }
+    const idx = task.tabs.findIndex((t) => t.id === tabId)
+    if (idx < 0) {
+      throw new Error(`closeTab: tab ${tabId} not found on task ${task.id}`)
+    }
+
+    // Tear down this tab's engine session FIRST so the pump's
+    // terminal-status update doesn't race with our store.update below
+    // and clobber the pruned `tabs` array. stopTab is a no-op when
+    // there's no live handle.
+    await this.stopTab(task.id, tabId)
+
+    const remaining = task.tabs.filter((t) => t.id !== tabId)
+    let nextActive = task.activeTabId
+    if (task.activeTabId === tabId) {
+      // Switch to the previous tab in the visual order; if the closed
+      // tab was index 0, the new index 0 takes its place.
+      const prevIdx = Math.max(0, idx - 1)
+      nextActive = remaining[prevIdx]?.id ?? remaining[0]?.id ?? ""
+    }
+    await this.store.update(task.id, { tabs: remaining, activeTabId: nextActive })
+    return nextActive
+  }
+
+  /**
+   * Set which tab is active. Idempotent. Tab must exist on the task.
+   * The orchestrator stays out of UI decisions — it just persists
+   * which tab the user last interacted with so a kobe restart shows
+   * the same one.
+   */
+  async setActiveTab(id: TaskId | string, tabId: string): Promise<void> {
+    const task = this.requireTask(id)
+    if (!task.tabs.some((t) => t.id === tabId)) {
+      throw new Error(`setActiveTab: tab ${tabId} not found on task ${task.id}`)
+    }
+    if (task.activeTabId === tabId) return
+    await this.store.update(task.id, { activeTabId: tabId })
   }
 
   /**
@@ -761,16 +876,82 @@ export class Orchestrator {
     return task
   }
 
-  private countRunning(): number {
-    let n = 0
-    for (const t of this.store.list()) {
-      if (t.status === "in_progress") n++
+  /**
+   * Resolve a chat tab on a task. When `tabId` is omitted, returns the
+   * task's active tab. Throws if the tab id is given but not found.
+   */
+  private resolveTab(task: Task, tabId?: string): ChatTab {
+    if (tabId) {
+      const found = task.tabs.find((t) => t.id === tabId)
+      if (!found) throw new Error(`tab not found on task ${task.id}: ${tabId}`)
+      return found
     }
-    return n
+    const active = task.tabs.find((t) => t.id === task.activeTabId) ?? task.tabs[0]
+    if (!active) {
+      // Should be impossible — the store invariant guarantees
+      // tabs.length >= 1. Throw rather than fabricate one silently.
+      throw new Error(`task ${task.id} has no tabs`)
+    }
+    return active
   }
 
-  private dispatchEvent(taskId: TaskId, ev: OrchestratorEvent): void {
-    const set = this.subscribers.get(taskId)
+  /**
+   * Patch a single tab's persisted fields. Used internally to write
+   * back a freshly-allocated sessionId after the engine spawns.
+   */
+  private async updateTab(taskId: TaskId, tabId: string, patch: Partial<ChatTab>): Promise<void> {
+    const cur = this.store.get(taskId)
+    if (!cur) return
+    const tabs = cur.tabs.map((t) => (t.id === tabId ? { ...t, ...patch, id: t.id } : t))
+    await this.store.update(taskId, { tabs })
+  }
+
+  /**
+   * Stop the engine handle for a single tab (if any). Idempotent.
+   * Drops the handle from the map. The pump's `finally` will also try
+   * to drop it — both calls are safe.
+   */
+  private async stopTab(taskId: TaskId, tabId: string): Promise<void> {
+    const key = tabKey(taskId, tabId)
+    const handle = this.handles.get(key)
+    if (!handle) return
+    try {
+      await this.engine.stop(handle)
+    } finally {
+      this.handles.delete(key)
+    }
+  }
+
+  /**
+   * Stop every live tab handle on a task. Used by pause / archive /
+   * delete — those are task-level lifecycle operations that take down
+   * all sessions sharing the worktree.
+   */
+  private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
+    const prefix = `${taskId}:`
+    const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
+    for (const key of keys) {
+      const handle = this.handles.get(key)
+      if (!handle) continue
+      try {
+        await this.engine.stop(handle)
+      } catch {
+        // Best-effort; the lifecycle method that called us will surface
+        // task-level state regardless.
+      }
+      this.handles.delete(key)
+    }
+  }
+
+  private countRunning(): number {
+    // Count tabs with live handles, not tasks. Concurrency cap is per
+    // engine session: five tabs on one task or five tasks with one tab
+    // each both count as five.
+    return this.handles.size
+  }
+
+  private dispatchEvent(taskId: TaskId, tabId: string, ev: OrchestratorEvent): void {
+    const set = this.subscribers.get(tabKey(taskId, tabId))
     if (!set) return
     for (const cb of set) {
       try {
@@ -784,19 +965,16 @@ export class Orchestrator {
     }
   }
 
-  private async pumpEvents(taskId: TaskId, handle: SessionHandle): Promise<void> {
+  private async pumpEvents(taskId: TaskId, tabId: string, handle: SessionHandle): Promise<void> {
+    const key = tabKey(taskId, tabId)
     let terminal: "done" | "error" | null = null
     let killedForInput = false
     try {
       for await (const ev of this.engine.stream(handle)) {
-        this.dispatchEvent(taskId, ev)
-        // Detect tools that pause for user input. We piggyback on
-        // `tool.start` rather than `tool.result` because the input
-        // already has everything the UI needs (the plan body) — we
-        // don't have to wait for the tool to finish writing the file
-        // before showing the approval banner. The tool will still
-        // complete inside the subprocess; we just race ahead to the
-        // user-facing affordance.
+        this.dispatchEvent(taskId, tabId, ev)
+        // Detect tools that pause for user input. Piggyback on
+        // `tool.start` so the UI surfaces the approval banner without
+        // waiting for the tool's file write to complete in the subprocess.
         const inputReq = detectUserInputFromEngineEvent(ev)
         if (inputReq) {
           const requestId = `req-${++this.requestIdCounter}`
@@ -806,7 +984,7 @@ export class Orchestrator {
             this.pendingInput.set(taskId, bucket)
           }
           bucket.set(requestId, inputReq)
-          this.dispatchEvent(taskId, {
+          this.dispatchEvent(taskId, tabId, {
             type: "user_input.request",
             requestId,
             payload: inputReq,
@@ -834,15 +1012,23 @@ export class Orchestrator {
       }
     } finally {
       // Drop the handle whether we exited cleanly or via throw.
-      this.handles.delete(taskId)
-      this.pumps.delete(taskId)
+      this.handles.delete(key)
+      this.pumps.delete(key)
       if (terminal && !killedForInput) {
-        try {
-          await this.store.update(taskId, {
-            status: terminal === "done" ? "done" : "error",
-          })
-        } catch {
-          /* store may have been cleared in tests; ignore */
+        // Only flip the task's status to a terminal value when ALL
+        // its tabs have stopped. With multi-tab, a single tab finishing
+        // doesn't mean the task is done — the user may still have other
+        // tabs streaming. We check after delete-from-handles above so
+        // the count reflects "still live siblings."
+        const stillLive = Array.from(this.handles.keys()).some((k) => k.startsWith(`${taskId}:`))
+        if (!stillLive) {
+          try {
+            await this.store.update(taskId, {
+              status: terminal === "done" ? "done" : "error",
+            })
+          } catch {
+            /* store may have been cleared in tests; ignore */
+          }
         }
       }
       // killedForInput case: leave status as in_progress — the user is

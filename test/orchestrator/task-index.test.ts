@@ -63,7 +63,7 @@ describe("TaskIndexStore — CRUD", () => {
 
     // The file lives where the contract says it does.
     const onDisk = JSON.parse(await readFile(store.filePath, "utf8"))
-    expect(onDisk.version).toBe(1)
+    expect(onDisk.version).toBe(2)
     expect(onDisk.tasks).toHaveLength(1)
     expect(onDisk.tasks[0]).toEqual(t)
 
@@ -117,7 +117,7 @@ describe("TaskIndexStore — CRUD", () => {
   test("missing file loads as empty index without throwing", async () => {
     const store = new TaskIndexStore({ homeDir })
     const idx = await store.load()
-    expect(idx).toEqual({ version: 1, tasks: [] })
+    expect(idx).toEqual({ version: 2, tasks: [] })
   })
 })
 
@@ -313,7 +313,7 @@ describe("TaskIndexStore — atomic write & corruption recovery", () => {
     // (The product wants kobe to start even if the manifest is fried.)
     const idx = await store.load()
     expect(idx.tasks).toEqual([])
-    expect(idx.version).toBe(1)
+    expect(idx.version).toBe(2)
 
     // Subsequent operations work; saving overwrites the corrupted file.
     const created = await store.create({
@@ -348,7 +348,7 @@ describe("TaskIndexStore — atomic write & corruption recovery", () => {
     await writeFile(join(homeDir, ".kobe", "tasks.json"), '"not an object"', "utf8")
     const store = new TaskIndexStore({ homeDir })
     const idx = await store.load()
-    expect(idx).toEqual({ version: 1, tasks: [] })
+    expect(idx).toEqual({ version: 2, tasks: [] })
   })
 
   test("malformed task entries are dropped, valid ones survive", async () => {
@@ -397,7 +397,7 @@ describe("TaskIndexStore — atomic write & corruption recovery", () => {
 // ---------------------------------------------------------------------------
 
 describe("TaskIndexStore — migration", () => {
-  test("loads a v0-shaped file (no version field) and writes v1 on save", async () => {
+  test("loads a v0-shaped file (no version field) and writes v2 on save", async () => {
     await mkdir(join(homeDir, ".kobe"), { recursive: true })
     const v0 = {
       // No `version` — this is the pre-stream-C shape we'd see on a manual
@@ -420,26 +420,68 @@ describe("TaskIndexStore — migration", () => {
 
     const store = new TaskIndexStore({ homeDir })
     const idx = await store.load()
-    expect(idx.version).toBe(1)
+    expect(idx.version).toBe(2)
     expect(idx.tasks).toHaveLength(1)
 
-    // After any save, the on-disk file should be a v1 manifest.
+    // After any save, the on-disk file should be a v2 manifest.
     await store.update("01HZA", { status: "done" })
     const onDisk = JSON.parse(await readFile(store.filePath, "utf8"))
-    expect(onDisk.version).toBe(1)
+    expect(onDisk.version).toBe(2)
     expect(onDisk.tasks[0].status).toBe("done")
   })
 
-  test("future versions (v2+) refuse to load and recover empty", async () => {
+  test("v1 manifest is migrated to v2 with one synthesized tab", async () => {
+    await mkdir(join(homeDir, ".kobe"), { recursive: true })
+    const v1 = {
+      version: 1,
+      tasks: [
+        {
+          id: "01HZA",
+          title: "legacy v1",
+          repo: "/r",
+          branch: "kobe/legacy",
+          worktreePath: "/r/legacy",
+          sessionId: "claude-session-uuid-001",
+          status: "in_progress",
+          createdAt: "2026-05-01T00:00:00Z",
+          updatedAt: "2026-05-01T00:00:00Z",
+        },
+      ],
+    }
+    await writeFile(join(homeDir, ".kobe", "tasks.json"), JSON.stringify(v1), "utf8")
+
+    const store = new TaskIndexStore({ homeDir })
+    const idx = await store.load()
+    expect(idx.version).toBe(2)
+    expect(idx.tasks).toHaveLength(1)
+    const task = idx.tasks[0]
+    if (!task) throw new Error("expected task")
+    // The synthesized tab carries the v1 sessionId so the task can
+    // resume its existing Claude Code session.
+    expect(task.tabs).toHaveLength(1)
+    expect(task.tabs[0]?.sessionId).toBe("claude-session-uuid-001")
+    expect(task.activeTabId).toBe(task.tabs[0]?.id)
+    // The deprecated alias mirrors the active tab's session id.
+    expect(task.sessionId).toBe("claude-session-uuid-001")
+
+    // Round-trip: write back as v2.
+    await store.update("01HZA", { status: "done" })
+    const onDisk = JSON.parse(await readFile(store.filePath, "utf8"))
+    expect(onDisk.version).toBe(2)
+    expect(onDisk.tasks[0].tabs).toHaveLength(1)
+    expect(onDisk.tasks[0].activeTabId).toBe(onDisk.tasks[0].tabs[0].id)
+  })
+
+  test("future versions (v3+) refuse to load and recover empty", async () => {
     await mkdir(join(homeDir, ".kobe"), { recursive: true })
     await writeFile(
       join(homeDir, ".kobe", "tasks.json"),
-      JSON.stringify({ version: 2, tasks: [{ id: "future" }] }),
+      JSON.stringify({ version: 3, tasks: [{ id: "future" }] }),
       "utf8",
     )
     const store = new TaskIndexStore({ homeDir })
     const idx = await store.load()
-    expect(idx).toEqual({ version: 1, tasks: [] })
+    expect(idx).toEqual({ version: 2, tasks: [] })
   })
 })
 

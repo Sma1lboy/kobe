@@ -46,6 +46,7 @@ import { describe, expect, test } from "vitest"
  */
 function makeTask(id: string, title: string, status: TaskStatus, repo = "/tmp/repo", archived = false): Task {
   const now = "2026-05-08T00:00:00.000Z"
+  const tabId = `tab-${id}`
   return {
     id: toTaskId(id),
     title,
@@ -53,6 +54,8 @@ function makeTask(id: string, title: string, status: TaskStatus, repo = "/tmp/re
     branch: `kobe/${id}`,
     worktreePath: `${repo}/.claude/worktrees/${id}`,
     sessionId: null,
+    tabs: [{ id: tabId, sessionId: null, createdAt: now }],
+    activeTabId: tabId,
     status,
     archived,
     createdAt: now,
