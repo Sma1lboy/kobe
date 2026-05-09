@@ -23,7 +23,7 @@
 import * as fs from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
-import { RGBA, TextAttributes } from "@opentui/core"
+import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
@@ -851,28 +851,6 @@ function Shell(props: AppDeps) {
   const dialog = useDialog()
   const kv = useKV()
 
-  // Two surfaces with distinct transparent-mode behavior — rails
-  // (sidebar + right column) and the chat body. Jackson's policy
-  // (memory: feedback_transparent_default_aggressive.md): when
-  // transparent mode is on, rails get OUT OF THE WAY so the host
-  // terminal bg / wallpaper / opacity is fully visible there;
-  // only the chat body keeps a partial tint so messages stay legible.
-  // CHAT_BODY_ALPHA is the only knob to tune — bump up for a more
-  // opaque chat, down for more terminal showing through.
-  const CHAT_BODY_ALPHA = 178 // ~70% theme.background tint in transparent mode
-  const railBg = createMemo(() => {
-    // Transparent mode → no paint. Opaque mode → panel tone, opaque.
-    if (themeCtx.transparentBackground) return undefined
-    return theme.backgroundPanel
-  })
-  const chatBodyBg = createMemo(() => {
-    // Opaque mode: inherit renderer's `theme.background` (no paint).
-    if (!themeCtx.transparentBackground) return undefined
-    // Transparent mode: theme.background at CHAT_BODY_ALPHA so the
-    // chat keeps ~70% tint and the wallpaper peeks through ~30%.
-    const [r, g, b] = theme.background.toInts()
-    return RGBA.fromInts(r, g, b, CHAT_BODY_ALPHA)
-  })
 
   // Theme persistence — on mount, hydrate from KV (validates the
   // stored name against the bundled list to drop stale entries from a
@@ -1501,7 +1479,7 @@ function Shell(props: AppDeps) {
         <box
           flexShrink={0}
           flexDirection="column"
-          backgroundColor={railBg()}
+          backgroundColor={theme.backgroundPanel}
           onMouseUp={() => setFocusedPane("sidebar")}
         >
           <Sidebar
@@ -1542,15 +1520,16 @@ function Shell(props: AppDeps) {
         {/* Center: tabbed (chat | <file>...) — primary interaction surface.
             Width controlled by workspaceWidth; the right edge is a
             <ResizableEdge /> sibling rather than a `border={["right"]}`
-            on this box. chatBodyBg paints a partial-alpha tint only
-            when transparent mode is on (otherwise undefined =
-            inherits the renderer's opaque background). Keeps chat
-            messages legible on top of an arbitrary terminal wallpaper. */}
+            on this box. No bg paint — the chat body inherits the
+            renderer's `theme.background` (which the ThemeProvider
+            forces to transparent under the transparent-bg toggle).
+            Only the composer's `theme.backgroundElement` fill stays
+            tinted in transparent mode, keeping the input area
+            legible against any host wallpaper. */}
         <box
           flexDirection="column"
           flexShrink={0}
           width={workspaceWidth()}
-          backgroundColor={chatBodyBg()}
           onMouseUp={() => setFocusedPane("workspace")}
         >
           <PaneHeader
@@ -1612,7 +1591,7 @@ function Shell(props: AppDeps) {
           flexGrow={1}
           flexShrink={1}
           flexBasis={0}
-          backgroundColor={railBg()}
+          backgroundColor={theme.backgroundPanel}
         >
           <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
             <PaneHeader title="FILES" focused={focusedPane() === "files"} />

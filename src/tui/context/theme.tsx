@@ -206,13 +206,19 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       return resolveTheme(fallback, store.mode)
     })
     // Apply the transparent-bg toggle on top of the resolved palette.
-    // Only the `background` slot is overridden — panel/element/text and
-    // every other token keep the active theme's color so chrome stays
-    // visible regardless of the host terminal's bg.
+    // BOTH `background` AND `backgroundPanel` are forced transparent
+    // — panels (sidebar, right column, chat tab strip) all read panel,
+    // and Jackson's policy is "in transparent mode, get out of the
+    // way of the host terminal". Only `backgroundElement` (used by
+    // the composer body, slash dropdown, inactive tab fills) keeps
+    // its tinted value so the chat input stays legible against any
+    // host wallpaper. Every other token (text, primary, accent…)
+    // is unchanged. See memory/feedback_transparent_default_aggressive.md.
     const values = createMemo(() => {
       const v = baseValues()
       if (!store.transparentBackground) return v
-      return { ...v, background: RGBA.fromInts(0, 0, 0, 0) }
+      const transparent = RGBA.fromInts(0, 0, 0, 0)
+      return { ...v, background: transparent, backgroundPanel: transparent }
     })
 
     // Push background to the renderer so the terminal background matches
