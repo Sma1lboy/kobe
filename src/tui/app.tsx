@@ -1456,8 +1456,17 @@ function Shell(props: AppDeps) {
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
             focus it. The right edge is a separate <ResizableEdge /> that
-            owns the drag-to-resize affordance plus hover/focus colors. */}
-        <box flexShrink={0} flexDirection="column" onMouseUp={() => setFocusedPane("sidebar")}>
+            owns the drag-to-resize affordance plus hover/focus colors.
+            backgroundPanel paints a slightly-raised tone vs the chat
+            (which keeps `theme.background`) — IDE convention is the
+            auxiliary rails recede in saturation, the work area is the
+            visual focus. */}
+        <box
+          flexShrink={0}
+          flexDirection="column"
+          backgroundColor={theme.backgroundPanel}
+          onMouseUp={() => setFocusedPane("sidebar")}
+        >
           <Sidebar
             width={sidebarWidth}
             tasks={tasksAcc}
@@ -1554,8 +1563,16 @@ function Shell(props: AppDeps) {
         {/* Right column: FILES top + TERMINAL bottom. Width absorbs the
             remainder via flexGrow={1}; the FILES↔TERMINAL split is a
             <ResizableEdge orientation="horizontal" /> with a controlled
-            filesHeight signal driving the upper pane. */}
-        <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0}>
+            filesHeight signal driving the upper pane. Same
+            backgroundPanel tone as the sidebar so the two rails feel
+            symmetric and the chat in the middle is visibly the focus. */}
+        <box
+          flexDirection="column"
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          backgroundColor={theme.backgroundPanel}
+        >
           <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
             <PaneHeader title="FILES" focused={focusedPane() === "files"} />
             <box flexGrow={1}>
