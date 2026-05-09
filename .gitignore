@@ -19,3 +19,7 @@ tsconfig.vitest-temp.json
 # Branding source is local-only; rendered outputs land in docs/assets/brand/
 # (committed) via branding/package.json render scripts.
 branding/
+
+# autonomous-skill per-sprint worktrees + session state
+.worktrees/
+.autonomous/

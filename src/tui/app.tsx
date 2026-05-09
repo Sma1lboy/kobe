@@ -767,7 +767,7 @@ function StatusBar() {
           </Match>
           <Match when={focus.focused() === "workspace"}>
             <Hotkey keys="enter" label="send" />
-            <Hotkey keys="ctrl+q" label="back to sidebar" />
+            <Hotkey keys="esc" label="back to sidebar" />
           </Match>
           <Match when={focus.focused() === "files"}>
             <Hotkey keys="j/k" label="nav" />
@@ -786,7 +786,7 @@ function StatusBar() {
         <Hotkey keys="ctrl+1234" label="focus" />
         <Hotkey keys="ctrl+n" label="new" />
         <Hotkey keys="F1" label="help" />
-        <Hotkey keys="ctrl+Q" label="quit" />
+        <Hotkey keys="ctrl+q" label="quit" />
       </box>
     </box>
   )
@@ -1055,12 +1055,6 @@ function Shell(props: AppDeps) {
       { key: "ctrl+2", cmd: () => setFocusedPane("workspace") },
       { key: "ctrl+3", cmd: () => setFocusedPane("files") },
       { key: "ctrl+4", cmd: () => setFocusedPane("terminal") },
-      // ctrl+q "detach": from any pane, jump back to the sidebar without
-      // pausing the chat. The orchestrator's pump runs independently of
-      // focus, so the engine keeps streaming while the user navigates
-      // tasks. Wave 4.5 — Jackson's request for "detach but keep
-      // working" semantics from inside the composer.
-      { key: "ctrl+q", cmd: () => setFocusedPane("sidebar") },
     ],
   }))
 
@@ -1252,6 +1246,7 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
+    onFocusDetach: () => setFocusedPane("sidebar"),
   })
 
   // Shared "open new-task dialog and create" handler. Bound to two

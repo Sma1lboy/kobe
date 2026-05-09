@@ -8,7 +8,8 @@
  *      on macOS — terminals do not propagate the Command modifier) opens
  *      the command palette.
  *   4. Pressing bare `q` does NOT open the quit-confirm dialog (after the
- *      bare-letter purge, quit moved to ctrl+shift+q).
+ *      bare-letter purge, quit moved to ctrl+q — focus.detach moved to esc
+ *      so the chord could be reclaimed).
  *
  * Why these actions: they are the user-visible surface of the global keymap.
  * Other bindings (`tab`, `shift+tab`) have no visible effect at the level
@@ -92,7 +93,7 @@ test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () =
   expect(screen.toLowerCase()).toMatch(/commands|no commands/)
 }, 30_000)
 
-test("bare `q` does NOT open the quit-confirm dialog (binding moved to ctrl+shift+q)", async () => {
+test("bare `q` does NOT open the quit-confirm dialog (binding moved to ctrl+q)", async () => {
   kobe = await spawnKobe()
   await kobe.waitFor((s) => s.includes("kobe"), 10_000)
 

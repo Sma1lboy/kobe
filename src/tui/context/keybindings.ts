@@ -86,13 +86,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     id: "app.quit",
-    keys: ["ctrl+shift+q"],
+    keys: ["ctrl+q"],
     category: "Global",
     description: "Quit (with confirm)",
   },
   {
     id: "focus.detach",
-    keys: ["ctrl+q"],
+    keys: ["esc"],
     category: "Navigation",
     description: "Back to sidebar (chat keeps streaming)",
   },
@@ -130,6 +130,12 @@ export type KobeKeybindingsOpts = {
    * which is correct in the production binary. Tests can pass a spy.
    */
   onQuit?: () => void
+  /**
+   * Called when the user presses `esc` with no dialog open — "detach back
+   * to sidebar". Wired by app.tsx to `setFocusedPane("sidebar")`. No-op
+   * default keeps the binding harmless when the focus model isn't wired.
+   */
+  onFocusDetach?: () => void
 }
 
 /**
@@ -148,6 +154,7 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   const onQuit = opts.onQuit ?? (() => process.exit(0))
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
+  const onFocusDetach = opts.onFocusDetach ?? (() => {})
 
   // Memoize the bindings list so the closure passed to useBindings is
   // stable across renders. The hook re-evaluates the config function on
@@ -162,20 +169,27 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
     const list: Array<{ key: string; cmd: () => void }> = [
       { key: "ctrl+k", cmd: () => palette.show() },
       { key: "alt+k", cmd: () => palette.show() },
-      // `esc` universally closes the top dialog. DialogProvider owns
-      // escape while a dialog is open (its handler sits higher on the
-      // useBindings stack); this is the no-dialog fallback.
+      // `esc` is dual-purpose: close the top dialog if any are open,
+      // otherwise detach focus back to the sidebar. DialogProvider's own
+      // escape binding sits higher on the useBindings stack while a
+      // dialog is open, so the dialog.pop() branch is a fallback for
+      // dialogs that don't register their own escape. With no dialog
+      // open we fall through to the focus-detach call.
       {
         key: "escape",
         cmd: () => {
-          if (dialog.stack.length > 0) dialog.pop()
+          if (dialog.stack.length > 0) {
+            dialog.pop()
+          } else {
+            onFocusDetach()
+          }
         },
       },
       { key: "f1", cmd: () => opts.onShowHelp() },
       { key: "tab", cmd: () => onFocusNext() },
       { key: "shift+tab", cmd: () => onFocusPrev() },
       {
-        key: "ctrl+shift+q",
+        key: "ctrl+q",
         cmd: () => {
           if (dialog.stack.length > 0) return
           DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
