@@ -851,19 +851,27 @@ function Shell(props: AppDeps) {
   const dialog = useDialog()
   const kv = useKV()
 
-  // Side rails (sidebar + right column) paint a slightly translucent
-  // version of `theme.backgroundPanel`. The intent: keep the panel
-  // tint visible so the IDE-style work-area-vs-rails hierarchy reads,
-  // but let the underlying terminal bg / image / opacity show through
-  // a touch when transparentBackground is on, AND make the rails feel
-  // a hair softer vs the chat in opaque mode (8-bit alpha composites
-  // against the theme bg, dragging the rail tone slightly toward bg
-  // so it's clearly distinct from a pure opaque panel block).
-  // ~80% opacity = noticeable lift but the panel still looks tinted.
-  const RAIL_ALPHA = 204
+  // Two surfaces with distinct transparent-mode behavior — rails
+  // (sidebar + right column) and the chat body. Jackson's policy
+  // (memory: feedback_transparent_default_aggressive.md): when
+  // transparent mode is on, rails get OUT OF THE WAY so the host
+  // terminal bg / wallpaper / opacity is fully visible there;
+  // only the chat body keeps a partial tint so messages stay legible.
+  // CHAT_BODY_ALPHA is the only knob to tune — bump up for a more
+  // opaque chat, down for more terminal showing through.
+  const CHAT_BODY_ALPHA = 178 // ~70% theme.background tint in transparent mode
   const railBg = createMemo(() => {
-    const [r, g, b] = theme.backgroundPanel.toInts()
-    return RGBA.fromInts(r, g, b, RAIL_ALPHA)
+    // Transparent mode → no paint. Opaque mode → panel tone, opaque.
+    if (themeCtx.transparentBackground) return undefined
+    return theme.backgroundPanel
+  })
+  const chatBodyBg = createMemo(() => {
+    // Opaque mode: inherit renderer's `theme.background` (no paint).
+    if (!themeCtx.transparentBackground) return undefined
+    // Transparent mode: theme.background at CHAT_BODY_ALPHA so the
+    // chat keeps ~70% tint and the wallpaper peeks through ~30%.
+    const [r, g, b] = theme.background.toInts()
+    return RGBA.fromInts(r, g, b, CHAT_BODY_ALPHA)
   })
 
   // Theme persistence — on mount, hydrate from KV (validates the
@@ -1534,11 +1542,15 @@ function Shell(props: AppDeps) {
         {/* Center: tabbed (chat | <file>...) — primary interaction surface.
             Width controlled by workspaceWidth; the right edge is a
             <ResizableEdge /> sibling rather than a `border={["right"]}`
-            on this box. */}
+            on this box. chatBodyBg paints a partial-alpha tint only
+            when transparent mode is on (otherwise undefined =
+            inherits the renderer's opaque background). Keeps chat
+            messages legible on top of an arbitrary terminal wallpaper. */}
         <box
           flexDirection="column"
           flexShrink={0}
           width={workspaceWidth()}
+          backgroundColor={chatBodyBg()}
           onMouseUp={() => setFocusedPane("workspace")}
         >
           <PaneHeader
