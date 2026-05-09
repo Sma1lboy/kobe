@@ -34,7 +34,9 @@ import {
   ConcurrencyCapError,
   IllegalTransitionError,
   Orchestrator,
+  TITLE_CHAR_CAP,
   TaskNotFoundError,
+  deriveTitleFromPrompt,
 } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
@@ -76,6 +78,35 @@ afterEach(() => {
   } catch {
     /* ignore */
   }
+})
+
+// ----------------------------------------------------------------------
+// deriveTitleFromPrompt — pure helper; lives next to createTask because
+// the new contract is "no explicit title — derive from prompt".
+// ----------------------------------------------------------------------
+
+describe("deriveTitleFromPrompt", () => {
+  test("returns empty string for empty / whitespace-only input", () => {
+    expect(deriveTitleFromPrompt("")).toBe("")
+    expect(deriveTitleFromPrompt("   ")).toBe("")
+    expect(deriveTitleFromPrompt("\n\n  \t")).toBe("")
+  })
+
+  test("collapses internal whitespace to single spaces and trims", () => {
+    expect(deriveTitleFromPrompt("  fix\n\nlogin   redirect  ")).toBe("fix login redirect")
+  })
+
+  test("returns the prompt verbatim when within the cap", () => {
+    const small = "x".repeat(TITLE_CHAR_CAP)
+    expect(deriveTitleFromPrompt(small)).toBe(small)
+  })
+
+  test("truncates and appends ellipsis when the collapsed prompt exceeds the cap", () => {
+    const big = "x".repeat(TITLE_CHAR_CAP + 10)
+    const out = deriveTitleFromPrompt(big)
+    expect(out.length).toBe(TITLE_CHAR_CAP + 1)
+    expect(out.endsWith("…")).toBe(true)
+  })
 })
 
 // ----------------------------------------------------------------------
@@ -122,6 +153,17 @@ describe("Orchestrator.createTask", () => {
     if (all.length > 0) {
       expect(all[0]?.status).toBe("canceled")
     }
+  })
+
+  test("derives title from prompt when no explicit title is provided", async () => {
+    const { orch } = await buildOrchestrator()
+    const task = await orch.createTask({ repo, prompt: "fix the login redirect bug" })
+    expect(task.title).toBe("fix the login redirect bug")
+  })
+
+  test("rejects when both title and prompt are empty (no label to derive)", async () => {
+    const { orch } = await buildOrchestrator()
+    await expect(orch.createTask({ repo, prompt: "" })).rejects.toThrow(/prompt/i)
   })
 
   test("tasksSignal updates after createTask", async () => {

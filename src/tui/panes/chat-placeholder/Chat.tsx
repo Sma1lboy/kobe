@@ -1,3 +1,4 @@
+// DEPRECATED — superseded by panes/chat. Kept per CLAUDE.md no-delete rule.
 /**
  * Minimal chat placeholder for Gate G2.
  *

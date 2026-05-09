@@ -62,7 +62,7 @@ import { KVProvider } from "./context/kv"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { useBindings } from "./lib/keymap"
-import { ChatPlaceholder } from "./panes/chat-placeholder/Chat"
+import { Chat } from "./panes/chat/Chat"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { type DialogContext, DialogProvider, useDialog } from "./ui/dialog"
 
@@ -142,20 +142,33 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
 /*  New-task dialog                                                       */
 /* --------------------------------------------------------------------- */
 
-type NewTaskInput = { repo: string; title: string }
+type NewTaskInput = { repo: string; prompt: string }
 
+/**
+ * The new-task dialog. Per the Wave 3 G architectural pivot, we no
+ * longer ask the user to type a separate title — Claude Code does
+ * not store one (verified against the stream-json schema), so anything
+ * we collect would be a parallel piece of metadata users would have
+ * to maintain. Instead we ask for two fields:
+ *
+ *   1. `prompt` — the user's first message to Claude. The orchestrator
+ *      derives a sidebar title from it via {@link deriveTitleFromPrompt}.
+ *   2. `repo path` — defaults to `process.cwd()`.
+ *
+ * `tab` switches focus; `enter` on the last field commits.
+ */
 function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: () => void; defaultRepo: string }) {
   const dialog = useDialog()
   const { theme } = useTheme()
-  const [field, setField] = createSignal<"title" | "repo">("title")
-  const [title, setTitle] = createSignal("")
+  const [field, setField] = createSignal<"prompt" | "repo">("prompt")
+  const [prompt, setPrompt] = createSignal("")
   const [repo, setRepo] = createSignal(props.defaultRepo)
 
   function commit() {
-    const t = title().trim()
+    const p = prompt().trim()
     const r = repo().trim()
-    if (!t || !r) return
-    props.onSubmit({ title: t, repo: r })
+    if (!p || !r) return
+    props.onSubmit({ prompt: p, repo: r })
     dialog.clear()
   }
 
@@ -163,7 +176,7 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
     bindings: [
       {
         key: "tab",
-        cmd: () => setField((f) => (f === "title" ? "repo" : "title")),
+        cmd: () => setField((f) => (f === "prompt" ? "repo" : "prompt")),
       },
     ],
   }))
@@ -179,14 +192,14 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
         </text>
       </box>
       <box gap={0}>
-        <text fg={field() === "title" ? theme.accent : theme.textMuted}>title</text>
+        <text fg={field() === "prompt" ? theme.accent : theme.textMuted}>first prompt</text>
         <input
-          value={title()}
-          placeholder="e.g. fix login redirect"
-          focused={field() === "title"}
-          onInput={(v: string) => setTitle(v)}
+          value={prompt()}
+          placeholder="e.g. fix the login redirect bug"
+          focused={field() === "prompt"}
+          onInput={(v: string) => setPrompt(v)}
           onSubmit={() => {
-            if (!title().trim()) return
+            if (!prompt().trim()) return
             if (!repo().trim()) {
               setField("repo")
               return
@@ -280,11 +293,28 @@ function Shell(props: AppDeps) {
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
   const [selectedId, setSelectedId] = createSignal<string | null>(null)
+  // Set by the new-task flow so the chat pane auto-submits the
+  // prompt the user typed in the dialog. The chat clears it on
+  // consumption to avoid re-submission on resubscribe.
+  const [pendingPrompt, setPendingPrompt] = createSignal<{ taskId: string; prompt: string } | null>(null)
 
   const activeTask = createMemo(() => {
     const id = selectedId()
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)
+  })
+
+  // Accessor for the chat pane that yields a prompt only when it
+  // matches the currently active task. This keeps the chat from
+  // auto-submitting a leftover prompt against the wrong task after
+  // a switch.
+  const taskIdAcc = createMemo(() => selectedId() ?? undefined)
+  const activeTitleAcc = createMemo(() => activeTask()?.title)
+  const pendingPromptForActive = createMemo(() => {
+    const pp = pendingPrompt()
+    if (!pp) return undefined
+    if (pp.taskId !== selectedId()) return undefined
+    return pp.prompt
   })
 
   // Auto-select the first task when one is created and nothing is
@@ -300,41 +330,62 @@ function Shell(props: AppDeps) {
     onShowHelp: () => HelpDialog.show(dialog),
   })
 
-  // `n` opens the new-task dialog. We bind at the shell level so it
-  // works regardless of which pane has focus. Critical: the binding
-  // is `enabled` only when no dialog is open AND no input field has
-  // claimed focus (the chat composer's input). Without the input
-  // guard, typing the letter "n" inside the chat composer would open
-  // a second new-task dialog. Without the dialog guard, typing "n"
-  // inside the new-task dialog's title field would do the same.
-  //
-  // We approximate "input focused" by "a task is selected" — the
-  // chat input only renders + auto-focuses once a task exists. For
-  // G2 that's adequate; Wave 3's real chat pane takes over focus
-  // management.
+  // Shared "open new-task dialog and create" handler. Bound to two
+  // keys with different `enabled` guards (see useBindings calls below).
+  async function openNewTaskFlow(): Promise<void> {
+    const result = await showNewTaskDialog(dialog, process.cwd())
+    if (!result) return
+    try {
+      // Per the Wave 3 G pivot: we pass the prompt through and let
+      // the orchestrator derive a sidebar title. The chat pane below
+      // picks up `pendingPrompt` for the freshly-selected task and
+      // submits it as the first turn — that way the new-task flow is
+      // one keypress + the prompt the user already typed in the dialog.
+      const created = await props.orchestrator.createTask({
+        repo: result.repo,
+        prompt: result.prompt,
+      })
+      // Stage the prompt so the Chat pane can submit it as soon as it
+      // subscribes to the new task. The pending-prompt signal must be
+      // set BEFORE we change the selected task so the same microtask
+      // flush carries both updates.
+      setPendingPrompt({ taskId: created.id, prompt: result.prompt })
+      setSelectedId(created.id)
+    } catch (err) {
+      // Surface failure as stderr; we don't have a global banner yet,
+      // and the chat pane may not be subscribed (no task selected).
+      // eslint-disable-next-line no-console
+      console.error("[kobe] createTask failed:", err)
+    }
+  }
+
+  // `n` (bare letter) opens the new-task dialog when no task is
+  // selected — once one is, the chat input claims focus and a bare
+  // letter would type into the composer. The corresponding `ctrl+n`
+  // binding below covers the "task already selected, want to add
+  // another" case without colliding with input typing.
   useBindings(() => ({
     enabled: dialog.stack.length === 0 && !selectedId(),
     bindings: [
       {
         key: "n",
-        cmd: async () => {
-          const result = await showNewTaskDialog(dialog, process.cwd())
-          if (!result) return
-          try {
-            const created = await props.orchestrator.createTask({
-              repo: result.repo,
-              title: result.title,
-              prompt: "", // first prompt comes via chat input
-            })
-            setSelectedId(created.id)
-          } catch (err) {
-            // Surface failure as a transient banner via `system` line in
-            // the chat — but the chat may not be subscribed yet (no
-            // task selected). For G2 we just print to stderr so the
-            // PTY captures it.
-            // eslint-disable-next-line no-console
-            console.error("[kobe] createTask failed:", err)
-          }
+        cmd: () => {
+          void openNewTaskFlow()
+        },
+      },
+    ],
+  }))
+
+  // `ctrl+n` is always available (when no dialog is open). The chat
+  // composer's input doesn't consume control chords, so this is the
+  // safe path for "I'm in a chat but want to spawn a sibling task."
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0,
+    bindings: [
+      {
+        key: "ctrl+n",
+        cmd: () => {
+          void openNewTaskFlow()
         },
       },
     ],
@@ -345,10 +396,12 @@ function Shell(props: AppDeps) {
       <TopBar activeTitle={activeTask()?.title} />
       <box flexDirection="row" flexGrow={1}>
         <Sidebar tasks={tasksAcc} onSelect={(id: string) => setSelectedId(id)} selectedId={selectedId} />
-        <ChatPlaceholder
+        <Chat
           orchestrator={props.orchestrator}
-          taskId={selectedId() ?? undefined}
-          title={activeTask()?.title}
+          taskId={taskIdAcc}
+          title={activeTitleAcc}
+          pendingPrompt={pendingPromptForActive}
+          onPendingPromptConsumed={() => setPendingPrompt(null)}
         />
       </box>
       <StatusBar active={activeTask()?.title} />

@@ -58,7 +58,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
-import type { AIEngine, EngineEvent, SessionHandle } from "../types/engine.ts"
+import type { AIEngine, EngineEvent, Message, SessionHandle } from "../types/engine.ts"
 import type { Task, TaskId, TaskStatus } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
@@ -104,14 +104,25 @@ export class TaskNotFoundError extends Error {
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
   readonly repo: string
-  readonly title: string
   /**
-   * The user's first prompt. Stored on the task only as part of the
-   * `runTask` call (the index doesn't persist prompts — Claude Code
-   * does, in its own JSONL). Required for symmetry with future API
-   * shapes; today it's not used until `runTask` actually fires.
+   * The user's first prompt. Required (we use the first ~40 chars as
+   * the auto-derived title — see {@link deriveTitleFromPrompt} — so
+   * a `null`/empty prompt gives us nothing to label the task with).
+   *
+   * Claude Code does NOT persist a separate "title" field on its
+   * sessions, so we cannot recover one from `engine.readHistory`. The
+   * heuristic here is the only label the user will see in the sidebar
+   * unless/until a Phase 2 polish stream adds an explicit rename
+   * affordance or a side-LLM auto-summary.
    */
   readonly prompt: string
+  /**
+   * Optional explicit title override. When omitted (the common path),
+   * we derive from `prompt` via {@link deriveTitleFromPrompt}. When
+   * provided, callers take responsibility for length/format — we still
+   * trim, but otherwise use it verbatim.
+   */
+  readonly title?: string
   /**
    * Branch override. When omitted, we generate
    * `kobe/<title-slug>-<ulid-suffix-4>` so two same-titled tasks
@@ -202,14 +213,22 @@ export class Orchestrator {
    */
   async createTask(input: CreateTaskInput): Promise<Task> {
     if (!input.repo) throw new Error("createTask: repo is required")
-    if (!input.title) throw new Error("createTask: title is required")
+    // Title is derived from prompt by default — Claude Code doesn't
+    // expose a session title, so we don't ask the user to invent one.
+    // Either an explicit `title` override OR a non-empty `prompt`
+    // must be present so the sidebar has something to render.
+    const explicitTitle = input.title?.trim() ?? ""
+    const derivedTitle = explicitTitle || deriveTitleFromPrompt(input.prompt)
+    if (!derivedTitle) {
+      throw new Error("createTask: prompt (or title override) is required to derive a label")
+    }
 
     // Persist with a placeholder branch so we have an id to compute
     // paths from. We then create the worktree, then patch the branch
     // back onto the record. Two-phase to keep a single ulid id flowing
     // through both the worktree path and the persisted record.
     const placeholder = await this.store.create({
-      title: input.title,
+      title: derivedTitle,
       repo: input.repo,
       branch: "", // patched below
       worktreePath: "", // patched below
@@ -217,7 +236,7 @@ export class Orchestrator {
       status: "backlog",
     })
 
-    const branch = input.branch ?? autoBranch(input.title, placeholder.id)
+    const branch = input.branch ?? autoBranch(derivedTitle, placeholder.id)
 
     let info: { path: string; branch: string }
     try {
@@ -356,6 +375,25 @@ export class Orchestrator {
   }
 
   /**
+   * Read persisted message history for a session. Thin pass-through to
+   * `engine.readHistory(sessionId)` — exposed here (instead of leaking
+   * the engine reference) so the chat pane has a single orchestrator
+   * surface to consume. Wave 3 G's chat uses this on task switch.
+   *
+   * Returns `[]` if the engine has no record (e.g. brand-new session
+   * not yet flushed to disk). Never throws — engine errors collapse
+   * to an empty array, since a missing-history fallback is always
+   * "render nothing for past."
+   */
+  async readHistory(sessionId: string): Promise<Message[]> {
+    try {
+      return await this.engine.readHistory(sessionId)
+    } catch {
+      return []
+    }
+  }
+
+  /**
    * Subscribe to engine events for one task. Returns an unsubscribe
    * function. Multiple subscribers are supported; events are
    * broadcast in registration order. Subscribers receive ALL events
@@ -443,6 +481,31 @@ export class Orchestrator {
       // the `update` above. No explicit refresh needed here.
     }
   }
+}
+
+/** Title cap for {@link deriveTitleFromPrompt}. Short enough to fit in a 42-char sidebar with status badge prefix. */
+export const TITLE_CHAR_CAP = 40
+
+/**
+ * Reduce an arbitrary user prompt to a one-line sidebar label.
+ *
+ * Algorithm:
+ *   1. Replace every run of whitespace (incl. newlines) with one space.
+ *   2. Trim.
+ *   3. If empty, return "" (caller decides whether to throw).
+ *   4. If the result fits in {@link TITLE_CHAR_CAP}, return it.
+ *   5. Otherwise truncate at the cap and append "…".
+ *
+ * Exported so the new-task dialog can preview the derived title before
+ * the user submits, and so unit tests can hit it directly without
+ * standing up a full orchestrator.
+ */
+export function deriveTitleFromPrompt(prompt: string): string {
+  if (typeof prompt !== "string") return ""
+  const collapsed = prompt.replace(/\s+/g, " ").trim()
+  if (collapsed.length === 0) return ""
+  if (collapsed.length <= TITLE_CHAR_CAP) return collapsed
+  return `${collapsed.slice(0, TITLE_CHAR_CAP)}…`
 }
 
 /**

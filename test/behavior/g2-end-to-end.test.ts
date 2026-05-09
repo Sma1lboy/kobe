@@ -173,12 +173,24 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   // kobe. Wait for it before scripting.
   await waitForFakeServer(port)
 
+  // ---- script the fake engine BEFORE submitting ------------------
+  // The first runTask spawn allocates `fake-1`. Pre-script events
+  // BEFORE we send the prompt so they're queued when the pump
+  // attaches. Wave 3 G changed the new-task flow to auto-submit
+  // the dialog's first prompt — so the engine starts the moment
+  // the dialog commits, and we need scripted events ready by then.
+  const helloEvents: EngineEvent[] = [{ type: "assistant.delta", text: "hello from kobe" }, { type: "done" }]
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events: helloEvents })
+
   // ---- open new-task dialog and fill it in ----------------------
+  // Wave 3 G dropped the explicit `title` field. The dialog now
+  // collects (prompt, repo). The first field is `first prompt`.
   await kobe.sendKeys("n")
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
 
-  // Field 1 (title) is focused on dialog open. Type the title.
-  await kobe.typeText("demo task")
+  // First field (prompt) is focused on dialog open. Type the prompt
+  // — the orchestrator will derive a sidebar title from it.
+  await kobe.typeText("demo task ping")
 
   // Tab to switch to repo field. We override the default repo
   // (process.cwd() = the kobe checkout) with our fixture repo path.
@@ -193,33 +205,23 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   }
   await kobe.typeText(repo)
 
-  // Submit (Enter on the repo field commits).
+  // Submit (Enter on the repo field commits the dialog AND auto-
+  // sends the prompt to the freshly-created task — Wave 3 G
+  // pendingPrompt flow).
   await kobe.sendKeys("\r")
 
   // ---- sidebar updates with the new task ------------------------
-  const afterCreate = await kobe.waitFor((s) => s.includes("demo task"), 10_000)
-  expect(afterCreate).toContain("demo task")
-
-  // ---- script the fake engine -----------------------------------
-  // The first runTask spawn allocates `fake-1`. Pre-script events
-  // BEFORE we send the prompt so they're queued when the pump
-  // attaches.
-  const helloEvents: EngineEvent[] = [{ type: "assistant.delta", text: "hello from kobe" }, { type: "done" }]
-  await scriptEngine(port, "/script", { sessionId: "fake-1", events: helloEvents })
-
-  // ---- send a chat prompt ---------------------------------------
-  // The chat pane's input is auto-focused once a task is active
-  // (which the new-task flow guarantees via auto-select). Type
-  // and submit.
-  await kobe.typeText("ping")
-  await kobe.sendKeys("\r")
+  // The derived title is the prompt verbatim (≤40 chars).
+  const afterCreate = await kobe.waitFor((s) => s.includes("demo task ping"), 10_000)
+  expect(afterCreate).toContain("demo task ping")
 
   // ---- assistant delta visible ----------------------------------
+  // The prompt was auto-submitted, so the engine fires immediately.
   const finalScreen = await kobe.waitFor((s) => s.includes("hello from kobe"), 15_000)
   expect(finalScreen).toContain("hello from kobe")
 
   // Also: the user's own prompt and the assistant header are visible.
-  expect(finalScreen).toContain("ping")
+  expect(finalScreen).toContain("demo task ping")
   expect(finalScreen).toContain("assistant")
 
   // ---- clean exit ------------------------------------------------
