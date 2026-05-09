@@ -654,6 +654,82 @@ describe("detectUserInputFromEngineEvent", () => {
   test("non-object input returns null", () => {
     expect(detectUserInputFromEngineEvent({ type: "tool.start", name: "ExitPlanMode", input: "oops" })).toBeNull()
   })
+
+  test("AskUserQuestion → typed payload with normalized question shape", () => {
+    const out = detectUserInputFromEngineEvent({
+      type: "tool.start",
+      name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            question: "Which library?",
+            header: "Library",
+            multiSelect: false,
+            options: [
+              { label: "date-fns", description: "Functional, tree-shakable" },
+              { label: "luxon", description: "Class-based, immutable" },
+            ],
+          },
+        ],
+      },
+    })
+    expect(out).toEqual({
+      kind: "ask_question",
+      questions: [
+        {
+          question: "Which library?",
+          header: "Library",
+          multiSelect: false,
+          options: [
+            { label: "date-fns", description: "Functional, tree-shakable" },
+            { label: "luxon", description: "Class-based, immutable" },
+          ],
+        },
+      ],
+    })
+  })
+
+  test("AskUserQuestion defaults missing fields (multiSelect → false, header → '', desc → '')", () => {
+    const out = detectUserInputFromEngineEvent({
+      type: "tool.start",
+      name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            question: "?",
+            options: [{ label: "A" }, { label: "B" }],
+          },
+        ],
+      },
+    })
+    expect(out).toEqual({
+      kind: "ask_question",
+      questions: [
+        {
+          question: "?",
+          header: "",
+          multiSelect: false,
+          options: [
+            { label: "A", description: "" },
+            { label: "B", description: "" },
+          ],
+        },
+      ],
+    })
+  })
+
+  test("AskUserQuestion with no usable question returns null", () => {
+    expect(
+      detectUserInputFromEngineEvent({
+        type: "tool.start",
+        name: "AskUserQuestion",
+        input: { questions: [{ question: "" }, { options: [] }] },
+      }),
+    ).toBeNull()
+    expect(
+      detectUserInputFromEngineEvent({ type: "tool.start", name: "AskUserQuestion", input: { questions: [] } }),
+    ).toBeNull()
+  })
 })
 
 describe("renderUserInputResponsePrompt", () => {
@@ -672,6 +748,59 @@ describe("renderUserInputResponsePrompt", () => {
       { kind: "approve_plan", approve: false },
     )
     expect(out).toContain("rejected")
+  })
+
+  test("ask_question → bullet list of questions with answers, ends with 'Please continue.'", () => {
+    const out = renderUserInputResponsePrompt(
+      {
+        kind: "ask_question",
+        questions: [
+          {
+            question: "Which library?",
+            header: "Lib",
+            multiSelect: false,
+            options: [
+              { label: "date-fns", description: "" },
+              { label: "luxon", description: "" },
+            ],
+          },
+          {
+            question: "Which features?",
+            header: "Feat",
+            multiSelect: true,
+            options: [
+              { label: "TZ", description: "" },
+              { label: "i18n", description: "" },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "ask_question",
+        answers: { "Which library?": "date-fns", "Which features?": "TZ, i18n" },
+      },
+    )
+    expect(out).toContain("Which library? → date-fns")
+    expect(out).toContain("Which features? → TZ, i18n")
+    expect(out).toMatch(/Please continue\.$/)
+  })
+
+  test("ask_question with missing answer falls back to '(no answer)'", () => {
+    const out = renderUserInputResponsePrompt(
+      {
+        kind: "ask_question",
+        questions: [
+          {
+            question: "Skipped?",
+            header: "X",
+            multiSelect: false,
+            options: [{ label: "A", description: "" }],
+          },
+        ],
+      },
+      { kind: "ask_question", answers: {} },
+    )
+    expect(out).toContain("Skipped? → (no answer)")
   })
 })
 
@@ -721,5 +850,50 @@ describe("Orchestrator.respondToInput", () => {
 
     await orch.respondToInput(t.id, "never-saw-this", { kind: "approve_plan", approve: true })
     expect(events).toEqual([])
+  })
+
+  test("AskUserQuestion end-to-end: tool.start → request → respond → resolved + user.inject", async () => {
+    const fake = new FakeAIEngine()
+    const { orch } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "q-flow", prompt: "" })
+
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev))
+
+    fake.script("fake-1", [
+      {
+        type: "tool.start",
+        name: "AskUserQuestion",
+        input: {
+          questions: [
+            {
+              question: "Which library?",
+              header: "Lib",
+              options: [{ label: "date-fns" }, { label: "luxon" }],
+            },
+          ],
+        },
+      },
+      { type: "done" },
+    ])
+    await orch.runTask(t.id, "go")
+    await orch._waitForPumpsIdle()
+
+    const req = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request")
+    expect(req).toBeDefined()
+    expect(req?.payload.kind).toBe("ask_question")
+
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.respondToInput(t.id, req?.requestId ?? "missing", {
+      kind: "ask_question",
+      answers: { "Which library?": "date-fns" },
+    })
+    await orch._waitForPumpsIdle()
+
+    const resolved = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved")
+    expect(resolved?.response).toEqual({ kind: "ask_question", answers: { "Which library?": "date-fns" } })
+
+    const inject = events.find((e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject")
+    expect(inject?.text).toContain("Which library? → date-fns")
   })
 })

@@ -60,9 +60,12 @@
 import { type Accessor, createSignal } from "solid-js"
 import type {
   AIEngine,
+  AskQuestionEntry,
+  AskQuestionPayload,
   EngineEvent,
   Message,
   OrchestratorEvent,
+  QuestionOption,
   SessionHandle,
   UserInputPayload,
   UserInputResponse,
@@ -815,18 +818,59 @@ export class Orchestrator {
  */
 export function detectUserInputFromEngineEvent(ev: EngineEvent): UserInputPayload | null {
   if (ev.type !== "tool.start") return null
-  // Both v1 and v2 of the tool ship under the same name (see
+  // Both v1 and v2 of ExitPlanMode ship under the same name (see
   // refs/claude-code/src/tools/ExitPlanModeTool/constants.ts).
-  if (ev.name !== "ExitPlanMode" && ev.name !== "ExitPlanModeV2Tool") return null
-  const input = ev.input
+  if (ev.name === "ExitPlanMode" || ev.name === "ExitPlanModeV2Tool") {
+    const input = ev.input
+    if (!input || typeof input !== "object") return null
+    const obj = input as Record<string, unknown>
+    const plan = typeof obj.plan === "string" ? obj.plan : ""
+    const filePath = typeof obj.filePath === "string" ? obj.filePath : null
+    // We always emit even when the plan body is empty — an empty plan
+    // is a model bug worth surfacing in the UI ("Approve this empty plan?")
+    // rather than silently swallowing.
+    return { kind: "approve_plan", plan, filePath }
+  }
+  if (ev.name === "AskUserQuestion") {
+    return parseAskUserQuestionInput(ev.input)
+  }
+  return null
+}
+
+/**
+ * Pull a typed AskQuestion payload out of the raw tool input. Defensive:
+ * the shape is documented (refs/claude-code/src/tools/AskUserQuestionTool/
+ * AskUserQuestionTool.tsx schema) but we tolerate missing optional
+ * fields rather than dropping the whole request. Returns null only
+ * when the input has no usable question with at least one option.
+ */
+function parseAskUserQuestionInput(input: unknown): AskQuestionPayload | null {
   if (!input || typeof input !== "object") return null
   const obj = input as Record<string, unknown>
-  const plan = typeof obj.plan === "string" ? obj.plan : ""
-  const filePath = typeof obj.filePath === "string" ? obj.filePath : null
-  // We always emit even when the plan body is empty — an empty plan
-  // is a model bug worth surfacing in the UI ("Approve this empty plan?")
-  // rather than silently swallowing.
-  return { kind: "approve_plan", plan, filePath }
+  if (!Array.isArray(obj.questions)) return null
+  const out: AskQuestionEntry[] = []
+  for (const q of obj.questions) {
+    if (!q || typeof q !== "object") continue
+    const qo = q as Record<string, unknown>
+    const question = typeof qo.question === "string" ? qo.question : ""
+    if (!question) continue
+    const header = typeof qo.header === "string" ? qo.header : ""
+    const multiSelect = qo.multiSelect === true
+    const opts = Array.isArray(qo.options) ? qo.options : []
+    const options: QuestionOption[] = []
+    for (const o of opts) {
+      if (!o || typeof o !== "object") continue
+      const oo = o as Record<string, unknown>
+      const label = typeof oo.label === "string" ? oo.label : ""
+      if (!label) continue
+      const description = typeof oo.description === "string" ? oo.description : ""
+      options.push({ label, description })
+    }
+    if (options.length === 0) continue
+    out.push({ question, header, multiSelect, options })
+  }
+  if (out.length === 0) return null
+  return { kind: "ask_question", questions: out }
 }
 
 /**
@@ -844,6 +888,20 @@ export function renderUserInputResponsePrompt(req: UserInputPayload, response: U
       return "Plan approved. Please proceed with the implementation as outlined."
     }
     return "Plan rejected. Please reconsider the approach and present a revised plan."
+  }
+  if (req.kind === "ask_question" && response.kind === "ask_question") {
+    // One bullet per asked question with the user's answer. We
+    // iterate `req.questions` (not `response.answers`) so unanswered
+    // questions surface as "(no answer)" rather than disappearing —
+    // makes the model's continuation predictable when the user
+    // skipped one (e.g. multi-select with zero picks).
+    const lines: string[] = ["You asked:"]
+    for (const q of req.questions) {
+      const ans = response.answers[q.question]
+      lines.push(`- ${q.question} → ${ans && ans.length > 0 ? ans : "(no answer)"}`)
+    }
+    lines.push("", "Please continue.")
+    return lines.join("\n")
   }
   return ""
 }

@@ -144,11 +144,45 @@ export type ApprovePlanPayload = {
 }
 
 /**
- * Future: AskUserQuestion lands here as `{ kind: "ask_question"; questions: [...] }`.
- * Single discriminated union keeps the chat renderer's switch exhaustive
- * and the orchestrator's request map type-safe.
+ * One option a user can pick for an `AskUserQuestion`. Mirrors the
+ * upstream schema (refs/claude-code/src/tools/AskUserQuestionTool/
+ * AskUserQuestionTool.tsx#questionOptionSchema). `description` is
+ * required upstream but we tolerate empty strings for resilience.
  */
-export type UserInputPayload = ApprovePlanPayload
+export type QuestionOption = {
+  readonly label: string
+  readonly description: string
+}
+
+/**
+ * One question in an `AskUserQuestion` call. The tool can ask 1-4
+ * questions at once; each is rendered as its own card with its own
+ * single/multi-select widget.
+ */
+export type AskQuestionEntry = {
+  readonly question: string
+  /** Short chip label (≤ ~12 chars). */
+  readonly header: string
+  /** When true the user can pick any subset; false = exactly one. */
+  readonly multiSelect: boolean
+  readonly options: ReadonlyArray<QuestionOption>
+}
+
+/**
+ * Payload for an `AskUserQuestion` request. The model is asking for
+ * a multiple-choice answer and is paused until the user submits.
+ */
+export type AskQuestionPayload = {
+  readonly kind: "ask_question"
+  readonly questions: ReadonlyArray<AskQuestionEntry>
+}
+
+/**
+ * Tools that pause the session for user input. Each kind has a
+ * matching response type below; the discriminated unions stay in
+ * lockstep so the orchestrator's response renderer is exhaustive.
+ */
+export type UserInputPayload = ApprovePlanPayload | AskQuestionPayload
 
 /**
  * Synthetic event for "the model is paused, the user has to choose
@@ -183,7 +217,19 @@ export type ApprovePlanResponse = {
   readonly approve: boolean
 }
 
-export type UserInputResponse = ApprovePlanResponse
+/**
+ * Answer to an `AskUserQuestion`. The map is `questionText →
+ * answerString` where `answerString` is the chosen option's `label`
+ * (or comma-separated labels for multi-select). Mirrors the upstream
+ * tool's output schema so the synthetic prompt we round-trip back
+ * into the model reads naturally.
+ */
+export type AskQuestionResponse = {
+  readonly kind: "ask_question"
+  readonly answers: Readonly<Record<string, string>>
+}
+
+export type UserInputResponse = ApprovePlanResponse | AskQuestionResponse
 
 /**
  * Synthetic "the user already answered this" event. The orchestrator

@@ -519,6 +519,15 @@ export function Chat(props: ChatProps) {
                     setState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
                   })
               }}
+              onAnswer={(requestId, answers) => {
+                const taskId = props.taskId()
+                if (!taskId) return
+                props.orchestrator
+                  .respondToInput(taskId, requestId, { kind: "ask_question", answers })
+                  .catch((err: unknown) => {
+                    setState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+                  })
+              }}
             />
           </box>
         </scrollbox>

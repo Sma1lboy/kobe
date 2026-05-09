@@ -525,3 +525,101 @@ describe("applyEvent — user_input request/resolved (ExitPlanMode)", () => {
     expect(s.messages[s.messages.length - 1]).toMatchObject({ status: "approved" })
   })
 })
+
+describe("applyEvent — user_input request/resolved (AskUserQuestion)", () => {
+  test("user_input.request appends a pending question row, flips streaming off", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "q-1",
+        payload: {
+          kind: "ask_question",
+          questions: [
+            {
+              question: "Pick one?",
+              header: "Choice",
+              multiSelect: false,
+              options: [
+                { label: "A", description: "first" },
+                { label: "B", description: "second" },
+              ],
+            },
+          ],
+        },
+      },
+      FIXED_TS,
+    )
+    const last = s.messages[s.messages.length - 1]
+    expect(last).toMatchObject({
+      kind: "question",
+      requestId: "q-1",
+      answers: null,
+    })
+    expect((last as unknown as { questions: unknown[] }).questions).toHaveLength(1)
+    expect(s.isStreaming).toBe(false)
+  })
+
+  test("user_input.resolved patches the matching pending question row with answers", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "q-1",
+        payload: {
+          kind: "ask_question",
+          questions: [
+            {
+              question: "Pick one?",
+              header: "",
+              multiSelect: false,
+              options: [{ label: "A", description: "" }],
+            },
+          ],
+        },
+      },
+      FIXED_TS,
+    )
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "q-1", response: { kind: "ask_question", answers: { "Pick one?": "A" } } },
+      FIXED_TS,
+    )
+    const last = s.messages[s.messages.length - 1]
+    expect(last).toMatchObject({
+      kind: "question",
+      answers: { "Pick one?": "A" },
+    })
+  })
+
+  test("kind mismatch (approve_plan response on question row) leaves row pending", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "q-1",
+        payload: {
+          kind: "ask_question",
+          questions: [
+            {
+              question: "?",
+              header: "",
+              multiSelect: false,
+              options: [{ label: "A", description: "" }],
+            },
+          ],
+        },
+      },
+      FIXED_TS,
+    )
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "q-1", response: { kind: "approve_plan", approve: true } },
+      FIXED_TS,
+    )
+    expect(s.messages[s.messages.length - 1]).toMatchObject({ kind: "question", answers: null })
+  })
+})

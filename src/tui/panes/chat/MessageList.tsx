@@ -45,7 +45,7 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, Show } from "solid-js"
+import { For, Show, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import {
   COMMAND_ARGS_TAG,
@@ -125,6 +125,13 @@ export interface MessageListProps {
    * exercise the approval flow can omit it.
    */
   onApprove?: (requestId: string, approve: boolean) => void
+  /**
+   * Submit handler for the multi-choice form rendered on `question`
+   * rows. `answers` is `questionText → "label"` (or comma-separated
+   * labels for multi-select). The chat shell wraps
+   * `Orchestrator.respondToInput({kind: "ask_question", answers})`.
+   */
+  onAnswer?: (requestId: string, answers: Record<string, string>) => void
 }
 
 /**
@@ -481,6 +488,183 @@ function ApprovalRow(props: {
 }
 
 /**
+ * Question row — kobe's host-side rendering of an `AskUserQuestion`
+ * request. Per question we draw a card with header chip + question
+ * text + clickable options (radio for single-select, checkbox for
+ * multi-select). A single Submit at the bottom collects all answers
+ * and routes them up via `onAnswer`. Once submitted, the row flips
+ * to a static "answered" state showing each question's chosen value.
+ *
+ * Wiring choices:
+ *   - Selection state lives in component-local signals (one Set per
+ *     question). The store only sees the final answers map, after
+ *     Submit.
+ *   - Submit is enabled only when every question has ≥1 selection.
+ *     Multi-select with zero picks would otherwise leave the model
+ *     waiting on an effectively-empty answer.
+ *   - Multi-select answer encoding follows upstream: comma-separated
+ *     option labels (`"Option A, Option C"`). Single-select is just
+ *     the label.
+ */
+function QuestionRow(props: {
+  row: Extract<ChatRow, { kind: "question" }>
+  onAnswer: (answers: Record<string, string>) => void
+}) {
+  const { theme } = useTheme()
+  const r = () => props.row
+  const isAnswered = () => r().answers !== null
+
+  // Per-question selection state. Keyed by question text so re-renders
+  // (e.g. when answers fill in) don't clobber it. Sets are mutated in
+  // place but we always replace the wrapping signal value to trigger
+  // Solid reactivity.
+  const [selections, setSelections] = createSignal<Record<string, ReadonlySet<string>>>({})
+
+  function pickedFor(questionText: string): ReadonlySet<string> {
+    return selections()[questionText] ?? new Set<string>()
+  }
+
+  function toggle(questionText: string, multi: boolean, label: string): void {
+    setSelections((prev) => {
+      const cur = new Set(prev[questionText] ?? [])
+      if (multi) {
+        if (cur.has(label)) cur.delete(label)
+        else cur.add(label)
+      } else {
+        // Single-select: clicking the already-selected option clears
+        // it (lets the user "unpick"). Different label replaces.
+        if (cur.has(label) && cur.size === 1) {
+          cur.clear()
+        } else {
+          cur.clear()
+          cur.add(label)
+        }
+      }
+      return { ...prev, [questionText]: cur }
+    })
+  }
+
+  const allAnswered = () => {
+    for (const q of r().questions) {
+      if (pickedFor(q.question).size === 0) return false
+    }
+    return true
+  }
+
+  function submit(): void {
+    if (!allAnswered() || isAnswered()) return
+    const answers: Record<string, string> = {}
+    for (const q of r().questions) {
+      const picked = Array.from(pickedFor(q.question))
+      // Preserve option order for stable comma-joining (Set iteration
+      // order is insertion order in JS, but we re-order to match the
+      // original options list so the model sees a deterministic string).
+      const ordered = q.options.map((o) => o.label).filter((l) => picked.includes(l))
+      answers[q.question] = ordered.join(", ")
+    }
+    props.onAnswer(answers)
+  }
+
+  return (
+    <box paddingTop={1} flexDirection="column" gap={0}>
+      {/* Banner */}
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+          ◆
+        </text>
+        <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+          {isAnswered() ? "Answered" : "Awaiting your answer"}
+        </text>
+      </box>
+
+      {/* One card per question. */}
+      <For each={r().questions}>
+        {(q) => {
+          const finalAnswer = () => r().answers?.[q.question] ?? null
+          const picked = () => pickedFor(q.question)
+          return (
+            <box paddingLeft={2} paddingTop={1} flexDirection="column" gap={0}>
+              <box flexDirection="row" gap={1}>
+                <Show when={q.header}>
+                  <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                    [{q.header}]
+                  </text>
+                </Show>
+                <text fg={theme.text}>{q.question}</text>
+                <Show when={q.multiSelect}>
+                  <text fg={theme.textMuted}>(pick any)</text>
+                </Show>
+              </box>
+              {/* Answered state: render the chosen value(s) as a single line. */}
+              <Show when={isAnswered()}>
+                <box paddingLeft={2}>
+                  <text fg={theme.success}>
+                    {RESULT_PREFIX}
+                    {finalAnswer() && finalAnswer()!.length > 0 ? finalAnswer() : "(no answer)"}
+                  </text>
+                </box>
+              </Show>
+              {/* Pending state: list options, click to toggle. */}
+              <Show when={!isAnswered()}>
+                <box paddingLeft={2} flexDirection="column">
+                  <For each={q.options}>
+                    {(opt) => {
+                      const isPicked = () => picked().has(opt.label)
+                      const glyph = () =>
+                        q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )"
+                      return (
+                        <box
+                          flexDirection="row"
+                          gap={1}
+                          onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}
+                        >
+                          <text fg={isPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                            {glyph()}
+                          </text>
+                          <box flexGrow={1} flexDirection="column">
+                            <text fg={theme.text}>{opt.label}</text>
+                            <Show when={opt.description}>
+                              <text fg={theme.textMuted}>{opt.description}</text>
+                            </Show>
+                          </box>
+                        </box>
+                      )
+                    }}
+                  </For>
+                </box>
+              </Show>
+            </box>
+          )
+        }}
+      </For>
+
+      {/* Submit (pending) or static chip (answered). */}
+      <box paddingLeft={2} paddingTop={1} flexDirection="row" gap={2}>
+        <Show
+          when={!isAnswered()}
+          fallback={
+            <text fg={theme.success} attributes={TextAttributes.BOLD}>
+              [submitted]
+            </text>
+          }
+        >
+          <text
+            fg={allAnswered() ? theme.success : theme.textMuted}
+            attributes={TextAttributes.BOLD}
+            onMouseUp={() => submit()}
+          >
+            [ Submit ]
+          </text>
+          <Show when={!allAnswered()}>
+            <text fg={theme.textMuted}>(answer all questions to enable)</text>
+          </Show>
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+/**
  * Public entry. Renders the full chronological list + the trailing
  * thinking spinner + an optional error banner. The shell wraps this in
  * a scrollbox so all the layout overflow is handled there.
@@ -515,6 +699,14 @@ export function MessageList(props: MessageListProps) {
               <ApprovalRow
                 row={row}
                 onApprove={(approve) => props.onApprove?.(row.requestId, approve)}
+              />
+            )
+          }
+          if (row.kind === "question") {
+            return (
+              <QuestionRow
+                row={row}
+                onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)}
               />
             )
           }

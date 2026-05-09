@@ -102,11 +102,13 @@ export type ChatRow =
   | { readonly kind: "system"; readonly text: string; readonly ts: string }
   /**
    * "The model is paused, the user has to choose something." Synthesized
-   * by the orchestrator from a known user-input tool (currently only
-   * `ExitPlanMode`). The renderer shows a per-kind interactive widget;
-   * the user's click flows back through `Orchestrator.respondToInput`
-   * which flips this row's status (see the `user_input.resolved`
-   * handler in {@link applyEvent}) and resumes the session.
+   * by the orchestrator from a known user-input tool. Two flavours so
+   * far — `ExitPlanMode` (binary approve/reject of a plan) and
+   * `AskUserQuestion` (1-4 multiple-choice questions). The renderer
+   * shows a per-kind interactive widget; the user's submission flows
+   * back through `Orchestrator.respondToInput` which flips this row's
+   * status (see the `user_input.resolved` handler in {@link applyEvent})
+   * and resumes the session with a synthesized prompt.
    */
   | {
       readonly kind: "approval"
@@ -115,6 +117,19 @@ export type ChatRow =
       readonly plan: string
       readonly filePath: string | null
       readonly status: "pending" | "approved" | "rejected"
+      readonly ts: string
+    }
+  | {
+      readonly kind: "question"
+      readonly requestId: string
+      readonly questions: ReadonlyArray<{
+        readonly question: string
+        readonly header: string
+        readonly multiSelect: boolean
+        readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>
+      }>
+      /** `null` while pending; populated with `questionText → answer` once the user submits. */
+      readonly answers: Readonly<Record<string, string>> | null
       readonly ts: string
     }
 
@@ -265,43 +280,64 @@ export function applyEvent(
         messages: [...state.messages, { kind: "user", text: ev.text, ts: nowIso }],
       }
     case "user_input.request": {
-      // Currently the only kind. Once AskUserQuestion lands, branch on
-      // ev.payload.kind here; the ChatRow union grows accordingly.
-      if (ev.payload.kind !== "approve_plan") return state
-      return {
-        ...state,
-        // Subprocess has exited (the tool runs to completion in -p mode
-        // and just leaves a marker), so streaming flips off — the
-        // approval row IS the new "active" UI affordance, not a
-        // spinner.
-        isStreaming: false,
-        messages: [
-          ...state.messages,
-          {
-            kind: "approval",
-            requestId: ev.requestId,
-            tool: "ExitPlanMode",
-            plan: ev.payload.plan,
-            filePath: ev.payload.filePath,
-            status: "pending",
-            ts: nowIso,
-          },
-        ],
+      // Subprocess has exited (the tool runs to completion in -p mode
+      // and just leaves a marker), so streaming flips off — the
+      // approval / question row IS the new "active" UI affordance,
+      // not a spinner. Each kind appends a different ChatRow shape.
+      if (ev.payload.kind === "approve_plan") {
+        return {
+          ...state,
+          isStreaming: false,
+          messages: [
+            ...state.messages,
+            {
+              kind: "approval",
+              requestId: ev.requestId,
+              tool: "ExitPlanMode",
+              plan: ev.payload.plan,
+              filePath: ev.payload.filePath,
+              status: "pending",
+              ts: nowIso,
+            },
+          ],
+        }
       }
+      if (ev.payload.kind === "ask_question") {
+        return {
+          ...state,
+          isStreaming: false,
+          messages: [
+            ...state.messages,
+            {
+              kind: "question",
+              requestId: ev.requestId,
+              questions: ev.payload.questions,
+              answers: null,
+              ts: nowIso,
+            },
+          ],
+        }
+      }
+      return state
     }
     case "user_input.resolved": {
-      // Find the matching approval row and patch its status. We don't
-      // remove the row — keep the plan visible so the user can scroll
-      // back and remember what was approved.
-      const idx = findLastIndex(
-        state.messages,
-        (m) => m.kind === "approval" && m.requestId === ev.requestId && m.status === "pending",
-      )
+      // Find the matching pending row and patch its terminal state.
+      // We don't remove the row — keep the question/plan visible so
+      // the user can scroll back and remember what they answered.
+      const idx = findLastIndex(state.messages, (m) => {
+        if (m.kind === "approval") return m.requestId === ev.requestId && m.status === "pending"
+        if (m.kind === "question") return m.requestId === ev.requestId && m.answers === null
+        return false
+      })
       if (idx < 0) return state
-      const target = state.messages[idx] as Extract<ChatRow, { kind: "approval" }>
-      const newStatus =
-        ev.response.kind === "approve_plan" ? (ev.response.approve ? "approved" : "rejected") : "rejected"
-      const patched: ChatRow = { ...target, status: newStatus }
+      const target = state.messages[idx]
+      let patched: ChatRow | null = null
+      if (target?.kind === "approval" && ev.response.kind === "approve_plan") {
+        patched = { ...target, status: ev.response.approve ? "approved" : "rejected" }
+      } else if (target?.kind === "question" && ev.response.kind === "ask_question") {
+        patched = { ...target, answers: ev.response.answers }
+      }
+      if (!patched) return state
       const next = state.messages.slice()
       next[idx] = patched
       return { ...state, messages: next }
