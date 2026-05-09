@@ -432,3 +432,96 @@ describe("cleanChatText / noise filtering", () => {
     expect(s.messages[0]).toMatchObject({ kind: "user", text: "my real prompt" })
   })
 })
+
+describe("applyEvent — user_input request/resolved (ExitPlanMode)", () => {
+  test("user_input.request appends a pending approval row, flips streaming off", () => {
+    let s = createInitialState()
+    s = pushUser(s, "do thing", FIXED_TS) // streaming = true
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "req-1",
+        payload: { kind: "approve_plan", plan: "## Step 1", filePath: "/tmp/p.md" },
+      },
+      FIXED_TS,
+    )
+    const last = s.messages[s.messages.length - 1]
+    expect(last).toMatchObject({
+      kind: "approval",
+      requestId: "req-1",
+      tool: "ExitPlanMode",
+      plan: "## Step 1",
+      filePath: "/tmp/p.md",
+      status: "pending",
+    })
+    expect(s.isStreaming).toBe(false)
+  })
+
+  test("user_input.resolved patches the matching pending approval row to approved", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "req-1",
+        payload: { kind: "approve_plan", plan: "p", filePath: null },
+      },
+      FIXED_TS,
+    )
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "req-1", response: { kind: "approve_plan", approve: true } },
+      FIXED_TS,
+    )
+    const last = s.messages[s.messages.length - 1]
+    expect(last).toMatchObject({ kind: "approval", status: "approved" })
+  })
+
+  test("user_input.resolved marks rejected when approve=false", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "req-1",
+        payload: { kind: "approve_plan", plan: "p", filePath: null },
+      },
+      FIXED_TS,
+    )
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "req-1", response: { kind: "approve_plan", approve: false } },
+      FIXED_TS,
+    )
+    expect(s.messages[s.messages.length - 1]).toMatchObject({ kind: "approval", status: "rejected" })
+  })
+
+  test("user_input.resolved with no matching pending row is a no-op (re-click race)", () => {
+    let s = createInitialState()
+    s = applyEvent(
+      s,
+      {
+        type: "user_input.request",
+        requestId: "req-1",
+        payload: { kind: "approve_plan", plan: "p", filePath: null },
+      },
+      FIXED_TS,
+    )
+    // First resolve patches it.
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "req-1", response: { kind: "approve_plan", approve: true } },
+      FIXED_TS,
+    )
+    // Second resolve should not mutate (no longer pending).
+    const before = s.messages.length
+    s = applyEvent(
+      s,
+      { type: "user_input.resolved", requestId: "req-1", response: { kind: "approve_plan", approve: false } },
+      FIXED_TS,
+    )
+    expect(s.messages).toHaveLength(before)
+    expect(s.messages[s.messages.length - 1]).toMatchObject({ status: "approved" })
+  })
+})

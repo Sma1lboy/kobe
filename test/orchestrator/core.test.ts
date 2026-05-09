@@ -37,6 +37,8 @@ import {
   TITLE_CHAR_CAP,
   TaskNotFoundError,
   deriveTitleFromPrompt,
+  detectUserInputFromEngineEvent,
+  renderUserInputResponsePrompt,
 } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
@@ -616,5 +618,108 @@ describe("Orchestrator engine call shape", () => {
     expect(calls).toHaveLength(1)
     expect(calls[0]?.cwd).toBe(t.worktreePath)
     expect(calls[0]?.prompt).toBe("first")
+  })
+})
+
+// ----------------------------------------------------------------------
+// User-input request detection + response (ExitPlanMode)
+// ----------------------------------------------------------------------
+
+describe("detectUserInputFromEngineEvent", () => {
+  test("returns null for unrelated events", () => {
+    expect(detectUserInputFromEngineEvent({ type: "assistant.delta", text: "hi" })).toBeNull()
+    expect(detectUserInputFromEngineEvent({ type: "tool.start", name: "Read", input: { path: "/x" } })).toBeNull()
+    expect(detectUserInputFromEngineEvent({ type: "tool.result", name: "ExitPlanMode", output: {} })).toBeNull()
+    expect(detectUserInputFromEngineEvent({ type: "done" })).toBeNull()
+  })
+
+  test("extracts plan + filePath from ExitPlanMode tool.start", () => {
+    const out = detectUserInputFromEngineEvent({
+      type: "tool.start",
+      name: "ExitPlanMode",
+      input: { plan: "## Step 1\n- do thing", filePath: "/tmp/plan.md" },
+    })
+    expect(out).toEqual({ kind: "approve_plan", plan: "## Step 1\n- do thing", filePath: "/tmp/plan.md" })
+  })
+
+  test("also matches ExitPlanModeV2Tool, missing filePath becomes null", () => {
+    const out = detectUserInputFromEngineEvent({
+      type: "tool.start",
+      name: "ExitPlanModeV2Tool",
+      input: { plan: "p" },
+    })
+    expect(out).toEqual({ kind: "approve_plan", plan: "p", filePath: null })
+  })
+
+  test("non-object input returns null", () => {
+    expect(detectUserInputFromEngineEvent({ type: "tool.start", name: "ExitPlanMode", input: "oops" })).toBeNull()
+  })
+})
+
+describe("renderUserInputResponsePrompt", () => {
+  test("approve → 'Plan approved...' string", () => {
+    const out = renderUserInputResponsePrompt(
+      { kind: "approve_plan", plan: "p", filePath: null },
+      { kind: "approve_plan", approve: true },
+    )
+    expect(out).toContain("approved")
+    expect(out.toLowerCase()).toContain("proceed")
+  })
+
+  test("reject → 'Plan rejected...' string", () => {
+    const out = renderUserInputResponsePrompt(
+      { kind: "approve_plan", plan: "p", filePath: null },
+      { kind: "approve_plan", approve: false },
+    )
+    expect(out).toContain("rejected")
+  })
+})
+
+describe("Orchestrator.respondToInput", () => {
+  test("emits user_input.request when ExitPlanMode tool fires, then resolved + user.inject on approve", async () => {
+    const fake = new FakeAIEngine()
+    const { orch } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "plan-flow", prompt: "" })
+
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev))
+
+    fake.script("fake-1", [
+      { type: "tool.start", name: "ExitPlanMode", input: { plan: "# Plan\n- step", filePath: "/tmp/p.md" } },
+      { type: "done" },
+    ])
+    await orch.runTask(t.id, "go")
+    await orch._waitForPumpsIdle()
+
+    const req = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request")
+    expect(req).toBeDefined()
+    expect(req?.payload).toEqual({ kind: "approve_plan", plan: "# Plan\n- step", filePath: "/tmp/p.md" })
+
+    // Now answer it. Script the resume's response so runTask completes.
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.respondToInput(t.id, req?.requestId ?? "missing", { kind: "approve_plan", approve: true })
+    await orch._waitForPumpsIdle()
+
+    const resolved = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved")
+    expect(resolved).toBeDefined()
+    expect(resolved?.requestId).toBe(req?.requestId)
+    expect(resolved?.response).toEqual({ kind: "approve_plan", approve: true })
+
+    const inject = events.find((e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject")
+    expect(inject?.text.toLowerCase()).toContain("approved")
+  })
+
+  test("respondToInput is a no-op for unknown requestId (e.g. double-click race)", async () => {
+    const fake = new FakeAIEngine()
+    const { orch } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "noop", prompt: "" })
+
+    // No request was ever emitted; calling respondToInput should not throw
+    // and should not emit anything on the bus.
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev))
+
+    await orch.respondToInput(t.id, "never-saw-this", { kind: "approve_plan", approve: true })
+    expect(events).toEqual([])
   })
 })

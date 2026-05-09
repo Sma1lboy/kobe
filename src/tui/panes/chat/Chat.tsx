@@ -485,6 +485,15 @@ export function Chat(props: ChatProps) {
               thinkingStartedAt={turnStartedAt()}
               thinkingResponseChars={currentTurnChars()}
               error={state().error}
+              onApprove={(requestId, approve) => {
+                const taskId = props.taskId()
+                if (!taskId) return
+                props.orchestrator
+                  .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
+                  .catch((err: unknown) => {
+                    setState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+                  })
+              }}
             />
           </box>
         </scrollbox>

@@ -118,6 +118,13 @@ export interface MessageListProps {
   thinkingResponseChars?: number
   /** Optional banner-state error message. Renders below the list. */
   error: string | null
+  /**
+   * Click handler for the Approve/Reject buttons rendered on `approval`
+   * rows. The chat shell wraps `Orchestrator.respondToInput` here so
+   * MessageList stays orchestrator-agnostic. Optional: tests that don't
+   * exercise the approval flow can omit it.
+   */
+  onApprove?: (requestId: string, approve: boolean) => void
 }
 
 /**
@@ -379,6 +386,101 @@ function SystemRow(props: { text: string }) {
 }
 
 /**
+ * Approval row — kobe's host-side rendering of an `ExitPlanMode` plan
+ * approval request. Mirrors upstream's `ExitPlanModeTool/UI.tsx`
+ * shape (banner + plan path + Markdown body) but adds clickable
+ * Approve/Reject buttons since kobe is the host driving the
+ * subprocess in `-p` mode and there's no inline-prompt path.
+ *
+ * Three visual states tied to `row.status`:
+ *   - `pending`  — warning-colored banner + buttons.
+ *   - `approved` — success-colored "User approved Claude's plan" header,
+ *                  buttons replaced with a static "approved" chip.
+ *   - `rejected` — error-colored "Plan rejected" header, "rejected"
+ *                  chip. Plan stays visible so the user can scroll back.
+ */
+function ApprovalRow(props: {
+  row: Extract<ChatRow, { kind: "approval" }>
+  onApprove: (approve: boolean) => void
+}) {
+  const { theme } = useTheme()
+  const r = () => props.row
+  const isPending = () => r().status === "pending"
+
+  const headerText = () => {
+    if (r().status === "approved") return "User approved Claude's plan"
+    if (r().status === "rejected") return "User rejected Claude's plan"
+    return "Awaiting your approval"
+  }
+  const headerColor = () => {
+    if (r().status === "approved") return theme.success
+    if (r().status === "rejected") return theme.error
+    return theme.warning
+  }
+  const headerGlyph = () => {
+    if (r().status === "approved") return BLACK_CIRCLE
+    if (r().status === "rejected") return BLACK_CIRCLE
+    return "◆"
+  }
+
+  return (
+    <box paddingTop={1} flexDirection="column" gap={0}>
+      {/* Banner */}
+      <box flexDirection="row" gap={1}>
+        <text fg={headerColor()} attributes={TextAttributes.BOLD}>
+          {headerGlyph()}
+        </text>
+        <text fg={headerColor()} attributes={TextAttributes.BOLD}>
+          {headerText()}
+        </text>
+      </box>
+
+      {/* File path (dim, indented like a tool result preview). */}
+      <Show when={r().filePath}>
+        <box paddingLeft={2}>
+          <text fg={theme.textMuted}>
+            {RESULT_PREFIX}Plan file: {r().filePath}
+          </text>
+        </box>
+      </Show>
+
+      {/* Plan body — full Markdown render so headings, lists, code blocks
+          all show. Indented under the banner so the row visually groups. */}
+      <box paddingLeft={2} paddingTop={1}>
+        <Markdown source={r().plan || "(empty plan)"} />
+      </box>
+
+      {/* Action area — buttons while pending, terminal chip after. */}
+      <box paddingLeft={2} paddingTop={1} flexDirection="row" gap={2}>
+        <Show
+          when={isPending()}
+          fallback={
+            <text fg={r().status === "approved" ? theme.success : theme.error} attributes={TextAttributes.BOLD}>
+              [{r().status}]
+            </text>
+          }
+        >
+          <text
+            fg={theme.success}
+            attributes={TextAttributes.BOLD}
+            onMouseUp={() => props.onApprove(true)}
+          >
+            [ Approve ]
+          </text>
+          <text
+            fg={theme.error}
+            attributes={TextAttributes.BOLD}
+            onMouseUp={() => props.onApprove(false)}
+          >
+            [ Reject ]
+          </text>
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+/**
  * Public entry. Renders the full chronological list + the trailing
  * thinking spinner + an optional error banner. The shell wraps this in
  * a scrollbox so all the layout overflow is handled there.
@@ -408,6 +510,14 @@ export function MessageList(props: MessageListProps) {
               <AssistantRow text={row.text} isLast={i === props.lastAssistantIdx} isStreaming={props.isStreaming} />
             )
           if (row.kind === "system") return <SystemRow text={row.text} />
+          if (row.kind === "approval") {
+            return (
+              <ApprovalRow
+                row={row}
+                onApprove={(approve) => props.onApprove?.(row.requestId, approve)}
+              />
+            )
+          }
           // tool row
           return (
             <ToolRow

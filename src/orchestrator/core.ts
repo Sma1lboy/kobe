@@ -58,7 +58,15 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
-import type { AIEngine, EngineEvent, Message, OrchestratorEvent, SessionHandle } from "../types/engine.ts"
+import type {
+  AIEngine,
+  EngineEvent,
+  Message,
+  OrchestratorEvent,
+  SessionHandle,
+  UserInputPayload,
+  UserInputResponse,
+} from "../types/engine.ts"
 import type { PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
@@ -187,6 +195,15 @@ export class Orchestrator {
   private readonly subscribers = new Map<TaskId, Set<(ev: OrchestratorEvent) => void>>()
   /** Background pump promises — kept so tests can `await` settle. */
   private readonly pumps = new Map<TaskId, Promise<void>>()
+  /**
+   * Pending user-input requests, keyed by taskId then by requestId.
+   * Populated when the engine emits a tool that pauses for user input
+   * (currently `ExitPlanMode`); cleared in `respondToInput` when the
+   * user answers. Not persisted — request state is per-process.
+   */
+  private readonly pendingInput = new Map<TaskId, Map<string, UserInputPayload>>()
+  /** Counter for generating unique requestIds across the orchestrator's lifetime. */
+  private requestIdCounter = 0
 
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
@@ -448,6 +465,51 @@ export class Orchestrator {
   }
 
   /**
+   * Respond to a pending user-input request (currently only
+   * `ExitPlanMode` plan approvals; AskUserQuestion next).
+   *
+   * Lookup is by `(taskId, requestId)`. Unknown requests are a no-op
+   * — the caller may have raced a second click after the user already
+   * answered, in which case there's nothing to do. We *don't* throw on
+   * miss because the chat shouldn't have to defensive-check before
+   * dispatching every click.
+   *
+   * On match:
+   *   1. Drop the pending entry so a re-click is ignored.
+   *   2. Broadcast `user_input.resolved` so the chat can flip the
+   *      pending row's status to approved/rejected. Subscribers see
+   *      this BEFORE the synthetic prompt's user.inject so the visual
+   *      transition happens first.
+   *   3. Synthesize a follow-up prompt (the wording the model will see
+   *      as the "user's" reply) and run it via `runTask` — which
+   *      resumes the existing session via `--resume <sessionId>`.
+   *
+   * The synthetic prompts are intentionally short and unambiguous to
+   * keep the model's continuation behavior predictable. If we ever
+   * want richer responses (e.g. an approve-with-comments flow), build
+   * a kobe-side prompt builder rather than letting freeform text leak
+   * in through the chat composer.
+   */
+  async respondToInput(id: TaskId | string, requestId: string, response: UserInputResponse): Promise<void> {
+    const task = this.requireTask(id)
+    const bucket = this.pendingInput.get(task.id)
+    const pending = bucket?.get(requestId)
+    if (!pending || !bucket) return
+    bucket.delete(requestId)
+    if (bucket.size === 0) this.pendingInput.delete(task.id)
+
+    // Tell the chat the row is no longer pending. Fire BEFORE the
+    // synthetic user.inject so the approval banner flips to its final
+    // state in the same render frame the new user row appears.
+    this.dispatchEvent(task.id, { type: "user_input.resolved", requestId, response })
+
+    const prompt = renderUserInputResponsePrompt(pending, response)
+    if (!prompt) return
+    this.dispatchEvent(task.id, { type: "user.inject", text: prompt })
+    await this.runTask(task.id, prompt)
+  }
+
+  /**
    * Pause a running task. Status `in_progress` → `backlog`. Resets the
    * engine handle so the next runTask resumes cleanly (the sessionId
    * stays on the task).
@@ -687,6 +749,28 @@ export class Orchestrator {
     try {
       for await (const ev of this.engine.stream(handle)) {
         this.dispatchEvent(taskId, ev)
+        // Detect tools that pause for user input. We piggyback on
+        // `tool.start` rather than `tool.result` because the input
+        // already has everything the UI needs (the plan body) — we
+        // don't have to wait for the tool to finish writing the file
+        // before showing the approval banner. The tool will still
+        // complete inside the subprocess; we just race ahead to the
+        // user-facing affordance.
+        const inputReq = detectUserInputFromEngineEvent(ev)
+        if (inputReq) {
+          const requestId = `req-${++this.requestIdCounter}`
+          let bucket = this.pendingInput.get(taskId)
+          if (!bucket) {
+            bucket = new Map()
+            this.pendingInput.set(taskId, bucket)
+          }
+          bucket.set(requestId, inputReq)
+          this.dispatchEvent(taskId, {
+            type: "user_input.request",
+            requestId,
+            payload: inputReq,
+          })
+        }
         if (ev.type === "done") terminal = "done"
         else if (ev.type === "error") terminal = "error"
       }
@@ -707,6 +791,61 @@ export class Orchestrator {
       // the `update` above. No explicit refresh needed here.
     }
   }
+}
+
+/* --------------------------------------------------------------------- */
+/*  User-input request detection                                          */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Inspect an engine event to see if it represents a tool that pauses
+ * the session for user input. Returns the typed payload to surface or
+ * `null` when the event is uninteresting.
+ *
+ * Currently recognises {@link ExitPlanMode}; AskUserQuestion lands here
+ * next. We dispatch on the `tool.start` event because:
+ *
+ *   1. The input already carries the plan body — we don't need to wait
+ *      for the tool to finish writing a file on disk.
+ *   2. In `claude -p` mode the subprocess can't actually wait for the
+ *      user, so the tool returns very quickly with a "submitted for
+ *      approval" marker and the subprocess exits. Reacting to start
+ *      means the approval banner is up before the user sees the
+ *      `done` event flip the spinner off.
+ */
+export function detectUserInputFromEngineEvent(ev: EngineEvent): UserInputPayload | null {
+  if (ev.type !== "tool.start") return null
+  // Both v1 and v2 of the tool ship under the same name (see
+  // refs/claude-code/src/tools/ExitPlanModeTool/constants.ts).
+  if (ev.name !== "ExitPlanMode" && ev.name !== "ExitPlanModeV2Tool") return null
+  const input = ev.input
+  if (!input || typeof input !== "object") return null
+  const obj = input as Record<string, unknown>
+  const plan = typeof obj.plan === "string" ? obj.plan : ""
+  const filePath = typeof obj.filePath === "string" ? obj.filePath : null
+  // We always emit even when the plan body is empty — an empty plan
+  // is a model bug worth surfacing in the UI ("Approve this empty plan?")
+  // rather than silently swallowing.
+  return { kind: "approve_plan", plan, filePath }
+}
+
+/**
+ * Build the synthetic user prompt sent on `--resume` after the user
+ * answers a {@link UserInputRequestEvent}. Pure, exported for testing.
+ *
+ * Wording is deliberately minimal and direct — the model has the prior
+ * context (the plan it just submitted), so this is just the "verdict"
+ * not a re-statement. Returns `""` for unhandled response shapes so
+ * the caller can short-circuit without sending an empty prompt.
+ */
+export function renderUserInputResponsePrompt(req: UserInputPayload, response: UserInputResponse): string {
+  if (req.kind === "approve_plan" && response.kind === "approve_plan") {
+    if (response.approve) {
+      return "Plan approved. Please proceed with the implementation as outlined."
+    }
+    return "Plan rejected. Please reconsider the approach and present a revised plan."
+  }
+  return ""
 }
 
 /** Title cap for {@link deriveTitleFromPrompt}. Short enough to fit in a 42-char sidebar with status badge prefix. */

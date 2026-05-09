@@ -100,6 +100,23 @@ export type ChatRow =
       readonly toolUseId?: string
     }
   | { readonly kind: "system"; readonly text: string; readonly ts: string }
+  /**
+   * "The model is paused, the user has to choose something." Synthesized
+   * by the orchestrator from a known user-input tool (currently only
+   * `ExitPlanMode`). The renderer shows a per-kind interactive widget;
+   * the user's click flows back through `Orchestrator.respondToInput`
+   * which flips this row's status (see the `user_input.resolved`
+   * handler in {@link applyEvent}) and resumes the session.
+   */
+  | {
+      readonly kind: "approval"
+      readonly requestId: string
+      readonly tool: "ExitPlanMode"
+      readonly plan: string
+      readonly filePath: string | null
+      readonly status: "pending" | "approved" | "rejected"
+      readonly ts: string
+    }
 
 export interface ChatState {
   /** All messages in chronological order. Render in array order. */
@@ -247,6 +264,48 @@ export function applyEvent(
         error: null,
         messages: [...state.messages, { kind: "user", text: ev.text, ts: nowIso }],
       }
+    case "user_input.request": {
+      // Currently the only kind. Once AskUserQuestion lands, branch on
+      // ev.payload.kind here; the ChatRow union grows accordingly.
+      if (ev.payload.kind !== "approve_plan") return state
+      return {
+        ...state,
+        // Subprocess has exited (the tool runs to completion in -p mode
+        // and just leaves a marker), so streaming flips off — the
+        // approval row IS the new "active" UI affordance, not a
+        // spinner.
+        isStreaming: false,
+        messages: [
+          ...state.messages,
+          {
+            kind: "approval",
+            requestId: ev.requestId,
+            tool: "ExitPlanMode",
+            plan: ev.payload.plan,
+            filePath: ev.payload.filePath,
+            status: "pending",
+            ts: nowIso,
+          },
+        ],
+      }
+    }
+    case "user_input.resolved": {
+      // Find the matching approval row and patch its status. We don't
+      // remove the row — keep the plan visible so the user can scroll
+      // back and remember what was approved.
+      const idx = findLastIndex(
+        state.messages,
+        (m) => m.kind === "approval" && m.requestId === ev.requestId && m.status === "pending",
+      )
+      if (idx < 0) return state
+      const target = state.messages[idx] as Extract<ChatRow, { kind: "approval" }>
+      const newStatus =
+        ev.response.kind === "approve_plan" ? (ev.response.approve ? "approved" : "rejected") : "rejected"
+      const patched: ChatRow = { ...target, status: newStatus }
+      const next = state.messages.slice()
+      next[idx] = patched
+      return { ...state, messages: next }
+    }
     default:
       return state
   }
