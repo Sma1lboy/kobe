@@ -21,6 +21,7 @@ export {
   CONCURRENCY_CAP,
   IllegalTransitionError,
   Orchestrator,
+  PRPreconditionError,
   TaskNotFoundError,
 } from "./core.ts"
 export type { CreateTaskInput, OrchestratorDeps, Unsubscribe } from "./core.ts"

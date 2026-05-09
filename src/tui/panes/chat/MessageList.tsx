@@ -52,6 +52,14 @@ import { Markdown } from "./Markdown"
 import type { ChatRow } from "./store"
 
 /**
+ * Anthropic's Claude brand orange. Hardcoded (not pulled from the
+ * theme) because the assistant marker IS the brand — it should stay
+ * orange regardless of the user's theme choice. Matches the orange in
+ * Claude's logo / docs / favicon.
+ */
+const CLAUDE_ORANGE = "#d97757"
+
+/**
  * Claude Code's `BLACK_CIRCLE` figure. Source:
  * `refs/claude-code/src/constants/figures.ts:4`. Darwin gets the
  * "media-stop" glyph (visually a filled circle), other platforms get
@@ -186,7 +194,7 @@ function AssistantRow(props: { text: string; isLast: boolean; isStreaming: boole
           a reserved column. (Hardcoded width = terminal-grammar fixed
           glyph, per CLAUDE.md flex-first exception.) */}
       <box width={2} flexShrink={0}>
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        <text fg={CLAUDE_ORANGE} attributes={TextAttributes.BOLD}>
           {BLACK_CIRCLE}
         </text>
       </box>
