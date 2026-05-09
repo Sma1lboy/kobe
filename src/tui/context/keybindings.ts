@@ -86,7 +86,12 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     id: "app.quit",
-    keys: ["ctrl+q"],
+    // Displayed as `ctrl+shift+q` (safer / harder to fat-finger), but the
+    // chord we actually register is `ctrl+q` — `src/tui/lib/keymap.tsx`
+    // intentionally drops shift on letter keys, so `ctrl+shift+q` and
+    // `ctrl+q` produce the same candidate at match time. Keeping both
+    // strings in this list documents the intent for the help dialog.
+    keys: ["ctrl+shift+q", "ctrl+q"],
     category: "Global",
     description: "Quit (with confirm)",
   },

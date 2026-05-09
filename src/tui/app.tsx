@@ -786,7 +786,7 @@ function StatusBar() {
         <Hotkey keys="ctrl+1234" label="focus" />
         <Hotkey keys="ctrl+n" label="new" />
         <Hotkey keys="F1" label="help" />
-        <Hotkey keys="ctrl+q" label="quit" />
+        <Hotkey keys="ctrl+shift+q" label="quit" />
       </box>
     </box>
   )
