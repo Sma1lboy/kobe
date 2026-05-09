@@ -129,6 +129,40 @@ type NewTaskInput = { repo: string; prompt: string; baseRef: string }
 const DEFAULT_BASE_REF = "main"
 
 /**
+ * List local branches in the given repo, sorted with the default branch
+ * first when present. Synchronous — repo enumeration is a one-shot call
+ * driven by the dialog's repo-field changes, so paying for an async
+ * boundary buys nothing. Returns [] on any error so the picker just
+ * silently degrades to the free-text input.
+ */
+function listLocalBranches(repo: string): string[] {
+  if (!repo) return []
+  try {
+    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
+    const out = spawnSync("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads/"], {
+      cwd: repo,
+      encoding: "utf-8",
+      timeout: 2000,
+    })
+    if (out.status !== 0) return []
+    return (out.stdout as string)
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort((a, b) => {
+        // Default branches first.
+        const score = (n: string) => (n === "main" ? 0 : n === "master" ? 1 : n === "develop" ? 2 : 3)
+        const sa = score(a)
+        const sb = score(b)
+        if (sa !== sb) return sa - sb
+        return a.localeCompare(b)
+      })
+  } catch {
+    return []
+  }
+}
+
+/**
  * The new-task dialog. Per the Wave 3 G architectural pivot, we no
  * longer ask the user to type a separate title — Claude Code does
  * not store one (verified against the stream-json schema), so anything
@@ -149,13 +183,25 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
   const [repo, setRepo] = createSignal(props.defaultRepo)
   const [baseRef, setBaseRef] = createSignal(DEFAULT_BASE_REF)
 
+  // Branch picker — refreshed whenever the repo path changes. The
+  // baseRef field still accepts free text (so tags / commit SHAs / refs
+  // not in the local branch list still work), but typing is augmented
+  // with up/down navigation over the discovered branches: highlights
+  // the cursor row and pre-fills the input as the user moves.
+  const branches = createMemo<readonly string[]>(() => listLocalBranches(repo().trim()))
+  const [branchCursor, setBranchCursor] = createSignal(0)
+
+  // Reset the cursor whenever the branch list changes (repo edit) so we
+  // don't index off the end after a smaller-list refresh.
+  createEffect(() => {
+    void branches()
+    setBranchCursor(0)
+  })
+
   function commit() {
     const p = prompt().trim()
     const r = repo().trim()
     if (!p || !r) return
-    // Empty baseRef defaults to `main` — defensive fallback if the user
-    // backspaced then enter; orchestrator wants a non-empty ref to forward
-    // to git. Bogus refs surface as a git error from the orchestrator.
     const b = baseRef().trim() || DEFAULT_BASE_REF
     props.onSubmit({ prompt: p, repo: r, baseRef: b })
     dialog.clear()
@@ -173,6 +219,34 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
             if (f === "repo") return "baseRef"
             return "prompt"
           }),
+      },
+      // Branch list nav — only fires when on the baseRef field AND
+      // there's at least one branch to navigate. up/down move the
+      // cursor; pressing them also pre-fills the input with the
+      // highlighted branch so `enter` commits with that value.
+      {
+        key: "up",
+        cmd: () => {
+          if (field() !== "baseRef") return
+          const list = branches()
+          if (list.length === 0) return
+          const next = Math.max(0, branchCursor() - 1)
+          setBranchCursor(next)
+          const sel = list[next]
+          if (sel) setBaseRef(sel)
+        },
+      },
+      {
+        key: "down",
+        cmd: () => {
+          if (field() !== "baseRef") return
+          const list = branches()
+          if (list.length === 0) return
+          const next = Math.min(list.length - 1, branchCursor() + 1)
+          setBranchCursor(next)
+          const sel = list[next]
+          if (sel) setBaseRef(sel)
+        },
       },
     ],
   }))
@@ -221,7 +295,7 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
           }}
         />
       </box>
-      <box gap={0} paddingBottom={1}>
+      <box gap={0}>
         <text fg={field() === "baseRef" ? theme.accent : theme.textMuted}>from branch</text>
         <input
           value={baseRef()}
@@ -231,8 +305,37 @@ function NewTaskDialog(props: { onSubmit: (v: NewTaskInput) => void; onCancel: (
           onSubmit={() => commit()}
         />
       </box>
+      {/* Branch picker: rendered when on baseRef field and the repo
+          actually has discoverable local branches. Up/down navigate
+          (handler in useBindings above pre-fills the input as cursor
+          moves); click selects + commits. */}
+      <Show when={field() === "baseRef" && branches().length > 0}>
+        <box gap={0} paddingLeft={2} paddingBottom={1}>
+          <For each={branches()}>
+            {(name, i) => {
+              const isCursor = () => i() === branchCursor()
+              const isSelected = () => baseRef().trim() === name
+              return (
+                <text
+                  fg={isCursor() ? theme.primary : isSelected() ? theme.accent : theme.textMuted}
+                  attributes={isCursor() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => {
+                    setBaseRef(name)
+                    setBranchCursor(i())
+                    commit()
+                  }}
+                >
+                  {isCursor() ? "▸ " : "  "}
+                  {name}
+                </text>
+              )
+            }}
+          </For>
+        </box>
+      </Show>
       <box paddingBottom={1}>
-        <text fg={theme.textMuted}>tab to switch fields, enter to create, esc to cancel</text>
+        <text fg={theme.textMuted}>tab fields · ↑↓ pick branch · enter create · esc cancel</text>
       </box>
     </box>
   )
@@ -428,7 +531,15 @@ function Shell(props: AppDeps) {
   const focus = useFocus()
   const focusedPane = focus.focused
   const setFocusedPane = focus.setFocused
-  const isFocused = focus.is
+  // Pane-bindings-active accessor: true only when (a) the pane is the
+  // focused one AND (b) no dialog is open. The dialog gate prevents
+  // sidebar/files/terminal bindings from firing while the user is
+  // typing into a dialog input — `d` typed into a path field would
+  // otherwise trigger the sidebar's delete-task confirmation.
+  const isFocused = (pane: PaneId): Accessor<boolean> => {
+    const baseAcc = focus.is(pane)
+    return () => baseAcc() && dialog.stack.length === 0
+  }
 
   // Numeric jumps: ctrl+1..4 pick a pane explicitly. `ctrl` prefix avoids
   // collision with FileTree's plain 1/2/3 tabs (All/Changes/Checks) and
