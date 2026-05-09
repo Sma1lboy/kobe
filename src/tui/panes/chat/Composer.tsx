@@ -48,9 +48,10 @@
  * working without changes.
  */
 
-import type { KeyEvent, TextareaRenderable } from "@opentui/core"
-import { type Accessor, Show, createEffect, on, onCleanup } from "solid-js"
+import { TextAttributes, type KeyEvent, type TextareaRenderable } from "@opentui/core"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { EmptyBorder, SplitBorder } from "../../component/border"
+import type { SlashEntry } from "../../context/command-palette"
 import { useTheme } from "../../context/theme"
 import { getHistory, pushHistory } from "./composer/history"
 import { composerKeyBindings } from "./composer/keybindings"
@@ -102,6 +103,13 @@ export interface ComposerProps {
    * `claude-code` when omitted.
    */
   modelLabel?: Accessor<string>
+  /**
+   * Reactive slash-command list (typically `useCommandSlashes()`). When
+   * supplied AND the buffer starts with `/`, the composer renders a
+   * filtered dropdown above the textarea; up/down navigate, enter runs
+   * the highlighted entry, esc dismisses.
+   */
+  slashes?: Accessor<readonly SlashEntry[]>
 }
 
 /**
@@ -137,6 +145,43 @@ export function Composer(props: ComposerProps) {
   // render output — only effect logic.
   let historyIndex: number | null = null
   let liveDraftSnapshot = ""
+
+  // Live draft mirror used to drive slash-command filtering. We can't
+  // read `props.draft` reactively without taking the parent's clear-on-
+  // submit roundtrip, and we don't want to chase the textarea ref from
+  // every memo. Instead `handleContentChange` writes the live buffer
+  // here on every keystroke; the dropdown filter reads it.
+  const [liveBuffer, setLiveBuffer] = createSignal(props.draft ?? "")
+
+  // Slash dropdown state. Cursor indexes into `slashMatches()`; reset
+  // to 0 whenever the match list changes (e.g. user typed another char
+  // and the list shrunk).
+  const [slashCursor, setSlashCursor] = createSignal(0)
+  const slashOpen = createMemo(() => {
+    if (!props.slashes) return false
+    const buf = liveBuffer()
+    // Open whenever the buffer starts with `/` AND has no whitespace
+    // — once the user types past the command name (e.g. `/new bug`),
+    // we step out of palette mode and fall through to normal submit.
+    if (!buf.startsWith("/")) return false
+    if (/\s/.test(buf)) return false
+    return true
+  })
+  const slashMatches = createMemo<readonly SlashEntry[]>(() => {
+    if (!slashOpen()) return []
+    const list = props.slashes?.() ?? []
+    const query = liveBuffer().toLowerCase()
+    return list.filter((entry) => {
+      if (entry.display.toLowerCase().startsWith(query)) return true
+      return entry.aliases?.some((a) => a.toLowerCase().startsWith(query)) ?? false
+    })
+  })
+
+  // Keep cursor in bounds when the match list changes.
+  createEffect(() => {
+    const len = slashMatches().length
+    setSlashCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
+  })
 
   /**
    * Read the latest entries for the active history key. Re-read each
@@ -270,6 +315,7 @@ export function Composer(props: ComposerProps) {
         if (ref.plainText !== incoming) {
           setBuffer(incoming)
         }
+        setLiveBuffer(incoming)
       },
     ),
   )
@@ -303,6 +349,7 @@ export function Composer(props: ComposerProps) {
       historyIndex = null
       liveDraftSnapshot = ""
     }
+    setLiveBuffer(newText)
     props.onDraftChange(newText)
   }
 
@@ -317,6 +364,29 @@ export function Composer(props: ComposerProps) {
    * `handleKeyPress` too).
    */
   function handleKeyDown(key: KeyEvent): void {
+    // Slash-dropdown nav has higher priority than history nav. When
+    // the dropdown is open, up/down move the highlighted command, esc
+    // dismisses (by clearing the buffer), and return runs the selection.
+    if (slashOpen() && slashMatches().length > 0) {
+      if (key.name === "up" && !key.shift && !key.ctrl && !key.meta && !key.super) {
+        const len = slashMatches().length
+        setSlashCursor((cur) => (cur - 1 + len) % len)
+        key.preventDefault()
+        return
+      }
+      if (key.name === "down" && !key.shift && !key.ctrl && !key.meta && !key.super) {
+        const len = slashMatches().length
+        setSlashCursor((cur) => (cur + 1) % len)
+        key.preventDefault()
+        return
+      }
+      if (key.name === "escape") {
+        setBuffer("")
+        key.preventDefault()
+        return
+      }
+    }
+
     // Ignore modifier-prefixed up/down — those are select/buffer-jump
     // bindings and the user expects them to do their normal thing.
     if (key.ctrl || key.meta || key.super) return
@@ -347,6 +417,22 @@ export function Composer(props: ComposerProps) {
     if (!ref) return
     const raw = ref.plainText
     const trimmed = raw.trim()
+    // Slash short-circuit: if the dropdown is open and there's at
+    // least one match, run the highlighted entry, clear the buffer,
+    // and bypass the engine submit. Falls through if the user typed
+    // `/unknown` or the dropdown closed already.
+    if (slashOpen()) {
+      const matches = slashMatches()
+      const entry = matches[slashCursor()]
+      if (entry) {
+        setBuffer("")
+        setLiveBuffer("")
+        props.onDraftChange("")
+        resetHistoryNav()
+        entry.onSelect()
+        return
+      }
+    }
     if (trimmed.length > 0) {
       pushHistory(props.historyKey ?? "global", raw)
     }
@@ -378,6 +464,45 @@ export function Composer(props: ComposerProps) {
 
   return (
     <box flexShrink={0} flexDirection="column" paddingTop={1}>
+      {/* Slash dropdown — rendered above the composer, only when the
+          buffer starts with `/` and there's at least one match. */}
+      <Show when={slashOpen() && slashMatches().length > 0}>
+        <box
+          flexDirection="column"
+          flexShrink={0}
+          backgroundColor={theme.backgroundElement}
+          paddingLeft={2}
+          paddingRight={2}
+          paddingTop={0}
+          paddingBottom={0}
+          border={["left"]}
+          borderColor={railColor()}
+          customBorderChars={SplitBorder.customBorderChars}
+        >
+          <For each={slashMatches()}>
+            {(entry, i) => {
+              const active = () => i() === slashCursor()
+              return (
+                <box flexDirection="row" gap={2}>
+                  <text
+                    fg={active() ? theme.primary : theme.text}
+                    attributes={active() ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                  >
+                    {active() ? "▸ " : "  "}
+                    {entry.display}
+                  </text>
+                  <Show when={entry.description}>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {entry.description}
+                    </text>
+                  </Show>
+                </box>
+              )
+            }}
+          </For>
+        </box>
+      </Show>
       <box
         border={["left"]}
         borderColor={railColor()}

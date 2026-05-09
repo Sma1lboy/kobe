@@ -52,6 +52,7 @@ import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
+import { useCommandSlashes } from "../../context/command-palette"
 import { useTheme } from "../../context/theme"
 import { Composer } from "./Composer"
 import { MessageList } from "./MessageList"
@@ -94,6 +95,7 @@ export type ChatProps = {
 
 export function Chat(props: ChatProps) {
   const { theme } = useTheme()
+  const slashes = useCommandSlashes()
 
   // The whole chat state lives in one signal. Solid's structural sharing
   // makes whole-state updates cheap; we don't bother with finer-grained
@@ -410,6 +412,7 @@ export function Chat(props: ChatProps) {
         onSubmit={handleComposerSubmit}
         focused={props.focused}
         historyKey={props.taskId()}
+        slashes={slashes}
       />
     </box>
   )
