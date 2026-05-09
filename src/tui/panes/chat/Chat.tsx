@@ -61,13 +61,12 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { EngineEvent } from "../../../types/engine.ts"
 import { useTheme } from "../../context/theme"
-import { Loading } from "./Loading"
+import { MessageList } from "./MessageList"
 import {
-  type ChatRow,
   type ChatState,
   applyEvent,
   createInitialState,
@@ -102,144 +101,6 @@ export type ChatProps = {
   onPendingPromptConsumed?: () => void
   /** Future: focus management when multiple panes share input. Unused in v1. */
   focused?: Accessor<boolean>
-}
-
-/**
- * Coerce an unknown content blob from `engine.readHistory` into a
- * single string for display. The on-disk JSONL stores `content` as
- * either a plain string or an array of content blocks. We render
- * just the textual blocks; tool blocks are skipped in v1 (they
- * re-render via live events on the next run if the user resumes).
- */
-function coerceHistoryContent(content: unknown): string {
-  if (typeof content === "string") return content
-  if (Array.isArray(content)) {
-    const parts: string[] = []
-    for (const block of content) {
-      if (typeof block === "string") {
-        parts.push(block)
-      } else if (block && typeof block === "object") {
-        const b = block as { type?: unknown; text?: unknown }
-        if (b.type === "text" && typeof b.text === "string") parts.push(b.text)
-      }
-    }
-    return parts.join("")
-  }
-  return ""
-}
-
-/** One-line preview of a tool's input arg blob. */
-function previewToolInput(input: unknown): string {
-  if (input == null) return ""
-  if (typeof input === "string") return collapseToOneLine(input, 60)
-  try {
-    return collapseToOneLine(JSON.stringify(input), 60)
-  } catch {
-    return "<unserializable>"
-  }
-}
-
-function previewToolOutput(output: unknown): string {
-  if (output == null) return ""
-  if (typeof output === "string") return collapseToOneLine(output, 60)
-  try {
-    return collapseToOneLine(JSON.stringify(output), 60)
-  } catch {
-    return "<unserializable>"
-  }
-}
-
-function collapseToOneLine(s: string, max: number): string {
-  const oneLine = s.replace(/\s+/g, " ").trim()
-  if (oneLine.length <= max) return oneLine
-  return `${oneLine.slice(0, max)}…`
-}
-
-/**
- * Render a single chronological row from the unified `messages` array.
- * Tool rows are collapsed by default — `expanded` and `onToggle` thread
- * mouse + keyboard both into the same handler (kobe convention).
- */
-function MessageRow(props: {
-  row: ChatRow
-  isLastAssistant: boolean
-  isStreaming: boolean
-  index: number
-  expanded: boolean
-  onToggle: () => void
-}) {
-  const { theme } = useTheme()
-  if (props.row.kind === "user") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-          you
-        </text>
-        <text fg={theme.text}>{props.row.text}</text>
-      </box>
-    )
-  }
-  if (props.row.kind === "assistant") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.success} attributes={TextAttributes.BOLD}>
-          assistant
-        </text>
-        <text fg={theme.text}>
-          {props.row.text}
-          {/* Streaming cursor on the last assistant row mid-turn. */}
-          {props.isLastAssistant && props.isStreaming ? "▏" : ""}
-        </text>
-      </box>
-    )
-  }
-  if (props.row.kind === "system") {
-    return (
-      <box paddingTop={1}>
-        <text fg={theme.error} attributes={TextAttributes.BOLD}>
-          system
-        </text>
-        <text fg={theme.textMuted}>{props.row.text}</text>
-      </box>
-    )
-  }
-  // Tool row.
-  const r = props.row
-  const status = r.done ? "done" : "running"
-  const arrow = props.expanded ? "▼" : "▶"
-  return (
-    <box paddingTop={1}>
-      <text fg={theme.textMuted} onMouseUp={() => props.onToggle()}>
-        {arrow} {r.name}({previewToolInput(r.input)}) — {status}
-      </text>
-      <Show when={props.expanded}>
-        <box paddingLeft={2} paddingTop={0}>
-          <text fg={theme.textMuted}>input:</text>
-          <text fg={theme.text}>{safeStringify(r.input)}</text>
-          <Show when={r.done}>
-            <text fg={theme.textMuted}>output:</text>
-            <text fg={theme.text}>{safeStringify(r.output)}</text>
-          </Show>
-        </box>
-      </Show>
-      <Show when={!props.expanded && r.done}>
-        <text fg={theme.textMuted} onMouseUp={() => props.onToggle()}>
-          {" "}
-          {previewToolOutput(r.output)}
-        </text>
-      </Show>
-    </box>
-  )
-}
-
-function safeStringify(v: unknown): string {
-  if (v == null) return ""
-  if (typeof v === "string") return v
-  try {
-    return JSON.stringify(v, null, 2)
-  } catch {
-    return String(v)
-  }
 }
 
 export function Chat(props: ChatProps) {
@@ -420,39 +281,18 @@ export function Chat(props: ChatProps) {
           }}
         >
           <box paddingRight={1} gap={0}>
-            {/* Empty placeholder when we have nothing to show. */}
-            <Show when={state().messages.length === 0}>
-              <box paddingTop={2}>
-                <text fg={theme.textMuted}>Type a prompt below.</text>
-              </box>
-            </Show>
-
-            {/* Single chronological list — user, assistant, tool, system
-                rows in arrival order. */}
-            <For each={state().messages}>
-              {(row, i) => (
-                <MessageRow
-                  row={row}
-                  index={i()}
-                  isLastAssistant={i() === lastAssistantIdx()}
-                  isStreaming={state().isStreaming}
-                  expanded={row.kind === "tool" && expandedToolIndex() === i()}
-                  onToggle={() => toggleExpand(i())}
-                />
-              )}
-            </For>
-
-            {/* Loading spinner while we're waiting for the first token. */}
-            <Show when={showThinking()}>
-              <Loading />
-            </Show>
-
-            {/* Error banner. */}
-            <Show when={state().error}>
-              <box paddingTop={1}>
-                <text fg={theme.error}>error: {state().error}</text>
-              </box>
-            </Show>
+            {/* Wave 4.B — message render delegated to MessageList for
+                Claude-Code parity (BLACK_CIRCLE prefix, markdown body,
+                tool banner shape, thinking spinner glyph set). */}
+            <MessageList
+              messages={state().messages}
+              isStreaming={state().isStreaming}
+              lastAssistantIdx={lastAssistantIdx()}
+              expandedToolIndex={expandedToolIndex()}
+              onToggleTool={toggleExpand}
+              showThinking={showThinking()}
+              error={state().error}
+            />
           </box>
         </scrollbox>
       </Show>

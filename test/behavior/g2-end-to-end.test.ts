@@ -220,9 +220,13 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   const finalScreen = await kobe.waitFor((s) => s.includes("hello from kobe"), 15_000)
   expect(finalScreen).toContain("hello from kobe")
 
-  // Also: the user's own prompt and the assistant header are visible.
+  // Also: the user's own prompt and the assistant prefix glyph are
+  // visible. Wave 4.B renamed the assistant header from the literal
+  // word "assistant" to Claude Code's BLACK_CIRCLE figure (`⏺` on
+  // darwin, `●` elsewhere; both are visually a filled circle in TUIs)
+  // to match the leaked Anthropic source's `AssistantTextMessage`.
   expect(finalScreen).toContain("demo task ping")
-  expect(finalScreen).toContain("assistant")
+  expect(finalScreen).toMatch(/[⏺●]/)
 
   // ---- clean exit ------------------------------------------------
   await kobe.exit()
