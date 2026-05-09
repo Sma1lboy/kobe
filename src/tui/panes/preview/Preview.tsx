@@ -57,6 +57,13 @@ export type PreviewProps = {
   diffBase: Accessor<string | null>
   onOpen?: (api: PreviewApi) => void
   focused?: Accessor<boolean>
+  /**
+   * Hide the internal tab strip. When true, the parent owns tab UX
+   * (e.g. CenterTabs in `app.tsx` exposes a unified `chat | files…`
+   * strip). Preview still tracks open files internally for the active-
+   * file body — the parent drives state via the imperative {@link PreviewApi}.
+   */
+  hideInternalTabs?: Accessor<boolean>
 }
 
 /** Imperative API the parent drives. Stable for the component's lifetime. */
@@ -203,6 +210,7 @@ export function Preview(props: PreviewProps) {
   // Pane-local key bindings.
   usePreviewBindings({
     focused: focusedAccessor,
+    externalTabControl: () => props.hideInternalTabs?.() ?? false,
     setMode: (mode) => setState((s) => setActiveMode(s, mode)),
     cycleTab: (delta) => setState((s) => moveActive(s, delta)),
     closeActive: () => {
@@ -232,7 +240,9 @@ export function Preview(props: PreviewProps) {
   return (
     <box flexGrow={1} flexDirection="column" backgroundColor={theme.background} paddingLeft={1} paddingRight={1}>
       <Header active={active} />
-      <TabBar tabs={tabs} active={active} setState={setState} />
+      <Show when={!props.hideInternalTabs?.()}>
+        <TabBar tabs={tabs} active={active} setState={setState} />
+      </Show>
       <Body
         content={content}
         refSet={(r) => {

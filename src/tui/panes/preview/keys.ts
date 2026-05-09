@@ -60,6 +60,13 @@ export type PreviewBindingsOpts = {
    * controller's pattern.
    */
   scheduleTimeout?: (cb: () => void, ms: number) => () => void
+  /**
+   * When true, the parent owns tab UX (open/close/cycle) — Preview's own
+   * tab/shift+tab/ctrl+w handlers are suppressed so the parent's bindings
+   * can claim those keys. Mode (`f`/`d`) and scroll keys still fire.
+   * Defaults to false (Preview owns its tabs).
+   */
+  externalTabControl?: Accessor<boolean>
 }
 
 /** Re-export the chord timeout so tests + UI consumers share one constant. */
@@ -115,84 +122,92 @@ export function usePreviewBindings(opts: PreviewBindingsOpts): void {
     opts.scrollBy(direction * Math.max(1, size))
   }
 
-  useBindings(() => ({
-    enabled: opts.focused(),
-    bindings: [
-      {
-        key: "f",
-        cmd: () => {
-          disarmChord()
-          opts.setMode("file")
+  useBindings(() => {
+    const ext = opts.externalTabControl?.() ?? false
+    const tabBindings = ext
+      ? []
+      : [
+          {
+            key: "tab",
+            cmd: () => {
+              disarmChord()
+              opts.cycleTab(1)
+            },
+          },
+          {
+            key: "shift+tab",
+            cmd: () => {
+              disarmChord()
+              opts.cycleTab(-1)
+            },
+          },
+          {
+            key: "ctrl+w",
+            cmd: () => {
+              disarmChord()
+              opts.closeActive()
+            },
+          },
+        ]
+    return {
+      enabled: opts.focused(),
+      bindings: [
+        {
+          key: "f",
+          cmd: () => {
+            disarmChord()
+            opts.setMode("file")
+          },
         },
-      },
-      {
-        key: "d",
-        cmd: () => {
-          disarmChord()
-          opts.setMode("diff")
+        {
+          key: "d",
+          cmd: () => {
+            disarmChord()
+            opts.setMode("diff")
+          },
         },
-      },
-      {
-        key: "tab",
-        cmd: () => {
-          disarmChord()
-          opts.cycleTab(1)
+        ...tabBindings,
+        {
+          key: "j",
+          cmd: () => {
+            disarmChord()
+            opts.scrollBy(1)
+          },
         },
-      },
-      {
-        key: "shift+tab",
-        cmd: () => {
-          disarmChord()
-          opts.cycleTab(-1)
+        {
+          key: "down",
+          cmd: () => {
+            disarmChord()
+            opts.scrollBy(1)
+          },
         },
-      },
-      {
-        key: "ctrl+w",
-        cmd: () => {
-          disarmChord()
-          opts.closeActive()
+        {
+          key: "k",
+          cmd: () => {
+            disarmChord()
+            opts.scrollBy(-1)
+          },
         },
-      },
-      {
-        key: "j",
-        cmd: () => {
-          disarmChord()
-          opts.scrollBy(1)
+        {
+          key: "up",
+          cmd: () => {
+            disarmChord()
+            opts.scrollBy(-1)
+          },
         },
-      },
-      {
-        key: "down",
-        cmd: () => {
-          disarmChord()
-          opts.scrollBy(1)
+        { key: "pagedown", cmd: () => page(1) },
+        { key: "pageup", cmd: () => page(-1) },
+        {
+          // Single binding handles both `g` (arm chord) and `G` (jump to
+          // bottom). See file header for why shift+g comes through as
+          // `name="g", shift=true`.
+          key: "g",
+          cmd: (event) => {
+            if (event.shift) pressShiftG()
+            else pressG()
+          },
         },
-      },
-      {
-        key: "k",
-        cmd: () => {
-          disarmChord()
-          opts.scrollBy(-1)
-        },
-      },
-      {
-        key: "up",
-        cmd: () => {
-          disarmChord()
-          opts.scrollBy(-1)
-        },
-      },
-      { key: "pagedown", cmd: () => page(1) },
-      { key: "pageup", cmd: () => page(-1) },
-      {
-        // Single binding handles both `g` (arm chord) and `G` (jump to
-        // bottom). See file header for why shift+g comes through as
-        // `name="g", shift=true`.
-        key: "g",
-        cmd: (event) => {
-          if (event.shift) pressShiftG()
-          else pressG()
-        },
-      },
-    ],
-  }))
+      ],
+    }
+  })
 }

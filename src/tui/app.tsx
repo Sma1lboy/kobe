@@ -21,10 +21,10 @@
  */
 
 import { homedir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { type Accessor, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -304,11 +304,78 @@ function Shell(props: AppDeps) {
   const diffBaseAcc = createMemo<string | null>(() => (worktreePathAcc() ? "HEAD" : null))
 
   // FileTree → Preview wiring: capture Preview's imperative API once,
-  // then route file-tree clicks/enters into Preview.open().
+  // then route file-tree clicks/enters into Preview.open(). Plus the
+  // outer center-column tab state below tracks which file tab is active.
   const [previewApi, setPreviewApi] = createSignal<PreviewApi | null>(null)
-  function handleOpenFile(relPath: string): void {
-    const api = previewApi()
-    if (api) api.open(relPath)
+
+  /* ------------------------------------------------------------------- */
+  /*  Center-column tab state — per-task                                  */
+  /* ------------------------------------------------------------------- */
+  // Per the resolved Wave-1 invariant ("each sidebar session = one
+  // worktree") and Jackson's request: each task owns its own set of open
+  // file tabs and which tab is active. Switching tasks restores the tab
+  // strip exactly. Tabs are: a fixed `chat` plus zero-or-more file paths
+  // (relative to the active task's worktree).
+  type CenterTab = "chat" | { kind: "file"; path: string }
+  type TaskCenterTabs = { open: readonly string[]; active: CenterTab }
+  const EMPTY_TABS: TaskCenterTabs = { open: [], active: "chat" }
+  const [tabsByTask, setTabsByTask] = createSignal(new Map<string, TaskCenterTabs>())
+
+  const currentTabs = createMemo<TaskCenterTabs>(() => {
+    const id = selectedId()
+    if (!id) return EMPTY_TABS
+    return tabsByTask().get(id) ?? EMPTY_TABS
+  })
+  const activeCenterTab = createMemo<CenterTab>(() => currentTabs().active)
+  const openFileTabs = createMemo<readonly string[]>(() => currentTabs().open)
+  const isChatTabActive = createMemo<boolean>(() => activeCenterTab() === "chat")
+  const activeFileTabPath = createMemo<string | null>(() => {
+    const a = activeCenterTab()
+    return typeof a === "object" ? a.path : null
+  })
+
+  function mutateTabs(taskId: string, updater: (cur: TaskCenterTabs) => TaskCenterTabs): void {
+    setTabsByTask((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(taskId) ?? EMPTY_TABS
+      next.set(taskId, updater(cur))
+      return next
+    })
+  }
+
+  function openFileInCenter(relPath: string): void {
+    const id = selectedId()
+    if (!id) return
+    mutateTabs(id, (cur) => ({
+      open: cur.open.includes(relPath) ? cur.open : [...cur.open, relPath],
+      active: { kind: "file", path: relPath },
+    }))
+    previewApi()?.open(relPath)
+  }
+
+  function selectChatTab(): void {
+    const id = selectedId()
+    if (!id) return
+    mutateTabs(id, (cur) => ({ ...cur, active: "chat" }))
+  }
+
+  function selectFileTab(relPath: string): void {
+    const id = selectedId()
+    if (!id) return
+    mutateTabs(id, (cur) => ({ ...cur, active: { kind: "file", path: relPath } }))
+    previewApi()?.open(relPath)
+  }
+
+  function closeFileTab(relPath: string): void {
+    const id = selectedId()
+    if (!id) return
+    mutateTabs(id, (cur) => {
+      const open = cur.open.filter((f) => f !== relPath)
+      const wasActive = typeof cur.active === "object" && cur.active.path === relPath
+      const fallback: CenterTab = open.length > 0 ? { kind: "file", path: open[open.length - 1] as string } : "chat"
+      return { open, active: wasActive ? fallback : cur.active }
+    })
+    previewApi()?.close(relPath)
   }
 
   // Auto-select the first task when one is created and nothing is
@@ -391,21 +458,42 @@ function Shell(props: AppDeps) {
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar (42 cells fixed) */}
         <Sidebar tasks={tasksAcc} onSelect={(id: string) => setSelectedId(id)} selectedId={selectedId} />
-        {/* Center: chat pane — primary interaction surface, takes most width */}
-        <Chat
-          orchestrator={props.orchestrator}
-          taskId={taskIdAcc}
-          title={activeTitleAcc}
-          pendingPrompt={pendingPromptForActive}
-          onPendingPromptConsumed={() => setPendingPrompt(null)}
-        />
-        {/* Right: file tree top, diff/preview middle, terminal bottom */}
-        <box flexDirection="column" width={50} flexShrink={0} backgroundColor={theme.backgroundPanel}>
-          <box flexGrow={1} flexShrink={1} flexBasis={0}>
-            <FileTree worktreePath={worktreePathAcc} onOpenFile={handleOpenFile} />
+        {/* Center: tabbed (chat | <file>...) — primary interaction surface */}
+        <box flexDirection="column" flexGrow={1}>
+          <CenterTabStrip
+            isChatActive={isChatTabActive}
+            activeFile={activeFileTabPath}
+            openFiles={openFileTabs}
+            onSelectChat={selectChatTab}
+            onSelectFile={selectFileTab}
+            onCloseFile={closeFileTab}
+          />
+          <box flexGrow={1}>
+            <Show
+              when={isChatTabActive()}
+              fallback={
+                <Preview
+                  worktreePath={worktreePathAcc}
+                  diffBase={diffBaseAcc}
+                  onOpen={(api) => setPreviewApi(api)}
+                  hideInternalTabs={() => true}
+                />
+              }
+            >
+              <Chat
+                orchestrator={props.orchestrator}
+                taskId={taskIdAcc}
+                title={activeTitleAcc}
+                pendingPrompt={pendingPromptForActive}
+                onPendingPromptConsumed={() => setPendingPrompt(null)}
+              />
+            </Show>
           </box>
+        </box>
+        {/* Right: file tree top, terminal bottom */}
+        <box flexDirection="column" width={50} flexShrink={0} backgroundColor={theme.backgroundPanel}>
           <box flexGrow={2} flexShrink={1} flexBasis={0}>
-            <Preview worktreePath={worktreePathAcc} diffBase={diffBaseAcc} onOpen={(api) => setPreviewApi(api)} />
+            <FileTree worktreePath={worktreePathAcc} onOpenFile={openFileInCenter} />
           </box>
           <box flexGrow={1} flexShrink={1} flexBasis={0}>
             <Terminal cwd={worktreePathAcc} taskId={taskIdNullAcc} />
@@ -413,6 +501,76 @@ function Shell(props: AppDeps) {
         </box>
       </box>
       <StatusBar active={activeTask()?.title} />
+    </box>
+  )
+}
+
+/* --------------------------------------------------------------------- */
+/*  Center column tab strip — chat + open files (per-task)                */
+/* --------------------------------------------------------------------- */
+function CenterTabStrip(props: {
+  isChatActive: Accessor<boolean>
+  activeFile: Accessor<string | null>
+  openFiles: Accessor<readonly string[]>
+  onSelectChat: () => void
+  onSelectFile: (path: string) => void
+  onCloseFile: (path: string) => void
+}) {
+  const { theme } = useTheme()
+  return (
+    <box
+      flexDirection="row"
+      gap={1}
+      flexShrink={0}
+      paddingTop={0}
+      paddingLeft={1}
+      paddingRight={1}
+      paddingBottom={1}
+      backgroundColor={theme.backgroundPanel}
+    >
+      <box
+        flexDirection="row"
+        paddingLeft={1}
+        paddingRight={1}
+        backgroundColor={props.isChatActive() ? theme.primary : theme.backgroundElement}
+        onMouseUp={() => props.onSelectChat()}
+      >
+        <text
+          fg={props.isChatActive() ? theme.selectedListItemText : theme.text}
+          attributes={props.isChatActive() ? TextAttributes.BOLD : undefined}
+        >
+          chat
+        </text>
+      </box>
+      <For each={props.openFiles()}>
+        {(file) => {
+          const isActive = () => props.activeFile() === file
+          return (
+            <box
+              flexDirection="row"
+              gap={1}
+              paddingLeft={1}
+              paddingRight={1}
+              backgroundColor={isActive() ? theme.primary : theme.backgroundElement}
+              onMouseUp={() => props.onSelectFile(file)}
+            >
+              <text
+                fg={isActive() ? theme.selectedListItemText : theme.text}
+                attributes={isActive() ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+              >
+                {basename(file)}
+              </text>
+              <text
+                fg={isActive() ? theme.selectedListItemText : theme.textMuted}
+                onMouseUp={() => queueMicrotask(() => props.onCloseFile(file))}
+              >
+                x
+              </text>
+            </box>
+          )
+        }}
+      </For>
     </box>
   )
 }
