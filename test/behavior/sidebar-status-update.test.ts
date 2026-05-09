@@ -169,16 +169,14 @@ test("sidebar keeps a task under its repo header across a backlog → done trans
   await waitForFakeServer(port)
 
   // ---- create a task via the new-task dialog --------------------
-  await kobe.sendKeys("n")
+  await kobe.sendKeys("\x0e") // ctrl+n
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   // Settle so the dialog's prompt input has its focused listener
   // attached before we start typing. The first character can
   // otherwise race with the input's stdin attach.
   await new Promise((r) => setTimeout(r, 250))
-  // Belt-and-suspenders: clear any leaked keystrokes from the dialog
-  // open (the `n` that triggered the open can land on the prompt
-  // when the previously-focused renderable's keypress listener is
-  // still attached as the dialog mounts).
+  // Defensive clear in case a stray byte lands on the prompt during
+  // the dialog mount race. Backspaces on an empty field are no-ops.
   for (let i = 0; i < 4; i++) {
     await kobe.sendKeys("\x7f")
   }

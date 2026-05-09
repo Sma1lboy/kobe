@@ -258,13 +258,13 @@ After G0. All four can ship without seeing each other.
 **Outputs**:
 - `src/tui/context/theme.tsx` — default theme set to one we like (proposal: `nord` or `aura` from opencode's set; user picks)
 - `src/tui/context/keybindings.ts` — central keymap table (vi-style, configurable later). Bindings for: focus next/prev pane, open task list, command palette, quit, esc-cancel.
-- `src/tui/component/help-dialog.tsx` — `?` key shows current bindings
-- Tests: snapshot test on theme JSON shape; smoke test that `?` opens help.
+- `src/tui/component/help-dialog.tsx` — `F1` key shows current bindings
+- Tests: snapshot test on theme JSON shape; smoke test that `F1` opens help.
 
 **Done when**: kobe boots into themed UI with help dialog accessible.
 
 **Agent prompt seed**:
-> Wire kobe's theme + keybindings on top of the lifted opencode shell. Pick `nord` as default (changeable via `~/.kobe/config.json` later — for now hardcode). Define keymap in `src/tui/context/keybindings.ts` per PLAN.md §D. Implement `?` help dialog showing current bindings. ~150 LoC.
+> Wire kobe's theme + keybindings on top of the lifted opencode shell. Pick `nord` as default (changeable via `~/.kobe/config.json` later — for now hardcode). Define keymap in `src/tui/context/keybindings.ts` per PLAN.md §D. Implement `F1` help dialog showing current bindings. ~150 LoC.
 
 ---
 
@@ -274,7 +274,7 @@ Manual check:
 - [ ] `ClaudeCodeLocal.spawn()` works against real `claude` CLI
 - [ ] `GitWorktreeManager.create()` creates a worktree
 - [ ] `TaskIndexStore.create()` persists a task
-- [ ] kobe boots themed with `?` help
+- [ ] kobe boots themed with `F1` help
 
 These four are the building blocks. Wave 2 glues them.
 
@@ -324,14 +324,14 @@ These four are the building blocks. Wave 2 glues them.
 ### ▶ Gate G2 — "Single-task chat demo"
 
 This is the **first demoable milestone**. Build a temporary `App.tsx` that wires Sidebar (F) + a placeholder chat area + Orchestrator (E). User can:
-- Press `n` to create a task (prompts for title + repo)
+- Press `ctrl+n` to create a task (prompts for title + repo)
 - See it in the sidebar
 - Press enter to select it; chat area renders streamed events from `ClaudeCodeLocal`
 
 This is **not** the final UI. It's an end-to-end wiring proof.
 
 Manual check:
-- [ ] Create a task via `n`
+- [ ] Create a task via `ctrl+n`
 - [ ] Worktree appears on disk
 - [ ] Claude Code spawns, output streams into the placeholder chat
 - [ ] Task transitions backlog → in_progress → done

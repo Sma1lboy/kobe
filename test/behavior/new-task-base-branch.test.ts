@@ -163,7 +163,7 @@ test("new-task dialog roots the task's branch at the chosen base ref", async () 
   await scriptEngine(port, "/finish", { sessionId: "fake-1" })
 
   // ---- open new-task dialog -----------------------------------
-  await kobe.sendKeys("n")
+  await kobe.sendKeys("\x0e") // ctrl+n
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   // The "from branch" label confirms the third field exists; if
   // someone removes it, this assertion catches the regression in

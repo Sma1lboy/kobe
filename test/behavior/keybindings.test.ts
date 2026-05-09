@@ -2,25 +2,27 @@
  * Behavior test for Stream D — global keybindings.
  *
  * Spawns the kobe binary under a PTY and asserts that:
- *   1. Pressing `?` opens the help dialog with the bindings table visible.
+ *   1. Pressing `F1` opens the help dialog with the bindings table visible.
  *   2. Pressing `esc` closes the dialog.
  *   3. Pressing `ctrl+k` (the byte-level form of `cmd+k` that PTYs deliver
  *      on macOS — terminals do not propagate the Command modifier) opens
  *      the command palette.
+ *   4. Pressing bare `q` does NOT open the quit-confirm dialog (after the
+ *      bare-letter purge, quit moved to ctrl+shift+q).
  *
- * Why these three actions: they are the user-visible surface of the global
- * keymap. Other bindings (`tab`, `shift+tab`, `q`) either have no visible
- * effect yet (focus cycling lands in Wave 3) or open additional confirm
- * flows that are tangential to the keymap-wiring contract this stream
- * owns. We exercise enough behavior to prove the keymap reaches the
- * dialog stack and the command palette.
+ * Why these actions: they are the user-visible surface of the global keymap.
+ * Other bindings (`tab`, `shift+tab`) have no visible effect at the level
+ * of the keymap-wiring contract this stream owns.
  *
  * `cmd+k` byte form: ctrl+k on a PTY is `\x0b` (the 11th C0 control byte,
  * VT). We do NOT use `\x1bk` (alt+k / Option+K → Esc-prefixed `k`)
- * because that races with the help-dialog `?` opener — esc is the
- * universal-cancel key and might close any pending dialog state. ctrl+k
- * is unambiguous and is what real users on Linux/macOS terminals get
- * when they press their bound shortcut.
+ * because that races with esc — the universal-cancel key. ctrl+k is
+ * unambiguous and is what real users on Linux/macOS terminals get when
+ * they press their bound shortcut.
+ *
+ * `F1` byte form: `\x1bOP` (xterm). opentui's keymap also maps `\x1b[11~`
+ * to `f1`; we use the xterm form because it's what node-pty delivers by
+ * default.
  */
 
 import { afterEach, expect, test } from "vitest"
@@ -35,13 +37,13 @@ afterEach(async () => {
   kobe = null
 })
 
-test("`?` opens the help dialog showing the kobe keybinding table", async () => {
+test("`F1` opens the help dialog showing the kobe keybinding table", async () => {
   kobe = await spawnKobe()
   // Wait for the boot banner before driving keys, otherwise the keys
   // race the renderer attaching the keypress handler.
   await kobe.waitFor((s) => s.includes("kobe"), 10_000)
 
-  await kobe.sendKeys("?")
+  await kobe.sendKeys("\x1bOP") // F1 (xterm)
   const screen = await kobe.waitFor((s) => s.includes("keybindings"), 5_000)
   // The help dialog title contains the literal string "keybindings"; the
   // rows include category labels we know are present.
@@ -55,7 +57,7 @@ test("`esc` closes the help dialog", async () => {
   kobe = await spawnKobe()
   await kobe.waitFor((s) => s.includes("kobe"), 10_000)
 
-  await kobe.sendKeys("?")
+  await kobe.sendKeys("\x1bOP") // F1 (xterm)
   await kobe.waitFor((s) => s.includes("keybindings"), 5_000)
 
   // ESC = 0x1b. The DialogProvider's escape binding (registered higher on
@@ -88,4 +90,20 @@ test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () =
   // title bar reads "Commands"; presence of either string proves the
   // palette opened.
   expect(screen.toLowerCase()).toMatch(/commands|no commands/)
+}, 30_000)
+
+test("bare `q` does NOT open the quit-confirm dialog (binding moved to ctrl+shift+q)", async () => {
+  kobe = await spawnKobe()
+  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+
+  // Send a bare `q`. With the bare-letter binding gone, the press should
+  // be a no-op at the global layer (the sidebar pane may still consume
+  // it for its own purposes, but the quit dialog must not appear).
+  await kobe.sendKeys("q")
+  // Give the renderer a moment to paint a dialog if one were going to
+  // appear — short enough to keep the test cheap, long enough to catch
+  // a regression. The quit dialog's prompt is "Quit kobe?".
+  await new Promise((r) => setTimeout(r, 800))
+  const screen = await kobe.capture()
+  expect(screen).not.toContain("Quit kobe?")
 }, 30_000)

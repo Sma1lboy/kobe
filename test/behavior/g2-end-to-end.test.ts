@@ -185,7 +185,7 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   // ---- open new-task dialog and fill it in ----------------------
   // Wave 3 G dropped the explicit `title` field. The dialog now
   // collects (prompt, repo). The first field is `first prompt`.
-  await kobe.sendKeys("n")
+  await kobe.sendKeys("\x0e") // ctrl+n
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
 
   // First field (prompt) is focused on dialog open. Type the prompt

@@ -14,8 +14,10 @@
  * Closing: `esc` is handled by the DialogProvider stack (it's already
  * registered higher on the binding stack than this component's bindings,
  * so we don't need to re-register it). We DO register `?` so users can
- * tap `?` again to dismiss — a small ergonomic win that mirrors how vim
- * and tmux behave.
+ * tap `?` again to dismiss while the help dialog is on top — a small
+ * ergonomic win that mirrors how vim and tmux behave. (Bare `?` is no
+ * longer a global open chord; F1 is. The dismiss-only binding is safe
+ * here because the help dialog has no input fields to collide with.)
  */
 
 import { TextAttributes } from "@opentui/core"

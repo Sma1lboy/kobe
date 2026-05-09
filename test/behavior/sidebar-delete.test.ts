@@ -163,18 +163,18 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   await scriptEngine(port, "/finish", { sessionId: "fake-1" })
 
   // ---- create a task via the new-task dialog -------------------
-  await kobe.sendKeys("n")
+  await kobe.sendKeys("\x0e") // ctrl+n
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   // Settle so the dialog's prompt input has its focused listener
   // attached before we start typing — the very first character
   // can otherwise race with the input's stdin attach and land
   // somewhere other than the prompt field.
   await new Promise((r) => setTimeout(r, 250))
-  // Belt-and-suspenders: clear any leaked keystrokes from the dialog
-  // open (the `n` that triggered the open can land on the prompt
-  // when the previously-focused renderable's keypress listener is
-  // still attached as the dialog mounts). Backspaces on an empty
-  // field are no-ops, so this is safe in the happy case.
+  // Defensive: a stray byte during the dialog mount could land on the
+  // prompt field. Backspaces on an empty field are no-ops, so this is
+  // safe in the happy case. (Historically this guarded against the
+  // bare-`n` opener leaking an `n`; ctrl+n no longer leaks but the
+  // mount race still warrants a clear.)
   for (let i = 0; i < 4; i++) {
     await kobe.sendKeys("\x7f")
   }

@@ -785,8 +785,8 @@ function StatusBar() {
         <Hotkey keys="tab" label="cycle" />
         <Hotkey keys="ctrl+1234" label="focus" />
         <Hotkey keys="ctrl+n" label="new" />
-        <Hotkey keys="?" label="help" />
-        <Hotkey keys="q" label="quit" />
+        <Hotkey keys="F1" label="help" />
+        <Hotkey keys="ctrl+Q" label="quit" />
       </box>
     </box>
   )
@@ -1252,10 +1252,6 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
-    // When the chat composer is the active input (workspace focused),
-    // `?` / `q` shouldn't fire global shortcuts — let them pass through
-    // as typed characters.
-    inputFocused: () => focusedPane() === "workspace",
   })
 
   // Shared "open new-task dialog and create" handler. Bound to two
@@ -1348,24 +1344,6 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // `n` (bare letter) opens the new-task dialog when the sidebar is
-  // focused. Scoping to sidebar-focus matches the muscle memory of
-  // "I'm browsing the task list, n = new" and keeps the letter free
-  // for literal input when the chat composer or any other pane's
-  // input is focused. `ctrl+n` (below) is the always-on path that
-  // works even mid-composer.
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && focusedPane() === "sidebar",
-    bindings: [
-      {
-        key: "n",
-        cmd: () => {
-          void openNewTaskFlow()
-        },
-      },
-    ],
-  }))
-
   // `ctrl+n` is always available (when no dialog is open). The chat
   // composer's input doesn't consume control chords, so this is the
   // safe path for "I'm in a chat but want to spawn a sibling task."
@@ -1380,24 +1358,9 @@ function Shell(props: AppDeps) {
       },
       // ctrl+, opens the settings dialog from any pane (modifier
       // chords don't go to inputs). Mirrors VS Code's command palette
-      // convention. Sidebar/files/terminal also accept bare `,` via
-      // the focus-scoped binding below.
+      // convention.
       {
         key: "ctrl+,",
-        cmd: () => {
-          void SettingsDialog.show(dialog, kv)
-        },
-      },
-    ],
-  }))
-
-  // Bare `,` opens settings when the chat composer isn't focused.
-  // Composer claims literal commas as input.
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && focusedPane() !== "workspace",
-    bindings: [
-      {
-        key: ",",
         cmd: () => {
           void SettingsDialog.show(dialog, kv)
         },

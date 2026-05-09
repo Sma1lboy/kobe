@@ -68,7 +68,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     id: "help.open",
-    keys: ["?"],
+    keys: ["f1"],
     category: "Global",
     description: "Show this help dialog",
   },
@@ -86,7 +86,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     id: "app.quit",
-    keys: ["q"],
+    keys: ["ctrl+shift+q"],
     category: "Global",
     description: "Quit (with confirm)",
   },
@@ -130,15 +130,6 @@ export type KobeKeybindingsOpts = {
    * which is correct in the production binary. Tests can pass a spy.
    */
   onQuit?: () => void
-  /**
-   * Accessor that returns `true` when an input field (chat composer,
-   * dialog input) currently owns the keyboard. While true, single-char
-   * shortcuts like `?` and `q` are NOT registered, so the user can type
-   * those characters as literal text. Modifier-prefixed shortcuts
-   * (ctrl+k, alt+k) and `escape` stay registered regardless — they
-   * never collide with input typing.
-   */
-  inputFocused?: () => boolean
 }
 
 /**
@@ -163,10 +154,10 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   // every keypress, so closing over reactive values would still work; we
   // memoize purely to avoid garbage on hot paths.
   //
-  // When `inputFocused()` is true (e.g. the chat composer owns the
-  // keyboard), single-char keys like `?` and `q` are OMITTED so the
-  // user can type them as literal text. Modifier-prefixed keys are
-  // always registered — they don't collide with input typing.
+  // All chords here are modifier-prefixed (ctrl/alt) or function/named
+  // keys (f1, tab, escape) so they never collide with literal typing in
+  // the chat composer or any dialog input. There is no longer any
+  // input-focus guard — the bindings register unconditionally.
   const bindings = createMemo(() => {
     const list: Array<{ key: string; cmd: () => void }> = [
       { key: "ctrl+k", cmd: () => palette.show() },
@@ -180,23 +171,19 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
           if (dialog.stack.length > 0) dialog.pop()
         },
       },
-    ]
-    if (!opts.inputFocused?.()) {
-      list.push(
-        { key: "?", cmd: () => opts.onShowHelp() },
-        { key: "tab", cmd: () => onFocusNext() },
-        { key: "shift+tab", cmd: () => onFocusPrev() },
-        {
-          key: "q",
-          cmd: () => {
-            if (dialog.stack.length > 0) return
-            DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
-              if (ok === true) onQuit()
-            })
-          },
+      { key: "f1", cmd: () => opts.onShowHelp() },
+      { key: "tab", cmd: () => onFocusNext() },
+      { key: "shift+tab", cmd: () => onFocusPrev() },
+      {
+        key: "ctrl+shift+q",
+        cmd: () => {
+          if (dialog.stack.length > 0) return
+          DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
+            if (ok === true) onQuit()
+          })
         },
-      )
-    }
+      },
+    ]
     return list
   })
 

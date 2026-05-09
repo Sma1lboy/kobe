@@ -29,7 +29,7 @@ afterEach(async () => {
 test("creating a task shows it in the sidebar", async () => {
   kobe = await spawnKobe()                       // bun + opentui under a pty
   await kobe.waitFor((s) => s.includes("kobe"))  // wait for first paint
-  await kobe.sendKeys("n")                       // open new-task dialog
+  await kobe.sendKeys("\x0e")                    // ctrl+n — open new-task dialog
   await kobe.typeText("test task")
   await kobe.sendKeys("\r")                      // submit
   const screen = await kobe.waitFor((s) => s.includes("test task"))

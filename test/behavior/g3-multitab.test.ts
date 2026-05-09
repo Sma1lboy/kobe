@@ -97,17 +97,8 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
  * Type a string into the new-task dialog: open via shortcut, fill
  * prompt, tab to repo, clear prefilled cwd, type repo, submit.
  */
-async function fillNewTaskDialog(
-  kobe: KobeHandle,
-  prompt: string,
-  repo: string,
-  openWith: "n" | "ctrl+n" = "n",
-): Promise<void> {
-  if (openWith === "n") {
-    await kobe.sendKeys("n")
-  } else {
-    await kobe.sendKeys("\x0e") // ctrl+n
-  }
+async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
+  await kobe.sendKeys("\x0e") // ctrl+n
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   await kobe.typeText(prompt)
   await kobe.sendKeys("\t")

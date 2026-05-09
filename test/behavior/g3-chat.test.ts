@@ -102,25 +102,14 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
  * Type a string into the new-task dialog: open via shortcut, fill
  * prompt, tab to repo, clear prefilled cwd, type repo, submit.
  *
- * `openWith` defaults to `"n"` (the bare-letter binding, only valid
- * when no task is selected). Pass `"\x0e"` (ctrl+n) when a task is
- * already selected — the chat composer claims `n` once focused.
+ * The opener is always ctrl+n (`\x0e`, ASCII SO) — opentui maps it to
+ * a key event with ctrl=true and name="n", which our keymap matches as
+ * "ctrl+n". Bare `n` is no longer a global hotkey.
  *
  * Factored out because all four tests use it.
  */
-async function fillNewTaskDialog(
-  kobe: KobeHandle,
-  prompt: string,
-  repo: string,
-  openWith: "n" | "ctrl+n" = "n",
-): Promise<void> {
-  if (openWith === "n") {
-    await kobe.sendKeys("n")
-  } else {
-    // ctrl+n — ASCII SO (0x0e). opentui maps this to a key event with
-    // ctrl=true and name="n", which our keymap matches as "ctrl+n".
-    await kobe.sendKeys("\x0e")
-  }
+async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
+  await kobe.sendKeys("\x0e")
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   await kobe.typeText(prompt)
   // Tab to repo field.
@@ -351,9 +340,10 @@ test("G3d — switching tasks shows the right chat per task", async () => {
     events: [{ type: "assistant.delta", text: "TWOREPLY" }, { type: "done" }] satisfies EngineEvent[],
   })
 
-  // Second task: a task is already selected, so the bare `n` binding
-  // is gated off (chat composer would absorb it). Use ctrl+n.
-  await fillNewTaskDialog(kobe, "beta task", fixture.repo, "ctrl+n")
+  // Second task: a task is already selected and the chat composer
+  // owns input. The helper uses ctrl+n unconditionally now that bare
+  // `n` is no longer a global hotkey.
+  await fillNewTaskDialog(kobe, "beta task", fixture.repo)
 
   // After the second submit, the chat shows task 2's reply.
   //
