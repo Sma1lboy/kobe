@@ -753,7 +753,11 @@ export async function startApp(): Promise<void> {
   await store.load()
   const worktrees = new GitWorktreeManager()
   const orchestrator = new Orchestrator({ engine, store, worktrees })
-  await render(() => <App orchestrator={orchestrator} />)
+  // Renderer-level background: transparent so the host terminal's
+  // background (theme, image, transparency setting) shows through where
+  // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier
+  // versions composited transparent regions against opaque black.
+  await render(() => <App orchestrator={orchestrator} />, { backgroundColor: "transparent" })
   // Side-effect: silence the "no usage" lint warning if any.
   void join
 }
