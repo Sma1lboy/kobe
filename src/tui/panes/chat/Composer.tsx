@@ -197,6 +197,31 @@ export function Composer(props: ComposerProps) {
     setSlashCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
   })
 
+  // Slash dropdown windowing — claude-code's autocomplete shows ~8 rows
+  // and scrolls the window so the cursor stays visible. Without this,
+  // typing `/` with 70+ commands paints the whole list and overflows
+  // a small terminal. We compute the window centered on the cursor,
+  // clamped to the list bounds. Indicator counts (`↑ N more` / `↓ N more`)
+  // render outside the window when truncated.
+  const SLASH_MAX_VISIBLE = 8
+  type SlashWindow = {
+    readonly items: readonly SlashEntry[]
+    readonly start: number
+    readonly total: number
+  }
+  const slashWindow = createMemo<SlashWindow>(() => {
+    const matches = slashMatches()
+    const total = matches.length
+    if (total <= SLASH_MAX_VISIBLE) {
+      return { items: matches, start: 0, total }
+    }
+    const cursor = slashCursor()
+    const half = Math.floor(SLASH_MAX_VISIBLE / 2)
+    let start = Math.max(0, cursor - half)
+    if (start + SLASH_MAX_VISIBLE > total) start = total - SLASH_MAX_VISIBLE
+    return { items: matches.slice(start, start + SLASH_MAX_VISIBLE), start, total }
+  })
+
   /**
    * Read the latest entries for the active history key. Re-read each
    * time we navigate so concurrent submits (which append) are
@@ -389,8 +414,10 @@ export function Composer(props: ComposerProps) {
       return
     }
     // Slash-dropdown nav has higher priority than history nav. When
-    // the dropdown is open, up/down move the highlighted command, esc
-    // dismisses (by clearing the buffer), and return runs the selection.
+    // the dropdown is open, up/down move the highlighted command, tab
+    // completes the buffer with the highlighted entry's display (so the
+    // user can keep typing args after the command name), esc clears
+    // to dismiss, and return runs the selection.
     if (slashOpen() && slashMatches().length > 0) {
       if (key.name === "up" && !key.shift && !key.ctrl && !key.meta && !key.super) {
         const len = slashMatches().length
@@ -401,6 +428,22 @@ export function Composer(props: ComposerProps) {
       if (key.name === "down" && !key.shift && !key.ctrl && !key.meta && !key.super) {
         const len = slashMatches().length
         setSlashCursor((cur) => (cur + 1) % len)
+        key.preventDefault()
+        return
+      }
+      if (key.name === "tab" && !key.shift) {
+        // Auto-fill the buffer with the highlighted entry's display
+        // (e.g. `/comp` → `/compact`). Doesn't submit — the user can
+        // keep typing args or hit enter to run. Mirrors claude-code's
+        // PromptInput tab-completion (refs/claude-code/src/components/
+        // PromptInput/PromptInput.tsx).
+        const matches = slashMatches()
+        const entry = matches[slashCursor()]
+        if (entry) {
+          setBuffer(entry.display)
+          setLiveBuffer(entry.display)
+          props.onDraftChange(entry.display)
+        }
         key.preventDefault()
         return
       }
@@ -478,7 +521,6 @@ export function Composer(props: ComposerProps) {
   // mid-air and looks unfinished. Border color upgrades to
   // `theme.primary` when the workspace pane is focused so the active
   // input stands out at a glance.
-  const railColor = () => (props.focused?.() ? theme.primary : theme.border)
   const actionHint = () => {
     if (!props.hasTask) return ""
     if (props.isStreaming) return "streaming — wait for done"
@@ -488,27 +530,31 @@ export function Composer(props: ComposerProps) {
 
   // Mode indicator: short label + tone based on the active permission mode.
   // We treat undefined as "default" for display so the badge always
-  // renders. `default` gets a muted tone; everything more permissive or
-  // restrictive picks up an accent so the change is visible.
+  // renders. Plain text labels — no emoji glyphs (the previous 📋/⏵/⚠ set
+  // looked out of place against the rest of kobe's monochrome chrome).
+  // The rail color picks up the same tone so the composer's outer
+  // chrome turns a different color for non-default modes; plan mode in
+  // particular needs to be unmistakable so the user doesn't accidentally
+  // submit a destructive prompt while the agent is planning.
   const modeBadge = createMemo<{ label: string; tone: "muted" | "accent" | "warning" | "primary" }>(() => {
     const mode = props.permissionMode?.()
     switch (mode) {
       case "acceptEdits":
-        return { label: "⏵ accept edits", tone: "accent" }
+        return { label: "accept edits", tone: "accent" }
       case "plan":
-        return { label: "📋 plan", tone: "primary" }
+        return { label: "plan mode", tone: "primary" }
       case "auto":
         return { label: "auto", tone: "primary" }
       case "bypassPermissions":
-        return { label: "⚠ bypass", tone: "warning" }
+        return { label: "bypass permissions", tone: "warning" }
       case "dontAsk":
         return { label: "don't ask", tone: "warning" }
       default:
         return { label: "default", tone: "muted" }
     }
   })
-  const modeBadgeColor = () => {
-    switch (modeBadge().tone) {
+  const toneColor = (tone: "muted" | "accent" | "warning" | "primary") => {
+    switch (tone) {
       case "accent":
         return theme.accent
       case "primary":
@@ -519,11 +565,27 @@ export function Composer(props: ComposerProps) {
         return theme.textMuted
     }
   }
+  const modeBadgeColor = () => toneColor(modeBadge().tone)
+  // Rail color priority: non-default mode > focused > idle border. Mode
+  // wins over focus so the visual signal "you are in plan mode" persists
+  // even when the user clicks into a sibling pane (you'd otherwise drop
+  // back to the muted border and forget the mode is on).
+  const railColor = () => {
+    const tone = modeBadge().tone
+    if (tone !== "muted") return toneColor(tone)
+    if (props.focused?.()) return theme.primary
+    return theme.border
+  }
 
   return (
     <box flexShrink={0} flexDirection="column" paddingTop={1}>
-      {/* Slash dropdown — rendered above the composer, only when the
-          buffer starts with `/` and there's at least one match. */}
+      {/* Slash dropdown — rendered above the composer when the buffer
+          starts with `/` and there's at least one match. Windowed to
+          SLASH_MAX_VISIBLE entries so a 70+ command list doesn't blow
+          past the chat area; the window scrolls to keep the cursor
+          visible. `↑ N more` / `↓ N more` indicators surface the
+          truncation. Tab completes the highlighted entry into the
+          buffer (claude-code parity). */}
       <Show when={slashOpen() && slashMatches().length > 0}>
         <box
           flexDirection="column"
@@ -537,9 +599,15 @@ export function Composer(props: ComposerProps) {
           borderColor={railColor()}
           customBorderChars={SplitBorder.customBorderChars}
         >
-          <For each={slashMatches()}>
+          <Show when={slashWindow().start > 0}>
+            <text fg={theme.textMuted} wrapMode="none">
+              ↑ {slashWindow().start} more
+            </text>
+          </Show>
+          <For each={slashWindow().items}>
             {(entry, i) => {
-              const active = () => i() === slashCursor()
+              const absoluteIndex = () => slashWindow().start + i()
+              const active = () => absoluteIndex() === slashCursor()
               return (
                 <box flexDirection="row" gap={2}>
                   <text
@@ -559,6 +627,11 @@ export function Composer(props: ComposerProps) {
               )
             }}
           </For>
+          <Show when={slashWindow().start + slashWindow().items.length < slashWindow().total}>
+            <text fg={theme.textMuted} wrapMode="none">
+              ↓ {slashWindow().total - slashWindow().start - slashWindow().items.length} more
+            </text>
+          </Show>
         </box>
       </Show>
       <box
