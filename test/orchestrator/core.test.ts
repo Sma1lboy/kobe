@@ -132,6 +132,35 @@ describe("Orchestrator.createTask", () => {
     expect(sig().length).toBe(1)
     expect(sig()[0]?.id).toBe(t.id)
   })
+
+  test("tasksSignal updates reactively from any store mutation, not just orchestrator API", async () => {
+    // Regression test for the H2 bug: the sidebar's `Task[]` accessor
+    // must wake up whenever the store mutates — including paths that
+    // bypass the orchestrator's mutation methods (e.g. the pump's
+    // `finally` block calling `store.update` directly). Before the
+    // fix, the orchestrator manually called `refreshSignal()` after
+    // every mutation; if any path forgot, the sidebar drifted.
+    //
+    // This test asserts the listener-based wiring: a direct call on
+    // the store (not on the orchestrator) MUST trigger a signal
+    // update. This is the property the brief's behavior test relies
+    // on at the TUI level.
+    const { orch, store } = await buildOrchestrator()
+    const sig = orch.tasksSignal()
+    expect(sig().length).toBe(0)
+
+    const t = await orch.createTask({ repo, title: "reactivity", prompt: "" })
+    expect(sig()[0]?.status).toBe("backlog")
+
+    // Bypass the orchestrator and mutate the store directly.
+    await store.update(t.id, { status: "done" })
+    expect(sig()[0]?.status).toBe("done")
+    expect(sig().length).toBe(1)
+
+    // archive() also flows through the listener bus.
+    await store.archive(t.id, "canceled")
+    expect(sig()[0]?.status).toBe("canceled")
+  })
 })
 
 // ----------------------------------------------------------------------

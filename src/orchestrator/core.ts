@@ -37,9 +37,15 @@
  *
  *   - **Solid integration.** `tasksSignal()` returns a Solid `Accessor`
  *     so `<Sidebar tasks={orch.tasksSignal()} />` works directly.
- *     Internally we keep a `createSignal<Task[]>` and rewrite it after
- *     every store mutation. The store is the source of truth; the
- *     signal is a memoized projection of it.
+ *     Internally we keep a `createSignal<Task[]>` and rewrite it from a
+ *     `TaskIndexStore.subscribe(cb)` listener. The store is the source
+ *     of truth; the signal is a reactive mirror that wakes up on every
+ *     mutation — without the orchestrator having to remember to call a
+ *     `refreshSignal()` helper at every mutation point. The earlier
+ *     "manual refresh after each mutation" pattern bit us when an
+ *     unrelated code path mutated the store and the sidebar didn't
+ *     redraw (Jackson's "task was done in JSON, sidebar still in
+ *     Backlog" bug); the listener-based pattern is missable-by-design.
  *
  * What this file deliberately does NOT do:
  *
@@ -54,7 +60,7 @@
 import { type Accessor, createSignal } from "solid-js"
 import type { AIEngine, EngineEvent, SessionHandle } from "../types/engine.ts"
 import type { Task, TaskId, TaskStatus } from "../types/task.ts"
-import type { TaskIndexStore } from "./index/store.ts"
+import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
@@ -135,22 +141,44 @@ export class Orchestrator {
 
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
+  private readonly unsubscribeStore: TaskIndexUnsubscribe
 
   constructor(deps: OrchestratorDeps) {
     this.engine = deps.engine
     this.store = deps.store
     this.worktrees = deps.worktrees
+    // Seed the signal with the current store snapshot so synchronous
+    // readers (the Sidebar's `createMemo`) see the right initial
+    // shape on the very first paint.
     const [tasks, setTasks] = createSignal<Task[]>(this.store.list())
     this.tasksAcc = tasks
     // Solid's `setSignal` accepts either a value or an updater; we
     // narrow to "always pass a fresh array" so the signal change is
     // detected by reference (Solid uses Object.is by default).
     this.setTasks = (next) => setTasks(() => next)
+    // Wire the signal to the store's change notifier. From here on
+    // every store mutation — whether driven by `runTask`, the pump's
+    // `done`/`error` finally, `archiveTask`, `pauseTask`, or a future
+    // code path we haven't written yet — refreshes the signal
+    // automatically. No `refreshSignal()` calls needed at the
+    // mutation sites.
+    this.unsubscribeStore = this.store.subscribe((snapshot) => {
+      this.setTasks(snapshot.slice())
+    })
   }
 
   /** Solid `Accessor` that yields the current task list. */
   tasksSignal(): Accessor<Task[]> {
     return this.tasksAcc
+  }
+
+  /**
+   * Tear down the store subscription. Test-only — production never
+   * disposes the orchestrator before the process exits, but tests that
+   * rebuild orchestrators repeatedly leak listeners without this.
+   */
+  dispose(): void {
+    this.unsubscribeStore()
   }
 
   /** Snapshot of the current task list. Defensive copy. */
@@ -209,7 +237,9 @@ export class Orchestrator {
       } catch {
         /* swallow secondary failure */
       }
-      this.refreshSignal()
+      // No explicit refresh: `store.archive` notifies its listeners,
+      // including our constructor-time subscription which mirrors the
+      // signal.
       throw err
     }
 
@@ -217,7 +247,6 @@ export class Orchestrator {
       branch: info.branch,
       worktreePath: info.path,
     })
-    this.refreshSignal()
     return finalized
   }
 
@@ -273,7 +302,6 @@ export class Orchestrator {
     if (task.status !== "in_progress") {
       await this.store.update(task.id, { status: "in_progress" })
     }
-    this.refreshSignal()
 
     // Spin the pump. Captures `task.id` so the closure references the
     // right task even if the user creates more concurrently.
@@ -308,7 +336,6 @@ export class Orchestrator {
       this.handles.delete(task.id)
     }
     await this.store.update(task.id, { status: "backlog" })
-    this.refreshSignal()
   }
 
   /**
@@ -326,7 +353,6 @@ export class Orchestrator {
       this.handles.delete(task.id)
     }
     await this.store.archive(task.id, status)
-    this.refreshSignal()
   }
 
   /**
@@ -377,10 +403,6 @@ export class Orchestrator {
     return n
   }
 
-  private refreshSignal(): void {
-    this.setTasks(this.store.list())
-  }
-
   private dispatchEvent(taskId: TaskId, ev: EngineEvent): void {
     const set = this.subscribers.get(taskId)
     if (!set) return
@@ -417,7 +439,8 @@ export class Orchestrator {
           /* store may have been cleared in tests; ignore */
         }
       }
-      this.refreshSignal()
+      // The store's listener bus refreshes the signal automatically on
+      // the `update` above. No explicit refresh needed here.
     }
   }
 }
