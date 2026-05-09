@@ -596,6 +596,43 @@ export class Orchestrator {
   }
 
   /**
+   * Rename a task. The sidebar's `r` keypress opens a small dialog that
+   * defaults to the current title; on submit we land here. Mirrors the
+   * shape of {@link setArchived} / {@link setPermissionMode} /
+   * {@link setModel} (require-task → no-op if unchanged → store.update).
+   *
+   * `createTask` derives an initial title from the first prompt
+   * (PLACEHOLDER_TASK_TITLE → first-40-chars of the prompt). This is the
+   * user-driven override path for "the auto-derived label is wrong / I
+   * want to organise my sidebar."
+   *
+   * Validation:
+   *   - Throws on empty / whitespace-only input. We trim first, then
+   *     reject if the result is empty — the new-task dialog already
+   *     guards this on its end, but defending in depth here means a
+   *     mis-wired UI path can't write a blank label and orphan a row in
+   *     the sidebar.
+   *   - Same-as-current (after trim) is a no-op so a user "editing" the
+   *     title to the same value doesn't churn the manifest file or fire
+   *     a redundant store notification.
+   *
+   * No length cap is enforced here. {@link deriveTitleFromPrompt}
+   * applies one when a title is auto-derived, but the user clicking
+   * "rename" is signalling they want the value as typed. The sidebar
+   * truncates on render (terminal column width clip), so an over-long
+   * title is a visual problem, not a corruption hazard.
+   */
+  async setTitle(id: TaskId | string, title: string): Promise<void> {
+    const task = this.requireTask(id)
+    const trimmed = typeof title === "string" ? title.trim() : ""
+    if (trimmed.length === 0) {
+      throw new Error("setTitle: title is required (empty or whitespace-only rejected)")
+    }
+    if (task.title === trimmed) return
+    await this.store.update(task.id, { title: trimmed })
+  }
+
+  /**
    * Fully delete a task: stop the engine, remove the worktree files,
    * remove the persisted chat history (Claude Code's JSONL session
    * file), and remove the task entry from the index.

@@ -70,6 +70,19 @@ export type SidebarBindingsOpts = {
    */
   onArchiveRequest?: (taskId: string) => void
   /**
+   * Rename callback. Fires on `r` with the task id under the cursor.
+   * The sidebar emits a *request* — the parent (app.tsx) owns the
+   * input dialog and the `orchestrator.setTitle` call. Optional, in
+   * step with delete/archive, so consumers that don't wire rename
+   * (tests, host-mode) get a no-op. Modifier-aware: `ctrl+r` will not
+   * match this binding (per `lib/keymap.tsx`).
+   *
+   * Conflict check: `r` is bound in `panes/filetree/keys.ts` (refresh)
+   * and in `component/dialog-diff.tsx` (reload), but those are local
+   * to other focused panes / dialogs — sidebar's `r` is free.
+   */
+  onRenameRequest?: (taskId: string) => void
+  /**
    * View-switch callback. Fires on `[` (-1, "previous view") and `]`
    * (+1, "next view"). The parent owns the active-view signal.
    */
@@ -146,6 +159,22 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
           const id = ids[idx]
           if (id === undefined) return
           opts.onArchiveRequest?.(id)
+        },
+      },
+      {
+        // `r` = rename the task under the cursor. The sidebar emits
+        // a request; the parent owns the input dialog and the
+        // orchestrator.setTitle call (so the dialog primitive evolves
+        // without the sidebar growing input state). Same id-resolution
+        // as `d`/`a`. Modifier-aware: `ctrl+r` will not match.
+        key: "r",
+        cmd: () => {
+          const ids = opts.flatTaskIds()
+          const idx = opts.cursorIndex()
+          if (idx < 0 || idx >= ids.length) return
+          const id = ids[idx]
+          if (id === undefined) return
+          opts.onRenameRequest?.(id)
         },
       },
       // `[` / `]` switch between the Working session and Archives
