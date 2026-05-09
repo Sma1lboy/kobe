@@ -88,6 +88,14 @@ export interface Task {
    * load time.
    */
   readonly permissionMode?: PermissionMode
+  /**
+   * Model id passed to `claude --model <id>` on every spawn/resume.
+   * Optional: undefined falls through to the CLI's default model.
+   * Picked from a fixed set in the composer's model picker; full
+   * Anthropic model ids are stored verbatim so the persisted choice
+   * survives kobe restarts and matches what claude-code itself uses.
+   */
+  readonly model?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

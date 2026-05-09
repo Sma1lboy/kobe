@@ -54,7 +54,10 @@ import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { SlashEntry } from "../../context/command-palette"
 import { useTheme } from "../../context/theme"
+import { useDialog } from "../../ui/dialog"
 import { BUILTIN_CLAUDE_SLASHES } from "./composer/builtin-slashes"
+import { ModelPicker } from "./composer/ModelPicker"
+import { modelLabelFor } from "./composer/models"
 import { Composer } from "./Composer"
 import { MessageList } from "./MessageList"
 import {
@@ -96,6 +99,7 @@ export type ChatProps = {
 
 export function Chat(props: ChatProps) {
   const { theme } = useTheme()
+  const dialog = useDialog()
 
   // Slash-command list — sourced verbatim from claude-code's command
   // directory (refs/claude-code/src/commands/) via the build-time
@@ -174,6 +178,33 @@ export function Chat(props: ChatProps) {
     void props.orchestrator.setPermissionMode(id, next).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setPermissionMode failed:", err)
+    })
+  }
+
+  // Per-task model id. Like permissionMode, read off the orchestrator's
+  // tasksSignal so picker writes round-trip into the indicator the same
+  // tick. The composer's footer shows the human-readable label via
+  // {@link modelLabelFor}; clicking the label opens the picker dialog.
+  const modelId = createMemo(() => {
+    const id = props.taskId()
+    if (!id) return undefined
+    return props.orchestrator
+      .tasksSignal()()
+      .find((t) => t.id === id)?.model
+  })
+  const modelLabel = createMemo(() => modelLabelFor(modelId()))
+
+  async function chooseModel(): Promise<void> {
+    const id = props.taskId()
+    if (!id) return
+    const result = await ModelPicker.show(dialog, modelId())
+    if (result === undefined) return // dismissed
+    // `null` from the picker = user picked the default row → clear the
+    // pinned model. A non-null result is the new model id.
+    const next = result ?? undefined
+    await props.orchestrator.setModel(id, next).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] setModel failed:", err)
     })
   }
 
@@ -472,6 +503,8 @@ export function Chat(props: ChatProps) {
         slashes={slashes}
         permissionMode={permissionMode}
         onCyclePermissionMode={cyclePermissionMode}
+        modelLabel={modelLabel}
+        onChooseModel={() => void chooseModel()}
       />
     </box>
   )

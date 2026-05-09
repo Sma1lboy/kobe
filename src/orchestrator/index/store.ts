@@ -424,6 +424,11 @@ function coerceTask(value: unknown): Task | null {
     // dropped — only the published union is honored, so manual edits to
     // the JSON can't smuggle invalid flags into the spawn args.
     permissionMode: isPermissionMode(v.permissionMode) ? v.permissionMode : undefined,
+    // Model id: optional, free-form string. We don't enum-gate it
+    // because Anthropic ships new model ids regularly and we want
+    // stored choices to survive a model-list refresh (a user-pinned
+    // `claude-opus-4-7` shouldn't get scrubbed when 4.8 drops).
+    model: typeof v.model === "string" ? v.model : undefined,
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }

@@ -336,10 +336,12 @@ export class Orchestrator {
       handle = await this.engine.resume(task.sessionId, promptToSend, {
         env: { KOBE_RESUME_CWD: task.worktreePath },
         permissionMode: task.permissionMode,
+        model: task.model,
       })
     } else {
       handle = await this.engine.spawn(task.worktreePath, promptToSend, {
         permissionMode: task.permissionMode,
+        model: task.model,
       })
       // Persist the freshly-allocated session id so a future kobe
       // restart can resume.
@@ -486,6 +488,19 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.permissionMode === mode) return
     await this.store.update(task.id, { permissionMode: mode })
+  }
+
+  /**
+   * Set the per-task model. Persisted to the manifest and forwarded as
+   * `claude --model <id>` on the next spawn/resume. Pass `undefined`
+   * to clear (falls back to claude-code's default model). Like
+   * permission mode, the change takes effect on the NEXT user turn —
+   * an in-flight session keeps the model it was spawned with.
+   */
+  async setModel(id: TaskId | string, model: string | undefined): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.model === model) return
+    await this.store.update(task.id, { model })
   }
 
   /**

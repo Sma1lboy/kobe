@@ -124,6 +124,12 @@ export interface ComposerProps {
    * Omit to disable shift+tab cycling.
    */
   onCyclePermissionMode?: () => void
+  /**
+   * Called when the user clicks the model label in the inline footer.
+   * Parent typically opens a picker dialog and writes the chosen
+   * model back via the orchestrator. Omit to make the label inert.
+   */
+  onChooseModel?: () => void
 }
 
 /**
@@ -697,9 +703,19 @@ export function Composer(props: ComposerProps) {
                 <text fg={modeBadgeColor()} wrapMode="none">
                   {modeBadge().label}
                 </text>
-                <text fg={theme.textMuted} wrapMode="none">
-                  {modelLabel()}
-                </text>
+                {/* Model label — clickable when the parent supplies
+                    `onChooseModel`; renders with a `▾` caret to advertise
+                    the picker. Inert (no caret, no click) otherwise. */}
+                <box
+                  flexDirection="row"
+                  flexShrink={0}
+                  onMouseUp={() => props.onChooseModel?.()}
+                >
+                  <text fg={theme.textMuted} wrapMode="none">
+                    {modelLabel()}
+                    {props.onChooseModel ? " ▾" : ""}
+                  </text>
+                </box>
               </box>
             </box>
           </Show>
