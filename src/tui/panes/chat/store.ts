@@ -32,7 +32,7 @@
  * No Solid / opentui imports — pure data, vitest-friendly under Node.
  */
 
-import type { EngineEvent, Message } from "../../../types/engine.ts"
+import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
 
 /** One chronological row in the chat. The renderer maps these to JSX. */
 export type ChatRow =
@@ -89,7 +89,7 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
 }
 
 /**
- * Apply a single {@link EngineEvent} to the state. Pure.
+ * Apply a single {@link OrchestratorEvent} to the state. Pure.
  *
  *   - `assistant.delta`: append a new assistant row, OR concat into the
  *     last assistant row if it's the most recent message (token-level
@@ -102,8 +102,16 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
  *   - `usage`: ignored.
  *   - `done`: `isStreaming: false`.
  *   - `error`: append a `system` row + `isStreaming: false` + banner.
+ *   - `user.inject`: append a user row with the injected text and set
+ *     `isStreaming: true`. Synthesized by the orchestrator for prompt
+ *     injections (e.g. the Create-PR button) so the chat shows the
+ *     injected prompt the same way it shows a typed user prompt.
  */
-export function applyEvent(state: ChatState, ev: EngineEvent, nowIso: string = new Date().toISOString()): ChatState {
+export function applyEvent(
+  state: ChatState,
+  ev: OrchestratorEvent,
+  nowIso: string = new Date().toISOString(),
+): ChatState {
   switch (ev.type) {
     case "assistant.delta": {
       const last = state.messages[state.messages.length - 1]
@@ -157,6 +165,13 @@ export function applyEvent(state: ChatState, ev: EngineEvent, nowIso: string = n
         isStreaming: false,
         error: ev.message,
         messages: [...state.messages, { kind: "system", text: `error: ${ev.message}`, ts: nowIso }],
+      }
+    case "user.inject":
+      return {
+        ...state,
+        isStreaming: true,
+        error: null,
+        messages: [...state.messages, { kind: "user", text: ev.text, ts: nowIso }],
       }
     default:
       return state

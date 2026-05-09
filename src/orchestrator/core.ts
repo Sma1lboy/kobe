@@ -58,7 +58,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
-import type { AIEngine, EngineEvent, Message, SessionHandle } from "../types/engine.ts"
+import type { AIEngine, EngineEvent, Message, OrchestratorEvent, SessionHandle } from "../types/engine.ts"
 import type { Task, TaskId, TaskStatus } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
@@ -170,7 +170,7 @@ export class Orchestrator {
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly handles = new Map<TaskId, SessionHandle>()
-  private readonly subscribers = new Map<TaskId, Set<(ev: EngineEvent) => void>>()
+  private readonly subscribers = new Map<TaskId, Set<(ev: OrchestratorEvent) => void>>()
   /** Background pump promises — kept so tests can `await` settle. */
   private readonly pumps = new Map<TaskId, Promise<void>>()
 
@@ -405,6 +405,12 @@ export class Orchestrator {
     const state = await gatherPRState(task.worktreePath)
     const template = await loadPRInstructionsTemplate(task.worktreePath)
     const prompt = renderPRInstructions(template, state)
+    // Broadcast the synthetic user-inject event BEFORE runTask so the
+    // chat renders the injected prompt as a normal user row in the same
+    // tick the streaming starts. Subscribers swallow their own errors
+    // (see dispatchEvent), so an unrelated subscriber failure here
+    // can't poison the runTask call.
+    this.dispatchEvent(task.id, { type: "user.inject", text: prompt })
     await this.runTask(task.id, prompt)
   }
 
@@ -526,13 +532,15 @@ export class Orchestrator {
   }
 
   /**
-   * Subscribe to engine events for one task. Returns an unsubscribe
+   * Subscribe to events for one task. Returns an unsubscribe
    * function. Multiple subscribers are supported; events are
-   * broadcast in registration order. Subscribers receive ALL events
-   * the engine emits — `assistant.delta`, `tool.start`, `tool.result`,
-   * `usage`, `done`, `error`. The chat pane filters which to render.
+   * broadcast in registration order. Subscribers receive engine
+   * events (`assistant.delta`, `tool.start`, `tool.result`, `usage`,
+   * `done`, `error`) AND synthetic `user.inject` events emitted by
+   * orchestrator-driven prompt injections (e.g. `requestPR`). The
+   * chat pane filters which to render.
    */
-  subscribeEvents(id: TaskId | string, cb: (ev: EngineEvent) => void): Unsubscribe {
+  subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void): Unsubscribe {
     const taskId = (this.store.get(id)?.id ?? id) as TaskId
     let set = this.subscribers.get(taskId)
     if (!set) {
@@ -573,7 +581,7 @@ export class Orchestrator {
     return n
   }
 
-  private dispatchEvent(taskId: TaskId, ev: EngineEvent): void {
+  private dispatchEvent(taskId: TaskId, ev: OrchestratorEvent): void {
     const set = this.subscribers.get(taskId)
     if (!set) return
     for (const cb of set) {

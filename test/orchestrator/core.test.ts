@@ -41,7 +41,7 @@ import {
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
-import type { AIEngine, EngineEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
+import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
 const REPO_INIT = path.resolve(__dirname, "../behavior/fixtures/repo-init.sh")
@@ -232,7 +232,7 @@ describe("Orchestrator.runTask", () => {
     const t = await orch.createTask({ repo, title: "happy", prompt: "" })
 
     // Capture events flowing to the subscriber.
-    const seen: EngineEvent[] = []
+    const seen: OrchestratorEvent[] = []
     orch.subscribeEvents(t.id, (ev) => seen.push(ev))
 
     // Pre-script future events. spawn() will allocate "fake-1" so we
@@ -547,8 +547,8 @@ describe("Orchestrator.subscribeEvents", () => {
     const { orch } = await buildOrchestrator(fake)
     const t = await orch.createTask({ repo, title: "sub", prompt: "" })
 
-    const a: EngineEvent[] = []
-    const b: EngineEvent[] = []
+    const a: OrchestratorEvent[] = []
+    const b: OrchestratorEvent[] = []
     const unsubA = orch.subscribeEvents(t.id, (ev) => a.push(ev))
     orch.subscribeEvents(t.id, (ev) => b.push(ev))
 

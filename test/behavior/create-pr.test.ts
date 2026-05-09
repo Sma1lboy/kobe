@@ -214,11 +214,15 @@ test("W4.PR — Create-PR injects rendered prompt into the active task's chat", 
 
   // ---- assert the rendered prompt is what the engine received -------
   // The /pr endpoint returns the same prompt that requestPR submitted
-  // to runTask. We assert on its contents rather than chat-screen text
-  // because requestPR bypasses the chat composer (no `pushUser`), so
-  // the user-row only materializes on a future history reload — the
-  // engine receiving the prompt IS the load-bearing observable here.
+  // to runTask. We assert on its contents AND on the chat-screen
+  // rendering: requestPR dispatches a synthetic `user.inject` event on
+  // the orchestrator bus before calling runTask, so the chat shows the
+  // injected prompt as a normal user row in the same tick.
   expect(prompt).toContain("Follow these steps to create a PR")
+  // Wait for the user row to render — the user.inject event arrives
+  // after dispatch + Solid re-render, which is async w.r.t. the
+  // triggerPR HTTP response.
+  await kobe.waitFor((s) => s.includes("Follow these steps to create a PR"), 10_000)
   // Substitution sanity: the target branch is 'main' (origin/HEAD
   // unset on the bare-init fixture, so build.ts falls back). The
   // rendered prompt names it explicitly.

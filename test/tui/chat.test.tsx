@@ -177,6 +177,26 @@ describe("applyEvent — usage / done / error", () => {
   })
 })
 
+describe("applyEvent — user.inject", () => {
+  test("appends a user row, flips streaming on, clears error", () => {
+    const start: ChatState = { ...createInitialState(), error: "stale" }
+    const s = applyEvent(start, { type: "user.inject", text: "create a PR" }, FIXED_TS)
+    expect(s.messages).toEqual([{ kind: "user", text: "create a PR", ts: FIXED_TS }])
+    expect(s.isStreaming).toBe(true)
+    expect(s.error).toBeNull()
+  })
+
+  test("preserves prior history (concatenates, does not overwrite)", () => {
+    let s = pushUser(createInitialState(), "first", FIXED_TS)
+    s = applyEvent(s, { type: "assistant.delta", text: "ok" }, FIXED_TS)
+    s = applyEvent(s, { type: "done" }, FIXED_TS)
+    s = applyEvent(s, { type: "user.inject", text: "Follow these steps to create a PR" }, FIXED_TS)
+    expect(s.messages.map((r) => r.kind)).toEqual(["user", "assistant", "user"])
+    expect((s.messages[2] as { text: string }).text).toContain("Follow these steps")
+    expect(s.isStreaming).toBe(true)
+  })
+})
+
 describe("applyEvent — purity", () => {
   test("does not mutate input state", () => {
     const start = createInitialState()

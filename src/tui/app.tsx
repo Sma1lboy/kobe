@@ -780,35 +780,18 @@ function Shell(props: AppDeps) {
   }))
 
   // Test-only hidden hotkey affordance for the W4.PR behavior test.
-  // Clicking the CreatePRButton from a PTY test is awkward (mouse events
-  // require capability negotiation that the screen capture path doesn't
-  // honor); instead, when KOBE_TEST_PR_HOTKEY=1 we register a hidden
-  // ctrl+y binding that calls the same handler. The brief asks for
-  // ctrl+shift+p, but kobe's keymap (src/tui/lib/keymap.tsx) deliberately
-  // drops the `shift` modifier on single-letter keys (the terminal already
-  // encodes shift via uppercase, so "ctrl+shift+p" never matches a
-  // node-pty key event). Common readline chords (ctrl+p / ctrl+a / ctrl+e
-  // / ctrl+f / ctrl+b) are absorbed by opentui's <input> Renderable when
-  // the composer is focused (preventDefault), so we picked ctrl+y — it's
-  // unbound in opentui's input AND not used by any production kobe
-  // keybinding. This affordance is documented here AND in
-  // test/behavior/create-pr.test.ts so it doesn't get repurposed
-  // accidentally. Production never sets the env var.
-  // Test-only hidden hotkey affordance for the W4.PR behavior test.
-  // Clicking the CreatePRButton from a PTY harness is awkward (mouse
-  // events require capability negotiation that the screen-capture path
-  // doesn't honor); instead, when KOBE_TEST_PR_HOTKEY=1 we register a
-  // hidden ctrl+y binding that calls the same handler. We chose ctrl+y
-  // because (a) it's not in opentui's defaultTextareaKeyBindings (so the
-  // composer won't intercept it via preventDefault) and (b) kobe's keymap
-  // drops the shift modifier on single-letter keys, so "ctrl+shift+p" as
-  // requested in the brief never matches anything emitted by node-pty.
-  // A second test path is the fake-engine HTTP server's POST /pr
-  // endpoint (see mountFakeEngineServer below) — it bypasses the keymap
-  // entirely by calling requestPR via the side-channel. This affordance
-  // is documented here AND in test/behavior/create-pr.test.ts so it
-  // doesn't get repurposed accidentally. Production never sets the
-  // env var.
+  // Mouse-clicking the CreatePRButton from a PTY harness is awkward
+  // (opentui's mouse-event delivery needs SGR capability negotiation
+  // that the screen-capture path doesn't honor). When
+  // KOBE_TEST_PR_HOTKEY=1 we register a hidden ctrl+y binding that
+  // calls the same handler. We chose ctrl+y because (a) it's not in
+  // opentui's defaultTextareaKeyBindings (so the composer won't
+  // intercept it via preventDefault) and (b) kobe's keymap (see
+  // src/tui/lib/keymap.tsx) drops the shift modifier on single-letter
+  // keys, so chords like "ctrl+shift+p" never match anything emitted by
+  // node-pty. A second test path is the fake-engine HTTP server's POST
+  // /pr endpoint (see mountFakeEngineServer above) which bypasses the
+  // keymap entirely. Production never sets either env var.
   useBindings(() => ({
     enabled: process.env.KOBE_TEST_PR_HOTKEY === "1" && dialog.stack.length === 0,
     bindings: [

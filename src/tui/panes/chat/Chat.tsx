@@ -51,7 +51,7 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
-import type { EngineEvent } from "../../../types/engine.ts"
+import type { OrchestratorEvent } from "../../../types/engine.ts"
 import { useTheme } from "../../context/theme"
 import { Composer } from "./Composer"
 import { MessageList } from "./MessageList"
@@ -122,7 +122,7 @@ export function Chat(props: ChatProps) {
         // deltas append/coalesce, tool starts/results pair by name).
         // No re-read on done — the messages array IS the chronological
         // record while the session is live.
-        const unsubscribe = props.orchestrator.subscribeEvents(taskId, (ev: EngineEvent) => {
+        const unsubscribe = props.orchestrator.subscribeEvents(taskId, (ev: OrchestratorEvent) => {
           setState((s) => applyEvent(s, ev))
         })
 

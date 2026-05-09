@@ -88,6 +88,32 @@ export type EngineEvent =
   | { readonly type: "error"; readonly message: string }
 
 /**
+ * Synthetic event for prompts that kobe code injected on the user's
+ * behalf (e.g. the Create-PR button). Engines never emit this — it's
+ * synthesized by the orchestrator and broadcast on the same per-task
+ * subscriber bus that carries {@link EngineEvent}s, so chat panes can
+ * render the injected prompt as a normal user row without the chat
+ * having to know which path triggered it.
+ *
+ * Kept out of {@link EngineEvent} on purpose: engine impls (and any
+ * future remote backend) exhaustively switch over the engine-event
+ * union, and an "engine event the engine never emits" would force
+ * unreachable cases into every impl.
+ */
+export type UserInjectEvent = {
+  readonly type: "user.inject"
+  /** The prompt text shown to the user as if they had typed it. */
+  readonly text: string
+}
+
+/**
+ * Anything dispatched on the orchestrator's per-task subscriber bus.
+ * UI subscribers (chat) consume this wider type; engine impls produce
+ * only the {@link EngineEvent} subset.
+ */
+export type OrchestratorEvent = EngineEvent | UserInjectEvent
+
+/**
  * The single seam between kobe and "the thing running tasks."
  *
  * Two intended impls in the codebase lifetime:

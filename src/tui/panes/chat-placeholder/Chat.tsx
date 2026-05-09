@@ -28,7 +28,7 @@
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createSignal, on, onCleanup } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
-import type { EngineEvent } from "../../../types/engine.ts"
+import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { TaskId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 
@@ -91,8 +91,11 @@ export function ChatPlaceholder(props: ChatPlaceholderProps) {
     setLines([])
   })
 
-  function onEvent(ev: EngineEvent) {
-    if (ev.type === "assistant.delta") {
+  function onEvent(ev: OrchestratorEvent) {
+    if (ev.type === "user.inject") {
+      setLines((cur) => [...cur, { kind: "user", text: ev.text }])
+      setBusy(true)
+    } else if (ev.type === "assistant.delta") {
       setLines((cur) => {
         const last = cur[cur.length - 1]
         if (last && last.kind === "assistant") {
