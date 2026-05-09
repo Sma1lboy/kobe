@@ -274,15 +274,7 @@ export function FileTree(props: FileTreeProps) {
 
   // ---------- render ----------
   return (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      flexDirection="column"
-      flexGrow={1}
-      paddingTop={1}
-      paddingBottom={1}
-      paddingLeft={2}
-      paddingRight={2}
-    >
+    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `1` / `2` / `3` switch from the keyboard. */}
       <box flexDirection="row" gap={2} paddingBottom={1} flexShrink={0}>
@@ -309,8 +301,9 @@ export function FileTree(props: FileTreeProps) {
         flexGrow={1}
         verticalScrollbarOptions={{
           trackOptions: {
-            backgroundColor: theme.backgroundPanel,
-            foregroundColor: theme.backgroundPanel,
+            // Track + thumb both transparent → invisible by default but
+            // still scrollable. Drag/keyboard scrolling works regardless.
+            foregroundColor: "transparent",
           },
         }}
       >

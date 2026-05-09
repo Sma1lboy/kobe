@@ -87,7 +87,7 @@ function Shell() {
   })
 
   return (
-    <box flexDirection="row" flexGrow={1} backgroundColor={theme.background}>
+    <box flexDirection="row" flexGrow={1}>
       <Sidebar
         title="kobe"
         emptyMessage="No tasks yet. Wave 2 Stream F will populate this pane."

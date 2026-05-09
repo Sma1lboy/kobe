@@ -480,7 +480,7 @@ function Shell(props: AppDeps) {
   }))
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+    <box flexDirection="column" flexGrow={1}>
       <TopBar activeTitle={activeTask()?.title} />
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar (42 cells fixed). The sidebar's own
@@ -543,7 +543,6 @@ function Shell(props: AppDeps) {
           flexGrow={1}
           flexShrink={1}
           flexBasis={0}
-          backgroundColor={theme.backgroundPanel}
           border={["left"]}
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.border}
@@ -559,7 +558,6 @@ function Shell(props: AppDeps) {
             flexShrink={1}
             flexBasis={0}
             flexDirection="column"
-            backgroundColor={theme.background}
             border={["top"]}
             customBorderChars={HSplitBorder.customBorderChars}
             borderColor={theme.border}

@@ -240,7 +240,7 @@ export function Preview(props: PreviewProps) {
   })
 
   return (
-    <box flexGrow={1} flexDirection="column" backgroundColor={theme.background} paddingLeft={1} paddingRight={1}>
+    <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
       <Header active={active} />
       <Show when={!props.hideInternalTabs?.()}>
         <TabBar tabs={tabs} active={active} setState={setState} />
@@ -416,12 +416,7 @@ function LinesBody(props: { content: Accessor<ContentState>; refSet: (r: ScrollB
         </box>
       }
     >
-      <scrollbox
-        ref={props.refSet}
-        flexGrow={1}
-        backgroundColor={theme.backgroundPanel}
-        scrollbarOptions={{ visible: true }}
-      >
+      <scrollbox ref={props.refSet} flexGrow={1} scrollbarOptions={{ visible: false }}>
         <For each={lines()}>
           {(line) => (
             <Show when={mode() === "diff"} fallback={<FileLine text={line} />}>

@@ -201,12 +201,11 @@ export function Terminal(props: TerminalProps): JSXElement {
     <box
       flexDirection="column"
       flexGrow={1}
-      backgroundColor={theme.background}
       borderColor={focused() ? theme.borderActive : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
       {/* Header */}
-      <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundPanel}>
+      <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           {headerLabel()}
         </text>
@@ -226,7 +225,7 @@ export function Terminal(props: TerminalProps): JSXElement {
           </box>
         }
       >
-        <box flexGrow={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.background}>
+        <box flexGrow={1} paddingLeft={1} paddingRight={1}>
           {/* v1 renders the visible scrollback as a single multi-line
               `<text>`. opentui's text renderable handles `\n`-broken
               content with `wrapMode="none"`. We tried a `<For>` over

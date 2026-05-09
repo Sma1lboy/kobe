@@ -466,7 +466,7 @@ export function Chat(props: ChatProps) {
   }
 
   return (
-    <box flexGrow={1} flexDirection="column" backgroundColor={theme.background} paddingLeft={1} paddingRight={1}>
+    <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
       {/* Header */}
       <box paddingTop={1} paddingBottom={1} flexShrink={0} flexDirection="row" gap={1}>
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
