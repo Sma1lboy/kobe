@@ -122,6 +122,182 @@ describe("TaskIndexStore — CRUD", () => {
 })
 
 // ---------------------------------------------------------------------------
+// Change notification (subscribe) — load-bearing for the orchestrator's
+// Solid signal that backs the sidebar. Without this, mutations on the
+// store don't reach the in-memory `Task[]` mirror used by the sidebar's
+// `<For>` and the row stays stuck on its old status group + badge —
+// which is the exact bug Jackson reported (task done in tasks.json,
+// sidebar still showing it under Backlog with `○`).
+// ---------------------------------------------------------------------------
+
+describe("TaskIndexStore — subscribe", () => {
+  test("listener fires once eagerly on subscribe with the current snapshot", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    await store.create({
+      title: "preexisting",
+      repo: "/r",
+      branch: "kobe/preexisting",
+      worktreePath: "/r/wt",
+      sessionId: null,
+      status: "done",
+    })
+    const seen: string[][] = []
+    const unsub = store.subscribe((snap) => {
+      seen.push(snap.map((t) => t.title))
+    })
+    expect(seen).toEqual([["preexisting"]])
+    unsub()
+  })
+
+  test("listener fires on every create/update/archive mutation", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const calls: { count: number; statuses: string[] }[] = []
+    store.subscribe((snap) => {
+      calls.push({ count: snap.length, statuses: snap.map((t) => t.status) })
+    })
+    // Initial eager fire (empty list).
+    expect(calls.at(-1)).toEqual({ count: 0, statuses: [] })
+
+    const t = await store.create({
+      title: "x",
+      repo: "/r",
+      branch: "kobe/x",
+      worktreePath: "/r/wt",
+      sessionId: null,
+      status: "backlog",
+    })
+    expect(calls.at(-1)).toEqual({ count: 1, statuses: ["backlog"] })
+
+    await store.update(t.id, { status: "in_progress" })
+    expect(calls.at(-1)).toEqual({ count: 1, statuses: ["in_progress"] })
+
+    await store.archive(t.id, "done")
+    expect(calls.at(-1)).toEqual({ count: 1, statuses: ["done"] })
+  })
+
+  test("listener fires on load() so a re-read picks up external state", async () => {
+    // Pre-populate tasks.json on disk so a fresh store sees data on load.
+    await mkdir(join(homeDir, ".kobe"), { recursive: true })
+    await writeFile(
+      join(homeDir, ".kobe", "tasks.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          tasks: [
+            {
+              id: "01HZB000000000000000000000",
+              title: "preloaded",
+              repo: "/r",
+              branch: "kobe/preloaded",
+              worktreePath: "/r/wt",
+              sessionId: null,
+              status: "done",
+              createdAt: "2026-05-08T00:00:00.000Z",
+              updatedAt: "2026-05-08T00:00:00.000Z",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+
+    const store = new TaskIndexStore({ homeDir })
+    const calls: number[] = []
+    // Subscribe BEFORE load() — listener should fire when load() lands.
+    store.subscribe((snap) => calls.push(snap.length))
+    expect(calls).toEqual([])
+    await store.load()
+    expect(calls.at(-1)).toBe(1)
+    expect(store.get("01HZB000000000000000000000")?.status).toBe("done")
+  })
+
+  test("unsubscribe stops further notifications without affecting other listeners", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const seenA: number[] = []
+    const seenB: number[] = []
+    const unsubA = store.subscribe((snap) => seenA.push(snap.length))
+    store.subscribe((snap) => seenB.push(snap.length))
+
+    await store.create({
+      title: "a",
+      repo: "/r",
+      branch: "kobe/a",
+      worktreePath: "/r/wt",
+      sessionId: null,
+      status: "backlog",
+    })
+    expect(seenA.at(-1)).toBe(1)
+    expect(seenB.at(-1)).toBe(1)
+
+    unsubA()
+    await store.create({
+      title: "b",
+      repo: "/r",
+      branch: "kobe/b",
+      worktreePath: "/r/wt2",
+      sessionId: null,
+      status: "backlog",
+    })
+    // A stopped at 1, B advanced to 2.
+    expect(seenA.at(-1)).toBe(1)
+    expect(seenB.at(-1)).toBe(2)
+  })
+
+  test("a throwing listener does not break the bus for other listeners", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const seen: number[] = []
+    store.subscribe(() => {
+      throw new Error("listener boom")
+    })
+    store.subscribe((snap) => seen.push(snap.length))
+    // Suppress console.error for the duration so the failing-listener
+    // log doesn't pollute the test output.
+    const origConsoleError = console.error
+    console.error = () => {}
+    try {
+      await store.create({
+        title: "x",
+        repo: "/r",
+        branch: "kobe/x",
+        worktreePath: "/r/wt",
+        sessionId: null,
+        status: "backlog",
+      })
+    } finally {
+      console.error = origConsoleError
+    }
+    expect(seen.at(-1)).toBe(1)
+  })
+
+  test("snapshot handed to listener is a defensive copy that the listener can mutate safely", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    let captured: unknown
+    store.subscribe((snap) => {
+      captured = snap
+    })
+    await store.create({
+      title: "x",
+      repo: "/r",
+      branch: "kobe/x",
+      worktreePath: "/r/wt",
+      sessionId: null,
+      status: "backlog",
+    })
+    // Mutating the snapshot must not affect the store's internal state.
+    if (Array.isArray(captured)) {
+      captured.length = 0
+    }
+    expect(store.list()).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Atomic write — simulated crash recovery
 // ---------------------------------------------------------------------------
 

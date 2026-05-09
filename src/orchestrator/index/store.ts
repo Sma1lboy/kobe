@@ -27,6 +27,18 @@
  *   - **Immutability.** {@link Task} is `readonly`, so `update()` returns
  *     a new record rather than mutating in place. The store keeps an
  *     internal mutable list but never hands it out.
+ *
+ *   - **Change notification.** The store is the single source of truth
+ *     for task records, and any reactive consumer (the orchestrator's
+ *     Solid signal that backs the sidebar) needs to know when the
+ *     in-memory list changes. We expose a tiny `subscribe(cb)` API that
+ *     fires after every mutation (`create`, `update`, `archive`, and
+ *     reload via `load()`). Subscribers receive a fresh defensive
+ *     snapshot — never the internal mutable list — so a subscriber
+ *     cannot accidentally corrupt store state. This pattern decouples
+ *     "the store mutated" from "a particular caller remembered to
+ *     refresh some downstream signal" — the orchestrator no longer has
+ *     to sprinkle `refreshSignal()` calls around its mutation methods.
  */
 
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
@@ -48,6 +60,16 @@ export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt">
 const EMPTY_INDEX: TaskIndex = { version: 1, tasks: [] } as const
 
 /**
+ * Callback invoked after every mutation to the store's in-memory list.
+ * The argument is a fresh snapshot — callers can store it directly
+ * without copying. The same value is what `list()` would return.
+ */
+export type TaskIndexListener = (snapshot: readonly Task[]) => void
+
+/** Teardown for {@link TaskIndexStore.subscribe}. Idempotent. */
+export type TaskIndexUnsubscribe = () => void
+
+/**
  * Persistent store for the kobe task manifest.
  *
  * Lifecycle: callers `await store.load()` once at startup, then operate
@@ -61,12 +83,44 @@ export class TaskIndexStore {
   private readonly tmpPath: string
   private cache: { version: 1; tasks: Task[] } = { version: 1, tasks: [] }
   private loaded = false
+  private listeners = new Set<TaskIndexListener>()
 
   constructor(options: TaskIndexStoreOptions = {}) {
     this.homeDir = options.homeDir ?? homedir()
     this.kobeDir = join(this.homeDir, ".kobe")
     this.path = join(this.kobeDir, "tasks.json")
     this.tmpPath = `${this.path}.tmp`
+  }
+
+  /**
+   * Register a change listener. The callback fires AFTER every
+   * mutation that affects the in-memory task list — `create`,
+   * `update`, `archive`, and `load`. It also fires once eagerly with
+   * the current snapshot when subscribed, so consumers don't need to
+   * separately seed their own state. Returns an idempotent
+   * unsubscribe function.
+   *
+   * Thread safety: not thread-safe (kobe is single-threaded by design).
+   * If a listener throws we log and continue — one bad listener must
+   * not break the bus for others.
+   */
+  subscribe(listener: TaskIndexListener): TaskIndexUnsubscribe {
+    this.listeners.add(listener)
+    // Fire eagerly so the consumer doesn't have to seed its mirror
+    // separately from the subscription. Only fire if we're loaded —
+    // pre-load subscribers receive their first event from the
+    // load()-time notify.
+    if (this.loaded) {
+      try {
+        listener(this.cache.tasks.slice())
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[kobe TaskIndexStore] listener threw on subscribe:", err)
+      }
+    }
+    return () => {
+      this.listeners.delete(listener)
+    }
   }
 
   /** Absolute path to the manifest file. Tests inspect this. */
@@ -92,6 +146,7 @@ export class TaskIndexStore {
       if (code === "ENOENT") {
         this.cache = { version: 1, tasks: [] }
         this.loaded = true
+        this.notifyListeners()
         return this.snapshot()
       }
       // Other read errors (EACCES, EISDIR, …) are real — surface them.
@@ -107,11 +162,13 @@ export class TaskIndexStore {
       )
       this.cache = { version: 1, tasks: [] }
       this.loaded = true
+      this.notifyListeners()
       return this.snapshot()
     }
 
     this.cache = normalizeIndex(parsed, this.path)
     this.loaded = true
+    this.notifyListeners()
     return this.snapshot()
   }
 
@@ -170,6 +227,7 @@ export class TaskIndexStore {
     }
     this.cache.tasks.push(task)
     await this.save()
+    this.notifyListeners()
     return task
   }
 
@@ -206,6 +264,7 @@ export class TaskIndexStore {
     }
     this.cache.tasks[idx] = next
     await this.save()
+    this.notifyListeners()
     return next
   }
 
@@ -249,6 +308,23 @@ export class TaskIndexStore {
     return {
       version: 1,
       tasks: this.cache.tasks.slice(),
+    }
+  }
+
+  /**
+   * Fire every registered listener with a fresh defensive snapshot.
+   * Listeners that throw are logged but don't break the chain.
+   */
+  private notifyListeners(): void {
+    if (this.listeners.size === 0) return
+    const snapshot = this.cache.tasks.slice()
+    for (const listener of this.listeners) {
+      try {
+        listener(snapshot)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[kobe TaskIndexStore] listener threw on notify:", err)
+      }
     }
   }
 }
