@@ -37,7 +37,7 @@ import { ResizableEdge } from "./component/resizable-edge"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
-import { KVProvider } from "./context/kv"
+import { KVProvider, useKV } from "./context/kv"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { useBindings } from "./lib/keymap"
@@ -533,8 +533,15 @@ function TopBar(props: {
 function Shell(props: AppDeps) {
   const { theme } = useTheme()
   const dialog = useDialog()
+  const kv = useKV()
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
+  // Persisted across runs in `~/.config/kobe/state.json` via the KV store
+  // so reopening kobe lands on the task + center tab the user left from.
+  // The auto-select effect below validates the persisted id against the
+  // current task list (it may have been deleted between runs) and falls
+  // back to tasks[0] when stale.
+  const persistedSelectedId = kv.get("lastSelectedTaskId") as string | null | undefined
   const [selectedId, setSelectedId] = createSignal<string | null>(null)
   // Set by the new-task flow so the chat pane auto-submits the
   // prompt the user typed in the dialog. The chat clears it on
@@ -698,7 +705,14 @@ function Shell(props: AppDeps) {
   type CenterTab = "chat" | { kind: "file"; path: string }
   type TaskCenterTabs = { open: readonly string[]; active: CenterTab }
   const EMPTY_TABS: TaskCenterTabs = { open: [], active: "chat" }
-  const [tabsByTask, setTabsByTask] = createSignal(new Map<string, TaskCenterTabs>())
+  // Hydrate from KV. Stored as a plain object keyed by taskId because Maps
+  // aren't JSON-serializable. Tasks deleted between runs leak entries into
+  // the file; harmless and pruned the next time we persist after a real
+  // selection change. (Could prune on hydrate if it ever matters.)
+  const persistedTabs = kv.get("centerTabsByTask") as Record<string, TaskCenterTabs> | undefined
+  const [tabsByTask, setTabsByTask] = createSignal(
+    new Map<string, TaskCenterTabs>(persistedTabs ? Object.entries(persistedTabs) : []),
+  )
 
   const currentTabs = createMemo<TaskCenterTabs>(() => {
     const id = selectedId()
@@ -762,13 +776,30 @@ function Shell(props: AppDeps) {
     previewApi()?.close(relPath)
   }
 
-  // Auto-select the first task when one is created and nothing is
-  // selected yet. Makes the new-task → start-chatting flow one
-  // keystroke shorter and matches what most multi-task TUIs do.
+  // Auto-select on first task availability. Prefer the persisted task
+  // from the previous run when it still exists; otherwise fall back to
+  // tasks[0]. The `persistedSelectedId` reference is consumed exactly
+  // once (we null it after the first successful match) so user-driven
+  // selections later in the session aren't snapped back.
+  let pendingPersistedId: string | null = persistedSelectedId ?? null
   createEffect(() => {
     const tasks = tasksAcc()
     if (selectedId()) return
-    if (tasks.length > 0 && tasks[0]) setSelectedId(tasks[0].id)
+    if (tasks.length === 0) return
+    const persisted = pendingPersistedId ? tasks.find((t) => t.id === pendingPersistedId) : undefined
+    pendingPersistedId = null
+    setSelectedId((persisted ?? tasks[0])!.id)
+  })
+
+  // Persist the active task and per-task tab state whenever they
+  // change. The KV store debounces writes internally so this is cheap.
+  createEffect(() => {
+    kv.set("lastSelectedTaskId", selectedId())
+  })
+  createEffect(() => {
+    const obj: Record<string, TaskCenterTabs> = {}
+    for (const [id, tabs] of tabsByTask()) obj[id] = tabs
+    kv.set("centerTabsByTask", obj)
   })
 
   useKobeKeybindings({
