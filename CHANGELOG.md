@@ -19,17 +19,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
-
-- `@sma1lboy/kobe` package metadata and `bin/kobe` entry so `npm i -g`
-  produces a runnable CLI.
-- `src/version.ts` — background version check against the npm registry
-  with a 6h on-disk cache; informational `↑ vX.Y.Z available` chip in
-  the TopBar.
-- `scripts/build.ts` — production bundler that registers
-  `@opentui/solid`'s Bun plugin and chmods the output executable.
-- GitHub Actions release workflow: pushing a `vX.Y.Z` tag publishes to
-  npm with provenance and creates a matching GitHub release.
+(no entries — add new bullets here as work lands)
 
 ## [0.0.1] - 2026-05-09
 
@@ -61,3 +51,28 @@ Initial public release.
 - Behavior-test harness (Stream 0.4) plus per-pane and end-to-end
   behavior tests covering chat, sidebar, filetree, preview, terminal,
   PR flow, composer, and task lifecycle.
+
+### Distribution
+
+- Published as `@sma1lboy/kobe` on npm with a `bin/kobe` entry, so
+  `npm i -g @sma1lboy/kobe` (or `bunx @sma1lboy/kobe`) produces a
+  runnable CLI.
+- Production bundler at `scripts/build.ts` registers `@opentui/solid`'s
+  Bun plugin (CLI `bun build` can't take plugins via flags) and
+  chmods the output executable.
+- Background npm-registry version check at `src/version.ts` — 3s
+  timeout, 6h disk cache, silent on failure. TopBar shows an
+  `↑ vX.Y.Z available` chip when a newer version is published.
+- GitHub Actions release workflow at `.github/workflows/release.yml`:
+  pushing a `vX.Y.Z` tag runs typecheck + unit tests + build, asserts
+  the tag matches `package.json`, extracts the matching CHANGELOG
+  section, then `npm publish --provenance` and creates the GitHub
+  release with `dist/index.js` attached.
+
+### Tooling
+
+- Vendored the `changelog-generator` skill from
+  [ComposioHQ/awesome-claude-skills](https://github.com/ComposioHQ/awesome-claude-skills)
+  at `.claude/skills/changelog-generator/SKILL.md` so contributors
+  using Claude Code can ask it to draft new `[Unreleased]` entries
+  from the commit log.

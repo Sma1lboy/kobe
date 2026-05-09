@@ -2,7 +2,14 @@ refs/
 node_modules/
 dist/
 .kobe/
-.claude/
+# Ignore everything under .claude/ except the project-scoped skills
+# directory — those need to live in the repo so Claude Code users
+# pick them up automatically. (Trailing `/*` instead of `/` lets the
+# `!` negation re-include selected children; a bare `.claude/`
+# would block all children regardless of later negations.)
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 tsconfig.vitest-temp.json
 .DS_Store
 *.log
