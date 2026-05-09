@@ -28,7 +28,7 @@
     "bun": ">=1.0.0"
   },
   "scripts": {
-    "dev": "bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
+    "dev": "KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "build": "bun run scripts/build.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

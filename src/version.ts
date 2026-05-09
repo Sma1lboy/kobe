@@ -29,15 +29,34 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import pkg from "../package.json" with { type: "json" }
+import { isDev, kobeStateDir } from "./env.ts"
 
 /** Current build's version, read from package.json at compile time. */
 export const CURRENT_VERSION: string = pkg.version
 
 /** npm package name we resolve "latest" against. */
 export const PACKAGE_NAME: string = pkg.name
+
+/**
+ * `owner/repo` slug derived from `package.json#repository.url`. Used to
+ * hit the GitHub releases API for changelog fetching. Returns null when
+ * the URL doesn't look like a github.com repo (e.g. when running from
+ * a fork or when someone deletes the field).
+ */
+export function repoSlug(): string | null {
+  const url = (pkg.repository as { url?: string } | undefined)?.url
+  if (!url) return null
+  // Accept any of: git+https://github.com/owner/repo.git, git@github.com:owner/repo.git,
+  // https://github.com/owner/repo, etc.
+  const m = url.match(/github\.com[:/]([^/]+)\/([^/.]+)/)
+  if (!m || !m[1] || !m[2]) return null
+  return `${m[1]}/${m[2]}`
+}
+
+/** Suggested install command shown in the update dialog. */
+export const INSTALL_COMMAND = `bun install -g ${PACKAGE_NAME}@latest`
 
 /** How long a cached "latest" lookup is considered fresh. */
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
@@ -57,8 +76,7 @@ type CacheShape = {
 }
 
 function cachePath(): string {
-  const home = process.env.KOBE_HOME_DIR ?? homedir()
-  return join(home, ".kobe", "version-check.json")
+  return join(kobeStateDir(), "version-check.json")
 }
 
 async function readCache(): Promise<CacheShape | null> {
@@ -136,6 +154,13 @@ export function isNewerSemver(latest: string, current: string): boolean {
  *                     once we wire one up.
  */
 export async function checkLatestVersion(opts: { force?: boolean } = {}): Promise<UpdateInfo | null> {
+  // Dev runs (KOBE_DEV=1, set by `bun run dev`) suppress the check
+  // entirely — devs are usually working from a `package.json` that's
+  // a few patches behind the published `latest` and don't need the
+  // chip nagging them. `force: true` overrides so a manual "check
+  // for updates" command still works in dev if we ever wire one up.
+  if (isDev() && !opts.force) return null
+
   const now = Date.now()
 
   if (!opts.force) {
@@ -157,4 +182,59 @@ export async function checkLatestVersion(opts: { force?: boolean } = {}): Promis
     latest,
     hasUpdate: isNewerSemver(latest, CURRENT_VERSION),
   }
+}
+
+/* ------------------------------------------------------------------- */
+/*  Release notes — for the update dialog's "what's new" section        */
+/* ------------------------------------------------------------------- */
+
+export type ReleaseNotes = {
+  /** Plain markdown body — the same content the release workflow writes from CHANGELOG.md. */
+  body: string
+  /** Browser URL for the release page on GitHub. */
+  url: string
+  /** Version the notes correspond to (e.g. "0.0.2"). */
+  version: string
+}
+
+/**
+ * Pull the GitHub release body for `vX.Y.Z`. Anonymous request to the
+ * REST API — rate limit is 60/hr/IP for unauthenticated traffic, well
+ * inside what one user opening one dialog will spend. We don't cache
+ * because the dialog is opened on demand (not on every launch); a
+ * second open within seconds will just re-hit the API which is fine.
+ *
+ * Returns null on any failure so the caller can fall back to a "see
+ * the release page" link without surfacing an error banner.
+ */
+export async function fetchReleaseNotes(version: string): Promise<ReleaseNotes | null> {
+  const slug = repoSlug()
+  if (!slug) return null
+  const tag = `v${version}`
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://api.github.com/repos/${slug}/releases/tags/${tag}`, {
+      signal: ctrl.signal,
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+      },
+    })
+    if (!res.ok) return null
+    const body = (await res.json()) as { body?: unknown; html_url?: unknown }
+    if (typeof body.body !== "string" || typeof body.html_url !== "string") return null
+    return { body: body.body, url: body.html_url, version }
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Fallback URL when fetchReleaseNotes can't reach GitHub. */
+export function releasePageUrl(version: string): string | null {
+  const slug = repoSlug()
+  if (!slug) return null
+  return `https://github.com/${slug}/releases/tag/v${version}`
 }

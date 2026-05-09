@@ -35,6 +35,7 @@ import type { AIEngine } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { CreatePRButton } from "./component/create-pr-button"
 import { HelpDialog } from "./component/help-dialog"
+import { UpdateDialog } from "./component/update-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
@@ -669,6 +670,7 @@ function TopBar(props: {
   updateInfo: Accessor<UpdateInfo | null>
 }) {
   const { theme } = useTheme()
+  const dialog = useDialog()
   // Three columns of equal flex so the center sits at the geometric
   // midpoint regardless of the left brand width or the right PR button
   // width. Left = brand+version. Center = active task's branch (no
@@ -682,13 +684,21 @@ function TopBar(props: {
           KobeCode
         </text>
         <text fg={theme.textMuted}>v{pkg.version}</text>
-        {/* Update chip — only renders when the npm-registry check found
-            a newer published version. Informational only; the user is
-            expected to run `bun install -g @sma1lboy/kobe@latest`
-            (or the equivalent) themselves. The fetch is async and
-            cached, so this stays empty on cold boots without network. */}
+        {/* Update chip — clickable: opens the UpdateDialog with the
+            install command and the GitHub release notes for what's new.
+            Only renders when the npm-registry check found a newer
+            published version. Informational only — no auto-update.
+            Suppressed entirely in dev mode (KOBE_DEV=1, set by
+            `bun run dev`). */}
         <Show when={props.updateInfo()?.hasUpdate}>
-          <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+          <text
+            fg={theme.warning}
+            attributes={TextAttributes.BOLD}
+            onMouseUp={() => {
+              const info = props.updateInfo()
+              if (info) UpdateDialog.show(dialog, info)
+            }}
+          >
             ↑ v{props.updateInfo()?.latest} available
           </text>
         </Show>
