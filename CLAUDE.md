@@ -93,6 +93,18 @@ Do not bring:
 - Other agents' worktree slices — coordinate via the orchestrator.
 - Workspace-level config (`/Users/jacksonc/i/CLAUDE.md`, global git config, etc.).
 
+### Layout: flex-first, hardcode last
+
+opentui boxes follow Yoga flexbox semantics. Default to flex flow (`flexGrow`, `flexShrink`, `flexBasis`, `flexDirection`) for sizing — let panes share available terminal width by ratio, not by pixel-count. Hardcoded `width={N}` / `height={N}` is acceptable only when:
+
+- **Convention** — e.g. the sidebar's 42-cell width matches opencode/agent-deck precedent for "history rail" pane. Document the reason inline.
+- **Terminal-grammar fixed glyph** — e.g. a 2-cell column for diff-line `+`/`-` markers.
+- **Modal or transient overlay** — dialogs centered with computed dimensions.
+
+Never use `width={N}` / `height={N}` to express "this pane should be this big proportionally." Use `flexGrow={N}` for that. Avoid `height="100%"` — `flexGrow={1}` does the same thing without surprising clipping when the parent doesn't have an explicit height.
+
+If you find yourself reaching for a magic constant: pause, and verify a flex prop wouldn't do the same thing.
+
 ## Phase status
 
 - **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel.

@@ -488,10 +488,13 @@ function Shell(props: AppDeps) {
         <Sidebar tasks={tasksAcc} onSelect={(id: string) => setSelectedId(id)} selectedId={selectedId} />
         {/* Center: tabbed (chat | <file>...) — primary interaction surface.
             `border={["left"]}` draws the agent-deck-style ┃ separator
-            against the sidebar. */}
+            against the sidebar. Center gets twice the flex share of the
+            right column so chat has visual weight. */}
         <box
           flexDirection="column"
-          flexGrow={1}
+          flexGrow={2}
+          flexShrink={1}
+          flexBasis={0}
           border={["left"]}
           customBorderChars={SplitBorder.customBorderChars}
           borderColor={theme.border}
@@ -529,11 +532,17 @@ function Shell(props: AppDeps) {
         </box>
         {/* Right column: FILES top + TERMINAL bottom. Each gets a CAPS
             pane header. Vertical separator from center via `border=["left"]`,
-            horizontal split between FILES and TERMINAL via a thin row. */}
+            horizontal split between FILES and TERMINAL via a thin row.
+
+            Width: flex-first per CLAUDE.md. The center workspace gets
+            twice the share (flexGrow={2}) of this right column
+            (flexGrow={1}); shrink-allowed so very-narrow terminals don't
+            blow up. No magic-constant pixel widths here. */}
         <box
           flexDirection="column"
-          width={50}
-          flexShrink={0}
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
           backgroundColor={theme.backgroundPanel}
           border={["left"]}
           customBorderChars={SplitBorder.customBorderChars}
