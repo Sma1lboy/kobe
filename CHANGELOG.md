@@ -21,6 +21,107 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 (no entries — add new bullets here as work lands)
 
+## [0.1.0] - 2026-05-09
+
+### Added
+
+- Resizable pane splitters: drag the borders with the mouse (hover
+  affordance + mode-tinted handle) or use `ctrl+=` / `ctrl+-` to
+  resize the focused pane from the keyboard. Sizes persist across
+  launches via KV.
+- Settings dialog (`,` from any non-input pane, `ctrl+,` always-on)
+  with **General** (theme picker, transparent-bg toggle) and **Dev**
+  (one-click reset of the persisted UI state) sections.
+- New `conductor` theme — Conductor-inspired monochrome with a
+  desaturated steel-blue accent. Default for fresh installs;
+  existing users keep their pinned theme until they switch.
+- Transparent-bg toggle pairs with any theme — when on, the host
+  terminal's wallpaper / opacity / image shows through everywhere
+  except the composer body, which keeps `theme.backgroundElement`
+  so messages stay legible.
+- Multi-tab chat: each task hosts N independent Claude Code sessions
+  on a shared worktree, switchable via the workspace tab strip.
+- Slash command dropdown: bundled claude-code commands (filtered to
+  those that run under `claude -p`) merged with the user's own
+  `.claude/{commands,skills}/*.md` (project-first, global fallback,
+  ported from vibe-kanban's discovery loop). Tab completes the
+  highlighted entry; user-defined commands carry a `(user)` tag.
+- Per-task tool-permission mode — `shift+tab` in the composer
+  cycles `default → acceptEdits → plan → default`, forwarded as
+  `claude --permission-mode <mode>` on every spawn / resume. Mode
+  badge in the composer footer; rail tints with the active mode.
+- Per-task model picker in the composer footer — click the model
+  label to pick from a fixed Anthropic model list (opus 4.7 /
+  sonnet 4.6 / haiku 4.5). Persisted on `Task.model` and routed
+  through `--model <id>`.
+- Inline approval flows: `ExitPlanMode` renders the plan with
+  Approve / Reject buttons; `AskUserQuestion` renders as a
+  multi-choice picker row. The composer locks while a request is
+  pending and the underlying subprocess is killed cleanly when the
+  user dismisses.
+- Sidebar gains `[r] rename` for the cursor task (matching the
+  existing `[d] delete` / `[a] archive` chord vocabulary). Bare
+  `n` for new task is now scoped to sidebar focus (unambiguous
+  with composer typing); `ctrl+n` still opens new-task from
+  anywhere.
+- New-task dialog dropped its first-prompt field — orchestrator
+  back-fills the title from the user's first composer submit.
+  Repo input remembers the last-used path; the branch picker is
+  windowed + type-to-filter so a repo with 80+ branches no longer
+  pushes the rest of the dialog off-screen.
+- Topbar update chip — clickable, opens a release-notes dialog
+  with the install command. 6 h disk cache, 3 s timeout, silent
+  on failure. Suppressed entirely under `KOBE_DEV=1`.
+- Tonal gradient layout — sidebar and right rail paint
+  `theme.backgroundPanel`, chat body keeps the renderer's
+  `theme.background` (one tone darker). Standard IDE convention:
+  auxiliary rails lifted, work area sunken.
+- claude-code XML wrappers (`<command-name>`,
+  `<local-command-stdout>`, `<local-command-stderr>`) parse + render
+  as styled command rows instead of raw markup, mirroring
+  `UserLocalCommandOutputMessage` (with `extractTag` lifted
+  verbatim from upstream).
+- Auto-derived branch names when worktree allocation is lazy —
+  uses a claude-derived slug instead of generic `kobe/<id>`,
+  surfaced in chat as a dim system row so the user sees what was
+  picked.
+
+### Changed
+
+- `opencode` theme accent desaturated from saturated purple
+  `#9d7cd8` to muted steel-blue `#7da5c8`; the dark bg ramp
+  (`darkStep1`–`darkStep8`) lifted ~12 units for better
+  panel-vs-chat separation. Identity tokens (text, primary
+  orange, diff colors) unchanged.
+- Removed the only hardcoded color literal in the source tree
+  (`CLAUDE_ORANGE`) — the assistant marker is now `theme.accent`
+  and respects every theme.
+- Composer chrome lift: left-rail accent, element fill around the
+  textarea, and an inline footer carrying the action hint +
+  permission-mode badge + clickable model picker. Mirrors
+  opencode's prompt layout.
+- Chat tabs folded into the workspace `CenterTabStrip` next to
+  file tabs — one place for everything that switches the workspace
+  view.
+- Worktree path locked to `<repo>/.claude/worktrees/<task-id>/`
+  with a doc scrub of the old `.kobe/worktrees/` references so
+  drift can't re-introduce the wrong path.
+
+### Fixed
+
+- Subprocess no longer leaks when a pending user-input tool is
+  interrupted; the composer locks while input is pending and
+  unlocks cleanly on resolve / dismiss.
+- Lazy worktree allocation no longer collides on the auto-branch
+  slug (suffixed with the task-id tail); chat-header dedup fixes
+  the "task — title" appearing twice.
+- New-task dialog validates the repo path is actually a git repo
+  before creating, and strips stray newlines from pasted inputs.
+- Chat-store reconciler hardened against out-of-order engine events.
+- Slash-command dropdown no longer surfaces commands that
+  immediately fail under `claude -p` (`local-jsx` and
+  non-interactive-disabled commands filtered at extraction time).
+
 ## [0.0.1] - 2026-05-09
 
 Initial public release.
