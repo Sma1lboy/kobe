@@ -158,15 +158,19 @@ export function Sidebar(props: SidebarProps) {
   )
 
   /**
-   * Cycle the view by `delta` (-1 = previous, +1 = next). Wraps. Today
-   * there are 2 views so both directions toggle, but the cycle shape is
-   * preserved so a future third view drops in without a binding rewrite.
+   * Step the view by `delta` (-1 = `[` / left, +1 = `]` / right). Clamps
+   * at the ends — `[` from the leftmost view is a no-op, `]` from the
+   * rightmost is a no-op. The earlier implementation wrapped, but Jackson
+   * read `[` as "go to left" and `]` as "go to Archives" (the rightmost),
+   * so wrapping made `[` from active jump to Archives, which felt
+   * backwards. Clamping matches the directional intent.
    */
   function cycleView(delta: -1 | 1): void {
     const cur = view()
     const idx = VIEW_TABS.findIndex((t) => t.view === cur)
     if (idx < 0) return
-    const next = (idx + delta + VIEW_TABS.length) % VIEW_TABS.length
+    const max = VIEW_TABS.length - 1
+    const next = Math.max(0, Math.min(max, idx + delta))
     const target = VIEW_TABS[next]
     if (target) setView(target.view)
   }
