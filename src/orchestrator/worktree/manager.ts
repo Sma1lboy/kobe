@@ -255,6 +255,27 @@ export class GitWorktreeManager implements WorktreeManager {
     return name
   }
 
+  /**
+   * Rename a branch in-place. Used by the orchestrator's lazy
+   * branch-naming flow: a fresh worktree is allocated on a temp
+   * `kobe/tmp-<ulid>` branch, claude is asked to suggest a slug, and
+   * we rename once the suggestion lands.
+   *
+   * git's `branch -m <old> <new>` updates HEAD on every worktree that
+   * was checked out on `<old>` — the engine's session keeps streaming
+   * without noticing.
+   *
+   * Idempotent: returns silently when `from === to`. If `to` already
+   * exists, throws.
+   */
+  async renameBranch(worktreePath: string, from: string, to: string): Promise<void> {
+    requireAbsolute("path", worktreePath)
+    if (from === to) return
+    const repo = this.findRepoFor(worktreePath)
+    if (!repo) throw new Error(`renameBranch(): ${worktreePath} is not a git worktree`)
+    git(["branch", "-m", from, to], { cwd: repo })
+  }
+
   // ---------- internals ----------
 
   /**

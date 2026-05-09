@@ -71,6 +71,7 @@ import type {
   UserInputResponse,
 } from "../types/engine.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
+import { suggestBranchSlug } from "./branch-suggestion.ts"
 import { ulid } from "./index/ulid.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
@@ -356,14 +357,17 @@ export class Orchestrator {
    * `worktreePath` is already populated. Called by `runTask` on the
    * first submit; not part of the public API because it's a
    * runTask-internal step.
+   *
+   * Branch naming: if the user supplied an explicit `branch` at
+   * createTask time, we honor it. Otherwise we allocate a temp name
+   * `kobe/tmp-<ulid-suffix>` so the engine can start streaming
+   * immediately, and runTask kicks off `suggestBranchSlug` in the
+   * background to rename to a meaningful name without blocking.
    */
   private async ensureWorktree(task: Task): Promise<Task> {
     if (task.worktreePath) return task
     const opts = this.pendingWorktreeOpts.get(task.id)
-    // If the pending opts were lost (e.g. process restart between
-    // createTask and runTask), fall back to deterministic defaults so
-    // the task can still run.
-    const branch = opts?.branch ?? autoBranch(task.title, task.id)
+    const branch = opts?.branch ?? `kobe/tmp-${task.id.slice(-8).toLowerCase()}`
     const baseRef = opts?.baseRef
     const info = await this.worktrees.createForTask({
       repo: task.repo,
@@ -376,6 +380,41 @@ export class Orchestrator {
       branch: info.branch,
       worktreePath: info.path,
     })
+  }
+
+  /**
+   * Replace a temp `kobe/tmp-<ulid>` branch with a meaningful name
+   * derived from `prompt` via a one-shot `claude -p` suggestion. Runs
+   * in the background — failures are swallowed so the chat never
+   * sees a "branch rename failed" banner. Skips:
+   *   - tasks whose branch isn't a tmp branch (user picked it)
+   *   - empty prompts (nothing to derive from)
+   *   - claude binary missing / suggestion failed / timed out
+   */
+  private async maybeRenameTempBranch(taskId: TaskId, prompt: string | undefined): Promise<void> {
+    if (!prompt || prompt.trim().length === 0) return
+    const task = this.store.get(taskId)
+    if (!task || !task.worktreePath) return
+    if (!task.branch.startsWith("kobe/tmp-")) return
+
+    const slug = await suggestBranchSlug(prompt)
+    if (!slug) return
+
+    // Re-read in case the task changed (rename, archive) while we
+    // were waiting for claude.
+    const fresh = this.store.get(taskId)
+    if (!fresh || !fresh.worktreePath) return
+    if (fresh.branch !== task.branch) return // someone else renamed
+
+    const newBranch = `kobe/${slug}-${taskId.slice(-4).toLowerCase()}`
+    if (newBranch === fresh.branch) return
+
+    try {
+      await this.worktrees.renameBranch(fresh.worktreePath, fresh.branch, newBranch)
+      await this.store.update(taskId, { branch: newBranch })
+    } catch {
+      /* leave the temp name; user can rename via `r` in sidebar */
+    }
   }
 
   /**
@@ -401,8 +440,15 @@ export class Orchestrator {
     // Lazy worktree: tasks created via the new-task dialog land here
     // with `worktreePath: ""`. Allocate it now (idempotent — returns
     // the task untouched if it already has a worktree).
-    if (!task.worktreePath) {
+    const isFirstAllocation = !task.worktreePath
+    if (isFirstAllocation) {
       task = await this.ensureWorktree(task)
+    }
+    // Background: kick off a `claude -p` suggestion to replace the
+    // temp branch name with something meaningful. Fire-and-forget;
+    // never blocks the chat.
+    if (isFirstAllocation && prompt) {
+      void this.maybeRenameTempBranch(task.id, prompt)
     }
 
     // Resolve the target tab. Default to the active one so existing
