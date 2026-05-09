@@ -61,6 +61,7 @@ import { type Accessor, createSignal } from "solid-js"
 import type { AIEngine, EngineEvent, Message, SessionHandle } from "../types/engine.ts"
 import type { Task, TaskId, TaskStatus } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
+import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
@@ -90,6 +91,18 @@ export class ConcurrencyCapError extends Error {
   constructor() {
     super(`concurrency cap reached: ${CONCURRENCY_CAP} tasks running`)
     this.name = "ConcurrencyCapError"
+  }
+}
+
+/**
+ * Thrown when {@link Orchestrator.requestPR} cannot satisfy its
+ * preconditions (no worktree, no resolvable repo, task is canceled).
+ * Carries a human-readable message; the button handler renders it.
+ */
+export class PRPreconditionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "PRPreconditionError"
   }
 }
 
@@ -349,6 +362,50 @@ export class Orchestrator {
         message: `pump failure: ${err instanceof Error ? err.message : String(err)}`,
       })
     })
+  }
+
+  /**
+   * Request a PR for a task by injecting a preset prompt into its chat.
+   *
+   * Design: kobe deliberately does NOT call `gh` / `glab` / etc itself.
+   * Instead we render a markdown prompt that walks the agent through
+   *   1. reviewing uncommitted changes,
+   *   2. committing,
+   *   3. pushing,
+   *   4. opening the PR with `gh pr create --base <target>`,
+   * and submit it as if the user had typed it (`runTask(taskId, prompt)`).
+   * The agent's own shell + tool use figures out provider quirks. Per-
+   * repo customization happens via `<worktreePath>/.kobe/pr-instructions.md`.
+   *
+   * Preconditions:
+   *   - Task must exist (else {@link TaskNotFoundError}).
+   *   - Task must NOT be `canceled` (terminal).
+   *   - Task must have a non-empty `worktreePath` (the createTask
+   *     placeholder window where worktreePath="" is briefly visible to
+   *     the UI; the button is disabled in that window — but defend in
+   *     depth here too).
+   *   - Task must have a non-empty `repo`.
+   *
+   * On precondition failure, throws {@link PRPreconditionError} with a
+   * human message. Other errors (template load, runTask) propagate as-is.
+   * We deliberately do NOT swallow — the caller surfaces failures.
+   */
+  async requestPR(id: TaskId | string): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.status === "canceled") {
+      throw new PRPreconditionError("Cannot create a PR for a canceled task.")
+    }
+    if (!task.worktreePath) {
+      throw new PRPreconditionError("Task has no worktree yet — wait for setup to finish.")
+    }
+    if (!task.repo) {
+      throw new PRPreconditionError("Task has no repo path; cannot resolve git state.")
+    }
+    // gatherPRState never throws — each git call has its own fallback.
+    const state = await gatherPRState(task.worktreePath)
+    const template = await loadPRInstructionsTemplate(task.worktreePath)
+    const prompt = renderPRInstructions(template, state)
+    await this.runTask(task.id, prompt)
   }
 
   /**

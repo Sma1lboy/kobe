@@ -30,7 +30,9 @@ import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import type { AIEngine } from "../types/engine.ts"
+import type { Task } from "../types/task.ts"
 import { HSplitBorder, SplitBorder } from "./component/border"
+import { CreatePRButton } from "./component/create-pr-button"
 import { HelpDialog } from "./component/help-dialog"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
@@ -105,6 +107,29 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
           fake.finish(sessionId)
           res.writeHead(200, { "content-type": "application/json" })
           res.end("{}")
+          return
+        }
+        // Test affordance for W4.PR: trigger requestPR on the active
+        // task. The Shell mounts a global function that knows the
+        // active task; we call it from here. Returns 503 if the Shell
+        // hasn't mounted yet (pre-render race window).
+        if (req.url === "/pr" && req.method === "POST") {
+          type PRTrigger = () => Promise<{ taskId: string; prompt: string }>
+          const trigger = (globalThis as { __kobeTestRequestPR?: PRTrigger }).__kobeTestRequestPR
+          if (!trigger) {
+            res.writeHead(503, { "content-type": "text/plain" })
+            res.end("__kobeTestRequestPR not yet available")
+            return
+          }
+          trigger()
+            .then((info) => {
+              res.writeHead(200, { "content-type": "application/json" })
+              res.end(JSON.stringify(info))
+            })
+            .catch((err: unknown) => {
+              res.writeHead(500, { "content-type": "text/plain" })
+              res.end(err instanceof Error ? err.message : String(err))
+            })
           return
         }
         res.writeHead(404).end()
@@ -460,15 +485,22 @@ function StatusBar() {
   )
 }
 
-function TopBar(props: { activeTitle?: string }) {
+function TopBar(props: {
+  activeTitle?: string
+  orchestrator: Orchestrator
+  activeTask: Accessor<Task | undefined>
+}) {
   const { theme } = useTheme()
   return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1} flexShrink={0}>
-      <text fg={theme.primary} attributes={TextAttributes.BOLD}>
-        kobe
-      </text>
-      <text fg={theme.textMuted}> — </text>
-      <text fg={theme.text}>{props.activeTitle ?? "no task selected"}</text>
+    <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1} flexShrink={0}>
+      <box flexDirection="row" flexShrink={1}>
+        <text fg={theme.primary} attributes={TextAttributes.BOLD}>
+          kobe
+        </text>
+        <text fg={theme.textMuted}> — </text>
+        <text fg={theme.text}>{props.activeTitle ?? "no task selected"}</text>
+      </box>
+      <CreatePRButton orchestrator={props.orchestrator} activeTask={props.activeTask} />
     </box>
   )
 }
@@ -747,9 +779,86 @@ function Shell(props: AppDeps) {
     ],
   }))
 
+  // Test-only hidden hotkey affordance for the W4.PR behavior test.
+  // Clicking the CreatePRButton from a PTY test is awkward (mouse events
+  // require capability negotiation that the screen capture path doesn't
+  // honor); instead, when KOBE_TEST_PR_HOTKEY=1 we register a hidden
+  // ctrl+y binding that calls the same handler. The brief asks for
+  // ctrl+shift+p, but kobe's keymap (src/tui/lib/keymap.tsx) deliberately
+  // drops the `shift` modifier on single-letter keys (the terminal already
+  // encodes shift via uppercase, so "ctrl+shift+p" never matches a
+  // node-pty key event). Common readline chords (ctrl+p / ctrl+a / ctrl+e
+  // / ctrl+f / ctrl+b) are absorbed by opentui's <input> Renderable when
+  // the composer is focused (preventDefault), so we picked ctrl+y — it's
+  // unbound in opentui's input AND not used by any production kobe
+  // keybinding. This affordance is documented here AND in
+  // test/behavior/create-pr.test.ts so it doesn't get repurposed
+  // accidentally. Production never sets the env var.
+  // Test-only hidden hotkey affordance for the W4.PR behavior test.
+  // Clicking the CreatePRButton from a PTY harness is awkward (mouse
+  // events require capability negotiation that the screen-capture path
+  // doesn't honor); instead, when KOBE_TEST_PR_HOTKEY=1 we register a
+  // hidden ctrl+y binding that calls the same handler. We chose ctrl+y
+  // because (a) it's not in opentui's defaultTextareaKeyBindings (so the
+  // composer won't intercept it via preventDefault) and (b) kobe's keymap
+  // drops the shift modifier on single-letter keys, so "ctrl+shift+p" as
+  // requested in the brief never matches anything emitted by node-pty.
+  // A second test path is the fake-engine HTTP server's POST /pr
+  // endpoint (see mountFakeEngineServer below) — it bypasses the keymap
+  // entirely by calling requestPR via the side-channel. This affordance
+  // is documented here AND in test/behavior/create-pr.test.ts so it
+  // doesn't get repurposed accidentally. Production never sets the
+  // env var.
+  useBindings(() => ({
+    enabled: process.env.KOBE_TEST_PR_HOTKEY === "1" && dialog.stack.length === 0,
+    bindings: [
+      {
+        key: "ctrl+y",
+        cmd: () => {
+          const task = activeTask()
+          if (!task || !task.worktreePath || task.status === "canceled") return
+          props.orchestrator.requestPR(task.id).catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error("[kobe] requestPR failed:", err)
+          })
+        },
+      },
+    ],
+  }))
+
+  // Side-channel PR trigger for the W4.PR behavior test. When
+  // KOBE_TEST_FAKE_PORT is active, the fake-engine HTTP server (started
+  // in startApp) also exposes POST /pr which calls requestPR for the
+  // active task. The test uses this in preference to keystroke-driven
+  // invocation because key dispatch interacts with the focused
+  // composer's keymap in ways the test shouldn't have to debug. We
+  // expose the trigger via a global window-attached function so the
+  // server (defined at startApp time, before Shell mounts) can reach it.
+  if (typeof globalThis !== "undefined") {
+    ;(globalThis as { __kobeTestRequestPR?: () => Promise<{ taskId: string; prompt: string }> }).__kobeTestRequestPR =
+      async () => {
+        const task = activeTask()
+        if (!task || !task.worktreePath || task.status === "canceled") {
+          throw new Error("no usable active task for PR (no worktree, no task, or canceled)")
+        }
+        // Render the prompt OUTSIDE of requestPR so the test can assert
+        // on what was actually sent. This duplicates a tiny bit of logic
+        // for the test affordance only — production goes through
+        // requestPR which independently renders + sends.
+        const { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } = await import(
+          "../orchestrator/pr/index.ts"
+        )
+        const state = await gatherPRState(task.worktreePath)
+        const template = await loadPRInstructionsTemplate(task.worktreePath)
+        const rendered = renderPRInstructions(template, state)
+        await props.orchestrator.requestPR(task.id)
+        return { taskId: task.id, prompt: rendered }
+      }
+  }
+
   return (
     <box flexDirection="column" flexGrow={1}>
-      <TopBar activeTitle={activeTask()?.title} />
+      <TopBar activeTitle={activeTask()?.title} orchestrator={props.orchestrator} activeTask={activeTask} />
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
             focus it. Border on the right edge lights up green when
