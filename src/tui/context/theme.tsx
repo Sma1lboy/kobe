@@ -32,7 +32,6 @@ import nord from "./theme/nord.json" with { type: "json" }
 import opencode from "./theme/opencode.json" with { type: "json" }
 import osakaJade from "./theme/osaka-jade.json" with { type: "json" }
 import tokyonight from "./theme/tokyonight.json" with { type: "json" }
-import transparent from "./theme/transparent.json" with { type: "json" }
 
 type HexColor = `#${string}`
 type RefName = string
@@ -84,23 +83,27 @@ const BUNDLED_THEMES: Record<string, ThemeJson> = {
   dracula: dracula as ThemeJson,
   tokyonight: tokyonight as ThemeJson,
   "osaka-jade": osakaJade as ThemeJson,
-  // `transparent` is a kobe-only theme: tokyonight palette but
-  // `background = transparent`, so the host terminal's bg / image /
-  // opacity setting shows through. Panel + element tones stay opaque
-  // so chrome (sidebar, composer fill, dropdowns) keeps contrast.
-  transparent: transparent as ThemeJson,
 }
 
 type State = {
   themes: Record<string, ThemeJson>
   active: string
   mode: "dark" | "light"
+  /**
+   * Orthogonal toggle: when true, the resolved theme's `background`
+   * slot is forced to RGBA(0,0,0,0). Every other token (panel,
+   * element, text, primary, accent…) keeps the active theme's value,
+   * so the user pairs any palette with a transparent terminal bg.
+   * Persisted via KV from the Shell on mount + every change.
+   */
+  transparentBackground: boolean
 }
 
 const [store, setStore] = createStore<State>({
   themes: { ...BUNDLED_THEMES },
   active: "opencode",
   mode: "dark",
+  transparentBackground: false,
 })
 
 export function listThemes(): string[] {
@@ -186,7 +189,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     if (props.theme && hasTheme(props.theme)) setStore("active", props.theme)
 
     const renderer = useRenderer()
-    const values = createMemo(() => {
+    const baseValues = createMemo(() => {
       const active = store.themes[store.active]
       if (active) return resolveTheme(active, store.mode)
       // safety net: if active was somehow cleared, fall back to opencode
@@ -197,8 +200,18 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       }
       return resolveTheme(fallback, store.mode)
     })
+    // Apply the transparent-bg toggle on top of the resolved palette.
+    // Only the `background` slot is overridden — panel/element/text and
+    // every other token keep the active theme's color so chrome stays
+    // visible regardless of the host terminal's bg.
+    const values = createMemo(() => {
+      const v = baseValues()
+      if (!store.transparentBackground) return v
+      return { ...v, background: RGBA.fromInts(0, 0, 0, 0) }
+    })
 
-    // Push background to the renderer so the terminal background matches.
+    // Push background to the renderer so the terminal background matches
+    // (or shows through, when transparentBackground is on).
     createEffect(() => {
       renderer?.setBackgroundColor(values().background)
     })
@@ -216,6 +229,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       get selected() {
         return store.active
       },
+      get transparentBackground() {
+        return store.transparentBackground
+      },
       mode() {
         return store.mode
       },
@@ -226,6 +242,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       },
       setMode(mode: "dark" | "light"): void {
         setStore("mode", mode)
+      },
+      setTransparentBackground(v: boolean): void {
+        setStore("transparentBackground", v)
       },
       all(): string[] {
         return listThemes()

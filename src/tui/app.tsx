@@ -776,14 +776,22 @@ function Shell(props: AppDeps) {
   // Theme persistence — on mount, hydrate from KV (validates the
   // stored name against the bundled list to drop stale entries from a
   // theme that was renamed). On every theme switch, persist the new
-  // name. ThemeProvider is mounted OUTER of KVProvider, so we hydrate
-  // here rather than inside ThemeProvider's init.
+  // name. Same shape for the orthogonal `transparentBackground` toggle.
+  // ThemeProvider is mounted OUTER of KVProvider, so we hydrate here
+  // rather than inside ThemeProvider's init.
   const persistedTheme = kv.get("activeTheme")
   if (typeof persistedTheme === "string" && themeCtx.has(persistedTheme)) {
     themeCtx.set(persistedTheme)
   }
+  const persistedTransparent = kv.get("transparentBackground")
+  if (typeof persistedTransparent === "boolean") {
+    themeCtx.setTransparentBackground(persistedTransparent)
+  }
   createEffect(() => {
     kv.set("activeTheme", themeCtx.selected)
+  })
+  createEffect(() => {
+    kv.set("transparentBackground", themeCtx.transparentBackground)
   })
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()

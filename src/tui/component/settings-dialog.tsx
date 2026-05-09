@@ -124,6 +124,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
           setCursor(0)
         },
       },
+      // `t` toggles the transparent-bg flag from the General section.
+      // Bare letter is fine here — the dialog isn't an input surface,
+      // so we don't conflict with composer-style typing.
+      {
+        key: "t",
+        cmd: () => {
+          if (section() === "general") themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+        },
+      },
     ],
   }))
 
@@ -170,10 +179,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <text fg={theme.text} attributes={TextAttributes.BOLD}>
                 Theme
               </text>
-              <text fg={theme.textMuted}>
-                ↑↓ to highlight, enter to apply. `transparent` lets the host terminal's bg / image / opacity show
-                through.
-              </text>
+              <text fg={theme.textMuted}>↑↓ to highlight, enter to apply.</text>
               <box flexDirection="column" gap={0}>
                 <For each={themeNames()}>
                   {(name, i) => {
@@ -203,6 +209,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     )
                   }}
                 </For>
+              </box>
+              {/* Transparent-bg toggle — orthogonal to theme. Lets the host
+                  terminal's bg / image / opacity show through while the
+                  active palette controls every other token. Toggle with
+                  `t`. */}
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  Transparent background
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Drops the renderer's bg fill so the host terminal shows through. `t` toggles.
+                </text>
+                <box
+                  flexDirection="row"
+                  paddingLeft={1}
+                  paddingRight={1}
+                  onMouseUp={() => themeCtx.setTransparentBackground(!themeCtx.transparentBackground)}
+                >
+                  <text
+                    fg={themeCtx.transparentBackground ? theme.accent : theme.textMuted}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {themeCtx.transparentBackground ? "[x] on" : "[ ] off"}
+                  </text>
+                </box>
               </box>
             </box>
           </Show>
