@@ -69,6 +69,13 @@ export interface ComposerProps {
   isStreaming: boolean
   /** True when a task is selected. False renders the no-task fallback. */
   hasTask: boolean
+  /**
+   * Optional override for the no-task fallback message. Set this when
+   * `hasTask` is false because the active task is in a terminal state
+   * (e.g. canceled) rather than because nothing's selected — the user
+   * sees a different hint and the textarea stays hidden.
+   */
+  noTaskMessage?: string
   /** Called on enter with the trimmed text. Empty string = empty-composer enter. */
   onSubmit: (trimmedText: string) => void
 
@@ -344,7 +351,10 @@ export function Composer(props: ComposerProps) {
     <box flexShrink={0} paddingTop={1} flexDirection="row" gap={1} alignItems="flex-start">
       <text fg={theme.textMuted}>{props.isStreaming ? "…" : ">"}</text>
       <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
-        <Show when={props.hasTask} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
+        <Show
+          when={props.hasTask}
+          fallback={<text fg={theme.textMuted}>{props.noTaskMessage ?? "(no task — press n to create)"}</text>}
+        >
           <textarea
             ref={(r: TextareaRenderable) => {
               textareaRef = r

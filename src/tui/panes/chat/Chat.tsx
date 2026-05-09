@@ -102,6 +102,20 @@ export function Chat(props: ChatProps) {
   const [draft, setDraft] = createSignal("")
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
 
+  // Reactive view of the active task's status. Read off the
+  // orchestrator's tasksSignal (single source of truth — the Sidebar
+  // mirrors the same data) so a delete-task / archive flips this in
+  // the same tick. `canceled` is the only terminal state that blocks
+  // the composer: the orchestrator rejects `canceled → in_progress`,
+  // so further user input would just produce a `runTask failed:
+  // illegal transition` system row.
+  const taskStatus = createMemo(() => {
+    const id = props.taskId()
+    if (!id) return undefined
+    return props.orchestrator.tasksSignal()().find((t) => t.id === id)?.status
+  })
+  const isCanceled = () => taskStatus() === "canceled"
+
   // (Re)subscribe + reload history on task change. Solid's `on` makes
   // the dep explicit so we don't re-run on every signal access in the
   // body.
@@ -184,6 +198,12 @@ export function Chat(props: ChatProps) {
     const text = (promptText ?? draft()).trim()
     const taskId = props.taskId()
     if (!text || !taskId) return
+    // Defense-in-depth: orchestrator rejects `canceled → in_progress`
+    // with IllegalTransitionError. The composer is hidden when
+    // canceled, but the pending-prompt path can still reach `send()`
+    // — bail before runTask so the chat doesn't pick up a stray error
+    // banner from a transition that's expected to fail.
+    if (isCanceled()) return
     if (state().isStreaming) {
       // Don't queue — keeping the model simple. We could buffer here
       // later if multi-turn rapid-fire becomes a real workflow.
@@ -303,7 +323,8 @@ export function Chat(props: ChatProps) {
         draft={draft()}
         onDraftChange={setDraft}
         isStreaming={state().isStreaming}
-        hasTask={props.taskId() !== undefined}
+        hasTask={props.taskId() !== undefined && !isCanceled()}
+        noTaskMessage={isCanceled() ? "(task canceled — pick another or press ctrl+n to create)" : undefined}
         onSubmit={handleComposerSubmit}
       />
     </box>

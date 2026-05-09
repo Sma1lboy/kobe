@@ -308,22 +308,20 @@ export function MessageList(props: MessageListProps) {
         </box>
       </Show>
 
-      <For each={props.messages}>
-        {(row, i) => {
+      <For each={groupRenderItems(props.messages)}>
+        {(item) => {
+          if (item.kind === "fold") {
+            return <ToolFoldRow summary={summarizeToolRun(item.counts)} />
+          }
+          const row = item.row
+          const i = item.index
           if (row.kind === "user") return <UserRow text={row.text} />
           if (row.kind === "assistant")
-            return (
-              <AssistantRow text={row.text} isLast={i() === props.lastAssistantIdx} isStreaming={props.isStreaming} />
-            )
+            return <AssistantRow text={row.text} isLast={i === props.lastAssistantIdx} isStreaming={props.isStreaming} />
           if (row.kind === "system") return <SystemRow text={row.text} />
           // tool row
           return (
-            <ToolRow
-              row={row}
-              index={i()}
-              expanded={props.expandedToolIndex === i()}
-              onToggle={() => props.onToggleTool(i())}
-            />
+            <ToolRow row={row} index={i} expanded={props.expandedToolIndex === i} onToggle={() => props.onToggleTool(i)} />
           )
         }}
       </For>
@@ -340,6 +338,127 @@ export function MessageList(props: MessageListProps) {
           <text fg={theme.error}>error: {props.error}</text>
         </box>
       </Show>
+    </box>
+  )
+}
+
+/* --------------------------------------------------------------------- */
+/*  Tool-run fold — Claude Code parity                                    */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Compress consecutive runs of finished tool rows into one summary line
+ * (Claude Code's "Searched for X patterns, read Y files, ran Z bash
+ * commands" pattern — see `refs/claude-code/src/utils/collapseReadSearch.ts`
+ * `getSearchReadSummaryText`). We only fold runs where every tool is
+ * `done`: an in-progress tool needs to render individually so the user
+ * sees the streaming state.
+ *
+ * Threshold: 3+ consecutive finished tools. Below that, individual
+ * banners are still readable.
+ */
+type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }
+
+type RenderItem =
+  | { kind: "row"; row: ChatRow; index: number }
+  | { kind: "fold"; counts: ToolCounts; startIndex: number }
+
+const TOOL_FOLD_THRESHOLD = 3
+
+export function groupRenderItems(messages: readonly ChatRow[]): RenderItem[] {
+  const items: RenderItem[] = []
+  let i = 0
+  while (i < messages.length) {
+    const row = messages[i]
+    if (!row || row.kind !== "tool") {
+      if (row) items.push({ kind: "row", row, index: i })
+      i++
+      continue
+    }
+    let j = i
+    while (j < messages.length && messages[j]?.kind === "tool") j++
+    let allDone = true
+    for (let k = i; k < j; k++) {
+      const r = messages[k]
+      if (r?.kind === "tool" && !r.done) {
+        allDone = false
+        break
+      }
+    }
+    if (j - i >= TOOL_FOLD_THRESHOLD && allDone) {
+      const counts: ToolCounts = { search: 0, read: 0, list: 0, bash: 0, other: 0 }
+      for (let k = i; k < j; k++) {
+        const r = messages[k]
+        if (r?.kind !== "tool") continue
+        counts[classifyTool(r.name)]++
+      }
+      items.push({ kind: "fold", counts, startIndex: i })
+    } else {
+      for (let k = i; k < j; k++) {
+        const r = messages[k]
+        if (r) items.push({ kind: "row", row: r, index: k })
+      }
+    }
+    i = j
+  }
+  return items
+}
+
+export function classifyTool(name: string): keyof ToolCounts {
+  if (name === "Grep") return "search"
+  if (name === "Read" || name === "NotebookRead") return "read"
+  if (name === "Glob" || name === "LS") return "list"
+  if (name === "Bash" || name === "BashOutput" || name === "KillShell") return "bash"
+  return "other"
+}
+
+/**
+ * "Searched for 5 patterns, read 3 files, ran 10 bash commands" —
+ * mirrors Claude Code's `getSearchReadSummaryText` (past tense; we only
+ * fold finished runs so the present-tense branch isn't needed). First
+ * fragment is capitalised; subsequent fragments stay lowercase to read
+ * as a single sentence.
+ */
+export function summarizeToolRun(c: ToolCounts): string {
+  const parts: string[] = []
+  if (c.search > 0) {
+    const verb = parts.length === 0 ? "Searched" : "searched"
+    parts.push(`${verb} for ${c.search} ${c.search === 1 ? "pattern" : "patterns"}`)
+  }
+  if (c.read > 0) {
+    const verb = parts.length === 0 ? "Read" : "read"
+    parts.push(`${verb} ${c.read} ${c.read === 1 ? "file" : "files"}`)
+  }
+  if (c.list > 0) {
+    const verb = parts.length === 0 ? "Listed" : "listed"
+    parts.push(`${verb} ${c.list} ${c.list === 1 ? "directory" : "directories"}`)
+  }
+  if (c.bash > 0) {
+    const verb = parts.length === 0 ? "Ran" : "ran"
+    parts.push(`${verb} ${c.bash} bash ${c.bash === 1 ? "command" : "commands"}`)
+  }
+  if (c.other > 0) {
+    const verb = parts.length === 0 ? "Used" : "used"
+    parts.push(`${verb} ${c.other} ${c.other === 1 ? "other tool" : "other tools"}`)
+  }
+  return parts.join(", ")
+}
+
+/**
+ * One-line render for a folded run. Same prefix style as a system row
+ * (DIM REFERENCE_MARK) so the eye doesn't read it as a tool banner.
+ * Expand affordance deferred to a follow-up.
+ */
+function ToolFoldRow(props: { summary: string }) {
+  const { theme } = useTheme()
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+        {REFERENCE_MARK}
+      </text>
+      <box flexGrow={1}>
+        <text fg={theme.textMuted}>{props.summary}</text>
+      </box>
     </box>
   )
 }
