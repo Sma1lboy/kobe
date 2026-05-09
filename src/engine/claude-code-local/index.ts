@@ -215,6 +215,13 @@ export class ClaudeCodeLocal implements AIEngine {
         if (session) {
           session.closed = true
           this.notify(session)
+          // Release the registry slot so the next `resume(sessionId,...)`
+          // call (or a fresh spawn that happens to land on the same id
+          // — `claude --resume <id>` reuses the id) can re-register
+          // without colliding. Without this the process registry kept a
+          // dead handle for every completed turn, and the second user
+          // message in a session blew up with `duplicate sessionId`.
+          this.registry.unregister(session.sessionId)
         }
         // If we never bound (no system.init ever arrived), reject the
         // spawn promise so callers don't hang forever.
