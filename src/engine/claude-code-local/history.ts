@@ -111,9 +111,33 @@ export async function readHistory(sessionId: string, deps: HistoryDeps = default
     } catch {
       continue
     }
-    return parseJsonl(raw, sessionId)
+    return sortByTimestamp(parseJsonl(raw, sessionId))
   }
   return []
+}
+
+/**
+ * Sort messages by their `timestamp` ASC (oldest first → newest last).
+ *
+ * Claude Code's JSONL is a DAG (records carry `parentUuid` for branching
+ * resumes), so file-order is NOT strictly chronological — a resumed
+ * session can interleave records from different branches. The chat pane
+ * relies on `past[]` being chronological so newest messages render at
+ * the bottom; we sort here at the engine boundary so every consumer
+ * gets the same shape.
+ *
+ * Stable sort: ties (same ISO timestamp) keep file-order, which roughly
+ * preserves causal ordering even at sub-millisecond ties.
+ */
+function sortByTimestamp(messages: Message[]): Message[] {
+  return messages
+    .map((msg, idx) => ({ msg, idx }))
+    .sort((a, b) => {
+      if (a.msg.timestamp < b.msg.timestamp) return -1
+      if (a.msg.timestamp > b.msg.timestamp) return 1
+      return a.idx - b.idx
+    })
+    .map((entry) => entry.msg)
 }
 
 /**
