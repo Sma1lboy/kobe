@@ -20,7 +20,6 @@
  *     `/script` and `/finish`. Production never sets the env vars.
  */
 
-import * as fs from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
@@ -39,17 +38,17 @@ import type { ChatTab, Task } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { CreatePRButton } from "./component/create-pr-button"
 import { HelpDialog } from "./component/help-dialog"
+import { NewTaskDialog, stripNewlines } from "./component/new-task-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
-import { SettingsDialog } from "./component/settings-dialog"
 import { UpdateDialog } from "./component/update-dialog"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
-import { KobeKeymap, bindByIds, useCtrlCArmed, useKobeKeybindings } from "./context/keybindings"
+import { KobeKeymap, useCtrlCArmed, useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
 import { SyncProvider } from "./context/sync"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
-import { useBindings } from "./lib/keymap"
+import { useAppKeymap } from "./app-keymap"
 import { Chat } from "./panes/chat/Chat"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
@@ -202,506 +201,13 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
   server.unref()
 }
 
-/* --------------------------------------------------------------------- */
-/*  New-task dialog                                                       */
-/* --------------------------------------------------------------------- */
-
-type NewTaskInput = { repo: string; baseRef: string }
-
-/** Default base ref when the user leaves the field blank. */
-const DEFAULT_BASE_REF = "main"
-
-/**
- * Strip CR/LF from a single-line input value. opentui's `<input>`
- * happily inserts a literal `\n` when the user presses enter inside a
- * focused field — even though the same press also fires `onSubmit` —
- * so the value rendered back to the field shows the stray newline as
- * a glyph (looks like an extra "n" on macOS terminals). We sanitize at
- * the onInput edge so the signal never carries a newline; the
- * onSubmit handler still fires and commits the trimmed-but-newline-
- * free value.
- */
-function stripNewlines(v: string): string {
-  return v.replace(/[\r\n]+/g, "")
-}
-
-/**
- * Validate a repo path entered in the new-task dialog. Returns null
- * when the path looks like a usable git repo, or a human-readable
- * reason string otherwise. The dialog renders the reason inline and
- * blocks submission so a typo'd path doesn't get persisted as
- * `lastNewTaskRepo` and can't drag every subsequent `runTask` into
- * `git worktree add` failures.
- *
- * Two checks (in order):
- *   1. The path exists and is a directory. We do NOT recursively
- *      create — a non-existent path is almost always a typo, not a
- *      "please mkdir for me" request.
- *   2. `git -C <path> rev-parse --git-dir` succeeds. This catches
- *      both "exists but not a repo" and "exists but git is unhappy"
- *      with a single check.
- */
-function validateRepoPath(repo: string): string | null {
-  const trimmed = repo.trim()
-  if (!trimmed) return "repo path is required"
-  // existsSync + statSync.isDirectory in one shot.
-  let stat: import("node:fs").Stats
-  try {
-    stat = fs.statSync(trimmed)
-  } catch {
-    return `path does not exist: ${trimmed}`
-  }
-  if (!stat.isDirectory()) return `not a directory: ${trimmed}`
-  try {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
-    const out = spawnSync("git", ["rev-parse", "--git-dir"], {
-      cwd: trimmed,
-      encoding: "utf-8",
-      timeout: 2000,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-    if (out.status !== 0) return `not a git repository: ${trimmed}`
-  } catch {
-    return `not a git repository: ${trimmed}`
-  }
-  return null
-}
-
-/**
- * List local branches in the given repo, sorted with the default branch
- * first when present. Synchronous — repo enumeration is a one-shot call
- * driven by the dialog's repo-field changes, so paying for an async
- * boundary buys nothing. Returns [] on any error so the picker just
- * silently degrades to the free-text input.
- */
-function listLocalBranches(repo: string): string[] {
-  if (!repo) return []
-  try {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
-    const out = spawnSync("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads/"], {
-      cwd: repo,
-      encoding: "utf-8",
-      timeout: 2000,
-    })
-    if (out.status !== 0) return []
-    return (out.stdout as string)
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .sort((a, b) => {
-        // Default branches first.
-        const score = (n: string) => (n === "main" ? 0 : n === "master" ? 1 : n === "develop" ? 2 : 3)
-        const sa = score(a)
-        const sb = score(b)
-        if (sa !== sb) return sa - sb
-        return a.localeCompare(b)
-      })
-  } catch {
-    return []
-  }
-}
-
-/**
- * The new-task dialog. Per the Wave 3 G architectural pivot, we no
- * longer ask the user to type a separate title — Claude Code does
- * not store one (verified against the stream-json schema), so anything
- * we collect would be a parallel piece of metadata users would have
- * to maintain. Instead we ask for two fields:
- *
- *   1. `prompt` — the user's first message to Claude. The orchestrator
- *      derives a sidebar title from it via {@link deriveTitleFromPrompt}.
- *   2. `repo path` — defaults to `process.cwd()`.
- *
- * `tab` switches focus; `enter` on the last field commits.
- */
-function NewTaskDialog(props: {
-  onSubmit: (v: NewTaskInput) => void
-  onCancel: () => void
-  defaultRepo: string
-  /**
-   * User-curated repo list, persisted via `/add-repo`. Surfaced in the
-   * dialog as a picker beneath the repo input. The current launch
-   * directory (`defaultRepo`) is always prepended so the user can pick
-   * "where I started kobe" without having to add it first.
-   */
-  savedRepos: readonly string[]
-}) {
-  const dialog = useDialog()
-  const { theme } = useTheme()
-  // Dialog only asks for repo + branch now. The first prompt lives in
-  // the chat composer — orchestrator.runTask back-fills the task title
-  // from it on first submit (see PLACEHOLDER_TASK_TITLE in core.ts).
-  //
-  // Three field states for repo selection:
-  //   - "repoPicker" (default, primary path) — picker is focused, the
-  //     custom-path input below is dim and inert. Arrow keys navigate
-  //     the list; enter commits the highlighted repo and advances to
-  //     baseRef.
-  //   - "repoCustom" — the user explicitly tabbed into the input to
-  //     type a path that isn't in the picker. Last-priority surface.
-  //   - "baseRef" — branch field (unchanged).
-  // Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
-  type Field = "repoPicker" | "repoCustom" | "baseRef"
-  const [field, setField] = createSignal<Field>("repoPicker")
-  const [repo, setRepo] = createSignal(props.defaultRepo)
-  const [baseRef, setBaseRef] = createSignal(DEFAULT_BASE_REF)
-
-  // Repo picker — `defaultRepo` (cwd at launch) always appears first;
-  // user-saved repos follow, deduped against the cwd. Up/down on the
-  // repo field navigates this list and pre-fills the input so `enter`
-  // commits the highlighted choice. Free-text editing is still allowed
-  // — the picker is an affordance, not a constraint.
-  const repoOptions = createMemo<readonly string[]>(() => {
-    const seen = new Set<string>()
-    const out: string[] = []
-    for (const p of [props.defaultRepo, ...props.savedRepos]) {
-      const t = p.trim()
-      if (!t || seen.has(t)) continue
-      seen.add(t)
-      out.push(t)
-    }
-    return out
-  })
-  // Substring filter against the repo input. Case-insensitive; empty
-  // input returns the full list. The picker is augmenting the input,
-  // not gating it, so an exact-match input still appears in the list.
-  // While the picker (not the input) has focus, the filter is bypassed
-  // so the user can browse the full list with arrow keys regardless
-  // of whatever they typed earlier.
-  const repoFiltered = createMemo<readonly string[]>(() => {
-    const all = repoOptions()
-    if (field() !== "repoCustom") return all
-    const q = repo().trim().toLowerCase()
-    if (!q) return all
-    return all.filter((p) => p.toLowerCase().includes(q))
-  })
-  const [repoCursor, setRepoCursor] = createSignal(0)
-
-  // Branch picker — refreshed whenever the repo path changes. The
-  // baseRef field still accepts free text (so tags / commit SHAs / refs
-  // not in the local branch list still work), but typing is augmented
-  // with up/down navigation over the discovered branches: highlights
-  // the cursor row and pre-fills the input as the user moves.
-  const branches = createMemo<readonly string[]>(() => listLocalBranches(repo().trim()))
-  // Type-to-filter on the baseRef input. Same rules as the repo
-  // filter — empty query returns everything; non-empty does a
-  // case-insensitive substring match.
-  const branchFiltered = createMemo<readonly string[]>(() => {
-    const all = branches()
-    const q = baseRef().trim().toLowerCase()
-    if (!q) return all
-    return all.filter((b) => b.toLowerCase().includes(q))
-  })
-  const [branchCursor, setBranchCursor] = createSignal(0)
-
-  // Reset cursors whenever the filtered list changes — typing should
-  // always land the highlight on the first match, otherwise the cursor
-  // can sit on a now-hidden index and feels broken.
-  createEffect(() => {
-    void branchFiltered()
-    setBranchCursor(0)
-  })
-  createEffect(() => {
-    void repoFiltered()
-    setRepoCursor(0)
-  })
-
-  // Picker windowing — same shape as the slash dropdown's `slashWindow`
-  // (src/tui/panes/chat/Composer.tsx). Caps visible rows so a repo with
-  // 80+ branches doesn't push the rest of the dialog off-screen; the
-  // window scrolls to keep the cursor in view.
-  const PICKER_MAX_VISIBLE = 8
-  type PickerWindow = { items: readonly string[]; start: number; total: number }
-  function windowAround(list: readonly string[], cursor: number): PickerWindow {
-    const total = list.length
-    if (total <= PICKER_MAX_VISIBLE) return { items: list, start: 0, total }
-    const half = Math.floor(PICKER_MAX_VISIBLE / 2)
-    let start = Math.max(0, cursor - half)
-    if (start + PICKER_MAX_VISIBLE > total) start = total - PICKER_MAX_VISIBLE
-    return { items: list.slice(start, start + PICKER_MAX_VISIBLE), start, total }
-  }
-  const repoWindow = createMemo<PickerWindow>(() => windowAround(repoFiltered(), repoCursor()))
-  const branchWindow = createMemo<PickerWindow>(() => windowAround(branchFiltered(), branchCursor()))
-
-  // Validation error shown inline when the user tries to submit a bad
-  // repo path. Null while the user is still typing — we don't shout
-  // before they're done. Cleared on every keystroke that changes the
-  // repo field so the message doesn't linger after they fix the typo.
-  const [submitError, setSubmitError] = createSignal<string | null>(null)
-  createEffect(() => {
-    void repo()
-    setSubmitError(null)
-  })
-
-  function commit() {
-    const r = repo().trim()
-    if (!r) return
-    const reason = validateRepoPath(r)
-    if (reason) {
-      setSubmitError(reason)
-      // Snap focus back to the custom-path input — that's the field
-      // whose contents triggered the validation failure, so the user
-      // can fix the typo right there.
-      setField("repoCustom")
-      return
-    }
-    const b = baseRef().trim() || DEFAULT_BASE_REF
-    props.onSubmit({ repo: r, baseRef: b })
-    dialog.clear()
-  }
-
-  // When the user picks a repo (enter on the picker row), commit the
-  // selection and advance to the baseRef field. Common helper so the
-  // mouse-click and keyboard-enter paths stay in lockstep.
-  function selectRepoAt(absoluteIndex: number): void {
-    const list = repoFiltered()
-    const picked = list[absoluteIndex]
-    if (!picked) return
-    setRepo(picked)
-    setRepoCursor(absoluteIndex)
-    setField("baseRef")
-  }
-
-  useBindings(() => ({
-    bindings: [
-      {
-        // Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
-        // Lowest-priority surface (custom path typing) sits between
-        // the picker and the branch field.
-        key: "tab",
-        cmd: () => setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
-      },
-      {
-        key: "up",
-        cmd: () => {
-          if (field() === "repoPicker") {
-            const list = repoFiltered()
-            if (list.length === 0) return
-            setRepoCursor(Math.max(0, repoCursor() - 1))
-            return
-          }
-          if (field() === "repoCustom") return
-          if (field() !== "baseRef") return
-          const list = branchFiltered()
-          if (list.length === 0) return
-          setBranchCursor(Math.max(0, branchCursor() - 1))
-        },
-      },
-      {
-        key: "down",
-        cmd: () => {
-          if (field() === "repoPicker") {
-            const list = repoFiltered()
-            if (list.length === 0) return
-            setRepoCursor(Math.min(list.length - 1, repoCursor() + 1))
-            return
-          }
-          if (field() === "repoCustom") return
-          if (field() !== "baseRef") return
-          const list = branchFiltered()
-          if (list.length === 0) return
-          setBranchCursor(Math.min(list.length - 1, branchCursor() + 1))
-        },
-      },
-      {
-        // Enter on the picker = pick the highlighted repo + advance.
-        // The repoCustom + baseRef paths handle their own enter via
-        // the input's onSubmit hook.
-        key: "return",
-        cmd: () => {
-          if (field() === "repoPicker") selectRepoAt(repoCursor())
-        },
-      },
-    ],
-  }))
-
-  return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
-        <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          New task
-        </text>
-        <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
-          esc
-        </text>
-      </box>
-      {/* Primary surface: pick a repo from the list. First entry is
-          the launch cwd (always present); the rest are user-curated
-          via /add-repo. Browsing this list is the default flow — the
-          user lands here on dialog open with the cursor on entry 0
-          (current dir). Enter commits and advances to baseRef.
-          Picker hidden when there are no candidate repos at all (rare
-          — defaultRepo is always in the list). */}
-      <Show when={repoOptions().length > 0}>
-        <box gap={0}>
-          <text fg={field() === "repoPicker" ? theme.accent : theme.textMuted}>pick a repo</text>
-          <Show when={repoWindow().start > 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↑ {repoWindow().start} more
-            </text>
-          </Show>
-          <For each={repoWindow().items}>
-            {(path, i) => {
-              const absoluteIndex = () => repoWindow().start + i()
-              const isCursor = () => field() === "repoPicker" && absoluteIndex() === repoCursor()
-              const isSelected = () => repo().trim() === path
-              const isCurrentDir = () => path === props.defaultRepo
-              return (
-                <text
-                  fg={isCursor() ? theme.primary : isSelected() ? theme.accent : theme.textMuted}
-                  attributes={isCursor() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                  onMouseUp={() => selectRepoAt(absoluteIndex())}
-                >
-                  {isCursor() ? "▸ " : "  "}
-                  {path}
-                  {isCurrentDir() ? "  (current dir)" : ""}
-                </text>
-              )
-            }}
-          </For>
-          <Show when={repoWindow().start + repoWindow().items.length < repoWindow().total}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↓ {repoWindow().total - repoWindow().start - repoWindow().items.length} more
-            </text>
-          </Show>
-        </box>
-      </Show>
-      {/* Secondary surface: custom-path input. Tab once from the
-          picker to land here. Last-priority — only needed when the
-          user wants a repo that's not in the saved list and they
-          haven't run `/add-repo` for it yet. The label dims when the
-          field isn't focused so the picker reads as the primary
-          flow. */}
-      <box gap={0}>
-        <text fg={field() === "repoCustom" ? theme.accent : theme.textMuted}>or type a custom path</text>
-        <input
-          value={repo()}
-          placeholder={props.defaultRepo}
-          focused={field() === "repoCustom"}
-          onInput={(v: string) => setRepo(stripNewlines(v))}
-          onSubmit={() => {
-            if (!repo().trim()) return
-            commit()
-          }}
-        />
-      </box>
-      <Show when={submitError()}>
-        <text fg={theme.error}>※ {submitError()}</text>
-      </Show>
-      <box gap={0}>
-        <text fg={field() === "baseRef" ? theme.accent : theme.textMuted}>from branch</text>
-        <input
-          value={baseRef()}
-          placeholder={DEFAULT_BASE_REF}
-          focused={field() === "baseRef"}
-          onInput={(v: string) => setBaseRef(stripNewlines(v))}
-          onSubmit={() => {
-            // Prefer the highlighted branch in the picker over the
-            // typed text. Free-text only kicks in when nothing matches
-            // (typed a tag / commit SHA the local branch list doesn't know).
-            const list = branchFiltered()
-            const picked = list[branchCursor()]
-            if (picked) setBaseRef(picked)
-            commit()
-          }}
-        />
-      </box>
-      {/* Branch picker empty-state: the repo had no discoverable
-          local branches, OR the user typed a filter that doesn't
-          match any. Either way show a soft hint so the user knows
-          their typed text will be used as a literal ref (tag / SHA
-          / remote ref) rather than chosen from a list. */}
-      <Show
-        when={
-          field() === "baseRef" &&
-          branchFiltered().length === 0 &&
-          // Don't shout when validateRepoPath has already complained
-          // about the upstream issue.
-          submitError() == null
-        }
-      >
-        <box gap={0} paddingLeft={2} paddingBottom={1}>
-          <text fg={theme.textMuted} wrapMode="none">
-            {branches().length === 0
-              ? "(no local branches found — typed text will be used as ref)"
-              : "(no match — typed text will be used as ref)"}
-          </text>
-        </box>
-      </Show>
-      {/* Branch picker: rendered when on baseRef field and the repo
-          actually has discoverable branches matching the input. Up/down
-          navigate the (windowed) list; click selects + commits. The
-          ↑/↓ N more indicators surface truncation when the repo has
-          more matching branches than the cap. */}
-      <Show when={field() === "baseRef" && branchFiltered().length > 0}>
-        <box gap={0} paddingLeft={2} paddingBottom={1}>
-          <Show when={branchWindow().start > 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↑ {branchWindow().start} more
-            </text>
-          </Show>
-          <For each={branchWindow().items}>
-            {(name, i) => {
-              const absoluteIndex = () => branchWindow().start + i()
-              const isCursor = () => absoluteIndex() === branchCursor()
-              const isSelected = () => baseRef().trim() === name
-              return (
-                <text
-                  fg={isCursor() ? theme.primary : isSelected() ? theme.accent : theme.textMuted}
-                  attributes={isCursor() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                  onMouseUp={() => {
-                    setBaseRef(name)
-                    setBranchCursor(absoluteIndex())
-                    commit()
-                  }}
-                >
-                  {isCursor() ? "▸ " : "  "}
-                  {name}
-                </text>
-              )
-            }}
-          </For>
-          <Show when={branchWindow().start + branchWindow().items.length < branchWindow().total}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↓ {branchWindow().total - branchWindow().start - branchWindow().items.length} more
-            </text>
-          </Show>
-        </box>
-      </Show>
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>↑↓ pick · enter select · tab next field · esc cancel</text>
-      </box>
-    </box>
-  )
-}
-
-function showNewTaskDialog(
-  dialog: DialogContext,
-  defaultRepo: string,
-  savedRepos: readonly string[],
-): Promise<NewTaskInput | undefined> {
-  return new Promise<NewTaskInput | undefined>((resolve) => {
-    dialog.replace(
-      () => (
-        <NewTaskDialog
-          defaultRepo={defaultRepo}
-          savedRepos={savedRepos}
-          onSubmit={(v) => resolve(v)}
-          onCancel={() => resolve(undefined)}
-        />
-      ),
-      () => resolve(undefined),
-    )
-    // New-task uses medium (80 cols). small (50) clipped repo paths
-    // mid-row; medium gives full `/Users/jacksonc/...` strings room
-    // to breathe. The card now sizes to content height — earlier
-    // medium looked oversized because of a wrapper scrollbox that
-    // stretched the card vertically; that's fixed.
-    dialog.setSize("medium")
-  })
-}
+// New-task dialog lives in `./component/new-task-dialog/` — see that
+// module for the state machine (state.ts), the JSX shell (dialog.tsx),
+// and the `NewTaskDialog.show(...)` entry point. Imported above.
+//
+// `stripNewlines` is shared from the same module because the
+// rename-task dialog below sanitizes its input the same way (opentui's
+// `<input>` quirk that inserts a literal `\n` on Enter).
 
 /* --------------------------------------------------------------------- */
 /*  Rename-task dialog                                                    */
@@ -1236,15 +742,6 @@ function Shell(props: AppDeps) {
     k: "files",
     l: "terminal",
   }
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0,
-    bindings: bindByIds({
-      "focus.numeric": (evt) => {
-        const target = FOCUS_HJKL_TARGETS[evt.name ?? ""]
-        if (target) setFocusedPane(target)
-      },
-    }),
-  }))
 
   // Keyboard resize for the focused pane — fallback when mouse drag
   // misfires on the splitter. ctrl+= / ctrl++ grows, ctrl+- / ctrl+_
@@ -1273,13 +770,9 @@ function Shell(props: AppDeps) {
         return
     }
   }
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0,
-    bindings: bindByIds({
-      "pane.resize-grow": () => nudgeFocusedPane(RESIZE_STEP),
-      "pane.resize-shrink": () => nudgeFocusedPane(-RESIZE_STEP),
-    }),
-  }))
+  // Note: the actual `useBindings(...)` calls for focus.numeric and
+  // pane.resize live in `useAppKeymap(...)` below — see app-keymap.tsx
+  // for the full priority stack.
 
   // Tab / shift+tab pane cycling is registered via `useKobeKeybindings`'s
   // onFocusNext / onFocusPrev callbacks below — we just gate them here
@@ -1462,7 +955,7 @@ function Shell(props: AppDeps) {
       const raw = kv.get("lastNewTaskRepo")
       return typeof raw === "string" && raw.trim() ? raw : process.cwd()
     })()
-    const result = await showNewTaskDialog(dialog, lastRepo, savedRepos())
+    const result = await NewTaskDialog.show(dialog, lastRepo, savedRepos())
     if (!result) return
     try {
       // Dialog no longer asks for a first prompt — orchestrator gives
@@ -1594,85 +1087,24 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // ctrl+q from the workspace (chat pane) jumps focus back to the
-  // ctrl+q jumps from workspace (chat) back to the sidebar.
-  // Workspace-scoped — this is the "trapped in the chat composer,
-  // want out" verb. Other panes use ctrl+1..4 / esc.
-  useBindings(() => ({
-    enabled: focusedPane() === "workspace" && dialog.stack.length === 0,
-    bindings: bindByIds({
-      "focus.sidebar": () => setFocusedPane("sidebar"),
-    }),
-  }))
-
-  // `n` (task.new), `q` (app.quit), `s` (settings) only fire when
-  // the SIDEBAR is focused — single-letter chords would otherwise
-  // collide with composer typing. Once on the sidebar, `n` opens
-  // the new-task dialog, `q` opens quit-confirm, `s` opens settings.
-  useBindings(() => ({
-    enabled: focusedPane() === "sidebar" && dialog.stack.length === 0,
-    bindings: bindByIds({
-      "task.new": () => {
-        void openNewTaskFlow()
-      },
-      "settings.open.sidebar": () => {
-        void SettingsDialog.show(dialog, kv, props.orchestrator)
-      },
-      "app.quit": () => {
-        DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
-          if (ok === true) {
-            try {
-              renderer?.destroy()
-            } catch (err) {
-              // eslint-disable-next-line no-console
-              console.error("kobe: renderer.destroy() failed during quit:", err)
-            }
-            process.exit(0)
-          }
-        })
-      },
-    }),
-  }))
-  // `ctrl+,` (settings.open) is a modifier chord — safe to leave
-  // global since it can't collide with typing.
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0,
-    bindings: bindByIds({
-      "settings.open": () => {
-        void SettingsDialog.show(dialog, kv, props.orchestrator)
-      },
-    }),
-  }))
-
-  // Test-only hidden hotkey affordance for the W4.PR behavior test.
-  // Mouse-clicking the CreatePRButton from a PTY harness is awkward
-  // (opentui's mouse-event delivery needs SGR capability negotiation
-  // that the screen-capture path doesn't honor). When
-  // KOBE_TEST_PR_HOTKEY=1 we register a hidden ctrl+y binding that
-  // calls the same handler. We chose ctrl+y because (a) it's not in
-  // opentui's defaultTextareaKeyBindings (so the composer won't
-  // intercept it via preventDefault) and (b) kobe's keymap (see
-  // src/tui/lib/keymap.tsx) drops the shift modifier on single-letter
-  // keys, so chords like "ctrl+shift+p" never match anything emitted by
-  // node-pty. A second test path is the fake-engine HTTP server's POST
-  // /pr endpoint (see mountFakeEngineServer above) which bypasses the
-  // keymap entirely. Production never sets either env var.
-  useBindings(() => ({
-    enabled: process.env.KOBE_TEST_PR_HOTKEY === "1" && dialog.stack.length === 0,
-    bindings: [
-      {
-        key: "ctrl+y",
-        cmd: () => {
-          const task = activeTask()
-          if (!task || !task.worktreePath || task.status === "canceled") return
-          props.orchestrator.requestPR(task.id).catch((err: unknown) => {
-            // eslint-disable-next-line no-console
-            console.error("[kobe] requestPR failed:", err)
-          })
-        },
-      },
-    ],
-  }))
+  // Centralised keymap registration. All six top-level useBindings
+  // call sites used to live inline here; they were consolidated into
+  // app-keymap.tsx so the priority stack + scope rationale are
+  // visible in one place. See that file for the registration order
+  // and the rule about plain-letter vs modifier-prefixed chords.
+  useAppKeymap({
+    dialog,
+    focusedPane,
+    setFocusedPane,
+    nudgeFocusedPane,
+    resizeStep: RESIZE_STEP,
+    focusHjklTargets: FOCUS_HJKL_TARGETS,
+    openNewTaskFlow,
+    kv,
+    orchestrator: props.orchestrator,
+    renderer,
+    activeTask,
+  })
 
   // Side-channel PR trigger for the W4.PR behavior test. When
   // KOBE_TEST_FAKE_PORT is active, the fake-engine HTTP server (started
