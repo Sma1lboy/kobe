@@ -4,22 +4,35 @@
  * The terminal pane is the most "passthrough" of the five panes: when
  * focused, every keystroke (including `ctrl+c` to interrupt the running
  * command, `ctrl+d` to send EOF, arrow keys to navigate the shell's
- * line-editor history) goes to the underlying PTY. We do NOT trap them.
+ * line-editor history) goes to the underlying PTY. We do NOT trap them
+ * — with three exceptions.
  *
- * Exception list (these stay in kobe and never reach the shell):
+ * Trapped keys (these stay in kobe and never reach the shell):
  *
  *   - `ctrl+pgup`   — scroll the local scrollback up by one page
  *   - `ctrl+pgdown` — scroll the local scrollback down by one page
+ *   - `escape`      — escape hatch: falls through this pane's empty
+ *                     handler list and hits the global `focus.detach`
+ *                     binding, which returns focus to the sidebar.
+ *                     Without this, ctrl+hjkl pane-jump chords also
+ *                     pass through to the shell, leaving the terminal
+ *                     pane keyboard-only-one-way (mouse-out only).
  *
- * Rationale for the exception: the scrollback view is a kobe-rendered
- * widget, not the live tmux pane content. Scrolling is a UI gesture,
- * not a shell input. Without these we'd never be able to see history
- * once it scrolled past the visible viewport. We pick `ctrl+pgup/down`
- * because:
+ * Rationale for the scroll exception: the scrollback view is a
+ * kobe-rendered widget, not the live PTY content. Scrolling is a UI
+ * gesture, not a shell input. We pick `ctrl+pgup/down` because:
  *   - tmux uses the same chord pair under its prefix for buffer scroll;
  *     the muscle memory transfers.
  *   - bare `pgup`/`pgdown` already mean "scroll the shell's primary
  *     buffer" in many terminals — we leave those for the shell.
+ *
+ * Rationale for escape: a focused terminal pane forwards every chord
+ * the user might press to go elsewhere (ctrl+hjkl, F1, tab, etc.) as
+ * raw bytes to the shell. Trapping `esc` and letting the global
+ * `focus.detach` handler take over restores keyboard escape from the
+ * pane. Cost: shells in vi line-editor mode lose esc as a mode switch.
+ * bash/zsh's default emacs mode doesn't use esc; tradeoff judged worth
+ * it.
  *
  * Focus gating: the bindings are scoped via `enabled = focused()`. When
  * a sibling pane is focused, even our exception keys pass through the

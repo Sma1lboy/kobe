@@ -74,8 +74,20 @@ export const DEFAULT_PAGE_SIZE = 10
 /**
  * Names of keys we trap (do NOT forward to the shell). Re-exported so
  * documentation / tests can assert the list without re-deriving it.
+ *
+ * `escape` is trapped (not forwarded) so the user can leave the
+ * terminal pane the same way they leave any other pane — pressing esc
+ * falls through the empty pane-local stack and hits the global
+ * `focus.detach` handler in `useKobeKeybindings`, which routes back to
+ * the sidebar. Without this, the terminal pane was a one-way trip:
+ * once focused (e.g. via ctrl+l), every chord that can switch panes
+ * (ctrl+hjkl, esc) was forwarded to the shell as raw bytes.
+ *
+ * Trade-off: shells with vi-mode or other esc-sensitive line-editor
+ * extensions lose the in-line esc gesture. bash/zsh's default emacs
+ * mode doesn't use esc, so this is a low-cost trade.
  */
-export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown"] as const
+export const TRAPPED_KEYS = ["ctrl+pageup", "ctrl+pagedown", "escape"] as const
 
 /**
  * Names opentui's keypress events use that we want forwarded to the
@@ -105,7 +117,9 @@ export const PASSTHROUGH_NAMES: readonly string[] = [
   "end",
   "pageup",
   "pagedown",
-  "escape",
+  // `escape` deliberately NOT forwarded — it's the user's escape hatch
+  // out of the terminal pane back to the sidebar via the global
+  // focus.detach binding. See TRAPPED_KEYS above.
   "insert",
   "f1",
   "f2",
