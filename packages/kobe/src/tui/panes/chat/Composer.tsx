@@ -606,20 +606,7 @@ export function Composer(props: ComposerProps) {
   type ModeTone = "muted" | "accent" | "warning" | "primary"
   const modeBadge = createMemo<{ label: string; tone: ModeTone } | null>(() => {
     const mode = props.permissionMode?.()
-    switch (mode) {
-      case "acceptEdits":
-        return { label: "accept edits", tone: "accent" }
-      case "plan":
-        return { label: "plan mode", tone: "primary" }
-      case "auto":
-        return { label: "auto", tone: "primary" }
-      case "bypassPermissions":
-        return { label: "bypass permissions", tone: "warning" }
-      case "dontAsk":
-        return { label: "don't ask", tone: "warning" }
-      default:
-        return null
-    }
+    return mode === "plan" ? { label: "plan mode", tone: "primary" } : null
   })
   const toneColor = (tone: ModeTone) => {
     switch (tone) {

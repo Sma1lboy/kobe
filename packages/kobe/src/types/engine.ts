@@ -28,14 +28,16 @@ export interface SessionHandle {
 }
 
 /**
- * Tool-permission mode for a session. Mirrors `claude --permission-mode
- * <mode>` exactly so the value can be forwarded to the CLI without a
- * mapping table. Cycled by shift+tab in the chat composer (default →
- * acceptEdits → plan → default). The `auto`, `bypassPermissions`, and
- * `dontAsk` modes are reserved for future UI surfaces but already
- * accepted by the engine — they pass through unchanged.
+ * Tool-permission mode for a session, kobe-side. Only two values:
+ * `default` and `plan`. shift+tab in the chat composer toggles between
+ * them. `default` is the trusted-bypass mode — the engine maps it to
+ * claude-code's `bypassPermissions` when spawning, since `claude -p`
+ * has no interactive permission protocol and `acceptEdits` is moot in
+ * non-interactive mode (the only meaningful CLI choice is "auto-deny
+ * outside cwd" or "auto-approve everything"). `plan` forwards to
+ * claude unchanged.
  */
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto" | "bypassPermissions" | "dontAsk"
+export type PermissionMode = "default" | "plan"
 
 /**
  * Optional knobs at spawn time. All fields optional — engine impls supply

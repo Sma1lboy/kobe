@@ -79,7 +79,7 @@ working session and the archives view.
 Inside the chat composer:
 
 - `enter` to send, `shift+enter` for a newline.
-- `shift+tab` cycles the per-task tool-permission mode (`default → acceptEdits → plan`), forwarded to `claude` as `--permission-mode`.
+- `shift+tab` toggles the per-task tool-permission mode between `default` and `plan`. `default` is the trusted-bypass mode — kobe forwards it to `claude` as `--permission-mode bypassPermissions` because `claude -p` has no interactive permission protocol, so the only meaningful choice is "auto-deny outside cwd" or "auto-approve everything." `plan` forwards unchanged.
 - Click the model label in the footer to pick the model for this task (opus / sonnet / haiku).
 - Type `/` to open the slash-command dropdown. Bundled `claude-code` commands and your own `.claude/{commands,skills}/*.md` are merged in.
 - A `Create PR` chip on the chat header injects a PR-instructions prompt into the active task and routes the resulting PR through the orchestrator.

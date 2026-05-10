@@ -304,23 +304,12 @@ export function Chat(props: ChatProps) {
     const id = props.taskId()
     if (!id) return
     const current = permissionMode() ?? "default"
-    // Cycle: default → acceptEdits → plan → bypass → default.
-    // `bypass` (claude-code's `bypassPermissions` mode, equivalent to
-    // `--dangerously-skip-permissions`) skips ALL tool-permission gates,
-    // including the worktree-cwd boundary that otherwise blocks reads
-    // of files like ~/.zshrc. Same approach opcode takes — claude-code
-    // `-p` mode has no interactive permission protocol, so the choice
-    // is "auto-deny everything outside cwd" or "auto-approve everything."
-    // Surfaced in the footer badge as "bypass" with theme.error color
-    // so the user knows they're in the loose-permissions mode.
-    const next: PermissionMode =
-      current === "default"
-        ? "acceptEdits"
-        : current === "acceptEdits"
-          ? "plan"
-          : current === "plan"
-            ? "bypassPermissions"
-            : "default"
+    // Two-mode toggle: default ↔ plan. kobe's `default` is the
+    // trusted-bypass mode — the engine maps it to claude's
+    // `bypassPermissions` at spawn time. `acceptEdits` is meaningless
+    // for `claude -p` (no interactive protocol), so there is no third
+    // mode worth cycling to.
+    const next: PermissionMode = current === "plan" ? "default" : "plan"
     void props.orchestrator.setPermissionMode(id, next).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setPermissionMode failed:", err)

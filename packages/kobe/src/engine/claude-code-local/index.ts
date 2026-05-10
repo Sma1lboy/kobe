@@ -145,12 +145,18 @@ export class ClaudeCodeLocal implements AIEngine {
     resumeSessionId?: string
   }): Promise<SessionHandle> {
     const binaryPath = await this.binaryPathResolver()
+    // kobe's `default` is the trusted-bypass mode — `claude -p` has no
+    // interactive permission protocol, so the only meaningful CLI choice
+    // is "auto-deny outside cwd" (claude's `default`) or "auto-approve
+    // everything" (`bypassPermissions`). We pick the latter. `plan`
+    // forwards unchanged.
+    const cliPermissionMode = args.opts?.permissionMode === "plan" ? "plan" : "bypassPermissions"
     const spawned = spawnClaudeProcess({
       binaryPath,
       cwd: args.cwd,
       prompt: args.prompt,
       model: args.opts?.model,
-      permissionMode: args.opts?.permissionMode,
+      permissionMode: cliPermissionMode,
       env: args.opts?.env,
       resumeSessionId: args.resumeSessionId,
     })

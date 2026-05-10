@@ -534,14 +534,7 @@ function coerceTask(value: unknown): Task | null {
 }
 
 function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMode {
-  return (
-    v === "default" ||
-    v === "acceptEdits" ||
-    v === "plan" ||
-    v === "auto" ||
-    v === "bypassPermissions" ||
-    v === "dontAsk"
-  )
+  return v === "default" || v === "plan"
 }
 
 function isTaskStatus(s: string): s is TaskStatus {
