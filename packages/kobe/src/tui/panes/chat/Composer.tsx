@@ -590,17 +590,21 @@ export function Composer(props: ComposerProps) {
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
     return ""
   }
-  const modelLabel = () => props.modelLabel?.() ?? "claude-code"
+  const modelLabel = () => props.modelLabel?.() ?? ""
 
   // Mode indicator: short label + tone based on the active permission mode.
-  // We treat undefined as "default" for display so the badge always
-  // renders. Plain text labels — no emoji glyphs (the previous 📋/⏵/⚠ set
-  // looked out of place against the rest of kobe's monochrome chrome).
-  // The rail color picks up the same tone so the composer's outer
-  // chrome turns a different color for non-default modes; plan mode in
-  // particular needs to be unmistakable so the user doesn't accidentally
-  // submit a destructive prompt while the agent is planning.
-  const modeBadge = createMemo<{ label: string; tone: "muted" | "accent" | "warning" | "primary" }>(() => {
+  // Default/undefined → null badge so the footer doesn't render the pill
+  // at all (matches claude-code's `hasActiveMode = !isDefaultMode(mode)`
+  // gate in PromptInputFooterLeftSide.tsx — they only surface the mode
+  // when something non-default is active). Plain text labels — no emoji
+  // glyphs (the previous 📋/⏵/⚠ set looked out of place against the rest
+  // of kobe's monochrome chrome). The rail color picks up the same tone
+  // so the composer's outer chrome turns a different color for non-default
+  // modes; plan mode in particular needs to be unmistakable so the user
+  // doesn't accidentally submit a destructive prompt while the agent is
+  // planning.
+  type ModeTone = "muted" | "accent" | "warning" | "primary"
+  const modeBadge = createMemo<{ label: string; tone: ModeTone } | null>(() => {
     const mode = props.permissionMode?.()
     switch (mode) {
       case "acceptEdits":
@@ -614,10 +618,10 @@ export function Composer(props: ComposerProps) {
       case "dontAsk":
         return { label: "don't ask", tone: "warning" }
       default:
-        return { label: "default", tone: "muted" }
+        return null
     }
   })
-  const toneColor = (tone: "muted" | "accent" | "warning" | "primary") => {
+  const toneColor = (tone: ModeTone) => {
     switch (tone) {
       case "accent":
         return theme.accent
@@ -629,14 +633,13 @@ export function Composer(props: ComposerProps) {
         return theme.textMuted
     }
   }
-  const modeBadgeColor = () => toneColor(modeBadge().tone)
   // Rail color priority: non-default mode > focused > idle border. Mode
   // wins over focus so the visual signal "you are in plan mode" persists
   // even when the user clicks into a sibling pane (you'd otherwise drop
   // back to the muted border and forget the mode is on).
   const railColor = () => {
-    const tone = modeBadge().tone
-    if (tone !== "muted") return toneColor(tone)
+    const badge = modeBadge()
+    if (badge) return toneColor(badge.tone)
     if (props.focused?.()) return theme.primary
     return theme.border
   }
@@ -778,9 +781,13 @@ export function Composer(props: ComposerProps) {
                 {streamingNotice()}
               </text>
               <box flexDirection="row" gap={2} flexShrink={0}>
-                <text fg={modeBadgeColor()} wrapMode="none">
-                  {modeBadge().label}
-                </text>
+                <Show when={modeBadge()}>
+                  {(badge) => (
+                    <text fg={toneColor(badge().tone)} wrapMode="none">
+                      {badge().label}
+                    </text>
+                  )}
+                </Show>
                 {/* Model label — clickable when the parent supplies
                     `onChooseModel`; renders with a `▾` caret to advertise
                     the picker. Inert (no caret, no click) otherwise. */}

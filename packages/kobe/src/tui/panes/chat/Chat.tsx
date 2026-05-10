@@ -48,13 +48,12 @@ import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
-import { ApprovalRow, MessageList, QuestionRow } from "./MessageList"
+import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
 import { modelLabelFor } from "./composer/models"
 import { loadUserSlashes } from "./composer/user-slashes"
 import {
-  type ChatRow,
   type ChatState,
   applyEvent,
   createInitialState,
@@ -282,46 +281,16 @@ export function Chat(props: ChatProps) {
   // — the picker is always near the bottom. Stops at the first user/
   // assistant row because anything newer than the picker means the
   // conversation moved on (i.e. the picker was already resolved).
-  const hasPendingInput = createMemo(() => pendingInputIndex() !== null)
-
-  /**
-   * Index of the approval/question row that's currently waiting on the
-   * user, or `null` when there is none. Used to:
-   *   - lift the pending picker OUT of the scrolling transcript and
-   *     render it inline above the composer (like a modal — but
-   *     keyboard-driven and laid out in the same column),
-   *   - keep the composer hidden while a structured answer is
-   *     pending (the model only accepts the picker's answer, not a
-   *     freeform prompt).
-   *
-   * Scans from the end (cheap — picker is always near the bottom) and
-   * stops at the first user/assistant row because anything newer means
-   * the picker has already been resolved + the conversation moved on.
-   */
-  const pendingInputIndex = createMemo<number | null>(() => {
+  const hasPendingInput = createMemo(() => {
     const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (!m) continue
-      if (m.kind === "approval") return m.status === "pending" ? i : null
-      if (m.kind === "question") return m.answers === null ? i : null
-      if (m.kind === "user" || m.kind === "assistant") return null
+      if (m.kind === "approval") return m.status === "pending"
+      if (m.kind === "question") return m.answers === null
+      if (m.kind === "user" || m.kind === "assistant") return false
     }
-    return null
-  })
-
-  const pendingInputRow = createMemo<
-    | { kind: "approval"; row: Extract<ChatRow, { kind: "approval" }> }
-    | { kind: "question"; row: Extract<ChatRow, { kind: "question" }> }
-    | null
-  >(() => {
-    const i = pendingInputIndex()
-    if (i === null) return null
-    const m = activeState().messages[i]
-    if (!m) return null
-    if (m.kind === "approval") return { kind: "approval", row: m }
-    if (m.kind === "question") return { kind: "question", row: m }
-    return null
+    return false
   })
 
   // Per-task permission mode (shift+tab cycle in the composer).
@@ -355,8 +324,7 @@ export function Chat(props: ChatProps) {
     if (!id) return
     const result = await ModelPicker.show(dialog, modelId())
     if (result === undefined) return
-    const next = result ?? undefined
-    await props.orchestrator.setModel(id, next).catch((err: unknown) => {
+    await props.orchestrator.setModel(id, result).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setModel failed:", err)
     })
@@ -785,7 +753,6 @@ export function Chat(props: ChatProps) {
               expandedToolIndex={expandedToolIndex()}
               onToggleTool={toggleExpand}
               showEmptyPlaceholder={!showThinking()}
-              hideRowIndex={pendingInputIndex()}
               error={activeState().error}
               onApprove={(requestId, approve) => {
                 const taskId = props.taskId()
@@ -834,68 +801,18 @@ export function Chat(props: ChatProps) {
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
-      {/* Pending input picker — when the model is paused on
-          ExitPlanMode / AskUserQuestion, the picker takes the
-          composer's slot at the bottom of the chat instead of
-          rendering inline in the transcript. The user reads the
-          question as the live "what should I do next?" UI; once
-          they submit, the row drops out of the pending state and
-          re-appears in the message list as the resolved version. */}
-      <Show when={pendingInputRow() && props.taskId()}>
-        <box paddingLeft={1} paddingRight={1}>
-          {(() => {
-            const p = pendingInputRow()
-            if (!p) return null
-            const requestId = p.row.requestId
-            const taskId = () => props.taskId()
-            if (p.kind === "approval") {
-              return (
-                <ApprovalRow
-                  row={p.row}
-                  onApprove={(approve) => {
-                    const id = taskId()
-                    if (!id) return
-                    props.orchestrator
-                      .respondToInput(id, requestId, { kind: "approve_plan", approve })
-                      .catch((err: unknown) => {
-                        patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-                      })
-                  }}
-                />
-              )
-            }
-            return (
-              <QuestionRow
-                row={p.row}
-                onAnswer={(answers) => {
-                  const id = taskId()
-                  if (!id) return
-                  props.orchestrator
-                    .respondToInput(id, requestId, { kind: "ask_question", answers })
-                    .catch((err: unknown) => {
-                      patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-                    })
-                }}
-              />
-            )
-          })()}
-        </box>
-      </Show>
-
-      {/* Composer — hidden while a structured-input picker owns the
-          slot above. The composer can't accept a freeform answer in
-          that state anyway (the model is waiting on the picker's
-          structured payload), so we let the picker have the room. */}
-      <Show when={!hasPendingInput()}>
+      {/* Composer. */}
       <Composer
         draft={draft()}
         onDraftChange={setDraft}
         isStreaming={activeState().isStreaming}
-        hasTask={props.taskId() !== undefined && !isCanceled()}
+        hasTask={props.taskId() !== undefined && !isCanceled() && !hasPendingInput()}
         noTaskMessage={
           isCanceled()
             ? "(task canceled — pick another or press ctrl+n to create)"
-            : undefined
+            : hasPendingInput()
+              ? "(answer the prompt above to continue)"
+              : undefined
         }
         onSubmit={handleComposerSubmit}
         focused={props.focused}
@@ -907,7 +824,6 @@ export function Chat(props: ChatProps) {
         modelLabel={modelLabel}
         onChooseModel={() => void chooseModel()}
       />
-      </Show>
     </box>
   )
 }

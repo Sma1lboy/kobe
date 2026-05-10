@@ -151,12 +151,17 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "F1", label: "help", pin: "right" },
   },
   {
+    // Sidebar-only — single letter `n`. While focused on the chat
+    // composer / files / terminal, `n` is just a letter you type;
+    // ctrl+q jumps back to the sidebar where `n` opens the new-task
+    // dialog. Avoids the muscle-memory-vs-typing collision the old
+    // global `ctrl+n` had.
     id: "task.new",
-    scope: "global",
-    keys: ["ctrl+n"],
-    category: "Global",
+    scope: "sidebar",
+    keys: ["n"],
+    category: "Sidebar",
     description: "New task",
-    hint: { keys: "ctrl+n", label: "new", pin: "right" },
+    hint: { keys: "n", label: "new" },
   },
   {
     id: "settings.open",
@@ -166,12 +171,28 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open settings",
   },
   {
+    // Sidebar-only — single letter `q`. ctrl+q is reserved for
+    // "back to sidebar" (focus.sidebar) so the user has a one-chord
+    // path out of the composer; once back on the sidebar, `q` is the
+    // quit verb. Pressing q while in the composer just types a `q`.
     id: "app.quit",
-    scope: "global",
-    keys: ["ctrl+shift+q", "ctrl+q"],
-    category: "Global",
+    scope: "sidebar",
+    keys: ["q"],
+    category: "Sidebar",
     description: "Quit (with confirm)",
-    hint: { keys: "ctrl+shift+q", label: "quit", pin: "right" },
+    hint: { keys: "q", label: "quit" },
+  },
+  {
+    // Always-on shortcut to bring focus back to the sidebar (tasks
+    // list). Same effect as esc / ctrl+1, exposed as ctrl+q so the
+    // muscle memory is "quit-ish chord → exit chat to tasks", and
+    // then plain `q` actually quits.
+    id: "focus.sidebar",
+    scope: "global",
+    keys: ["ctrl+q"],
+    category: "Navigation",
+    description: "Back to sidebar (tasks)",
+    hint: { keys: "ctrl+q", label: "tasks", pin: "right" },
   },
 
   // ─── Navigation ───────────────────────────────────────────────────────
@@ -600,12 +621,11 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
         "help.open": () => opts.onShowHelp(),
         "focus.next": () => onFocusNext(),
         "focus.prev": () => onFocusPrev(),
-        "app.quit": () => {
-          if (dialog.stack.length > 0) return
-          DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
-            if (ok === true) onQuit()
-          })
-        },
+        // ctrl+q: shortcut to sidebar from anywhere. Plain `q` is the
+        // sidebar-scoped quit binding (registered separately), so
+        // pressing ctrl+q from the composer lands you on the sidebar
+        // and a follow-up `q` actually quits.
+        "focus.sidebar": () => onFocusDetach(),
         // Ctrl+C is modifier-prefixed so it never collides with composer
         // typing. DialogProvider's own ctrl+c binding sits higher on the
         // stack and still wins while a dialog is open — that's the

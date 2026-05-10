@@ -3,10 +3,8 @@
  * should use on the next spawn/resume.
  *
  * Mirrors {@link DialogConfirm}'s static `show()` shape: returns a
- * Promise that resolves to the chosen model id (or `undefined` when
- * the user dismisses with esc). `null` means "the user explicitly
- * picked the default — clear the pinned model"; the caller distinguishes
- * those two outcomes when writing back.
+ * Promise that resolves to the chosen model id (always a real id
+ * post-bug-fix), or `undefined` when the user dismisses with esc.
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -14,13 +12,13 @@ import { For, createSignal } from "solid-js"
 import { useTheme } from "../../../context/theme"
 import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
-import { MODEL_CHOICES } from "./models"
+import { DEFAULT_MODEL_ID, MODEL_CHOICES } from "./models"
 
-export type ModelPickerResult = string | null | undefined
+export type ModelPickerResult = string | undefined
 
 export type ModelPickerProps = {
   current: string | undefined
-  onPick: (id: string | undefined) => void
+  onPick: (id: string) => void
   onCancel: () => void
 }
 
@@ -29,8 +27,11 @@ function ModelPicker(props: ModelPickerProps) {
   const { theme } = useTheme()
 
   // Cursor starts on the currently-pinned model so a single enter
-  // re-confirms the existing choice without changing it.
-  const initial = MODEL_CHOICES.findIndex((m) => m.id === props.current)
+  // re-confirms the existing choice without changing it. When unpinned,
+  // seed on the resolved default (Sonnet 4.6) so the picker reflects
+  // what the user is actually running.
+  const seed = props.current ?? DEFAULT_MODEL_ID
+  const initial = MODEL_CHOICES.findIndex((m) => m.id === seed)
   const [cursor, setCursor] = createSignal(initial >= 0 ? initial : 0)
 
   function commit(): void {
@@ -104,7 +105,7 @@ function ModelPicker(props: ModelPickerProps) {
 ModelPicker.show = (dialog: DialogContext, current: string | undefined): Promise<ModelPickerResult> => {
   return new Promise<ModelPickerResult>((resolve) => {
     dialog.replace(
-      () => <ModelPicker current={current} onPick={(id) => resolve(id ?? null)} onCancel={() => resolve(undefined)} />,
+      () => <ModelPicker current={current} onPick={(id) => resolve(id)} onCancel={() => resolve(undefined)} />,
       () => resolve(undefined),
     )
   })

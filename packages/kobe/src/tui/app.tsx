@@ -24,7 +24,7 @@ import * as fs from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
-import { render, useTerminalDimensions } from "@opentui/solid"
+import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
@@ -1105,6 +1105,11 @@ function Shell(props: AppDeps) {
   const focus = useFocus()
   const focusedPane = focus.focused
   const setFocusedPane = focus.setFocused
+  // Renderer handle — only used by the quit-confirm path so we can
+  // tear down opentui state (mouse tracking, alt-screen, raw mode)
+  // before process.exit. Without this the parent shell sees mouse
+  // escape sequences leaking past kobe's exit.
+  const renderer = useRenderer()
   // Pane-bindings-active accessor: true only when (a) the pane is the
   // focused one AND (b) no dialog is open. The dialog gate prevents
   // sidebar/files/terminal bindings from firing while the user is
@@ -1414,16 +1419,38 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // `ctrl+n` (task.new) and `ctrl+,` (settings.open) are always
-  // available when no dialog is open. Modifier chords don't go to
-  // inputs, so this is the safe path for "I'm in a chat but want to
-  // spawn a sibling task" or open settings.
+  // `n` (task.new) and `q` (app.quit) only fire when the SIDEBAR
+  // is focused — single-letter chords would otherwise collide with
+  // composer typing. Once on the sidebar, `n` opens the new-task
+  // dialog and `q` opens the quit-confirm. ctrl+q from anywhere
+  // jumps focus back to the sidebar (registered as `focus.sidebar`
+  // inside useKobeKeybindings → onFocusDetach).
   useBindings(() => ({
-    enabled: dialog.stack.length === 0,
+    enabled: focusedPane() === "sidebar" && dialog.stack.length === 0,
     bindings: bindByIds({
       "task.new": () => {
         void openNewTaskFlow()
       },
+      "app.quit": () => {
+        DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
+          if (ok === true) {
+            try {
+              renderer?.destroy()
+            } catch (err) {
+              // eslint-disable-next-line no-console
+              console.error("kobe: renderer.destroy() failed during quit:", err)
+            }
+            process.exit(0)
+          }
+        })
+      },
+    }),
+  }))
+  // `ctrl+,` (settings.open) is a modifier chord — safe to leave
+  // global since it can't collide with typing.
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0,
+    bindings: bindByIds({
       "settings.open": () => {
         void SettingsDialog.show(dialog, kv)
       },
