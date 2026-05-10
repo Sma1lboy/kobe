@@ -68,3 +68,45 @@ test("two Ctrl+C presses within the quit window exit kobe", async () => {
   }
   expect(kobe.closed).toBe(true)
 }, 30_000)
+
+test("double Ctrl+C exit cleans up the terminal (mouse tracking off, alt-screen restored)", async () => {
+  // Regression for the screenshot Jackson sent on 2026-05-10: after
+  // Ctrl+C×2, the host shell was being flooded with `\x1b[<...M` SGR
+  // mouse events because the previous default `onQuit = process.exit(0)`
+  // bypassed every opentui exit hook. The fix calls renderer.destroy()
+  // first, which writes the disable sequences synchronously through the
+  // native renderer before the process is killed.
+  kobe = await spawnKobe()
+  await kobe.waitFor((s) => s.includes("KobeCode") || s.includes("kobe"), 10_000)
+
+  await kobe.sendKeys("\x03")
+  await kobe.waitFor((s) => s.includes("Ctrl+C again"), 5_000)
+  await kobe.sendKeys("\x03")
+
+  const deadline = Date.now() + 5_000
+  while (!kobe.closed && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 25))
+  }
+  expect(kobe.closed).toBe(true)
+
+  // After exit, the raw byte buffer should contain at least one of the
+  // mouse-tracking-disable sequences opentui emits on teardown:
+  //   \x1b[?1003l  any-event mouse off
+  //   \x1b[?1006l  SGR extended mouse off
+  //   \x1b[?1015l  urxvt-style mouse off
+  //   \x1b[?1000l  basic mouse off
+  // Any of them proves cleanup ran. Without renderer.destroy(), NONE
+  // of these sequences would be emitted.
+  const raw = kobe.captureRaw()
+  // Build the mouse-disable matcher from a string (avoids biome's
+  // noControlCharactersInRegex rule — ESC is intrinsic to ANSI matching
+  // here). \x1b followed by `[?` then any of the four mouse-mode codes
+  // followed by `l` (lowercase = disable).
+  const ESC = String.fromCharCode(0x1b)
+  const mouseDisable = new RegExp(`${ESC}\\[\\?(1000|1003|1006|1015)l`)
+  expect(raw).toMatch(mouseDisable)
+
+  // And alt-screen restored (`\x1b[?1049l`) — the user's host shell
+  // should be back, not stuck looking at TUI residue.
+  expect(raw).toContain(`${ESC}[?1049l`)
+}, 30_000)

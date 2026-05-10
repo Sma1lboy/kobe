@@ -192,7 +192,27 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   const dialog: DialogContext = useDialog()
   const renderer = useRenderer()
 
-  const onQuit = opts.onQuit ?? (() => process.exit(0))
+  // process.exit() bypasses every opentui exit hook (`beforeExit`, signal
+  // listeners), so without first calling renderer.destroy() the terminal
+  // is left in TUI state on the way out: mouse tracking stays on (the
+  // shell sees a stream of \x1b[<...M sequences from every mouse move),
+  // alt-screen isn't restored, raw mode lingers. Tearing down the
+  // renderer first writes the disable sequences synchronously to stdout
+  // before exit() blocks Node.
+  const onQuit =
+    opts.onQuit ??
+    (() => {
+      // Defense in depth: if destroy() throws (FFI to native renderer
+      // can fail in odd states), the user who pressed Ctrl+C×2 must
+      // still get out — surface to stderr for the next shell prompt to
+      // see, then force-exit unconditionally.
+      try {
+        renderer?.destroy()
+      } catch (err) {
+        console.error("kobe: renderer.destroy() failed during quit:", err)
+      }
+      process.exit(0)
+    })
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
 
