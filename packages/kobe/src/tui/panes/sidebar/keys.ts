@@ -43,7 +43,10 @@ import { createSidebarController } from "./controller"
  * signals; the component owns the cursor state and we just push it.
  */
 export type SidebarBindingsOpts = {
-  /** Whether the sidebar should respond to keys at all. */
+  /**
+   * Whether the sidebar pane is selected (border highlight). Visual
+   * only; bindings don't fire in select mode.
+   */
   focused: Accessor<boolean>
   /** Current cursor index into the flat task id list. -1 if no tasks. */
   cursorIndex: Accessor<number>
@@ -98,7 +101,11 @@ export type SidebarBindingsOpts = {
  * Internally builds a {@link SidebarController} and wires its methods to
  * the keymap layer.
  */
-export function useSidebarBindings(opts: SidebarBindingsOpts): void {
+export function useSidebarBindings(opts: SidebarBindingsOpts & { engaged?: Accessor<boolean> }): void {
+  // Bindings fire only when engaged. Falls back to focused for hosts
+  // that don't pass an engaged accessor (legacy single-mode tests),
+  // preserving previous behavior.
+  const isActive = () => opts.engaged?.() ?? opts.focused()
   const ctrl = createSidebarController({
     getCursor: () => opts.cursorIndex(),
     setCursor: (n) => opts.setCursorIndex(n),
@@ -117,7 +124,7 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   }
 
   useBindings(() => ({
-    enabled: opts.focused(),
+    enabled: isActive(),
     bindings: bindByIds({
       // sidebar.nav covers j/k/down/up — handler discriminates direction
       // via evt.name. The matcher delivers e.g. {name: "j"} or {name: "down"}.

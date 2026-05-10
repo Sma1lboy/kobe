@@ -39,8 +39,14 @@ export type FileTreeTab = "all" | "changes" | "checks"
 export const TAB_ORDER: readonly FileTreeTab[] = ["all", "changes", "checks"]
 
 export type FileTreeBindingsOpts = {
-  /** Whether the pane should respond to keys. Default `() => true`. */
+  /**
+   * Whether the file tree pane is selected (border highlight). Visual
+   * gate only — bindings fire when `engaged` is true, falling back to
+   * `focused` for legacy single-mode hosts.
+   */
   focused: Accessor<boolean>
+  /** Whether the pane is engaged (mode === engaged). Optional fallback to focused. */
+  engaged?: Accessor<boolean>
   /** Move the cursor to the next visible row. */
   moveDown: () => void
   /** Move the cursor to the previous visible row. */
@@ -62,8 +68,9 @@ export type FileTreeBindingsOpts = {
  * component unmounts.
  */
 export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
+  const isActive = () => opts.engaged?.() ?? opts.focused()
   useBindings(() => ({
-    enabled: opts.focused(),
+    enabled: isActive(),
     bindings: bindByIds({
       "files.nav": (evt) => {
         if (evt.name === "j" || evt.name === "down") opts.moveDown()

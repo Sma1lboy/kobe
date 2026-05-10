@@ -95,6 +95,8 @@ export type FileTreeProps = {
    * thread real signals when the 5-pane layout lands.
    */
   focused?: Accessor<boolean>
+  /** Whether the pane is engaged (j/k/[]/r etc. fire). Optional fallback to focused. */
+  engaged?: Accessor<boolean>
 }
 
 /**
@@ -284,6 +286,7 @@ export function FileTree(props: FileTreeProps) {
 
   useFileTreeBindings({
     focused: focusedAccessor,
+    engaged: props.engaged,
     moveDown,
     moveUp,
     setTab: (t) => setTab(t),

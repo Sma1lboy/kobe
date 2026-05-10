@@ -60,6 +60,8 @@ export type SidebarProps = {
   selectedId: Accessor<string | null>
   onSelect: (id: string) => void
   focused?: Accessor<boolean>
+  /** Whether the sidebar is engaged (j/k/d/r/a etc. fire). Optional fallback to focused. */
+  engaged?: Accessor<boolean>
   onDeleteRequest?: (taskId: string) => void
   /**
    * Archive-toggle callback. Wave 4.5: pressing `a` flips the cursor
@@ -183,6 +185,7 @@ export function Sidebar(props: SidebarProps) {
 
   useSidebarBindings({
     focused: focusedAccessor,
+    engaged: props.engaged,
     cursorIndex,
     setCursorIndex,
     flatTaskIds: flatIds,

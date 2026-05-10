@@ -1208,15 +1208,14 @@ function Shell(props: AppDeps) {
     }),
   }))
 
-  // Enter in select mode on workspace/terminal → engage. Sidebar and
-  // files have their own pane-local enter (open-task / open-file);
-  // those are higher priority on the LIFO binding stack so this
-  // global binding only fires when those panes don't claim enter.
+  // Enter in select mode on any pane → engage that pane. Pane-local
+  // bindings (sidebar.select, files.open) gate on `engaged` so they
+  // can't fire in select mode anyway — this global enter wins, and
+  // the user has to press enter again (post-engage, the pane-local
+  // sidebar.select / files.open then takes over because it's now
+  // higher in the stack and active).
   useBindings(() => ({
-    enabled:
-      dialog.stack.length === 0 &&
-      focus.mode() === "select" &&
-      (focusedPane() === "workspace" || focusedPane() === "terminal"),
+    enabled: dialog.stack.length === 0 && focus.mode() === "select",
     bindings: [{ key: "return", cmd: () => focus.engage() }],
   }))
 
@@ -1407,9 +1406,15 @@ function Shell(props: AppDeps) {
     // Cases 2 + 3 land here — useKobeKeybindings already handled (1).
     onFocusDetach: () => {
       if (focus.mode() === "engaged") {
+        // First esc disengages: stay on the current pane, just release
+        // input. User can now ctrl+hjkl elsewhere or esc again to
+        // detach all the way to sidebar.
         focus.disengage()
       } else {
-        setFocusedPane("sidebar")
+        // Already in select mode → escape hatch: jump to sidebar and
+        // land engaged (the common intent is "show me the task list,
+        // I want to navigate"). User can disengage again with esc.
+        setFocusedPane("sidebar", { engage: true })
       }
     },
     // Tab cycle is select-mode only. In engaged mode we forward tab
@@ -1519,7 +1524,10 @@ function Shell(props: AppDeps) {
   useBindings(() => ({
     enabled: focusedPane() === "workspace" && dialog.stack.length === 0,
     bindings: bindByIds({
-      "focus.sidebar": () => setFocusedPane("sidebar"),
+      // ctrl+q from workspace → "back to tasks". User intent is to
+      // browse the task list, so land engaged so j/k works without
+      // an extra enter press.
+      "focus.sidebar": () => setFocusedPane("sidebar", { engage: true }),
     }),
   }))
 
@@ -1671,10 +1679,11 @@ function Shell(props: AppDeps) {
           flexShrink={0}
           flexDirection="column"
           backgroundColor={theme.backgroundPanel}
-          onMouseUp={() => setFocusedPane("sidebar")}
+          onMouseUp={() => setFocusedPane("sidebar", { engage: true })}
         >
           <Sidebar
             width={sidebarWidth}
+            engaged={focus.isEngaged("sidebar")}
             tasks={tasksAcc}
             onSelect={(id: string) => {
               setSelectedId(id)
@@ -1780,10 +1789,15 @@ function Shell(props: AppDeps) {
             backgroundPanel tone as the sidebar so the two rails feel
             symmetric and the chat in the middle is visibly the focus. */}
         <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
-          <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
+          <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files", { engage: true })}>
             <PaneHeader title="FILES" ordinal="k" focused={focusedPane() === "files"} />
             <box flexGrow={1}>
-              <FileTree worktreePath={worktreePathAcc} onOpenFile={openFileInCenter} focused={isFocused("files")} />
+              <FileTree
+                worktreePath={worktreePathAcc}
+                onOpenFile={openFileInCenter}
+                focused={isFocused("files")}
+                engaged={focus.isEngaged("files")}
+              />
             </box>
           </box>
           {/* Files ↔ terminal splitter. */}
@@ -1799,7 +1813,7 @@ function Shell(props: AppDeps) {
             flexShrink={1}
             flexBasis={0}
             flexDirection="column"
-            onMouseUp={() => setFocusedPane("terminal")}
+            onMouseUp={() => setFocusedPane("terminal", { engage: true })}
           >
             <PaneHeader
               title="TERMINAL"
