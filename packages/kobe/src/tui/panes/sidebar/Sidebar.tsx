@@ -213,14 +213,15 @@ export function Sidebar(props: SidebarProps) {
             ▌
           </text>
         </Show>
-        {/* Bold leading `1` matches the WORKSPACE/FILES/TERMINAL pane
-            headers' ordinal — surfaces the global ctrl+1 focus chord
-            at the same eye-level as the pane title. */}
+        {/* Bold leading `1` + uppercase `TASKS` — matches the
+            WORKSPACE / FILES / TERMINAL pane headers' shape.
+            Previously read `kobe` (the brand) which made the four
+            panes feel inconsistent — `TASKS` says what the pane is. */}
         <text fg={focusedAccessor() ? theme.success : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
           1
         </text>
         <text fg={focusedAccessor() ? theme.success : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-          kobe
+          TASKS
         </text>
       </box>
 

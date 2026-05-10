@@ -79,7 +79,7 @@ test("settings dialog → theme switch persists to KV", async () => {
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // Cold boot → sidebar is focused. The bare `,` shortcut for settings
   // was removed during the keybindings central-registry refactor (was

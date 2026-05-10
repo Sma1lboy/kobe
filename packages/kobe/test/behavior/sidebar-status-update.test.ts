@@ -165,7 +165,7 @@ test("sidebar keeps a task under its repo header across a backlog → done trans
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // ---- create a task via the new-task dialog --------------------

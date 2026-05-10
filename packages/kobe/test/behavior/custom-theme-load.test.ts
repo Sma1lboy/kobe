@@ -80,7 +80,7 @@ test("user theme dropped into ~/.kobe/themes/ appears in settings picker", async
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // Open settings via ctrl+, — same xterm modifyOtherKeys escape used
   // by settings-theme-switch.test.ts. Cold-boot focus is the sidebar,

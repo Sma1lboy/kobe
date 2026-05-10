@@ -5,7 +5,7 @@
  * bytes, and exposes a tiny synchronous-feeling API for tests:
  *
  *   const k = await spawnKobe()
- *   await k.waitFor((s) => s.includes("kobe"))
+ *   await k.waitFor((s) => s.includes("KobeCode"))
  *   await k.sendKeys("q")
  *   await k.exit()
  *

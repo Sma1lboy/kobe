@@ -29,8 +29,8 @@ test("kobe boots and renders its title in the bordered box", async () => {
   // Intentionally minimal — phase-specific banner text changes every
   // wave. The harness's job is to prove the binary booted, painted,
   // and is reachable. "kobe" appears in the title bar of every phase.
-  const screen = await kobe.waitFor((s) => s.includes("kobe"), 10_000)
-  expect(screen).toContain("kobe")
+  const screen = await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
+  expect(screen).toContain("KobeCode")
   await kobe.exit()
   expect(kobe.closed).toBe(true)
 }, 20_000)

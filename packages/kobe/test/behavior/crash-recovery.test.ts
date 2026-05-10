@@ -179,7 +179,7 @@ test("crash — engine error mid-stream renders error row + banner, kobe stays a
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script: a couple of assistant deltas land first, then a fatal
@@ -226,7 +226,7 @@ test("crash — engine error mid-stream renders error row + banner, kobe stays a
   // an empty/garbled screen instead.
   expect(kobe.closed).toBe(false)
   // Sidebar / chrome still painted — "kobe" is in the title bar.
-  expect(afterCrash).toContain("kobe")
+  expect(afterCrash).toContain("KobeCode")
   // The task title we just typed is visible in the sidebar — proves
   // the index store + sidebar pane survived the crash event.
   expect(collapsed).toContain("crash test")
@@ -272,7 +272,7 @@ test("crash — clean done with no deltas: no error banner, composer unlocks", a
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script a bare `done` — no assistant text, no tool, no error.
@@ -313,7 +313,7 @@ test("crash — clean done with no deltas: no error banner, composer unlocks", a
 
   // kobe still alive and rendering its chrome.
   expect(kobe.closed).toBe(false)
-  expect(screen).toContain("kobe")
+  expect(screen).toContain("KobeCode")
 
   await kobe.exit()
 }, 60_000)

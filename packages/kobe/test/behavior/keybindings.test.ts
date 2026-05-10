@@ -42,7 +42,7 @@ test("`F1` opens the help dialog showing the kobe keybinding table", async () =>
   kobe = await spawnKobe()
   // Wait for the boot banner before driving keys, otherwise the keys
   // race the renderer attaching the keypress handler.
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   await kobe.sendKeys("\x1bOP") // F1 (xterm)
   const screen = await kobe.waitFor((s) => s.includes("keybindings"), 5_000)
@@ -56,7 +56,7 @@ test("`F1` opens the help dialog showing the kobe keybinding table", async () =>
 
 test("`esc` closes the help dialog", async () => {
   kobe = await spawnKobe()
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   await kobe.sendKeys("\x1bOP") // F1 (xterm)
   await kobe.waitFor((s) => s.includes("keybindings"), 5_000)
@@ -78,7 +78,7 @@ test("`esc` closes the help dialog", async () => {
 
 test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () => {
   kobe = await spawnKobe()
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // \x0b = Ctrl+K. Same byte the keymap layer sees when the user presses
   // `cmd+k` (terminals translate Cmd to nothing; the user must use Ctrl
@@ -95,7 +95,7 @@ test("`ctrl+k` (the cmd+k chord on a PTY) opens the command palette", async () =
 
 test("bare `q` does NOT open the quit-confirm dialog (binding moved to ctrl+q)", async () => {
   kobe = await spawnKobe()
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // Send a bare `q`. With the bare-letter binding gone, the press should
   // be a no-op at the global layer (the sidebar pane may still consume

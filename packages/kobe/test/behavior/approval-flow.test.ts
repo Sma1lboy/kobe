@@ -205,7 +205,7 @@ test("approval — ExitPlanMode renders the plan + Approve/Reject buttons + lock
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script: model immediately calls ExitPlanMode with a recognisable
@@ -279,7 +279,7 @@ test("approval — AskUserQuestion renders the question + options + locks compos
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   const events: EngineEvent[] = [
@@ -370,7 +370,7 @@ test("approval — ExitPlanMode click-through approves + emits the synthetic res
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   const events: EngineEvent[] = [
@@ -442,7 +442,7 @@ test("approval — AskUserQuestion click-through submits answer + emits the synt
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   const questionText = "ANSWER_SENTINEL_QUESTION — pick one?"

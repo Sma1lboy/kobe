@@ -150,7 +150,7 @@ test("new-task dialog roots the task's branch at the chosen base ref", async () 
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // The new-task flow auto-submits the prompt to the engine. Pre-

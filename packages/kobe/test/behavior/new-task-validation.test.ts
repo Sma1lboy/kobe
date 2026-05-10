@@ -72,7 +72,7 @@ test("new-task dialog rejects a non-git directory with a friendly message", asyn
     cols: 120,
     rows: 30,
   })
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // ---- open new-task dialog -----------------------------------
   await kobe.sendKeys("n")

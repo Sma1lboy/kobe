@@ -146,7 +146,7 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script the first runTask (the prompt auto-submits when the

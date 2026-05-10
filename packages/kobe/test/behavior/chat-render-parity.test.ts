@@ -159,7 +159,7 @@ test("W4B — assistant markdown renders bold/code/list/fenced code visibly", as
     rows: 50,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Markdown payload that exercises every block kind the renderer
@@ -235,7 +235,7 @@ test("W4B — tool call banner renders with prefix glyph + name + (args)", async
     rows: 50,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script a tool-call cycle. We use a unique tool name so the

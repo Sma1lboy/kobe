@@ -167,7 +167,7 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   })
 
   // Boot screen visible.
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // The fake-engine HTTP server is mounted asynchronously inside
   // kobe. Wait for it before scripting.

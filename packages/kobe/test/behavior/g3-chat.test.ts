@@ -177,7 +177,7 @@ test("G3a — thinking indicator visible after submit, hidden after done", async
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Submit a task — but DO NOT script any engine events yet. The chat
@@ -231,7 +231,7 @@ test("G3b — three assistant deltas accumulate into one rendered phrase", async
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Pre-script three deltas + done. The chat coalesces consecutive
@@ -272,7 +272,7 @@ test("G3c — tool call renders name collapsed; full output stays hidden", async
     rows: 30,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Tool call payload — input has a long sentinel we can grep for in
@@ -326,7 +326,7 @@ test("G3d — switching tasks shows the right chat per task", async () => {
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // ---- task 1 -------------------------------------------------

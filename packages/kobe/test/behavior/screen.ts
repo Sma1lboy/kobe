@@ -4,7 +4,7 @@
  * The TUI under test (kobe) emits a torrent of ANSI escape sequences:
  * cursor positioning, color codes, alt-screen toggles, OSC title sets,
  * mouse-mode toggles, and more. For human-readable assertions
- * (`expect(screen).toContain("kobe")`) we need plain text.
+ * (`expect(screen).toContain("KobeCode")`) we need plain text.
  *
  * The strategy:
  *   1. Strip every ANSI / OSC / DCS / control-byte sequence.

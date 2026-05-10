@@ -186,7 +186,7 @@ test("W4.PR — Create-PR injects rendered prompt into the active task's chat", 
     rows: 60,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // ---- task 1: get a worktree-backed task selected ---------------

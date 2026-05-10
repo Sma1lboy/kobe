@@ -154,7 +154,7 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // ---- Tab 1 ---------------------------------------------------

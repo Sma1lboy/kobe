@@ -186,7 +186,7 @@ test("W4.C — multi-line composition, then history recall", async () => {
     rows: 40,
   })
 
-  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
   // Seed turn: pre-script a no-op response so the first auto-submit
