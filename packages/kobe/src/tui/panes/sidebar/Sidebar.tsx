@@ -75,6 +75,12 @@ export type SidebarProps = {
    */
   onRenameRequest?: (taskId: string) => void
   /**
+   * Pin-toggle callback. Pressing Shift+P on the cursor task emits
+   * this; the parent calls `orchestrator.setPinned`. Sidebar stays
+   * stateless of the toggle.
+   */
+  onPinRequest?: (taskId: string) => void
+  /**
    * Optional callback for the `+ New task` footer affordance. Left
    * undefined this stream; the global `n`/`ctrl+n` bindings remain the
    * canonical entry point.
@@ -217,6 +223,7 @@ export function Sidebar(props: SidebarProps) {
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
     onRenameRequest: (id) => props.onRenameRequest?.(id),
+    onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
   })
 
@@ -347,6 +354,14 @@ export function Sidebar(props: SidebarProps) {
                       wrapMode="none"
                     >
                       {branchLabel()}
+                    </text>
+                  </Show>
+                  <Show when={!isMain && task.pinned === true}>
+                    <text
+                      fg={isCursor() ? theme.selectedListItemText : theme.warning}
+                      wrapMode="none"
+                    >
+                      ▴
                     </text>
                   </Show>
                 </box>

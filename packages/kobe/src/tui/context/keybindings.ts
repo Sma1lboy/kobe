@@ -324,6 +324,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "a", label: "archive" },
   },
   {
+    // Capital P pins / unpins a regular task. Lowercase `p` falls
+    // through to a no-op (the handler gates on evt.shift) so a
+    // mistyped lowercase doesn't churn the flag. Pinned regular tasks
+    // float to the top of the sidebar's flat list, just below the
+    // saved-repo "main" rows. `kind: "main"` rows ignore the chord —
+    // they're implicitly pinned.
+    id: "sidebar.pin",
+    scope: "sidebar",
+    keys: ["p"],
+    category: "Sidebar",
+    description: "Pin / unpin task at top (Shift+P)",
+    hint: { keys: "P", label: "pin" },
+  },
+  {
     id: "sidebar.view",
     scope: "sidebar",
     keys: ["[", "]"],
@@ -403,6 +417,21 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
+    // Rename the active chat tab. Modifier-prefixed so it doesn't
+    // collide with composer typing; workspace-scoped so it's silent
+    // when the sidebar / files / terminal own focus. The chord is
+    // free across the keymap (no other binding registers ctrl+r) and
+    // the composer's onKeyDown explicitly skips ctrl-prefixed combos
+    // for non-newline keys, so we can fire freely while the input
+    // has focus.
+    id: "chat.tab.rename",
+    scope: "workspace",
+    keys: ["ctrl+r"],
+    category: "Workspace",
+    description: "Rename active chat tab",
+    hint: { keys: "ctrl+r", label: "rename tab" },
+  },
+  {
     // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket
     // pair mirrors the sidebar's `[/]` view switcher and the files
     // pane's `[/]` tab cycler so the bracket-pair pattern is
@@ -434,6 +463,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Files",
     description: "Move cursor up/down",
     hint: { keys: "j/k", label: "nav" },
+  },
+  {
+    // `h`/`l` for hierarchy navigation in the All tab tree:
+    //   l → expand directory / descend into first child / open file
+    //   h → collapse directory / jump to parent
+    // Plain letters are pane-scoped per the keybinding-boundaries
+    // rule (docs/KEYBINDINGS.md): files-focused only, so they don't
+    // collide with composer typing.
+    id: "files.hierarchy",
+    scope: "files",
+    keys: ["h", "l", "left", "right"],
+    category: "Files",
+    description: "Collapse / expand tree level",
+    hint: { keys: "h/l", label: "level" },
   },
   {
     id: "files.open",

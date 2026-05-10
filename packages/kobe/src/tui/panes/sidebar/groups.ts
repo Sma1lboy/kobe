@@ -52,9 +52,10 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * carries its `flatIndex` — its position in the navigable id list — so
  * the renderer can compare against the cursor without recounting.
  *
- * Row order in the active ("Working session") view (KOB-15):
- *   1. Pinned "main" tasks first, ordered by repo basename.
- *   2. Regular tasks (`kind === "task"`) below, in input order.
+ * Row order in the active ("Working session") view:
+ *   1. Pinned "main" tasks first, ordered by repo basename (KOB-15).
+ *   2. User-pinned regular tasks (`pinned === true`), in input order.
+ *   3. Other regular tasks (`kind === "task"`), in input order.
  *
  * Archived view: same structure (main rows the user archived float to
  * the top of the archives list), still ordered by repo basename.
@@ -74,9 +75,11 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
 export function buildRows(tasks: readonly Task[], view: SidebarView): SidebarRow[] {
   const filtered = filterByView(tasks, view)
   const main: Task[] = []
+  const pinnedRegular: Task[] = []
   const regular: Task[] = []
   for (const t of filtered) {
     if (t.kind === "main") main.push(t)
+    else if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
   // Pinned section is alphabetised by repo basename so two repos with
@@ -86,6 +89,10 @@ export function buildRows(tasks: readonly Task[], view: SidebarView): SidebarRow
   const rows: SidebarRow[] = []
   let flatIndex = 0
   for (const task of main) {
+    rows.push({ kind: "task", task, flatIndex })
+    flatIndex++
+  }
+  for (const task of pinnedRegular) {
     rows.push({ kind: "task", task, flatIndex })
     flatIndex++
   }

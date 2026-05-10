@@ -97,6 +97,13 @@ export type ChatProps = {
    * own focus.
    */
   focused?: Accessor<boolean>
+  /**
+   * Rename-tab callback. Fires on `ctrl+r` with the active chat tab
+   * id; the parent (app.tsx) opens an input dialog and calls
+   * `orchestrator.setTabTitle`. Mirrors the sidebar's rename flow —
+   * Chat stays stateless of the dialog.
+   */
+  onRenameTabRequest?: (tabId: string) => void
 }
 
 export function Chat(props: ChatProps) {
@@ -657,6 +664,10 @@ export function Chat(props: ChatProps) {
       "chat.tab.close": () => void closeActiveTab(),
       "chat.tab.cycle-next": () => cycleTab(1),
       "chat.tab.cycle-prev": () => cycleTab(-1),
+      "chat.tab.rename": () => {
+        const id = activeTabId()
+        if (id) props.onRenameTabRequest?.(id)
+      },
     }),
   }))
 

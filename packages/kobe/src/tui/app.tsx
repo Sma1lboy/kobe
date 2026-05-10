@@ -711,6 +711,7 @@ function showNewTaskDialog(
  */
 function RenameTaskDialog(props: {
   currentTitle: string
+  dialogTitle?: string
   onSubmit: (title: string) => void
   onCancel: () => void
 }) {
@@ -729,7 +730,7 @@ function RenameTaskDialog(props: {
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Rename task
+          {props.dialogTitle ?? "Rename task"}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
           esc
@@ -752,12 +753,17 @@ function RenameTaskDialog(props: {
   )
 }
 
-function showRenameTaskDialog(dialog: DialogContext, currentTitle: string): Promise<string | undefined> {
+function showRenameTaskDialog(
+  dialog: DialogContext,
+  currentTitle: string,
+  opts: { dialogTitle?: string } = {},
+): Promise<string | undefined> {
   return new Promise<string | undefined>((resolve) => {
     dialog.replace(
       () => (
         <RenameTaskDialog
           currentTitle={currentTitle}
+          dialogTitle={opts.dialogTitle}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}
         />
@@ -1481,6 +1487,34 @@ function Shell(props: AppDeps) {
     }
   }
 
+  /**
+   * Open the rename dialog for the active chat tab on the active task
+   * and persist the new label. Mirrors `confirmRenameTask` shape but
+   * targets `tabs[i].title` instead of `task.title`. Pre-fills with
+   * the current label (or the auto-derived `chat N` fallback if the
+   * tab has never been named).
+   */
+  async function confirmRenameChatTab(tabId: string): Promise<void> {
+    const taskId = selectedId()
+    if (!taskId) return
+    const task = props.orchestrator.getTask(taskId)
+    if (!task) return
+    const idx = task.tabs.findIndex((t) => t.id === tabId)
+    if (idx < 0) return
+    const tab = task.tabs[idx]
+    if (!tab) return
+    const fallback = `chat ${idx + 1}`
+    const current = tab.title && tab.title.length > 0 ? tab.title : fallback
+    const next = await showRenameTaskDialog(dialog, current, { dialogTitle: "Rename chat tab" })
+    if (next === undefined) return
+    try {
+      await props.orchestrator.setTabTitle(taskId, tabId, next)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] setTabTitle failed:", err)
+    }
+  }
+
   async function confirmDeleteTask(taskId: string): Promise<void> {
     const task = props.orchestrator.getTask(taskId)
     if (!task) return
@@ -1710,6 +1744,12 @@ function Shell(props: AppDeps) {
             onRenameRequest={(id: string) => {
               void confirmRenameTask(id)
             }}
+            onPinRequest={(id: string) => {
+              void props.orchestrator.setPinned(id).catch((err) => {
+                // eslint-disable-next-line no-console
+                console.error("[kobe] setPinned failed:", err)
+              })
+            }}
             onAddTask={() => void openNewTaskFlow()}
             selectedId={selectedId}
             focused={isFocused("sidebar")}
@@ -1775,6 +1815,9 @@ function Shell(props: AppDeps) {
                 pendingPrompt={pendingPromptForActive}
                 onPendingPromptConsumed={() => setPendingPrompt(null)}
                 focused={isFocused("workspace")}
+                onRenameTabRequest={(tabId: string) => {
+                  void confirmRenameChatTab(tabId)
+                }}
               />
             </Show>
           </box>

@@ -130,6 +130,16 @@ export interface Task {
    */
   readonly archived: boolean
   /**
+   * User-pinned regular tasks float to the top of the sidebar's
+   * "Working session" view, just below the auto-pinned `kind: "main"`
+   * rows. Optional + defaults to `false` at load time so older
+   * manifests don't need migration. Toggled from the sidebar with
+   * Shift+P. Orthogonal to `kind === "main"`: a main row's pin state
+   * is implicit (always pinned by virtue of being a saved repo) and
+   * Shift+P is a no-op on those rows.
+   */
+  readonly pinned?: boolean
+  /**
    * Tool-permission mode passed to `claude --permission-mode <mode>`
    * on every spawn/resume. Optional: undefined falls through to the
    * CLI's `default`. Cycled in the composer via shift+tab. Records

@@ -973,6 +973,46 @@ export class Orchestrator {
   }
 
   /**
+   * Toggle a regular task's pinned flag. Pinned regular tasks sort
+   * above unpinned regular tasks in the sidebar's flat list (still
+   * below `kind: "main"` rows). No-op on main rows — those are
+   * implicitly pinned by virtue of being saved-repo bound. Pass
+   * `pinned` explicitly to force a state, or omit to toggle.
+   */
+  async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.kind === "main") return
+    const next = pinned ?? !task.pinned
+    if ((task.pinned ?? false) === next) return
+    await this.store.update(task.id, { pinned: next })
+  }
+
+  /**
+   * Rename a single chat tab on a task. Persists `tabs[i].title` so
+   * the chip in the center tab strip shows the user's label instead
+   * of the auto-derived `chat N` fallback. Trims input and rejects
+   * empty / whitespace-only — same shape as `setTitle`. Pass an empty
+   * string after trim is a no-op-throw, not a "clear back to default";
+   * if we want a clear-the-label verb later, add a sentinel arg.
+   */
+  async setTabTitle(id: TaskId | string, tabId: string, title: string): Promise<void> {
+    const task = this.requireTask(id)
+    const trimmed = typeof title === "string" ? title.trim() : ""
+    if (trimmed.length === 0) {
+      throw new Error("setTabTitle: title is required (empty or whitespace-only rejected)")
+    }
+    const idx = task.tabs.findIndex((t) => t.id === tabId)
+    if (idx < 0) {
+      throw new Error(`setTabTitle: tab ${tabId} not found on task ${task.id}`)
+    }
+    const current = task.tabs[idx]
+    if (!current) return
+    if (current.title === trimmed) return
+    const nextTabs = task.tabs.map((t) => (t.id === tabId ? { ...t, title: trimmed } : t))
+    await this.store.update(task.id, { tabs: nextTabs })
+  }
+
+  /**
    * Fully delete a task: stop the engine, remove the worktree files,
    * remove the persisted chat history (Claude Code's JSONL session
    * file), and remove the task entry from the index.

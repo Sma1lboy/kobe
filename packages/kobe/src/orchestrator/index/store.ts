@@ -529,6 +529,10 @@ function coerceTask(value: unknown): Task | null {
     // introduction don't have it; default to false (i.e. "active /
     // working session"). The user can archive them with `a`.
     archived: typeof v.archived === "boolean" ? v.archived : false,
+    // User-pinned float-to-top flag. Defaults to false on records
+    // written before the field existed. Persist as boolean so toggling
+    // off and reloading clears the row from the pinned subsection.
+    pinned: typeof v.pinned === "boolean" ? v.pinned : false,
     // KOB-15: `kind` discriminator distinguishes pinned per-repo "main"
     // tasks from the original task shape. Records written before this
     // field existed (every v2 task prior to KOB-15) normalize to

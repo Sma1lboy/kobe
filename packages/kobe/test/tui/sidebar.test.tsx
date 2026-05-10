@@ -447,6 +447,43 @@ describe("buildRows — pinned main-task section (KOB-15)", () => {
   })
 })
 
+describe("buildRows — user-pinned regular tasks", () => {
+  const pin = (t: Task): Task => ({ ...t, pinned: true })
+
+  test("pinned regular tasks sort above unpinned, below main rows", () => {
+    const tasks: Task[] = [
+      makeTask("01", "first regular", "backlog"),
+      pin(makeTask("02", "user-pinned", "backlog")),
+      makeMainTask("m-kobe", "/Users/x/kobe"),
+      makeTask("03", "third regular", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.task.id)).toEqual(["m-kobe", "02", "01", "03"])
+  })
+
+  test("multiple pinned regulars preserve their input order", () => {
+    const tasks: Task[] = [
+      makeTask("01", "a", "backlog"),
+      pin(makeTask("02", "b", "backlog")),
+      pin(makeTask("03", "c", "backlog")),
+      makeTask("04", "d", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.task.id)).toEqual(["02", "03", "01", "04"])
+  })
+
+  test("flatIndex stays contiguous across main / pinned / regular sections", () => {
+    const tasks: Task[] = [
+      makeMainTask("m-a", "/Users/x/a"),
+      pin(makeTask("p1", "p1", "backlog")),
+      makeTask("r1", "r1", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.flatIndex)).toEqual([0, 1, 2])
+    expect(rows.map((r) => r.task.id)).toEqual(["m-a", "p1", "r1"])
+  })
+})
+
 describe("archived flag drives view membership", () => {
   test("flipping archived moves the row from active to archived view", () => {
     const beforeTasks: Task[] = [

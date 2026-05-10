@@ -84,6 +84,15 @@ export type SidebarBindingsOpts = {
    */
   onRenameRequest?: (taskId: string) => void
   /**
+   * Pin-toggle callback. Fires on Shift+P with the task id under the
+   * cursor. Lowercase `p` is gated out inside the hook (it would
+   * fire the same registered chord — the keymap layer drops shift on
+   * letter keys), so the parent only sees explicit pin requests.
+   * The orchestrator decides whether the row can actually be pinned
+   * (e.g. main rows are no-ops); the sidebar just emits the request.
+   */
+  onPinRequest?: (taskId: string) => void
+  /**
    * View-switch callback. Fires on `[` (-1, "previous view") and `]`
    * (+1, "next view"). The parent owns the active-view signal.
    */
@@ -145,6 +154,15 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       "sidebar.rename": () => {
         const id = cursorTaskId()
         if (id !== undefined) opts.onRenameRequest?.(id)
+      },
+      // Capital P only — the keymap layer drops shift on letter keys
+      // (lib/keymap.tsx:70), so bare `p` and `P` both deliver the
+      // same chord candidate. We discriminate via evt.shift; bare
+      // lowercase `p` is captured (consumed) but does nothing.
+      "sidebar.pin": (evt) => {
+        if (!evt.shift) return
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onPinRequest?.(id)
       },
       // `[` and `]` both register against sidebar.view; handler routes
       // by chord. `]` = +1 ("next view"), `[` = -1.
