@@ -145,12 +145,15 @@ If you find yourself reaching for a magic constant: pause, and verify a flex pro
 
 Update this section's status as gates G0–G4 close. See PLAN.md for the canonical state.
 
-### Open follow-ups from 0.1.0
+### Closed follow-ups from 0.1.0
 
-- Two regressions caught post-ship by `test/behavior/approval-flow.test.ts`
-  (currently `test.skip`): the composer's lock placeholder isn't visible
-  when an `ExitPlanMode` picker is up, and `AskUserQuestion` payloads
-  crash kobe under the multi-tab refactor. Investigate before next tag.
+- Approval-flow regressions resolved (commit `0c73ebb`): the
+  AskUserQuestion "crash" was a UTF-8 byte/char mismatch in the test
+  helper's `Content-Length` header (em-dash in the question payload),
+  not a kobe crash. The composer-lock failure was an over-strict test
+  assertion — opentui's text wrapper drops the space at a wrap point,
+  so the rendered placeholder is `answerthe promptabove to continue`.
+  Both `test/behavior/approval-flow.test.ts` cases now run.
 - CI gate: `.github/workflows/ci.yml` runs typecheck + unit tests + build
   on every push to main and every PR. Behavior tests stay local-only
   (need tmux + node-pty terminal sizing).
