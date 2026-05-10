@@ -62,4 +62,14 @@ export const composerKeyBindings: Binding[] = [
   // newline at the cursor. Default already maps `linefeed → newline`,
   // we restate it for clarity (the override-merge would no-op).
   { name: "linefeed", action: "newline" },
+  // Ctrl+W: opentui's textarea default is `delete-word-backward`, but
+  // chat.tab.close (KobeKeymap.workspace) wants ctrl+w. Override with
+  // a `noop` action — opentui's _actionHandlers map has no "noop"
+  // entry, so getKeyBindingAction returns "noop" → handler lookup
+  // misses → handleKeyPress returns false (unhandled, no
+  // preventDefault), letting the global useBindings listener catch
+  // ctrl+w cleanly. Cost: shell-style word delete is gone in the
+  // composer; the user can still backspace word-by-word with esc to
+  // disengage and re-engage, or use the text deletion they prefer.
+  { name: "w", ctrl: true, action: "noop" },
 ]
