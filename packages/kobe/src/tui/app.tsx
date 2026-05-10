@@ -1248,20 +1248,30 @@ function Shell(props: AppDeps) {
   /*  Center-column tab state — per-task                                  */
   /* ------------------------------------------------------------------- */
   // Per the resolved Wave-1 invariant ("each sidebar session = one
-  // worktree") and Jackson's request: each task owns its own set of open
-  // file tabs and which tab is active. Switching tasks restores the tab
-  // strip exactly. Tabs are: a fixed `chat` plus zero-or-more file paths
-  // (relative to the active task's worktree).
+  // worktree") and Jackson's call (KOB-20): the workspace shows a chat
+  // tab plus AT MOST ONE file tab. Each click in the file tree replaces
+  // whatever file was previously open — the chip swaps its label and the
+  // preview re-renders. No accumulation of file chips. Switching tasks
+  // restores the active tab exactly.
   type CenterTab = "chat" | { kind: "file"; path: string }
-  type TaskCenterTabs = { open: readonly string[]; active: CenterTab }
-  const EMPTY_TABS: TaskCenterTabs = { open: [], active: "chat" }
+  type TaskCenterTabs = { active: CenterTab }
+  const EMPTY_TABS: TaskCenterTabs = { active: "chat" }
   // Hydrate from KV. Stored as a plain object keyed by taskId because Maps
   // aren't JSON-serializable. Tasks deleted between runs leak entries into
   // the file; harmless and pruned the next time we persist after a real
   // selection change. (Could prune on hydrate if it ever matters.)
-  const persistedTabs = kv.get("centerTabsByTask") as Record<string, TaskCenterTabs> | undefined
+  // Backwards-compat: pre-KOB-20 entries had a `string[]` under `open`;
+  // we drop the field on hydrate. `active` survives the migration verbatim
+  // — if it pointed at a file path, the new state still opens that file.
+  const persistedTabs = kv.get("centerTabsByTask") as
+    | Record<string, { active?: CenterTab; open?: unknown }>
+    | undefined
   const [tabsByTask, setTabsByTask] = createSignal(
-    new Map<string, TaskCenterTabs>(persistedTabs ? Object.entries(persistedTabs) : []),
+    new Map<string, TaskCenterTabs>(
+      persistedTabs
+        ? Object.entries(persistedTabs).map(([id, raw]) => [id, { active: raw?.active ?? "chat" }] as const)
+        : [],
+    ),
   )
 
   const currentTabs = createMemo<TaskCenterTabs>(() => {
@@ -1270,7 +1280,6 @@ function Shell(props: AppDeps) {
     return tabsByTask().get(id) ?? EMPTY_TABS
   })
   const activeCenterTab = createMemo<CenterTab>(() => currentTabs().active)
-  const openFileTabs = createMemo<readonly string[]>(() => currentTabs().open)
   const isChatTabActive = createMemo<boolean>(() => activeCenterTab() === "chat")
   const activeFileTabPath = createMemo<string | null>(() => {
     const a = activeCenterTab()
@@ -1286,13 +1295,19 @@ function Shell(props: AppDeps) {
     })
   }
 
+  /** Helper: tell Preview to drop whichever file (if any) is currently
+   *  open, so its internal tab list stays at most one entry. */
+  function dropPreviousFileFromPreview(cur: TaskCenterTabs, except?: string): void {
+    if (typeof cur.active === "object" && cur.active.kind === "file" && cur.active.path !== except) {
+      previewApi()?.close(cur.active.path)
+    }
+  }
+
   function openFileInCenter(relPath: string): void {
     const id = selectedId()
     if (!id) return
-    mutateTabs(id, (cur) => ({
-      open: cur.open.includes(relPath) ? cur.open : [...cur.open, relPath],
-      active: { kind: "file", path: relPath },
-    }))
+    dropPreviousFileFromPreview(currentTabs(), relPath)
+    mutateTabs(id, () => ({ active: { kind: "file", path: relPath } }))
     previewApi()?.open(relPath)
     // Opening a file from the file tree pulls focus to the workspace
     // so the user can scroll/read with j/k without an extra ctrl+2.
@@ -1302,13 +1317,14 @@ function Shell(props: AppDeps) {
   function selectChatTab(): void {
     const id = selectedId()
     if (!id) return
-    mutateTabs(id, (cur) => ({ ...cur, active: "chat" }))
+    dropPreviousFileFromPreview(currentTabs())
+    mutateTabs(id, () => ({ active: "chat" }))
     setFocusedPane("workspace")
   }
 
   // Chat tabs (multitab) — pulled off the active task so the
   // CenterTabStrip can render one chip per chat tab alongside the
-  // file tabs. activeChatTabIdAcc tracks which chat tab the
+  // (single) file chip. activeChatTabIdAcc tracks which chat tab the
   // orchestrator currently considers active; click-to-switch on a
   // chip flows through `selectChatTabById` which in turn calls
   // orchestrator.setActiveTab + flips the workspace tab to chat.
@@ -1321,14 +1337,19 @@ function Shell(props: AppDeps) {
       // eslint-disable-next-line no-console
       console.error("[kobe] setActiveTab failed:", err)
     })
-    mutateTabs(id, (cur) => ({ ...cur, active: "chat" }))
+    dropPreviousFileFromPreview(currentTabs())
+    mutateTabs(id, () => ({ active: "chat" }))
     setFocusedPane("workspace")
   }
 
   function selectFileTab(relPath: string): void {
+    // Single file tab: clicking it just keeps it active. The previous
+    // file (if any other path) was already dropped when this one was
+    // opened — we don't need to drop it again here. Keep the function
+    // for symmetry with the chat-tab handlers + future re-entry.
     const id = selectedId()
     if (!id) return
-    mutateTabs(id, (cur) => ({ ...cur, active: { kind: "file", path: relPath } }))
+    mutateTabs(id, () => ({ active: { kind: "file", path: relPath } }))
     previewApi()?.open(relPath)
     setFocusedPane("workspace")
   }
@@ -1336,13 +1357,9 @@ function Shell(props: AppDeps) {
   function closeFileTab(relPath: string): void {
     const id = selectedId()
     if (!id) return
-    mutateTabs(id, (cur) => {
-      const open = cur.open.filter((f) => f !== relPath)
-      const wasActive = typeof cur.active === "object" && cur.active.path === relPath
-      const fallback: CenterTab = open.length > 0 ? { kind: "file", path: open[open.length - 1] as string } : "chat"
-      return { open, active: wasActive ? fallback : cur.active }
-    })
-    previewApi()?.close(relPath)
+    dropPreviousFileFromPreview(currentTabs(), undefined)
+    mutateTabs(id, () => ({ active: "chat" }))
+    void relPath
   }
 
   // Auto-select on first task availability. Prefer the persisted task
@@ -1730,7 +1747,6 @@ function Shell(props: AppDeps) {
           <CenterTabStrip
             isChatActive={isChatTabActive}
             activeFile={activeFileTabPath}
-            openFiles={openFileTabs}
             chatTabs={activeChatTabsAcc}
             activeChatTabId={activeChatTabIdAcc}
             onSelectChat={selectChatTab}
@@ -1821,14 +1837,18 @@ function Shell(props: AppDeps) {
 /* --------------------------------------------------------------------- */
 function CenterTabStrip(props: {
   isChatActive: Accessor<boolean>
+  /**
+   * The currently-open file path (workspace shows at most one file
+   * tab per task — KOB-20). `null` when no file is open. Selecting a
+   * different file in the file tree replaces this in place.
+   */
   activeFile: Accessor<string | null>
-  openFiles: Accessor<readonly string[]>
   /**
    * Per-task chat tabs. With multitab, "chat" is no longer a single
    * entry — each tab gets its own chip in this strip alongside the
-   * file tabs, so the user has one unified tab navigation. Falls
-   * back to a single static "chat" chip when the task has no tabs
-   * yet (e.g. before the first runTask).
+   * single file chip, so the user has one unified tab navigation.
+   * Falls back to a single static "chat" chip when the task has no
+   * tabs yet (e.g. before the first runTask).
    */
   chatTabs: Accessor<readonly ChatTab[]>
   activeChatTabId: Accessor<string | null>
@@ -1909,9 +1929,13 @@ function CenterTabStrip(props: {
           }}
         </For>
       </Show>
-      <For each={props.openFiles()}>
+      <Show when={props.activeFile()}>
         {(file) => {
-          const isActive = () => props.activeFile() === file
+          // Single file chip — present iff a file is open. Always rendered
+          // as primary while the workspace is on file mode (it's the only
+          // file chip, so it's always the active one), muted when chat is
+          // showing instead.
+          const isActive = () => !props.isChatActive()
           return (
             <box
               flexDirection="row"
@@ -1919,25 +1943,25 @@ function CenterTabStrip(props: {
               paddingLeft={1}
               paddingRight={1}
               backgroundColor={isActive() ? theme.primary : theme.backgroundElement}
-              onMouseUp={() => props.onSelectFile(file)}
+              onMouseUp={() => props.onSelectFile(file())}
             >
               <text
                 fg={isActive() ? theme.selectedListItemText : theme.text}
                 attributes={isActive() ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
               >
-                {basename(file)}
+                {basename(file())}
               </text>
               <text
                 fg={isActive() ? theme.selectedListItemText : theme.textMuted}
-                onMouseUp={() => queueMicrotask(() => props.onCloseFile(file))}
+                onMouseUp={() => queueMicrotask(() => props.onCloseFile(file()))}
               >
                 x
               </text>
             </box>
           )
         }}
-      </For>
+      </Show>
     </box>
   )
 }
