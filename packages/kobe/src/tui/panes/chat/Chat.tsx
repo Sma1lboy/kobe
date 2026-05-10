@@ -57,15 +57,14 @@ import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
   type ChatState,
-  applyEvent,
   createInitialState,
   dequeueFirst,
   enqueuePrompt,
   pushSystemError,
   queueIsFull,
   removeFromQueue,
-  setMessagesFromHistory,
 } from "./store"
+import { useChatSession } from "./use-chat-session"
 
 export type ChatProps = {
   orchestrator: KobeOrchestrator
@@ -166,50 +165,33 @@ export function Chat(props: ChatProps) {
       }))
   })
 
-  // Per-tab chat state. Map<tabId, ChatState>. We update via copy-on-
-  // write helpers so Solid notices.
-  const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
-  const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
-  // Composer draft text is per-tab — switching tabs preserves whatever the
-  // user was typing on each. Mirrors `statesByTab` (copy-on-write so Solid
-  // notices). Earlier this was a single shared signal cleared on every
-  // tab switch, which discarded in-flight drafts.
-  const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
-  const draft = createMemo(() => {
-    const id = activeTabId()
-    if (!id) return ""
-    return draftsByTab().get(id) ?? ""
+  // Per-ChatTab state + subscription lifecycle live in
+  // `useChatSession` — see `./use-chat-session.ts` (and CONTEXT.md →
+  // ChatSessionController) for the seam rationale. Chat.tsx
+  // consumes the resulting accessors + mutators; everything tab-
+  // scoped reads / writes through the controller.
+  const session = useChatSession({
+    taskId: () => props.taskId(),
+    orchestrator: props.orchestrator,
+    onTaskReset: () => {
+      setExpandedToolIndex(null)
+      setExpandedFoldStartIndex(null)
+    },
   })
-  function setDraft(value: string): void {
-    const id = activeTabId()
-    if (!id) return
-    setDraftsByTab((prev) => {
-      const cur = prev.get(id) ?? ""
-      if (cur === value) return prev
-      const next = new Map(prev)
-      next.set(id, value)
-      return next
-    })
-  }
+  const activeTabId = session.activeTabId
+  const setActiveTabIdLocal = session.setActiveTabIdLocal
+  const statesByTab = session.statesByTab
+  const tabs = session.tabs
+  const activeState = session.activeState
+  const draft = session.draft
+  const setDraft = session.setDraft
+  const patchActiveState = session.patchActiveState
+  const patchStateForTab = session.patchStateForTab
+
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
 
-  // Reactive view of the active task's tabs, pulled from the
-  // orchestrator's signal so the tab bar redraws on createTab/closeTab
-  // without manual refresh.
   const tasksAcc = props.orchestrator.tasksSignal()
-  const tabs = createMemo<readonly ChatTab[]>(() => {
-    const id = props.taskId()
-    if (!id) return []
-    const t = tasksAcc().find((x) => x.id === id)
-    return t?.tabs ?? []
-  })
-
-  const activeState = createMemo<ChatState>(() => {
-    const id = activeTabId()
-    if (!id) return createInitialState()
-    return statesByTab().get(id) ?? createInitialState()
-  })
 
   const contextMeterLabel = createMemo(() => {
     const tid = props.taskId()
@@ -228,94 +210,6 @@ export function Chat(props: ChatProps) {
       props.onContextMeter?.(label ?? null)
     }),
   )
-
-  function patchActiveState(updater: (s: ChatState) => ChatState): void {
-    const id = activeTabId()
-    if (!id) return
-    setStatesByTab((prev) => {
-      const next = new Map(prev)
-      next.set(id, updater(prev.get(id) ?? createInitialState()))
-      return next
-    })
-  }
-
-  function patchStateForTab(tabId: string, updater: (s: ChatState) => ChatState): void {
-    setStatesByTab((prev) => {
-      const next = new Map(prev)
-      next.set(tabId, updater(prev.get(tabId) ?? createInitialState()))
-      return next
-    })
-  }
-
-  // Subscriptions per tab id. Lives outside Solid's reactive system —
-  // it's a registry the effects mutate, never a value Solid renders.
-  let tabSubs: Map<string, () => void> = new Map()
-  /** Track the task whose subs are currently in `tabSubs`. */
-  let currentSubsTaskId: string | null = null
-
-  /**
-   * Synchronise tab subscriptions to `currentTabs`. Adds subs (and
-   * seeds state + history reload) for new tabs, drops subs (and state)
-   * for closed tabs.
-   */
-  function syncTabSubs(taskId: string, currentTabs: readonly ChatTab[]): void {
-    const seen = new Set<string>()
-    for (const tab of currentTabs) {
-      seen.add(tab.id)
-      if (tabSubs.has(tab.id)) continue
-      setStatesByTab((prev) => {
-        if (prev.has(tab.id)) return prev
-        const next = new Map(prev)
-        next.set(tab.id, createInitialState())
-        return next
-      })
-      const tabId = tab.id
-      const u = props.orchestrator.subscribeEvents(
-        taskId,
-        (ev: OrchestratorEvent) => {
-          patchStateForTab(tabId, (s) => applyEvent(s, ev))
-        },
-        tabId,
-      )
-      tabSubs.set(tabId, u)
-      if (tab.sessionId) {
-        const sid = tab.sessionId
-        props.orchestrator
-          .readHistory(sid)
-          .then((past) => {
-            if (props.taskId() !== taskId) return
-            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, past))
-            // History just landed on the active tab: snap to bottom.
-            if (activeTabId() === tabId) queueMicrotask(scrollToBottom)
-          })
-          .catch((err) => {
-            patchStateForTab(tabId, (s) => pushSystemError(s, `history load failed: ${stringifyErr(err)}`))
-          })
-      }
-    }
-    for (const [tabId, u] of tabSubs) {
-      if (seen.has(tabId)) continue
-      u()
-      tabSubs.delete(tabId)
-      setStatesByTab((prev) => {
-        if (!prev.has(tabId)) return prev
-        const next = new Map(prev)
-        next.delete(tabId)
-        return next
-      })
-      setDraftsByTab((prev) => {
-        if (!prev.has(tabId)) return prev
-        const next = new Map(prev)
-        next.delete(tabId)
-        return next
-      })
-    }
-  }
-
-  function teardownAllSubs(): void {
-    for (const u of tabSubs.values()) u()
-    tabSubs = new Map()
-  }
 
   // Reactive view of the active task's status. `canceled` blocks the
   // composer because the orchestrator rejects `canceled → in_progress`.
@@ -393,68 +287,13 @@ export function Chat(props: ChatProps) {
     })
   }
 
-  // Task + tab reconciler. ONE effect handles both:
-  //   - taskId change: tear down prior subs/state, reset local UI.
-  //   - tasksAcc change (post-createTask, post-createTab/closeTab):
-  //     reactively pick up the new task / new tabs.
-  //
-  // Earlier this was split across three effects, which raced when the
-  // newly-created task wasn't yet in `tasksAcc()` at the moment
-  // `setSelectedId` fired (the task-switch effect bailed via
-  // `getTask() === undefined` and the tabs-change effect refused to
-  // initialize because `currentSubsTaskId !== taskId`). The merged
-  // effect simply waits for the task to land in the signal — it
-  // re-runs on the next tasksAcc tick and seeds correctly.
+  // Scroll-on-reset: snap to bottom on every task-switch / history
+  // hydration. useChatSession fires `onTaskReset` for the task-change
+  // path; this effect tracks `activeTabId` so external tab switches
+  // (or history landing async) re-anchor too.
   createEffect(() => {
-    const taskId = props.taskId()
-    if (!taskId) {
-      if (currentSubsTaskId !== null) {
-        teardownAllSubs()
-        setStatesByTab(new Map())
-        setDraftsByTab(new Map())
-        setExpandedToolIndex(null)
-        setExpandedFoldStartIndex(null)
-      }
-      setActiveTabIdLocal(null)
-      currentSubsTaskId = null
-      return
-    }
-    // Reactive read — re-runs when the task lands or its tabs change.
-    const task = tasksAcc().find((t) => t.id === taskId)
-    if (!task) {
-      // Task not yet in signal (race with createTask). The effect
-      // re-runs when tasksAcc updates; until then, leave subs alone.
-      return
-    }
-    if (currentSubsTaskId !== taskId) {
-      // Switched tasks (or first time we see this task): reset.
-      teardownAllSubs()
-      setStatesByTab(new Map())
-      setDraftsByTab(new Map())
-      setExpandedToolIndex(null)
-      setExpandedFoldStartIndex(null)
-      currentSubsTaskId = taskId
-      setActiveTabIdLocal(task.activeTabId)
-      queueMicrotask(scrollToBottom)
-    } else {
-      // Same task, tabs / activeTabId may have changed. Mirror the
-      // persisted activeTabId whenever it diverges from local — this is
-      // what makes external tab-switches (e.g. clicking a chat-tab chip
-      // in the workspace strip, which calls `orchestrator.setActiveTab`
-      // directly without touching this component) actually drive the
-      // chat view. Internal switches via `selectTabByIndex`/`cycleTab`
-      // also call `setActiveTab`, but they set `activeTabIdLocal` first
-      // so this branch sees `local === task.activeTabId` and no-ops.
-      // Earlier the guard was "only sync when local is null or pointing
-      // at a closed tab" — that ignored legitimate external switches and
-      // produced "switched the chip but chat content stayed on the old
-      // tab" (KOB-21).
-      const local = activeTabId()
-      if (local !== task.activeTabId) {
-        setActiveTabIdLocal(task.activeTabId)
-      }
-    }
-    syncTabSubs(taskId, task.tabs)
+    void session.activeTabId()
+    queueMicrotask(scrollToBottom)
   })
 
   // Scroll anchor — used to force the message list back to the bottom
@@ -569,11 +408,7 @@ export function Chat(props: ChatProps) {
     })
   })
 
-  onCleanup(() => {
-    teardownAllSubs()
-    setStatesByTab(new Map())
-    setDraftsByTab(new Map())
-  })
+  // Subscription teardown is owned by useChatSession's own onCleanup.
 
   /**
    * Submit a prompt to the active tab.
@@ -678,12 +513,9 @@ export function Chat(props: ChatProps) {
     if (tabs().length <= 1) return
     try {
       const nextActive = await props.orchestrator.closeTab(taskId, tabId)
-      setDraftsByTab((prev) => {
-        if (!prev.has(tabId)) return prev
-        const next = new Map(prev)
-        next.delete(tabId)
-        return next
-      })
+      // The controller's syncTabSubs drops the orphan tab's state +
+      // draft on the next reactive tick when `tasks` updates — no
+      // manual cleanup needed here.
       if (nextActive) {
         setActiveTabIdLocal(nextActive)
         setExpandedToolIndex(null)
