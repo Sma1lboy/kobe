@@ -10,6 +10,11 @@ dist/
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+# Agent skills installed by `npx skills add` — `.claude/skills/<name>`
+# is a symlink into `.agents/skills/<name>`, so the real files must
+# also live in the repo for the symlinks to resolve on teammate clones.
+!.agents/
+!.agents/**
 tsconfig.vitest-temp.json
 .DS_Store
 *.log
