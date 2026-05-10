@@ -656,9 +656,11 @@ export function Chat(props: ChatProps) {
   }
 
   // Pane-scoped keybindings: only fire when the chat pane is focused.
-  // No numeric pick — chat tabs cycle via alt+[ / alt+] so ctrl+hjkl
-  // and ctrl+1..4 stay uncontested as global pane-focus chords (see
-  // docs/KEYBINDINGS.md). Was ctrl+[ / ctrl+] but ctrl+[ byte = ESC.
+  // No numeric pick — chat tabs cycle via ctrl+[ / ctrl+] so
+  // ctrl+1..4 stays uncontested as the global pane-focus chord (see
+  // docs/KEYBINDINGS.md). NOTE: ctrl+[ byte IS the ESC byte in
+  // standard PTYs so cycle-prev is functionally broken outside
+  // kitty-keyboard terminals — see KobeKeymap.chat.tab.cycle-prev.
   useBindings(() => ({
     enabled: props.focused?.() === true,
     bindings: bindByIds({

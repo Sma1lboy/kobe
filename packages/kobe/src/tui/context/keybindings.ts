@@ -410,36 +410,36 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
-    // `alt+]` cycles forward, `alt+[` cycles backward — bracket
-    // pair mirrors the sidebar's `[/]` view switcher and the files
-    // pane's `[/]` tab cycler so the bracket-pair pattern is
-    // consistent across panes. We use alt-bracket instead of
-    // ctrl-bracket because `ctrl+[` byte IS the ESC byte (\x1b) in
-    // every standard PTY — opentui parses it as `{name: "escape"}`
-    // and disengage fires instead of cycling. The alt variant
-    // arrives as `\x1b[` / `\x1b]`, which opentui's parseKeypress
-    // recognizes through the meta-prefix path.
+    // `ctrl+]` cycles forward, `ctrl+[` cycles backward (bracket
+    // pair mirrors sidebar/files `[/]` switchers). `ctrl+[` is
+    // known-broken: its byte IS the ESC byte, so the disengage
+    // handler fires before this chord can match. We keep it
+    // registered for help-dialog completeness and for terminals
+    // that DO disambiguate (kitty / CSI-u). On standard PTYs only
+    // `ctrl+]` is functional.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    // alt+] (\x1b]) instead of ctrl+] — though ctrl+] has no byte
-    // collision, we move both cycle chords together so alt-bracket
-    // is the single mental model. ctrl+[ couldn't be kept because
-    // its byte (\x1b) IS the ESC byte; we can't tell the two apart
-    // in a standard PTY without kitty-keyboard / CSI-u extensions.
-    keys: ["alt+]"],
+    keys: ["ctrl+]"],
     category: "Workspace",
     description: "Next chat tab",
-    hint: { keys: "alt+]", label: "next tab" },
+    hint: { keys: "ctrl+]", label: "next tab" },
   },
   {
     id: "chat.tab.cycle-prev",
     scope: "workspace",
-    // alt+[ (\x1b[) — see chat.tab.cycle-next above for the rationale
-    // (ctrl+[ collides with the bare ESC byte in standard PTYs).
-    keys: ["alt+["],
+    // KNOWN-BROKEN: ctrl+[ byte IS the bare ESC byte (\x1b) in every
+    // standard PTY, so opentui parses it as {name: "escape"} and the
+    // disengage handler fires instead of cycling. We keep it
+    // registered for help-dialog completeness (and in case the user's
+    // terminal supports kitty-keyboard / CSI-u to disambiguate). The
+    // pragmatic prev-tab path is to cycle past `cycle-next`
+    // (alt+]-style isn't great either — many macOS terminals send
+    // Option as the literal byte, not as ESC+key — so neither chord
+    // is universal). TODO: pick a real prev-tab chord (F-key?).
+    keys: ["ctrl+["],
     category: "Workspace",
     description: "Previous chat tab",
-    hint: { keys: "alt+[", label: "prev tab" },
+    hint: { keys: "ctrl+[", label: "prev tab" },
   },
 
   // ─── Files ────────────────────────────────────────────────────────────
