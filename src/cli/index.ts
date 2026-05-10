@@ -45,6 +45,17 @@ async function main(): Promise<void> {
     await startTerminalHost()
     return
   }
+  // Subcommand dispatch. Argv shape for now: `kobe <subcommand> [args]`.
+  // We only inspect argv[2]; anything else is forwarded to the TUI start
+  // path (which today ignores extra args). Each branch is one
+  // if-statement and dynamically imports its module so adding a new
+  // subcommand never grows the TUI startup graph.
+  const subcommand = process.argv[2]
+  if (subcommand === "diagnose") {
+    const { runDiagnoseSubcommand } = await import("./diagnose.ts")
+    await runDiagnoseSubcommand()
+    return
+  }
   // Future: parse argv here (e.g. `kobe --repo <path>`, `kobe new "title"`).
   // For 0.1 we just open the TUI.
   await startTui()
