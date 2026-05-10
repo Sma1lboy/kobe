@@ -139,8 +139,18 @@ If you find yourself reaching for a magic constant: pause, and verify a flex pro
 
 ## Phase status
 
-- **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel.
-- **Phase 1**: build the 5-pane Conductor-shaped TUI. Waves 1–4 per `docs/PLAN.md`.
+- **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel. **Closed.**
+- **Phase 1**: build the 5-pane Conductor-shaped TUI. Waves 1–4 per `docs/PLAN.md`. **Closed at gate G4 on 2026-05-09 — shipped as `@sma1lboy/kobe@0.1.0` on npm.** See [`CHANGELOG.md`](./CHANGELOG.md) for the 0.1.0 feature manifest.
 - **Phase 2**: deferred. Conductor-as-backend mode. Hook points designed in; impl not yet.
 
 Update this section's status as gates G0–G4 close. See PLAN.md for the canonical state.
+
+### Open follow-ups from 0.1.0
+
+- Two regressions caught post-ship by `test/behavior/approval-flow.test.ts`
+  (currently `test.skip`): the composer's lock placeholder isn't visible
+  when an `ExitPlanMode` picker is up, and `AskUserQuestion` payloads
+  crash kobe under the multi-tab refactor. Investigate before next tag.
+- CI gate: `.github/workflows/ci.yml` runs typecheck + unit tests + build
+  on every push to main and every PR. Behavior tests stay local-only
+  (need tmux + node-pty terminal sizing).

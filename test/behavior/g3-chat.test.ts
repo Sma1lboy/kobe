@@ -122,15 +122,21 @@ async function fillNewTaskDialog(
     await kobe.sendKeys("\x0e")
   }
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  await kobe.typeText(prompt)
-  // Tab to repo field.
-  await kobe.sendKeys("\t")
-  // Clear pre-filled cwd.
+  // Wave 4 dialog dropped the first-prompt field. The repo input is
+  // now the first (and active) field, prefilled with cwd. Clear it
+  // before typing so the test repo replaces, not appends.
   for (let i = 0; i < 200; i++) {
     await kobe.sendKeys("\x7f")
   }
   await kobe.typeText(repo)
-  // Submit (commits dialog + auto-submits prompt to the new task).
+  // Submit (commits dialog with default branch=main; orchestrator
+  // creates a placeholder-titled task and pulls focus to the
+  // workspace composer for the first prompt).
+  await kobe.sendKeys("\r")
+  // Composer auto-focuses post-create; type the prompt + send.
+  // Wait briefly so the dialog's render frame settles before keys.
+  await new Promise((r) => setTimeout(r, 250))
+  await kobe.typeText(prompt)
   await kobe.sendKeys("\r")
 }
 
