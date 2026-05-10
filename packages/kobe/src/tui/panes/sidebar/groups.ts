@@ -21,7 +21,7 @@
  * only when the upstream task signal or view changes.
  */
 
-import type { Task } from "@/types"
+import type { Task } from "@/types/task"
 
 /**
  * Which sidebar view is active. Rendered as a tab strip at the top of

@@ -33,8 +33,8 @@ import { GG_CHORD_TIMEOUT_MS, createSidebarController } from "@/tui/panes/sideba
 // pure logic lives in `./groups` and `./controller` and has no opentui
 // imports — that's what we exercise here.
 import { buildRows, filterByView, flattenIds } from "@/tui/panes/sidebar/groups"
-import type { Task, TaskStatus } from "@/types"
-import { toTaskId } from "@/types"
+import type { Task, TaskStatus } from "@/types/task"
+import { toTaskId } from "@/types/task"
 import { describe, expect, test } from "vitest"
 
 /**

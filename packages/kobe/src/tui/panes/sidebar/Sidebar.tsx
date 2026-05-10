@@ -47,7 +47,7 @@
  * don't yet thread the focus signal still get a working sidebar.
  */
 
-import type { Task, TaskStatus } from "@/types"
+import type { Task, TaskStatus } from "@/types/task"
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, untrack } from "solid-js"
 import { SIDEBAR_WIDTH } from "../../component/sidebar"

@@ -124,9 +124,9 @@ export async function suggestBranchSlug(prompt: string): Promise<string | null> 
  * to MAX_SLUG_LEN. Returns null on empty result so the caller
  * doesn't accidentally produce `kobe/-<ulid>`.
  *
- * Exported for unit testing.
+ * Internal — re-add `export` if/when a unit test for this is written.
  */
-export function sanitizeSlug(raw: string): string | null {
+function sanitizeSlug(raw: string): string | null {
   // Take just the first non-empty line — claude sometimes adds a
   // trailing newline + a stray comment.
   const firstLine = raw
