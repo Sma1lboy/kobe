@@ -893,12 +893,19 @@ function StatusBar() {
 
   return (
     <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingLeft={1} paddingRight={1}>
-      {/* Left: section label + pane-local hotkeys (driven by KobeKeymap) */}
+      {/* Left: section label + pane-local hotkeys (driven by KobeKeymap).
+          Mode-aware: engaged shows the pane-local chord chips
+          (j/k/d/r/a, enter send, etc.); select hides them and shows a
+          single `[enter] engage` chip — the user is in nav mode, and
+          the right column already advertises the cross-pane chords
+          (ctrl+hjkl / tab) they can use without engaging. */}
       <box flexDirection="row" gap={2} flexShrink={1}>
         <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
           {sectionLabel()}
         </text>
-        <For each={leftHints()}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
+        <Show when={focus.mode() === "engaged"} fallback={<Hotkey keys="enter" label="engage" />}>
+          <For each={leftHints()}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
+        </Show>
       </box>
       {/* Right: global hotkeys (always available). Driven by KobeKeymap's
           `pin: "right"` rows. When ctrl+c is armed for double-tap quit,
