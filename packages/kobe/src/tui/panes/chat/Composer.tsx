@@ -220,6 +220,17 @@ export function Composer(props: ComposerProps) {
     setSlashCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
   })
 
+  // Mirror the workspace pane's focus state onto the textarea. Without
+  // this, Tab-ing into the workspace highlights the rail but keystrokes
+  // still go to whichever pane previously held opentui focus, and
+  // Tab-ing away leaves the textarea greedily eating keys it shouldn't.
+  createEffect(() => {
+    const ref = textareaRef
+    if (!ref) return
+    if (props.focused?.()) ref.focus()
+    else ref.blur()
+  })
+
   // Slash dropdown windowing — claude-code's autocomplete shows ~8 rows
   // and scrolls the window so the cursor stays visible. Without this,
   // typing `/` with 70+ commands paints the whole list and overflows
@@ -703,10 +714,12 @@ export function Composer(props: ComposerProps) {
                     // string is also fine — it's a no-op when content
                     // matches.
                     if (props.draft) r.setText(props.draft)
-                    // Auto-focus so the user can start typing immediately
-                    // after the chat pane mounts. This mirrors the prior
-                    // <input focused={true}> behavior.
-                    r.focus()
+                    // Only grab keyboard focus when the workspace pane
+                    // owns focus. On cold boot the sidebar is the
+                    // default focused pane (see FocusProvider) — stealing
+                    // focus here would desync the StatusBar label from
+                    // who actually receives keystrokes.
+                    if (props.focused?.()) r.focus()
                   }}
                   placeholder={resolvePlaceholder({
                     isStreaming: props.isStreaming,
