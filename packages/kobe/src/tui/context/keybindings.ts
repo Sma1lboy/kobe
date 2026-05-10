@@ -302,6 +302,42 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "enter", label: "send" },
   },
   {
+    // Composer textarea inserts a literal newline on shift+enter (kitty/
+    // CSI-u terminals) and ctrl+J everywhere else; no chord is registered
+    // here. Surfaced in the status bar so the user doesn't have to memorize
+    // it after we stripped the inline footer hint from the composer.
+    id: "chat.newline",
+    scope: "workspace",
+    keys: [],
+    category: "Workspace",
+    description: "Newline in composer",
+    hint: { keys: "shift+enter", label: "newline" },
+  },
+  {
+    // Shift+tab inside the composer cycles the per-task permission mode
+    // (default → accept edits → plan → …); the chord is registered in
+    // Composer's onKeyDown, not here. Doc-only entry so the status bar
+    // advertises the binding to a focused user.
+    id: "chat.cycle-mode",
+    scope: "workspace",
+    keys: [],
+    category: "Workspace",
+    description: "Cycle permission mode (composer)",
+    hint: { keys: "shift+tab", label: "mode" },
+  },
+  {
+    // Ctrl+enter mid-stream interrupts the in-flight subprocess and
+    // dispatches the new buffer immediately. Plain enter while
+    // streaming queues instead. Chord is registered in Composer's
+    // onKeyDown; this entry is doc-only.
+    id: "chat.steer",
+    scope: "workspace",
+    keys: [],
+    category: "Workspace",
+    description: "Steer (interrupt + send) — mid-stream only",
+    hint: { keys: "ctrl+enter", label: "steer" },
+  },
+  {
     id: "chat.tab.new",
     scope: "workspace",
     keys: ["ctrl+t"],

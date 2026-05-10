@@ -382,6 +382,45 @@ describe("Orchestrator.pauseTask", () => {
 })
 
 // ----------------------------------------------------------------------
+// interruptTask
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.interruptTask", () => {
+  test("kills the live handle and emits a system.info row, leaves status alone", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch, store } = await buildOrchestrator(fake)
+
+    const t = await orch.createTask({ repo, title: "steer", prompt: "" })
+    await orch.runTask(t.id, "first prompt")
+    expect(store.get(t.id)?.status).toBe("in_progress")
+
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev))
+
+    await orch.interruptTask(t.id)
+
+    // Status unchanged — interruptTask is mid-turn redirection, not a
+    // lifecycle transition.
+    expect(["in_progress", "in_review"]).toContain(store.get(t.id)?.status)
+    expect(stopSpy).toHaveBeenCalled()
+    const sysRows = events.filter((e) => e.type === "system.info")
+    expect(sysRows.some((e) => (e as { text: string }).text.includes("interrupted"))).toBe(true)
+    await orch._waitForPumpsIdle()
+  })
+
+  test("is a no-op when no handle is live for the tab", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "noop", prompt: "" })
+    // No runTask — no handle.
+    await orch.interruptTask(t.id)
+    expect(stopSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ----------------------------------------------------------------------
 // archiveTask
 // ----------------------------------------------------------------------
 

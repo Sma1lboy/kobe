@@ -92,8 +92,16 @@ export interface ComposerProps {
    * sees a different hint and the textarea stays hidden.
    */
   noTaskMessage?: string
-  /** Called on enter with the trimmed text. Empty string = empty-composer enter. */
-  onSubmit: (trimmedText: string) => void
+  /**
+   * Called on enter with the trimmed text. Empty string = empty-composer enter.
+   *
+   * `mode` describes the submission intent — `'auto'` (default) lets
+   * the parent decide based on streaming state (run-now when idle,
+   * queue when streaming); `'steer'` requests an interrupt-then-run
+   * even mid-stream. The chat shell maps the key chord `ctrl+enter`
+   * to mode='steer' and plain enter to mode='auto'.
+   */
+  onSubmit: (trimmedText: string, mode?: "auto" | "steer") => void
 
   // ----- W4.C extensions (all optional; parent doesn't need to set) -----
 
@@ -157,7 +165,7 @@ export interface ComposerProps {
  */
 function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean; noTaskMessage?: string }): string {
   if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
-  if (opts.isStreaming) return "(streaming — wait for done)"
+  if (opts.isStreaming) return "(streaming — enter to queue, ctrl+enter to steer)"
   return "Ask Claude…"
 }
 
@@ -437,6 +445,22 @@ export function Composer(props: ComposerProps) {
    * `handleKeyPress` too).
    */
   function handleKeyDown(key: KeyEvent): void {
+    // ctrl+enter — steer. Submits the current buffer with mode='steer'
+    // so the chat shell asks the orchestrator to interrupt the
+    // in-flight subprocess before running the new prompt. We intercept
+    // BEFORE the textarea's own keybindings (which would otherwise
+    // pass ctrl+return through to the default `return → submit`
+    // handler and lose the modifier intent).
+    //
+    // Only fires when the dropdown is closed: with the slash menu
+    // open, ctrl+enter would feel like "run with extra meaning" but
+    // there's no useful extra meaning for a slash command — we let
+    // it fall through to the slash-selection path below.
+    if (key.name === "return" && key.ctrl && !slashOpen()) {
+      handleSubmit("steer")
+      key.preventDefault()
+      return
+    }
     // shift+tab cycles the per-task permission mode. Highest priority
     // because we want it consistent regardless of dropdown state.
     // Falls through silently when the parent doesn't supply a cycler.
@@ -513,7 +537,7 @@ export function Composer(props: ComposerProps) {
    * `draft` reactive sync (parent calls `onDraftChange("")` after a
    * successful send).
    */
-  function handleSubmit(): void {
+  function handleSubmit(mode: "auto" | "steer" = "auto"): void {
     const ref = textareaRef
     if (!ref) return
     const raw = ref.plainText
@@ -538,7 +562,7 @@ export function Composer(props: ComposerProps) {
       pushHistory(props.historyKey ?? "global", raw)
     }
     resetHistoryNav()
-    props.onSubmit(trimmed)
+    props.onSubmit(trimmed, mode)
   }
 
   onCleanup(() => {
@@ -555,10 +579,16 @@ export function Composer(props: ComposerProps) {
   // mid-air and looks unfinished. Border color upgrades to
   // `theme.primary` when the workspace pane is focused so the active
   // input stands out at a glance.
-  const actionHint = () => {
+  // Streaming is the only state worth surfacing in the composer footer
+  // — the static "enter send · shift+enter newline · shift+tab mode"
+  // hints used to live here too, but they duplicated the status bar's
+  // pane-local hotkey row at the bottom of the screen. Now they're
+  // sourced from `KobeKeymap` (workspace scope) and the inline footer
+  // keeps only the mode + model badges.
+  const streamingNotice = () => {
     if (!props.hasTask) return ""
-    if (props.isStreaming) return "streaming — wait for done"
-    return "enter send · shift+enter newline · shift+tab mode"
+    if (props.isStreaming) return "enter queue · ctrl+enter steer"
+    return ""
   }
   const modelLabel = () => props.modelLabel?.() ?? "claude-code"
 
@@ -734,7 +764,7 @@ export function Composer(props: ComposerProps) {
                   keyBindings={composerKeyBindings}
                   onContentChange={handleContentChange}
                   onKeyDown={handleKeyDown}
-                  onSubmit={handleSubmit}
+                  onSubmit={() => handleSubmit("auto")}
                 />
               </Show>
             </box>
@@ -744,8 +774,8 @@ export function Composer(props: ComposerProps) {
               composer area to itself. */}
           <Show when={props.hasTask}>
             <box flexDirection="row" justifyContent="space-between" paddingTop={1} flexShrink={0}>
-              <text fg={theme.textMuted} wrapMode="none">
-                {actionHint()}
+              <text fg={props.isStreaming ? theme.accent : theme.textMuted} wrapMode="none">
+                {streamingNotice()}
               </text>
               <box flexDirection="row" gap={2} flexShrink={0}>
                 <text fg={modeBadgeColor()} wrapMode="none">

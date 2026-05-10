@@ -24,12 +24,18 @@ import {
 } from "../../src/tui/panes/chat/edit-diff.ts"
 import {
   type ChatState,
+  QUEUE_SOFT_CAP,
   SCROLLBACK_CAP,
   applyEvent,
   cleanChatText,
+  clearQueue,
   createInitialState,
+  dequeueFirst,
+  enqueuePrompt,
   pushSystemError,
   pushUser,
+  queueIsFull,
+  removeFromQueue,
   reset,
   setMessagesFromHistory,
 } from "../../src/tui/panes/chat/store.ts"
@@ -39,15 +45,118 @@ import type { EngineEvent, Message } from "../../src/types/engine.ts"
 const FIXED_TS = "2026-05-09T00:00:00.000Z"
 
 describe("createInitialState", () => {
-  test("returns empty messages, not streaming, no error", () => {
+  test("returns empty messages, not streaming, no error, empty queue", () => {
     const s = createInitialState()
     expect(s.messages).toEqual([])
     expect(s.isStreaming).toBe(false)
     expect(s.error).toBeNull()
+    expect(s.queue).toEqual([])
   })
 
   test("`reset` is an alias", () => {
     expect(reset()).toEqual(createInitialState())
+  })
+})
+
+describe("queue reducers", () => {
+  test("enqueuePrompt appends a unique-id entry without touching messages or streaming", () => {
+    const s0 = pushUser(createInitialState(), "first user msg", FIXED_TS)
+    expect(s0.queue).toEqual([])
+    expect(s0.isStreaming).toBe(true)
+
+    const s1 = enqueuePrompt(s0, "queued one", FIXED_TS)
+    expect(s1.queue).toHaveLength(1)
+    expect(s1.queue[0]?.text).toBe("queued one")
+    expect(s1.queue[0]?.ts).toBe(FIXED_TS)
+    expect(s1.queue[0]?.id).toMatch(/^q-/)
+    // pushUser side effects intact
+    expect(s1.messages).toEqual(s0.messages)
+    expect(s1.isStreaming).toBe(true)
+  })
+
+  test("enqueuePrompt assigns distinct ids to back-to-back enqueues at the same ts", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    s = enqueuePrompt(s, "b", FIXED_TS)
+    s = enqueuePrompt(s, "c", FIXED_TS)
+    const ids = s.queue.map((q) => q.id)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  test("enqueuePrompt is a no-op (and queueIsFull true) at the soft cap", () => {
+    let s = createInitialState()
+    for (let i = 0; i < QUEUE_SOFT_CAP; i++) s = enqueuePrompt(s, `q${i}`, FIXED_TS)
+    expect(s.queue).toHaveLength(QUEUE_SOFT_CAP)
+    expect(queueIsFull(s)).toBe(true)
+    const refused = enqueuePrompt(s, "overflow", FIXED_TS)
+    expect(refused).toBe(s)
+    expect(refused.queue).toHaveLength(QUEUE_SOFT_CAP)
+  })
+
+  test("dequeueFirst returns [unchanged, null] when queue is empty", () => {
+    const s0 = createInitialState()
+    const [s1, head] = dequeueFirst(s0)
+    expect(head).toBeNull()
+    expect(s1).toBe(s0)
+  })
+
+  test("dequeueFirst pops the head and preserves order of the tail", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    s = enqueuePrompt(s, "b", FIXED_TS)
+    s = enqueuePrompt(s, "c", FIXED_TS)
+
+    const [s1, h1] = dequeueFirst(s)
+    expect(h1?.text).toBe("a")
+    expect(s1.queue.map((q) => q.text)).toEqual(["b", "c"])
+
+    const [s2, h2] = dequeueFirst(s1)
+    expect(h2?.text).toBe("b")
+    expect(s2.queue.map((q) => q.text)).toEqual(["c"])
+  })
+
+  test("removeFromQueue drops the matching entry, leaves siblings intact", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    s = enqueuePrompt(s, "b", FIXED_TS)
+    s = enqueuePrompt(s, "c", FIXED_TS)
+    const targetId = s.queue[1]?.id
+    expect(targetId).toBeDefined()
+    const next = removeFromQueue(s, targetId as string)
+    expect(next.queue.map((q) => q.text)).toEqual(["a", "c"])
+  })
+
+  test("removeFromQueue with an unknown id is a no-op (identity preserved)", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    const next = removeFromQueue(s, "q-does-not-exist")
+    expect(next).toBe(s)
+  })
+
+  test("clearQueue empties the queue but leaves messages + streaming alone", () => {
+    let s = pushUser(createInitialState(), "user", FIXED_TS)
+    s = enqueuePrompt(s, "q1", FIXED_TS)
+    s = enqueuePrompt(s, "q2", FIXED_TS)
+    const cleared = clearQueue(s)
+    expect(cleared.queue).toEqual([])
+    expect(cleared.messages).toEqual(s.messages)
+    expect(cleared.isStreaming).toBe(s.isStreaming)
+  })
+
+  test("clearQueue on an already-empty queue returns identity", () => {
+    const s = createInitialState()
+    expect(clearQueue(s)).toBe(s)
+  })
+
+  test("done event flips isStreaming false but does NOT touch the queue", () => {
+    let s = pushUser(createInitialState(), "user", FIXED_TS)
+    s = enqueuePrompt(s, "queued", FIXED_TS)
+    expect(s.isStreaming).toBe(true)
+    expect(s.queue).toHaveLength(1)
+
+    const next = applyEvent(s, { type: "done" }, FIXED_TS)
+    expect(next.isStreaming).toBe(false)
+    expect(next.queue).toEqual(s.queue) // queue intact — drain happens at the chat-shell layer
   })
 })
 

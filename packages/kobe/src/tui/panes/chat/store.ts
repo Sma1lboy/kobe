@@ -170,6 +170,21 @@ export function cleanChatText(text: string): string {
   return text.replace(NOISE_TAG_PATTERN, "").trim()
 }
 
+/**
+ * One queued user prompt awaiting dispatch.
+ *
+ * The queue exists to support submissions while a turn is already
+ * streaming — the user types Enter and we stash the prompt here
+ * instead of either rejecting it or interrupting the in-flight model.
+ * Mirrors the `'later'` priority slot in claude-code's
+ * `refs/claude-code/src/utils/messageQueueManager.ts` (single FIFO,
+ * priority-driven). `kind: 'queued'` rows are NOT chat rows — they
+ * never appear in `messages` and don't survive the JSONL replay; they
+ * live alongside `messages` in {@link ChatState} and are drained by
+ * the chat shell when streaming flips false.
+ */
+export type QueuedPrompt = { readonly id: string; readonly text: string; readonly ts: string }
+
 /** One chronological row in the chat. The renderer maps these to JSX. */
 export type ChatRow =
   | { readonly kind: "user"; readonly text: string; readonly ts: string }
@@ -233,6 +248,13 @@ export interface ChatState {
   readonly isStreaming: boolean
   /** Transient error banner. Cleared on next submit. */
   readonly error: string | null
+  /**
+   * Prompts the user typed mid-stream and chose to QUEUE (not steer).
+   * FIFO; drained by the chat shell when {@link isStreaming} flips
+   * false. Cleared on task switch (the chat shell resets state per
+   * tab); not persisted to JSONL — these are pre-dispatch.
+   */
+  readonly queue: readonly QueuedPrompt[]
 }
 
 /** Build the initial state. Used at mount and on task switch. */
@@ -241,8 +263,18 @@ export function createInitialState(): ChatState {
     messages: [],
     isStreaming: false,
     error: null,
+    queue: [],
   }
 }
+
+/**
+ * Soft cap on queued prompts. Past this we reject further enqueues
+ * with a system row instead of growing the queue without bound.
+ * 10 is generous — claude-code has no documented cap, but in practice
+ * a healthy "queue" pattern is 1-2 prompts deep. If the user wants
+ * more, they can wait for drain or switch to steer.
+ */
+export const QUEUE_SOFT_CAP = 10
 
 /**
  * Replace messages from `engine.readHistory(sessionId)`. Called once
@@ -287,6 +319,60 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
     error: null,
     messages: capMessages([...state.messages, { kind: "user", text: prompt, ts: nowIso }], nowIso),
   }
+}
+
+/**
+ * Append a prompt to the queue. Returns the same state when the queue
+ * is full (use {@link queueIsFull} to detect and surface a hint to the
+ * user). Each entry gets a unique id — the chat shell uses it to tie
+ * the cancel button on the rendered queue row back to the right entry.
+ *
+ * The id is `q-<ts>-<random>`; the random tail keeps two enqueues in
+ * the same millisecond distinct (Date.now() granularity isn't fine
+ * enough on fast machines).
+ */
+export function enqueuePrompt(
+  state: ChatState,
+  prompt: string,
+  nowIso: string = new Date().toISOString(),
+): ChatState {
+  if (state.queue.length >= QUEUE_SOFT_CAP) return state
+  const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
+  return {
+    ...state,
+    queue: [...state.queue, { id, text: prompt, ts: nowIso }],
+  }
+}
+
+/** Whether enqueuePrompt would refuse the next prompt. */
+export function queueIsFull(state: ChatState): boolean {
+  return state.queue.length >= QUEUE_SOFT_CAP
+}
+
+/**
+ * Pop the head of the queue. Returns `[nextState, dequeued]` so the
+ * caller can dispatch the prompt. Both fields are stable when the
+ * queue is empty: `[state, null]`.
+ */
+export function dequeueFirst(state: ChatState): [ChatState, QueuedPrompt | null] {
+  if (state.queue.length === 0) return [state, null]
+  const [head, ...rest] = state.queue
+  if (!head) return [state, null]
+  return [{ ...state, queue: rest }, head]
+}
+
+/** Remove a queued prompt by id (the cancel-button path). */
+export function removeFromQueue(state: ChatState, id: string): ChatState {
+  if (state.queue.length === 0) return state
+  const next = state.queue.filter((q) => q.id !== id)
+  if (next.length === state.queue.length) return state
+  return { ...state, queue: next }
+}
+
+/** Wipe the queue. Used on task switch / tab close. */
+export function clearQueue(state: ChatState): ChatState {
+  if (state.queue.length === 0) return state
+  return { ...state, queue: [] }
 }
 
 /**

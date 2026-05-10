@@ -38,7 +38,7 @@
  */
 
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
@@ -57,8 +57,12 @@ import {
   type ChatState,
   applyEvent,
   createInitialState,
+  dequeueFirst,
+  enqueuePrompt,
   pushSystemError,
   pushUser,
+  queueIsFull,
+  removeFromQueue,
   setMessagesFromHistory,
 } from "./store"
 
@@ -427,23 +431,125 @@ export function Chat(props: ChatProps) {
     })
   })
 
+  /**
+   * Queue-drain effect. Watches the active tab's `(isStreaming, queue)`
+   * pair and dispatches the head of the queue once streaming flips
+   * false.
+   *
+   * Trigger conditions (all required):
+   *   - The active tab has a non-empty queue.
+   *   - Streaming is false (engine is idle).
+   *   - There's no pending user-input picker on the tab (an unresolved
+   *     approval/question request blocks new prompts; we wait it out).
+   *   - We have a taskId + tabId to dispatch against.
+   *
+   * One dispatch per false→empty cycle. After runTask, isStreaming
+   * flips back to true, the effect re-suspends until the next done.
+   * The remaining queue entries drain one-at-a-time on each turn-end.
+   */
+  createEffect(() => {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    const state = activeState()
+    if (!taskId || !tabId) return
+    if (state.isStreaming) return
+    if (state.queue.length === 0) return
+    if (hasPendingInput()) return
+    // Dequeue inside a microtask so the createEffect's reactive read
+    // graph is settled before we mutate state. Without the defer, the
+    // patch races the effect's tracking and we can miss the next tick.
+    queueMicrotask(() => {
+      const cur = activeState()
+      if (cur.isStreaming || cur.queue.length === 0) return
+      let head: { id: string; text: string; ts: string } | null = null
+      patchActiveState((s) => {
+        const [next, popped] = dequeueFirst(s)
+        head = popped
+        if (!popped) return s
+        // Push the user row immediately so the chat scrolls to the
+        // dispatched prompt at the same time the runTask call goes
+        // out (the engine will fire its own user.inject if needed,
+        // but for pure-queue dispatch the row is ours to write).
+        return pushUser(next, popped.text)
+      })
+      const dispatched = head as { id: string; text: string; ts: string } | null
+      if (!dispatched) return
+      props.orchestrator
+        .runTask(taskId, dispatched.text, tabId)
+        .catch((err: unknown) => {
+          patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
+        })
+    })
+  })
+
   onCleanup(() => {
     teardownAllSubs()
     setStatesByTab(new Map())
   })
 
   /**
-   * Submit a prompt to the active tab. Pulls the active taskId + tabId
-   * from accessors so this is safe to call from both the auto-pending-
-   * prompt path and the composer's onSubmit handler.
+   * Submit a prompt to the active tab.
+   *
+   * Three modes, mirroring claude-code's `'now' / 'next' / 'later'`
+   * priorities (kobe collapses 'next' into 'later' since `claude -p`
+   * is one-shot — no mid-tool insertion point):
+   *
+   *   - **idle** — turn not in flight, run immediately. (Old default.)
+   *   - **queue (mode='auto' default while streaming)** — stash on
+   *     {@link ChatState.queue}; the drain effect picks it up when
+   *     `isStreaming` flips false.
+   *   - **steer (mode='steer')** — ask the orchestrator to interrupt
+   *     the in-flight subprocess, then run the new prompt against the
+   *     same session id (so the model sees the truncated prior turn
+   *     as context).
+   *
+   * Mode is chosen by the composer key chord: enter = auto, ctrl+enter
+   * = steer. Auto-pending-prompt and slash-command paths always pass
+   * undefined (= 'auto'); they fire while idle so it doesn't matter.
    */
-  async function send(promptText?: string): Promise<void> {
+  async function send(promptText?: string, mode: "auto" | "steer" = "auto"): Promise<void> {
     const text = (promptText ?? draft()).trim()
     const taskId = props.taskId()
     const tabId = activeTabId()
     if (!text || !taskId || !tabId) return
     if (isCanceled()) return
-    if (activeState().isStreaming) return
+    if (hasPendingInput()) return // approval/question picker has the floor
+
+    const streaming = activeState().isStreaming
+
+    if (streaming && mode === "steer") {
+      setDraft("")
+      try {
+        await props.orchestrator.interruptTask(taskId, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `interrupt failed: ${stringifyErr(err)}`))
+        return
+      }
+      // The pump's `finally` flips isStreaming false via the `done`
+      // event; the drain effect won't run because we own the next
+      // dispatch. Push the user row + run synchronously.
+      patchActiveState((s) => pushUser(s, text))
+      try {
+        await props.orchestrator.runTask(taskId, text, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
+      }
+      return
+    }
+
+    if (streaming) {
+      // Queue path. Refuse silently when the soft cap is hit; the
+      // composer's footer hint surfaces the cap to the user.
+      if (queueIsFull(activeState())) {
+        patchActiveState((s) => pushSystemError(s, `queue is full (max ${activeState().queue.length})`))
+        return
+      }
+      setDraft("")
+      patchActiveState((s) => enqueuePrompt(s, text))
+      return
+    }
+
+    // Idle path — original behaviour.
     setDraft("")
     patchActiveState((s) => pushUser(s, text))
     try {
@@ -451,6 +557,14 @@ export function Chat(props: ChatProps) {
     } catch (err) {
       patchActiveState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
     }
+  }
+
+  /**
+   * Cancel one queued prompt by id. Called by the cancel-button on
+   * each `QueuedPromptList` row.
+   */
+  function cancelQueued(id: string): void {
+    patchActiveState((s) => removeFromQueue(s, id))
   }
 
   /** Create a new tab and switch focus to it. Wired from `ctrl+t`. */
@@ -586,12 +700,12 @@ export function Chat(props: ChatProps) {
     setExpandedToolIndex((cur) => (cur === rowIndex ? null : rowIndex))
   }
 
-  function handleComposerSubmit(trimmed: string): void {
+  function handleComposerSubmit(trimmed: string, mode: "auto" | "steer" = "auto"): void {
     if (trimmed.length === 0) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
       return
     }
-    void send()
+    void send(undefined, mode)
   }
 
   return (
@@ -660,6 +774,17 @@ export function Chat(props: ChatProps) {
           showed up when Loading was the last child of an opentui flex
           column alongside a reactive <For> — its position is now
           deterministic by source order at this layer. */}
+      {/* Queued prompts — sits between the spinner and the composer
+          so the user can see what's pending before the next turn fires.
+          Each row has a [x] cancel affordance; clicking it drops the
+          entry from the queue without dispatching. Empty queue =
+          nothing renders. Mirrors the visual placement of claude-code's
+          `QueuedCommandsDisplay` (above the prompt input) so the user
+          finds the affordance at the same eye level. */}
+      <Show when={props.taskId() && activeState().queue.length > 0}>
+        <QueuedPromptList queue={activeState().queue} onCancel={cancelQueued} />
+      </Show>
+
       <Show when={showThinking() && props.taskId()}>
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
@@ -698,4 +823,52 @@ function stringifyErr(err: unknown): string {
   } catch {
     return String(err)
   }
+}
+
+/**
+ * Mid-stream user prompts the user chose to QUEUE (plain enter while
+ * streaming). Renders one row per pending prompt with a `+` prefix
+ * (the `>` chip is reserved for dispatched user rows in the transcript)
+ * and a clickable `[x]` cancel chip. Lives outside the scrollbox so
+ * it shares horizontal layout with the spinner and composer — the user
+ * finds queued prompts at the same eye-line as the live status row,
+ * not buried inside the scrollback.
+ *
+ * Tone is intentionally muted: queued prompts haven't reached the
+ * model yet, so we don't paint them as accent-coloured the way an
+ * in-flight user message gets the `theme.accent` `>` chip.
+ */
+function QueuedPromptList(props: {
+  queue: readonly { id: string; text: string }[]
+  onCancel: (id: string) => void
+}) {
+  const { theme } = useTheme()
+  return (
+    <box flexDirection="column" gap={0} paddingTop={1} paddingLeft={1} paddingRight={1}>
+      <For each={props.queue}>
+        {(entry, idx) => (
+          <box flexDirection="row" gap={1} alignItems="flex-start">
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
+              +
+            </text>
+            <box flexGrow={1} flexDirection="row" gap={1}>
+              <text fg={theme.textMuted} wrapMode="none">
+                queued{idx() === 0 ? " (next)" : ""}:
+              </text>
+              <box flexGrow={1}>
+                <text fg={theme.text}>{entry.text}</text>
+              </box>
+              <text
+                fg={theme.error}
+                attributes={TextAttributes.BOLD}
+                onMouseUp={() => props.onCancel(entry.id)}
+              >
+                [x]
+              </text>
+            </box>
+          </box>
+        )}
+      </For>
+    </box>
+  )
 }

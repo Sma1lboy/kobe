@@ -712,6 +712,54 @@ export class Orchestrator {
   }
 
   /**
+   * Interrupt the in-flight subprocess for one tab WITHOUT changing
+   * task status — kobe's "steer" path. Maps to the user typing a new
+   * prompt mid-stream and asking us to abandon the current generation
+   * so the model can be redirected.
+   *
+   * Behaviour:
+   *   - Kills the engine handle for `(taskId, tabId)`. The pump's
+   *     `for await` loop ends, the pump's `finally` writes a terminal
+   *     status (`in_review` or `error`) to the store, and the chat
+   *     gets a `done`/`error` event.
+   *   - Emits a dim `system.info` row so the user sees in the chat
+   *     transcript that the turn was steered away from.
+   *   - Does NOT clear the sessionId. The next `runTask` call that
+   *     follows will `engine.resume(sessionId, ...)` and continue the
+   *     conversation; claude-code's JSONL retains whatever partial
+   *     assistant text was streamed before the kill, so the model
+   *     sees the truncated prior turn as context for the new prompt.
+   *
+   * Idempotent: if the tab has no live handle (turn already ended,
+   * tab was never started), this is a no-op.
+   *
+   * Distinct from {@link pauseTask}: pauseTask is task-level (stops
+   * every tab) and demotes status to backlog. interruptTask is
+   * tab-scoped and leaves status alone — the user is still actively
+   * driving the task, they just want a different generation.
+   */
+  async interruptTask(id: TaskId | string, tabId?: string): Promise<void> {
+    const task = this.requireTask(id)
+    const targetTab = this.resolveTab(task, tabId)
+    const key = tabKey(task.id, targetTab.id)
+    const handle = this.handles.get(key)
+    if (!handle) return // nothing to interrupt — no live pump
+    // Surface the steer in the chat BEFORE killing the handle so the
+    // user sees the row regardless of whether the kill emits its own
+    // `done`/`error` event (it normally does, but the system.info row
+    // is the human-readable affordance).
+    this.dispatchEvent(task.id, targetTab.id, {
+      type: "system.info",
+      text: "(turn interrupted — sending new prompt)",
+    })
+    try {
+      await this.engine.stop(handle)
+    } finally {
+      this.handles.delete(key)
+    }
+  }
+
+  /**
    * Pause a running task. Status `in_progress` → `backlog`. Resets the
    * engine handle so the next runTask resumes cleanly (the sessionId
    * stays on the task).
