@@ -82,6 +82,14 @@ export type Theme = {
   diffAddedBg: RGBA
   diffRemovedBg: RGBA
   selectedListItemText: RGBA
+  /**
+   * Resolved focus-indicator color. Components that paint focus state
+   * (PaneHeader, Sidebar header, ResizableEdge focused-adjacent,
+   * Terminal border) read this instead of picking primary/success/info
+   * directly, so the user-controlled `focusAccent` setting unifies the
+   * focus signal across panes.
+   */
+  focusAccent: RGBA
   // arbitrary string access falls through to text
   [key: string]: RGBA
 }
@@ -99,6 +107,17 @@ const BUNDLED_THEMES: Record<string, ThemeJson> = {
   "osaka-jade": osakaJade as ThemeJson,
 }
 
+/**
+ * Which theme slot drives the "focused pane" indicator (pane header
+ * title + ▌ marker, sidebar header, resizable-edge, terminal border).
+ * Default is `primary` — under the Claude palette that's terracotta,
+ * which doubles as the brand hue. `success` keeps the older
+ * green-focus look (opencode legacy); `info` picks the cyan/blue.
+ * Persisted via KV from the Shell.
+ */
+export type FocusAccentSlot = "primary" | "success" | "info"
+export const FOCUS_ACCENT_SLOTS: ReadonlyArray<FocusAccentSlot> = ["primary", "success", "info"]
+
 type State = {
   themes: Record<string, ThemeJson>
   active: string
@@ -111,6 +130,7 @@ type State = {
    * Persisted via KV from the Shell on mount + every change.
    */
   transparentBackground: boolean
+  focusAccent: FocusAccentSlot
 }
 
 const [store, setStore] = createStore<State>({
@@ -118,6 +138,7 @@ const [store, setStore] = createStore<State>({
   active: "claude",
   mode: "dark",
   transparentBackground: false,
+  focusAccent: "primary",
 })
 
 export function listThemes(): string[] {
@@ -225,7 +246,13 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     // host wallpaper. Every other token (text, primary, accent…)
     // is unchanged. See memory/feedback_transparent_default_aggressive.md.
     const values = createMemo(() => {
-      const v = baseValues()
+      const base = baseValues()
+      // focusAccent is derived per-frame from the user-picked slot
+      // (primary / success / info). Falls back to primary if the
+      // resolved theme is missing the chosen slot — defensive against
+      // a user-installed theme that doesn't define `info`.
+      const focusAccent = base[store.focusAccent] ?? base.primary
+      const v: Theme = { ...base, focusAccent }
       if (!store.transparentBackground) return v
       const transparent = RGBA.fromInts(0, 0, 0, 0)
       return { ...v, background: transparent, backgroundPanel: transparent }
@@ -253,6 +280,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       get transparentBackground() {
         return store.transparentBackground
       },
+      get focusAccent() {
+        return store.focusAccent
+      },
       mode() {
         return store.mode
       },
@@ -266,6 +296,9 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       },
       setTransparentBackground(v: boolean): void {
         setStore("transparentBackground", v)
+      },
+      setFocusAccent(v: FocusAccentSlot): void {
+        setStore("focusAccent", v)
       },
       all(): string[] {
         return listThemes()

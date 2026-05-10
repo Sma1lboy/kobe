@@ -22,10 +22,16 @@
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import type { KVContext } from "../context/kv"
-import { useTheme } from "../context/theme"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+
+const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
+  primary: "Primary (brand accent)",
+  success: "Success (legacy green)",
+  info: "Info (cool blue)",
+}
 
 type SectionId = "general" | "dev"
 
@@ -68,20 +74,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ),
   )
 
-  // How many rows the current section's body has. General = N themes
-  // plus the transparent-bg toggle. Dev = single reset button. The
-  // wrap-around math in moveCursor uses this to clamp/cycle.
-  const TRANSPARENT_ROW_OFFSET = 0 // sentinel — index `themes.length` is the toggle row
+  // How many rows the current section's body has. General =
+  //   N themes
+  //   + 1 transparent-bg toggle
+  //   + M focus-accent slots (one row per FOCUS_ACCENT_SLOTS entry).
+  // Dev = single reset button. The wrap-around math in moveCursor
+  // uses this to clamp/cycle.
   function bodyRowCount(): number {
-    if (section() === "general") return themeNames().length + 1
+    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
     if (section() === "dev") return 1
     return 0
   }
   // Map bodyRow to the underlying selection within the General section.
-  // 0..N-1  → theme at index N
-  // N       → transparent-bg toggle
+  // 0..N-1                       → theme at that index
+  // N                            → transparent-bg toggle
+  // N+1..N+FOCUS_ACCENT_SLOTS.length → focus-accent slot picker
   function isTransparentRow(): boolean {
     return section() === "general" && bodyRow() === themeNames().length
+  }
+  function focusAccentRowIndex(): number | null {
+    if (section() !== "general") return null
+    const offset = themeNames().length + 1
+    const i = bodyRow() - offset
+    if (i < 0 || i >= FOCUS_ACCENT_SLOTS.length) return null
+    return i
   }
 
   function moveCursor(delta: number): void {
@@ -110,7 +126,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setCursor(SECTIONS.findIndex((s) => s.id === id))
     setBodyRow(0)
   }
-  void TRANSPARENT_ROW_OFFSET
 
   // Confirm before wiping KV — the user explicitly asked for it but
   // it's still destructive (drops their persisted layout, last-selected
@@ -191,6 +206,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
           if (section() === "general") {
             if (isTransparentRow()) {
               themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+              return
+            }
+            const focusIdx = focusAccentRowIndex()
+            if (focusIdx !== null) {
+              const slot = FOCUS_ACCENT_SLOTS[focusIdx]
+              if (slot) themeCtx.setFocusAccent(slot)
               return
             }
             const name = themeNames()[bodyRow()]
@@ -340,6 +361,49 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     {themeCtx.transparentBackground ? "[x] on" : "[ ] off"}
                   </text>
                 </box>
+              </box>
+              {/* Focus accent — picks which theme slot drives the focused
+                  pane indicator (header title, ▌ marker, sidebar header,
+                  resizable-edge focus, terminal border). Default
+                  primary unifies the focus signal with the brand hue;
+                  success keeps the older opencode-style green. */}
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  Focus accent
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Color of focused pane title, ▌ marker, and split borders.
+                </text>
+                <For each={FOCUS_ACCENT_SLOTS}>
+                  {(slot, i) => {
+                    const rowIndex = () => themeNames().length + 1 + i()
+                    const isCursor = () => level() === "body" && bodyRow() === rowIndex()
+                    const isSelected = () => themeCtx.focusAccent === slot
+                    return (
+                      <box
+                        flexDirection="row"
+                        gap={1}
+                        paddingLeft={1}
+                        paddingRight={1}
+                        backgroundColor={isCursor() ? theme.primary : undefined}
+                        onMouseUp={() => {
+                          setLevel("body")
+                          setBodyRow(rowIndex())
+                          themeCtx.setFocusAccent(slot)
+                        }}
+                      >
+                        <text
+                          fg={isCursor() ? theme.selectedListItemText : isSelected() ? theme.focusAccent : theme.text}
+                          attributes={isCursor() || isSelected() ? TextAttributes.BOLD : undefined}
+                          wrapMode="none"
+                        >
+                          {isSelected() ? "● " : "  "}
+                          {FOCUS_ACCENT_LABEL[slot]}
+                        </text>
+                      </box>
+                    )
+                  }}
+                </For>
               </box>
             </box>
           </Show>

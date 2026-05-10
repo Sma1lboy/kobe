@@ -204,12 +204,13 @@ export function Sidebar(props: SidebarProps) {
       paddingRight={2}
     >
       {/* Header: "kobe" with a focus-aware ▌ marker matching PaneHeader's
-         convention — green ▌ + green title when this pane has focus,
-         dimmed when not. Keeps the focus signal consistent across all
-         panes so the user's eye trains on a single visual pattern. */}
+         convention — focus-accent ▌ + focus-accent title when this
+         pane has focus, dimmed when not. Reads `theme.focusAccent`
+         so a Settings change unifies the focus signal across all
+         panes (default = primary / terracotta). */}
       <box flexDirection="row" gap={1} paddingBottom={1}>
         <Show when={focusedAccessor()} fallback={<text fg={theme.textMuted}> </text>}>
-          <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
+          <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             ▌
           </text>
         </Show>
@@ -217,10 +218,10 @@ export function Sidebar(props: SidebarProps) {
             WORKSPACE / FILES / TERMINAL pane headers' shape.
             Previously read `kobe` (the brand) which made the four
             panes feel inconsistent — `TASKS` says what the pane is. */}
-        <text fg={focusedAccessor() ? theme.success : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={focusedAccessor() ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
           1
         </text>
-        <text fg={focusedAccessor() ? theme.success : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={focusedAccessor() ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
           TASKS
         </text>
       </box>

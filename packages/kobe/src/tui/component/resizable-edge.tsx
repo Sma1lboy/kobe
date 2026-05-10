@@ -8,7 +8,7 @@
  *
  *   - dragging  → `theme.accent`         (active resize feedback)
  *   - hovering  → `theme.borderActive`   (cursor over the edge)
- *   - focused   → `theme.success`        (adjacent pane has focus)
+ *   - focused   → `theme.focusAccent`    (adjacent pane has focus)
  *   - idle      → `theme.border`
  *
  * The component owns drag state and converts opentui MouseEvents into
@@ -42,7 +42,7 @@ export type ResizableEdgeProps = {
   /**
    * Optional accessor for "the adjacent pane is focused." When true and
    * the edge is idle (not hovered, not dragging), the edge picks up
-   * `theme.success` so the focus indicator the old `border={["right"]}`
+   * `theme.focusAccent` so the focus indicator the old `border={["right"]}`
    * gave us survives the refactor.
    */
   focused?: Accessor<boolean>
@@ -68,7 +68,7 @@ export function ResizableEdge(props: ResizableEdgeProps) {
   const color = () => {
     if (dragging()) return theme.accent
     if (hovering()) return theme.borderActive
-    if (props.focused?.()) return theme.success
+    if (props.focused?.()) return theme.focusAccent
     return theme.border
   }
 

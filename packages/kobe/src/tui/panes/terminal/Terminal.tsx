@@ -325,7 +325,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     <box
       flexDirection="column"
       flexGrow={1}
-      borderColor={focused() ? theme.borderActive : theme.border}
+      borderColor={focused() ? theme.focusAccent : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
       {/* Header (the parent PaneHeader already labels TERMINAL; this
