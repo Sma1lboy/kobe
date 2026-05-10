@@ -115,5 +115,10 @@ DialogConfirm.show = (
       ),
       () => resolve(undefined),
     )
+    // Confirms are tight yes/no prompts; the default 80-col card is
+    // grossly oversized for them. Switch to the narrow `small` width
+    // so the dialog reads at a glance instead of swallowing half the
+    // viewport with empty space.
+    dialog.setSize("small")
   })
 }

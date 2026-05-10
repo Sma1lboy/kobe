@@ -25,7 +25,7 @@ import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 
-export type DialogSize = "medium" | "large" | "xlarge"
+export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
 export function Dialog(
   props: ParentProps<{
@@ -45,9 +45,15 @@ export function Dialog(
   // while still capping at `dimensions().width - 2` (see maxWidth
   // below) for narrow PTY sizes. large + xlarge get proportional
   // bumps so the relative scale stays the same.
+  //
+  // `small` (50 cols) is for tight yes/no prompts — DialogConfirm,
+  // delete confirms, etc. Otherwise the medium 80-col card looks
+  // grossly oversized for two words and a button row. Callers opt
+  // in via `dialog.setSize("small")` (see DialogConfirm.show).
   const width = () => {
     if (props.size === "xlarge") return 140
     if (props.size === "large") return 110
+    if (props.size === "small") return 50
     return 80
   }
 

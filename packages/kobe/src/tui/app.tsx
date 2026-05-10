@@ -320,8 +320,18 @@ function NewTaskDialog(props: {
   // Dialog only asks for repo + branch now. The first prompt lives in
   // the chat composer — orchestrator.runTask back-fills the task title
   // from it on first submit (see PLACEHOLDER_TASK_TITLE in core.ts).
-  // Tab cycles between the two fields.
-  const [field, setField] = createSignal<"repo" | "baseRef">("repo")
+  //
+  // Three field states for repo selection:
+  //   - "repoPicker" (default, primary path) — picker is focused, the
+  //     custom-path input below is dim and inert. Arrow keys navigate
+  //     the list; enter commits the highlighted repo and advances to
+  //     baseRef.
+  //   - "repoCustom" — the user explicitly tabbed into the input to
+  //     type a path that isn't in the picker. Last-priority surface.
+  //   - "baseRef" — branch field (unchanged).
+  // Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
+  type Field = "repoPicker" | "repoCustom" | "baseRef"
+  const [field, setField] = createSignal<Field>("repoPicker")
   const [repo, setRepo] = createSignal(props.defaultRepo)
   const [baseRef, setBaseRef] = createSignal(DEFAULT_BASE_REF)
 
@@ -344,8 +354,12 @@ function NewTaskDialog(props: {
   // Substring filter against the repo input. Case-insensitive; empty
   // input returns the full list. The picker is augmenting the input,
   // not gating it, so an exact-match input still appears in the list.
+  // While the picker (not the input) has focus, the filter is bypassed
+  // so the user can browse the full list with arrow keys regardless
+  // of whatever they typed earlier.
   const repoFiltered = createMemo<readonly string[]>(() => {
     const all = repoOptions()
+    if (field() !== "repoCustom") return all
     const q = repo().trim().toLowerCase()
     if (!q) return all
     return all.filter((p) => p.toLowerCase().includes(q))
@@ -414,9 +428,10 @@ function NewTaskDialog(props: {
     const reason = validateRepoPath(r)
     if (reason) {
       setSubmitError(reason)
-      // Snap focus back to the repo field — the user has to fix it
-      // before anything else matters.
-      setField("repo")
+      // Snap focus back to the custom-path input — that's the field
+      // whose contents triggered the validation failure, so the user
+      // can fix the typo right there.
+      setField("repoCustom")
       return
     }
     const b = baseRef().trim() || DEFAULT_BASE_REF
@@ -424,54 +439,67 @@ function NewTaskDialog(props: {
     dialog.clear()
   }
 
+  // When the user picks a repo (enter on the picker row), commit the
+  // selection and advance to the baseRef field. Common helper so the
+  // mouse-click and keyboard-enter paths stay in lockstep.
+  function selectRepoAt(absoluteIndex: number): void {
+    const list = repoFiltered()
+    const picked = list[absoluteIndex]
+    if (!picked) return
+    setRepo(picked)
+    setRepoCursor(absoluteIndex)
+    setField("baseRef")
+  }
+
   useBindings(() => ({
     bindings: [
       {
-        // Tab toggles between repo and branch. Visual top-to-bottom
-        // order so muscle memory works.
+        // Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
+        // Lowest-priority surface (custom path typing) sits between
+        // the picker and the branch field.
         key: "tab",
-        cmd: () => setField((f) => (f === "repo" ? "baseRef" : "repo")),
+        cmd: () =>
+          setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
       },
-      // up/down are field-scoped: on the repo field they navigate the
-      // saved-repos picker; on the baseRef field they navigate the
-      // branch picker. Both pre-fill the input so `enter` commits the
-      // highlighted choice. Free-text editing remains available in
-      // either field.
       {
         key: "up",
         cmd: () => {
-          if (field() === "repo") {
+          if (field() === "repoPicker") {
             const list = repoFiltered()
             if (list.length === 0) return
-            const next = Math.max(0, repoCursor() - 1)
-            setRepoCursor(next)
-            // Don't pre-fill the input on arrow nav — that would
-            // collapse the filter to whatever the cursor is on and
-            // jump the list. Selection happens on enter / click.
+            setRepoCursor(Math.max(0, repoCursor() - 1))
             return
           }
+          if (field() === "repoCustom") return
           if (field() !== "baseRef") return
           const list = branchFiltered()
           if (list.length === 0) return
-          const next = Math.max(0, branchCursor() - 1)
-          setBranchCursor(next)
+          setBranchCursor(Math.max(0, branchCursor() - 1))
         },
       },
       {
         key: "down",
         cmd: () => {
-          if (field() === "repo") {
+          if (field() === "repoPicker") {
             const list = repoFiltered()
             if (list.length === 0) return
-            const next = Math.min(list.length - 1, repoCursor() + 1)
-            setRepoCursor(next)
+            setRepoCursor(Math.min(list.length - 1, repoCursor() + 1))
             return
           }
+          if (field() === "repoCustom") return
           if (field() !== "baseRef") return
           const list = branchFiltered()
           if (list.length === 0) return
-          const next = Math.min(list.length - 1, branchCursor() + 1)
-          setBranchCursor(next)
+          setBranchCursor(Math.min(list.length - 1, branchCursor() + 1))
+        },
+      },
+      {
+        // Enter on the picker = pick the highlighted repo + advance.
+        // The repoCustom + baseRef paths handle their own enter via
+        // the input's onSubmit hook.
+        key: "return",
+        cmd: () => {
+          if (field() === "repoPicker") selectRepoAt(repoCursor())
         },
       },
     ],
@@ -487,29 +515,16 @@ function NewTaskDialog(props: {
           esc
         </text>
       </box>
-      <box gap={0}>
-        <text fg={field() === "repo" ? theme.accent : theme.textMuted}>repo path</text>
-        <input
-          value={repo()}
-          placeholder={props.defaultRepo}
-          focused={field() === "repo"}
-          onInput={(v: string) => setRepo(stripNewlines(v))}
-          onSubmit={() => {
-            // If the picker has a highlighted match, prefer it over
-            // the typed text (matches the branch field's behavior).
-            const list = repoFiltered()
-            const picked = list[repoCursor()]
-            if (picked) setRepo(picked)
-            if (!repo().trim()) return
-            commit()
-          }}
-        />
-      </box>
-      {/* Repo picker: rendered when the repo field is focused. Lists
-          the launch cwd plus user-saved repos (`/add-repo`), filtered
-          by what the user types. Up/down navigate, click selects. */}
-      <Show when={field() === "repo" && repoFiltered().length > 0}>
-        <box gap={0} paddingLeft={2} paddingBottom={1}>
+      {/* Primary surface: pick a repo from the list. First entry is
+          the launch cwd (always present); the rest are user-curated
+          via /add-repo. Browsing this list is the default flow — the
+          user lands here on dialog open with the cursor on entry 0
+          (current dir). Enter commits and advances to baseRef.
+          Picker hidden when there are no candidate repos at all (rare
+          — defaultRepo is always in the list). */}
+      <Show when={repoOptions().length > 0}>
+        <box gap={0}>
+          <text fg={field() === "repoPicker" ? theme.accent : theme.textMuted}>pick a repo</text>
           <Show when={repoWindow().start > 0}>
             <text fg={theme.textMuted} wrapMode="none">
               ↑ {repoWindow().start} more
@@ -518,20 +533,19 @@ function NewTaskDialog(props: {
           <For each={repoWindow().items}>
             {(path, i) => {
               const absoluteIndex = () => repoWindow().start + i()
-              const isCursor = () => absoluteIndex() === repoCursor()
+              const isCursor = () => field() === "repoPicker" && absoluteIndex() === repoCursor()
               const isSelected = () => repo().trim() === path
+              const isCurrentDir = () => path === props.defaultRepo
               return (
                 <text
                   fg={isCursor() ? theme.primary : isSelected() ? theme.accent : theme.textMuted}
                   attributes={isCursor() ? TextAttributes.BOLD : undefined}
                   wrapMode="none"
-                  onMouseUp={() => {
-                    setRepo(path)
-                    setRepoCursor(absoluteIndex())
-                  }}
+                  onMouseUp={() => selectRepoAt(absoluteIndex())}
                 >
                   {isCursor() ? "▸ " : "  "}
                   {path}
+                  {isCurrentDir() ? "  (current dir)" : ""}
                 </text>
               )
             }}
@@ -543,6 +557,25 @@ function NewTaskDialog(props: {
           </Show>
         </box>
       </Show>
+      {/* Secondary surface: custom-path input. Tab once from the
+          picker to land here. Last-priority — only needed when the
+          user wants a repo that's not in the saved list and they
+          haven't run `/add-repo` for it yet. The label dims when the
+          field isn't focused so the picker reads as the primary
+          flow. */}
+      <box gap={0}>
+        <text fg={field() === "repoCustom" ? theme.accent : theme.textMuted}>or type a custom path</text>
+        <input
+          value={repo()}
+          placeholder={props.defaultRepo}
+          focused={field() === "repoCustom"}
+          onInput={(v: string) => setRepo(stripNewlines(v))}
+          onSubmit={() => {
+            if (!repo().trim()) return
+            commit()
+          }}
+        />
+      </box>
       <Show when={submitError()}>
         <text fg={theme.error}>※ {submitError()}</text>
       </Show>
@@ -628,7 +661,7 @@ function NewTaskDialog(props: {
         </box>
       </Show>
       <box paddingBottom={1}>
-        <text fg={theme.textMuted}>tab fields · type to filter · ↑↓ pick · enter create · esc cancel</text>
+        <text fg={theme.textMuted}>↑↓ pick · enter select · tab next field · esc cancel</text>
       </box>
     </box>
   )
