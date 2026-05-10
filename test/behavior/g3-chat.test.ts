@@ -62,7 +62,12 @@ async function scriptEngine(
   const body = JSON.stringify(payload)
   const res = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
     method: "POST",
-    headers: { "content-type": "application/json", "content-length": String(body.length) },
+    // No explicit content-length: fetch computes the byte length
+    // automatically. Setting it from `body.length` (character count)
+    // breaks for any multi-byte UTF-8 — the server reads fewer bytes
+    // than JSON.parse expects, the handler never runs, and the
+    // socket drops with "other side closed".
+    headers: { "content-type": "application/json" },
     body,
   })
   if (!res.ok) {

@@ -62,7 +62,12 @@ async function scriptEngine(
   const body = JSON.stringify(payload)
   const res = await fetch(`http://127.0.0.1:${port}${endpoint}`, {
     method: "POST",
-    headers: { "content-type": "application/json", "content-length": String(body.length) },
+    // No explicit content-length: fetch computes the byte length
+    // automatically. Setting it from `body.length` (character count)
+    // breaks for any multi-byte UTF-8 (e.g. em-dash) — the server
+    // reads fewer bytes than JSON.parse expects, the request handler
+    // never runs, and the socket drops with "other side closed".
+    headers: { "content-type": "application/json" },
     body,
   })
   if (!res.ok) {
@@ -155,13 +160,7 @@ afterEach(async () => {
 // ExitPlanMode — plan approval picker visible + composer locked
 // ---------------------------------------------------------------------
 
-// SKIP: caught a real regression in 0.1.0. The picker renders ("Awaiting
-// your approval" + plan body + Approve/Reject buttons all visible), but
-// the composer placeholder doesn't switch to the lock hint. Suspect the
-// multi-tab refactor changed how the composer reads pending state, or
-// hasPendingInput's scan stops too early on a user row that lands
-// between the prompt submit and the picker. Investigate before unskip.
-test.skip("approval — ExitPlanMode renders the plan + Approve/Reject buttons + locks composer", async () => {
+test("approval — ExitPlanMode renders the plan + Approve/Reject buttons + locks composer", async () => {
   const fixture = await buildFixture()
   tmpRoot = fixture.tmpRoot
   const port = await pickFreePort()
@@ -216,10 +215,17 @@ test.skip("approval — ExitPlanMode renders the plan + Approve/Reject buttons +
   expect(withPlan).toContain("Reject")
 
   // Composer locked — the placeholder switched to the lock hint.
-  // Single-letter `n` (the new-task shortcut) shouldn't be reachable
-  // either since chat is the focused pane after submit; we just check
-  // the placeholder text rather than try to type into a locked input.
-  expect(withPlan).toContain("answer the prompt above to continue")
+  // Allow a tick for the createMemo to recompute and Composer to
+  // re-render after the user_input.request event lands. Compare with
+  // whitespace collapsed: opentui's text wrapper drops the space at
+  // a wrap point, so the rendered string is "answerthe promptabove
+  // to continue" not "answer the prompt above to continue". We don't
+  // care about the wrap geometry; we only care that the lock copy is
+  // visible somewhere in the composer area.
+  await new Promise((r) => setTimeout(r, 500))
+  const lockedScreen = await kobe.capture()
+  expect(lockedScreen.replace(/\s+/g, "")).toContain("answertheprompt")
+  expect(lockedScreen.replace(/\s+/g, "")).toContain("tocontinue")
 
   await kobe.exit()
 }, 60_000)
@@ -228,13 +234,7 @@ test.skip("approval — ExitPlanMode renders the plan + Approve/Reject buttons +
 // AskUserQuestion — multi-choice picker visible + composer locked
 // ---------------------------------------------------------------------
 
-// SKIP: kobe crashes mid-test under the AskUserQuestion event payload —
-// the fake-engine HTTP server's connection drops between waitForFakeServer
-// and the next /script call. ExitPlanMode payloads with the same flow
-// don't trigger the crash, so the regression is specific to the
-// ask_question rendering or applyEvent path under multi-tab. Investigate
-// before unskip.
-test.skip("approval — AskUserQuestion renders the question + options + locks composer", async () => {
+test("approval — AskUserQuestion renders the question + options + locks composer", async () => {
   const fixture = await buildFixture()
   tmpRoot = fixture.tmpRoot
   const port = await pickFreePort()
@@ -291,8 +291,12 @@ test.skip("approval — AskUserQuestion renders the question + options + locks c
   // text is always there).
   expect(withQuestion).toContain("Submit")
 
-  // Composer locked.
-  expect(withQuestion).toContain("answer the prompt above to continue")
+  // Composer locked. Whitespace-collapsed compare — see the
+  // ExitPlanMode test for why.
+  await new Promise((r) => setTimeout(r, 500))
+  const lockedScreen = await kobe.capture()
+  expect(lockedScreen.replace(/\s+/g, "")).toContain("answertheprompt")
+  expect(lockedScreen.replace(/\s+/g, "")).toContain("tocontinue")
 
   await kobe.exit()
 }, 60_000)
