@@ -28,3 +28,13 @@ tsconfig.vitest-temp.json
 # autonomous-skill per-sprint worktrees + session state
 .worktrees/
 .autonomous/
+
+# Personal/local-only skill installs that shouldn't be checked in.
+# (Other .claude/skills/ entries are committed via the !.claude/skills/
+# rule above; this list overrides them back to ignored.)
+.claude/skills/handoff/
+
+# Per-package .claude/ directories — agent-run worktrees and other
+# runtime artefacts. Root .claude/ is already covered above; this
+# catches the same shape one level deeper.
+packages/*/.claude/
