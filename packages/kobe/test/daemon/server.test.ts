@@ -306,6 +306,68 @@ describe("daemon server", () => {
     }
   })
 
+  test("chat.tab.activate broadcasts task.updated so clients learn the new activeTabId", async () => {
+    // Regression: chat-tab switching looked broken from the TUI side.
+    // The composer flipped activeTabIdLocal optimistically, then
+    // Chat's syncTabSubs effect read the stale tasks signal (which
+    // still pointed at the old tab because the daemon never
+    // broadcast the change) and forced it back. Result: clicking
+    // chat 2 visually snapped to chat 2 then immediately reverted.
+    // Fix: every task-mutating handler broadcasts task.updated.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      await client.request("hello", { clientId: "test", version: "test" })
+      const spawned = await client.request<{ taskId: string }>("task.spawn", { repo, title: "switch" })
+      const created = await client.request<{ tab: { id: string } }>("chat.tab.create", { taskId: spawned.taskId })
+      const updatedPromise = new Promise<{ task: { activeTabId: string } }>((resolve) => {
+        client.on("task.updated", (frame) => {
+          const payload = frame.payload as { task: { activeTabId: string } }
+          if (payload.task.activeTabId === created.tab.id) resolve(payload)
+        })
+      })
+      await client.request("chat.tab.activate", { taskId: spawned.taskId, tabId: created.tab.id })
+      const evt = await updatedPromise
+      expect(evt.task.activeTabId).toBe(created.tab.id)
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
+  test("chat.tab.create broadcasts task.updated so the new tab appears in every client's tab list", async () => {
+    // Companion regression: opening a new tab via the workspace
+    // strip must surface to other attached windows. Without the
+    // task.updated broadcast the spawning client's own tabs mirror
+    // also stays empty until next attach.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const a = new KobeDaemonClient(socketPath)
+    const b = new KobeDaemonClient(socketPath)
+    try {
+      await a.connect()
+      await b.connect()
+      const spawned = await a.request<{ taskId: string }>("task.spawn", { repo, title: "new-tab-fanout" })
+      const updatedOnB = new Promise<{ task: { tabs: Array<{ id: string }> } }>((resolve) => {
+        b.on("task.updated", (frame) => {
+          const payload = frame.payload as { taskId: string; task: { tabs: Array<{ id: string }> } }
+          if (payload.taskId === spawned.taskId && payload.task.tabs.length >= 2) resolve(payload)
+        })
+      })
+      await a.request("chat.tab.create", { taskId: spawned.taskId })
+      const evt = await updatedOnB
+      expect(evt.task.tabs.length).toBe(2)
+    } finally {
+      a.close()
+      b.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("task.deleted clears subscriptions on every client", async () => {
     // Sanity: after deleteTask, no further events for that task should
     // reach attached clients. Belt-and-suspenders for the

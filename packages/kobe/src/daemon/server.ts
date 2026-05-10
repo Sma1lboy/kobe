@@ -180,6 +180,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "task.pin": {
         const taskId = requireString(payload, "taskId")
         await orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "task.permissionMode": {
@@ -187,10 +188,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const mode = optionalString(payload, "mode")
         if (mode !== undefined && mode !== "default" && mode !== "plan") throw new Error("mode must be default or plan")
         await orch.setPermissionMode(taskId, mode)
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "task.model": {
-        await orch.setModel(requireString(payload, "taskId"), optionalString(payload, "model"))
+        const taskId = requireString(payload, "taskId")
+        await orch.setModel(taskId, optionalString(payload, "model"))
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "task.ensureMain": {
@@ -205,22 +209,25 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // tab on every create — N tabs ⇒ N redundant callbacks per
         // delta. Per-tab + dedupe (the Map key) prevents that leak.
         for (const c of clients) subscribeClientToTab(orch, c, taskId, tab.id)
+        broadcastTaskUpdated(orch, clients, taskId)
         return { tab }
       }
       case "chat.tab.close": {
-        const nextActive = await orch.closeTab(requireString(payload, "taskId"), requireString(payload, "tabId"))
+        const taskId = requireString(payload, "taskId")
+        const nextActive = await orch.closeTab(taskId, requireString(payload, "tabId"))
+        broadcastTaskUpdated(orch, clients, taskId)
         return { nextActive }
       }
       case "chat.tab.activate": {
-        await orch.setActiveTab(requireString(payload, "taskId"), requireString(payload, "tabId"))
+        const taskId = requireString(payload, "taskId")
+        await orch.setActiveTab(taskId, requireString(payload, "tabId"))
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "chat.tab.rename": {
-        await orch.setTabTitle(
-          requireString(payload, "taskId"),
-          requireString(payload, "tabId"),
-          requireString(payload, "title"),
-        )
+        const taskId = requireString(payload, "taskId")
+        await orch.setTabTitle(taskId, requireString(payload, "tabId"), requireString(payload, "title"))
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "chat.sessions": {
@@ -228,13 +235,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return { sessions }
       }
       case "chat.session.open": {
-        const tabId = await orch.openSessionInTab(
-          requireString(payload, "taskId"),
-          requireString(payload, "sessionId"),
-          {
-            title: optionalString(payload, "title"),
-          },
-        )
+        const taskId = requireString(payload, "taskId")
+        const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {
+          title: optionalString(payload, "title"),
+        })
+        // openSessionInTab appends a new tab; subscribe every attached
+        // client to its event bus so live deltas reach them.
+        for (const c of clients) subscribeClientToTab(orch, c, taskId, tabId)
+        broadcastTaskUpdated(orch, clients, taskId)
         return { tabId }
       }
       case "chat.interrupt": {
@@ -365,6 +373,24 @@ function subscribeClientToTab(orch: Orchestrator, client: ClientState, taskId: s
     tabId,
   )
   client.subscriptions.set(key, unsub)
+}
+
+/**
+ * Fetch the post-mutation task from the orchestrator and broadcast it
+ * as a `task.updated` delta to every attached client. Called by handlers
+ * that change task fields (pin, permission mode, model, tab create /
+ * close / activate / rename, session open) so RemoteOrchestrator
+ * mirrors of the same task stay in sync — otherwise an optimistic
+ * client-side update (e.g. Chat's `setActiveTabIdLocal`) gets reverted
+ * by the next reactive read of the stale tasks signal.
+ *
+ * Silent if the task no longer exists (e.g. raced with a delete) —
+ * the deletion broadcast handles that path.
+ */
+function broadcastTaskUpdated(orch: Orchestrator, clients: ReadonlySet<ClientState>, taskId: string): void {
+  const task = orch.getTask(taskId)
+  if (!task) return
+  broadcast(clients, { type: "event", name: "task.updated", payload: { taskId, task: serializeTask(task) } })
 }
 
 function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
