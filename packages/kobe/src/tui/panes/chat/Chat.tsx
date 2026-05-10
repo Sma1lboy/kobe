@@ -97,6 +97,13 @@ export type ChatProps = {
    * own focus.
    */
   focused?: Accessor<boolean>
+  /**
+   * Whether the chat pane is engaged (textarea takes the keyboard).
+   * In select mode (focused but not engaged) the rail still
+   * highlights but global nav chords (ctrl+hjkl, tab, esc) work.
+   * Falls back to `focused` for legacy single-mode hosts.
+   */
+  engaged?: Accessor<boolean>
 }
 
 export function Chat(props: ChatProps) {
@@ -809,7 +816,7 @@ export function Chat(props: ChatProps) {
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
-      {/* Composer. */}
+      {/* Composer. focused = visual rail; engaged = textarea native focus. */}
       <Composer
         draft={draft()}
         onDraftChange={setDraft}
@@ -824,6 +831,7 @@ export function Chat(props: ChatProps) {
         }
         onSubmit={handleComposerSubmit}
         focused={props.focused}
+        engaged={props.engaged}
         // Per-tab history scope — prompt history shouldn't bleed across tabs.
         historyKey={activeTabId() ?? props.taskId()}
         slashes={slashes}

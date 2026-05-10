@@ -63,7 +63,16 @@ export type TerminalProps = {
   cwd: Accessor<string | null>
   /** Stable id used for tmux session naming or pty registry keying. */
   taskId: Accessor<string | null>
+  /** Whether the terminal pane is selected (border highlight, scroll OK). */
   focused?: Accessor<boolean>
+  /**
+   * Whether the terminal pane is engaged (mode === "engaged"). Only
+   * when engaged does the pane forward keystrokes to the PTY child.
+   * Optional for backwards compat with hosts that don't pass it (tests);
+   * defaults to falling back to `focused` so the pane behaves the old
+   * way (single-mode, always-passthrough-when-focused).
+   */
+  engaged?: Accessor<boolean>
   /**
    * Optional registry override (tests inject a mock-backed registry).
    * Production usage relies on a single module-level registry below;
@@ -124,6 +133,11 @@ export function Terminal(props: TerminalProps): JSXElement {
   // provided so behavior tests can drive focus.
   const [focusedLocal, setFocusedLocal] = createSignal(false)
   const focused = () => props.focused?.() ?? focusedLocal()
+  // Engaged: when true the pane forwards every keystroke to the PTY.
+  // Defaults to `focused` so legacy callers (tests, host-mode)
+  // continue to behave as before — they're effectively single-mode
+  // (always-engaged-when-focused).
+  const engaged = () => props.engaged?.() ?? focused()
 
   // The current PTY — null when no task is active.
   const [pty, setPty] = createSignal<TaskPty | null>(null)
@@ -215,6 +229,7 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   useTerminalBindings({
     focused,
+    engaged,
     write: (data) => {
       const handle = pty()
       if (!handle || handle.killed) return
@@ -325,7 +340,10 @@ export function Terminal(props: TerminalProps): JSXElement {
     <box
       flexDirection="column"
       flexGrow={1}
-      borderColor={focused() ? theme.focusAccent : theme.border}
+      // engaged → brighter brand hue (your keystrokes go here);
+      // focused/select → dim accent (border highlight only, no input);
+      // idle → muted border.
+      borderColor={engaged() ? theme.primary : focused() ? theme.focusAccent : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
       {/* Header (the parent PaneHeader already labels TERMINAL; this

@@ -1194,13 +1194,30 @@ function Shell(props: AppDeps) {
     l: "terminal",
   }
   useBindings(() => ({
-    enabled: dialog.stack.length === 0,
+    // Disabled in engaged mode — when the user is typing in chat or
+    // shelling in terminal, ctrl+hjkl must not steal them. They have
+    // to esc back to select mode first. (Sidebar/files focused is
+    // implicitly engaged but pane-local since those panes have no
+    // input — ctrl+hjkl works there.)
+    enabled: dialog.stack.length === 0 && focus.mode() === "select",
     bindings: bindByIds({
       "focus.numeric": (evt) => {
         const target = FOCUS_HJKL_TARGETS[evt.name ?? ""]
         if (target) setFocusedPane(target)
       },
     }),
+  }))
+
+  // Enter in select mode on workspace/terminal → engage. Sidebar and
+  // files have their own pane-local enter (open-task / open-file);
+  // those are higher priority on the LIFO binding stack so this
+  // global binding only fires when those panes don't claim enter.
+  useBindings(() => ({
+    enabled:
+      dialog.stack.length === 0 &&
+      focus.mode() === "select" &&
+      (focusedPane() === "workspace" || focusedPane() === "terminal"),
+    bindings: [{ key: "return", cmd: () => focus.engage() }],
   }))
 
   // Keyboard resize for the focused pane — fallback when mouse drag
@@ -1295,14 +1312,14 @@ function Shell(props: AppDeps) {
     previewApi()?.open(relPath)
     // Opening a file from the file tree pulls focus to the workspace
     // so the user can scroll/read with j/k without an extra ctrl+2.
-    setFocusedPane("workspace")
+    setFocusedPane("workspace", { engage: true })
   }
 
   function selectChatTab(): void {
     const id = selectedId()
     if (!id) return
     mutateTabs(id, (cur) => ({ ...cur, active: "chat" }))
-    setFocusedPane("workspace")
+    setFocusedPane("workspace", { engage: true })
   }
 
   // Chat tabs (multitab) — pulled off the active task so the
@@ -1321,7 +1338,7 @@ function Shell(props: AppDeps) {
       console.error("[kobe] setActiveTab failed:", err)
     })
     mutateTabs(id, (cur) => ({ ...cur, active: "chat" }))
-    setFocusedPane("workspace")
+    setFocusedPane("workspace", { engage: true })
   }
 
   function selectFileTab(relPath: string): void {
@@ -1329,7 +1346,7 @@ function Shell(props: AppDeps) {
     if (!id) return
     mutateTabs(id, (cur) => ({ ...cur, active: { kind: "file", path: relPath } }))
     previewApi()?.open(relPath)
-    setFocusedPane("workspace")
+    setFocusedPane("workspace", { engage: true })
   }
 
   function closeFileTab(relPath: string): void {
@@ -1383,14 +1400,25 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
-    onFocusDetach: () => setFocusedPane("sidebar"),
-    // Tab cycle is no-op while workspace is focused so the composer's
-    // own tab handling (dialog field cycling, indent, etc.) wins.
+    // esc has three jobs depending on state:
+    //   1. dialog open  → close dialog (handled inside useKobeKeybindings)
+    //   2. engaged mode → disengage (stay on pane, release input)
+    //   3. select mode  → detach back to sidebar
+    // Cases 2 + 3 land here — useKobeKeybindings already handled (1).
+    onFocusDetach: () => {
+      if (focus.mode() === "engaged") {
+        focus.disengage()
+      } else {
+        setFocusedPane("sidebar")
+      }
+    },
+    // Tab cycle is select-mode only. In engaged mode we forward tab
+    // to whichever pane owns input (composer indent / shell autocomp).
     onFocusNext: () => {
-      if (focusedPane() !== "workspace") focus.cycle(1)
+      if (focus.mode() === "select") focus.cycle(1)
     },
     onFocusPrev: () => {
-      if (focusedPane() !== "workspace") focus.cycle(-1)
+      if (focus.mode() === "select") focus.cycle(-1)
     },
   })
 
@@ -1422,7 +1450,7 @@ function Shell(props: AppDeps) {
       // without an extra ctrl+2. Mirrors the sidebar's onSelect
       // behaviour — both "user wants to look at this task" entry
       // points should land in the same place.
-      setFocusedPane("workspace")
+      setFocusedPane("workspace", { engage: true })
     } catch (err) {
       // Surface failure as stderr; we don't have a global banner yet,
       // and the chat pane may not be subscribed (no task selected).
@@ -1653,7 +1681,7 @@ function Shell(props: AppDeps) {
               // Selecting a task usually means "I want to look at it" —
               // pull focus to workspace so the user can immediately type
               // / scroll without another ctrl+2.
-              setFocusedPane("workspace")
+              setFocusedPane("workspace", { engage: true })
             }}
             onDeleteRequest={(id: string) => {
               void confirmDeleteTask(id)
@@ -1693,7 +1721,7 @@ function Shell(props: AppDeps) {
           flexDirection="column"
           flexShrink={0}
           width={workspaceWidth()}
-          onMouseUp={() => setFocusedPane("workspace")}
+          onMouseUp={() => setFocusedPane("workspace", { engage: true })}
         >
           <PaneHeader
             title="WORKSPACE"
@@ -1732,6 +1760,7 @@ function Shell(props: AppDeps) {
                 pendingPrompt={pendingPromptForActive}
                 onPendingPromptConsumed={() => setPendingPrompt(null)}
                 focused={isFocused("workspace")}
+                engaged={focus.isEngaged("workspace")}
               />
             </Show>
           </box>
@@ -1779,7 +1808,12 @@ function Shell(props: AppDeps) {
               focused={focusedPane() === "terminal"}
             />
             <box flexGrow={1}>
-              <Terminal cwd={worktreePathAcc} taskId={taskIdNullAcc} focused={isFocused("terminal")} />
+              <Terminal
+                cwd={worktreePathAcc}
+                taskId={taskIdNullAcc}
+                focused={isFocused("terminal")}
+                engaged={focus.isEngaged("terminal")}
+              />
             </box>
           </box>
         </box>

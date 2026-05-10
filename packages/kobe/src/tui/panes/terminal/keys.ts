@@ -58,8 +58,21 @@ export { DEFAULT_PAGE_SIZE, TRAPPED_KEYS, keyEventToShellBytes }
  * keystrokes into the right channel.
  */
 export type TerminalBindingsOpts = {
-  /** Whether the terminal pane currently has focus. */
+  /**
+   * Whether the terminal pane is currently selected (border highlight).
+   * Used to gate scrollback chord (`ctrl+pgup`/`ctrl+pgdown`) — those
+   * stay available in select mode so the user can browse history
+   * without engaging the shell.
+   */
   focused: Accessor<boolean>
+  /**
+   * Whether the terminal pane is engaged (mode === "engaged"). Only
+   * when engaged does the pane forward keystrokes to the PTY child.
+   * In select mode the terminal pane is "passive" — it shows the shell
+   * output but doesn't capture input, so global nav chords (ctrl+hjkl,
+   * tab, esc) work normally.
+   */
+  engaged: Accessor<boolean>
   /** Forward a byte sequence to the underlying PTY. */
   write: (data: string) => void
   /** Scroll the local scrollback view by N lines (negative = up). */
@@ -86,28 +99,27 @@ export type TerminalBindingsOpts = {
 export function useTerminalBindings(opts: TerminalBindingsOpts): void {
   const pageSize = () => opts.pageSize?.() ?? DEFAULT_PAGE_SIZE
 
-  const bindings: { key: string; cmd: (evt: KeyEvent) => void }[] = []
+  // Scroll bindings are available whenever the terminal pane is
+  // selected — even in select mode, the user should be able to browse
+  // scrollback without engaging the shell.
+  const scrollBindings = bindByIds({
+    "terminal.scroll-up": () => opts.scroll(-pageSize()),
+    "terminal.scroll-down": () => opts.scroll(pageSize()),
+  })
 
-  // Scrollback exceptions FIRST so they take precedence over any
-  // passthrough variants of `pageup`/`pagedown` registered later in
-  // the table. Chord strings come from KobeKeymap via bindByIds so
-  // this pane stays in sync with the central registry.
-  bindings.push(
-    ...bindByIds({
-      "terminal.scroll-up": () => opts.scroll(-pageSize()),
-      "terminal.scroll-down": () => opts.scroll(pageSize()),
-    }),
-  )
-
+  // Passthrough bindings forward every keystroke to the PTY child.
+  // ONLY active in engaged mode — in select mode these chords fall
+  // through to the global keymap so nav (ctrl+hjkl, tab, esc) works.
+  const passthroughBindings: { key: string; cmd: (evt: KeyEvent) => void }[] = []
   for (const name of PASSTHROUGH_NAMES) {
-    bindings.push({
+    passthroughBindings.push({
       key: name,
       cmd: (evt) => {
         const bytes = keyEventToShellBytes(evt)
         if (bytes != null) opts.write(bytes)
       },
     })
-    bindings.push({
+    passthroughBindings.push({
       key: `ctrl+${name}`,
       cmd: (evt) => {
         const bytes = keyEventToShellBytes(evt)
@@ -116,8 +128,16 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
     })
   }
 
+  // Two separate binding groups so the gates differ: scroll is on
+  // when the pane is selected; passthrough is on only when engaged.
+  // Order matters — scroll registers first so `ctrl+pgup`/`ctrl+pgdown`
+  // wins over the engaged-mode passthrough variants registered next.
   useBindings(() => ({
     enabled: opts.focused(),
-    bindings,
+    bindings: scrollBindings,
+  }))
+  useBindings(() => ({
+    enabled: opts.engaged(),
+    bindings: passthroughBindings,
   }))
 }

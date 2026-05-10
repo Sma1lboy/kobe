@@ -116,9 +116,17 @@ export interface ComposerProps {
   /**
    * When true, the composer's accent rail picks up `theme.primary`
    * instead of `theme.border`. Optional: callers that don't thread
-   * focus get the unfocused (idle) styling.
+   * focus get the unfocused (idle) styling. This is the "selected"
+   * signal — it controls visuals only, not native keyboard capture.
    */
   focused?: Accessor<boolean>
+  /**
+   * When true, the textarea grabs native opentui focus and starts
+   * eating keystrokes. This is the engaged-mode signal. Optional;
+   * when omitted, falls back to `focused` so single-mode hosts (tests,
+   * legacy embedders) work without changes.
+   */
+  engaged?: Accessor<boolean>
   /**
    * Optional model label rendered on the right side of the inline
    * footer (e.g. `"Claude Sonnet 4.6"`). Falls back to the literal
@@ -228,14 +236,20 @@ export function Composer(props: ComposerProps) {
     setSlashCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
   })
 
-  // Mirror the workspace pane's focus state onto the textarea. Without
-  // this, Tab-ing into the workspace highlights the rail but keystrokes
-  // still go to whichever pane previously held opentui focus, and
-  // Tab-ing away leaves the textarea greedily eating keys it shouldn't.
+  // Mirror the workspace pane's *engaged* state onto the textarea.
+  // Without this, Tab-ing into the workspace highlights the rail but
+  // keystrokes still go to whichever pane previously held opentui
+  // focus, and Tab-ing away leaves the textarea greedily eating keys
+  // it shouldn't. We mirror engaged (not selected) so global nav
+  // chords (ctrl+hjkl, tab, esc) keep working in select mode — the
+  // textarea only takes over once the user explicitly engages.
+  // `engaged` falls back to `focused` so single-mode hosts (tests,
+  // legacy embedders) keep their always-engaged-when-focused behavior.
+  const isEngaged = () => props.engaged?.() ?? props.focused?.() ?? false
   createEffect(() => {
     const ref = textareaRef
     if (!ref) return
-    if (props.focused?.()) ref.focus()
+    if (isEngaged()) ref.focus()
     else ref.blur()
   })
 
@@ -633,14 +647,25 @@ export function Composer(props: ComposerProps) {
         return theme.textMuted
     }
   }
-  // Rail color priority: non-default mode > focused > idle border. Mode
-  // wins over focus so the visual signal "you are in plan mode" persists
-  // even when the user clicks into a sibling pane (you'd otherwise drop
-  // back to the muted border and forget the mode is on).
+  // Rail color priority:
+  //   non-default mode (plan / bypass) > engaged > focused (select) > idle.
+  //
+  // Mode wins over focus so "you are in plan mode" persists even when
+  // clicking into a sibling pane.
+  //
+  // Engaged vs focused: when the workspace is engaged (textarea takes
+  // keys), the rail brightens to theme.primary — the same brand hue used
+  // in single-mode hosts that pre-date the two-tier focus model. When
+  // the workspace is merely focused/selected (border highlight, but the
+  // user hasn't pressed enter yet), we step down to theme.focusAccent so
+  // the visual cue tracks the keyboard semantics: brighter rail = your
+  // typing goes here.
   const railColor = () => {
     const badge = modeBadge()
     if (badge) return toneColor(badge.tone)
-    if (props.focused?.()) return theme.primary
+    const engaged = props.engaged?.() ?? props.focused?.() ?? false
+    if (engaged) return theme.primary
+    if (props.focused?.()) return theme.focusAccent
     return theme.border
   }
 
@@ -748,11 +773,14 @@ export function Composer(props: ComposerProps) {
                     // matches.
                     if (props.draft) r.setText(props.draft)
                     // Only grab keyboard focus when the workspace pane
-                    // owns focus. On cold boot the sidebar is the
-                    // default focused pane (see FocusProvider) — stealing
-                    // focus here would desync the StatusBar label from
-                    // who actually receives keystrokes.
-                    if (props.focused?.()) r.focus()
+                    // is engaged. On cold boot we're in select mode
+                    // (sidebar focused) — stealing focus here would
+                    // desync the StatusBar label from who actually
+                    // receives keystrokes. With the two-tier model,
+                    // even when the workspace is selected we wait for
+                    // the user to press enter (engage) before taking
+                    // over keys.
+                    if (isEngaged()) r.focus()
                   }}
                   placeholder={resolvePlaceholder({
                     isStreaming: props.isStreaming,
