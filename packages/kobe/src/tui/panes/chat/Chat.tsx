@@ -899,11 +899,7 @@ function QueuedPromptList(props: {
               <box flexGrow={1}>
                 <text fg={theme.text}>{entry.text}</text>
               </box>
-              <text
-                fg={theme.error}
-                attributes={TextAttributes.BOLD}
-                onMouseUp={() => props.onCancel(entry.id)}
-              >
+              <text fg={theme.error} attributes={TextAttributes.BOLD} onMouseUp={() => props.onCancel(entry.id)}>
                 [x]
               </text>
             </box>

@@ -128,8 +128,7 @@ export function Sidebar(props: SidebarProps) {
   //                               in every bundled theme; `accent`
   //                               collides with primary in claude.json)
   //   idle     → theme.textMuted
-  const titleColor = () =>
-    engagedAccessor() ? theme.primary : focusedAccessor() ? theme.info : theme.textMuted
+  const titleColor = () => (engagedAccessor() ? theme.primary : focusedAccessor() ? theme.info : theme.textMuted)
 
   // Active view; default to the working session. `[` / `]` cycle
   // through `VIEW_TABS`.

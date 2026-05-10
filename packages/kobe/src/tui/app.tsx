@@ -459,8 +459,7 @@ function NewTaskDialog(props: {
         // Lowest-priority surface (custom path typing) sits between
         // the picker and the branch field.
         key: "tab",
-        cmd: () =>
-          setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
+        cmd: () => setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
       },
       {
         key: "up",
@@ -1805,7 +1804,12 @@ function Shell(props: AppDeps) {
             backgroundPanel tone as the sidebar so the two rails feel
             symmetric and the chat in the middle is visibly the focus. */}
         <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
-          <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files", { engage: true })}>
+          <box
+            flexShrink={0}
+            height={filesHeight()}
+            flexDirection="column"
+            onMouseUp={() => setFocusedPane("files", { engage: true })}
+          >
             <PaneHeader
               title="FILES"
               ordinal="k"

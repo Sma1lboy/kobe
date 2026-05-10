@@ -58,6 +58,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
+import { resolveDefaultModelId } from "../tui/panes/chat/composer/claude-settings.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -71,7 +72,6 @@ import type {
   UserInputResponse,
 } from "../types/engine.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
-import { resolveDefaultModelId } from "../tui/panes/chat/composer/claude-settings.ts"
 import { suggestBranchSlug } from "./branch-suggestion.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"

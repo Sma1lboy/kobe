@@ -28,8 +28,8 @@
  * don't fs-stat on every render.
  */
 
-import { homedir } from "node:os"
 import { readFileSync } from "node:fs"
+import { homedir } from "node:os"
 import { join } from "node:path"
 
 /** Path matches claude-code's `getSettings_DEPRECATED()` location. */

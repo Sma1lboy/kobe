@@ -331,11 +331,7 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
  * the same millisecond distinct (Date.now() granularity isn't fine
  * enough on fast machines).
  */
-export function enqueuePrompt(
-  state: ChatState,
-  prompt: string,
-  nowIso: string = new Date().toISOString(),
-): ChatState {
+export function enqueuePrompt(state: ChatState, prompt: string, nowIso: string = new Date().toISOString()): ChatState {
   if (state.queue.length >= QUEUE_SOFT_CAP) return state
   const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
   return {

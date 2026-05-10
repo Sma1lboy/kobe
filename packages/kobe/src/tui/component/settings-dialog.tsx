@@ -23,10 +23,10 @@
  *   - `esc`     — close (handled by the dialog stack).
  */
 
-import { TextAttributes } from "@opentui/core"
-import { useRenderer } from "@opentui/solid"
 import { unlinkSync } from "node:fs"
 import { join } from "node:path"
+import { TextAttributes } from "@opentui/core"
+import { useRenderer } from "@opentui/solid"
 import { For, Show, createMemo, createSignal } from "solid-js"
 import { homeDir } from "../../env"
 import type { KVContext } from "../context/kv"
@@ -316,13 +316,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   }}
                 >
                   <text
-                    fg={
-                      isSidebarFocused()
-                        ? theme.selectedListItemText
-                        : isSection()
-                          ? theme.accent
-                          : theme.textMuted
-                    }
+                    fg={isSidebarFocused() ? theme.selectedListItemText : isSection() ? theme.accent : theme.textMuted}
                     attributes={isSection() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
                   >
