@@ -119,8 +119,19 @@ export type EngineEvent =
   | { readonly type: "tool.start"; readonly name: string; readonly input: unknown }
   /** A tool call completed. `output` is the parsed tool result. */
   | { readonly type: "tool.result"; readonly name: string; readonly output: unknown }
-  /** Token usage report; emitted at least once per turn (typically at end). */
-  | { readonly type: "usage"; readonly input_tokens: number; readonly output_tokens: number }
+  /**
+   * Token usage report; emitted at least once per turn (typically on the
+   * terminal `result` frame). Optional cache fields mirror Anthropic's API
+   * when prompt caching is active — include them in any "context used"
+   * tally so the meter matches Claude Code.
+   */
+  | {
+      readonly type: "usage"
+      readonly input_tokens: number
+      readonly output_tokens: number
+      readonly cache_read_input_tokens?: number
+      readonly cache_creation_input_tokens?: number
+    }
   /** Session is finished cleanly. No more events will follow. */
   | { readonly type: "done" }
   /** Fatal error. The session is dead after this; no `done` follows. */

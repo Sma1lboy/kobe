@@ -52,8 +52,9 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
-import { modelLabelFor } from "./composer/models"
+import { modelLabelFor, resolveDefaultModelId } from "./composer/models"
 import { loadUserSlashes } from "./composer/user-slashes"
+import { formatContextUsageCompact } from "./context-meter"
 import {
   type ChatState,
   applyEvent,
@@ -98,6 +99,11 @@ export type ChatProps = {
    * own focus.
    */
   focused?: Accessor<boolean>
+  /**
+   * Live context-usage label for the WORKSPACE pane header (e.g. `12% · 24k/200k`).
+   * Parent passes null to clear.
+   */
+  onContextMeter?: (label: string | null) => void
   /**
    * Rename-tab callback. Fires on `ctrl+r` with the active chat tab
    * id; the parent (app.tsx) opens an input dialog and calls
@@ -205,6 +211,24 @@ export function Chat(props: ChatProps) {
     if (!id) return createInitialState()
     return statesByTab().get(id) ?? createInitialState()
   })
+
+  const contextMeterLabel = createMemo(() => {
+    const tid = props.taskId()
+    const tabId = activeTabId()
+    if (!tid || !tabId) return null
+    const st = statesByTab().get(tabId)
+    const u = st?.lastUsage
+    if (!u) return null
+    const task = props.orchestrator.getTask(tid)
+    const modelId = task?.model ?? resolveDefaultModelId()
+    return formatContextUsageCompact(u, modelId)
+  })
+
+  createEffect(
+    on(contextMeterLabel, (label) => {
+      props.onContextMeter?.(label ?? null)
+    }),
+  )
 
   function patchActiveState(updater: (s: ChatState) => ChatState): void {
     const id = activeTabId()

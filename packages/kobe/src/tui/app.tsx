@@ -25,7 +25,7 @@ import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
 import { type ChatRunState, Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
@@ -790,7 +790,14 @@ export type AppDeps = {
 /* --------------------------------------------------------------------- */
 /*  PaneHeader — uniform CAPS-bold pane label (agent-deck-style chunking)  */
 /* --------------------------------------------------------------------- */
-function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean; ordinal?: string | number }) {
+function PaneHeader(props: {
+  title: string
+  subtitle?: string
+  /** Far-right hint (e.g. context %). Shown after `subtitle` when both exist. */
+  asideRight?: string
+  focused?: boolean
+  ordinal?: string | number
+}) {
   const { theme } = useTheme()
   // Focused panes paint in `theme.focusAccent` — a user-controllable
   // slot (Settings → General → Focus accent) that resolves to one of
@@ -802,6 +809,7 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
   // up the active pane.
   const focused = () => props.focused !== false
   const titleColor = () => (focused() ? theme.focusAccent : theme.textMuted)
+  const hasRight = () => Boolean(props.subtitle) || Boolean(props.asideRight)
   return (
     <box
       flexDirection="row"
@@ -831,10 +839,19 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
           {props.title}
         </text>
       </box>
-      <Show when={props.subtitle}>
-        <text fg={theme.textMuted} wrapMode="none">
-          {props.subtitle}
-        </text>
+      <Show when={hasRight()}>
+        <box flexDirection="row" gap={2} flexShrink={0}>
+          <Show when={props.subtitle}>
+            <text fg={theme.textMuted} wrapMode="none" flexShrink={1}>
+              {props.subtitle}
+            </text>
+          </Show>
+          <Show when={props.asideRight}>
+            <text fg={theme.textMuted} wrapMode="none">
+              {props.asideRight}
+            </text>
+          </Show>
+        </box>
       </Show>
     </box>
   )
@@ -1034,6 +1051,8 @@ function Shell(props: AppDeps) {
   // prompt the user typed in the dialog. The chat clears it on
   // consumption to avoid re-submission on resubscribe.
   const [pendingPrompt, setPendingPrompt] = createSignal<{ taskId: string; prompt: string } | null>(null)
+  /** Workspace header context meter (`12% · 24k/200k`), fed by the active chat tab. */
+  const [workspaceContextAside, setWorkspaceContextAside] = createSignal<string | null>(null)
 
   // Background npm-registry version check. Cached for 6h on disk, so
   // typical cold boots return synchronously off the cache. The first
@@ -1061,6 +1080,11 @@ function Shell(props: AppDeps) {
   // auto-submitting a leftover prompt against the wrong task after
   // a switch.
   const taskIdAcc = createMemo(() => selectedId() ?? undefined)
+  createEffect(
+    on(taskIdAcc, () => {
+      setWorkspaceContextAside(null)
+    }),
+  )
   const activeTitleAcc = createMemo(() => activeTask()?.title)
   const pendingPromptForActive = createMemo(() => {
     const pp = pendingPrompt()
@@ -1789,6 +1813,7 @@ function Shell(props: AppDeps) {
             title="WORKSPACE"
             ordinal="j"
             subtitle={activeTask()?.title ?? "no task"}
+            asideRight={isChatTabActive() ? (workspaceContextAside() ?? undefined) : undefined}
             focused={focusedPane() === "workspace"}
           />
           <CenterTabStrip
@@ -1824,6 +1849,7 @@ function Shell(props: AppDeps) {
                 pendingPrompt={pendingPromptForActive}
                 onPendingPromptConsumed={() => setPendingPrompt(null)}
                 focused={isFocused("workspace")}
+                onContextMeter={(label) => setWorkspaceContextAside(label)}
                 onRenameTabRequest={(tabId: string) => {
                   void confirmRenameChatTab(tabId)
                 }}

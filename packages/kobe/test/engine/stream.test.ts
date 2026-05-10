@@ -111,6 +111,35 @@ describe("parseStreamJson", () => {
     expect(events).toEqual([{ type: "usage", input_tokens: 12, output_tokens: 34 }, { type: "done" }])
   })
 
+  it("emits usage with cache fields when present", async () => {
+    const events = await collect(
+      parseStreamJson(
+        linesFrom([
+          JSON.stringify({
+            type: "result",
+            subtype: "success",
+            usage: {
+              input_tokens: 100,
+              output_tokens: 50,
+              cache_read_input_tokens: 2000,
+              cache_creation_input_tokens: 300,
+            },
+          }),
+        ]),
+      ),
+    )
+    expect(events).toEqual([
+      {
+        type: "usage",
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_input_tokens: 2000,
+        cache_creation_input_tokens: 300,
+      },
+      { type: "done" },
+    ])
+  })
+
   it("emits error (not done) when result.subtype signals failure", async () => {
     const events = await collect(
       parseStreamJson(linesFrom([JSON.stringify({ type: "result", subtype: "error_max_turns" })])),

@@ -33,6 +33,7 @@
  */
 
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
+import type { UsageSnapshot } from "./context-meter.ts"
 
 /* --------------------------------------------------------------------- */
 /*  Bounded scrollback                                                    */
@@ -249,6 +250,13 @@ export interface ChatState {
   /** Transient error banner. Cleared on next submit. */
   readonly error: string | null
   /**
+   * Latest token usage from the engine's terminal `result` frame (one
+   * snapshot per completed turn). Drives the WORKSPACE header context
+   * meter; cleared when the user starts a new turn so stale %s don't sit
+   * above an in-flight request.
+   */
+  readonly lastUsage?: UsageSnapshot
+  /**
    * Prompts the user typed mid-stream and chose to QUEUE (not steer).
    * FIFO; drained by the chat shell when {@link isStreaming} flips
    * false. Cleared on task switch (the chat shell resets state per
@@ -317,6 +325,7 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
     ...state,
     isStreaming: true,
     error: null,
+    lastUsage: undefined,
     messages: capMessages([...state.messages, { kind: "user", text: prompt, ts: nowIso }], nowIso),
   }
 }
@@ -382,7 +391,7 @@ export function clearQueue(state: ChatState): ChatState {
  *   - `tool.result`: walk back to the most recent unfinished tool row
  *     with the same `name`, set its `output` and `done`. If no match,
  *     push a standalone tool row.
- *   - `usage`: ignored.
+ *   - `usage`: record {@link ChatState.lastUsage} for the context meter; messages unchanged.
  *   - `done`: `isStreaming: false`.
  *   - `error`: append a `system` row + `isStreaming: false` + banner.
  *   - `user.inject`: append a user row with the injected text and set
@@ -448,7 +457,15 @@ export function applyEvent(
       }
     }
     case "usage":
-      return state
+      return {
+        ...state,
+        lastUsage: {
+          input_tokens: ev.input_tokens,
+          output_tokens: ev.output_tokens,
+          cache_read_input_tokens: ev.cache_read_input_tokens,
+          cache_creation_input_tokens: ev.cache_creation_input_tokens,
+        },
+      }
     case "done":
       return { ...state, isStreaming: false }
     case "error":
@@ -466,6 +483,7 @@ export function applyEvent(
         ...state,
         isStreaming: true,
         error: null,
+        lastUsage: undefined,
         messages: capMessages([...state.messages, { kind: "user", text: ev.text, ts: nowIso }], nowIso),
       }
     case "system.info":

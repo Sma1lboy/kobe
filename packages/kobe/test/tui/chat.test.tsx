@@ -404,11 +404,34 @@ describe("applyEvent — tool.start / tool.result", () => {
 })
 
 describe("applyEvent — usage / done / error", () => {
-  test("usage is a no-op", () => {
+  test("usage records lastUsage without touching messages", () => {
     const start = pushUser(createInitialState(), "hi", FIXED_TS)
-    const s = applyEvent(start, { type: "usage", input_tokens: 1, output_tokens: 2 }, FIXED_TS)
+    const s = applyEvent(
+      start,
+      {
+        type: "usage",
+        input_tokens: 1000,
+        output_tokens: 500,
+        cache_read_input_tokens: 2000,
+        cache_creation_input_tokens: 100,
+      },
+      FIXED_TS,
+    )
     expect(s.messages).toEqual(start.messages)
     expect(s.isStreaming).toBe(start.isStreaming)
+    expect(s.lastUsage).toEqual({
+      input_tokens: 1000,
+      output_tokens: 500,
+      cache_read_input_tokens: 2000,
+      cache_creation_input_tokens: 100,
+    })
+  })
+
+  test("pushUser clears lastUsage for a new turn", () => {
+    let s = pushUser(createInitialState(), "hi", FIXED_TS)
+    s = applyEvent(s, { type: "usage", input_tokens: 1, output_tokens: 2 }, FIXED_TS)
+    s = pushUser(s, "again", FIXED_TS)
+    expect(s.lastUsage).toBeUndefined()
   })
 
   test("done flips isStreaming off, leaves messages alone", () => {

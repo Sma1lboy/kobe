@@ -157,7 +157,19 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
       if (usage) {
         const inTok = typeof usage.input_tokens === "number" ? (usage.input_tokens as number) : 0
         const outTok = typeof usage.output_tokens === "number" ? (usage.output_tokens as number) : 0
-        yield { type: "usage", input_tokens: inTok, output_tokens: outTok }
+        const cacheRead =
+          typeof usage.cache_read_input_tokens === "number" ? (usage.cache_read_input_tokens as number) : undefined
+        const cacheCreate =
+          typeof usage.cache_creation_input_tokens === "number"
+            ? (usage.cache_creation_input_tokens as number)
+            : undefined
+        yield {
+          type: "usage",
+          input_tokens: inTok,
+          output_tokens: outTok,
+          ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
+          ...(cacheCreate !== undefined ? { cache_creation_input_tokens: cacheCreate } : {}),
+        }
       }
       const subtype = typeof msg.subtype === "string" ? (msg.subtype as string) : "success"
       if (subtype === "success") {
