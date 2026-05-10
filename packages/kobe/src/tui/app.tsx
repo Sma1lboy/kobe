@@ -1200,6 +1200,12 @@ function Shell(props: AppDeps) {
     j: "workspace",
     k: "files",
     l: "terminal",
+    // Byte-collision aliases: opentui parses \x08 (ctrl+h byte) as
+    // `backspace` and \x0a (ctrl+j byte) as `linefeed`, so the
+    // ctrl-letter chord never reaches the matcher. Map the named
+    // forms to the same targets — see KobeKeymap.focus.numeric.
+    backspace: "sidebar",
+    linefeed: "workspace",
   }
   useBindings(() => ({
     // Disabled in engaged mode — when the user is typing in chat or

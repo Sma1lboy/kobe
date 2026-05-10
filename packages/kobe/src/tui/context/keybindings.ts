@@ -237,14 +237,21 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
     // doesn't fully support — ctrl+1 falls through to a bare `1`
     // byte) and alt+digit gets eaten by macOS launchers like
-    // Raycast. ctrl+letter just works. The conflict with composer
-    // editing chords (ctrl+h=backspace etc.) is OK in practice
-    // because the user's intent when pressing ctrl+h is "switch
-    // pane," and once focus moves to sidebar the textarea has
-    // already lost focus.
+    // Raycast. ctrl+letter just works.
+    //
+    // Byte-collision aliases: ctrl+h byte (\x08) is parsed by
+    // opentui as `backspace`, ctrl+j byte (\x0a) as `linefeed` (see
+    // node_modules/@opentui/core/.../parseKeypress around line 5985
+    // — those special-case branches fire before the ctrl-letter
+    // branch). Without registering the aliases below, ctrl+h /
+    // ctrl+j chords never match anything in select mode and the
+    // user can't navigate left/down. The alias is safe to register
+    // because focus.numeric is gated to mode === "select" — engaged
+    // mode never sees these handlers (so backspace stays free for
+    // textarea editing while the user is typing).
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
+    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l", "backspace", "linefeed"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
     hint: { keys: "ctrl+hjkl", label: "focus", pin: "right" },
