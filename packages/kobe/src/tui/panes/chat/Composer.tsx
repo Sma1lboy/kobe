@@ -18,12 +18,26 @@
  *     paste natively, no flicker, no per-character replay. We don't
  *     have to do anything; the renderable's `handlePaste` decodes
  *     bytes and inserts in one shot.
+ *   - Image paste — two entry points, one shared core. (a) Bracketed-
+ *     paste with `metadata.mimeType` starting with `image/` is caught
+ *     by our `onPaste` override and routed to the
+ *     {@link ImagePasteRegistry}. (b) `Ctrl+V` reads the OS clipboard
+ *     directly (macOS `osascript`; Linux/Windows are stubs that
+ *     surface a "not yet supported" hint) for terminals that don't
+ *     forward image bytes through bracketed paste — which is most of
+ *     them today. Either way the user sees a `[Image #N]` placeholder
+ *     in the textarea; on submit, tokens expand to ` @<absPath> ` so
+ *     the engine sees an `@path` reference (the only image-input
+ *     channel the `claude` CLI exposes). See `image-paste.ts` for the
+ *     why-it-must-be-`@path` lecture.
  *
  * What this does NOT own (deferred):
  *
  *   - Mention completion (`@filename`).
  *   - Slash commands inside the composer.
- *   - Image / file paste.
+ *   - Drag-drop file paste (no Tauri equivalent in pure TTY).
+ *   - Linux / Windows clipboard image readers (stubs return null).
+ *   - Auto-GC of `~/.kobe/pasted-images/`.
  *   - Cross-session history persistence (in-memory only for v1).
  *
  * Architectural notes:
@@ -48,13 +62,15 @@
  * working without changes.
  */
 
-import { type KeyEvent, TextAttributes, type TextareaRenderable } from "@opentui/core"
+import { type KeyEvent, type PasteEvent, TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
 import { EmptyBorder, SplitBorder } from "../../component/border"
 import type { SlashEntry } from "../../context/command-palette"
 import { useTheme } from "../../context/theme"
+import { clipboardImageSupported } from "./composer/clipboard-image"
 import { getHistory, pushHistory } from "./composer/history"
+import { ImagePasteRegistry } from "./composer/image-paste"
 import { composerKeyBindings } from "./composer/keybindings"
 
 /**
@@ -190,6 +206,16 @@ export function Composer(props: ComposerProps) {
   // render output — only effect logic.
   let historyIndex: number | null = null
   let liveDraftSnapshot = ""
+
+  // Per-composer image-paste registry. Owns disk writes for pasted
+  // PNGs and the `[Image #N]` ↔ `@/abs/path` mapping. Cleared on
+  // submit (so the next image starts at #1) and on history-key
+  // change (a new task gets its own numbering).
+  const imageRegistry = new ImagePasteRegistry()
+  // Transient surfacing for "no image on clipboard" / "not yet
+  // supported" hints triggered by Ctrl+V. Rendered as a one-line
+  // muted notice in the inline footer; cleared by the next keystroke.
+  const [pasteHint, setPasteHint] = createSignal<string | null>(null)
 
   // Live draft mirror used to drive slash-command filtering. We can't
   // read `props.draft` reactively without taking the parent's clear-on-
@@ -410,11 +436,133 @@ export function Composer(props: ComposerProps) {
       () => props.historyKey,
       () => {
         resetHistoryNav()
+        // Drop pasted-image entries on task switch — the user's next
+        // paste starts at `[Image #1]` again under the new task's
+        // history. Files on disk persist; we only forget the in-memory
+        // token map.
+        imageRegistry.clear()
+        setPasteHint(null)
       },
     ),
   )
 
   // ------- Event handlers -------
+
+  /**
+   * Insert text at the textarea's current cursor position via the
+   * EditBuffer's `insertText` (so it participates in undo and the
+   * cursor walks forward as expected). Falls back silently when the
+   * ref isn't mounted yet.
+   */
+  function insertAtCursor(text: string): void {
+    const ref = textareaRef
+    if (!ref) return
+    ref.insertText(text)
+  }
+
+  /**
+   * Bracketed-paste handler. Most pastes are text — those fall through
+   * to opentui's default `handlePaste` (we just don't preventDefault).
+   * The image branch fires for pastes with `metadata.mimeType` starting
+   * with `image/`; today no terminal we know of forwards image bytes
+   * this way (macOS Cmd+V on a screenshot drops the bytes), but the
+   * code path is wired in case a future terminal does, and so the
+   * Ctrl+V path can share the same insertion logic.
+   */
+  function handlePaste(event: PasteEvent): void {
+    const mime = event.metadata?.mimeType
+    if (!mime || !mime.startsWith("image/")) return
+    try {
+      const result = imageRegistry.saveBytes(event.bytes, mime)
+      // Surround with spaces so the token doesn't fuse with adjacent
+      // typed text and stays cleanly tokenizable for the on-submit
+      // expansion regex.
+      insertAtCursor(` ${result.token} `)
+      setPasteHint(null)
+      event.preventDefault()
+    } catch (err) {
+      // Disk write failed (permissions, no space, etc.). Surface a
+      // hint and let the default paste try its luck — at worst the
+      // user sees garbled bytes inserted, which is a clear signal that
+      // something went wrong on our side rather than a silent drop.
+      setPasteHint(`paste failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /**
+   * Try to read an image off the OS clipboard and insert a placeholder
+   * token at the cursor. Returns true iff an image was attached.
+   * Surfaces a one-line hint when there's nothing to paste, the
+   * platform isn't supported, or the read failed.
+   */
+  function tryAttachClipboardImage(): boolean {
+    if (!clipboardImageSupported()) {
+      setPasteHint(`image paste not yet supported on ${process.platform}`)
+      return false
+    }
+    try {
+      const result = imageRegistry.saveFromClipboard()
+      if (!result) {
+        setPasteHint("no image on clipboard")
+        return false
+      }
+      insertAtCursor(` ${result.token} `)
+      setPasteHint(null)
+      return true
+    } catch (err) {
+      setPasteHint(`paste failed: ${err instanceof Error ? err.message : String(err)}`)
+      return false
+    }
+  }
+
+  /**
+   * If the cursor is sitting immediately after a `[Image #N]` token,
+   * delete the whole token in one keystroke. Otherwise return false
+   * so the caller falls through to the textarea's default backspace.
+   *
+   * Why: the placeholder is a 10–12 char string the user shouldn't
+   * have to peck at — `[`, `I`, `m`, `a`, `g`, `e`, ` `, `#`, `1`,
+   * `]` is a tedious 10 backspaces, and once half-eaten the regex
+   * expansion no longer matches so the image silently doesn't get
+   * attached. Atomic delete keeps the placeholder honest: it's one
+   * thing in the user's head, it should be one thing to delete.
+   *
+   * We use `setSelection` + `deleteSelection` (instead of `setText`)
+   * so the operation participates in undo and the cursor lands at
+   * the natural position. `hasSelection()` short-circuits the path
+   * so an active selection's backspace still does the obvious thing
+   * (delete the selection — opentui's default).
+   */
+  function deleteImageTokenBackward(): boolean {
+    const ref = textareaRef
+    if (!ref) return false
+    if (ref.hasSelection()) return false
+    const offset = ref.cursorOffset
+    if (offset === 0) return false
+    const match = /\[Image #(\d+)\]$/.exec(ref.plainText.slice(0, offset))
+    if (!match) return false
+    const start = offset - match[0].length
+    ref.setSelection(start, offset)
+    ref.deleteSelection()
+    return true
+  }
+
+  /** Forward-delete twin: nukes a `[Image #N]` token starting at the
+   *  cursor. Mirrors {@link deleteImageTokenBackward} for the `delete`
+   *  key (and platforms / muscle memory that prefer it). */
+  function deleteImageTokenForward(): boolean {
+    const ref = textareaRef
+    if (!ref) return false
+    if (ref.hasSelection()) return false
+    const offset = ref.cursorOffset
+    const text = ref.plainText
+    if (offset >= text.length) return false
+    const match = /^\[Image #(\d+)\]/.exec(text.slice(offset))
+    if (!match) return false
+    ref.setSelection(offset, offset + match[0].length)
+    ref.deleteSelection()
+    return true
+  }
 
   /** opentui calls this on every textarea content change. */
   function handleContentChange(): void {
@@ -430,6 +578,10 @@ export function Composer(props: ComposerProps) {
       historyIndex = null
       liveDraftSnapshot = ""
     }
+    // Drop any "no image on clipboard" hint as soon as the user
+    // starts typing — they've moved on, the message would just
+    // squat in the footer otherwise.
+    if (pasteHint() !== null) setPasteHint(null)
     setLiveBuffer(newText)
     props.onDraftChange(newText)
   }
@@ -470,6 +622,47 @@ export function Composer(props: ComposerProps) {
         key.preventDefault()
       }
       return
+    }
+    // Ctrl+V — explicit "attach clipboard image". Runs ahead of slash
+    // dropdown / history nav so the user can paste a screenshot mid-
+    // way through composing without first dismissing autocomplete.
+    // Only fires on plain `ctrl+v` (no shift / meta / super) — the
+    // textarea has no default `ctrl+v` action, so swallowing this
+    // chord doesn't break anything.
+    //
+    // Why a hotkey at all: most terminals don't forward image bytes
+    // through bracketed paste (Cmd+V on a screenshot in iTerm2 is a
+    // no-op), so the user needs an explicit gesture. Ctrl+V is what
+    // claude-code uses for the same reason, and it passes through to
+    // the app on macOS / Linux terminals (Cmd+V / Ctrl+Shift+V are
+    // the terminal-level paste shortcuts; Ctrl+V is application-level).
+    if (key.name === "v" && key.ctrl && !key.shift && !key.meta && !key.super) {
+      if (tryAttachClipboardImage()) {
+        key.preventDefault()
+      }
+      // On miss (no image / unsupported platform), don't preventDefault
+      // — the chord has no default behavior in the textarea anyway,
+      // but leaving the event alive lets a future binding pick it up.
+      return
+    }
+    // Atomic delete of `[Image #N]` placeholders on plain backspace /
+    // delete. Falls through to the textarea's default delete when the
+    // cursor isn't adjacent to a token, when there's an active
+    // selection, or when modifiers are held (so ctrl+w word-delete
+    // still does its thing). See {@link deleteImageTokenBackward} for
+    // why partial token deletes would silently corrupt the @path
+    // expansion at submit time.
+    if (key.name === "backspace" && !key.ctrl && !key.meta && !key.super && !key.shift) {
+      if (deleteImageTokenBackward()) {
+        key.preventDefault()
+        return
+      }
+    }
+    if (key.name === "delete" && !key.ctrl && !key.meta && !key.super && !key.shift) {
+      if (deleteImageTokenForward()) {
+        key.preventDefault()
+        return
+      }
     }
     // Slash-dropdown nav has higher priority than history nav. When
     // the dropdown is open, up/down move the highlighted command, tab
@@ -558,11 +751,23 @@ export function Composer(props: ComposerProps) {
         return
       }
     }
-    if (trimmed.length > 0) {
-      pushHistory(props.historyKey ?? "global", raw)
+    // Expand `[Image #N]` placeholders into ` @<absPath> ` references
+    // before anything downstream sees the text. We push the expanded
+    // form to history (so a recall of this prompt resolves the same
+    // image paths even after the in-memory registry has been cleared)
+    // and hand the expanded form to the parent, which is what the
+    // engine ultimately runs. Skip the regex pass when nothing was
+    // pasted to keep the common path zero-cost.
+    const hasImages = imageRegistry.hasEntries()
+    const expandedRaw = hasImages ? imageRegistry.expand(raw) : raw
+    const expandedTrimmed = hasImages ? expandedRaw.trim() : trimmed
+    if (expandedTrimmed.length > 0) {
+      pushHistory(props.historyKey ?? "global", expandedRaw)
     }
+    if (hasImages) imageRegistry.clear()
+    setPasteHint(null)
     resetHistoryNav()
-    props.onSubmit(trimmed, mode)
+    props.onSubmit(expandedTrimmed, mode)
   }
 
   onCleanup(() => {
@@ -590,6 +795,11 @@ export function Composer(props: ComposerProps) {
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
     return ""
   }
+  // Footer hint slot: paste-related feedback (e.g. "no image on
+  // clipboard") wins over streaming because it's transient state the
+  // user *just* triggered, while the streaming hint is ambient. Both
+  // render in the same row, same color, so the layout doesn't jump.
+  const footerHint = () => pasteHint() ?? streamingNotice()
   const modelLabel = () => props.modelLabel?.() ?? ""
 
   // Mode indicator: short label + tone based on the active permission mode.
@@ -734,6 +944,13 @@ export function Composer(props: ComposerProps) {
                     // string is also fine — it's a no-op when content
                     // matches.
                     if (props.draft) r.setText(props.draft)
+                    // Wire bracketed-paste interception. The setter
+                    // routes paste events through `handlePaste` BEFORE
+                    // opentui's default text-insertion runs; calling
+                    // `event.preventDefault()` in the image branch
+                    // suppresses the default. Text pastes don't
+                    // preventDefault, so they fall through unchanged.
+                    r.onPaste = handlePaste
                     // Only grab keyboard focus when the workspace pane
                     // owns focus. On cold boot the sidebar is the
                     // default focused pane (see FocusProvider) — stealing
@@ -765,7 +982,7 @@ export function Composer(props: ComposerProps) {
           <Show when={props.hasTask}>
             <box flexDirection="row" justifyContent="space-between" paddingTop={1} flexShrink={0}>
               <text fg={props.isStreaming ? theme.accent : theme.textMuted} wrapMode="none">
-                {streamingNotice()}
+                {footerHint()}
               </text>
               <box flexDirection="row" gap={2} flexShrink={0}>
                 <Show when={modeBadge()}>
