@@ -34,6 +34,19 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import type { BuiltinSlash } from "./builtin-slashes"
 
+/**
+ * Resolve the user's home directory at call time. Bun caches
+ * `os.homedir()` to its startup value, which means tests that swap
+ * `process.env.HOME` to a tmpdir would otherwise hit the real
+ * `~/.claude/` and pick up the developer's actual skills (the test
+ * suite's "expected 1 entry, received 500+" mode). Honouring the env
+ * var first matches Node's documented `os.homedir()` precedence and
+ * keeps the loader testable under Bun.
+ */
+function resolveHome(): string {
+  return process.env.HOME ?? homedir()
+}
+
 async function safeReaddir(path: string): Promise<string[]> {
   try {
     return await readdir(path)
@@ -210,7 +223,7 @@ async function scanBasePath(claudeDir: string): Promise<BuiltinSlash[]> {
  */
 export async function loadUserSlashes(worktreePath?: string): Promise<readonly BuiltinSlash[]> {
   const projectScan = worktreePath ? scanBasePath(join(worktreePath, ".claude")) : Promise.resolve([])
-  const globalScan = scanBasePath(join(homedir(), ".claude"))
+  const globalScan = scanBasePath(join(resolveHome(), ".claude"))
   const [project, global] = await Promise.all([projectScan, globalScan])
   // Project precedence: spread global first so project overrides on collision.
   const map = new Map<string, BuiltinSlash>()
