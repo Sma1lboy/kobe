@@ -14,14 +14,6 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-05-10
-
-### Added
-
-- **Long-running `kobed` daemon + multi-attach TUI** — the orchestrator now lives in a separate `kobed` process (Unix socket, JSON-line wire). Multiple kobe windows attach to the same daemon and see the same chat / sidebar / pending-input state in real time. `kobed start|stop|status|restart` drives the daemon directly; the TUI auto-spawns one on first launch (KOB-36).
-- **Settings → Dev "Restart backend" button** — stops the daemon and quits this window so the next launch picks up daemon / orchestrator / engine edits without a process kill. Hidden in in-process modes that have no daemon to restart.
-- **Context-usage meter in WORKSPACE header** — shows compact `pct · used/window` per tab, derived from streamed `usage` events. Knows about `[1m]` and the standard 200k context windows; `pushUser` clears `lastUsage` so each turn meters its own draw.
-
 ### Fixed
 
 - **Multi-attach chat broadcast** — a fresh task's events now reach every attached TUI, not just the one that spawned it; opening two kobe windows on the same daemon shows the same chat in real time (KOB-36).
