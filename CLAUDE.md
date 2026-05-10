@@ -142,6 +142,16 @@ Never use `width={N}` / `height={N}` to express "this pane should be this big pr
 
 If you find yourself reaching for a magic constant: pause, and verify a flex prop wouldn't do the same thing.
 
+### Diagrams in `docs/`: use Mermaid
+
+When a `docs/` markdown file needs a diagram (entity relationships, state machines, lifecycles, sequence flows), use **Mermaid** in a ` ```mermaid ` fence rather than ASCII art.
+
+Why Mermaid and not PlantUML / vega / canvas / etc.: Mermaid renders **natively in GitHub README, GitHub PR previews, and VS Code's built-in markdown preview** — zero plugins, zero servers. PlantUML and the other markdown-viewer formats need a browser extension or a local renderer, which means most viewers see a code block of unrendered source. Diagrams should be legible to anyone clicking a `.md` link in the repo.
+
+ASCII boxes are fine for tiny relationships (≤3 nodes, no states), but rot the moment a state or arrow is added. When in doubt, reach for Mermaid.
+
+Canonical example: [`docs/design/tasks.md`](./docs/design/tasks.md) — `classDiagram` for the Task / Worktree / ChatTab triple, `stateDiagram-v2` for the tab and task lifecycles.
+
 ## Phase status
 
 - **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel. **Closed.**
