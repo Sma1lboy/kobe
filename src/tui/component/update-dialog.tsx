@@ -18,7 +18,13 @@
 
 import { TextAttributes } from "@opentui/core"
 import { type JSXElement, Match, Show, Switch, createResource } from "solid-js"
-import { INSTALL_COMMAND, type ReleaseNotes, type UpdateInfo, fetchReleaseNotes, releasePageUrl } from "../../version.ts"
+import {
+  INSTALL_COMMAND,
+  type ReleaseNotes,
+  type UpdateInfo,
+  fetchReleaseNotes,
+  releasePageUrl,
+} from "../../version.ts"
 import { useTheme } from "../context/theme"
 import { Markdown } from "../panes/chat/Markdown"
 import { type DialogContext, useDialog } from "../ui/dialog"

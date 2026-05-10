@@ -45,12 +45,8 @@ export function extractTag(html: string, tagName: string): string | null {
   if (!html.trim() || !tagName.trim()) return null
 
   const escapedTag = escapeRegExp(tagName)
-  const pattern = new RegExp(
-    `<${escapedTag}(?:\\s+[^>]*)?>` + // Opening tag with optional attributes
-      "([\\s\\S]*?)" + // Content (non-greedy match)
-      `<\\/${escapedTag}>`, // Closing tag
-    "gi",
-  )
+  // Opening tag (with optional attributes) + non-greedy content + closing tag.
+  const pattern = new RegExp(`<${escapedTag}(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/${escapedTag}>`, "gi")
 
   let match: RegExpExecArray | null = null
   let lastIndex = 0

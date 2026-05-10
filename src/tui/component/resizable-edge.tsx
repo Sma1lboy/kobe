@@ -73,6 +73,7 @@ export function ResizableEdge(props: ResizableEdgeProps) {
   }
 
   return (
+    // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal box; no DOM focus model and resize edges are mouse-only by nature.
     <box
       flexShrink={0}
       width={isVertical() ? 1 : undefined}

@@ -45,12 +45,12 @@ import type { ChatTab } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
-import { type BuiltinSlash, BUILTIN_CLAUDE_SLASHES } from "./composer/builtin-slashes"
-import { ModelPicker } from "./composer/ModelPicker"
-import { modelLabelFor } from "./composer/models"
-import { loadUserSlashes } from "./composer/user-slashes"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { MessageList } from "./MessageList"
+import { ModelPicker } from "./composer/ModelPicker"
+import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
+import { modelLabelFor } from "./composer/models"
+import { loadUserSlashes } from "./composer/user-slashes"
 import {
   type ChatState,
   applyEvent,

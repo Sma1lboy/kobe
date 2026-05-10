@@ -58,10 +58,7 @@ export interface TaskIndexStoreOptions {
  * auto-assigned. `archived` defaults to false. `tabs` / `activeTabId`
  * are synthesised from the optional `sessionId` when omitted.
  */
-export type TaskCreateInput = Omit<
-  Task,
-  "id" | "createdAt" | "updatedAt" | "archived" | "tabs" | "activeTabId"
-> & {
+export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt" | "archived" | "tabs" | "activeTabId"> & {
   readonly archived?: boolean
   readonly tabs?: readonly ChatTab[]
   readonly activeTabId?: string
@@ -294,7 +291,8 @@ export class TaskIndexStore {
     // until every caller is migrated to `updateTab`.
     const sessionIdPatched = "sessionId" in patch
     const tabsPatched = "tabs" in patch
-    let mergedTabs: readonly ChatTab[] = "tabs" in mutable && Array.isArray(mutable.tabs) ? (mutable.tabs as ChatTab[]) : existing.tabs
+    let mergedTabs: readonly ChatTab[] =
+      "tabs" in mutable && Array.isArray(mutable.tabs) ? (mutable.tabs as ChatTab[]) : existing.tabs
     if (sessionIdPatched && !tabsPatched) {
       const newSessionId = (patch.sessionId ?? null) as string | null
       const activeId = (mutable.activeTabId ?? existing.activeTabId) as string
@@ -313,9 +311,8 @@ export class TaskIndexStore {
     // tab. Lets v1 readers and the read-only alias on Task stay
     // accurate without forcing every writer to remember to re-derive it.
     const activeTab = merged.tabs.find((t) => t.id === merged.activeTabId) ?? merged.tabs[0]
-    const next: Task = activeTab && activeTab.sessionId !== merged.sessionId
-      ? { ...merged, sessionId: activeTab.sessionId }
-      : merged
+    const next: Task =
+      activeTab && activeTab.sessionId !== merged.sessionId ? { ...merged, sessionId: activeTab.sessionId } : merged
     this.cache.tasks[idx] = next
     await this.save()
     this.notifyListeners()

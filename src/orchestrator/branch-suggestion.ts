@@ -24,7 +24,7 @@
  * until the lazy-worktree flow is stable end-to-end.
  */
 
-import { spawn } from "node:child_process"
+import { type ChildProcess, spawn } from "node:child_process"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
 
 /** How long we wait for claude to reply before giving up. */
@@ -75,7 +75,7 @@ export async function suggestBranchSlug(prompt: string): Promise<string | null> 
   ].join("\n")
 
   return new Promise<string | null>((resolve) => {
-    let proc
+    let proc: ChildProcess
     try {
       proc = spawn(binary, ["-p", instruction], {
         // Don't run in any of the worktrees — we don't want claude to
@@ -104,7 +104,7 @@ export async function suggestBranchSlug(prompt: string): Promise<string | null> 
 
     const timer = setTimeout(() => settle(null), SUGGESTION_TIMEOUT_MS)
 
-    proc.stdout.on("data", (chunk: Buffer | string) => {
+    proc.stdout?.on("data", (chunk: Buffer | string) => {
       buf += typeof chunk === "string" ? chunk : chunk.toString("utf8")
     })
     proc.on("error", () => {

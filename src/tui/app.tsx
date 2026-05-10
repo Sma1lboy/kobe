@@ -27,18 +27,18 @@ import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
-import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import type { AIEngine } from "../types/engine.ts"
 import type { ChatTab, Task } from "../types/task.ts"
+import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { CreatePRButton } from "./component/create-pr-button"
 import { HelpDialog } from "./component/help-dialog"
+import { ResizableEdge } from "./component/resizable-edge"
 import { SettingsDialog } from "./component/settings-dialog"
 import { UpdateDialog } from "./component/update-dialog"
-import { ResizableEdge } from "./component/resizable-edge"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
@@ -734,7 +734,7 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
   return (
     <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" gap={1} flexShrink={1}>
-        <Show when={focused()} fallback={<text fg={theme.textMuted}>{" "}</text>}>
+        <Show when={focused()} fallback={<text fg={theme.textMuted}> </text>}>
           <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
             ▌
           </text>
@@ -892,7 +892,6 @@ function Shell(props: AppDeps) {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-
 
   // Theme persistence — on mount, hydrate from KV (validates the
   // stored name against the bundled list to drop stale entries from a
@@ -1662,13 +1661,7 @@ function Shell(props: AppDeps) {
             filesHeight signal driving the upper pane. Same
             backgroundPanel tone as the sidebar so the two rails feel
             symmetric and the chat in the middle is visibly the focus. */}
-        <box
-          flexDirection="column"
-          flexGrow={1}
-          flexShrink={1}
-          flexBasis={0}
-          backgroundColor={theme.backgroundPanel}
-        >
+        <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
           <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
             <PaneHeader title="FILES" focused={focusedPane() === "files"} />
             <box flexGrow={1}>
@@ -1785,13 +1778,7 @@ function CenterTabStrip(props: {
                 }}
               >
                 <text
-                  fg={
-                    isPrimary()
-                      ? theme.selectedListItemText
-                      : isVisibleButOther()
-                        ? theme.text
-                        : theme.textMuted
-                  }
+                  fg={isPrimary() ? theme.selectedListItemText : isVisibleButOther() ? theme.text : theme.textMuted}
                   attributes={isPrimary() ? TextAttributes.BOLD : undefined}
                   wrapMode="none"
                 >

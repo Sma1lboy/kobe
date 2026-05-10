@@ -130,8 +130,12 @@ async function fetchLatestFromRegistry(packageName: string): Promise<string | nu
  */
 export function isNewerSemver(latest: string, current: string): boolean {
   const norm = (v: string) => v.split("-")[0] ?? v
-  const a = norm(latest).split(".").map((s) => Number.parseInt(s, 10))
-  const b = norm(current).split(".").map((s) => Number.parseInt(s, 10))
+  const a = norm(latest)
+    .split(".")
+    .map((s) => Number.parseInt(s, 10))
+  const b = norm(current)
+    .split(".")
+    .map((s) => Number.parseInt(s, 10))
   for (let i = 0; i < 3; i++) {
     const av = a[i] ?? 0
     const bv = b[i] ?? 0

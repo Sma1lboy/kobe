@@ -210,10 +210,7 @@ test("crash — engine error mid-stream renders error row + banner, kobe stays a
   // opentui wraps cell-by-cell and may inject layout spaces between
   // tokens, so we collapse runs of whitespace before the includes()
   // check rather than asserting the exact rendered string.
-  const afterCrash = await kobe.waitFor(
-    (s) => s.replace(/\s+/g, " ").includes(SENTINEL),
-    15_000,
-  )
+  const afterCrash = await kobe.waitFor((s) => s.replace(/\s+/g, " ").includes(SENTINEL), 15_000)
   const collapsed = afterCrash.replace(/\s+/g, " ")
   expect(collapsed).toContain(SENTINEL)
 

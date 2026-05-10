@@ -47,6 +47,8 @@
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { Loading } from "./Loading"
+import { Markdown } from "./Markdown"
 import {
   COMMAND_ARGS_TAG,
   COMMAND_NAME_TAG,
@@ -54,8 +56,6 @@ import {
   LOCAL_COMMAND_STDOUT_TAG,
   extractTag,
 } from "./composer/xml-tags"
-import { Loading } from "./Loading"
-import { Markdown } from "./Markdown"
 import type { ChatRow } from "./store"
 
 /**
@@ -459,18 +459,10 @@ function ApprovalRow(props: {
             </text>
           }
         >
-          <text
-            fg={theme.success}
-            attributes={TextAttributes.BOLD}
-            onMouseUp={() => props.onApprove(true)}
-          >
+          <text fg={theme.success} attributes={TextAttributes.BOLD} onMouseUp={() => props.onApprove(true)}>
             [ Approve ]
           </text>
-          <text
-            fg={theme.error}
-            attributes={TextAttributes.BOLD}
-            onMouseUp={() => props.onApprove(false)}
-          >
+          <text fg={theme.error} attributes={TextAttributes.BOLD} onMouseUp={() => props.onApprove(false)}>
             [ Reject ]
           </text>
         </Show>
@@ -602,14 +594,9 @@ function QuestionRow(props: {
                   <For each={q.options}>
                     {(opt) => {
                       const isPicked = () => picked().has(opt.label)
-                      const glyph = () =>
-                        q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )"
+                      const glyph = () => (q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )")
                       return (
-                        <box
-                          flexDirection="row"
-                          gap={1}
-                          onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}
-                        >
+                        <box flexDirection="row" gap={1} onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}>
                           <text fg={isPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
                             {glyph()}
                           </text>
@@ -687,20 +674,10 @@ export function MessageList(props: MessageListProps) {
             )
           if (row.kind === "system") return <SystemRow text={row.text} />
           if (row.kind === "approval") {
-            return (
-              <ApprovalRow
-                row={row}
-                onApprove={(approve) => props.onApprove?.(row.requestId, approve)}
-              />
-            )
+            return <ApprovalRow row={row} onApprove={(approve) => props.onApprove?.(row.requestId, approve)} />
           }
           if (row.kind === "question") {
-            return (
-              <QuestionRow
-                row={row}
-                onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)}
-              />
-            )
+            return <QuestionRow row={row} onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)} />
           }
           // tool row
           return (

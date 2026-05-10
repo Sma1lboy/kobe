@@ -15,7 +15,11 @@ export const BUILTIN_CLAUDE_SLASHES: readonly BuiltinSlash[] = [
   { name: "bridge-kick", description: "Inject bridge failure states for manual recovery testing" },
   { name: "commit", description: "Create a git commit" },
   { name: "commit-push-pr", description: "Commit, push, and open a PR" },
-  { name: "compact", description: "Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]" },
+  {
+    name: "compact",
+    description:
+      "Clear conversation history but keep a summary in context. Optional: /compact [instructions for summarization]",
+  },
   { name: "cost", description: "Show the total cost and duration of the current session" },
   { name: "files", description: "List all files currently in context" },
   { name: "init", description: "" },

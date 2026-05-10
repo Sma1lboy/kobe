@@ -48,7 +48,7 @@
  * working without changes.
  */
 
-import { TextAttributes, type KeyEvent, type TextareaRenderable } from "@opentui/core"
+import { type KeyEvent, TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
 import { EmptyBorder, SplitBorder } from "../../component/border"
@@ -741,11 +741,7 @@ export function Composer(props: ComposerProps) {
                 {/* Model label — clickable when the parent supplies
                     `onChooseModel`; renders with a `▾` caret to advertise
                     the picker. Inert (no caret, no click) otherwise. */}
-                <box
-                  flexDirection="row"
-                  flexShrink={0}
-                  onMouseUp={() => props.onChooseModel?.()}
-                >
+                <box flexDirection="row" flexShrink={0} onMouseUp={() => props.onChooseModel?.()}>
                   <text fg={theme.textMuted} wrapMode="none">
                     {modelLabel()}
                     {props.onChooseModel ? " ▾" : ""}

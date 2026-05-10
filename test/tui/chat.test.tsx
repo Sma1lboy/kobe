@@ -406,8 +406,7 @@ describe("cleanChatText / noise filtering", () => {
     const past: Message[] = [
       {
         role: "user",
-        content:
-          "<local-command-caveat>Caveat: don't respond.</local-command-caveat>",
+        content: "<local-command-caveat>Caveat: don't respond.</local-command-caveat>",
         timestamp: FIXED_TS,
         sessionId: "s",
       },
@@ -584,7 +583,11 @@ describe("applyEvent — user_input request/resolved (AskUserQuestion)", () => {
     )
     s = applyEvent(
       s,
-      { type: "user_input.resolved", requestId: "q-1", response: { kind: "ask_question", answers: { "Pick one?": "A" } } },
+      {
+        type: "user_input.resolved",
+        requestId: "q-1",
+        response: { kind: "ask_question", answers: { "Pick one?": "A" } },
+      },
       FIXED_TS,
     )
     const last = s.messages[s.messages.length - 1]

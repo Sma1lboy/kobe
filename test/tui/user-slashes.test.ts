@@ -27,8 +27,8 @@
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { extractDescription, loadUserSlashes } from "@/tui/panes/chat/composer/user-slashes"
+import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 // ---------------------------------------------------------------------------
 // Tmpdir scaffolding — each test gets a fresh root with a fake $HOME and a
@@ -51,6 +51,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // biome-ignore lint/performance/noDelete: test cleanup needs the env key fully removed (assigning undefined leaves it as the string "undefined").
   if (savedHome === undefined) delete process.env.HOME
   else process.env.HOME = savedHome
   try {

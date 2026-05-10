@@ -44,6 +44,12 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Lint
+        # Biome runs first because it's the cheapest check (~50ms) — fail
+        # fast on style/format drift before we burn minutes on tsc + tests
+        # + build.
+        run: bun run lint
+
       - name: Typecheck
         run: bun run typecheck
 
@@ -52,9 +58,3 @@ jobs:
 
       - name: Build
         run: bun run build
-
-      - name: Lint
-        # Biome is configured but not gating today; run as a non-blocking
-        # signal so we see drift without breaking PRs on style alone.
-        # Promote to a hard gate once the codebase is fully clean.
-        run: bun run lint || true

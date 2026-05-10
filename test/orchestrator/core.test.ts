@@ -903,7 +903,9 @@ describe("Orchestrator.respondToInput", () => {
     await orch.runTask(t.id, "go")
     await orch._waitForPumpsIdle()
 
-    const req = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request")
+    const req = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request",
+    )
     expect(req).toBeDefined()
     expect(req?.payload).toEqual({ kind: "approve_plan", plan: "# Plan\n- step", filePath: "/tmp/p.md" })
 
@@ -912,12 +914,16 @@ describe("Orchestrator.respondToInput", () => {
     await orch.respondToInput(t.id, req?.requestId ?? "missing", { kind: "approve_plan", approve: true })
     await orch._waitForPumpsIdle()
 
-    const resolved = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved")
+    const resolved = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved",
+    )
     expect(resolved).toBeDefined()
     expect(resolved?.requestId).toBe(req?.requestId)
     expect(resolved?.response).toEqual({ kind: "approve_plan", approve: true })
 
-    const inject = events.find((e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject")
+    const inject = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject",
+    )
     expect(inject?.text.toLowerCase()).toContain("approved")
   })
 
@@ -962,7 +968,9 @@ describe("Orchestrator.respondToInput", () => {
     await orch.runTask(t.id, "go")
     await orch._waitForPumpsIdle()
 
-    const req = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request")
+    const req = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user_input.request" }> => e.type === "user_input.request",
+    )
     expect(req).toBeDefined()
     expect(req?.payload.kind).toBe("ask_question")
 
@@ -973,10 +981,14 @@ describe("Orchestrator.respondToInput", () => {
     })
     await orch._waitForPumpsIdle()
 
-    const resolved = events.find((e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved")
+    const resolved = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user_input.resolved" }> => e.type === "user_input.resolved",
+    )
     expect(resolved?.response).toEqual({ kind: "ask_question", answers: { "Which library?": "date-fns" } })
 
-    const inject = events.find((e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject")
+    const inject = events.find(
+      (e): e is Extract<OrchestratorEvent, { type: "user.inject" }> => e.type === "user.inject",
+    )
     expect(inject?.text).toContain("Which library? → date-fns")
   })
 })

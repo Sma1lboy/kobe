@@ -72,8 +72,8 @@ import type {
 } from "../types/engine.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
 import { suggestBranchSlug } from "./branch-suggestion.ts"
-import { ulid } from "./index/ulid.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
+import { ulid } from "./index/ulid.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
