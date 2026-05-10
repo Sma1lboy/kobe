@@ -1413,22 +1413,18 @@ function Shell(props: AppDeps) {
     //   3. select mode  → detach back to sidebar
     // Cases 2 + 3 land here — useKobeKeybindings already handled (1).
     onFocusDetach: () => {
+      // esc only disengages — stay on the current pane, just release
+      // input. The pane returns to select mode (A color) and the user
+      // can ctrl+hjkl elsewhere. To go to the sidebar specifically,
+      // press ctrl+h or ctrl+q (focus.sidebar) — not esc.
+      //
+      // No-op when already in select: there's no further "exit" to
+      // perform. Don't promote esc into a second action (jumping to
+      // sidebar) — it surprised users by changing focus when they only
+      // wanted to release the textarea.
       if (focus.mode() === "engaged") {
-        // First esc disengages: stay on the current pane, just release
-        // input. User can now ctrl+hjkl elsewhere or esc again to
-        // detach all the way to sidebar.
         focus.disengage()
-      } else if (focusedPane() !== "sidebar") {
-        // Already in select mode on a non-sidebar pane → escape hatch:
-        // jump to sidebar and land engaged (the common intent is "show
-        // me the task list, I want to navigate"). User can disengage
-        // again with esc.
-        setFocusedPane("sidebar", { engage: true })
       }
-      // Already on sidebar in select mode → no-op. Don't re-engage on
-      // every esc press; that would oscillate select ↔ engaged with
-      // each tap. The sidebar select state IS the "rest" position;
-      // pressing esc again has nowhere meaningful to go.
     },
     // Tab cycle is select-mode only. In engaged mode we forward tab
     // to whichever pane owns input (composer indent / shell autocomp).
