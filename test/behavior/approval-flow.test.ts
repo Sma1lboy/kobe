@@ -144,7 +144,7 @@ async function fillNewTaskDialog(
   openWith: "n" | "ctrl+n" = "n",
 ): Promise<void> {
   if (openWith === "n") {
-    await kobe.sendKeys("n")
+    await kobe.sendKeys("\x0e")
   } else {
     await kobe.sendKeys("\x0e")
   }

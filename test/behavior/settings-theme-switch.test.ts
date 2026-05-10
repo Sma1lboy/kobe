@@ -81,11 +81,16 @@ test("settings dialog → theme switch persists to KV", async () => {
 
   await kobe.waitFor((s) => s.includes("kobe"), 10_000)
 
-  // Cold boot → sidebar is focused (see FocusProvider's default in
-  // src/tui/context/focus.tsx). The bare `,` binding registered in
-  // app.tsx is gated on `focusedPane() !== "workspace"`, so it fires
-  // here.
-  await kobe.sendKeys(",")
+  // Cold boot → sidebar is focused. The bare `,` shortcut for settings
+  // was removed during the keybindings central-registry refactor (was
+  // gated on non-workspace, but is no longer registered at all). The
+  // canonical chord is now ctrl+,. Comma is not a control byte, so we
+  // use the xterm modifyOtherKeys escape sequence to inject a synthetic
+  // {name: ",", ctrl: true} keypress that opentui's parser recognizes:
+  //   \x1b[27;<mod>;<charCode>~
+  // mod=5 (ctrl-only, see opentui's getCtrlKeyName + parseKeypress);
+  // charCode=44 ("," in ASCII).
+  await kobe.sendKeys("\x1b[27;5;44~")
 
   // Dialog title is the literal string "Settings" (see
   // src/tui/component/settings-dialog.tsx). The General section
