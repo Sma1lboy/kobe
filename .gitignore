@@ -16,9 +16,9 @@ tsconfig.vitest-temp.json
 .env
 .env.local
 
-# Branding source is local-only; rendered outputs land in docs/assets/brand/
-# (committed) via branding/package.json render scripts.
-branding/
+# packages/branding outputs the rendered assets into docs/assets/brand/
+# (committed). Local-only build artefacts inside the package itself
+# (Remotion's `out/`, etc.) are ignored via packages/branding/.gitignore.
 
 # autonomous-skill per-sprint worktrees + session state
 .worktrees/

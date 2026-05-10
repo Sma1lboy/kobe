@@ -12,6 +12,11 @@ The architecture decisions are not obvious from the code (the code is mostly emp
 
 ## Conventions
 
+- **Monorepo layout (Bun workspaces).** Source lives under `packages/`:
+  - [`packages/kobe/`](./packages/kobe) — the TUI itself, published as `@sma1lboy/kobe`. All `src/...`, `test/...`, `scripts/...` paths in docs are relative to here.
+  - [`packages/branding/`](./packages/branding) — Remotion render pipeline for `docs/assets/brand/`. Private workspace.
+  - Run package scripts via `bun --filter @sma1lboy/kobe <script>` or `cd packages/kobe && bun <script>`.
+  - Repo-wide tools at root: `biome.json`, `bun.lock`, `.github/workflows/`, `docs/`, `CLAUDE.md`, `HANDOFF.md`.
 - `refs/` contains study material (symlinks + clones), **gitignored**. **Never edit anything inside `refs/`.**
 - The user's name is Jackson (sma1lboy). Respond in the language they use (Chinese or English).
 - Tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun**. Do not re-litigate.
@@ -24,7 +29,7 @@ kobe is built by deliberately copying ideas (and sometimes code) from four refer
 |---|---|---|
 | `agent-deck` | [`/Users/jacksonc/i/agent-deck`](https://github.com/sma1lboy/agent-deck) (symlink) | **TUI visual style + layout grammar.** Pane chunking, agent-deck-style `[Tab] label` chip hotkeys, BOLD CAPS pane headers, status-line bottom bar, focused-pane border highlighting. When in doubt about how a pane should look, open `agent-deck` and look at how it solves the same problem. |
 | `conductor` (image only) | screenshots Jackson supplied | **Layout + product capability brief.** The 5-pane Conductor screenshot in `docs/DESIGN.md` §1 is the layout grammar. We don't have source access; we copy the chunking + capability set (multi-task, history sidebar, file tree, terminal, chat). Direction shifting per-session — see HANDOFF.md. |
-| `opcode` | fresh clone of [`winfunc/opcode`](https://github.com/winfunc/opcode) | **How to spawn + stream Claude Code as a subprocess.** kobe's `src/engine/claude-code-local/` was algorithmically ported from opcode's `src-tauri/src/commands/claude.rs` (subprocess spawn + stream-json parser + JSONL reader + binary discovery). When extending the engine, port from opcode first. |
+| `opcode` | fresh clone of [`winfunc/opcode`](https://github.com/winfunc/opcode) | **How to spawn + stream Claude Code as a subprocess.** kobe's `packages/kobe/src/engine/claude-code-local/` was algorithmically ported from opcode's `src-tauri/src/commands/claude.rs` (subprocess spawn + stream-json parser + JSONL reader + binary discovery). When extending the engine, port from opcode first. |
 | `claude-code` | fresh clone of [`tanbiralam/claude-code`](https://github.com/tanbiralam/claude-code) (leaked Anthropic source, March 2026) | **Match Claude Code's exact stream rendering style.** Has `src/ink/` (the Ink-based TUI components, layout, events). When implementing how the stream output looks (assistant text formatting, tool call display, thinking dots, code blocks, citations), mirror Claude Code's choices so kobe feels like Claude Code, not a third-party shell. |
 
 ### Setup before developing (clone all four)
@@ -141,7 +146,7 @@ If you find yourself reaching for a magic constant: pause, and verify a flex pro
 
 - **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel. **Closed.**
 - **Phase 1**: build the 5-pane Conductor-shaped TUI. Waves 1–4 per `docs/PLAN.md`. **Closed at gate G4 on 2026-05-09 — shipped as `@sma1lboy/kobe@0.1.0` on npm.** See [`CHANGELOG.md`](./CHANGELOG.md) for the 0.1.0 feature manifest.
-- **Phase 2**: deferred. Conductor-as-backend mode. Hook points designed in; impl not yet.
+- **Phase 2**: dropped 2026-05-09. Originally a defensive hedge for "what if we ever swap engines." No real product driver — kobe's value is the UI, the local `claude` subprocess works, and Anthropic's API already covers shared/cloud sessions. Free up the design space; revisit only if a concrete engine-swap need surfaces.
 
 Update this section's status as gates G0–G4 close. See PLAN.md for the canonical state.
 
@@ -153,7 +158,7 @@ Update this section's status as gates G0–G4 close. See PLAN.md for the canonic
   not a kobe crash. The composer-lock failure was an over-strict test
   assertion — opentui's text wrapper drops the space at a wrap point,
   so the rendered placeholder is `answerthe promptabove to continue`.
-  Both `test/behavior/approval-flow.test.ts` cases now run.
+  Both `packages/kobe/test/behavior/approval-flow.test.ts` cases now run.
 - CI gate: `.github/workflows/ci.yml` runs typecheck + unit tests + build
   on every push to main and every PR. Behavior tests stay local-only
   (need tmux + node-pty terminal sizing).

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@sma1lboy/kobe",
+  "version": "0.1.1",
+  "description": "TUI orchestrator for Claude Code (codename)",
+  "type": "module",
+  "packageManager": "bun@1.3.13",
+  "bin": {
+    "kobe": "dist/index.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sma1lboy/kobe.git"
+  },
+  "homepage": "https://github.com/Sma1lboy/kobe#readme",
+  "bugs": {
+    "url": "https://github.com/Sma1lboy/kobe/issues"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "scripts": {
+    "dev": "KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:behavior": "vitest run test/behavior --passWithNoTests",
+    "lint": "biome check .",
+    "prepublishOnly": "bun run typecheck && bun run build"
+  },
+  "//": "biome.json + bunfig.toml live at the monorepo root since they apply repo-wide; bun.lock also lives at root (workspace-shared).",
+  "dependencies": {
+    "@opentui/core": "0.2.4",
+    "@opentui/solid": "0.2.4",
+    "solid-js": "1.9.10"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "@tsconfig/bun": "1.0.9",
+    "@types/bun": "1.3.12",
+    "node-pty": "1.1.0",
+    "typescript": "5.8.2",
+    "vitest": "2.1.9"
+  },
+  "trustedDependencies": []
+}

@@ -3,7 +3,7 @@
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["refs/**", "dist/**", "node_modules/**", "bun.lock", "branding/**"]
+    "ignore": ["refs/**", "**/dist/**", "**/node_modules/**", "bun.lock", "packages/branding/**", "branding/**"]
   },
   "formatter": {
     "enabled": true,

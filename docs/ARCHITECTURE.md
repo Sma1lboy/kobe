@@ -7,6 +7,13 @@
 > [`HARNESS.md`](./HARNESS.md). This document is a tour of the source tree as it
 > currently stands.
 
+> **Path convention.** kobe is the main package in a Bun-workspaces
+> monorepo; its source lives at `packages/kobe/`. **Every `src/...`,
+> `test/...`, and `scripts/...` path in this doc is relative to that
+> package root.** The other workspace, `packages/branding/`, is the
+> Remotion render pipeline for the brand artwork in `docs/assets/brand/`
+> and isn't covered here.
+
 ## Contents
 
 1. [The layer cake](#1-the-layer-cake)
@@ -399,7 +406,7 @@ DESIGN.md §12 is the authoritative list. Highlights:
 
 | Not in kobe | Where it'd live if we did it | Why we don't |
 |---|---|---|
-| Phase 2 Conductor-as-backend | A `ConductorBackend implements AIEngine` next to `ClaudeCodeLocal/` | The seam is designed in (interface unchanged). Impl deferred. |
+| Conductor-as-backend (was "Phase 2") | A `ConductorBackend implements AIEngine` next to `ClaudeCodeLocal/` | Dropped 2026-05-09 — no real product driver. The `AIEngine` seam stays in place if a concrete swap need ever surfaces. |
 | Vendor-neutral model abstraction (`@ai-sdk/*` etc) | n/a | Engine port is at the *Claude Code session* level, not the *LLM call* level. We are opinionated about the engine. |
 | Cloud sync, multi-machine state | n/a | Local-first. Single developer per machine. |
 | Team collaboration | n/a | Single-developer-focused. |

@@ -3,69 +3,41 @@
 </p>
 
 <p align="center">
-  <strong>A TUI orchestrator for Claude Code.</strong><br/>
-  Conductor-shaped 5-pane terminal app: many sessions in flight, one place to drive them.
-</p>
-
-<p align="center">
-  <em>Codename — will be renamed before any public release.</em>
+  <strong>A TUI orchestrator for Claude Code, plus its branding pipeline.</strong>
 </p>
 
 ---
 
-## What it is
+This is a Bun-workspaces monorepo with two packages:
 
-kobe is a terminal UI that runs multiple Claude Code sessions in parallel, each in its own git
-worktree. The layout copies Conductor's grammar (sidebar of tasks, workspace pane with a chat
-tab and per-file tabs, files tree, terminal, status bar) but the engine and theming follow Claude
-Code's own conventions so a kobe session feels like a Claude Code session — not a third-party
-shell wrapping it.
+| Package | What it is | npm |
+|---|---|---|
+| [`packages/kobe`](./packages/kobe) | The kobe TUI itself — multi-task Claude Code in a 5-pane terminal app. | [`@sma1lboy/kobe`](https://www.npmjs.com/package/@sma1lboy/kobe) |
+| [`packages/branding`](./packages/branding) | Remotion render pipeline for the brand artwork in [`docs/assets/brand/`](./docs/assets/brand/). | private |
 
-## Stack
+If you're here to **use kobe**, read [`packages/kobe/README.md`](./packages/kobe/README.md).
 
-**TypeScript** + **[`@opentui/core`](https://github.com/sst/opentui) / `@opentui/solid`** + **Solid.js** + **Bun**.
-Tests via vitest + PTY-driven behavior tests. Lint via biome. Engine spawns the `claude` CLI as a
-subprocess and parses `--output-format stream-json`.
+If you're here to **work on it**, the orientation docs are at the repo root:
 
-## Install (end users)
+- [`HANDOFF.md`](./HANDOFF.md) — original briefing, the why behind the project
+- [`CLAUDE.md`](./CLAUDE.md) — operating rules + memory pointers
+- [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy + architectural decisions
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — where each piece of code lives, and why
+- [`docs/PLAN.md`](./docs/PLAN.md) — phase / wave plan and gate history
+- [`docs/HARNESS.md`](./docs/HARNESS.md) — the agent self-test contract
 
-[![npm](https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg)](https://www.npmjs.com/package/@sma1lboy/kobe)
-
-Requires [Bun](https://bun.sh) ≥ 1.0 on the host (kobe's renderer is
-opentui, which uses Bun-FFI). The `claude` CLI must also be on `PATH`.
-
-```bash
-bun install -g @sma1lboy/kobe
-kobe                 # launches the TUI
-```
-
-Or run without installing:
+## Repo-level scripts
 
 ```bash
-bunx @sma1lboy/kobe
+bun install               # installs both workspaces (one hoisted node_modules)
+bun run dev               # alias for `bun --filter @sma1lboy/kobe dev`
+bun run build             # alias for `bun --filter @sma1lboy/kobe build`
+bun run typecheck         # alias for `bun --filter @sma1lboy/kobe typecheck`
+bun run test              # alias for `bun --filter @sma1lboy/kobe test`
+bun run test:behavior     # alias for `bun --filter @sma1lboy/kobe test:behavior`
+bun run lint              # Biome across the whole monorepo
+bun run lint:fix          # Biome --write across the whole monorepo
 ```
 
-## Quick start (developing on kobe itself)
-
-```bash
-bun install
-bun run dev          # boots the 5-pane TUI
-bun run test         # unit + type tests
-bun run test:behavior  # PTY-driven; spawns kobe as a real binary
-bun run build        # produces ./dist/index.js for `npm publish`
-```
-
-Tasks live at `~/.kobe/tasks.json`; per-task git worktrees live at
-`<repo>/.claude/worktrees/<task-id>/`.
-
-## Releasing
-
-Bump `package.json`, move `## [Unreleased]` in `CHANGELOG.md` to the
-new version section, commit, then push the matching `vX.Y.Z` tag.
-The release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml))
-runs typecheck + unit tests + build, asserts the tag matches
-`package.json`, then `npm publish --provenance` and creates a GitHub
-release with the changelog section as the body.
-
-Current direction, what just shipped, and what's next live in [`HANDOFF.md`](./HANDOFF.md)
-and [`CHANGELOG.md`](./CHANGELOG.md).
+Per-package commands (Remotion renders for branding, etc.) live in each
+package's `package.json` and are invoked with `bun --filter`.

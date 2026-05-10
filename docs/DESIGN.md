@@ -31,7 +31,7 @@ The corollary: we accept the constraints those modules impose. If opencode's dia
 
 We don't build a vendor abstraction. We don't ship `@ai-sdk/*` adapters. We don't have a "model picker" that supports OpenAI.
 
-But: we *do* keep one seam — an **AI engine port** — so that if Anthropic ships a new SDK shape, or someone forks Claude Code, or Phase 2 wants to back tasks with a remote orchestrator, we have one place to swap.
+But: we *do* keep one seam — an **AI engine port** — so that if Anthropic ships a new SDK shape or someone forks Claude Code, we have one place to swap. (An earlier "Phase 2 backend swap" was dropped; see §6.2.)
 
 Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and `the thing actually running the task`. Everything else (theme, panes, persistence) is hardcoded for now.
 
@@ -149,7 +149,7 @@ The interesting whitespace for kobe:
 └─────────────────────────────────────────────────────┘
 ```
 
-The **AI Engine Port** is the only declared interface. Above it: orchestrator owns task semantics. Below it: today, a Claude Code subprocess wrapper. Tomorrow (Phase 2), a Conductor-as-backend adapter (see §6).
+The **AI Engine Port** is the only declared interface. Above it: orchestrator owns task semantics. Below it: a Claude Code subprocess wrapper (see §6).
 
 ### 5.2 The AI Engine Port (sketch)
 
@@ -192,11 +192,11 @@ The events are normalized — we don't leak Claude Code's stream-json shape into
 
 ---
 
-## 6. Pluggability — and Phase 2
+## 6. Pluggability — and the engine port
 
-The AI engine port is the **single** pluggability seam. Two intended impls:
+The AI engine port is the **single** pluggability seam.
 
-### 6.1 Phase 1 impl: `ClaudeCodeLocal`
+### 6.1 The shipped impl: `ClaudeCodeLocal`
 
 Subprocess wrapper around the `claude` CLI. Algorithm ported from opcode (`refs/opcode/src-tauri/src/commands/claude.rs`):
 
@@ -208,17 +208,9 @@ Subprocess wrapper around the `claude` CLI. Algorithm ported from opcode (`refs/
 
 **Reuses Claude Code's auth.** We assume `claude` is on PATH and authed. We do not handle login.
 
-### 6.2 Phase 2 impl: `ConductorBackend`
+### 6.2 No Phase 2 backend swap (dropped 2026-05-09)
 
-Same `AIEngine` interface, different backend. The user has signaled a desire to be able to point kobe at a running **Conductor instance** as a data source — i.e. let kobe be a TUI kanban over Conductor's tasks.
-
-**We do not implement this in Phase 1.** But we keep two doors open:
-- The `AIEngine` interface is shaped so a remote backend can satisfy it (events as `AsyncIterable`, sessions as opaque handles).
-- The orchestrator does not assume the engine is local (no direct PID access, no direct file path access for messages — always goes through `readHistory()`).
-
-Phase 2 will add a fourth ref (a Conductor reference repo the user will provide) and a `ConductorBackend implements AIEngine`. The orchestrator code will not change.
-
-This is the meaning of "kanban mode on top of Conductor": same TUI, different engine port impl.
+Earlier drafts of this doc carved out a `ConductorBackend implements AIEngine` for "kanban mode on top of Conductor." We've **dropped** it: kobe's value is the UI; the local subprocess works; Anthropic's own API already covers shared/cloud session needs. Re-litigate only if a concrete swap need surfaces (a forked engine with a stable HTTP API, etc.) — at which point the `AIEngine` interface is still the seam to use.
 
 ---
 

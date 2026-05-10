@@ -66,24 +66,27 @@ jobs:
         # bun-PTY, and a real `claude` binary on PATH, none of which are
         # reliable in GitHub-hosted runners. Run them locally with
         # `bun run test:behavior` before cutting a tag.
-        run: bun x vitest run test/tui test/types test/orchestrator test/engine --passWithNoTests
+        working-directory: packages/kobe
+        run: bun x vitest run test/cli test/tui test/types test/orchestrator test/engine test/state --passWithNoTests
 
       - name: Build
         run: bun run build
 
       - name: Verify tag matches package.json
+        working-directory: packages/kobe
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-            echo "::error::tag $TAG_VERSION does not match package.json version $PKG_VERSION"
-            echo "Bump package.json before tagging, or retag after bumping."
+            echo "::error::tag $TAG_VERSION does not match packages/kobe/package.json version $PKG_VERSION"
+            echo "Bump packages/kobe/package.json before tagging, or retag after bumping."
             exit 1
           fi
-          echo "tag and package.json agree on $PKG_VERSION"
+          echo "tag and packages/kobe/package.json agree on $PKG_VERSION"
 
       - name: Extract changelog section
         id: changelog
+        working-directory: packages/kobe
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           # Pull everything between `## [<version>]` and the next `## [`.
@@ -94,7 +97,7 @@ jobs:
             found { print }
           ' CHANGELOG.md)
           if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
-            NOTES="See [CHANGELOG.md](./CHANGELOG.md) for details."
+            NOTES="See [CHANGELOG.md](./packages/kobe/CHANGELOG.md) for details."
           fi
           {
             echo 'notes<<CHANGELOG_EOF'
@@ -109,6 +112,9 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to npm
+        # Workspaces hoist deps to root; `npm publish` still runs
+        # against the package's own dir.
+        working-directory: packages/kobe
         run: npm publish --access public --provenance
 
       - name: Create GitHub release
@@ -117,7 +123,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
-          files: dist/index.js
+          files: packages/kobe/dist/index.js
           draft: false
           prerelease: false
         env:
