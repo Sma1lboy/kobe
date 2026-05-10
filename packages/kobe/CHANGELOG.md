@@ -19,6 +19,33 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-05-10
+
+### Added
+
+- **`bypassPermissions` is now reachable via the shift+tab cycler.**
+  Cycle order extended: default → acceptEdits → plan → bypass →
+  default. The `bypass` mode passes `--permission-mode bypassPermissions`
+  to claude-code (equivalent to `--dangerously-skip-permissions`),
+  which skips ALL tool-permission gates including the worktree-cwd
+  boundary that otherwise blocks reads of files like `~/.zshrc`.
+  Same approach `opcode` takes — claude-code in `-p` mode has no
+  interactive permission protocol, so the choice is "auto-deny
+  outside cwd" or "auto-approve everything." Footer badge renders
+  "bypass permissions" in warning color so the loose-permissions
+  state is unmistakable.
+
+### Why no interactive approve UI
+
+Researched the alternative: a `--permission-prompt-tool <name>`
+MCP-server bridge that delegates every tool-permission decision
+back to a kobe-hosted MCP. That's a 2-3 day build (write the MCP
+server, register it on every spawn, route the request events
+through to a UI panel, handle async approve/deny replies) and not
+a great fit for the user's "I just want it to work" baseline.
+Cycling to `bypass` mode is the pragmatic answer — same trade
+opcode made.
+
 ## [0.2.1] - 2026-05-10
 
 ### Added

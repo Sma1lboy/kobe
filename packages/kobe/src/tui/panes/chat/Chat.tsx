@@ -40,7 +40,7 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { Orchestrator } from "../../../orchestrator/core.ts"
-import type { OrchestratorEvent } from "../../../types/engine.ts"
+import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
 import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
@@ -304,7 +304,23 @@ export function Chat(props: ChatProps) {
     const id = props.taskId()
     if (!id) return
     const current = permissionMode() ?? "default"
-    const next = current === "default" ? "acceptEdits" : current === "acceptEdits" ? "plan" : "default"
+    // Cycle: default → acceptEdits → plan → bypass → default.
+    // `bypass` (claude-code's `bypassPermissions` mode, equivalent to
+    // `--dangerously-skip-permissions`) skips ALL tool-permission gates,
+    // including the worktree-cwd boundary that otherwise blocks reads
+    // of files like ~/.zshrc. Same approach opcode takes — claude-code
+    // `-p` mode has no interactive permission protocol, so the choice
+    // is "auto-deny everything outside cwd" or "auto-approve everything."
+    // Surfaced in the footer badge as "bypass" with theme.error color
+    // so the user knows they're in the loose-permissions mode.
+    const next: PermissionMode =
+      current === "default"
+        ? "acceptEdits"
+        : current === "acceptEdits"
+          ? "plan"
+          : current === "plan"
+            ? "bypassPermissions"
+            : "default"
     void props.orchestrator.setPermissionMode(id, next).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setPermissionMode failed:", err)
