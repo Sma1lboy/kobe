@@ -805,12 +805,12 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
       paddingRight={2}
     >
       <box flexDirection="row" gap={1} flexShrink={1}>
-        {/* Ordinal flush left — bold + underline doubles as the
-            "this is a chord" visual hint. Color tracks focus state
-            (focusAccent when active, textMuted otherwise) so the
-            digit also functions as the focus marker. */}
+        {/* Ordinal flush left — plain BOLD; the focus-tracking color
+            (focusAccent vs textMuted) is what flags this digit as the
+            ctrl+N chord target. The underline variant felt visually
+            noisy at title-row scale. */}
         <Show when={props.ordinal !== undefined}>
-          <text fg={titleColor()} attributes={TextAttributes.BOLD | TextAttributes.UNDERLINE} wrapMode="none">
+          <text fg={titleColor()} attributes={TextAttributes.BOLD} wrapMode="none">
             {props.ordinal}
           </text>
         </Show>
