@@ -26,6 +26,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   exit" hint in the status bar); a second Ctrl+C within 1.5s exits.
   Matches the standard TUI muscle memory used by claude-code, fish,
   and ipython.
+- Quitting kobe (via Ctrl+C×2 or `q`) now restores the host terminal
+  cleanly — previously `process.exit(0)` skipped opentui's teardown,
+  leaving mouse tracking enabled (the host shell would receive a
+  stream of `\x1b[<…M` SGR mouse events from every cursor move) and
+  the alt-screen unrestored. The default `onQuit` now calls
+  `renderer.destroy()` first.
 
 ## [0.1.1] - 2026-05-09
 
