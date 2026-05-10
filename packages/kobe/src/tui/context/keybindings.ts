@@ -410,27 +410,36 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
-    // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket
+    // `alt+]` cycles forward, `alt+[` cycles backward — bracket
     // pair mirrors the sidebar's `[/]` view switcher and the files
     // pane's `[/]` tab cycler so the bracket-pair pattern is
-    // consistent across panes. The earlier `ctrl+tab` /
-    // `ctrl+shift+tab` chord is dropped: `tab` is the global
-    // pane-cycle (focus.next) and the ctrl-prefixed variant felt
-    // collision-prone.
+    // consistent across panes. We use alt-bracket instead of
+    // ctrl-bracket because `ctrl+[` byte IS the ESC byte (\x1b) in
+    // every standard PTY — opentui parses it as `{name: "escape"}`
+    // and disengage fires instead of cycling. The alt variant
+    // arrives as `\x1b[` / `\x1b]`, which opentui's parseKeypress
+    // recognizes through the meta-prefix path.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    keys: ["ctrl+]"],
+    // alt+] (\x1b]) instead of ctrl+] — though ctrl+] has no byte
+    // collision, we move both cycle chords together so alt-bracket
+    // is the single mental model. ctrl+[ couldn't be kept because
+    // its byte (\x1b) IS the ESC byte; we can't tell the two apart
+    // in a standard PTY without kitty-keyboard / CSI-u extensions.
+    keys: ["alt+]"],
     category: "Workspace",
     description: "Next chat tab",
-    hint: { keys: "ctrl+]", label: "next tab" },
+    hint: { keys: "alt+]", label: "next tab" },
   },
   {
     id: "chat.tab.cycle-prev",
     scope: "workspace",
-    keys: ["ctrl+["],
+    // alt+[ (\x1b[) — see chat.tab.cycle-next above for the rationale
+    // (ctrl+[ collides with the bare ESC byte in standard PTYs).
+    keys: ["alt+["],
     category: "Workspace",
     description: "Previous chat tab",
-    hint: { keys: "ctrl+[", label: "prev tab" },
+    hint: { keys: "alt+[", label: "prev tab" },
   },
 
   // ─── Files ────────────────────────────────────────────────────────────

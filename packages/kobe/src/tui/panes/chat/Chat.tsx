@@ -656,9 +656,9 @@ export function Chat(props: ChatProps) {
   }
 
   // Pane-scoped keybindings: only fire when the chat pane is focused.
-  // No numeric pick — chat tabs cycle via ctrl+[/ctrl+] so ctrl+1..4
-  // is uncontested as the global pane-focus chord (see
-  // docs/KEYBINDINGS.md).
+  // No numeric pick — chat tabs cycle via alt+[ / alt+] so ctrl+hjkl
+  // and ctrl+1..4 stay uncontested as global pane-focus chords (see
+  // docs/KEYBINDINGS.md). Was ctrl+[ / ctrl+] but ctrl+[ byte = ESC.
   useBindings(() => ({
     enabled: props.focused?.() === true,
     bindings: bindByIds({
