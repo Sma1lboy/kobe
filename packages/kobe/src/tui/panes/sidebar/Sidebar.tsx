@@ -242,12 +242,16 @@ export function Sidebar(props: SidebarProps) {
          pane has focus, dimmed when not. Reads `theme.focusAccent`
          so a Settings change unifies the focus signal across all
          panes (default = primary / terracotta). */}
-      <box flexDirection="row" gap={1} paddingBottom={1}>
+      <box flexDirection="row" gap={1} paddingBottom={1} paddingLeft={1}>
         {/* Bold `h` flush left — matches WORKSPACE/FILES/TERMINAL
             shape. Letter is the ctrl+hjkl chord that focuses this
             pane (h = sidebar, j = workspace, k = files, l = terminal).
             Focus-tracking color (focusAccent vs textMuted) does the
-            chord-hint job. */}
+            chord-hint job.
+
+            paddingLeft={1} matches the row box's paddingLeft={1} so
+            the header letter aligns with each row's badge column —
+            without it, header sits at col 2 while rows start at col 3. */}
         <text
           fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
           attributes={TextAttributes.BOLD}
@@ -255,14 +259,18 @@ export function Sidebar(props: SidebarProps) {
         >
           h
         </text>
-        <text fg={focusedAccessor() ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text
+          fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
+          attributes={TextAttributes.BOLD}
+          wrapMode="none"
+        >
           TASKS
         </text>
       </box>
 
       {/* View switcher: tab strip with the active view bracketed +
          emphasized. `[` / `]` toggles. */}
-      <box flexDirection="row" gap={2} paddingBottom={1}>
+      <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1}>
         <For each={VIEW_TABS}>
           {(tab) => {
             const active = () => view() === tab.view
@@ -349,18 +357,12 @@ export function Sidebar(props: SidebarProps) {
                     {titleText}
                   </text>
                   <Show when={isMain && branchLabel().length > 0}>
-                    <text
-                      fg={isCursor() ? theme.selectedListItemText : theme.textMuted}
-                      wrapMode="none"
-                    >
+                    <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                       {branchLabel()}
                     </text>
                   </Show>
                   <Show when={!isMain && task.pinned === true}>
-                    <text
-                      fg={isCursor() ? theme.selectedListItemText : theme.warning}
-                      wrapMode="none"
-                    >
+                    <text fg={isCursor() ? theme.selectedListItemText : theme.warning} wrapMode="none">
                       ▴
                     </text>
                   </Show>
@@ -377,7 +379,7 @@ export function Sidebar(props: SidebarProps) {
       </scrollbox>
 
       {/* Footer: "+ New task" affordance. */}
-      <box flexShrink={0} paddingTop={1}>
+      <box flexShrink={0} paddingTop={1} paddingLeft={1}>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => props.onAddTask?.()}>
           + New task
         </text>

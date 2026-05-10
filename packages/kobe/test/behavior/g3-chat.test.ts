@@ -172,6 +172,11 @@ test("G3a — thinking indicator visible after submit, hidden after done", async
       KOBE_TEST_ENGINE: "fake",
       KOBE_TEST_FAKE_PORT: String(port),
       KOBE_HOME_DIR: fixture.homeDir,
+      // Pin the spinner verb so this test has a deterministic substring
+      // to wait on. Production picks one of 200+ verbs at random per
+      // turn (matches claude-code's `getSpinnerVerbs()`); the random
+      // pool would defeat `screen.includes("thinking")`.
+      KOBE_SPINNER_VERB: "thinking",
     },
     cols: 120,
     rows: 30,

@@ -28,7 +28,7 @@ import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
-import { Orchestrator } from "../orchestrator/core.ts"
+import { type ChatRunState, Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, removeSavedRepo } from "../state/repos.ts"
@@ -467,8 +467,7 @@ function NewTaskDialog(props: {
         // Lowest-priority surface (custom path typing) sits between
         // the picker and the branch field.
         key: "tab",
-        cmd: () =>
-          setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
+        cmd: () => setField((f) => (f === "repoPicker" ? "repoCustom" : f === "repoCustom" ? "baseRef" : "repoPicker")),
       },
       {
         key: "up",
@@ -1280,9 +1279,7 @@ function Shell(props: AppDeps) {
   // Backwards-compat: pre-KOB-20 entries had a `string[]` under `open`;
   // we drop the field on hydrate. `active` survives the migration verbatim
   // — if it pointed at a file path, the new state still opens that file.
-  const persistedTabs = kv.get("centerTabsByTask") as
-    | Record<string, { active?: CenterTab; open?: unknown }>
-    | undefined
+  const persistedTabs = kv.get("centerTabsByTask") as Record<string, { active?: CenterTab; open?: unknown }> | undefined
   const [tabsByTask, setTabsByTask] = createSignal(
     new Map<string, TaskCenterTabs>(
       persistedTabs
@@ -1511,11 +1508,9 @@ function Shell(props: AppDeps) {
     if (!taskId) return
     const task = props.orchestrator.getTask(taskId)
     if (!task) return
-    const idx = task.tabs.findIndex((t) => t.id === tabId)
-    if (idx < 0) return
-    const tab = task.tabs[idx]
+    const tab = task.tabs.find((t) => t.id === tabId)
     if (!tab) return
-    const fallback = `chat ${idx + 1}`
+    const fallback = `chat ${tab.seq}`
     const current = tab.title && tab.title.length > 0 ? tab.title : fallback
     const next = await showRenameTaskDialog(dialog, current, { dialogTitle: "Rename chat tab" })
     if (next === undefined) return
@@ -1737,7 +1732,6 @@ function Shell(props: AppDeps) {
           <Sidebar
             width={sidebarWidth}
             tasks={tasksAcc}
-            runState={chatRunStateAcc}
             onSelect={(id: string) => {
               setSelectedId(id)
               // Selecting a task usually means "I want to look at it" —
@@ -1802,6 +1796,8 @@ function Shell(props: AppDeps) {
             activeFile={activeFileTabPath}
             chatTabs={activeChatTabsAcc}
             activeChatTabId={activeChatTabIdAcc}
+            activeTaskId={taskIdAcc}
+            chatRunState={chatRunStateAcc}
             onSelectChat={selectChatTab}
             onSelectChatTab={selectChatTabById}
             onSelectFile={selectFileTab}
@@ -1908,15 +1904,33 @@ function CenterTabStrip(props: {
    */
   chatTabs: Accessor<readonly ChatTab[]>
   activeChatTabId: Accessor<string | null>
+  /**
+   * The currently-selected task id (or undefined when nothing is
+   * selected). Combined with each chat tab's id to look up the live
+   * engine state in {@link chatRunState}. When undefined, every chip
+   * resolves to idle — there's no task to attribute the run-state to.
+   */
+  activeTaskId: Accessor<string | undefined>
+  /**
+   * Per-chat-tab live engine state, keyed by `${taskId}:${tabId}`
+   * (compose via {@link chatRunStateKey}). Drives the leading status
+   * dot on each chat-tab chip — green when streaming, yellow when the
+   * tab is paused on `AskUserQuestion` / `ExitPlanMode`, no dot when
+   * idle. Absence of an entry == idle.
+   */
+  chatRunState: Accessor<ReadonlyMap<string, ChatRunState>>
   onSelectChat: () => void
   onSelectChatTab: (tabId: string) => void
   onSelectFile: (path: string) => void
   onCloseFile: (path: string) => void
 }) {
   const { theme } = useTheme()
-  /** Display label for a chat tab — falls back to `chat N`. */
-  const chatTabLabel = (tab: ChatTab, idx: number) =>
-    tab.title && tab.title.length > 0 ? tab.title : `chat ${idx + 1}`
+  /**
+   * Display label for a chat tab — falls back to `chat N` where N is
+   * the tab's sticky `seq`, NOT its current array index. Closing a
+   * middle tab must not renumber surviving tabs.
+   */
+  const chatTabLabel = (tab: ChatTab) => (tab.title && tab.title.length > 0 ? tab.title : `chat ${tab.seq}`)
   return (
     <box
       flexDirection="row"
@@ -1959,9 +1973,38 @@ function CenterTabStrip(props: {
             // workspace tab at all.
             const isPrimary = () => props.isChatActive() && props.activeChatTabId() === tab.id
             const isVisibleButOther = () => props.isChatActive() && !isPrimary()
+            // Live engine state for this chat tab. Resolved through the
+            // composite `${taskId}:${tabId}` key so a multi-tab task
+            // can show, say, yellow on the asking tab and green on a
+            // streaming sibling at the same time.
+            const runState = (): ChatRunState | undefined => {
+              const taskId = props.activeTaskId()
+              if (!taskId) return undefined
+              return props.chatRunState().get(chatRunStateKey(taskId, tab.id))
+            }
+            const dotGlyph = () => {
+              const s = runState()
+              return s === "running" || s === "awaiting_input" ? "●" : ""
+            }
+            // The dot's color is the run-state signal — never the
+            // chip's selection color. Earlier we tinted it
+            // `selectedListItemText` when the chip was primary so it
+            // matched the chip text, but that swallowed the live
+            // green/yellow signal exactly when Jackson was looking at
+            // the active tab and most needed to see whether it was
+            // running. The status dot's job overrides the chip's
+            // emphasis; green/yellow stay legible on the primary
+            // background.
+            const dotColor = () => {
+              const s = runState()
+              if (s === "awaiting_input") return theme.warning
+              if (s === "running") return theme.success
+              return theme.textMuted
+            }
             return (
               <box
                 flexDirection="row"
+                gap={1}
                 paddingLeft={1}
                 paddingRight={1}
                 backgroundColor={isPrimary() ? theme.primary : theme.backgroundElement}
@@ -1970,6 +2013,11 @@ function CenterTabStrip(props: {
                   props.onSelectChatTab(tab.id)
                 }}
               >
+                <Show when={dotGlyph().length > 0}>
+                  <text fg={dotColor()} wrapMode="none">
+                    {dotGlyph()}
+                  </text>
+                </Show>
                 {/* No leading ordinal — chat tabs cycle via ctrl+[/]
                     rather than ctrl+N, so a digit prefix would
                     misadvertise the chord. */}
@@ -1978,7 +2026,7 @@ function CenterTabStrip(props: {
                   attributes={isPrimary() ? TextAttributes.BOLD : undefined}
                   wrapMode="none"
                 >
-                  {chatTabLabel(tab, i())}
+                  {chatTabLabel(tab)}
                 </text>
               </box>
             )

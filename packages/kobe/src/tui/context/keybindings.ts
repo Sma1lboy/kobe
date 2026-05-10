@@ -263,8 +263,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "global",
     keys: ["esc"],
     category: "Navigation",
-    description:
-      "Back to sidebar. In chat while streaming, interrupts the turn instead. Closes top dialog if any.",
+    description: "Back to sidebar. In chat while streaming, interrupts the turn instead. Closes top dialog if any.",
     hint: { keys: "esc", label: "back to sidebar" },
   },
   {
@@ -420,6 +419,21 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
+  },
+  {
+    // Mirror of claude-code's `/resume` slash. Pops a picker listing
+    // every persisted session for the active task's worktree so the
+    // user can jump back to (or fork from) any prior conversation.
+    // Selecting an already-open session focuses its tab; otherwise a
+    // new tab is opened seeded with that sessionId. Chord chosen for
+    // mnemonic "yank from history" — `ctrl+r` is taken by tab-rename
+    // and `ctrl+h` collides with terminals' backspace byte.
+    id: "chat.session.resume",
+    scope: "workspace",
+    keys: ["ctrl+y"],
+    category: "Workspace",
+    description: "Resume a prior session in this task's worktree",
+    hint: { keys: "ctrl+y", label: "resume" },
   },
   {
     id: "chat.tab.close",

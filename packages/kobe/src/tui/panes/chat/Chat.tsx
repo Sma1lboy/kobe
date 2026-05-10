@@ -42,6 +42,7 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, o
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
+import { ResumeDialog } from "../../component/resume-dialog"
 import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
@@ -164,7 +165,27 @@ export function Chat(props: ChatProps) {
   // write helpers so Solid notices.
   const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
   const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
-  const [draft, setDraft] = createSignal("")
+  // Composer draft text is per-tab — switching tabs preserves whatever the
+  // user was typing on each. Mirrors `statesByTab` (copy-on-write so Solid
+  // notices). Earlier this was a single shared signal cleared on every
+  // tab switch, which discarded in-flight drafts.
+  const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
+  const draft = createMemo(() => {
+    const id = activeTabId()
+    if (!id) return ""
+    return draftsByTab().get(id) ?? ""
+  })
+  function setDraft(value: string): void {
+    const id = activeTabId()
+    if (!id) return
+    setDraftsByTab((prev) => {
+      const cur = prev.get(id) ?? ""
+      if (cur === value) return prev
+      const next = new Map(prev)
+      next.set(id, value)
+      return next
+    })
+  }
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
 
@@ -254,6 +275,12 @@ export function Chat(props: ChatProps) {
       u()
       tabSubs.delete(tabId)
       setStatesByTab((prev) => {
+        if (!prev.has(tabId)) return prev
+        const next = new Map(prev)
+        next.delete(tabId)
+        return next
+      })
+      setDraftsByTab((prev) => {
         if (!prev.has(tabId)) return prev
         const next = new Map(prev)
         next.delete(tabId)
@@ -361,7 +388,7 @@ export function Chat(props: ChatProps) {
       if (currentSubsTaskId !== null) {
         teardownAllSubs()
         setStatesByTab(new Map())
-        setDraft("")
+        setDraftsByTab(new Map())
         setExpandedToolIndex(null)
         setExpandedFoldStartIndex(null)
       }
@@ -380,7 +407,7 @@ export function Chat(props: ChatProps) {
       // Switched tasks (or first time we see this task): reset.
       teardownAllSubs()
       setStatesByTab(new Map())
-      setDraft("")
+      setDraftsByTab(new Map())
       setExpandedToolIndex(null)
       setExpandedFoldStartIndex(null)
       currentSubsTaskId = taskId
@@ -521,6 +548,7 @@ export function Chat(props: ChatProps) {
   onCleanup(() => {
     teardownAllSubs()
     setStatesByTab(new Map())
+    setDraftsByTab(new Map())
   })
 
   /**
@@ -610,7 +638,6 @@ export function Chat(props: ChatProps) {
     try {
       const tab = await props.orchestrator.createTab(taskId)
       setActiveTabIdLocal(tab.id)
-      setDraft("")
       setExpandedToolIndex(null)
       setExpandedFoldStartIndex(null)
       void props.orchestrator.setActiveTab(taskId, tab.id)
@@ -627,9 +654,14 @@ export function Chat(props: ChatProps) {
     if (tabs().length <= 1) return
     try {
       const nextActive = await props.orchestrator.closeTab(taskId, tabId)
+      setDraftsByTab((prev) => {
+        if (!prev.has(tabId)) return prev
+        const next = new Map(prev)
+        next.delete(tabId)
+        return next
+      })
       if (nextActive) {
         setActiveTabIdLocal(nextActive)
-        setDraft("")
         setExpandedToolIndex(null)
         setExpandedFoldStartIndex(null)
       }
@@ -643,7 +675,6 @@ export function Chat(props: ChatProps) {
     const t = tabs()[idx]
     if (!t) return
     setActiveTabIdLocal(t.id)
-    setDraft("")
     setExpandedToolIndex(null)
     setExpandedFoldStartIndex(null)
     const taskId = props.taskId()
@@ -673,6 +704,11 @@ export function Chat(props: ChatProps) {
       "chat.tab.rename": () => {
         const id = activeTabId()
         if (id) props.onRenameTabRequest?.(id)
+      },
+      "chat.session.resume": () => {
+        const tid = props.taskId()
+        if (!tid) return
+        ResumeDialog.show(dialog, props.orchestrator, tid)
       },
     }),
   }))
@@ -934,11 +970,7 @@ function QueuedPromptList(props: {
               <box flexGrow={1}>
                 <text fg={theme.text}>{entry.text}</text>
               </box>
-              <text
-                fg={theme.error}
-                attributes={TextAttributes.BOLD}
-                onMouseUp={() => props.onCancel(entry.id)}
-              >
+              <text fg={theme.error} attributes={TextAttributes.BOLD} onMouseUp={() => props.onCancel(entry.id)}>
                 [x]
               </text>
             </box>

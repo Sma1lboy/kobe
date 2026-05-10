@@ -61,9 +61,7 @@ describe("parseBlocks", () => {
   })
 
   test("blockquote strips leading >", () => {
-    expect(parseBlocks("> quoted\n> still quoted")).toEqual([
-      { kind: "blockquote", lines: ["quoted", "still quoted"] },
-    ])
+    expect(parseBlocks("> quoted\n> still quoted")).toEqual([{ kind: "blockquote", lines: ["quoted", "still quoted"] }])
   })
 
   test("blockquote without space after > still parses", () => {
@@ -71,9 +69,7 @@ describe("parseBlocks", () => {
   })
 
   test("fenced code block", () => {
-    expect(parseBlocks("```ts\nconst x = 1\n```")).toEqual([
-      { kind: "code", lang: "ts", lines: ["const x = 1"] },
-    ])
+    expect(parseBlocks("```ts\nconst x = 1\n```")).toEqual([{ kind: "code", lang: "ts", lines: ["const x = 1"] }])
   })
 
   test("unclosed fence keeps streaming content", () => {
@@ -142,9 +138,7 @@ describe("parseInline", () => {
   })
 
   test("inline code still wins over link bracket", () => {
-    expect(parseInline("`[not a link](x)`")).toEqual([
-      { kind: "code", text: "[not a link](x)" },
-    ])
+    expect(parseInline("`[not a link](x)`")).toEqual([{ kind: "code", text: "[not a link](x)" }])
   })
 
   test("bold and italic still parse alongside new link branch", () => {

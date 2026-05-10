@@ -8,12 +8,21 @@
  * and the cycle pattern (forward then reverse) from
  * `refs/claude-code/src/components/Spinner/SpinnerGlyph.tsx:7`.
  *
- * Why this matters: the brief asks for kobe to "feel like Claude Code,
- * not a third-party shell." The braille dots are well-known but
- * generic; Claude Code's `· ✢ ✳ ✶ ✻ ✽` cycle is distinctive enough
- * that a user who grew up on the official CLI will recognize it. We
- * keep the same forward+reverse cycle so the asterisk "blooms" and
- * "deflates" instead of jumping back to the dot every frame.
+ * Two flourishes copied from `claude-code` so kobe's loader matches the
+ * official CLI feel:
+ *
+ *   1. **Random verb** — instead of always "thinking", we pick a verb
+ *      from `spinnerVerbs.ts` (Pondering / Caramelizing / Beboppin' …)
+ *      once at component mount. Source: claude-code
+ *      `constants/spinnerVerbs.ts:16-204`.
+ *   2. **Glimmer wave** — a 3-character bright "spotlight" sweeps
+ *      left-to-right through the verb, with the chars at `glimmerIndex`
+ *      ± 1 rendered in `theme.text`, the rest in `theme.textMuted`.
+ *      Source: claude-code `Spinner/GlimmerMessage.tsx:211-326`
+ *      and `Spinner/useShimmerAnimation.ts`. We drive the glimmer off
+ *      the same 120ms tick as the glyph instead of running a second
+ *      clock — claude-code uses 50ms for smoother shimmer but kobe is
+ *      single-pane and doesn't need that precision.
  *
  * Implementation notes:
  *
@@ -30,8 +39,9 @@
  *     glyph rendering offsets vary by terminal so this matters.
  */
 
-import { Show, createSignal, onCleanup } from "solid-js"
+import { Show, createMemo, createSignal, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { pickRandomVerb } from "./spinnerVerbs"
 
 /**
  * Default characters per Claude Code's `Spinner/utils.ts:4-11`:
@@ -61,11 +71,21 @@ const SPINNER_FRAMES: readonly string[] = (() => {
 /** Tick interval. 120ms feels right for the bloom/deflate cycle. */
 const FRAME_MS = 120
 
+/**
+ * Trailing/leading "pad" columns the glimmer sweeps across past the
+ * label edges before wrapping. Mirrors claude-code's `messageWidth + 20`
+ * cycle (`Spinner/useShimmerAnimation.ts:25`) — gives a visible pause
+ * between sweeps so the wave reads as a rhythmic pulse, not a churn.
+ */
+const GLIMMER_PAD = 10
+
 export interface LoadingProps {
   /**
-   * Optional label override. Defaults to "thinking" to match opcode's
-   * "Claude is thinking…" copy without the redundant "Claude is" prefix
-   * (the chat header already says we're talking to Claude).
+   * Optional label override. When omitted, a random verb is picked at
+   * mount from `spinnerVerbs.ts` ("Pondering", "Caramelizing", …) so
+   * the loader matches Claude Code's playful per-turn copy. Pass a
+   * fixed label here when callers want a deterministic word
+   * (e.g. tests, or a non-streaming wait state).
    */
   label?: string
   /**
@@ -106,21 +126,37 @@ function formatTokens(n: number): string {
 }
 
 /**
- * Animated thinking indicator. Renders as `<spinner> <label> (elapsed · ↓ N tokens)`
- * on a single line in `theme.textMuted` so it doesn't compete with the
- * actual message content. Self-contained — drop it anywhere the
- * chat wants to say "we're working on it."
+ * Animated thinking indicator. Renders as `<spinner> <verb>… (elapsed · ↓ N tokens)`
+ * on a single line; the verb has a 3-character bright spotlight that
+ * sweeps left-to-right through the word every ~3s. Self-contained —
+ * drop it anywhere the chat wants to say "we're working on it."
  */
 export function Loading(props: LoadingProps) {
   const { theme } = useTheme()
   const [frame, setFrame] = createSignal(0)
   const [now, setNow] = createSignal(Date.now())
 
+  // Verb is picked once per mount. `Loading` mounts when streaming
+  // begins and unmounts when it ends, so this gives a fresh verb per
+  // turn — matching claude-code's per-turn `getSpinnerVerbs()` pull
+  // without dragging in their session-scoped key state.
+  //
+  // `KOBE_SPINNER_VERB` env override exists for behavior tests: the
+  // PTY harness needs a deterministic substring to wait on, and a
+  // 200-entry random pool defeats `screen.includes(...)` assertions.
+  // Production never sets it.
+  const verb = props.label ?? process.env.KOBE_SPINNER_VERB ?? pickRandomVerb()
+  // Single-cell-per-char approximation. Good enough for the verb pool —
+  // entries are ASCII / latin-1 (`Sautéing`, `Flambéing`, `Whatchamacalliting`)
+  // and there are no double-width glyphs. If we ever ship CJK verbs,
+  // swap to `stringWidth` here and in the slicing below.
+  const verbWidth = verb.length
+
   // Tick the frame index + clock on a fixed interval. Both ride the
   // same setInterval — Claude Code does the same thing in its
   // `SpinnerAnimationRow` (one `useAnimationFrame(50)`).
   const handle = setInterval(() => {
-    setFrame((f) => (f + 1) % SPINNER_FRAMES.length)
+    setFrame((f) => f + 1)
     setNow(Date.now())
   }, FRAME_MS)
 
@@ -138,17 +174,58 @@ export function Loading(props: LoadingProps) {
     return parts.join(" · ")
   }
 
+  // Glimmer index walks left-to-right across the verb, repeating with
+  // a pause at each end. cycle = verbWidth + 2*PAD; offset by -PAD so
+  // it begins offscreen-left, sweeps across, ends offscreen-right.
+  const glimmerIndex = createMemo(() => {
+    const cycle = verbWidth + GLIMMER_PAD * 2
+    return (frame() % cycle) - GLIMMER_PAD
+  })
+
+  // Split the verb into [before | shim | after] segments based on the
+  // glimmer window (glimmerIndex ± 1). Mirrors GlimmerMessage.tsx:211-279.
+  // When the window is fully off-screen, before == verb and shim/after
+  // are empty, so the verb renders flat-muted.
+  const segments = createMemo(() => {
+    const idx = glimmerIndex()
+    const start = idx - 1
+    const end = idx + 1
+    if (start >= verbWidth || end < 0) {
+      return { before: verb, shim: "", after: "" }
+    }
+    const cs = Math.max(0, start)
+    const ce = Math.min(verbWidth - 1, end)
+    return {
+      before: verb.slice(0, cs),
+      shim: verb.slice(cs, ce + 1),
+      after: verb.slice(ce + 1),
+    }
+  })
+
+  const glyph = () => SPINNER_FRAMES[frame() % SPINNER_FRAMES.length] ?? SPINNER_FRAMES[0]
+
   return (
     <box flexDirection="row" paddingTop={1}>
       {/* Fixed 2-cell column for the spinner — glyphs `· ✢ ✳ ✶ ✻ ✽` have
-          ambiguous east-asian widths and would otherwise nudge `thinking`
+          ambiguous east-asian widths and would otherwise nudge the label
           left/right each frame. Mirrors claude-code `SpinnerGlyph.tsx:40`
           (`<Box flexWrap="wrap" height={1} width={2}>`). The 2nd cell
-          doubles as the separator before `thinking`, so no parent gap. */}
+          doubles as the separator before the label, so no parent gap. */}
       <box width={2} height={1}>
-        <text fg={theme.accent}>{SPINNER_FRAMES[frame()] ?? SPINNER_FRAMES[0]}</text>
+        <text fg={theme.accent}>{glyph()}</text>
       </box>
-      <text fg={theme.textMuted}>{props.label ?? "thinking"}</text>
+      <text>
+        <Show when={segments().before}>
+          <span style={{ fg: theme.textMuted }}>{segments().before}</span>
+        </Show>
+        <Show when={segments().shim}>
+          <span style={{ fg: theme.text }}>{segments().shim}</span>
+        </Show>
+        <Show when={segments().after}>
+          <span style={{ fg: theme.textMuted }}>{segments().after}</span>
+        </Show>
+        <span style={{ fg: theme.textMuted }}>…</span>
+      </text>
       <Show when={showStats()}>
         <text fg={theme.textMuted}> ({stats()})</text>
       </Show>

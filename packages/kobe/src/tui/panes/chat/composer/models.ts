@@ -40,8 +40,8 @@ export type ModelChoice = {
 export const DEFAULT_MODEL_ID = "claude-opus-4-7[1m]"
 
 export const MODEL_CHOICES: readonly ModelChoice[] = [
-  { id: "claude-opus-4-7[1m]", label: "opus 4.7 (1M)", hint: "long context, default" },
-  { id: "claude-opus-4-7", label: "opus 4.7", hint: "most capable, slowest" },
+  { id: "claude-opus-4-7[1m]", label: "Opus 4.7 1M", hint: "long context, default" },
+  { id: "claude-opus-4-7", label: "Opus 4.7", hint: "most capable, slowest" },
   { id: "claude-sonnet-4-6[1m]", label: "sonnet 4.6 (1M)", hint: "long context" },
   { id: "claude-sonnet-4-6", label: "sonnet 4.6" },
   { id: "claude-haiku-4-5-20251001", label: "haiku 4.5", hint: "fastest, cheapest" },

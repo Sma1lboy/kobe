@@ -77,7 +77,9 @@ function InlineSpans(props: { tokens: Inline[] }) {
           const showUrl = t.text.length > 0 && t.text !== t.href
           return (
             <>
-              <span style={{ fg: theme.accent, attributes: TextAttributes.UNDERLINE }}>{showUrl ? t.text : t.href}</span>
+              <span style={{ fg: theme.accent, attributes: TextAttributes.UNDERLINE }}>
+                {showUrl ? t.text : t.href}
+              </span>
               <Show when={showUrl}>
                 <span style={{ fg: theme.textMuted, attributes: TextAttributes.DIM }}> ({t.href})</span>
               </Show>
@@ -129,10 +131,7 @@ function BlockNode(props: { block: Block }) {
     // Mirrors claude-code's `formatToken` heading branch (h1 underlines,
     // h2/h3 just bold) with a TUI-friendly accent for h2 instead of
     // italic-underline (italic ≠ readable on every terminal font).
-    const attrs =
-      b.level === 1
-        ? TextAttributes.BOLD | TextAttributes.UNDERLINE
-        : TextAttributes.BOLD
+    const attrs = b.level === 1 ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD
     const fg = b.level <= 2 ? theme.accent : theme.text
     const tokens = parseInline(b.text)
     return (
