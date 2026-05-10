@@ -677,6 +677,28 @@ export function Chat(props: ChatProps) {
     }),
   }))
 
+  // Esc-to-interrupt while streaming. Higher precedence than the global
+  // `focus.detach` esc (LIFO stack — Chat mounts after the global hook,
+  // so this binding sits on top). Gated on `streaming` so an idle ESC
+  // still falls through to the global handler and detaches to the
+  // sidebar; gated on `!dialog.stack.length` so DialogProvider's esc
+  // (close top dialog) isn't shadowed.
+  async function interruptStream(): Promise<void> {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    if (!taskId || !tabId) return
+    if (!activeState().isStreaming) return
+    try {
+      await props.orchestrator.interruptTask(taskId, tabId)
+    } catch (err) {
+      patchActiveState((s) => pushSystemError(s, `interrupt failed: ${stringifyErr(err)}`))
+    }
+  }
+  useBindings(() => ({
+    enabled: props.focused?.() === true && activeState().isStreaming && dialog.stack.length === 0,
+    bindings: [{ key: "escape", cmd: () => void interruptStream() }],
+  }))
+
   // Spinner shows whenever a turn is in flight — independent of how
   // many assistant rows already exist. Earlier this was gated on
   // `lastAssistantIdx() === -1`; that gate misfired on every turn

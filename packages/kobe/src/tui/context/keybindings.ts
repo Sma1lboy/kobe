@@ -263,8 +263,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "global",
     keys: ["esc"],
     category: "Navigation",
-    description: "Back to sidebar (chat keeps streaming). Closes top dialog if any.",
+    description:
+      "Back to sidebar. In chat while streaming, interrupts the turn instead. Closes top dialog if any.",
     hint: { keys: "esc", label: "back to sidebar" },
+  },
+  {
+    // Doc-only: the chord is registered inline in Chat.tsx (gated on
+    // focused + streaming + no dialog). Surfaces in the help dialog so
+    // the user finds it; status-bar hint stays on `focus.detach` since
+    // ESC still detaches while idle.
+    id: "chat.interrupt",
+    scope: "workspace",
+    keys: [],
+    category: "Workspace",
+    description: "Interrupt current turn (esc while streaming)",
   },
   {
     id: "pane.resize-grow",
