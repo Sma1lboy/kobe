@@ -14,7 +14,14 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { COLLAPSED_LINE_CAP, capLines, formatEditDiff, formatWriteDiff } from "../../src/tui/panes/chat/edit-diff.ts"
+import { BASH_OUTPUT_COLLAPSED_CAP, readBashInput, splitBashOutput } from "../../src/tui/panes/chat/bash-render.ts"
+import {
+  COLLAPSED_LINE_CAP,
+  capLines,
+  formatEditDiff,
+  formatMultiEditDiff,
+  formatWriteDiff,
+} from "../../src/tui/panes/chat/edit-diff.ts"
 import {
   type ChatState,
   SCROLLBACK_CAP,
@@ -26,6 +33,7 @@ import {
   reset,
   setMessagesFromHistory,
 } from "../../src/tui/panes/chat/store.ts"
+import { summarizeGlob, summarizeGrep, summarizeRead } from "../../src/tui/panes/chat/tool-banners.ts"
 import type { EngineEvent, Message } from "../../src/types/engine.ts"
 
 const FIXED_TS = "2026-05-09T00:00:00.000Z"
@@ -1053,5 +1061,257 @@ describe("bounded scrollback", () => {
     s = pushSystemError(s, "boom", FIXED_TS)
     expect(s.messages.length).toBe(SCROLLBACK_CAP)
     expect(s.messages[s.messages.length - 1]).toMatchObject({ kind: "system" })
+  })
+})
+
+/* --------------------------------------------------------------------- */
+/*  MultiEdit diff helper — `formatMultiEditDiff`                         */
+/*  Lifted shape: refs/claude-code/src/components/messages/               */
+/*    MultiEditToolUseMessage.tsx                                         */
+/* --------------------------------------------------------------------- */
+
+describe("formatMultiEditDiff", () => {
+  test("emits one {removes, adds} pair per edit, in declared order", () => {
+    const out = formatMultiEditDiff({
+      file_path: "/abs/foo.ts",
+      edits: [
+        { old_string: "alpha", new_string: "ALPHA" },
+        { old_string: "beta\ngamma", new_string: "BETA\nGAMMA\nDELTA" },
+      ],
+    })
+    expect(out.edits).toHaveLength(2)
+    expect(out.edits[0]).toEqual({ removes: ["alpha"], adds: ["ALPHA"] })
+    expect(out.edits[1]).toEqual({
+      removes: ["beta", "gamma"],
+      adds: ["BETA", "GAMMA", "DELTA"],
+    })
+  })
+
+  test("header includes file path, edit count, and total add/remove counts", () => {
+    const out = formatMultiEditDiff({
+      file_path: "/abs/foo.ts",
+      edits: [
+        { old_string: "x", new_string: "x\ny" },
+        { old_string: "z", new_string: "" },
+      ],
+    })
+    expect(out.header).toContain("/abs/foo.ts")
+    expect(out.header).toContain("2 edits")
+    expect(out.header).toContain("Added 2 lines")
+    expect(out.header).toContain("removed 2 lines")
+  })
+
+  test("singular edit count drops the plural", () => {
+    const out = formatMultiEditDiff({
+      file_path: "/p",
+      edits: [{ old_string: "a", new_string: "b" }],
+    })
+    expect(out.header).toMatch(/1 edit(?!s)/)
+  })
+
+  test("zero edits — header still mentions the file but no counts", () => {
+    const out = formatMultiEditDiff({ file_path: "/p", edits: [] })
+    expect(out.header).toBe("Edited /p")
+    expect(out.edits).toEqual([])
+  })
+
+  test("missing file_path falls back to placeholder", () => {
+    const out = formatMultiEditDiff({ edits: [{ old_string: "a", new_string: "b" }] })
+    expect(out.header).toContain("(unknown file)")
+  })
+
+  test("non-object input collapses to empty diff (no crash)", () => {
+    const out = formatMultiEditDiff(null)
+    expect(out.header).toContain("(unknown file)")
+    expect(out.edits).toEqual([])
+  })
+
+  test("malformed edit entries in the array become empty pairs", () => {
+    const out = formatMultiEditDiff({
+      file_path: "/p",
+      edits: [{ old_string: "a", new_string: "b" }, null, "garbage", { foo: "bar" }],
+    })
+    expect(out.edits).toHaveLength(4)
+    expect(out.edits[0]).toEqual({ removes: ["a"], adds: ["b"] })
+    expect(out.edits[1]).toEqual({ removes: [], adds: [] })
+    expect(out.edits[2]).toEqual({ removes: [], adds: [] })
+    expect(out.edits[3]).toEqual({ removes: [], adds: [] })
+  })
+
+  test("CRLF newlines split correctly on each edit's strings", () => {
+    const out = formatMultiEditDiff({
+      file_path: "/p",
+      edits: [{ old_string: "a\r\nb", new_string: "a\r\nB" }],
+    })
+    expect(out.edits[0]?.removes).toEqual(["a", "b"])
+    expect(out.edits[0]?.adds).toEqual(["a", "B"])
+  })
+})
+
+/* --------------------------------------------------------------------- */
+/*  Bash render helpers — `readBashInput`, `splitBashOutput`              */
+/*  Lifted shape: refs/claude-code/src/components/messages/               */
+/*    BashToolUseMessage.tsx                                              */
+/* --------------------------------------------------------------------- */
+
+describe("readBashInput", () => {
+  test("returns command + description from a well-formed input", () => {
+    expect(readBashInput({ command: "ls -la", description: "list files" })).toEqual({
+      command: "ls -la",
+      description: "list files",
+    })
+  })
+
+  test("missing description defaults to empty string", () => {
+    expect(readBashInput({ command: "pwd" })).toEqual({ command: "pwd", description: "" })
+  })
+
+  test("non-object input collapses to empty fields", () => {
+    expect(readBashInput(null)).toEqual({ command: "", description: "" })
+    expect(readBashInput("ls")).toEqual({ command: "", description: "" })
+  })
+
+  test("non-string command/description fields collapse to empty", () => {
+    expect(readBashInput({ command: 42, description: { foo: "bar" } })).toEqual({
+      command: "",
+      description: "",
+    })
+  })
+})
+
+describe("splitBashOutput", () => {
+  test("returns full lines when under the cap", () => {
+    const out = splitBashOutput("a\nb\nc")
+    expect(out.totalLines).toBe(3)
+    expect(out.visible).toEqual(["a", "b", "c"])
+    expect(out.hidden).toBe(0)
+  })
+
+  test("truncates to the cap and reports hidden count", () => {
+    const text = Array.from({ length: BASH_OUTPUT_COLLAPSED_CAP + 5 }, (_, i) => `L${i}`).join("\n")
+    const out = splitBashOutput(text)
+    expect(out.totalLines).toBe(BASH_OUTPUT_COLLAPSED_CAP + 5)
+    expect(out.visible).toHaveLength(BASH_OUTPUT_COLLAPSED_CAP)
+    expect(out.hidden).toBe(5)
+  })
+
+  test("cap < 0 means no truncation (expanded view)", () => {
+    const text = Array.from({ length: 50 }, (_, i) => `L${i}`).join("\n")
+    const out = splitBashOutput(text, -1)
+    expect(out.visible).toHaveLength(50)
+    expect(out.hidden).toBe(0)
+  })
+
+  test("trailing newline is trimmed so no phantom empty row appears", () => {
+    const out = splitBashOutput("a\nb\n")
+    expect(out.totalLines).toBe(2)
+    expect(out.visible).toEqual(["a", "b"])
+  })
+
+  test("CRLF newlines are accepted", () => {
+    const out = splitBashOutput("a\r\nb\r\nc")
+    expect(out.visible).toEqual(["a", "b", "c"])
+  })
+
+  test("empty / nullish output yields zero-line view (no crash)", () => {
+    expect(splitBashOutput("")).toEqual({ totalLines: 0, visible: [], hidden: 0 })
+    expect(splitBashOutput(null)).toEqual({ totalLines: 0, visible: [], hidden: 0 })
+    expect(splitBashOutput(undefined)).toEqual({ totalLines: 0, visible: [], hidden: 0 })
+  })
+
+  test("non-string output (e.g. structured tool result) is JSON-stringified", () => {
+    const out = splitBashOutput({ exitCode: 0, stdout: "ok" })
+    expect(out.totalLines).toBeGreaterThan(0)
+    expect(out.visible.join("\n")).toContain("exitCode")
+  })
+})
+
+/* --------------------------------------------------------------------- */
+/*  Read / Grep / Glob banner formatters                                  */
+/*  Lifted shape: refs/claude-code/src/components/messages/               */
+/*    {Read,Grep,Glob}ToolUseMessage.tsx                                  */
+/* --------------------------------------------------------------------- */
+
+describe("summarizeRead", () => {
+  test("file_path only — no range suffix", () => {
+    expect(summarizeRead({ file_path: "/abs/foo.ts" })).toBe("/abs/foo.ts")
+  })
+
+  test("file_path + offset + limit — explicit L<start>-<end>", () => {
+    expect(summarizeRead({ file_path: "/abs/foo.ts", offset: 10, limit: 20 })).toBe("/abs/foo.ts · L10-30")
+  })
+
+  test("file_path + limit only — implicit L1-<limit>", () => {
+    expect(summarizeRead({ file_path: "/p", limit: 50 })).toBe("/p · L1-50")
+  })
+
+  test("file_path + offset only — open-ended range", () => {
+    expect(summarizeRead({ file_path: "/p", offset: 5 })).toBe("/p · L5-")
+  })
+
+  test("missing file_path falls back to placeholder", () => {
+    expect(summarizeRead({})).toBe("(unknown file)")
+  })
+
+  test("non-object input does not crash", () => {
+    expect(summarizeRead(null)).toBe("(unknown file)")
+  })
+})
+
+describe("summarizeGrep", () => {
+  test("in-flight render shows (searching…)", () => {
+    expect(summarizeGrep({ pattern: "TODO" }, undefined, false)).toBe('"TODO" · (searching…)')
+  })
+
+  test("structured 'Found N files' output is parsed", () => {
+    expect(summarizeGrep({ pattern: "x" }, "Found 3 files\n/a\n/b\n/c", true)).toBe('"x" · 3 files')
+  })
+
+  test("structured 'Found N matches' output is parsed", () => {
+    expect(summarizeGrep({ pattern: "x" }, "Found 7 matches", true)).toBe('"x" · 7 matches')
+  })
+
+  test("singular form when count is 1", () => {
+    expect(summarizeGrep({ pattern: "x" }, "Found 1 file", true)).toBe('"x" · 1 file')
+    expect(summarizeGrep({ pattern: "x" }, "Found 1 match", true)).toBe('"x" · 1 match')
+  })
+
+  test("falls back to non-empty line count when output is unstructured", () => {
+    expect(summarizeGrep({ pattern: "x" }, "/a:1:hit\n/b:2:hit\n/c:3:hit", true)).toBe('"x" · 3 matches')
+  })
+
+  test("empty/missing output reports 0 matches when done", () => {
+    expect(summarizeGrep({ pattern: "x" }, "", true)).toBe('"x" · 0 matches')
+    expect(summarizeGrep({ pattern: "x" }, undefined, true)).toBe('"x" · 0 matches')
+  })
+
+  test("missing pattern shows placeholder", () => {
+    expect(summarizeGrep({}, "Found 1 file", true)).toBe("(no pattern) · 1 file")
+  })
+})
+
+describe("summarizeGlob", () => {
+  test("in-flight render shows (searching…)", () => {
+    expect(summarizeGlob({ pattern: "**/*.ts" }, undefined, false)).toBe('"**/*.ts" · (searching…)')
+  })
+
+  test("counts non-empty lines as files", () => {
+    expect(summarizeGlob({ pattern: "*.ts" }, "/a.ts\n/b.ts", true)).toBe('"*.ts" · 2 files')
+  })
+
+  test("singular form when count is 1", () => {
+    expect(summarizeGlob({ pattern: "*.ts" }, "/only.ts", true)).toBe('"*.ts" · 1 file')
+  })
+
+  test("'No files found' style output reports 0 files", () => {
+    expect(summarizeGlob({ pattern: "*.xyz" }, "No files found", true)).toBe('"*.xyz" · 0 files')
+  })
+
+  test("empty/missing output reports 0 files", () => {
+    expect(summarizeGlob({ pattern: "*" }, "", true)).toBe('"*" · 0 files')
+  })
+
+  test("missing pattern shows placeholder", () => {
+    expect(summarizeGlob({}, "/x", true)).toBe("(no pattern) · 1 file")
   })
 })
