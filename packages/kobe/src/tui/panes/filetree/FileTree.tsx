@@ -299,25 +299,17 @@ export function FileTree(props: FileTreeProps) {
          `1` / `2` / `3` switch from the keyboard. */}
       <box flexDirection="row" gap={2} paddingBottom={1} flexShrink={0}>
         <For each={TABS}>
-          {(t, i) => {
+          {(t) => {
             const isActive = () => tab() === t
             return (
-              <box flexDirection="row" gap={1} onMouseUp={() => setTab(t)}>
-                {/* Bold ordinal prefix — same shape as the chat tab
-                    strip's `1 chat 1` chips. The chord here is `[/]`
-                    cycling rather than a numeric jump, so the digit
-                    is purely an ordering hint, not a binding label. */}
-                <text fg={isActive() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-                  {i() + 1}
-                </text>
-                <text
-                  fg={isActive() ? theme.primary : theme.textMuted}
-                  attributes={isActive() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                >
-                  {TAB_LABEL[t]}
-                </text>
-              </box>
+              <text
+                fg={isActive() ? theme.primary : theme.textMuted}
+                attributes={isActive() ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+                onMouseUp={() => setTab(t)}
+              >
+                {TAB_LABEL[t]}
+              </text>
             )
           }}
         </For>

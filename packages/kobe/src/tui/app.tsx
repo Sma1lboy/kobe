@@ -776,7 +776,7 @@ export type AppDeps = {
 /* --------------------------------------------------------------------- */
 /*  PaneHeader — uniform CAPS-bold pane label (agent-deck-style chunking)  */
 /* --------------------------------------------------------------------- */
-function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean }) {
+function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean; ordinal?: number }) {
   const { theme } = useTheme()
   // Focused panes use `theme.success` (green) — the rest of the focus
   // affordance system (resize edges, status bar) already uses green for
@@ -798,6 +798,15 @@ function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean
         <Show when={focused()} fallback={<text fg={theme.textMuted}> </text>}>
           <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
             ▌
+          </text>
+        </Show>
+        {/* Bold leading ordinal — corresponds to the global ctrl+N
+            focus chord (focus.numeric in KobeKeymap; sidebar=1,
+            workspace=2, files=3, terminal=4). The user sees the
+            chord at the same spot they read the pane title from. */}
+        <Show when={props.ordinal !== undefined}>
+          <text fg={titleColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+            {props.ordinal}
           </text>
         </Show>
         <text fg={titleColor()} attributes={TextAttributes.BOLD} wrapMode="none">
@@ -1667,6 +1676,7 @@ function Shell(props: AppDeps) {
         >
           <PaneHeader
             title="WORKSPACE"
+            ordinal={2}
             subtitle={activeTask()?.title ?? "no task"}
             focused={focusedPane() === "workspace"}
           />
@@ -1721,7 +1731,7 @@ function Shell(props: AppDeps) {
             symmetric and the chat in the middle is visibly the focus. */}
         <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
           <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
-            <PaneHeader title="FILES" focused={focusedPane() === "files"} />
+            <PaneHeader title="FILES" ordinal={3} focused={focusedPane() === "files"} />
             <box flexGrow={1}>
               <FileTree worktreePath={worktreePathAcc} onOpenFile={openFileInCenter} focused={isFocused("files")} />
             </box>
@@ -1743,6 +1753,7 @@ function Shell(props: AppDeps) {
           >
             <PaneHeader
               title="TERMINAL"
+              ordinal={4}
               subtitle={worktreePathAcc() ? worktreePathAcc()?.split("/").slice(-1)[0] : undefined}
               focused={focusedPane() === "terminal"}
             />
