@@ -59,8 +59,13 @@ export function DialogConfirm(props: DialogConfirmProps) {
     ],
   }))
 
+  // Tight vertical layout — confirms used to have a paragraph-of-air
+  // around the title/message/buttons (gap=1 + bottom paddings), which
+  // made a six-word prompt take 7 vertical lines. Now: title row,
+  // message right under it, buttons row right under that. The dialog
+  // wrapper still adds a 1-row paddingTop above the card body.
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={0}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}
@@ -69,10 +74,8 @@ export function DialogConfirm(props: DialogConfirmProps) {
           esc
         </text>
       </box>
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>{props.message}</text>
-      </box>
-      <box flexDirection="row" justifyContent="flex-end" paddingBottom={1}>
+      <text fg={theme.textMuted}>{props.message}</text>
+      <box flexDirection="row" justifyContent="flex-end" paddingTop={1}>
         <For each={["cancel", "confirm"] as const}>
           {(key) => (
             <box

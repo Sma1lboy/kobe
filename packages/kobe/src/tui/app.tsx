@@ -684,6 +684,11 @@ function showNewTaskDialog(
       ),
       () => resolve(undefined),
     )
+    // The new-task dialog has compact content — repo picker + custom
+    // path input + branch picker. The medium 80-col card looked
+    // oversized for it. `small` (50 cols) fits the layout without
+    // wrapping common paths and keeps the modal visually quiet.
+    dialog.setSize("small")
   })
 }
 
