@@ -72,9 +72,9 @@ import type {
 } from "../types/engine.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
 import { resolveDefaultModelId } from "../tui/panes/chat/composer/claude-settings.ts"
-import { suggestBranchSlug } from "./branch-suggestion.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
+import { MetadataSuggester } from "./metadata-suggester.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
@@ -83,6 +83,15 @@ export interface OrchestratorDeps {
   readonly engine: AIEngine
   readonly store: TaskIndexStore
   readonly worktrees: GitWorktreeManager
+  /**
+   * Optional override for the claude-driven metadata suggester
+   * (branch slug today; worktree slug + title API exposed for
+   * follow-ups). Tests inject a fake to avoid shelling out to
+   * `claude -p`. When omitted, the orchestrator constructs a default
+   * instance — the binary lookup inside it is lazy, so this stays
+   * free at construction time.
+   */
+  readonly metadataSuggester?: MetadataSuggester
 }
 
 /** Maximum simultaneous `in_progress` tasks. From DESIGN §11.5. */
@@ -138,6 +147,20 @@ export class TaskNotFoundError extends Error {
   constructor(taskId: string) {
     super(`task not found: ${taskId}`)
     this.name = "TaskNotFoundError"
+  }
+}
+
+/**
+ * Thrown when a caller tries to {@link Orchestrator.deleteTask} a task
+ * with `kind: "main"`. Main tasks are bound to a saved repo entry, not
+ * a kobe-allocated worktree — the user removes the repo from saved
+ * repos instead, which archives the main task. The wording is the
+ * literal copy the UI surfaces in its confirm dialog.
+ */
+export class CannotDeleteMainTaskError extends Error {
+  constructor() {
+    super("cannot delete a main task; remove the repo from saved repos instead")
+    this.name = "CannotDeleteMainTaskError"
   }
 }
 
@@ -241,6 +264,7 @@ export class Orchestrator {
   private readonly engine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
+  private readonly metadataSuggester: MetadataSuggester
   /**
    * Engine session handles keyed by `${taskId}:${tabId}`. Each chat tab
    * within a task owns an independent session; closing a tab tears down
@@ -282,6 +306,7 @@ export class Orchestrator {
     this.engine = deps.engine
     this.store = deps.store
     this.worktrees = deps.worktrees
+    this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
     // Seed the signal with the current store snapshot so synchronous
     // readers (the Sidebar's `createMemo`) see the right initial
     // shape on the very first paint.
@@ -406,6 +431,62 @@ export class Orchestrator {
   }
 
   /**
+   * Ensure a "main" task exists for `repo`. Idempotent: if a task with
+   * `kind === "main"` and `repo === <repo>` is already in the store,
+   * return it — possibly after unarchiving (see below). Otherwise create
+   * one with `worktreePath === repo`, an empty `branch` (the live
+   * current branch is resolved at display time, not stored), `status:
+   * "backlog"`, and `kind: "main"`.
+   *
+   * Title: the repo basename. Stable across restarts so the sidebar's
+   * pinned row reads `kobe`, not `/Users/.../kobe`.
+   *
+   * Repo uniqueness: the orchestrator owns this invariant; there's no DB
+   * constraint. We scan the store for an existing `(kind: "main", repo)`
+   * pair and return it instead of creating a duplicate. Two clones at
+   * different paths (`/Users/x/kobe` vs `/tmp/kobe`) get separate main
+   * tasks — they're separate repos by path, per the issue spec.
+   *
+   * Unarchive on re-add: if the user previously removed `repo` from
+   * saved repos (which archives the main task) and is now re-adding it,
+   * `ensureMainTask` flips `archived: false` so the row reappears in
+   * Working session. Restoring without forcing the user to also press
+   * `a` matches "remove + re-add" being the symmetric pair.
+   *
+   * Permission mode: the freshly-created main task lands with no pinned
+   * `permissionMode` (CLI default). The user can still cycle it via
+   * shift+tab. Existing main tasks aren't touched on re-ensure — we
+   * don't override the user's stored choice across restarts.
+   *
+   * Boot-time seeding (in `app.tsx`) calls this for every entry in
+   * `getSavedRepos()`. Order doesn't matter: each ensure is independent.
+   */
+  async ensureMainTask(repo: string): Promise<Task> {
+    if (!repo) throw new Error("ensureMainTask: repo is required")
+    const existing = this.store.list().find((t) => t.kind === "main" && t.repo === repo)
+    if (existing) {
+      // Re-add path: if the user previously removed this repo from saved
+      // repos (which archives the main task) and is now re-adding it,
+      // unarchive so the pinned row reappears in Working session.
+      if (existing.archived) {
+        return await this.store.update(existing.id, { archived: false })
+      }
+      return existing
+    }
+    const basename = repo.split("/").filter(Boolean).pop() ?? repo
+    return await this.store.create({
+      title: basename,
+      repo,
+      branch: "",
+      worktreePath: repo,
+      sessionId: null,
+      status: "backlog",
+      archived: false,
+      kind: "main",
+    })
+  }
+
+  /**
    * Allocate the worktree for a task that was created with the lazy
    * (Wave 4.X) flow. Idempotent: returns the task untouched if
    * `worktreePath` is already populated. Called by `runTask` on the
@@ -470,7 +551,7 @@ export class Orchestrator {
       text: "branch: choosing a name…",
     })
 
-    const slug = await suggestBranchSlug(prompt)
+    const slug = await this.metadataSuggester.suggestBranchSlug(prompt)
     if (!slug) return
 
     // Re-read in case the task changed (rename, archive) while we
@@ -514,10 +595,18 @@ export class Orchestrator {
       throw new IllegalTransitionError(task.status, "in_progress", String(id))
     }
 
+    // KOB-15: main tasks are bound to the repo root checkout — no
+    // `git worktree add`. Their `worktreePath === repo` is set by
+    // `ensureMainTask`, so `ensureWorktree` is skipped entirely. The
+    // engine cwd plumbing below already passes `task.worktreePath`,
+    // which IS the repo root for main tasks; no special-case there.
+    const isMain = task.kind === "main"
     // Lazy worktree: tasks created via the new-task dialog land here
     // with `worktreePath: ""`. Allocate it now (idempotent — returns
-    // the task untouched if it already has a worktree).
-    const isFirstAllocation = !task.worktreePath
+    // the task untouched if it already has a worktree). Main tasks
+    // have a non-empty worktreePath from creation, so this branch is
+    // skipped for them.
+    const isFirstAllocation = !isMain && !task.worktreePath
     if (isFirstAllocation) {
       task = await this.ensureWorktree(task)
       // Surface the allocation as a dim system row so the user can
@@ -910,6 +999,15 @@ export class Orchestrator {
   async deleteTask(id: TaskId | string): Promise<void> {
     const task = this.store.get(id)
     if (!task) return // defensive — fast cursor races or stale id
+
+    // KOB-15: main tasks are bound to the user's actual repo checkout
+    // (no kobe-allocated worktree). Refuse to delete them — the user
+    // removes the repo from saved repos instead, which archives the
+    // main task. The UI catches this error and surfaces the
+    // "remove from saved repos" confirm copy.
+    if (task.kind === "main") {
+      throw new CannotDeleteMainTaskError()
+    }
 
     if (task.status === "in_progress") {
       try {

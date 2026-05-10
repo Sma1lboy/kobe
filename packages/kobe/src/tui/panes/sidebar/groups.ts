@@ -52,6 +52,18 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * carries its `flatIndex` — its position in the navigable id list — so
  * the renderer can compare against the cursor without recounting.
  *
+ * Row order in the active ("Working session") view (KOB-15):
+ *   1. Pinned "main" tasks first, ordered by repo basename.
+ *   2. Regular tasks (`kind === "task"`) below, in input order.
+ *
+ * Archived view: same structure (main rows the user archived float to
+ * the top of the archives list), still ordered by repo basename.
+ *
+ * Why two passes rather than a single sort: the regular-task ordering
+ * is owned by the orchestrator (createdAt-derived ULID order), and
+ * sorting both groups together would scramble it. A stable partition
+ * preserves the regular tasks' original order.
+ *
  * Empty input returns an empty array. The caller (`Sidebar.tsx`)
  * handles the empty-state placeholder separately; we don't emit a
  * synthetic header for that.
@@ -61,12 +73,41 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  */
 export function buildRows(tasks: readonly Task[], view: SidebarView): SidebarRow[] {
   const filtered = filterByView(tasks, view)
+  const main: Task[] = []
+  const regular: Task[] = []
+  for (const t of filtered) {
+    if (t.kind === "main") main.push(t)
+    else regular.push(t)
+  }
+  // Pinned section is alphabetised by repo basename so two repos with
+  // the same prefix sit predictably (kobe < kobe-fork). Regular tasks
+  // keep their orchestrator-supplied order.
+  main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
   const rows: SidebarRow[] = []
-  for (let i = 0; i < filtered.length; i++) {
-    const task = filtered[i]
-    if (task) rows.push({ kind: "task", task, flatIndex: i })
+  let flatIndex = 0
+  for (const task of main) {
+    rows.push({ kind: "task", task, flatIndex })
+    flatIndex++
+  }
+  for (const task of regular) {
+    rows.push({ kind: "task", task, flatIndex })
+    flatIndex++
   }
   return rows
+}
+
+/**
+ * Repo basename. Strips a trailing slash before taking the last
+ * segment so `/Users/x/kobe/` and `/Users/x/kobe` land on the same
+ * label. Empty input yields an empty string.
+ *
+ * Exported for the Sidebar's row renderer — main tasks display this
+ * as the title (instead of `task.title`, which is a stored copy that
+ * could drift if the user renamed the directory). Pure / no Solid.
+ */
+export function repoBasename(repo: string): string {
+  const segments = repo.split("/").filter(Boolean)
+  return segments[segments.length - 1] ?? repo
 }
 
 /** Extract the flat list of navigable task ids. */

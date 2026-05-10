@@ -31,6 +31,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import {
   CONCURRENCY_CAP,
+  CannotDeleteMainTaskError,
   ConcurrencyCapError,
   IllegalTransitionError,
   Orchestrator,
@@ -566,6 +567,192 @@ describe("Orchestrator.deleteTask", () => {
 
     expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(t.worktreePath)).toBe(false)
+  })
+})
+
+// ----------------------------------------------------------------------
+// ensureMainTask — KOB-15 pinned per-repo task
+//
+// Why this matters: the boot path in app.tsx walks getSavedRepos() and
+// calls ensureMainTask(repo) for each. Idempotency is load-bearing —
+// every kobe restart hits this path, and a duplicate per restart would
+// fill the sidebar with stale ★ rows.
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.ensureMainTask", () => {
+  test("creates a main task bound to the repo root checkout (no worktree allocation)", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const t = await orch.ensureMainTask(repo)
+    expect(t.kind).toBe("main")
+    expect(t.repo).toBe(repo)
+    // Bound to the repo root — NOT under .claude/worktrees/.
+    expect(t.worktreePath).toBe(repo)
+    // Branch is computed at display time, not stored authoritatively.
+    expect(t.branch).toBe("")
+    expect(t.status).toBe("backlog")
+    expect(t.archived).toBe(false)
+    // Title is the repo basename so the sidebar reads `repo`, not the
+    // full path.
+    expect(t.title).toBe(path.basename(repo))
+    // Persisted exactly once.
+    expect(store.list().filter((x) => x.kind === "main")).toHaveLength(1)
+  })
+
+  test("is idempotent — calling twice returns the SAME task and creates no duplicate", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const a = await orch.ensureMainTask(repo)
+    const b = await orch.ensureMainTask(repo)
+    expect(b.id).toBe(a.id)
+    expect(store.list().filter((x) => x.kind === "main")).toHaveLength(1)
+  })
+
+  test("two repos at different paths get separate main tasks", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const otherRepo = path.join(tmpRoot, "repo-2")
+    const result = spawnSync("bash", [REPO_INIT, otherRepo], { encoding: "utf8" })
+    if (result.status !== 0) throw new Error(`repo-init.sh failed: ${result.stderr}`)
+    const a = await orch.ensureMainTask(repo)
+    const b = await orch.ensureMainTask(otherRepo)
+    expect(a.id).not.toBe(b.id)
+    expect(a.repo).toBe(repo)
+    expect(b.repo).toBe(otherRepo)
+    expect(store.list().filter((x) => x.kind === "main")).toHaveLength(2)
+  })
+
+  test("re-ensuring an archived main task unarchives it (re-add symmetry)", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const a = await orch.ensureMainTask(repo)
+    // Simulate the "remove from saved repos" UX: the flow archives the
+    // main task instead of deleting it.
+    await orch.setArchived(a.id, true)
+    expect(store.get(a.id)?.archived).toBe(true)
+    // Re-add via `kobe add` calls ensureMainTask again.
+    const b = await orch.ensureMainTask(repo)
+    expect(b.id).toBe(a.id)
+    expect(b.archived).toBe(false)
+  })
+
+  test("rejects empty repo path", async () => {
+    const { orch } = await buildOrchestrator()
+    await expect(orch.ensureMainTask("")).rejects.toThrow()
+  })
+})
+
+// ----------------------------------------------------------------------
+// runTask on a main task — must skip worktree allocation
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.runTask on a main task", () => {
+  test("skips ensureWorktree — engine spawns with cwd = repo root, no kobe/tmp-* branch on disk", async () => {
+    const calls: { cwd: string }[] = []
+    const stub: AIEngine = {
+      async spawn(cwd) {
+        calls.push({ cwd })
+        return { sessionId: "sess-main", cwd } satisfies SessionHandle
+      },
+      async resume() {
+        throw new Error("not used")
+      },
+      stream() {
+        return {
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async *[Symbol.asyncIterator]() {
+            yield { type: "done" } as EngineEvent
+          },
+        }
+      },
+      async readHistory() {
+        return []
+      },
+      async deleteHistory() {},
+      async stop() {},
+    }
+    const { orch } = await buildOrchestrator(stub)
+    const t = await orch.ensureMainTask(repo)
+    await orch.runTask(t.id, "first prompt")
+    await orch._waitForPumpsIdle()
+
+    // Engine cwd is the repo root, not a kobe-allocated worktree.
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.cwd).toBe(repo)
+    // Critical disk-state assertion: no `.claude/worktrees/<id>/`
+    // directory was created. ensureWorktree would have shelled
+    // `git worktree add` and left a sibling tree under the repo.
+    expect(fs.existsSync(path.join(repo, ".claude", "worktrees"))).toBe(false)
+    // Branch stayed empty (live-resolved at display time, not stored).
+    expect(orch.getTask(t.id)?.branch).toBe("")
+  })
+})
+
+// ----------------------------------------------------------------------
+// deleteTask refuses main tasks — they're removed via "remove from
+// saved repos" instead.
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.deleteTask on a main task", () => {
+  test("throws CannotDeleteMainTaskError and leaves the task untouched", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const t = await orch.ensureMainTask(repo)
+    await expect(orch.deleteTask(t.id)).rejects.toBeInstanceOf(CannotDeleteMainTaskError)
+    // Task is still there, repo dir untouched.
+    expect(store.get(t.id)?.kind).toBe("main")
+    expect(fs.existsSync(repo)).toBe(true)
+  })
+
+  test("error message names the right escape hatch (remove from saved repos)", async () => {
+    const { orch } = await buildOrchestrator()
+    const t = await orch.ensureMainTask(repo)
+    await expect(orch.deleteTask(t.id)).rejects.toThrow(/remove the repo from saved repos/i)
+  })
+})
+
+// ----------------------------------------------------------------------
+// Load-time normalisation: pre-KOB-15 records (no `kind` field) come
+// back as `kind: "task"`. New main records round-trip as `kind: "main"`.
+// ----------------------------------------------------------------------
+
+describe("TaskIndexStore — kind discriminator normalization (KOB-15)", () => {
+  test("records without `kind` normalize to 'task' on load", async () => {
+    const manifestPath = path.join(homeDir, ".kobe", "tasks.json")
+    fs.mkdirSync(path.dirname(manifestPath), { recursive: true })
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify({
+        version: 2,
+        tasks: [
+          {
+            id: "01HZBXLEGACY",
+            title: "legacy",
+            repo: "/r",
+            branch: "kobe/legacy",
+            worktreePath: "/r/.claude/worktrees/01HZBXLEGACY",
+            sessionId: null,
+            tabs: [{ id: "tab-leg", sessionId: null, createdAt: "2026-05-08T00:00:00.000Z" }],
+            activeTabId: "tab-leg",
+            status: "backlog",
+            archived: false,
+            createdAt: "2026-05-08T00:00:00.000Z",
+            updatedAt: "2026-05-08T00:00:00.000Z",
+          },
+        ],
+      }),
+      "utf8",
+    )
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    expect(store.list()).toHaveLength(1)
+    expect(store.list()[0]?.kind).toBe("task")
+  })
+
+  test("records with `kind: 'main'` round-trip across save → load", async () => {
+    const { orch } = await buildOrchestrator()
+    await orch.ensureMainTask(repo)
+    // Re-load the manifest from disk in a fresh store.
+    const fresh = new TaskIndexStore({ homeDir })
+    await fresh.load()
+    const t = fresh.list().find((x) => x.kind === "main")
+    expect(t).toBeDefined()
+    expect(t?.repo).toBe(repo)
   })
 })
 

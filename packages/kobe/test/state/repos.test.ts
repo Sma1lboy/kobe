@@ -23,7 +23,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { addSavedRepo, getSavedRepos, statePath } from "../../src/state/repos.ts"
+import { addSavedRepo, getSavedRepos, removeSavedRepo, statePath } from "../../src/state/repos.ts"
 
 let tmpHome: string
 let originalHome: string | undefined
@@ -126,5 +126,57 @@ describe("addSavedRepo", () => {
     const entries = fs.readdirSync(dir)
     expect(entries).toContain("state.json")
     expect(entries).not.toContain("state.json.tmp")
+  })
+})
+
+describe("removeSavedRepo (KOB-15)", () => {
+  test("removes an entry and reports removed=true with the new total", () => {
+    addSavedRepo("/repos/alpha")
+    addSavedRepo("/repos/beta")
+    const r = removeSavedRepo("/repos/alpha")
+    expect(r).toEqual({ removed: true, path: "/repos/alpha", total: 1 })
+    expect(getSavedRepos()).toEqual(["/repos/beta"])
+  })
+
+  test("is idempotent — removing a path that's not present returns removed=false", () => {
+    addSavedRepo("/repos/alpha")
+    const r = removeSavedRepo("/repos/never-added")
+    expect(r).toEqual({ removed: false, path: "/repos/never-added", total: 1 })
+    expect(getSavedRepos()).toEqual(["/repos/alpha"])
+  })
+
+  test("preserves sibling KV keys (must not wipe TUI state)", () => {
+    const p = statePath()
+    fs.mkdirSync(path.dirname(p), { recursive: true })
+    fs.writeFileSync(
+      p,
+      JSON.stringify({
+        activeTheme: "dracula",
+        lastSelectedTaskId: "01XYZ",
+        savedRepos: ["/old", "/keep"],
+      }),
+      "utf8",
+    )
+    removeSavedRepo("/old")
+    const after = JSON.parse(fs.readFileSync(p, "utf8")) as Record<string, unknown>
+    expect(after.activeTheme).toBe("dracula")
+    expect(after.lastSelectedTaskId).toBe("01XYZ")
+    expect(after.savedRepos).toEqual(["/keep"])
+  })
+
+  test("returns total=0 when removing the last entry", () => {
+    addSavedRepo("/only")
+    const r = removeSavedRepo("/only")
+    expect(r).toEqual({ removed: true, path: "/only", total: 0 })
+    expect(getSavedRepos()).toEqual([])
+  })
+
+  test("preserves order of remaining entries", () => {
+    addSavedRepo("/a")
+    addSavedRepo("/b")
+    addSavedRepo("/c")
+    addSavedRepo("/d")
+    removeSavedRepo("/b")
+    expect(getSavedRepos()).toEqual(["/a", "/c", "/d"])
   })
 })

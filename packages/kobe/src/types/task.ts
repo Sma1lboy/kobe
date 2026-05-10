@@ -90,6 +90,27 @@ export interface Task {
   readonly branch: string
   readonly worktreePath: string
   /**
+   * Discriminator: KOB-15 introduces a "main" task per saved repo —
+   * a persistent, pinned task bound to the repo's root checkout (no
+   * `git worktree add`). Regular tasks (the original shape) carry
+   * `kind: "task"`. Optional in the on-disk shape: records written
+   * before this field existed normalize to `"task"` at load time.
+   *
+   * Behavioral implications by kind:
+   *   - `main` tasks set `worktreePath === repo` and `branch === ""`
+   *     (the live current branch is resolved at display time, not
+   *     stored). The orchestrator's `runTask` skips `ensureWorktree`
+   *     for them, and `deleteTask` refuses — the user removes the
+   *     repo from saved repos instead.
+   *   - `task` tasks behave exactly as before.
+   *
+   * The on-disk discriminator is not part of TaskIndex.version: adding
+   * an optional discriminator that defaults at load time is back-compat
+   * with v2 readers. Mirror how `archived` and `permissionMode` were
+   * added.
+   */
+  readonly kind?: "main" | "task"
+  /**
    * @deprecated Read-only alias for `tabs[0]?.sessionId ?? null`.
    * Kept for v1 manifest back-compat and code that hasn't been
    * migrated to the multi-tab API. Do not write through this field.

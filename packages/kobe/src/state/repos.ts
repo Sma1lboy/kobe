@@ -74,3 +74,27 @@ export function addSavedRepo(absPath: string): AddResult {
   save(state)
   return { added: true, path: absPath, total: cur.length + 1 }
 }
+
+export type RemoveResult = { removed: boolean; path: string; total: number }
+
+/**
+ * Remove `absPath` from `savedRepos`. KOB-15 wires this from the
+ * sidebar's `d` keypress on a main-task row: the confirm copy is
+ * "this will remove '<repo>' from your saved repos. The directory and
+ * its files stay on disk." The directory itself is never touched —
+ * only the saved-repos list is mutated. Sibling KV keys (themes,
+ * lastSelectedTaskId, etc.) are preserved.
+ *
+ * Idempotent: removing a path that isn't in the list returns
+ * `removed: false` and leaves the file untouched.
+ */
+export function removeSavedRepo(absPath: string): RemoveResult {
+  const state = load()
+  const cur = getSavedRepos()
+  if (!cur.includes(absPath)) {
+    return { removed: false, path: absPath, total: cur.length }
+  }
+  state.savedRepos = cur.filter((p) => p !== absPath)
+  save(state)
+  return { removed: true, path: absPath, total: cur.length - 1 }
+}

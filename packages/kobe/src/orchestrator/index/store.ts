@@ -517,6 +517,13 @@ function coerceTask(value: unknown): Task | null {
     // introduction don't have it; default to false (i.e. "active /
     // working session"). The user can archive them with `a`.
     archived: typeof v.archived === "boolean" ? v.archived : false,
+    // KOB-15: `kind` discriminator distinguishes pinned per-repo "main"
+    // tasks from the original task shape. Records written before this
+    // field existed (every v2 task prior to KOB-15) normalize to
+    // `"task"` so the rest of the orchestrator can branch on a defined
+    // value without a per-call `?? "task"` fallback. Unknown strings
+    // also fall back to `"task"` — defensive against hand-edited JSON.
+    kind: v.kind === "main" ? "main" : "task",
     // Tool-permission mode: optional. Records pre-dating the field
     // serialize as undefined which the engine layer reads as "no
     // --permission-mode flag" (CLI default). Unknown string values are

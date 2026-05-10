@@ -31,6 +31,7 @@ import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
+import { getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import type { AIEngine } from "../types/engine.ts"
 import type { ChatTab, Task } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
@@ -1466,6 +1467,31 @@ function Shell(props: AppDeps) {
   async function confirmDeleteTask(taskId: string): Promise<void> {
     const task = props.orchestrator.getTask(taskId)
     if (!task) return
+    // KOB-15: pressing `d` on a pinned "main" task row does NOT delete
+    // the user's actual repo. Instead the row is bound to a saved-
+    // repos entry; the destructive verb is "remove from saved repos."
+    // The directory and its files stay on disk; the task is archived
+    // (not removed from the manifest) so a re-add via `kobe add` is
+    // symmetric — `ensureMainTask` finds and unarchives it.
+    if (task.kind === "main") {
+      const repoLabel = task.repo.split("/").filter(Boolean).pop() ?? task.repo
+      const ok = await DialogConfirm.show(
+        dialog,
+        `Remove '${repoLabel}' from saved repos?`,
+        `This will remove '${repoLabel}' from your saved repos. The directory and its files stay on disk.`,
+        "cancel",
+      )
+      if (ok !== true) return
+      try {
+        removeSavedRepo(task.repo)
+        await props.orchestrator.setArchived(task.id, true)
+        if (selectedId() === task.id) setSelectedId(null)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[kobe] remove saved repo failed:", err)
+      }
+      return
+    }
     const ok = await DialogConfirm.show(
       dialog,
       `Delete '${task.title}'?`,
@@ -1721,6 +1747,7 @@ function Shell(props: AppDeps) {
                   diffBase={diffBaseAcc}
                   onOpen={(api) => setPreviewApi(api)}
                   hideInternalTabs={() => true}
+                  onExternalClose={closeFileTab}
                   focused={isFocused("workspace")}
                 />
               }
@@ -1952,6 +1979,21 @@ export async function startApp(): Promise<void> {
   await store.load()
   const worktrees = new GitWorktreeManager()
   const orchestrator = new Orchestrator({ engine, store, worktrees })
+  // KOB-15: seed a pinned "main" task per saved repo. Idempotent:
+  // ensureMainTask returns the existing main task on subsequent boots.
+  // We read savedRepos from `state/repos.ts` (which honours
+  // KOBE_HOME_DIR) rather than from the TUI's KV context — KV isn't
+  // mounted yet, and we want behavior tests with a tmpdir HOME to see
+  // the seeding too. Failures per repo are logged and swallowed so a
+  // single bad path can't gate the whole UI from booting.
+  for (const repo of getSavedRepos()) {
+    try {
+      await orchestrator.ensureMainTask(repo)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
+    }
+  }
   // Renderer-level background: transparent so the host terminal's
   // background (theme, image, transparency setting) shows through where
   // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier

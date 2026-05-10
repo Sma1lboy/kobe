@@ -32,7 +32,7 @@ import { GG_CHORD_TIMEOUT_MS, createSidebarController } from "@/tui/panes/sideba
 // would crash module init with `Unknown file extension ".scm"`. The
 // pure logic lives in `./groups` and `./controller` and has no opentui
 // imports — that's what we exercise here.
-import { buildRows, filterByView, flattenIds } from "@/tui/panes/sidebar/groups"
+import { buildRows, filterByView, flattenIds, repoBasename } from "@/tui/panes/sidebar/groups"
 import type { Task, TaskStatus } from "@/types/task"
 import { toTaskId } from "@/types/task"
 import { describe, expect, test } from "vitest"
@@ -58,6 +58,33 @@ function makeTask(id: string, title: string, status: TaskStatus, repo = "/tmp/re
     activeTabId: tabId,
     status,
     archived,
+    kind: "task",
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+/**
+ * Build a "main" task fixture for sidebar pinning tests. Mirrors
+ * orchestrator.ensureMainTask: worktreePath === repo, branch empty,
+ * title === repo basename. KOB-15.
+ */
+function makeMainTask(id: string, repo: string, archived = false): Task {
+  const now = "2026-05-08T00:00:00.000Z"
+  const tabId = `tab-${id}`
+  const basename = repo.split("/").filter(Boolean).pop() ?? repo
+  return {
+    id: toTaskId(id),
+    title: basename,
+    repo,
+    branch: "",
+    worktreePath: repo,
+    sessionId: null,
+    tabs: [{ id: tabId, sessionId: null, createdAt: now }],
+    activeTabId: tabId,
+    status: "backlog",
+    archived,
+    kind: "main",
     createdAt: now,
     updatedAt: now,
   }
@@ -331,6 +358,94 @@ describe("selectedId visual contract", () => {
 // ---------------------------------------------------------------------
 // Archive flag drives view membership
 // ---------------------------------------------------------------------
+
+// ---------------------------------------------------------------------
+// repoBasename — title for pinned ★ rows (KOB-15)
+// ---------------------------------------------------------------------
+
+describe("repoBasename", () => {
+  test("strips a trailing slash and returns the last segment", () => {
+    expect(repoBasename("/Users/jacksonc/i/kobe")).toBe("kobe")
+    expect(repoBasename("/Users/jacksonc/i/kobe/")).toBe("kobe")
+  })
+
+  test("returns the input verbatim when it has no slashes", () => {
+    expect(repoBasename("kobe")).toBe("kobe")
+  })
+
+  test("handles an empty string", () => {
+    expect(repoBasename("")).toBe("")
+  })
+})
+
+// ---------------------------------------------------------------------
+// Pinned main-task section (KOB-15) — main rows always render at the
+// top of the visible view, ordered by repo basename. Regular tasks
+// keep their orchestrator-supplied order below.
+// ---------------------------------------------------------------------
+
+describe("buildRows — pinned main-task section (KOB-15)", () => {
+  test("main rows appear before regular rows in the active view", () => {
+    const tasks: Task[] = [
+      makeTask("01", "fix login", "in_progress"),
+      makeMainTask("m-kobe", "/Users/x/kobe"),
+      makeTask("02", "another task", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    // Main row pinned first, regular rows preserve order below.
+    expect(rows.map((r) => r.task.id)).toEqual(["m-kobe", "01", "02"])
+  })
+
+  test("multiple main rows are sorted alphabetically by repo basename", () => {
+    const tasks: Task[] = [
+      makeMainTask("m-zeta", "/Users/x/zeta"),
+      makeMainTask("m-alpha", "/Users/x/alpha"),
+      makeMainTask("m-kobe", "/Users/x/kobe"),
+      makeTask("01", "fix bug", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.task.id)).toEqual(["m-alpha", "m-kobe", "m-zeta", "01"])
+  })
+
+  test("flatIndex covers main + regular rows contiguously", () => {
+    const tasks: Task[] = [
+      makeMainTask("m-a", "/Users/x/a"),
+      makeMainTask("m-b", "/Users/x/b"),
+      makeTask("01", "t1", "backlog"),
+      makeTask("02", "t2", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.flatIndex)).toEqual([0, 1, 2, 3])
+  })
+
+  test("an archived main task does NOT appear in the active view", () => {
+    const tasks: Task[] = [
+      makeMainTask("m-hidden", "/Users/x/hidden", true),
+      makeMainTask("m-shown", "/Users/x/shown", false),
+      makeTask("01", "t1", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.task.id)).toEqual(["m-shown", "01"])
+    const archived = buildRows(tasks, "archived")
+    expect(archived.map((r) => r.task.id)).toEqual(["m-hidden"])
+  })
+
+  test("flattenIds traverses the pinned section before regular tasks", () => {
+    const tasks: Task[] = [
+      makeTask("01", "first", "backlog"),
+      makeMainTask("m-kobe", "/Users/x/kobe"),
+      makeTask("02", "second", "backlog"),
+    ]
+    const rows = buildRows(tasks, "active")
+    expect(flattenIds(rows)).toEqual(["m-kobe", "01", "02"])
+  })
+
+  test("empty saved-repos case: no main rows render, regular rows fill the view", () => {
+    const tasks: Task[] = [makeTask("01", "only", "backlog")]
+    const rows = buildRows(tasks, "active")
+    expect(rows.map((r) => r.task.id)).toEqual(["01"])
+  })
+})
 
 describe("archived flag drives view membership", () => {
   test("flipping archived moves the row from active to archived view", () => {

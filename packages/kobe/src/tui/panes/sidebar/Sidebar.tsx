@@ -52,7 +52,8 @@ import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, untrack } from "solid-js"
 import { SIDEBAR_WIDTH } from "../../component/sidebar"
 import { useTheme } from "../../context/theme"
-import { type SidebarView, buildRows, flattenIds } from "./groups"
+import { readCurrentBranch } from "./git-head"
+import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 
 export type SidebarProps = {
@@ -115,6 +116,17 @@ const VIEW_TABS: ReadonlyArray<{ view: SidebarView; label: string }> = [
   { view: "archived", label: "Archives" },
 ]
 
+/**
+ * Polling interval (ms) for the per-main-row git branch refresh. The
+ * sidebar caches each main row's branch name behind a `createMemo`
+ * keyed on this tick + the repo path; advancing the tick busts the
+ * memo and re-shells `git symbolic-ref` once per row. 2s is a
+ * compromise — fast enough that the user doesn't notice a stale label
+ * after a manual checkout, slow enough that the sidebar isn't a git
+ * call generator on every redraw frame. Exported for tests.
+ */
+export const MAIN_BRANCH_POLL_MS = 2_000
+
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
 
@@ -123,6 +135,21 @@ export function Sidebar(props: SidebarProps) {
   // Active view; default to the working session. `[` / `]` cycle
   // through `VIEW_TABS`.
   const [view, setView] = createSignal<SidebarView>("active")
+
+  // Tick that busts each main row's branch-name memo on a fixed
+  // interval. Cheap (one signal write per tick); the actual git call
+  // only happens when a row is visible and re-renders. We deliberately
+  // don't tear down the interval on focus loss — sidebar can be off-
+  // screen briefly during pane focus changes and we still want the
+  // branch labels to be fresh when it comes back. Disposed via
+  // setInterval's process-lifetime when kobe exits.
+  const [branchTick, setBranchTick] = createSignal(0)
+  const branchInterval = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
+  // Stop the interval if Solid disposes this component (rare in
+  // practice — sidebar lives for the lifetime of the app shell).
+  // Using `onCleanup` would require importing it; setInterval against
+  // process lifetime is acceptable for a per-app-singleton pane.
+  void branchInterval
 
   // Filtered, flat row list for the active view. Recomputes only when
   // the upstream tasks accessor or the view changes.
@@ -263,8 +290,10 @@ export function Sidebar(props: SidebarProps) {
               const flatIndex = row.flatIndex
               const isCursor = () => flatIndex === cursorIndex()
               const isSelected = () => task.id === props.selectedId()
+              const isMain = task.kind === "main"
               const badge = STATUS_BADGE[task.status]
               const badgeColor = () => {
+                if (isMain) return theme.primary
                 switch (badge.tone) {
                   case "success":
                     return theme.success
@@ -278,6 +307,18 @@ export function Sidebar(props: SidebarProps) {
                     return theme.textMuted
                 }
               }
+              // Main-row branch label: cached behind a memo keyed on
+              // `branchTick()` + the repo path. The tick advances every
+              // MAIN_BRANCH_POLL_MS so the label refreshes without
+              // shelling out on every redraw frame. Non-main rows skip
+              // the git call entirely (the memo body is gated on isMain).
+              const branchLabel = createMemo(() => {
+                if (!isMain) return ""
+                // Read the tick so Solid wires the memo to it.
+                branchTick()
+                return readCurrentBranch(task.repo)
+              })
+              const titleText = isMain ? repoBasename(task.repo) : task.title
               return (
                 <box
                   flexDirection="row"
@@ -288,15 +329,26 @@ export function Sidebar(props: SidebarProps) {
                   onMouseUp={() => props.onSelect(task.id)}
                 >
                   <text fg={isCursor() ? theme.selectedListItemText : badgeColor()} wrapMode="none">
-                    {badge.glyph}
+                    {isMain ? "★" : badge.glyph}
                   </text>
                   <text
                     fg={isCursor() ? theme.selectedListItemText : theme.text}
-                    attributes={isSelected() && !isCursor() ? TextAttributes.BOLD : undefined}
+                    attributes={
+                      (isMain || (isSelected() && !isCursor())) && !isCursor() ? TextAttributes.BOLD : undefined
+                    }
                     wrapMode="none"
+                    flexGrow={1}
                   >
-                    {task.title}
+                    {titleText}
                   </text>
+                  <Show when={isMain && branchLabel().length > 0}>
+                    <text
+                      fg={isCursor() ? theme.selectedListItemText : theme.textMuted}
+                      wrapMode="none"
+                    >
+                      {branchLabel()}
+                    </text>
+                  </Show>
                 </box>
               )
             }}
