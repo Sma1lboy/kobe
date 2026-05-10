@@ -22,7 +22,7 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { render, useRenderer, useTerminalDimensions } from "@opentui/solid"
+import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
@@ -49,6 +49,7 @@ import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { useAppKeymap } from "./app-keymap"
+import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { Chat } from "./panes/chat/Chat"
 import { FileTree } from "./panes/filetree"
@@ -177,91 +178,14 @@ function Shell(props: AppDeps) {
   const [previewApi, setPreviewApi] = createSignal<PreviewApi | null>(null)
 
   /* ------------------------------------------------------------------- */
-  /*  Pane resize — three <ResizableEdge /> splitters                     */
+  /*  Pane sizing — three <ResizableEdge /> splitters + keyboard nudger   */
   /* ------------------------------------------------------------------- */
-  // Sidebar default 42 (the long-standing "history rail" convention from
-  // opencode/agent-deck). Workspace and files are seeded from the
-  // pre-resize 2:1 flex ratio so the layout looks the same on first paint
-  // and starts diverging only when the user drags. We keep the sizes as
-  // plain numbers (not optional) so the layout is always controlled —
-  // simpler than juggling a "have they dragged yet" flag, at the cost of
-  // not auto-rebalancing on terminal resize (just clamps to fit).
-  //
-  // Mins: sidebar 20 (status badge + first 8-10 chars of a title still
-  // legible); workspace 30 (chat needs room to breathe); right column min
-  // is implicit via "max workspace = total - sidebar - 1 splitter - min
-  // right". Files min 5 / terminal min 5 (header + ~3 rows of content).
-  const MIN_SIDEBAR_WIDTH = 20
-  const MIN_WORKSPACE_WIDTH = 30
-  const MIN_RIGHT_COLUMN_WIDTH = 30
-  const MIN_FILES_HEIGHT = 5
-  const MIN_TERMINAL_HEIGHT = 5
-  const dims = useTerminalDimensions()
-  // Hydrate the resize-pane sizes from KV when present so a kobe restart
-  // lands on the layout the user dragged into last session. Defaults are
-  // computed off the live terminal dims when KV has nothing — first
-  // launch on a small terminal still gets a sensible starting point.
-  // We persist via createEffect below, debounced by the natural drag
-  // throttle (mouse-move events update the signal; KV.set is cheap).
-  const persistedSidebar = (() => {
-    const v = kv.get("paneSidebarWidth")
-    return typeof v === "number" && v >= MIN_SIDEBAR_WIDTH ? v : null
-  })()
-  const persistedWorkspace = (() => {
-    const v = kv.get("paneWorkspaceWidth")
-    return typeof v === "number" && v >= MIN_WORKSPACE_WIDTH ? v : null
-  })()
-  const persistedFiles = (() => {
-    const v = kv.get("paneFilesHeight")
-    return typeof v === "number" && v >= MIN_FILES_HEIGHT ? v : null
-  })()
-  const initialDims = dims()
-  const [sidebarWidth, setSidebarWidth] = createSignal(persistedSidebar ?? 42)
-  // Initial workspace / files seeds: computed once from the terminal
-  // dims at mount when KV has nothing. These are deliberately not
-  // reactive to terminal resizes — the user's last drag wins.
-  const [workspaceWidth, setWorkspaceWidth] = createSignal(
-    persistedWorkspace ?? Math.max(MIN_WORKSPACE_WIDTH, Math.floor((initialDims.width - 42 - 1) * (2 / 3))),
-  )
-  const initialRightColumnHeight = Math.max(20, initialDims.height - 2 - 1)
-  const [filesHeight, setFilesHeight] = createSignal(
-    persistedFiles ?? Math.max(MIN_FILES_HEIGHT, Math.floor(initialRightColumnHeight * (2 / 3))),
-  )
-
-  // Persist on every resize. The signals only change during a drag (or
-  // a clamp on terminal resize), so this fires per drag-frame at most —
-  // KV.set is in-memory until the provider's debounced write hits disk.
-  createEffect(() => {
-    kv.set("paneSidebarWidth", sidebarWidth())
-  })
-  createEffect(() => {
-    kv.set("paneWorkspaceWidth", workspaceWidth())
-  })
-  createEffect(() => {
-    kv.set("paneFilesHeight", filesHeight())
-  })
-
-  const clampSidebar = (w: number) => {
-    const max = Math.max(
-      MIN_SIDEBAR_WIDTH,
-      dims().width - workspaceWidth() - MIN_RIGHT_COLUMN_WIDTH - 2 /* two splitters */,
-    )
-    return Math.min(max, Math.max(MIN_SIDEBAR_WIDTH, w))
-  }
-  const clampWorkspace = (w: number) => {
-    const max = Math.max(
-      MIN_WORKSPACE_WIDTH,
-      dims().width - sidebarWidth() - MIN_RIGHT_COLUMN_WIDTH - 2 /* two splitters */,
-    )
-    return Math.min(max, Math.max(MIN_WORKSPACE_WIDTH, w))
-  }
-  const clampFiles = (h: number) => {
-    // Files height max = right column height - terminal min - 1 (splitter).
-    // We approximate right column height as `dims.height - topbar - statusbar`.
-    const rightColH = Math.max(MIN_FILES_HEIGHT + MIN_TERMINAL_HEIGHT + 1, dims().height - 2)
-    const max = Math.max(MIN_FILES_HEIGHT, rightColH - MIN_TERMINAL_HEIGHT - 1)
-    return Math.min(max, Math.max(MIN_FILES_HEIGHT, h))
-  }
+  // All size signals, KV round-trip, and the clamp helpers live in
+  // `./lib/use-pane-sizes.ts`. The hook also owns the keyboard-resize
+  // `nudge(delta, focused)` that we thread into the app-keymap below.
+  const paneSizes = usePaneSizes(kv)
+  const { sidebarWidth, setSidebarWidth, workspaceWidth, setWorkspaceWidth, filesHeight, setFilesHeight } = paneSizes
+  const { clampSidebar, clampWorkspace, clampFiles } = paneSizes
 
   /* ------------------------------------------------------------------- */
   /*  Pane focus — backed by FocusContext (src/tui/context/focus.tsx)     */
@@ -296,33 +220,10 @@ function Shell(props: AppDeps) {
     l: "terminal",
   }
 
-  // Keyboard resize for the focused pane — fallback when mouse drag
-  // misfires on the splitter. ctrl+= / ctrl++ grows, ctrl+- / ctrl+_
-  // shrinks. The keymap normalizer (lib/keymap.tsx) drops the shift
-  // modifier on single-char names since shift+= already produces `+`,
-  // so we register both `+` and `=` on the grow side and both `-` and
-  // `_` on the shrink side to match whatever shape the terminal sends.
-  // Terminal pane grows by SHRINKING filesHeight (its height is the
-  // residual under filesHeight in the right column); the rest of the
-  // panes grow their own width/height directly.
+  // Keyboard-resize step. The grow/shrink direction comes from the
+  // chord; the per-pane nudge logic lives in `paneSizes.nudge`.
   const RESIZE_STEP = 2
-  function nudgeFocusedPane(delta: number): void {
-    switch (focusedPane()) {
-      case "sidebar":
-        setSidebarWidth(clampSidebar(sidebarWidth() + delta))
-        return
-      case "workspace":
-        setWorkspaceWidth(clampWorkspace(workspaceWidth() + delta))
-        return
-      case "files":
-        setFilesHeight(clampFiles(filesHeight() + delta))
-        return
-      case "terminal":
-        // Inverse: growing the terminal = shrinking files above it.
-        setFilesHeight(clampFiles(filesHeight() - delta))
-        return
-    }
-  }
+  const nudgeFocusedPane = (delta: number): void => paneSizes.nudge(delta, focusedPane())
   // Note: the actual `useBindings(...)` calls for focus.numeric and
   // pane.resize live in `useAppKeymap(...)` below — see app-keymap.tsx
   // for the full priority stack.
