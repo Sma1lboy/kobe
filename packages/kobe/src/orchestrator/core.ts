@@ -71,6 +71,7 @@ import type {
   UserInputResponse,
 } from "../types/engine.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus } from "../types/task.ts"
+import { resolveDefaultModelId } from "../tui/panes/chat/composer/claude-settings.ts"
 import { suggestBranchSlug } from "./branch-suggestion.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
@@ -560,17 +561,25 @@ export class Orchestrator {
     // chatting" doesn't trip.
     const promptToSend = prompt && prompt.length > 0 ? prompt : " "
 
+    // Model resolution: per-task pin → claude-code's
+    // `~/.claude/settings.json` `model` key → kobe's hardcoded
+    // FALLBACK_DEFAULT_MODEL_ID (opus 4.7 [1m]). Mirrors claude-code's
+    // own getUserSpecifiedModelSetting() ordering. Doing the resolve
+    // here (rather than passing `task.model` raw) means kobe's UI
+    // label and the engine spawn agree on the same default.
+    const modelToUse = task.model ?? resolveDefaultModelId()
+
     let handle: SessionHandle
     if (targetTab.sessionId) {
       handle = await this.engine.resume(targetTab.sessionId, promptToSend, {
         env: { KOBE_RESUME_CWD: task.worktreePath },
         permissionMode: task.permissionMode,
-        model: task.model,
+        model: modelToUse,
       })
     } else {
       handle = await this.engine.spawn(task.worktreePath, promptToSend, {
         permissionMode: task.permissionMode,
-        model: task.model,
+        model: modelToUse,
       })
       // Persist the freshly-allocated session id back onto the tab so
       // a future kobe restart can resume.

@@ -31,6 +31,7 @@
  * keybinding gating depends on it everywhere.
  */
 
+import { useRenderer } from "@opentui/solid"
 import { type Accessor, type JSXElement, createContext, createSignal, useContext } from "solid-js"
 
 /** The four primary panes in kobe's layout. */
@@ -62,7 +63,45 @@ const FocusContext = createContext<FocusContextValue | null>(null)
  * isn't claiming keys at boot.
  */
 export function FocusProvider(props: { children: JSXElement; initial?: PaneId }): JSXElement {
-  const [focused, setFocused] = createSignal<PaneId>(props.initial ?? "sidebar")
+  const [focused, setFocusedSignal] = createSignal<PaneId>(props.initial ?? "sidebar")
+  const renderer = useRenderer()
+
+  /**
+   * Unified focus-change entry point. ALL pane focus changes go
+   * through this:
+   *
+   *   1. Update the reactive `focused` signal (downstream pane
+   *      gates and the Composer's textarea-mirror createEffect
+   *      pick up the change).
+   *   2. Blur whatever opentui renderable was holding native focus.
+   *      Without this, the chat composer's textarea would keep
+   *      eating keystrokes when the user pressed ctrl+q (or any
+   *      ctrl+hjkl) to leave workspace — Composer's mirror effect
+   *      WOULD eventually call `ref.blur()`, but the timing left
+   *      a one-tick window where the textarea still owned input
+   *      focus. Doing the blur here removes that race entirely.
+   *      When the workspace is re-focused, Composer's createEffect
+   *      reasserts focus on its textarea ref.
+   *
+   * The blur is unconditional — it covers every pane the user
+   * might leave (terminal pane's renderable, future input-bearing
+   * panes). Panes that don't grab opentui native focus (sidebar,
+   * files — they manage cursor state in Solid signals) are
+   * unaffected.
+   */
+  function setFocused(pane: PaneId): void {
+    if (focused() === pane) return
+    const current = renderer?.currentFocusedRenderable
+    if (current && !current.isDestroyed) {
+      try {
+        current.blur()
+      } catch {
+        // best-effort; if blur throws (renderable in a bad state)
+        // we still want the pane focus signal to flip.
+      }
+    }
+    setFocusedSignal(pane)
+  }
 
   function cycle(delta: 1 | -1): void {
     const idx = PANE_ORDER.indexOf(focused())

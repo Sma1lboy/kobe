@@ -19,6 +19,42 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-10
+
+### Added
+
+- **Default model now reads from `~/.claude/settings.json`** — kobe
+  honors the `model` key the user set via claude-code's own `/model`
+  command (or a workplace policy file at the same path). Resolution
+  order matches claude-code's `getUserSpecifiedModelSetting()`:
+  per-task pin → settings.json `model` → hardcoded fallback. The
+  hardcoded fallback bumped to **`claude-opus-4-7[1m]`** (Opus 4.7
+  with 1M context) — long-context variant aligned with kobe's "task
+  = sustained worktree of work" model.
+- **1M-context Opus 4.7 + Sonnet 4.6** entries added to the model
+  picker (`opus 4.7 (1M)`, `sonnet 4.6 (1M)`). Same `[1m]` suffix
+  syntax claude-code uses (`refs/claude-code/src/utils/model/model.ts`
+  `parseUserSpecifiedModel`).
+
+### Fixed
+
+- **Pane focus blurs the chat composer reliably.** ctrl+q (or any
+  ctrl+hjkl pane jump) now goes through a unified `setFocused` in
+  the focus context that explicitly blurs the renderer's currently-
+  focused renderable before flipping the pane signal. Previously
+  Composer's createEffect mirror left a one-tick window where the
+  textarea still owned native input focus and ate keystrokes
+  intended for the new pane.
+
+### Known limitations
+
+- Permission-request UI for tools that hit claude-code's worktree
+  boundary (e.g. reading `~/.zshrc` from a task whose cwd is
+  `.claude/worktrees/<id>`) is not yet surfaced. claude-code in
+  `-p` mode doesn't expose an interactive permission protocol;
+  bridging would require a `permission_prompt_tool` integration.
+  Tracked separately.
+
 ## [0.2.0] - 2026-05-10
 
 The chat pane gets mid-stream queue + steer, the keybinding system
