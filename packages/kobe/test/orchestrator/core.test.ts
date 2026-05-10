@@ -369,7 +369,12 @@ describe("Orchestrator.pauseTask", () => {
 
     await orch.pauseTask(t.id)
     expect(store.get(t.id)?.status).toBe("backlog")
-    expect(stopSpy).toHaveBeenCalledOnce()
+    // pauseTask kills the engine via stopAllTabsForTask; the pump's
+    // own finally also calls engine.stop now (idempotent — registry
+    // cleanup before any subscriber reacts to the buffered terminal
+    // event). So stop fires once or twice depending on which lands
+    // first; the contract is "at least once".
+    expect(stopSpy).toHaveBeenCalled()
     await orch._waitForPumpsIdle()
   })
 
@@ -433,7 +438,9 @@ describe("Orchestrator.archiveTask", () => {
     await orch.runTask(t.id, "go")
     await orch.archiveTask(t.id, "done")
     expect(store.get(t.id)?.status).toBe("done")
-    expect(stopSpy).toHaveBeenCalledOnce()
+    // See the pauseTask test note — stop fires from both archiveTask
+    // and the pump's finally; the contract is "at least once".
+    expect(stopSpy).toHaveBeenCalled()
     await orch._waitForPumpsIdle()
   })
 

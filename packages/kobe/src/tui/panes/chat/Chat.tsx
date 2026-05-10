@@ -443,10 +443,16 @@ export function Chat(props: ChatProps) {
    *     approval/question request blocks new prompts; we wait it out).
    *   - We have a taskId + tabId to dispatch against.
    *
-   * One dispatch per false→empty cycle. After runTask, isStreaming
-   * flips back to true, the effect re-suspends until the next done.
-   * The remaining queue entries drain one-at-a-time on each turn-end.
+   * Re-entrancy guard. The effect is reactive on `(isStreaming, queue,
+   * pendingInput)` — multiple unrelated state changes within one tick
+   * could schedule multiple drain microtasks. We hold a boolean lock
+   * across the dispatch's async runTask call so the second microtask
+   * sees `draining=true` and bails. Without the guard, two queued
+   * prompts could hit `runTask` before either has flipped `isStreaming`
+   * back to true — the second one's `engine.resume(sid)` then collides
+   * with the first's still-being-released session.
    */
+  let draining = false
   createEffect(() => {
     const taskId = props.taskId()
     const tabId = activeTabId()
@@ -455,30 +461,37 @@ export function Chat(props: ChatProps) {
     if (state.isStreaming) return
     if (state.queue.length === 0) return
     if (hasPendingInput()) return
+    if (draining) return
     // Dequeue inside a microtask so the createEffect's reactive read
     // graph is settled before we mutate state. Without the defer, the
     // patch races the effect's tracking and we can miss the next tick.
-    queueMicrotask(() => {
+    queueMicrotask(async () => {
+      if (draining) return
       const cur = activeState()
       if (cur.isStreaming || cur.queue.length === 0) return
-      let head: { id: string; text: string; ts: string } | null = null
-      patchActiveState((s) => {
-        const [next, popped] = dequeueFirst(s)
-        head = popped
-        if (!popped) return s
-        // Push the user row immediately so the chat scrolls to the
-        // dispatched prompt at the same time the runTask call goes
-        // out (the engine will fire its own user.inject if needed,
-        // but for pure-queue dispatch the row is ours to write).
-        return pushUser(next, popped.text)
-      })
-      const dispatched = head as { id: string; text: string; ts: string } | null
-      if (!dispatched) return
-      props.orchestrator
-        .runTask(taskId, dispatched.text, tabId)
-        .catch((err: unknown) => {
-          patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
+      draining = true
+      try {
+        let head: { id: string; text: string; ts: string } | null = null
+        patchActiveState((s) => {
+          const [next, popped] = dequeueFirst(s)
+          head = popped
+          if (!popped) return s
+          // Push the user row immediately so the chat scrolls to the
+          // dispatched prompt at the same time the runTask call goes
+          // out (the engine will fire its own user.inject if needed,
+          // but for pure-queue dispatch the row is ours to write).
+          return pushUser(next, popped.text)
         })
+        const dispatched = head as { id: string; text: string; ts: string } | null
+        if (!dispatched) return
+        try {
+          await props.orchestrator.runTask(taskId, dispatched.text, tabId)
+        } catch (err) {
+          patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
+        }
+      } finally {
+        draining = false
+      }
     })
   })
 

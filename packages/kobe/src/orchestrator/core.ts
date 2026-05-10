@@ -1176,16 +1176,25 @@ export class Orchestrator {
 
   private async pumpEvents(taskId: TaskId, tabId: string, handle: SessionHandle): Promise<void> {
     const key = tabKey(taskId, tabId)
-    let terminal: "done" | "error" | null = null
     let killedForInput = false
+    // Buffer the terminal `done`/`error` event so we can dispatch it
+    // ONLY after engine cleanup + store-status write are both fully
+    // settled. Otherwise downstream subscribers (the chat's queue-drain
+    // effect, in particular) react to `done` while the registry still
+    // holds the just-finished sessionId AND the store.save is mid-
+    // rename — the next resume() throws "duplicate sessionId" and the
+    // next status update collides on `tasks.json.tmp` rename. See the
+    // mid-stream queue/steer feature: that race is invisible without
+    // a queued follow-up prompt waiting on `done` to fire.
+    let terminalEvent: EngineEvent | null = null
     try {
       for await (const ev of this.engine.stream(handle)) {
-        this.dispatchEvent(taskId, tabId, ev)
         // Detect tools that pause for user input. Piggyback on
         // `tool.start` so the UI surfaces the approval banner without
         // waiting for the tool's file write to complete in the subprocess.
         const inputReq = detectUserInputFromEngineEvent(ev)
         if (inputReq) {
+          this.dispatchEvent(taskId, tabId, ev)
           const requestId = `req-${++this.requestIdCounter}`
           let bucket = this.pendingInput.get(taskId)
           if (!bucket) {
@@ -1216,13 +1225,32 @@ export class Orchestrator {
           }
           break
         }
-        if (ev.type === "done") terminal = "done"
-        else if (ev.type === "error") terminal = "error"
+        if (ev.type === "done" || ev.type === "error") {
+          // Buffer the terminal event; dispatch happens in the finally
+          // after we've awaited engine cleanup + store writes.
+          terminalEvent = ev
+          continue
+        }
+        this.dispatchEvent(taskId, tabId, ev)
       }
     } finally {
+      // Force engine cleanup so the registry slot for this sessionId
+      // is freed before any subscriber reacts to `done`. Idempotent —
+      // for natural done, registry.kill short-circuits because the
+      // proc already exited; the parse loop's own finally also
+      // unregisters, but we can't await *that* directly so we call
+      // stop() to bound the timing.
+      if (!killedForInput) {
+        try {
+          await this.engine.stop(handle)
+        } catch {
+          /* best-effort */
+        }
+      }
       // Drop the handle whether we exited cleanly or via throw.
       this.handles.delete(key)
       this.pumps.delete(key)
+      const terminal = terminalEvent?.type === "error" ? "error" : terminalEvent ? "done" : null
       if (terminal && !killedForInput) {
         // Only flip the task's status to a terminal value when ALL
         // its tabs have stopped. With multi-tab, a single tab finishing
@@ -1239,6 +1267,13 @@ export class Orchestrator {
             /* store may have been cleared in tests; ignore */
           }
         }
+      }
+      // Now (and only now) dispatch the terminal event downstream.
+      // Subscribers reacting to `done` see the engine + store fully
+      // settled, so a queued follow-up runTask can re-spawn / resume
+      // without colliding on sessionId or `tasks.json.tmp`.
+      if (terminalEvent && !killedForInput) {
+        this.dispatchEvent(taskId, tabId, terminalEvent)
       }
       // killedForInput case: leave status as in_progress — the user is
       // about to answer and we'll resume via respondToInput → runTask.
