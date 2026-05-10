@@ -245,21 +245,26 @@ setting describes "this particular conversation," it's tab-level.
 | Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
 | Per-task worktree             | `<repo>/.claude/worktrees/<task-id>/`                  | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
-| Spawned-engine resume cwd     | env var `KOBE_RESUME_CWD` per `engine.resume()` call   | string                       |
+| Spawned-engine resume cwd     | typed `opts.cwd` on `engine.resume()` (+ legacy env var) | string                     |
 
 The task index does **not** store messages. The orchestrator reads
 them on demand via `engine.readHistory(sessionId)`. This is why a
 crash mid-stream loses no transcript content — JSONL is the source of
 truth, the index is just a manifest.
 
-### Resume cwd back-channel
+### Resume cwd — typed channel + legacy back-channel
 
-`AIEngine.resume()` does not take a `cwd` parameter. The orchestrator
-runs in kobe's binary cwd, not the task's worktree. So every resume
-sets `KOBE_RESUME_CWD = task.worktreePath` in `opts.env`, and Stream A
-reads it back. Skipping this resumes the session in the wrong
-directory and is a regression-class bug — it's covered by behavior
-tests.
+`AIEngine.resume()` does not take a positional `cwd` parameter (only
+`spawn()` does). The orchestrator runs in kobe's binary cwd, not the
+task's worktree, so every resume must pass `task.worktreePath`
+explicitly. The primary channel is the typed `cwd` field on
+`SpawnOpts`; engines MUST honour it. The orchestrator also sets
+`KOBE_RESUME_CWD = task.worktreePath` in `opts.env` as a defensive
+duplicate for one release — that legacy env-var back-channel can be
+removed in a follow-up once external consumers (test fixtures, MCP
+bridges) are confirmed off it. Skipping cwd entirely resumes the
+session in the wrong directory and is a regression-class bug —
+covered by behavior tests.
 
 ---
 

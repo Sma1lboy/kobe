@@ -287,8 +287,8 @@ describe("Orchestrator.runTask", () => {
     expect(store.get(t.id)?.status).toBe("error")
   })
 
-  test("resume() includes KOBE_RESUME_CWD = task.worktreePath in opts.env", async () => {
-    // Spy on a real FakeAIEngine.resume to verify the env channel.
+  test("resume() includes opts.cwd = task.worktreePath (typed primary channel)", async () => {
+    // Spy on a real FakeAIEngine.resume to verify the typed cwd field.
     const fake = new FakeAIEngine()
     const resumeSpy = vi.spyOn(fake, "resume")
     const { orch } = await buildOrchestrator(fake)
@@ -311,6 +311,32 @@ describe("Orchestrator.runTask", () => {
     expect(sessionId).toBe("fake-1")
     expect(prompt).toBe("second")
     // worktreePath was lazily allocated during the first runTask; refetch.
+    const worktreePath = orch.getTask(t.id)?.worktreePath
+    // Primary: the typed `opts.cwd` field — engines MUST honour this.
+    expect(opts?.cwd).toBe(worktreePath)
+  })
+
+  test("resume() also sets KOBE_RESUME_CWD env var as defensive duplicate", async () => {
+    // The env-var back-channel predates the typed `opts.cwd` field and
+    // is kept for one release in case any external consumer still reads
+    // it. Once we confirm nothing relies on it, this assertion (and the
+    // env entry in the orchestrator) can be removed.
+    const fake = new FakeAIEngine()
+    const resumeSpy = vi.spyOn(fake, "resume")
+    const { orch } = await buildOrchestrator(fake)
+
+    const t = await orch.createTask({ repo, title: "resume me", prompt: "" })
+
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "first")
+    await orch._waitForPumpsIdle()
+
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "second")
+    await orch._waitForPumpsIdle()
+
+    const args = resumeSpy.mock.calls[0]!
+    const [, , opts] = args as [string, string, SpawnOpts | undefined]
     expect(opts?.env?.KOBE_RESUME_CWD).toBe(orch.getTask(t.id)?.worktreePath)
   })
 

@@ -69,17 +69,24 @@ export class FakeAIEngine implements AIEngine {
     return { sessionId, cwd }
   }
 
-  async resume(sessionId: string, _prompt: string, _opts?: SpawnOpts): Promise<SessionHandle> {
+  async resume(sessionId: string, _prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
     // Mirror the real engine: `claude --resume <sid>` spawns a fresh
     // subprocess for the same session, so any prior `stop()` shouldn't
     // make a new iterator return immediately. We also reopen the queue
     // (closed after stop) so newly-scripted events flow into the new
     // pump.
+    //
+    // Resume cwd resolution mirrors `ClaudeCodeLocal.resume`: typed
+    // `opts.cwd` wins, env-var back-channel is the defensive fallback,
+    // `process.cwd()` is the last-ditch default. This means a behavior
+    // test that asserts on the returned handle's `cwd` is checking the
+    // same shape the real engine produces.
     this.stopped.delete(sessionId)
     const q = this.queues.get(sessionId)
     if (q) q.closed = false
     this.ensureQueue(sessionId)
-    return { sessionId, cwd: process.cwd() }
+    const cwd = opts?.cwd ?? opts?.env?.KOBE_RESUME_CWD ?? process.cwd()
+    return { sessionId, cwd }
   }
 
   stream(handle: SessionHandle): AsyncIterable<EngineEvent> {

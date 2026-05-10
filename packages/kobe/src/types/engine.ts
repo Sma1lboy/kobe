@@ -57,6 +57,24 @@ export interface SpawnOpts {
    * CLI defaults to `default`. See {@link PermissionMode} for the cycle.
    */
   readonly permissionMode?: PermissionMode
+  /**
+   * Working directory for {@link AIEngine.resume} calls.
+   *
+   * Only meaningful on `resume()` — `spawn()` takes `cwd` as a positional
+   * parameter, so passing it here on spawn is ignored. On resume, this is
+   * the absolute path of the worktree the session was originally spawned
+   * in. The orchestrator owns it (it knows each {@link Task}'s
+   * `worktreePath`), and engines MUST honour it: running a resume in a
+   * different cwd than the original spawn lands edits in the wrong
+   * worktree and is a regression-class bug covered by behavior tests.
+   *
+   * Historical note: before this field existed, the orchestrator passed
+   * the worktree path via `opts.env.KOBE_RESUME_CWD` as an untyped
+   * back-channel. Engines may still read that env var as a defensive
+   * fallback for one release, but new callers should use this typed
+   * field. See `docs/design/tasks.md` §6.
+   */
+  readonly cwd?: string
 }
 
 /**

@@ -21,12 +21,16 @@
  *     rather than silently queueing — the UI surfaces the error and the
  *     user can pause something. Queueing belongs in a later stream.
  *
- *   - **Resume cwd back-channel.** `AIEngine.resume()` does not take a
- *     cwd — Stream A reads it from `opts.env.KOBE_RESUME_CWD` (else
- *     falls back to `process.cwd()`). The orchestrator runs in kobe's
- *     binary cwd, NOT the task's worktree, so we must always pass
- *     `KOBE_RESUME_CWD = task.worktreePath` when resuming. This is
- *     load-bearing and tested below.
+ *   - **Resume cwd — typed via `SpawnOpts.cwd`.** `AIEngine.resume()`
+ *     has no positional cwd parameter (only `spawn()` does). The
+ *     orchestrator runs in kobe's binary cwd, NOT the task's worktree,
+ *     so we must always pass `task.worktreePath` when resuming. The
+ *     primary channel is the typed `opts.cwd` field on `SpawnOpts`;
+ *     engines MUST honour it. We also still set
+ *     `opts.env.KOBE_RESUME_CWD` as a defensive duplicate — the env-var
+ *     back-channel can be removed in a follow-up release once external
+ *     consumers are confirmed off it. Both paths are load-bearing and
+ *     tested below.
  *
  *   - **Per-task event bus.** Events from `engine.stream(handle)` flow
  *     into a small in-memory bus (`Map<TaskId, Set<cb>>`). The chat
@@ -830,6 +834,11 @@ export class Orchestrator {
     let handle: SessionHandle
     if (targetTab.sessionId) {
       handle = await this.engine.resume(targetTab.sessionId, promptToSend, {
+        cwd: task.worktreePath,
+        // Defensive duplicate: keep the env var alongside the typed
+        // field for one release in case any external consumer (test
+        // fixture, MCP bridge) still reads it. Remove in a follow-up
+        // once we've confirmed nothing relies on it.
         env: { KOBE_RESUME_CWD: task.worktreePath },
         permissionMode: task.permissionMode,
         model: modelToUse,

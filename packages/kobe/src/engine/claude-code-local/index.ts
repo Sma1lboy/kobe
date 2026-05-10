@@ -87,11 +87,13 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async resume(sessionId: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
     // For resume, Claude needs the original cwd. We don't track it
-    // across kobe restarts here — the orchestrator owns Task.cwd. We
-    // fall back to process.cwd() which is fine for in-process resume
-    // tests; the orchestrator should always pass via `opts` if a
-    // specific cwd is needed (we accept it through env: KOBE_RESUME_CWD).
-    const cwd = opts?.env?.KOBE_RESUME_CWD ?? process.cwd()
+    // across kobe restarts here — the orchestrator owns Task.cwd. The
+    // typed `opts.cwd` is the primary path; `opts.env.KOBE_RESUME_CWD`
+    // is a defensive fallback kept for one release in case any external
+    // caller (test fixture, MCP bridge) still sets the env var.
+    // `process.cwd()` is the last-ditch default and is only correct for
+    // in-process resume tests that don't care about worktree alignment.
+    const cwd = opts?.cwd ?? opts?.env?.KOBE_RESUME_CWD ?? process.cwd()
     return this.start({ cwd, prompt, opts, resumeSessionId: sessionId })
   }
 
