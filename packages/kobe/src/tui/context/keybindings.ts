@@ -410,36 +410,35 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
-    // `ctrl+]` cycles forward, `ctrl+[` cycles backward (bracket
-    // pair mirrors sidebar/files `[/]` switchers). `ctrl+[` is
-    // known-broken: its byte IS the ESC byte, so the disengage
-    // handler fires before this chord can match. We keep it
-    // registered for help-dialog completeness and for terminals
-    // that DO disambiguate (kitty / CSI-u). On standard PTYs only
-    // `ctrl+]` is functional.
+    // Chat-tab cycling is a tab-prefix sequence, not a single chord:
+    // press `tab` (arms a 600ms window), then `]` for next or `[`
+    // for previous. The prefix is implemented in Chat.tsx
+    // (`armTabPrefix` / module-level signal); these KobeKeymap rows
+    // exist for help-dialog visibility only — `keys: []` skips
+    // bindByIds registration, and the `hint` field carries the
+    // composite chord string for the StatusBar.
+    //
+    // Why prefix-sequence and not a ctrl chord: ctrl+[ byte IS the
+    // bare ESC byte (\x1b) in every standard PTY, so opentui
+    // parses it as `{name: "escape"}` and disengage fires before
+    // any cycle handler can match. alt+[ / alt+] also failed for
+    // the user in their terminal config. Tmux-style prefix
+    // sidesteps the byte-level collision entirely.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    keys: ["ctrl+]"],
+    keys: [],
     category: "Workspace",
     description: "Next chat tab",
-    hint: { keys: "ctrl+]", label: "next tab" },
+    hint: { keys: "tab ]", label: "next tab" },
   },
   {
     id: "chat.tab.cycle-prev",
     scope: "workspace",
-    // KNOWN-BROKEN: ctrl+[ byte IS the bare ESC byte (\x1b) in every
-    // standard PTY, so opentui parses it as {name: "escape"} and the
-    // disengage handler fires instead of cycling. We keep it
-    // registered for help-dialog completeness (and in case the user's
-    // terminal supports kitty-keyboard / CSI-u to disambiguate). The
-    // pragmatic prev-tab path is to cycle past `cycle-next`
-    // (alt+]-style isn't great either — many macOS terminals send
-    // Option as the literal byte, not as ESC+key — so neither chord
-    // is universal). TODO: pick a real prev-tab chord (F-key?).
-    keys: ["ctrl+["],
+    // Implemented as `tab → [` prefix sequence (see Chat.tsx).
+    keys: [],
     category: "Workspace",
     description: "Previous chat tab",
-    hint: { keys: "ctrl+[", label: "prev tab" },
+    hint: { keys: "tab [", label: "prev tab" },
   },
 
   // ─── Files ────────────────────────────────────────────────────────────
