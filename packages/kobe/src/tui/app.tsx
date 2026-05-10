@@ -1418,12 +1418,17 @@ function Shell(props: AppDeps) {
         // input. User can now ctrl+hjkl elsewhere or esc again to
         // detach all the way to sidebar.
         focus.disengage()
-      } else {
-        // Already in select mode → escape hatch: jump to sidebar and
-        // land engaged (the common intent is "show me the task list,
-        // I want to navigate"). User can disengage again with esc.
+      } else if (focusedPane() !== "sidebar") {
+        // Already in select mode on a non-sidebar pane → escape hatch:
+        // jump to sidebar and land engaged (the common intent is "show
+        // me the task list, I want to navigate"). User can disengage
+        // again with esc.
         setFocusedPane("sidebar", { engage: true })
       }
+      // Already on sidebar in select mode → no-op. Don't re-engage on
+      // every esc press; that would oscillate select ↔ engaged with
+      // each tap. The sidebar select state IS the "rest" position;
+      // pressing esc again has nowhere meaningful to go.
     },
     // Tab cycle is select-mode only. In engaged mode we forward tab
     // to whichever pane owns input (composer indent / shell autocomp).
