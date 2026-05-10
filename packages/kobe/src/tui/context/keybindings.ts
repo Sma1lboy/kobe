@@ -410,35 +410,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
-    // Chat-tab cycling is a tab-prefix sequence, not a single chord:
-    // press `tab` (arms a 600ms window), then `]` for next or `[`
-    // for previous. The prefix is implemented in Chat.tsx
-    // (`armTabPrefix` / module-level signal); these KobeKeymap rows
-    // exist for help-dialog visibility only — `keys: []` skips
-    // bindByIds registration, and the `hint` field carries the
-    // composite chord string for the StatusBar.
-    //
-    // Why prefix-sequence and not a ctrl chord: ctrl+[ byte IS the
-    // bare ESC byte (\x1b) in every standard PTY, so opentui
-    // parses it as `{name: "escape"}` and disengage fires before
-    // any cycle handler can match. alt+[ / alt+] also failed for
-    // the user in their terminal config. Tmux-style prefix
-    // sidesteps the byte-level collision entirely.
+    // Chat-tab cycling is single-direction-only by design. ctrl+]
+    // wraps around to walk through all tabs; there's no prev-tab
+    // chord because the obvious pair `ctrl+[` byte IS the ESC byte
+    // (\x1b) in standard PTYs — it disengages workspace instead of
+    // cycling. Tried alt+[ (terminal Option-key config quirks) and
+    // a tab-prefix sequence (felt clunky); the pragmatic choice for
+    // a 2–3-tab UX is one-direction cycle, press N-1 times to walk
+    // backwards.
     id: "chat.tab.cycle-next",
     scope: "workspace",
-    keys: [],
+    keys: ["ctrl+]"],
     category: "Workspace",
-    description: "Next chat tab",
-    hint: { keys: "tab ]", label: "next tab" },
-  },
-  {
-    id: "chat.tab.cycle-prev",
-    scope: "workspace",
-    // Implemented as `tab → [` prefix sequence (see Chat.tsx).
-    keys: [],
-    category: "Workspace",
-    description: "Previous chat tab",
-    hint: { keys: "tab [", label: "prev tab" },
+    description: "Cycle chat tab (wraps around)",
+    hint: { keys: "ctrl+]", label: "cycle tab" },
   },
 
   // ─── Files ────────────────────────────────────────────────────────────

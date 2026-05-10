@@ -39,41 +39,6 @@
 
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
-
-/**
- * Tab-prefix arming for chat-tab cycle.
- *
- * The "obvious" chord pair `ctrl+]` / `ctrl+[` is a non-starter — the
- * `ctrl+[` byte IS the bare ESC byte (\x1b) in every standard PTY, so
- * pressing it disengages workspace instead of cycling tabs. We use a
- * tmux-style prefix instead: `tab` arms a short window, then `]`
- * cycles to the next chat tab / `[` cycles to the previous. Outside
- * the window the brackets type literally into the composer like any
- * other character.
- *
- * Singleton signal because only one workspace is ever live in the
- * app; the arm/disarm pair is module-scoped so React-style
- * remounting (task switch reloads Chat) doesn't leak timers across
- * lives.
- */
-const TAB_PREFIX_WINDOW_MS = 600
-const [tabPrefixArmed, setTabPrefixArmedRaw] = createSignal(false)
-let tabPrefixTimer: ReturnType<typeof setTimeout> | null = null
-
-function armTabPrefix(): void {
-  setTabPrefixArmedRaw(true)
-  if (tabPrefixTimer !== null) clearTimeout(tabPrefixTimer)
-  tabPrefixTimer = setTimeout(() => {
-    tabPrefixTimer = null
-    setTabPrefixArmedRaw(false)
-  }, TAB_PREFIX_WINDOW_MS)
-}
-
-function disarmTabPrefix(): void {
-  if (tabPrefixTimer !== null) clearTimeout(tabPrefixTimer)
-  tabPrefixTimer = null
-  setTabPrefixArmedRaw(false)
-}
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
@@ -691,60 +656,19 @@ export function Chat(props: ChatProps) {
   }
 
   // Pane-scoped keybindings: only fire when the chat pane is focused.
-  // No numeric pick — chat tabs cycle via the tab-prefix sequence
-  // (tab → ] / tab → [) so ctrl+1..4 stays uncontested as the global
-  // pane-focus chord. See `armTabPrefix` near the top of this file
-  // for the rationale (ctrl+[ collides with the ESC byte).
+  // ctrl+] cycles to the next chat tab (wraps around). No prev chord:
+  // ctrl+[ byte = ESC in standard PTYs (disengage collision); alt+[
+  // didn't fire reliably in the user's terminal; ctrl+left would work
+  // but at the cost of textarea word-movement. Single-direction cycle
+  // keeps the chord set tight — multi-tab users press ctrl+] N-1
+  // times to walk back, which is fine for the common 2–3 tab case.
   useBindings(() => ({
     enabled: props.focused?.() === true,
     bindings: bindByIds({
       "chat.tab.new": () => void newTab(),
       "chat.tab.close": () => void closeActiveTab(),
+      "chat.tab.cycle-next": () => cycleTab(1),
     }),
-  }))
-
-  // Tab-prefix sequence for chat tab cycling. While the workspace
-  // pane is engaged, the user presses `tab` to arm; within
-  // TAB_PREFIX_WINDOW_MS they press `]` for next or `[` for prev.
-  //
-  // Two separate useBindings groups:
-  //   1. tab → arm. Always live when engaged. preventDefault so
-  //      composer's textarea doesn't see a stray tab character.
-  //   2. [ / ] → cycle + disarm. Only enabled while armed; otherwise
-  //      brackets type literally into the draft (the composer
-  //      textarea handles them via its character-insert fallback).
-  useBindings(() => ({
-    enabled: props.engaged?.() === true,
-    bindings: [
-      {
-        key: "tab",
-        cmd: (evt) => {
-          armTabPrefix()
-          evt.preventDefault()
-        },
-      },
-    ],
-  }))
-  useBindings(() => ({
-    enabled: props.engaged?.() === true && tabPrefixArmed(),
-    bindings: [
-      {
-        key: "]",
-        cmd: (evt) => {
-          cycleTab(1)
-          disarmTabPrefix()
-          evt.preventDefault()
-        },
-      },
-      {
-        key: "[",
-        cmd: (evt) => {
-          cycleTab(-1)
-          disarmTabPrefix()
-          evt.preventDefault()
-        },
-      },
-    ],
   }))
 
   // Spinner shows whenever a turn is in flight — independent of how
