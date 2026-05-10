@@ -222,12 +222,19 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Focus previous pane",
   },
   {
+    // `alt+1..4` (Option+digit on macOS) — reliable across every
+    // terminal + tmux config, NO setup required. ctrl+digit needs
+    // CSI-u / kitty keyboard, which iTerm2 has a known quirk
+    // where ctrl+1 (and ctrl+9 / ctrl+0) silently fall through to
+    // a bare digit byte — only ctrl+2..8 actually emit CSI-u.
+    // alt+digit always sends `ESC <digit>` two-byte sequence, no
+    // protocol negotiation, no per-key quirks.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4"],
+    keys: ["alt+1", "alt+2", "alt+3", "alt+4"],
     category: "Navigation",
     description: "Jump to pane (1=sidebar, 2=workspace, 3=files, 4=terminal)",
-    hint: { keys: "ctrl+1234", label: "focus", pin: "right" },
+    hint: { keys: "alt+1234", label: "focus", pin: "right" },
   },
   {
     id: "app.copy_or_quit",
