@@ -247,9 +247,19 @@ export function Composer(props: ComposerProps) {
   // legacy embedders) keep their always-engaged-when-focused behavior.
   const isEngaged = () => props.engaged?.() ?? props.focused?.() ?? false
   createEffect(() => {
+    // CRITICAL: read isEngaged() BEFORE the textareaRef bail-out.
+    // Solid's createEffect only subscribes to signals that are read
+    // during the effect's run. If the first run early-returns at
+    // `if (!ref) return`, isEngaged() never gets called, mode() is
+    // never tracked, and the effect won't re-run when the user
+    // later presses enter to engage. textareaRef is a plain `let`,
+    // not a signal — mutating it doesn't trigger re-runs — so we
+    // can't lean on it. Calling isEngaged() first guarantees the
+    // subscription is always established.
+    const engaged = isEngaged()
     const ref = textareaRef
     if (!ref) return
-    if (isEngaged()) ref.focus()
+    if (engaged) ref.focus()
     else ref.blur()
   })
 
