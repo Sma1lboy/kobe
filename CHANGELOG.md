@@ -21,6 +21,45 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 (no entries — add new bullets here as work lands)
 
+## [0.1.1] - 2026-05-09
+
+Post-ship hygiene + the test-coverage layer that 0.1.0 was missing.
+No user-facing behavior changes; pure correctness + safety net.
+
+### Added
+
+- **CI gate** at `.github/workflows/ci.yml` — typecheck + unit tests
+  + build run on every push to main and every PR. Concurrency group
+  cancels in-flight runs for older pushes on the same branch.
+- **Approval-flow behavior tests** (`test/behavior/approval-flow.test.ts`)
+  covering both ExitPlanMode plan approval and AskUserQuestion
+  multi-choice picker — picker rendering, composer lock, AND the
+  click-through resolve path that emits the synthetic resume prompt.
+  New `/respond` HTTP endpoint on the in-process fake-engine server
+  + `peekPendingInput()` orchestrator accessor surface the test seam
+  without faking SGR mouse events.
+- **Settings → theme switch behavior test**
+  (`test/behavior/settings-theme-switch.test.ts`) — opens the dialog
+  via the canonical shortcut, switches theme, asserts the KV store
+  persisted the new active theme.
+- **Crash recovery behavior test** (`test/behavior/crash-recovery.test.ts`) —
+  simulates an engine `error` event mid-stream, asserts kobe stays
+  alive, the error row renders with the right prefix, and the
+  composer unlocks for retry. Symmetric clean-`done` regression
+  guard included.
+
+### Fixed
+
+- Test helpers' `scriptEngine` no longer set `Content-Length` from
+  `body.length` — the char-count was wrong for any multi-byte UTF-8
+  payload (em-dash etc), so the in-process server read fewer bytes
+  than `JSON.parse` expected and the request handler never ran.
+  `fetch` now computes the byte length itself.
+- Defensive: `Composer`'s `resolvePlaceholder` now honors
+  `noTaskMessage` so the textarea-vs-fallback branch stays in sync
+  if rendering ever flips back to letting the textarea show the
+  placeholder.
+
 ## [0.1.0] - 2026-05-09
 
 ### Added
