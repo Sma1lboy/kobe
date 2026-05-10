@@ -41,7 +41,7 @@ import { SettingsDialog } from "./component/settings-dialog"
 import { UpdateDialog } from "./component/update-dialog"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
-import { useKobeKeybindings } from "./context/keybindings"
+import { useCtrlCArmed, useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, useTheme } from "./context/theme"
@@ -801,6 +801,7 @@ function Hotkey(props: { keys: string; label: string }) {
 function StatusBar() {
   const { theme } = useTheme()
   const focus = useFocus()
+  const ctrlCArmed = useCtrlCArmed()
   const sectionLabel = () => {
     switch (focus.focused()) {
       case "sidebar":
@@ -844,13 +845,19 @@ function StatusBar() {
           </Match>
         </Switch>
       </box>
-      {/* Right: global hotkeys (always available) */}
+      {/* Right: global hotkeys (always available). When ctrl+c is armed
+          for double-tap quit, the `q quit` chip is replaced by a warning
+          hint so the user knows the next ctrl+c will exit. */}
       <box flexDirection="row" gap={2} flexShrink={0}>
         <Hotkey keys="tab" label="cycle" />
         <Hotkey keys="ctrl+1234" label="focus" />
         <Hotkey keys="ctrl+n" label="new" />
         <Hotkey keys="?" label="help" />
-        <Hotkey keys="q" label="quit" />
+        <Show when={ctrlCArmed()} fallback={<Hotkey keys="q" label="quit" />}>
+          <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+            Press Ctrl+C again to exit
+          </text>
+        </Show>
       </box>
     </box>
   )
@@ -1877,7 +1884,10 @@ export async function startApp(): Promise<void> {
   // background (theme, image, transparency setting) shows through where
   // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier
   // versions composited transparent regions against opaque black.
-  await render(() => <App orchestrator={orchestrator} />, { backgroundColor: "transparent" })
+  // exitOnCtrlC: false — opentui's default kills the process on a single
+  // Ctrl+C. Jackson wants the standard "first press copies / arms,
+  // second press quits" UX, owned by useKobeKeybindings.
+  await render(() => <App orchestrator={orchestrator} />, { backgroundColor: "transparent", exitOnCtrlC: false })
   // Side-effect: silence the "no usage" lint warning if any.
   void join
 }

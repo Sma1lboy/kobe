@@ -19,7 +19,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-(no entries — add new bullets here as work lands)
+### Fixed
+
+- Single Ctrl+C no longer kills kobe. The first press copies the
+  active selection (or arms a quit, with a "Press Ctrl+C again to
+  exit" hint in the status bar); a second Ctrl+C within 1.5s exits.
+  Matches the standard TUI muscle memory used by claude-code, fish,
+  and ipython.
 
 ## [0.1.1] - 2026-05-09
 
