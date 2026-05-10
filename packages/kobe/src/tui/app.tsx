@@ -842,22 +842,17 @@ function StatusBar() {
       </box>
       {/* Right: global hotkeys (always available). Driven by KobeKeymap's
           `pin: "right"` rows. When ctrl+c is armed for double-tap quit,
-          the `app.quit` chip is replaced by a warning hint so the user
-          knows the next ctrl+c will exit. */}
+          a warning chip is added so the user knows the next ctrl+c
+          will exit. (The real quit chord — sidebar `q` — surfaces in
+          the LEFT column when sidebar is focused, so the right column
+          is just for cross-pane reminders now.) */}
       <box flexDirection="row" gap={2} flexShrink={0}>
-        <For each={rightHints}>
-          {(b) =>
-            b.id === "app.quit" ? (
-              <Show when={ctrlCArmed()} fallback={<Hotkey keys={b.hint!.keys} label={b.hint!.label} />}>
-                <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-                  Press Ctrl+C again to exit
-                </text>
-              </Show>
-            ) : (
-              <Hotkey keys={b.hint!.keys} label={b.hint!.label} />
-            )
-          }
-        </For>
+        <For each={rightHints}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
+        <Show when={ctrlCArmed()}>
+          <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+            Press Ctrl+C again to exit
+          </text>
+        </Show>
       </box>
     </box>
   )
