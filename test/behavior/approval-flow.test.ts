@@ -31,7 +31,7 @@ import * as net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeAll, expect, test } from "vitest"
-import type { EngineEvent } from "../../src/types/engine.ts"
+import type { EngineEvent, UserInputResponse } from "../../src/types/engine.ts"
 import { type KobeHandle, spawnKobe } from "./driver"
 
 const REPO_INIT = path.resolve(__dirname, "fixtures/repo-init.sh")
@@ -74,6 +74,36 @@ async function scriptEngine(
     const text = await res.text()
     throw new Error(`fake-engine ${endpoint} failed: ${res.status} ${text}`)
   }
+}
+
+/**
+ * Drive the user-input pause flow's resolve step from outside the TUI.
+ * POSTs the response to the `/respond` side-channel that the Shell
+ * mounts (see `__kobeTestRespondToInput` in app.tsx). The endpoint
+ * picks the latest pending request for the active task and runs it
+ * through `Orchestrator.respondToInput` — same code path the chat row's
+ * Approve / Submit click would exercise, only without faking SGR mouse
+ * events the screen-capture path can't deliver.
+ *
+ * Returns the `requestId` and the rendered synthetic prompt so the test
+ * can assert on either (the prompt is the user-facing text the model
+ * sees on `--resume`, and the new user row in chat).
+ */
+async function respondToInputViaSideChannel(
+  port: number,
+  response: UserInputResponse,
+): Promise<{ taskId: string; requestId: string; prompt: string }> {
+  const body = JSON.stringify(response)
+  const res = await fetch(`http://127.0.0.1:${port}/respond`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`/respond failed: ${res.status} ${text}`)
+  }
+  return (await res.json()) as { taskId: string; requestId: string; prompt: string }
 }
 
 async function waitForFakeServer(port: number, timeoutMs = 10_000): Promise<void> {
@@ -297,6 +327,183 @@ test("approval — AskUserQuestion renders the question + options + locks compos
   const lockedScreen = await kobe.capture()
   expect(lockedScreen.replace(/\s+/g, "")).toContain("answertheprompt")
   expect(lockedScreen.replace(/\s+/g, "")).toContain("tocontinue")
+
+  await kobe.exit()
+}, 60_000)
+
+// ---------------------------------------------------------------------
+// Click-through coverage — the resolve half of the picker flows.
+//
+// The two tests above pin down the picker render + composer lock. The
+// pair below proves the other half of the contract:
+//
+//   1. Pressing Approve / Submit (via the side-channel that simulates
+//      the click — see `respondToInputViaSideChannel`) actually flips
+//      the picker row to its resolved state (`approved` chip for
+//      ExitPlanMode, the chosen option label rendered as the answer
+//      for AskUserQuestion).
+//   2. The orchestrator emits a synthetic `user.inject` row carrying
+//      the model-facing prompt that `renderUserInputResponsePrompt`
+//      builds — i.e. the text that gets sent on `--resume`.
+//
+// These complement the existing `respondToInput` unit tests in
+// `test/orchestrator/core.test.ts` by proving the chat actually
+// re-renders end-to-end. If a future refactor breaks the
+// `user_input.resolved` → store reducer wiring (or composer's
+// `hasPendingInput` accessor), the unit tests would still pass but
+// the user would see a stuck "Awaiting your approval" banner; these
+// behavior tests catch that.
+// ---------------------------------------------------------------------
+
+test("approval — ExitPlanMode click-through approves + emits the synthetic resume prompt", async () => {
+  const fixture = await buildFixture()
+  tmpRoot = fixture.tmpRoot
+  const port = await pickFreePort()
+
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: fixture.homeDir,
+    },
+    cols: 120,
+    rows: 40,
+  })
+
+  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await waitForFakeServer(port)
+
+  const events: EngineEvent[] = [
+    {
+      type: "tool.start",
+      name: "ExitPlanMode",
+      input: {
+        plan: "## Step 1\n\nThe APPROVE_SENTINEL_PLAN string proves the plan body rendered.",
+        filePath: "/tmp/SENTINEL_PLAN_PATH.md",
+      },
+    },
+    { type: "done" },
+  ]
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events })
+
+  await fillNewTaskDialog(kobe, "approve click-through", fixture.repo)
+
+  // Wait for the picker to render and pendingInput to be populated.
+  await kobe.waitFor((s) => s.includes("Awaiting your approval"), 15_000)
+  await kobe.waitFor((s) => s.includes("APPROVE_SENTINEL_PLAN"), 5_000)
+
+  // Pre-script the resumed session so the FakeAIEngine has a `done`
+  // ready when respondToInput → runTask → engine.resume kicks off.
+  // Without this the resume queue would block forever and the test
+  // would time out waiting for things downstream of the inject. The
+  // resumed session reuses sessionId `fake-1` — see FakeAIEngine.resume
+  // which reopens the same queue.
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events: [{ type: "done" }] })
+
+  // Click-through (via side-channel — see helper docstring for why).
+  const result = await respondToInputViaSideChannel(port, { kind: "approve_plan", approve: true })
+  expect(result.requestId).toMatch(/^req-/)
+  // The synthetic prompt the model will see on resume.
+  expect(result.prompt).toContain("Plan approved")
+
+  // Picker row flipped to the resolved state. The `[approved]` chip
+  // and the "User approved Claude's plan" banner are positive
+  // assertions only — `kobe.capture()` returns the cumulative scrollback
+  // buffer (see driver.ts), not the current visible frame, so the
+  // pre-resolve "[ Approve ]" / "[ Reject ]" render is still in the
+  // buffer at this point. We pin the resolve transition by checking
+  // both new-state strings appear (and via `waitFor` order, that they
+  // appear AFTER the resolve was issued).
+  const resolved = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("[approved]"), 10_000)
+  const collapsed = resolved.replace(/\s+/g, "")
+  expect(collapsed).toContain("UserapprovedClaude")
+
+  // The synthetic user.inject row landed in chat — i.e. the resume
+  // prompt is actually visible to the user as a normal user-row. This
+  // is the load-bearing assertion: it proves user.inject fired with
+  // the right text, which is what the model would see on `--resume`.
+  await kobe.waitFor((s) => s.includes("Plan approved. Please proceed"), 5_000)
+
+  await kobe.exit()
+}, 60_000)
+
+test("approval — AskUserQuestion click-through submits answer + emits the synthetic resume prompt", async () => {
+  const fixture = await buildFixture()
+  tmpRoot = fixture.tmpRoot
+  const port = await pickFreePort()
+
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: fixture.homeDir,
+    },
+    cols: 120,
+    rows: 40,
+  })
+
+  await kobe.waitFor((s) => s.includes("kobe"), 10_000)
+  await waitForFakeServer(port)
+
+  const questionText = "ANSWER_SENTINEL_QUESTION — pick one?"
+  const events: EngineEvent[] = [
+    {
+      type: "tool.start",
+      name: "AskUserQuestion",
+      input: {
+        questions: [
+          {
+            question: questionText,
+            header: "PickHdr",
+            multiSelect: false,
+            options: [
+              { label: "ANSWER_OPTION_ALPHA", description: "first description" },
+              { label: "ANSWER_OPTION_BETA", description: "second description" },
+            ],
+          },
+        ],
+      },
+    },
+    { type: "done" },
+  ]
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events })
+
+  await fillNewTaskDialog(kobe, "answer click-through", fixture.repo)
+
+  await kobe.waitFor((s) => s.includes("Awaiting your answer"), 15_000)
+  await kobe.waitFor((s) => s.includes("ANSWER_OPTION_ALPHA"), 5_000)
+
+  // Pre-script the resumed session — same rationale as the
+  // ExitPlanMode click-through test.
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events: [{ type: "done" }] })
+
+  // Submit the first option. The answers map is keyed by the question
+  // text and valued by the chosen option label — same shape Chat.tsx
+  // builds in QuestionRow.submit().
+  const answers: Record<string, string> = { [questionText]: "ANSWER_OPTION_ALPHA" }
+  const result = await respondToInputViaSideChannel(port, { kind: "ask_question", answers })
+  expect(result.requestId).toMatch(/^req-/)
+  // Synthetic prompt format: a "You asked:" preamble, one bullet per
+  // question, and a trailing "Please continue."
+  expect(result.prompt).toContain("You asked:")
+  expect(result.prompt).toContain("ANSWER_OPTION_ALPHA")
+  expect(result.prompt).toContain("Please continue")
+
+  // Picker row flipped to the answered state. Positive assertions
+  // only — `kobe.capture()` returns the cumulative scrollback buffer
+  // (see driver.ts + the matching note in the ExitPlanMode click-through
+  // test above), so the pending "[ Submit ]" render is still in the
+  // buffer at this point. We pin the resolve transition via the
+  // [submitted] chip + the "Answered" banner copy + the chosen label
+  // appearing as the rendered answer line.
+  const resolved = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("[submitted]"), 10_000)
+  const collapsed = resolved.replace(/\s+/g, "")
+  expect(collapsed).toContain("Answered")
+  expect(resolved).toContain("ANSWER_OPTION_ALPHA")
+
+  // Synthetic user-row from user.inject is in chat with the rendered
+  // answer text — proves the right prompt got sent on resume.
+  await kobe.waitFor((s) => s.includes("ANSWER_OPTION_ALPHA") && s.includes("You asked"), 5_000)
 
   await kobe.exit()
 }, 60_000)

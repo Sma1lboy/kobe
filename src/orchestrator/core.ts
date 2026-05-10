@@ -291,6 +291,25 @@ export class Orchestrator {
   }
 
   /**
+   * Snapshot the pending user-input requests for a task in the order
+   * the orchestrator received them (oldest first). Test-only seam — the
+   * production chat doesn't need this because each ApprovalRow /
+   * QuestionRow already carries its own requestId via the
+   * `user_input.request` event. The behavior tests use this to discover
+   * a freshly-emitted requestId so they can drive `respondToInput`
+   * without faking a mouse click.
+   *
+   * Returns an empty array when the task has no pending requests
+   * (or doesn't exist). Defensive copy so callers can't mutate
+   * orchestrator state.
+   */
+  peekPendingInput(id: TaskId | string): Array<{ requestId: string; payload: UserInputPayload }> {
+    const bucket = this.pendingInput.get(id as TaskId)
+    if (!bucket) return []
+    return Array.from(bucket.entries()).map(([requestId, payload]) => ({ requestId, payload }))
+  }
+
+  /**
    * Create a new task. Allocates the worktree on disk, persists the
    * task in `backlog` status, and returns the new record. Does NOT
    * start the engine — that's `runTask`'s job.

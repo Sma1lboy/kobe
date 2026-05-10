@@ -137,6 +137,48 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
             })
           return
         }
+        // Test affordance for the user-input pause flows. Mirrors
+        // /pr above: the Shell mounts __kobeTestRespondToInput which
+        // knows the active task + its current pending-input bucket.
+        // The test POSTs the body of an ApprovePlanResponse or
+        // AskQuestionResponse and we route it through respondToInput
+        // for the latest pending request. Returns 503 pre-mount, 409
+        // when there's no pending request yet (the test should wait
+        // for the picker to render), 200 with the resolved requestId
+        // on success.
+        if (req.url === "/respond" && req.method === "POST") {
+          type RespondTrigger = (
+            response: import("../types/engine.ts").UserInputResponse,
+          ) => Promise<{ taskId: string; requestId: string; prompt: string }>
+          const trigger = (globalThis as { __kobeTestRespondToInput?: RespondTrigger }).__kobeTestRespondToInput
+          if (!trigger) {
+            res.writeHead(503, { "content-type": "text/plain" })
+            res.end("__kobeTestRespondToInput not yet available")
+            return
+          }
+          let parsed: import("../types/engine.ts").UserInputResponse
+          try {
+            parsed = JSON.parse(body) as import("../types/engine.ts").UserInputResponse
+          } catch (err) {
+            res.writeHead(400, { "content-type": "text/plain" })
+            res.end(`bad JSON: ${(err as Error).message}`)
+            return
+          }
+          trigger(parsed)
+            .then((info) => {
+              res.writeHead(200, { "content-type": "application/json" })
+              res.end(JSON.stringify(info))
+            })
+            .catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err)
+              // No-pending-request is a 409 so the test can distinguish
+              // "you raced" from "the engine actually failed."
+              const code = msg.includes("no pending input") ? 409 : 500
+              res.writeHead(code, { "content-type": "text/plain" })
+              res.end(msg)
+            })
+          return
+        }
         res.writeHead(404).end()
       } catch (err) {
         res.writeHead(500, { "content-type": "text/plain" })
@@ -1463,6 +1505,40 @@ function Shell(props: AppDeps) {
         await props.orchestrator.requestPR(task.id)
         return { taskId: task.id, prompt: rendered }
       }
+
+    // Side-channel respond trigger for the user-input pause behavior
+    // tests (ExitPlanMode + AskUserQuestion). The chat row's
+    // mouse-click path through onApprove/onAnswer eventually calls
+    // orchestrator.respondToInput, but driving that from a PTY test
+    // requires SGR mouse delivery the screen-capture path doesn't
+    // honor. We expose a server-side hook that picks the latest
+    // pending requestId for the active task and dispatches the
+    // user's response synthetically. The render side (status flip on
+    // the picker, composer unlock, synthetic user.inject row) is the
+    // same code path real clicks would exercise — only the
+    // input-event delivery differs.
+    type RespondTrigger = (
+      response: import("../types/engine.ts").UserInputResponse,
+    ) => Promise<{ taskId: string; requestId: string; prompt: string }>
+    ;(globalThis as { __kobeTestRespondToInput?: RespondTrigger }).__kobeTestRespondToInput = async (response) => {
+      const task = activeTask()
+      if (!task) throw new Error("no active task for respondToInput")
+      const pending = props.orchestrator.peekPendingInput(task.id)
+      if (pending.length === 0) {
+        throw new Error("no pending input for active task — picker hasn't rendered yet?")
+      }
+      // Latest request wins. Multiple pending requests on one task is
+      // not currently a real flow (the orchestrator kills the
+      // subprocess on the first user-input tool start), but if it
+      // becomes one the test can extend the seam with an explicit
+      // requestId selector.
+      const latest = pending[pending.length - 1]
+      if (!latest) throw new Error("no pending input for active task — picker hasn't rendered yet?")
+      const { renderUserInputResponsePrompt } = await import("../orchestrator/core.ts")
+      const prompt = renderUserInputResponsePrompt(latest.payload, response)
+      await props.orchestrator.respondToInput(task.id, latest.requestId, response)
+      return { taskId: task.id, requestId: latest.requestId, prompt }
+    }
   }
 
   return (
