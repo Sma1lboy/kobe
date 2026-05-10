@@ -171,6 +171,17 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open settings",
   },
   {
+    // Sidebar shortcut — single letter `s` mirrors the n/q pattern
+    // (plain keys when the tasks list is focused). `ctrl+,` still
+    // works from anywhere as the modifier-prefixed equivalent.
+    id: "settings.open.sidebar",
+    scope: "sidebar",
+    keys: ["s"],
+    category: "Sidebar",
+    description: "Open settings",
+    hint: { keys: "s", label: "settings" },
+  },
+  {
     // Sidebar-only — single letter `q`. ctrl+q is reserved for
     // "back to sidebar" (focus.sidebar) so the user has a one-chord
     // path out of the composer; once back on the sidebar, `q` is the

@@ -54,7 +54,7 @@ import { Terminal } from "./panes/terminal"
 import { type DialogContext, DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
-const DEFAULT_THEME = "conductor"
+const DEFAULT_THEME = "claude"
 
 /* --------------------------------------------------------------------- */
 /*  Engine selection + fake-engine side-channel                           */
@@ -684,11 +684,12 @@ function showNewTaskDialog(
       ),
       () => resolve(undefined),
     )
-    // The new-task dialog has compact content — repo picker + custom
-    // path input + branch picker. The medium 80-col card looked
-    // oversized for it. `small` (50 cols) fits the layout without
-    // wrapping common paths and keeps the modal visually quiet.
-    dialog.setSize("small")
+    // New-task uses medium (80 cols). small (50) clipped repo paths
+    // mid-row; medium gives full `/Users/jacksonc/...` strings room
+    // to breathe. The card now sizes to content height — earlier
+    // medium looked oversized because of a wrapper scrollbox that
+    // stretched the card vertically; that's fixed.
+    dialog.setSize("medium")
   })
 }
 
@@ -1464,15 +1465,18 @@ function Shell(props: AppDeps) {
     }),
   }))
 
-  // `n` (task.new) and `q` (app.quit) only fire when the SIDEBAR
-  // is focused — single-letter chords would otherwise collide with
-  // composer typing. Once on the sidebar, `n` opens the new-task
-  // dialog and `q` opens the quit-confirm.
+  // `n` (task.new), `q` (app.quit), `s` (settings) only fire when
+  // the SIDEBAR is focused — single-letter chords would otherwise
+  // collide with composer typing. Once on the sidebar, `n` opens
+  // the new-task dialog, `q` opens quit-confirm, `s` opens settings.
   useBindings(() => ({
     enabled: focusedPane() === "sidebar" && dialog.stack.length === 0,
     bindings: bindByIds({
       "task.new": () => {
         void openNewTaskFlow()
+      },
+      "settings.open.sidebar": () => {
+        void SettingsDialog.show(dialog, kv)
       },
       "app.quit": () => {
         DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {

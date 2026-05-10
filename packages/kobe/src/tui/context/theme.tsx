@@ -27,6 +27,7 @@ import { createEffect, createMemo } from "solid-js"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
 
+import claude from "./theme/claude.json" with { type: "json" }
 import conductor from "./theme/conductor.json" with { type: "json" }
 import dracula from "./theme/dracula.json" with { type: "json" }
 import nord from "./theme/nord.json" with { type: "json" }
@@ -86,9 +87,10 @@ export type Theme = {
 }
 
 const BUNDLED_THEMES: Record<string, ThemeJson> = {
-  // Conductor-inspired monochrome — primary text in white, accent in
-  // a desaturated steel-blue. Default for new kobe installs because
-  // it's the closest match to what the user is targeting visually.
+  // Claude-branded palette (terracotta accent on warm neutrals), ported
+  // from ashwingopalsamy/claude-code-theme's brandTokens. Default for
+  // new kobe installs so the TUI reads as part of the Claude ecosystem.
+  claude: claude as ThemeJson,
   conductor: conductor as ThemeJson,
   nord: nord as ThemeJson,
   opencode: opencode as ThemeJson,
@@ -113,7 +115,7 @@ type State = {
 
 const [store, setStore] = createStore<State>({
   themes: { ...BUNDLED_THEMES },
-  active: "opencode",
+  active: "claude",
   mode: "dark",
   transparentBackground: false,
 })
@@ -205,8 +207,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     const baseValues = createMemo(() => {
       const active = store.themes[store.active]
       if (active) return resolveTheme(active, store.mode)
-      // safety net: if active was somehow cleared, fall back to opencode
-      const fallback = store.themes.opencode ?? Object.values(store.themes)[0]
+      // safety net: if active was somehow cleared, fall back to claude
+      const fallback = store.themes.claude ?? store.themes.opencode ?? Object.values(store.themes)[0]
       if (!fallback) {
         // truly empty — synthesize a black theme so the renderer can stand up
         return resolveTheme({ theme: { background: "#000000", text: "#ffffff" } }, store.mode)
