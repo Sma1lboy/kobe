@@ -202,7 +202,15 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   const onQuit =
     opts.onQuit ??
     (() => {
-      renderer?.destroy()
+      // Defense in depth: if destroy() throws (FFI to native renderer
+      // can fail in odd states), the user who pressed Ctrl+C×2 must
+      // still get out — surface to stderr for the next shell prompt to
+      // see, then force-exit unconditionally.
+      try {
+        renderer?.destroy()
+      } catch (err) {
+        console.error("kobe: renderer.destroy() failed during quit:", err)
+      }
       process.exit(0)
     })
   const onFocusNext = opts.onFocusNext ?? (() => {})
