@@ -87,6 +87,37 @@ type ContentState =
   | { kind: "error"; message: string }
   | { kind: "lines"; lines: string[]; mode: PreviewMode }
 
+/**
+ * Boil a `readFile` / `readDiff` error string down to something the
+ * user can act on. The wrappers themselves emit shapes like
+ * `cat: foo.bin: No such file or directory` and
+ * `git diff <base> ... exited 128: fatal: ambiguous argument 'main'`.
+ * Stripping the binary name + leading prefix keeps the line short
+ * enough to show without wrapping in narrow preview panes.
+ */
+export function summarizePreviewError(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes("no such file") || m.includes("enoent")) return "file not found (rebased away?)"
+  if (m.includes("permission denied") || m.includes("eacces")) return "permission denied"
+  if (m.includes("ambiguous argument") || m.includes("unknown revision")) return "diff base does not resolve in this worktree"
+  if (m.includes("path escapes worktree")) return "refused: path escapes worktree"
+  if (m.includes("no worktree")) return "no active worktree"
+  // Fallback: strip a `prog: path: ` prefix if present.
+  const trimmed = raw.replace(/^([a-z0-9_-]+:\s+){1,2}/i, "").trim()
+  return trimmed || "could not read file"
+}
+
+/**
+ * Cheap binary sniff: any NUL byte in the first 8 KiB. Matches what
+ * `git diff` uses internally and is good enough for the TUI — text
+ * files are virtually never NUL-bearing, image/zip/wasm payloads
+ * always are.
+ */
+function looksBinary(text: string): boolean {
+  const probe = text.length > 8192 ? text.slice(0, 8192) : text
+  return probe.indexOf("\u0000") >= 0
+}
+
 export function Preview(props: PreviewProps) {
   const { theme } = useTheme()
 
@@ -168,19 +199,22 @@ export function Preview(props: PreviewProps) {
         }
         const wt = props.worktreePath()
         if (!wt) {
-          setContent({ kind: "error", message: "no active worktree" })
+          setContent({ kind: "error", message: "no active worktree (open a task first)" })
           return
         }
         setContent({ kind: "loading" })
         if (key.mode === "diff") {
           const base = props.diffBase()
           if (!base) {
-            setContent({ kind: "error", message: "no diff base configured" })
+            setContent({
+              kind: "error",
+              message: "no diff base configured — press f to view the file instead",
+            })
             return
           }
           const r = await readDiff(wt, base, key.path)
           if (!r.ok) {
-            setContent({ kind: "error", message: r.error })
+            setContent({ kind: "error", message: summarizePreviewError(r.error) })
             return
           }
           setContent({ kind: "lines", lines: splitLines(r.text), mode: "diff" })
@@ -188,7 +222,17 @@ export function Preview(props: PreviewProps) {
         }
         const r = await readFile(wt, key.path)
         if (!r.ok) {
-          setContent({ kind: "error", message: r.error })
+          setContent({ kind: "error", message: summarizePreviewError(r.error) })
+          return
+        }
+        // Binary files render as garbage in the TUI. Detect with a
+        // null-byte sniff and short-circuit to a friendly placeholder
+        // rather than dumping bytes to the screen.
+        if (looksBinary(r.text)) {
+          setContent({
+            kind: "error",
+            message: "(binary file — preview not supported)",
+          })
           return
         }
         setContent({ kind: "lines", lines: splitLines(r.text), mode: "file" })
@@ -364,7 +408,7 @@ function Body(props: { content: Accessor<ContentState>; refSet: (r: ScrollBoxRen
       <Switch>
         <Match when={kind() === "empty"}>
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>Open a file from the tree (enter).</text>
+            <text fg={theme.textMuted}>(open a file from the tree — enter)</text>
           </box>
         </Match>
         <Match when={kind() === "loading"}>
@@ -389,9 +433,15 @@ function ErrorBody(props: { content: Accessor<ContentState> }) {
     const c = props.content()
     return c.kind === "error" ? c.message : ""
   }
+  // Messages that already start with `(...)` are informational
+  // hints (binary file, no diff base), not errors. Render them in
+  // muted text so the error red is reserved for actual failures.
+  const isHint = () => message().startsWith("(") || message().includes("press f")
   return (
     <box paddingTop={1} paddingLeft={1}>
-      <text fg={theme.error}>error: {message()}</text>
+      <text fg={isHint() ? theme.textMuted : theme.error} wrapMode="word">
+        {isHint() ? message() : `error: ${message()}`}
+      </text>
     </box>
   )
 }
@@ -412,7 +462,7 @@ function LinesBody(props: { content: Accessor<ContentState>; refSet: (r: ScrollB
       when={!isEmpty()}
       fallback={
         <box paddingTop={1} paddingLeft={1}>
-          <text fg={theme.textMuted}>No diff content (file matches base).</text>
+          <text fg={theme.textMuted}>(no diff — file matches base, press f for content)</text>
         </box>
       }
     >

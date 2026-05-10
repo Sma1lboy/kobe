@@ -196,6 +196,40 @@ function tabKey(taskId: string, tabId: string): string {
 }
 
 /**
+ * Boil a `git worktree add` failure down to a one-line, user-actionable
+ * message. The raw `GitCommandError` text from `src/orchestrator/worktree/git.ts`
+ * is dense; we strip it here so the chat banner the user sees is short
+ * enough to read at a glance.
+ *
+ * Exported for unit tests (and for any future surface that wants to
+ * format the same error). The original error is preserved as `cause`
+ * by the caller so anyone logging the chain still has the full story.
+ */
+export function summarizeWorktreeError(raw: string, repo: string, baseRef: string | null): string {
+  const m = raw.toLowerCase()
+  if (m.includes("invalid reference") || m.includes("unknown revision") || m.includes("not a valid object name")) {
+    const ref = baseRef ?? "(none)"
+    return `could not create worktree: base ref '${ref}' does not exist in ${repo}`
+  }
+  if (m.includes("not a git repository") || m.includes("not in a git directory")) {
+    return `could not create worktree: ${repo} is not a git repository`
+  }
+  if (m.includes("permission denied") || m.includes("eacces")) {
+    return `could not create worktree: permission denied writing into ${repo}/.claude/worktrees/`
+  }
+  if (m.includes("already exists") || m.includes("refusing to hijack") || m.includes("is on branch")) {
+    return `could not create worktree: a stale worktree already exists for this task (try removing it under ${repo}/.claude/worktrees/)`
+  }
+  if (m.includes("enoent") || m.includes("does not exist")) {
+    return `could not create worktree: ${repo} does not exist`
+  }
+  // Fallback: pull just the `fatal: <reason>` tail if present.
+  const fatal = raw.match(/fatal:\s*([^\n]+)/i)
+  if (fatal) return `could not create worktree: ${fatal[1]?.trim() ?? raw}`
+  return `could not create worktree: ${raw.trim()}`
+}
+
+/**
  * Owner of the task lifecycle.
  *
  * The orchestrator is the only thing that touches the worktree manager,
@@ -388,12 +422,24 @@ export class Orchestrator {
     const opts = this.pendingWorktreeOpts.get(task.id)
     const branch = opts?.branch ?? `kobe/tmp-${task.id.slice(-8).toLowerCase()}`
     const baseRef = opts?.baseRef
-    const info = await this.worktrees.createForTask({
-      repo: task.repo,
-      taskId: task.id,
-      branch,
-      baseRef,
-    })
+    let info
+    try {
+      info = await this.worktrees.createForTask({
+        repo: task.repo,
+        taskId: task.id,
+        branch,
+        baseRef,
+      })
+    } catch (err) {
+      // The raw `git worktree add` error is dense ("git worktree add
+      // -b kobe/tmp-... <path> <baseRef> (cwd=<repo>) exited with
+      // code 128: fatal: invalid reference: <baseRef>"). Boil it
+      // down to one of a few user-actionable shapes so the chat
+      // banner is short enough to read at a glance. The original is
+      // still attached as `cause` for anyone who logs the full chain.
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(summarizeWorktreeError(message, task.repo, baseRef ?? null), { cause: err })
+    }
     this.pendingWorktreeOpts.delete(task.id)
     return await this.store.update(task.id, {
       branch: info.branch,

@@ -99,6 +99,18 @@ export function _resetDefaultPtyRegistry(): void {
   defaultRegistry = null
 }
 
+/**
+ * Heuristic: is this acquire-error message about tmux being absent /
+ * unreachable on PATH? Used to swap a plain-English hint in for the
+ * raw error tail. We match a couple of phrasings the pty backend
+ * emits ("requires tmux on PATH"), plus the bare ENOENT shape Node
+ * uses when the binary itself is missing.
+ */
+function isTmuxMissing(message: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes("tmux on path") || m.includes("enoent") || m.includes("not found")
+}
+
 /* --------------------------------------------------------------------- */
 /*  Component                                                             */
 /* --------------------------------------------------------------------- */
@@ -115,6 +127,11 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   // The current PTY — null when no task is active.
   const [pty, setPty] = createSignal<TaskPty | null>(null)
+
+  // Surfaced when `registry.acquire()` throws (most commonly: tmux not
+  // on PATH). Without this, the effect's exception bubbles out of the
+  // Solid scheduler and the pane renders blank with no hint as to why.
+  const [acquireError, setAcquireError] = createSignal<string | null>(null)
 
   // Latest plain-text snapshot from the PTY.
   const [snapshot, setSnapshot] = createSignal<string>("")
@@ -133,10 +150,26 @@ export function Terminal(props: TerminalProps): JSXElement {
         setPty(null)
         setSnapshot("")
         setCursor(null)
+        setAcquireError(null)
         return
       }
       const reg = registry()
-      const handle = reg.acquire(taskId, cwd)
+      let handle: TaskPty
+      try {
+        handle = reg.acquire(taskId, cwd)
+      } catch (err) {
+        // The most common failure here is tmux missing on PATH (the
+        // pty backend probes synchronously in its constructor). Show
+        // a plain-English summary; the raw message is still appended
+        // so a user willing to dig can act on it.
+        const message = err instanceof Error ? err.message : String(err)
+        setAcquireError(message)
+        setPty(null)
+        setSnapshot("")
+        setCursor(null)
+        return
+      }
+      setAcquireError(null)
       setPty(handle)
       // Reset scroll on task switch — every task gets its own viewport.
       setScrollOffset(0)
@@ -312,8 +345,20 @@ export function Terminal(props: TerminalProps): JSXElement {
       <Show
         when={pty()}
         fallback={
-          <box flexGrow={1} paddingLeft={2} paddingTop={1}>
-            <text fg={theme.textMuted}>no task selected — terminal disabled</text>
+          <box flexGrow={1} paddingLeft={2} paddingTop={1} flexDirection="column" gap={0}>
+            <Show
+              when={acquireError()}
+              fallback={
+                <text fg={theme.textMuted}>(no task — press n to create)</text>
+              }
+            >
+              <text fg={theme.error} wrapMode="word">
+                terminal unavailable — {isTmuxMissing(acquireError() ?? "") ? "tmux is not installed (try `brew install tmux` or set KOBE_TMUX_BIN)" : "shell could not start"}
+              </text>
+              <text fg={theme.textMuted} wrapMode="word">
+                {acquireError()}
+              </text>
+            </Show>
           </box>
         }
       >

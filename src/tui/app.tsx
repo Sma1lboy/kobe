@@ -564,6 +564,28 @@ function NewTaskDialog(props: {
           }}
         />
       </box>
+      {/* Branch picker empty-state: the repo had no discoverable
+          local branches, OR the user typed a filter that doesn't
+          match any. Either way show a soft hint so the user knows
+          their typed text will be used as a literal ref (tag / SHA
+          / remote ref) rather than chosen from a list. */}
+      <Show
+        when={
+          field() === "baseRef" &&
+          branchFiltered().length === 0 &&
+          // Don't shout when validateRepoPath has already complained
+          // about the upstream issue.
+          submitError() == null
+        }
+      >
+        <box gap={0} paddingLeft={2} paddingBottom={1}>
+          <text fg={theme.textMuted} wrapMode="none">
+            {branches().length === 0
+              ? "(no local branches found — typed text will be used as ref)"
+              : "(no match — typed text will be used as ref)"}
+          </text>
+        </box>
+      </Show>
       {/* Branch picker: rendered when on baseRef field and the repo
           actually has discoverable branches matching the input. Up/down
           navigate the (windowed) list; click selects + commits. The

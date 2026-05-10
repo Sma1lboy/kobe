@@ -133,6 +133,25 @@ function statusToken(s: FileStatus): "warning" | "success" | "error" | "textMute
  */
 const TABS = ["all", "changes", "checks"] as const satisfies readonly FileTreeTab[]
 
+/**
+ * Boil a raw `git ls-files` / `git status` error down to a single
+ * human-friendly sentence. The thrown messages from `git.ts` look
+ * like `git ls-files ... (cwd=/foo) exited with code 128: fatal: not
+ * a git repository`. Most users don't need the full args / exit
+ * code; we surface the common cases and keep the rest generic.
+ */
+export function summarizeGitError(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes("not a git repository")) return "not a git repository"
+  if (m.includes("does not exist") || m.includes("enoent")) return "worktree path is missing"
+  if (m.includes("permission denied") || m.includes("eacces")) return "permission denied"
+  if (m.includes("git: not found") || m.includes("command not found")) return "git is not installed"
+  // Fallback: strip the leading `git <args> (cwd=...)` boilerplate.
+  const colon = raw.indexOf(": ")
+  if (colon >= 0 && raw.startsWith("git ")) return raw.slice(colon + 2).trim() || "git command failed"
+  return raw.trim() || "git command failed"
+}
+
 /** Display label for each tab. */
 const TAB_LABEL: Record<FileTreeTab, string> = {
   all: "All",
@@ -309,19 +328,24 @@ export function FileTree(props: FileTreeProps) {
       >
         <Show when={props.worktreePath() == null}>
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>No worktree</text>
+            <text fg={theme.textMuted}>(no task — press n to create)</text>
           </box>
         </Show>
 
         <Show when={props.worktreePath() != null && error() != null}>
-          <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.error}>error: {error()}</text>
+          <box paddingTop={1} paddingLeft={1} flexDirection="column" gap={0}>
+            <text fg={theme.error} wrapMode="word">
+              {summarizeGitError(error() ?? "")}
+            </text>
+            <text fg={theme.textMuted} wrapMode="word">
+              press r to retry
+            </text>
           </box>
         </Show>
 
         <Show when={props.worktreePath() != null && error() == null && tab() === "checks"}>
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>No checks yet (Wave 4)</text>
+            <text fg={theme.textMuted}>(no checks yet — wave 4)</text>
           </box>
         </Show>
 
@@ -335,7 +359,9 @@ export function FileTree(props: FileTreeProps) {
           }
         >
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>{tab() === "all" ? "No files" : "No changes"}</text>
+            <text fg={theme.textMuted}>
+              {tab() === "all" ? "(empty worktree)" : "(no changes — clean worktree)"}
+            </text>
           </box>
         </Show>
 
