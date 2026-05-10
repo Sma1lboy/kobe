@@ -105,6 +105,16 @@ export interface MessageListProps {
   /** Toggle the expand/collapse state for the tool at `index`. */
   onToggleTool: (index: number) => void
   /**
+   * `startIndex` of the tool-fold currently expanded, or null. Folds key
+   * off their first row's index so the same fold stays open across
+   * streaming-induced re-folds. Independent from `expandedToolIndex`:
+   * one tool inside a fold can be expanded while the fold itself is
+   * also expanded.
+   */
+  expandedFoldStartIndex: number | null
+  /** Toggle the expand/collapse state for the fold at `startIndex`. */
+  onToggleFold: (startIndex: number) => void
+  /**
    * When true, render an empty placeholder when `messages` is empty.
    * The shell suppresses this when the spinner is showing instead so
    * an in-flight first turn doesn't briefly flash "Type a prompt below."
@@ -976,10 +986,19 @@ export function MessageList(props: MessageListProps) {
         </box>
       </Show>
 
-      <For each={groupRenderItems(props.messages)}>
+      <For each={groupRenderItems(props.messages, props.expandedFoldStartIndex)}>
         {(item) => {
           if (item.kind === "fold") {
-            return <ToolFoldRow summary={summarizeToolRun(item.counts)} />
+            const startIndex = item.startIndex
+            const inFlight = item.inFlight > 0
+            return (
+              <ToolFoldRow
+                summary={summarizeToolRun(item.counts, inFlight)}
+                expanded={props.expandedFoldStartIndex === startIndex}
+                inFlight={inFlight}
+                onToggle={() => props.onToggleFold(startIndex)}
+              />
+            )
           }
           const row = item.row
           const i = item.index
@@ -1022,25 +1041,32 @@ export function MessageList(props: MessageListProps) {
 /* --------------------------------------------------------------------- */
 
 /**
- * Compress consecutive runs of finished tool rows into one summary line
- * (Claude Code's "Searched for X patterns, read Y files, ran Z bash
- * commands" pattern — see `refs/claude-code/src/utils/collapseReadSearch.ts`
- * `getSearchReadSummaryText`). We only fold runs where every tool is
- * `done`: an in-progress tool needs to render individually so the user
- * sees the streaming state.
+ * Compress consecutive runs of tool rows into one summary line (Claude
+ * Code's "Searched for X patterns, read Y files, ran Z bash commands"
+ * pattern — see `refs/claude-code/src/utils/collapseReadSearch.ts`
+ * `getSearchReadSummaryText`).
  *
- * Threshold: 3+ consecutive finished tools. Below that, individual
- * banners are still readable.
+ * We fold proactively — including runs with in-flight tools — so the
+ * transition from "individual rows" to "fold summary" doesn't visually
+ * pop the moment the last tool in the run finishes. Present-tense
+ * summary ("Reading 3 files…") while any tool is in flight, past tense
+ * once they all settle.
+ *
+ * Threshold: 3+ consecutive tools. Click the fold row to expand and see
+ * the individual tool rows underneath.
  */
 type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }
 
 type RenderItem =
   | { kind: "row"; row: ChatRow; index: number }
-  | { kind: "fold"; counts: ToolCounts; startIndex: number }
+  | { kind: "fold"; counts: ToolCounts; startIndex: number; inFlight: number }
 
 const TOOL_FOLD_THRESHOLD = 3
 
-export function groupRenderItems(messages: readonly ChatRow[]): RenderItem[] {
+export function groupRenderItems(
+  messages: readonly ChatRow[],
+  expandedFoldStartIndex: number | null = null,
+): RenderItem[] {
   const items: RenderItem[] = []
   let i = 0
   while (i < messages.length) {
@@ -1052,22 +1078,22 @@ export function groupRenderItems(messages: readonly ChatRow[]): RenderItem[] {
     }
     let j = i
     while (j < messages.length && messages[j]?.kind === "tool") j++
-    let allDone = true
-    for (let k = i; k < j; k++) {
-      const r = messages[k]
-      if (r?.kind === "tool" && !r.done) {
-        allDone = false
-        break
-      }
-    }
-    if (j - i >= TOOL_FOLD_THRESHOLD && allDone) {
+    if (j - i >= TOOL_FOLD_THRESHOLD) {
       const counts: ToolCounts = { search: 0, read: 0, list: 0, bash: 0, other: 0 }
+      let inFlight = 0
       for (let k = i; k < j; k++) {
         const r = messages[k]
         if (r?.kind !== "tool") continue
         counts[classifyTool(r.name)]++
+        if (!r.done) inFlight++
       }
-      items.push({ kind: "fold", counts, startIndex: i })
+      items.push({ kind: "fold", counts, startIndex: i, inFlight })
+      if (expandedFoldStartIndex === i) {
+        for (let k = i; k < j; k++) {
+          const r = messages[k]
+          if (r) items.push({ kind: "row", row: r, index: k })
+        }
+      }
     } else {
       for (let k = i; k < j; k++) {
         const r = messages[k]
@@ -1089,47 +1115,74 @@ export function classifyTool(name: string): keyof ToolCounts {
 
 /**
  * "Searched for 5 patterns, read 3 files, ran 10 bash commands" —
- * mirrors Claude Code's `getSearchReadSummaryText` (past tense; we only
- * fold finished runs so the present-tense branch isn't needed). First
- * fragment is capitalised; subsequent fragments stay lowercase to read
- * as a single sentence.
+ * mirrors Claude Code's `getSearchReadSummaryText`. When `inFlight` is
+ * true, switch to present continuous ("Searching… / Reading… / Listing…
+ * / Running…") so the fold summary can render before all tools settle
+ * without the wording lying about what's already done.
  */
-export function summarizeToolRun(c: ToolCounts): string {
+export function summarizeToolRun(c: ToolCounts, inFlight = false): string {
+  const verbs = inFlight
+    ? {
+        search: ["Searching", "searching"],
+        read: ["Reading", "reading"],
+        list: ["Listing", "listing"],
+        bash: ["Running", "running"],
+        other: ["Using", "using"],
+      }
+    : {
+        search: ["Searched", "searched"],
+        read: ["Read", "read"],
+        list: ["Listed", "listed"],
+        bash: ["Ran", "ran"],
+        other: ["Used", "used"],
+      }
   const parts: string[] = []
   if (c.search > 0) {
-    const verb = parts.length === 0 ? "Searched" : "searched"
-    parts.push(`${verb} for ${c.search} ${c.search === 1 ? "pattern" : "patterns"}`)
+    const [vUp, vLo] = verbs.search
+    const verb = parts.length === 0 ? vUp : vLo
+    const tail = inFlight
+      ? `${c.search} ${c.search === 1 ? "pattern" : "patterns"}`
+      : `for ${c.search} ${c.search === 1 ? "pattern" : "patterns"}`
+    parts.push(`${verb} ${tail}`)
   }
   if (c.read > 0) {
-    const verb = parts.length === 0 ? "Read" : "read"
+    const [vUp, vLo] = verbs.read
+    const verb = parts.length === 0 ? vUp : vLo
     parts.push(`${verb} ${c.read} ${c.read === 1 ? "file" : "files"}`)
   }
   if (c.list > 0) {
-    const verb = parts.length === 0 ? "Listed" : "listed"
+    const [vUp, vLo] = verbs.list
+    const verb = parts.length === 0 ? vUp : vLo
     parts.push(`${verb} ${c.list} ${c.list === 1 ? "directory" : "directories"}`)
   }
   if (c.bash > 0) {
-    const verb = parts.length === 0 ? "Ran" : "ran"
+    const [vUp, vLo] = verbs.bash
+    const verb = parts.length === 0 ? vUp : vLo
     parts.push(`${verb} ${c.bash} bash ${c.bash === 1 ? "command" : "commands"}`)
   }
   if (c.other > 0) {
-    const verb = parts.length === 0 ? "Used" : "used"
+    const [vUp, vLo] = verbs.other
+    const verb = parts.length === 0 ? vUp : vLo
     parts.push(`${verb} ${c.other} ${c.other === 1 ? "other tool" : "other tools"}`)
   }
   return parts.join(", ")
 }
 
 /**
- * One-line render for a folded run. Same prefix style as a system row
- * (DIM REFERENCE_MARK) so the eye doesn't read it as a tool banner.
- * Expand affordance deferred to a follow-up.
+ * One-line render for a folded run. Click toggles expansion — when
+ * expanded, the individual tool rows render directly under this fold
+ * (groupRenderItems emits both). Glyph swaps `▶`/`▼` for collapsed/
+ * expanded; in-flight runs use `✻` (matches ToolRow's running prefix)
+ * so the user sees the run is still streaming.
  */
-function ToolFoldRow(props: { summary: string }) {
+function ToolFoldRow(props: { summary: string; expanded: boolean; inFlight: boolean; onToggle: () => void }) {
   const { theme } = useTheme()
+  const glyph = () => (props.inFlight ? "✻" : props.expanded ? "▼" : "▶")
+  const fg = () => (props.inFlight ? theme.warning : theme.textMuted)
   return (
-    <box paddingTop={1} flexDirection="row" gap={1}>
-      <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
-        {REFERENCE_MARK}
+    <box paddingTop={1} flexDirection="row" gap={1} onMouseUp={() => props.onToggle()}>
+      <text fg={fg()} attributes={TextAttributes.DIM}>
+        {glyph()}
       </text>
       <box flexGrow={1}>
         <text fg={theme.textMuted}>{props.summary}</text>

@@ -166,6 +166,7 @@ export function Chat(props: ChatProps) {
   const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
   const [draft, setDraft] = createSignal("")
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
+  const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
 
   // Reactive view of the active task's tabs, pulled from the
   // orchestrator's signal so the tab bar redraws on createTab/closeTab
@@ -362,6 +363,7 @@ export function Chat(props: ChatProps) {
         setStatesByTab(new Map())
         setDraft("")
         setExpandedToolIndex(null)
+        setExpandedFoldStartIndex(null)
       }
       setActiveTabIdLocal(null)
       currentSubsTaskId = null
@@ -380,6 +382,7 @@ export function Chat(props: ChatProps) {
       setStatesByTab(new Map())
       setDraft("")
       setExpandedToolIndex(null)
+      setExpandedFoldStartIndex(null)
       currentSubsTaskId = taskId
       setActiveTabIdLocal(task.activeTabId)
       queueMicrotask(scrollToBottom)
@@ -609,6 +612,7 @@ export function Chat(props: ChatProps) {
       setActiveTabIdLocal(tab.id)
       setDraft("")
       setExpandedToolIndex(null)
+      setExpandedFoldStartIndex(null)
       void props.orchestrator.setActiveTab(taskId, tab.id)
     } catch (err) {
       patchActiveState((s) => pushSystemError(s, `createTab failed: ${stringifyErr(err)}`))
@@ -627,6 +631,7 @@ export function Chat(props: ChatProps) {
         setActiveTabIdLocal(nextActive)
         setDraft("")
         setExpandedToolIndex(null)
+        setExpandedFoldStartIndex(null)
       }
     } catch (err) {
       patchActiveState((s) => pushSystemError(s, `closeTab failed: ${stringifyErr(err)}`))
@@ -640,6 +645,7 @@ export function Chat(props: ChatProps) {
     setActiveTabIdLocal(t.id)
     setDraft("")
     setExpandedToolIndex(null)
+    setExpandedFoldStartIndex(null)
     const taskId = props.taskId()
     if (taskId) void props.orchestrator.setActiveTab(taskId, t.id)
   }
@@ -729,6 +735,10 @@ export function Chat(props: ChatProps) {
     setExpandedToolIndex((cur) => (cur === rowIndex ? null : rowIndex))
   }
 
+  function toggleFold(startIndex: number): void {
+    setExpandedFoldStartIndex((cur) => (cur === startIndex ? null : startIndex))
+  }
+
   function handleComposerSubmit(trimmed: string, mode: "auto" | "steer" = "auto"): void {
     if (trimmed.length === 0) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
@@ -769,6 +779,8 @@ export function Chat(props: ChatProps) {
               messages={activeState().messages}
               expandedToolIndex={expandedToolIndex()}
               onToggleTool={toggleExpand}
+              expandedFoldStartIndex={expandedFoldStartIndex()}
+              onToggleFold={toggleFold}
               showEmptyPlaceholder={!showThinking()}
               error={activeState().error}
               onApprove={(requestId, approve) => {
