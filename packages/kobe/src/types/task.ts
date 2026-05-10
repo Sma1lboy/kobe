@@ -64,7 +64,25 @@ export interface ChatTab {
   readonly id: string
   readonly sessionId: string | null
   readonly title?: string
+  /**
+   * Per-task display ordinal. Assigned at creation as
+   * `max(existing tabs' seq) + 1`, never recomputed. The default tab
+   * label is `chat ${seq}` — using the array index would renumber
+   * surviving tabs whenever a middle tab gets closed.
+   */
+  readonly seq: number
   readonly createdAt: string
+}
+
+/**
+ * Next monotonically-increasing seq for a task's chat tabs. Always
+ * stable: deleting a middle tab does NOT free up its number, so the
+ * displayed `chat N` for any surviving tab stays put.
+ */
+export function nextChatTabSeq(tabs: readonly ChatTab[]): number {
+  let max = 0
+  for (const t of tabs) if (t.seq > max) max = t.seq
+  return max + 1
 }
 
 /**

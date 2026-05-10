@@ -51,7 +51,7 @@ describe("Task", () => {
       branch: "kobe/x",
       worktreePath: "/r/.claude/wt/x",
       sessionId: null,
-      tabs: [{ id: "tab1", sessionId: null, createdAt: "2026-05-08T00:00:00Z" }],
+      tabs: [{ id: "tab1", sessionId: null, seq: 1, createdAt: "2026-05-08T00:00:00Z" }],
       activeTabId: "tab1",
       status: "backlog",
       archived: false,

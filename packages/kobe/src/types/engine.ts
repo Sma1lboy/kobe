@@ -77,6 +77,28 @@ export interface Message {
 }
 
 /**
+ * Lightweight session summary for the resume-picker UI.
+ *
+ * One entry per persisted session in a given cwd. Cheap to compute —
+ * the engine reads the JSONL's first conversational record for the
+ * preview text and stat()s the file for `mtimeMs`. Full message bodies
+ * are NOT loaded; the picker shows the preview, then delegates to
+ * {@link AIEngine.readHistory} when the user actually selects one.
+ *
+ * `firstUserMessage` is `null` if the JSONL has no extractable user
+ * line (e.g. a session that errored before the first turn).
+ */
+export interface SessionMeta {
+  readonly sessionId: string
+  /** File mtime in epoch ms — used for sort order ("most recent first"). */
+  readonly mtimeMs: number
+  /** First user prompt, truncated to ~200 chars by the engine. */
+  readonly firstUserMessage: string | null
+  /** Total message records in the JSONL (incl. tool/system rows). */
+  readonly messageCount: number
+}
+
+/**
  * Normalized engine event. This is the wire format between the engine
  * impl and the orchestrator/UI.
  *
@@ -320,6 +342,22 @@ export interface AIEngine {
    * coordination with the live stream — caller dedupes if needed).
    */
   readHistory(sessionId: string): Promise<Message[]>
+
+  /**
+   * List every session ever persisted for `cwd`, newest first.
+   *
+   * Used by kobe's resume-picker (chat.session.resume) so the user can
+   * pick any prior conversation in the current task's worktree and
+   * either jump to it (if already open in a tab) or open it in a new
+   * one. The engine is the source of truth here — kobe deliberately
+   * does NOT maintain a parallel session index, so a session opened
+   * via raw `claude --resume` outside kobe still shows up.
+   *
+   * Returns `[]` if `cwd` has no persisted sessions. Never throws on
+   * I/O — best-effort scan, swallows readdir errors per-entry so a
+   * single corrupt JSONL doesn't blank the whole list.
+   */
+  listSessions(cwd: string): Promise<SessionMeta[]>
 
   /**
    * Permanently remove the persisted history for a session.

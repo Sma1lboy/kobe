@@ -8,7 +8,7 @@
  * the type-level assertions are the source of truth for the contract.
  */
 import { describe, expectTypeOf, it } from "vitest"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
+import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "../../src/types/engine.ts"
 
 describe("EngineEvent", () => {
   it("is a discriminated union keyed on `type`", () => {
@@ -89,9 +89,11 @@ describe("Message", () => {
 })
 
 describe("AIEngine", () => {
-  it("has the six documented methods", () => {
+  it("has the seven documented methods", () => {
     type Methods = keyof AIEngine
-    expectTypeOf<Methods>().toEqualTypeOf<"spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "stop">()
+    expectTypeOf<Methods>().toEqualTypeOf<
+      "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
+    >()
   })
 
   it("spawn returns Promise<SessionHandle>", () => {
@@ -137,6 +139,9 @@ describe("AIEngine", () => {
         return []
       }
       async deleteHistory(_sessionId: string): Promise<void> {}
+      async listSessions(_cwd: string): Promise<SessionMeta[]> {
+        return []
+      }
       async stop(_h: SessionHandle): Promise<void> {}
     }
     expectTypeOf<Impl>().toMatchTypeOf<AIEngine>()
