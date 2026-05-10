@@ -44,7 +44,7 @@ import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { KobeKeymap, bindByIds, useCtrlCArmed, useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
 import { SyncProvider } from "./context/sync"
-import { ThemeProvider, addTheme, useTheme } from "./context/theme"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { useBindings } from "./lib/keymap"
 import { Chat } from "./panes/chat/Chat"
@@ -779,25 +779,33 @@ export type AppDeps = {
 /* --------------------------------------------------------------------- */
 function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean; ordinal?: number }) {
   const { theme } = useTheme()
-  // Focused panes use `theme.success` (green) — the rest of the focus
-  // affordance system (resize edges, status bar) already uses green for
-  // "active." Picking the same hue here unifies the language so a
-  // glance anywhere on screen confirms which pane has focus. Blue
-  // (theme.primary) was reserved for branding/links and getting
-  // confused with focus state, especially on terminals where blue
-  // tends to look mid-saturation against the pane background.
-  //
-  // The leading `▌` block character in green is the additional
-  // visibility hammer the prior bold-blue title was missing — it
-  // attaches the focus signal to the title visually so the user's eye
-  // doesn't have to scan the whole screen to pick up the active pane.
+  // Focused panes paint in `theme.focusAccent` — a user-controllable
+  // slot (Settings → General → Focus accent) that resolves to one of
+  // primary / success / info. Default is primary (terracotta under
+  // Claude's palette), which doubles as the brand hue. The leading
+  // `▌` block character is the visibility hammer the prior bold-only
+  // title was missing — it attaches the focus signal to the title
+  // visually so the user's eye doesn't scan the whole screen to pick
+  // up the active pane.
   const focused = () => props.focused !== false
-  const titleColor = () => (focused() ? theme.success : theme.textMuted)
+  const titleColor = () => (focused() ? theme.focusAccent : theme.textMuted)
   return (
-    <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingLeft={1} paddingRight={1}>
+    <box
+      flexDirection="row"
+      justifyContent="space-between"
+      flexShrink={0}
+      // paddingTop=1 + paddingLeft=2 mirror the Sidebar pane's outer
+      // padding so all four pane titles sit at the same row + column.
+      // Earlier WORKSPACE/FILES/TERMINAL rendered at row 0 col 1 while
+      // the sidebar's TASKS sat at row 1 col 2 — visually misaligned
+      // by one cell in each axis.
+      paddingTop={1}
+      paddingLeft={2}
+      paddingRight={2}
+    >
       <box flexDirection="row" gap={1} flexShrink={1}>
         <Show when={focused()} fallback={<text fg={theme.textMuted}> </text>}>
-          <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
+          <text fg={theme.focusAccent} attributes={TextAttributes.BOLD} wrapMode="none">
             ▌
           </text>
         </Show>
@@ -921,7 +929,19 @@ function TopBar(props: {
   // label in the topbar is misleading; the active branch alone is the
   // useful per-task signal). Right = PR action.
   return (
-    <box flexDirection="row" paddingLeft={1} paddingRight={1} flexShrink={0}>
+    <box
+      flexDirection="row"
+      // paddingY=1 around the topbar so it occupies 3 rows total —
+      // gives the brand + branch + PR row breathing space against
+      // the pane chrome below. Earlier the topbar squeezed into a
+      // single row and read as part of the workspace pane's chrome
+      // rather than as the global app frame.
+      paddingTop={1}
+      paddingBottom={1}
+      paddingLeft={2}
+      paddingRight={2}
+      flexShrink={0}
+    >
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={1} justifyContent="flex-start">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
           KobeCode
@@ -980,11 +1000,25 @@ function Shell(props: AppDeps) {
   if (typeof persistedTransparent === "boolean") {
     themeCtx.setTransparentBackground(persistedTransparent)
   }
+  // Focus-accent slot — same hydrate-then-mirror pattern. Validates
+  // against the known slot list so a stale value from an older kobe
+  // (or a hand-edited state.json) drops cleanly to default rather than
+  // poisoning the proxy.
+  const persistedFocusAccent = kv.get("focusAccent")
+  if (
+    typeof persistedFocusAccent === "string" &&
+    (FOCUS_ACCENT_SLOTS as ReadonlyArray<string>).includes(persistedFocusAccent)
+  ) {
+    themeCtx.setFocusAccent(persistedFocusAccent as FocusAccentSlot)
+  }
   createEffect(() => {
     kv.set("activeTheme", themeCtx.selected)
   })
   createEffect(() => {
     kv.set("transparentBackground", themeCtx.transparentBackground)
+  })
+  createEffect(() => {
+    kv.set("focusAccent", themeCtx.focusAccent)
   })
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
