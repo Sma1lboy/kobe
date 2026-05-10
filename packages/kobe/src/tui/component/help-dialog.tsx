@@ -84,8 +84,8 @@ export function HelpDialog() {
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
+    <box paddingLeft={2} paddingRight={2} gap={1} flexShrink={1}>
+      <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {HELP_DIALOG_TITLE}
         </text>
@@ -93,62 +93,76 @@ export function HelpDialog() {
           esc
         </text>
       </box>
-      <box paddingBottom={1} gap={1}>
-        <For each={grouped()}>
-          {(group) => (
-            <box gap={0}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-                {group.category}
-              </text>
-              <For each={group.rows}>
-                {(row) => {
-                  // Prefer hint.keys (the user-facing chord label, e.g.
-                  // "j/k" or "enter") when present; fall back to the
-                  // first registered chord. Bindings with no chord and
-                  // no hint (shouldn't happen in practice) show "—".
-                  const primary = row.hint?.keys ?? row.keys[0] ?? "—"
-                  const aliases = row.hint ? row.keys : row.keys.slice(1)
-                  return (
-                    <box flexDirection="row" gap={2} paddingLeft={1}>
-                      <box width={14}>
-                        <text fg={theme.primary}>{primary}</text>
-                      </box>
-                      <box flexGrow={1}>
-                        <text fg={theme.text}>{row.description}</text>
-                      </box>
-                      {aliases.length > 0 ? (
-                        <box>
-                          <text fg={theme.textMuted}>{`(${aliases.join(", ")})`}</text>
+      {/* Scroll the help body. The dialog wrapper no longer wraps every
+          modal in a scrollbox (it stretched short cards); long-content
+          dialogs handle their own overflow. flexShrink={1} lets this
+          shrink to fit the dialog's maxHeight, and the scrollbox
+          handles overflow with mouse wheel + arrow keys. */}
+      <scrollbox
+        flexShrink={1}
+        flexGrow={1}
+        stickyScroll={false}
+        verticalScrollbarOptions={{
+          trackOptions: { backgroundColor: theme.backgroundDialog, foregroundColor: theme.borderActive },
+        }}
+      >
+        <box paddingBottom={1} gap={1} paddingRight={1}>
+          <For each={grouped()}>
+            {(group) => (
+              <box gap={0}>
+                <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                  {group.category}
+                </text>
+                <For each={group.rows}>
+                  {(row) => {
+                    // Prefer hint.keys (the user-facing chord label, e.g.
+                    // "j/k" or "enter") when present; fall back to the
+                    // first registered chord. Bindings with no chord and
+                    // no hint (shouldn't happen in practice) show "—".
+                    const primary = row.hint?.keys ?? row.keys[0] ?? "—"
+                    const aliases = row.hint ? row.keys : row.keys.slice(1)
+                    return (
+                      <box flexDirection="row" gap={2} paddingLeft={1}>
+                        <box width={14}>
+                          <text fg={theme.primary}>{primary}</text>
                         </box>
-                      ) : null}
-                    </box>
-                  )
-                }}
-              </For>
-            </box>
-          )}
-        </For>
-        <box gap={0}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-            {HELP_DIALOG_SLASH_HEADER}
-          </text>
-          <For each={slashes()}>
-            {(slash) => (
-              <box flexDirection="row" gap={2} paddingLeft={1}>
-                <box width={20}>
-                  <text fg={theme.primary}>{formatSlashLabel(slash.name)}</text>
-                </box>
-                <box flexGrow={1}>
-                  <text fg={theme.text}>{slash.description}</text>
-                </box>
+                        <box flexGrow={1}>
+                          <text fg={theme.text}>{row.description}</text>
+                        </box>
+                        {aliases.length > 0 ? (
+                          <box>
+                            <text fg={theme.textMuted}>{`(${aliases.join(", ")})`}</text>
+                          </box>
+                        ) : null}
+                      </box>
+                    )
+                  }}
+                </For>
               </box>
             )}
           </For>
-          <box paddingLeft={1} paddingTop={1}>
-            <text fg={theme.textMuted}>{HELP_DIALOG_SLASH_FOOTER}</text>
+          <box gap={0}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              {HELP_DIALOG_SLASH_HEADER}
+            </text>
+            <For each={slashes()}>
+              {(slash) => (
+                <box flexDirection="row" gap={2} paddingLeft={1}>
+                  <box width={20}>
+                    <text fg={theme.primary}>{formatSlashLabel(slash.name)}</text>
+                  </box>
+                  <box flexGrow={1}>
+                    <text fg={theme.text}>{slash.description}</text>
+                  </box>
+                </box>
+              )}
+            </For>
+            <box paddingLeft={1} paddingTop={1}>
+              <text fg={theme.textMuted}>{HELP_DIALOG_SLASH_FOOTER}</text>
+            </box>
           </box>
         </box>
-      </box>
+      </scrollbox>
     </box>
   )
 }

@@ -100,6 +100,15 @@ export function Dialog(
         maxWidth={dimensions().width - 2}
         maxHeight={maxCardHeight()}
         flexShrink={1}
+        // `flexGrow=0` is the default but I'm being explicit because
+        // opentui's centering container (alignItems / justifyContent
+        // = center on the overlay) can interact oddly with shrinkable
+        // children — without it the card occasionally stretched to
+        // fill the viewport's centered band. Content-sized + maxHeight
+        // is the contract: short cards float as a tight block, tall
+        // cards hit the cap and clip (children that need scrolling —
+        // F1 help, settings — wrap their own scrollbox).
+        flexGrow={0}
         // Modals stay opaque even in transparent mode — the user's
         // terminal can show through the page panels (sidebar / chat
         // background), but a dialog's content needs a solid surface
@@ -108,22 +117,7 @@ export function Dialog(
         backgroundColor={theme.backgroundDialog}
         paddingTop={1}
       >
-        {/* Inner scrollbox — content taller than `maxCardHeight()`
-            scrolls with mouse wheel + arrow keys instead of overflowing
-            off the bottom of the terminal. Short content sits at the
-            top with no visible scrollbar. Every dialog body inherits
-            this behaviour, so individual dialogs (HelpDialog,
-            SettingsDialog, etc.) don't need to handle overflow
-            themselves. */}
-        <scrollbox
-          flexShrink={1}
-          stickyScroll={false}
-          verticalScrollbarOptions={{
-            trackOptions: { backgroundColor: theme.backgroundDialog, foregroundColor: theme.borderActive },
-          }}
-        >
-          {props.children}
-        </scrollbox>
+        {props.children}
       </box>
     </box>
   )
