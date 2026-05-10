@@ -1020,6 +1020,10 @@ function Shell(props: AppDeps) {
   })
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
+  // Live per-task engine state (running / awaiting_input / idle) for
+  // the sidebar status dot. Reactive — bumps whenever a task's tab
+  // starts, finishes, or pauses on AskUserQuestion / ExitPlanMode.
+  const chatRunStateAcc = props.orchestrator.chatRunStateSignal()
   // Persisted across runs in `~/.config/kobe/state.json` via the KV store
   // so reopening kobe lands on the task + center tab the user left from.
   // The auto-select effect below validates the persisted id against the
@@ -1733,6 +1737,7 @@ function Shell(props: AppDeps) {
           <Sidebar
             width={sidebarWidth}
             tasks={tasksAcc}
+            runState={chatRunStateAcc}
             onSelect={(id: string) => {
               setSelectedId(id)
               // Selecting a task usually means "I want to look at it" —
@@ -2054,6 +2059,17 @@ export async function startApp(): Promise<void> {
   await store.load()
   const worktrees = new GitWorktreeManager()
   const orchestrator = new Orchestrator({ engine, store, worktrees })
+  // Bridge: bind a Unix-socket RPC server + write an MCP config so
+  // every claude subprocess kobe spawns gets the `kobe_*` tools
+  // (spawn_task, list_tasks, ...). Best-effort — a bridge failure
+  // logs but never blocks the TUI from booting.
+  try {
+    const { startBridge } = await import("../orchestrator/bridge/index.ts")
+    await startBridge(orchestrator, { homeDir })
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[kobe] bridge failed to start:", err)
+  }
   // KOB-15: seed a pinned "main" task per saved repo. Idempotent:
   // ensureMainTask returns the existing main task on subsequent boots.
   // We read savedRepos from `state/repos.ts` (which honours

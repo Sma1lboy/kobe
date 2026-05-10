@@ -83,6 +83,11 @@ async function main(): Promise<void> {
     await runThemeSubcommand(rest)
     return
   }
+  if (subcommand === "mcp-bridge") {
+    const { runMcpBridgeSubcommand } = await import("./mcp-bridge.ts")
+    await runMcpBridgeSubcommand(rest)
+    return
+  }
 
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid

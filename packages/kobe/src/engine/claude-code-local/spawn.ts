@@ -104,6 +104,15 @@ export function buildArgs(opts: SpawnClaudeOpts): string[] {
     args.push("--permission-mode", opts.permissionMode)
   }
   args.push("--output-format", "stream-json", "--verbose")
+  // Bridge integration: when the parent kobe process binds its
+  // RPC bridge it writes an MCP config and exports `KOBE_MCP_CONFIG`
+  // pointing at it. Forwarding via `--mcp-config` here means every
+  // spawned `claude` automatically discovers the `kobe_*` tools
+  // without the orchestrator having to know about MCP.
+  const mcpConfig = process.env.KOBE_MCP_CONFIG
+  if (mcpConfig && mcpConfig.length > 0) {
+    args.push("--mcp-config", mcpConfig)
+  }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs)
   }
