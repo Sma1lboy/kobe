@@ -925,18 +925,7 @@ function TopBar(props: {
   // label in the topbar is misleading; the active branch alone is the
   // useful per-task signal). Right = PR action.
   return (
-    <box
-      flexDirection="row"
-      // paddingTop=1 only (no paddingBottom) — total 2 rows. Adds
-      // breathing room above the brand without growing the app
-      // frame past 2 rows; the pane headers immediately below
-      // already start at row 1 of their containers, so the brand
-      // gets its own row above them with no extra trailing gap.
-      paddingTop={1}
-      paddingLeft={2}
-      paddingRight={2}
-      flexShrink={0}
-    >
+    <box flexDirection="row" paddingLeft={2} paddingRight={2} flexShrink={0}>
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={1} justifyContent="flex-start">
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
           KobeCode
