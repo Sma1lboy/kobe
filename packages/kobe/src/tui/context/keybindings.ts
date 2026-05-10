@@ -227,9 +227,27 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Focus previous pane",
   },
   {
+    // Pane focus chord. Both `ctrl+N` and `alt+N` register because
+    // most terminals (Terminal.app, iTerm default, tmux without
+    // extended keys) don't propagate ctrl+<digit> — pressing ctrl+1
+    // just sends the byte `1` with no modifier, so the binding
+    // never fired. `alt+N` produces an `ESC <digit>` sequence which
+    // every terminal parses as alt-modified, so it works
+    // universally. Kitty / CSI-u terminals get ctrl+N too. The hint
+    // advertises ctrl+1234 (the easier-to-press chord on supporting
+    // terminals); alt+1234 is the always-works fallback.
     id: "focus.numeric",
     scope: "global",
-    keys: ["ctrl+1", "ctrl+2", "ctrl+3", "ctrl+4"],
+    keys: [
+      "ctrl+1",
+      "ctrl+2",
+      "ctrl+3",
+      "ctrl+4",
+      "alt+1",
+      "alt+2",
+      "alt+3",
+      "alt+4",
+    ],
     category: "Navigation",
     description: "Jump to pane (1=sidebar, 2=workspace, 3=files, 4=terminal)",
     hint: { keys: "ctrl+1234", label: "focus", pin: "right" },
