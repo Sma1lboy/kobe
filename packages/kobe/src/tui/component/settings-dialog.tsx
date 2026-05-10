@@ -43,8 +43,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const dialog = useDialog()
   const themeCtx = useTheme()
   const { theme } = themeCtx
+  // Two-level navigation:
+  //   - `level === "sidebar"` — left column owns the cursor; j/k cycles
+  //     section, l/right enters the body, enter just commits the
+  //     section pick (already auto-applied).
+  //   - `level === "body"` — right column owns the cursor; j/k cycles
+  //     rows inside the active section, h/left pops back to the sidebar.
+  // Single bodyRow signal indexes whichever section is active. The
+  // body-row count is section-dependent so wrap math is computed per
+  // section.
+  const [level, setLevel] = createSignal<"sidebar" | "body">("sidebar")
   const [section, setSection] = createSignal<SectionId>("general")
   const [cursor, setCursor] = createSignal(0)
+  const [bodyRow, setBodyRow] = createSignal(0)
 
   // Theme picker state — separate cursor from section sidebar's. Defaults
   // to the currently-active theme so an immediate enter is a no-op rather
@@ -57,23 +68,49 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ),
   )
 
+  // How many rows the current section's body has. General = N themes
+  // plus the transparent-bg toggle. Dev = single reset button. The
+  // wrap-around math in moveCursor uses this to clamp/cycle.
+  const TRANSPARENT_ROW_OFFSET = 0 // sentinel — index `themes.length` is the toggle row
+  function bodyRowCount(): number {
+    if (section() === "general") return themeNames().length + 1
+    if (section() === "dev") return 1
+    return 0
+  }
+  // Map bodyRow to the underlying selection within the General section.
+  // 0..N-1  → theme at index N
+  // N       → transparent-bg toggle
+  function isTransparentRow(): boolean {
+    return section() === "general" && bodyRow() === themeNames().length
+  }
+
   function moveCursor(delta: number): void {
-    if (section() === "general") {
-      // Theme list nav.
-      const len = themeNames().length
-      if (len === 0) return
-      setThemeCursor((c) => (c + delta + len) % len)
+    if (level() === "sidebar") {
+      const next = (cursor() + delta + SECTIONS.length) % SECTIONS.length
+      setCursor(next)
+      const nextSection = SECTIONS[next]
+      if (nextSection) {
+        setSection(nextSection.id)
+        setBodyRow(0)
+      }
       return
     }
-    setCursor((c) => (c + delta + SECTIONS.length) % SECTIONS.length)
-    const next = SECTIONS[cursor()]
-    if (next) setSection(next.id)
+    // Body level — j/k navigate rows.
+    const len = bodyRowCount()
+    if (len === 0) return
+    const next = (bodyRow() + delta + len) % len
+    setBodyRow(next)
+    // Mirror the bodyRow into themeCursor so the theme list highlight
+    // tracks j/k naturally.
+    if (section() === "general" && next < themeNames().length) setThemeCursor(next)
   }
 
   function switchSection(id: SectionId): void {
     setSection(id)
     setCursor(SECTIONS.findIndex((s) => s.id === id))
+    setBodyRow(0)
   }
+  void TRANSPARENT_ROW_OFFSET
 
   // Confirm before wiping KV — the user explicitly asked for it but
   // it's still destructive (drops their persisted layout, last-selected
@@ -94,44 +131,81 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   useBindings(() => ({
     bindings: [
+      // Vertical nav — j/k or arrows. Cycles inside whichever level
+      // owns the cursor. `tab` mirrors `down` so users with keymap
+      // muscle memory from the new-task dialog still cycle.
       { key: "down", cmd: () => moveCursor(1) },
       { key: "up", cmd: () => moveCursor(-1) },
       { key: "j", cmd: () => moveCursor(1) },
       { key: "k", cmd: () => moveCursor(-1) },
       { key: "tab", cmd: () => moveCursor(1) },
-      // `enter` activates the focused row in the current section.
-      // General → set theme to the highlighted entry. Dev → reset.
+      // Horizontal nav — l/right enters the section body, h/left pops
+      // back to the sidebar. Lets the user reach the transparent-bg
+      // toggle (and any future body rows) with pure keyboard nav,
+      // and gives a one-keystroke path back to "switch section."
+      {
+        key: "right",
+        cmd: () => {
+          if (level() === "sidebar" && bodyRowCount() > 0) {
+            setLevel("body")
+            setBodyRow(0)
+            if (section() === "general") setThemeCursor(0)
+          }
+        },
+      },
+      {
+        key: "l",
+        cmd: () => {
+          if (level() === "sidebar" && bodyRowCount() > 0) {
+            setLevel("body")
+            setBodyRow(0)
+            if (section() === "general") setThemeCursor(0)
+          }
+        },
+      },
+      {
+        key: "left",
+        cmd: () => setLevel("sidebar"),
+      },
+      {
+        key: "h",
+        cmd: () => setLevel("sidebar"),
+      },
+      // `enter` activates whatever the current cursor points at.
+      //   - Sidebar level → body level on the same section.
+      //   - Body level + General theme row → apply that theme.
+      //   - Body level + General transparent row → toggle.
+      //   - Body level + Dev → reset.
       {
         key: "return",
         cmd: () => {
+          if (level() === "sidebar") {
+            // Drill into the body of the highlighted section.
+            if (bodyRowCount() > 0) {
+              setLevel("body")
+              setBodyRow(0)
+              if (section() === "general") setThemeCursor(0)
+            }
+            return
+          }
           if (section() === "general") {
-            const name = themeNames()[themeCursor()]
+            if (isTransparentRow()) {
+              themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+              return
+            }
+            const name = themeNames()[bodyRow()]
             if (name) themeCtx.set(name)
             return
           }
           if (section() === "dev") void confirmReset()
         },
       },
-      // Left/right jumps focus between section sidebar and section
-      // body — useful when a list is open and the user wants to pop
-      // back to switching sections without using j/k.
-      {
-        key: "left",
-        cmd: () => {
-          // Moving left from any section returns focus to the section
-          // sidebar — repurpose `cursor` as the active sidebar row.
-          setSection("general")
-          setCursor(0)
-        },
-      },
-      // `t` toggles the transparent-bg flag from the General section.
-      // Bare letter is fine here — the dialog isn't an input surface,
-      // so we don't conflict with composer-style typing.
+      // `t` is still a quick toggle for transparent-bg from anywhere
+      // inside the dialog — earlier flow had it as the only way to
+      // reach the toggle, now it's a shortcut.
       {
         key: "t",
-        cmd: () => {
-          if (section() === "general") themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
-        },
+        cmd: () => themeCtx.setTransparentBackground(!themeCtx.transparentBackground),
       },
     ],
   }))
@@ -152,17 +226,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
         <box flexDirection="column" flexShrink={0} width={14} gap={0}>
           <For each={SECTIONS}>
             {(s, i) => {
-              const active = () => i() === cursor()
+              // Highlight color tracks "is this the active section."
+              // Strong (primary bg) when the SIDEBAR LEVEL has the
+              // cursor — i.e. j/k will move section. Soft (accent text)
+              // when the body level owns the cursor — the section is
+              // still selected but j/k is navigating body rows now.
+              const isSection = () => i() === cursor()
+              const isSidebarFocused = () => isSection() && level() === "sidebar"
               return (
                 <box
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={active() ? theme.primary : undefined}
-                  onMouseUp={() => switchSection(s.id)}
+                  backgroundColor={isSidebarFocused() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    switchSection(s.id)
+                    setLevel("sidebar")
+                  }}
                 >
                   <text
-                    fg={active() ? theme.selectedListItemText : theme.text}
-                    attributes={active() ? TextAttributes.BOLD : undefined}
+                    fg={
+                      isSidebarFocused()
+                        ? theme.selectedListItemText
+                        : isSection()
+                          ? theme.accent
+                          : theme.textMuted
+                    }
+                    attributes={isSection() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
                   >
                     {s.label}
@@ -179,11 +268,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
               <text fg={theme.text} attributes={TextAttributes.BOLD}>
                 Theme
               </text>
-              <text fg={theme.textMuted}>↑↓ to highlight, enter to apply.</text>
+              <text fg={theme.textMuted}>l to enter list · j/k to highlight · enter to apply</text>
               <box flexDirection="column" gap={0}>
                 <For each={themeNames()}>
                   {(name, i) => {
-                    const isCursor = () => i() === themeCursor()
+                    // Highlight only when body-level + this row is the
+                    // current bodyRow. Sidebar-level shouldn't paint a
+                    // theme cursor — that visual conflict was confusing.
+                    const isCursor = () => level() === "body" && bodyRow() === i()
                     const isSelected = () => name === themeCtx.selected
                     return (
                       <box
@@ -193,6 +285,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
                         paddingRight={1}
                         backgroundColor={isCursor() ? theme.primary : undefined}
                         onMouseUp={() => {
+                          setLevel("body")
+                          setBodyRow(i())
                           setThemeCursor(i())
                           themeCtx.set(name)
                         }}
@@ -225,10 +319,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   flexDirection="row"
                   paddingLeft={1}
                   paddingRight={1}
-                  onMouseUp={() => themeCtx.setTransparentBackground(!themeCtx.transparentBackground)}
+                  backgroundColor={isTransparentRow() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    setLevel("body")
+                    setBodyRow(themeNames().length)
+                    themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+                  }}
                 >
                   <text
-                    fg={themeCtx.transparentBackground ? theme.accent : theme.textMuted}
+                    fg={
+                      isTransparentRow()
+                        ? theme.selectedListItemText
+                        : themeCtx.transparentBackground
+                          ? theme.accent
+                          : theme.textMuted
+                    }
                     attributes={TextAttributes.BOLD}
                     wrapMode="none"
                   >
@@ -267,7 +372,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         </box>
       </box>
       <box paddingTop={0}>
-        <text fg={theme.textMuted}>↑↓ pick · enter activate · esc close</text>
+        <text fg={theme.textMuted}>j/k pick · h/l switch level · enter activate · esc close</text>
       </box>
     </box>
   )
