@@ -342,9 +342,9 @@ export function Terminal(props: TerminalProps): JSXElement {
       flexGrow={1}
       // Two-color focus highlight, matching Composer:
       //   engaged  → theme.primary (bright brand — keystrokes here)
-      //   selected → theme.accent  (different hue — highlighted but inert)
+      //   selected → theme.info    (blue/cyan — highlighted but inert)
       //   idle     → theme.border  (muted gray)
-      borderColor={engaged() ? theme.primary : focused() ? theme.accent : theme.border}
+      borderColor={engaged() ? theme.primary : focused() ? theme.info : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
       {/* Header (the parent PaneHeader already labels TERMINAL; this

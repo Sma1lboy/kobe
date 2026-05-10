@@ -122,10 +122,14 @@ export function Sidebar(props: SidebarProps) {
 
   const focusedAccessor = () => (props.focused ? props.focused() : true)
   const engagedAccessor = () => (props.engaged ? props.engaged() : focusedAccessor())
-  // Two-color title highlight: engaged → primary, selected → accent,
-  // idle → textMuted. See sidebar header render below.
+  // Two-color title highlight, matching the other panes:
+  //   engaged  → theme.primary   (bright brand)
+  //   selected → theme.info      (blue/cyan — distinct from primary
+  //                               in every bundled theme; `accent`
+  //                               collides with primary in claude.json)
+  //   idle     → theme.textMuted
   const titleColor = () =>
-    engagedAccessor() ? theme.primary : focusedAccessor() ? theme.accent : theme.textMuted
+    engagedAccessor() ? theme.primary : focusedAccessor() ? theme.info : theme.textMuted
 
   // Active view; default to the working session. `[` / `]` cycle
   // through `VIEW_TABS`.

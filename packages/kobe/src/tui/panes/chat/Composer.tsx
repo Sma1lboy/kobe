@@ -655,9 +655,12 @@ export function Composer(props: ComposerProps) {
   //
   // Two-color focus highlight: select and engaged use clearly different
   // hues so the user can tell at a glance which mode they're in, even
-  // without reading the StatusBar.
+  // without reading the StatusBar. We pick `info` (typically blue/cyan)
+  // for selected because every bundled theme keeps it distinct from
+  // `primary` — `accent` collides with `primary` in claude.json
+  // (both terracotta), so it can't carry the contrast on its own.
   //   engaged  → theme.primary  (bright brand — your keystrokes go here)
-  //   selected → theme.accent   (different hue — pane highlighted, but
+  //   selected → theme.info     (blue/cyan — pane highlighted, but
   //                              keys still navigate; press enter to engage)
   //   idle     → theme.border   (muted gray)
   const railColor = () => {
@@ -665,7 +668,7 @@ export function Composer(props: ComposerProps) {
     if (badge) return toneColor(badge.tone)
     const engaged = props.engaged?.() ?? props.focused?.() ?? false
     if (engaged) return theme.primary
-    if (props.focused?.()) return theme.accent
+    if (props.focused?.()) return theme.info
     return theme.border
   }
 

@@ -788,13 +788,15 @@ function PaneHeader(props: {
   // Two-color focus highlight on the title row, matching the Composer
   // rail and Terminal border:
   //   engaged  → theme.primary    (bright brand — keystrokes go here)
-  //   selected → theme.accent     (different hue — pane highlighted but
+  //   selected → theme.info       (blue/cyan — pane highlighted but
   //                                pane-local keys don't fire yet; press
-  //                                enter to engage)
+  //                                enter to engage). Picked over `accent`
+  //                                because claude.json maps primary and
+  //                                accent to the same terracotta hue.
   //   idle     → theme.textMuted  (muted)
   const focused = () => props.focused !== false
   const engaged = () => props.engaged === true
-  const titleColor = () => (engaged() ? theme.primary : focused() ? theme.accent : theme.textMuted)
+  const titleColor = () => (engaged() ? theme.primary : focused() ? theme.info : theme.textMuted)
   return (
     <box
       flexDirection="row"
