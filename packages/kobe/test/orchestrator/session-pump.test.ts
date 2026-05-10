@@ -81,6 +81,7 @@ describe("SessionPump", () => {
       {
         requestId: "req-fixed",
         payload: { kind: "approve_plan", plan: "# Plan\nstep 1", filePath: null },
+        tabKey: "task-1:tab-1",
       },
     ])
     expect(Array.from(broker.awaitingTabKeys())).toEqual(["task-1:tab-1"])

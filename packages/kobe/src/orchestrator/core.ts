@@ -91,7 +91,7 @@ import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
-import type { PendingInputBroker } from "../types/pending-input-broker.ts"
+import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {
@@ -481,7 +481,7 @@ export class Orchestrator {
    * (or doesn't exist). Defensive copy so callers can't mutate
    * orchestrator state.
    */
-  peekPendingInput(id: TaskId | string): Array<{ requestId: string; payload: UserInputPayload }> {
+  peekPendingInput(id: TaskId | string): PendingInputEntry[] {
     return this.pendingInputBroker.snapshot(String(id))
   }
 

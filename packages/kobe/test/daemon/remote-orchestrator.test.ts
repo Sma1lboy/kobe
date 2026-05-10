@@ -94,7 +94,7 @@ describe("RemoteOrchestrator", () => {
       remote = new RemoteOrchestrator(remoteClient)
       await remote.init()
       const pending = remote.peekPendingInput(spawned.taskId)
-      expect(pending).toEqual([{ requestId, payload }])
+      expect(pending).toEqual([{ requestId, payload, tabKey: `${spawned.taskId}:${task.activeTabId}` }])
     } finally {
       remote?.dispose()
       driverClient.close()
@@ -174,7 +174,9 @@ describe("RemoteOrchestrator", () => {
         { type: "user_input.request", requestId, payload },
       )
       await waitFor(() => remote!.peekPendingInput(spawned.taskId).length === 1)
-      expect(remote.peekPendingInput(spawned.taskId)).toEqual([{ requestId, payload }])
+      expect(remote.peekPendingInput(spawned.taskId)).toEqual([
+        { requestId, payload, tabKey: `${spawned.taskId}:${tabId}` },
+      ])
       ;(orch as unknown as { dispatchEvent: (t: string, b: string, ev: unknown) => void }).dispatchEvent(
         spawned.taskId,
         tabId,

@@ -116,12 +116,26 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
     const payload = objectPayload(req.payload)
     switch (req.name) {
-      case "hello":
+      case "hello": {
+        // Enrich the handshake so a fresh attach only needs `hello`
+        // then `subscribe` instead of `hello` → `task.list` → N×
+        // `chat.input.pending` round-trips. Old clients ignore the
+        // extra fields; the legacy `task.list` and `chat.input.pending`
+        // request handlers remain in place for backwards compat.
+        const tasks = orch.listTasks()
+        const pending: Record<string, ReturnType<typeof orch.peekPendingInput>> = {}
+        for (const task of tasks) {
+          const entries = orch.peekPendingInput(task.id)
+          if (entries.length > 0) pending[task.id] = entries
+        }
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
           daemonPid: process.pid,
           clientId: client.id,
+          tasks: tasks.map(serializeTask),
+          pending,
         }
+      }
       case "daemon.status":
         return {
           daemonPid: process.pid,

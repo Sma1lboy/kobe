@@ -34,17 +34,19 @@ import type { UserInputPayload } from "./engine"
 export interface PendingInputEntry {
   readonly requestId: string
   readonly payload: UserInputPayload
-}
-
-export interface ResolvedInputEntry extends PendingInputEntry {
   /**
    * Composite `${taskId}:${tabId}` of the ChatTab that fired the
-   * pause. Returned by `resolve` so the orchestrator can route the
-   * `user_input.resolved` dispatch through the same tab the request
-   * came from.
+   * pause. Now part of the bucket from end to end: the wire snapshot
+   * (`chat.input.pending`) echoes it, RemoteOrchestrator hydrates with
+   * it, and the broker continues to expose it on `resolve` for
+   * routing. Before this field every consumer had to fall back to
+   * `task.activeTabId` on attach, which was wrong for pause requests
+   * fired against a non-active tab.
    */
   readonly tabKey: string
 }
+
+export type ResolvedInputEntry = PendingInputEntry
 
 export interface PendingInputBroker {
   /**

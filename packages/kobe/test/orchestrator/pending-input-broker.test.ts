@@ -22,8 +22,8 @@ describe("InMemoryPendingInputBroker", () => {
     broker.record("task-1", "task-1:tab-x", "req-1", a)
     broker.record("task-1", "task-1:tab-y", "req-2", b)
     expect(broker.snapshot("task-1")).toEqual([
-      { requestId: "req-1", payload: a },
-      { requestId: "req-2", payload: b },
+      { requestId: "req-1", payload: a, tabKey: "task-1:tab-x" },
+      { requestId: "req-2", payload: b, tabKey: "task-1:tab-y" },
     ])
   })
 
@@ -31,7 +31,7 @@ describe("InMemoryPendingInputBroker", () => {
     const broker = new InMemoryPendingInputBroker()
     broker.record("task-1", "task-1:tab-x", "req-1", approve("p"))
     const snap = broker.snapshot("task-1")
-    snap.push({ requestId: "FAKE", payload: approve("evil") })
+    snap.push({ requestId: "FAKE", payload: approve("evil"), tabKey: "task-1:tab-x" })
     expect(broker.snapshot("task-1")).toHaveLength(1)
   })
 
@@ -42,7 +42,7 @@ describe("InMemoryPendingInputBroker", () => {
     const payload = approve("plan")
     broker.record("task-1", "task-1:tab-x", "req-1", payload)
     broker.record("task-1", "task-1:tab-x", "req-1", payload)
-    expect(broker.snapshot("task-1")).toEqual([{ requestId: "req-1", payload }])
+    expect(broker.snapshot("task-1")).toEqual([{ requestId: "req-1", payload, tabKey: "task-1:tab-x" }])
   })
 
   test("resolve pops the entry and returns its tabKey", () => {
@@ -101,6 +101,6 @@ describe("InMemoryPendingInputBroker", () => {
     // Re-recording after drain works (regression: old code accidentally
     // kept the empty Map and broke idempotency).
     broker.record("task-1", "task-1:tab-x", "req-2", approve("b"))
-    expect(broker.snapshot("task-1")).toEqual([{ requestId: "req-2", payload: approve("b") }])
+    expect(broker.snapshot("task-1")).toEqual([{ requestId: "req-2", payload: approve("b"), tabKey: "task-1:tab-x" }])
   })
 })

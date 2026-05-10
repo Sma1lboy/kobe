@@ -46,7 +46,14 @@ export class InMemoryPendingInputBroker implements PendingInputBroker {
   snapshot(taskId: string): PendingInputEntry[] {
     const bucket = this.buckets.get(taskId)
     if (!bucket) return []
-    return Array.from(bucket.entries()).map(([requestId, payload]) => ({ requestId, payload }))
+    return Array.from(bucket.entries()).map(([requestId, payload]) => ({
+      requestId,
+      payload,
+      // tabKey is always populated alongside the bucket entry — see
+      // `record` above. Fallback to empty string only as a defensive
+      // last resort; in practice this branch is unreachable.
+      tabKey: this.requestTab.get(requestId) ?? "",
+    }))
   }
 
   awaitingTabKeys(): Iterable<string> {

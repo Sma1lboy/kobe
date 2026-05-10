@@ -77,6 +77,55 @@ describe("daemon server", () => {
     }
   })
 
+  test("hello echoes tasks + pending snapshots so init skips task.list/chat.input.pending", async () => {
+    // Regression target: init() used to run hello → task.list →
+    // N×chat.input.pending sequentially. Daemon now enriches the
+    // hello response with `tasks` and `pending`, collapsing the
+    // handshake to hello + subscribe.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const seed = new KobeDaemonClient(socketPath)
+    const probe = new KobeDaemonClient(socketPath)
+    try {
+      await seed.connect()
+      const spawned = await seed.request<{ taskId: string }>("task.spawn", { repo, title: "hello-enriched" })
+      const task = orch.getTask(spawned.taskId)
+      if (!task) throw new Error("missing task")
+      // Plant a pending input directly through the broker so the
+      // enriched hello has something non-trivial to echo.
+      const broker = (orch as unknown as {
+        pendingInputBroker: {
+          record: (taskId: string, tabKey: string, requestId: string, payload: unknown) => void
+        }
+      }).pendingInputBroker
+      const payload = {
+        kind: "approve_plan" as const,
+        plan: "Refactor X.",
+        toolName: "ExitPlanMode",
+        toolUseId: "tool-hello-1",
+      }
+      const requestId = "req-hello-1"
+      const tabKey = `${spawned.taskId}:${task.activeTabId}`
+      broker.record(spawned.taskId, tabKey, requestId, payload)
+      const hello = await probe.request<{
+        protocolVersion: number
+        daemonPid: number
+        clientId: number
+        tasks: Array<{ id: string; title: string }>
+        pending: Record<string, Array<{ requestId: string; payload: unknown; tabKey: string }>>
+      }>("hello", { clientId: "probe", version: "test" })
+      expect(hello.protocolVersion).toBe(1)
+      expect(typeof hello.clientId).toBe("number")
+      expect(hello.tasks.map((t) => t.id)).toContain(spawned.taskId)
+      expect(hello.pending[spawned.taskId]).toEqual([{ requestId, payload, tabKey }])
+    } finally {
+      seed.close()
+      probe.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("broadcasts task.created to attached clients", async () => {
     const orch = await buildOrchestrator()
     const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
