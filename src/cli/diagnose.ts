@@ -35,19 +35,12 @@ import { join } from "node:path"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
 import { kobeStateDir, tmuxBin } from "../env.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
+import { worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 import type { Task, TaskStatus } from "../types/task.ts"
 import { CURRENT_VERSION, checkLatestVersion } from "../version.ts"
-import { worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 
 /** Status keys we break down counts by, in canonical display order. */
-const STATUS_ORDER: readonly TaskStatus[] = [
-  "backlog",
-  "in_progress",
-  "in_review",
-  "done",
-  "canceled",
-  "error",
-]
+const STATUS_ORDER: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 
 /** Width to pad section keys for "key: value" alignment. */
 const KEY_PAD = 18
@@ -317,7 +310,9 @@ export async function buildDiagnoseReport(): Promise<string> {
   } catch (err) {
     lines.push(formatKv("path:", "NOT FOUND"))
     const msg = err instanceof Error ? err.message : String(err)
-    lines.push(formatKv("hint:", "install Claude Code so `which claude` works, or drop the binary at ~/.claude/local/claude"))
+    lines.push(
+      formatKv("hint:", "install Claude Code so `which claude` works, or drop the binary at ~/.claude/local/claude"),
+    )
     lines.push(formatKv("detail:", msg))
   }
 
@@ -333,7 +328,11 @@ export async function buildDiagnoseReport(): Promise<string> {
       timeout: 3_000,
     })
     if (out.status === 0) {
-      tmuxPath = out.stdout.split("\n").map((l) => l.trim()).find((l) => l.length > 0) ?? null
+      tmuxPath =
+        out.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .find((l) => l.length > 0) ?? null
     }
   } catch {
     /* swallow — handled below */
@@ -416,7 +415,7 @@ export async function buildDiagnoseReport(): Promise<string> {
         onDiskByRepo.set(repo, listWorktreeDirs(root))
       } catch (err) {
         // Bad repo path (e.g. relative) — skip but keep going.
-        lines.push(formatKv(`scan-error:`, `${repo}: ${(err as Error).message}`))
+        lines.push(formatKv("scan-error:", `${repo}: ${(err as Error).message}`))
         onDiskByRepo.set(repo, [])
       }
     }

@@ -203,9 +203,17 @@ export function Sidebar(props: SidebarProps) {
       paddingLeft={2}
       paddingRight={2}
     >
-      {/* Header: just "kobe". */}
-      <box flexDirection="row" paddingBottom={1}>
-        <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
+      {/* Header: "kobe" with a focus-aware ▌ marker matching PaneHeader's
+         convention — green ▌ + green title when this pane has focus,
+         dimmed when not. Keeps the focus signal consistent across all
+         panes so the user's eye trains on a single visual pattern. */}
+      <box flexDirection="row" gap={1} paddingBottom={1}>
+        <Show when={focusedAccessor()} fallback={<text fg={theme.textMuted}> </text>}>
+          <text fg={theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
+            ▌
+          </text>
+        </Show>
+        <text fg={focusedAccessor() ? theme.success : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
           kobe
         </text>
       </box>

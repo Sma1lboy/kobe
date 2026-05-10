@@ -27,7 +27,26 @@
  *   For now keep one branch per pane so a broken pane doesn't take the
  *   others down.
  */
-import { startTui } from "../tui/index.tsx"
+import { resolve } from "node:path"
+
+/**
+ * `kobe add [path]` — append a repo path to the saved-repos list shown
+ * in the TUI's new-task picker (ctrl+n). Defaults to `.` (cwd). The
+ * path is resolved to an absolute path before writing so the entry is
+ * portable across shells. Idempotent: re-adding an already-saved repo
+ * prints a notice but is not an error. Late dynamic import keeps the
+ * TUI's solid-js graph out of this branch's startup path.
+ */
+async function runAddSubcommand(arg: string | undefined): Promise<void> {
+  const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
+  const { addSavedRepo } = await import("../state/repos.ts")
+  const result = addSavedRepo(target)
+  if (result.added) {
+    console.log(`added ${result.path} (${result.total} saved repo${result.total === 1 ? "" : "s"} total)`)
+  } else {
+    console.log(`already saved: ${result.path}`)
+  }
+}
 
 async function main(): Promise<void> {
   if (process.env.KOBE_FILETREE_HOST === "1") {
@@ -45,19 +64,25 @@ async function main(): Promise<void> {
     await startTerminalHost()
     return
   }
-  // Subcommand dispatch. Argv shape for now: `kobe <subcommand> [args]`.
-  // We only inspect argv[2]; anything else is forwarded to the TUI start
-  // path (which today ignores extra args). Each branch is one
-  // if-statement and dynamically imports its module so adding a new
+
+  // Subcommand routing. process.argv = [bun, script, ...args].
+  // Each branch dynamically imports its module so adding a new
   // subcommand never grows the TUI startup graph.
-  const subcommand = process.argv[2]
+  const [, , subcommand, ...rest] = process.argv
+  if (subcommand === "add") {
+    await runAddSubcommand(rest[0])
+    return
+  }
   if (subcommand === "diagnose") {
     const { runDiagnoseSubcommand } = await import("./diagnose.ts")
     await runDiagnoseSubcommand()
     return
   }
-  // Future: parse argv here (e.g. `kobe --repo <path>`, `kobe new "title"`).
-  // For 0.1 we just open the TUI.
+
+  // Default: launch the TUI. Dynamic import so non-TUI subcommands
+  // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid
+  // at startup.
+  const { startTui } = await import("../tui/index.tsx")
   await startTui()
 }
 

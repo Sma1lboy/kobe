@@ -16,12 +16,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import {
-  formatBytes,
-  formatKv,
-  formatTaskBreakdown,
-  reconcileWorktrees,
-} from "../../src/cli/diagnose.ts"
+import { formatBytes, formatKv, formatTaskBreakdown, reconcileWorktrees } from "../../src/cli/diagnose.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
