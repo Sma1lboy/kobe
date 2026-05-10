@@ -310,6 +310,24 @@ export function FileTree(props: FileTreeProps) {
     return []
   })
 
+  /**
+   * Column widths for the `+N` / `-N` stats on the Changes tab. Computed
+   * across the visible rows so every cell pads to the widest sibling —
+   * without this, `+0 -202` and `+1 -1` end at the same right edge but
+   * the `-` columns drift, which reads as misaligned. Width includes
+   * the leading sign (`+`/`-`).
+   */
+  const statWidths = createMemo<{ added: number; deleted: number }>(() => {
+    let added = 0
+    let deleted = 0
+    for (const row of rows()) {
+      if (row.kind !== "status") continue
+      if (row.added != null) added = Math.max(added, String(row.added).length + 1)
+      if (row.deleted != null) deleted = Math.max(deleted, String(row.deleted).length + 1)
+    }
+    return { added, deleted }
+  })
+
   // ---------- key bindings ----------
   function moveDown(): void {
     const r = rows()
@@ -549,8 +567,9 @@ export function FileTree(props: FileTreeProps) {
                       return theme.textMuted
                   }
                 }
-                const addedText = row.added == null ? "" : `+${row.added}`
-                const deletedText = row.deleted == null ? "" : `-${row.deleted}`
+                const w = statWidths()
+                const addedText = row.added == null ? " ".repeat(w.added) : `+${row.added}`.padStart(w.added)
+                const deletedText = row.deleted == null ? " ".repeat(w.deleted) : `-${row.deleted}`.padStart(w.deleted)
                 return (
                   <box
                     flexDirection="row"
@@ -569,12 +588,12 @@ export function FileTree(props: FileTreeProps) {
                     <text fg={isCursor() ? theme.selectedListItemText : theme.text} wrapMode="none" flexGrow={1}>
                       {row.path}
                     </text>
-                    <Show when={addedText.length > 0}>
+                    <Show when={w.added > 0}>
                       <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
                         {addedText}
                       </text>
                     </Show>
-                    <Show when={deletedText.length > 0}>
+                    <Show when={w.deleted > 0}>
                       <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
                         {deletedText}
                       </text>
