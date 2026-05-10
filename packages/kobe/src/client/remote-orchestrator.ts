@@ -162,7 +162,16 @@ export class RemoteOrchestrator {
       (t) => t.sessionId === sessionId || t.tabs.some((tab) => tab.sessionId === sessionId),
     )
     if (!task) return []
-    const res = await this.client.request<{ messages: Message[] }>("chat.history", { taskId: task.id, limit: 500 })
+    // Pass the requested sessionId through to the daemon so it returns
+    // history for the specific tab the caller asked about, not the
+    // task's currently-active tab. Without this, Chat's per-tab
+    // hydration runs N times for the same active-tab transcript and
+    // every tab ends up rendering identical content.
+    const res = await this.client.request<{ messages: Message[] }>("chat.history", {
+      taskId: task.id,
+      sessionId,
+      limit: 500,
+    })
     return res.messages
   }
 

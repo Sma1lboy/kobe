@@ -266,9 +266,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "chat.history": {
         const taskId = requireString(payload, "taskId")
+        const sessionId = optionalString(payload, "sessionId")
         const limit = optionalNumber(payload, "limit") ?? 50
         const before = optionalString(payload, "before")
-        const result = await readTaskHistory(orch, taskId, limit, before)
+        const result = await readTaskHistory(orch, taskId, sessionId, limit, before)
         return {
           messages: serializeMessages(result.messages),
           nextBefore: result.nextBefore,
@@ -416,11 +417,22 @@ interface TaskHistoryPage {
 async function readTaskHistory(
   orch: Orchestrator,
   taskId: string,
+  /**
+   * Explicit session id requested by the client (per-tab history
+   * load). When omitted we fall back to the task's active-tab
+   * sessionId — convenient for callers that only know the taskId.
+   * Required for tab-switch correctness: Chat hydrates each tab's
+   * scrollback independently, so passing the right sessionId is the
+   * difference between "every tab shows the active tab's transcript"
+   * and "every tab shows its own."
+   */
+  requestedSessionId: string | undefined,
   limit: number,
   before?: string,
 ): Promise<TaskHistoryPage> {
   const task = orch.getTask(taskId)
-  const sessionId = task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
+  const sessionId =
+    requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
   if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
   const messages = await orch.readHistory(sessionId)
   const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1

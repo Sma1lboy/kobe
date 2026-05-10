@@ -306,6 +306,57 @@ describe("daemon server", () => {
     }
   })
 
+  test("chat.history returns the requested session's transcript, not the active tab's", async () => {
+    // Regression: chat.history used to ignore any tab/session hint and
+    // always return the active tab's history. Result on tab switch:
+    // every tab loaded its scrollback by calling readHistory, every
+    // call returned the active tab's transcript, every tab rendered
+    // the same content. Fix: protocol takes an optional sessionId;
+    // server honours it before falling back to the active tab.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      await client.request("hello", { clientId: "test", version: "test" })
+      const spawned = await client.request<{ taskId: string }>("task.spawn", { repo, title: "history-tabs" })
+      const task = orch.getTask(spawned.taskId)
+      if (!task) throw new Error("missing task")
+      // Pin two distinct sessions onto two tabs and seed each with a
+      // unique fake transcript.
+      const created = await client.request<{ tab: { id: string } }>("chat.tab.create", { taskId: spawned.taskId })
+      const sidA = "session-tab-a"
+      const sidB = "session-tab-b"
+      await (orch as unknown as {
+        store: { update: (id: string, patch: unknown) => Promise<void> }
+      }).store.update(spawned.taskId, {
+        tabs: task.tabs.map((t, i) =>
+          t.id === task.activeTabId ? { ...t, sessionId: sidA } : t.id === created.tab.id ? { ...t, sessionId: sidB } : t,
+        ),
+      })
+      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      fakeEngine.setHistory(sidA, [{ role: "user", content: "from A", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidA }])
+      fakeEngine.setHistory(sidB, [{ role: "user", content: "from B", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidB }])
+      // Active tab is A; ask for B's transcript by passing sidB.
+      const pageB = await client.request<{ messages: Array<{ content: string }> }>("chat.history", {
+        taskId: spawned.taskId,
+        sessionId: sidB,
+        limit: 50,
+      })
+      expect(pageB.messages.map((m) => m.content)).toEqual(["from B"])
+      // Sanity: omitting sessionId still resolves the active tab.
+      const pageActive = await client.request<{ messages: Array<{ content: string }> }>("chat.history", {
+        taskId: spawned.taskId,
+        limit: 50,
+      })
+      expect(pageActive.messages.map((m) => m.content)).toEqual(["from A"])
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("chat.tab.activate broadcasts task.updated so clients learn the new activeTabId", async () => {
     // Regression: chat-tab switching looked broken from the TUI side.
     // The composer flipped activeTabIdLocal optimistically, then
