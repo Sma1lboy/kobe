@@ -1616,7 +1616,7 @@ function Shell(props: AppDeps) {
         void openNewTaskFlow()
       },
       "settings.open.sidebar": () => {
-        void SettingsDialog.show(dialog, kv)
+        void SettingsDialog.show(dialog, kv, props.orchestrator)
       },
       "app.quit": () => {
         DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
@@ -1639,7 +1639,7 @@ function Shell(props: AppDeps) {
     enabled: dialog.stack.length === 0,
     bindings: bindByIds({
       "settings.open": () => {
-        void SettingsDialog.show(dialog, kv)
+        void SettingsDialog.show(dialog, kv, props.orchestrator)
       },
     }),
   }))

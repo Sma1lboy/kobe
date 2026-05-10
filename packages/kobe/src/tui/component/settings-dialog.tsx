@@ -28,7 +28,9 @@ import { join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { For, Show, createMemo, createSignal } from "solid-js"
+import { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { homeDir } from "../../env"
+import type { KobeOrchestrator } from "../../client/remote-orchestrator"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
@@ -50,6 +52,13 @@ const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
 
 export type SettingsDialogProps = {
   kv: KVContext
+  /**
+   * The active orchestrator. Used to expose the "Restart backend" Dev
+   * button only when we're attached to a daemon (RemoteOrchestrator).
+   * In KOBE_TEST_ENGINE / KOBE_NO_DAEMON modes the orchestrator runs
+   * in-process and there is no daemon to restart — the row is hidden.
+   */
+  orchestrator?: KobeOrchestrator
   onClose: () => void
 }
 
@@ -83,15 +92,24 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ),
   )
 
+  // True when we're attached to a daemon — controls whether the
+  // "Restart backend" Dev row is offered. In-process mode has no
+  // daemon to restart, so we omit the row entirely rather than
+  // showing a disabled affordance.
+  const hasDaemon = props.orchestrator instanceof RemoteOrchestrator
   // How many rows the current section's body has. General =
   //   N themes
   //   + 1 transparent-bg toggle
   //   + M focus-accent slots (one row per FOCUS_ACCENT_SLOTS entry).
-  // Dev = single reset button. The wrap-around math in moveCursor
-  // uses this to clamp/cycle.
+  // Dev = reset button (+ optional restart-backend row when attached
+  // to a daemon). The wrap-around math in moveCursor uses this to
+  // clamp/cycle.
+  function devRowCount(): number {
+    return hasDaemon ? 2 : 1
+  }
   function bodyRowCount(): number {
     if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
-    if (section() === "dev") return 1
+    if (section() === "dev") return devRowCount()
     return 0
   }
   // Map bodyRow to the underlying selection within the General section.
@@ -195,6 +213,48 @@ export function SettingsDialog(props: SettingsDialogProps) {
     process.exit(0)
   }
 
+  /**
+   * Stop the kobed daemon and quit kobe. The next relaunch will hit
+   * the daemon-absent branch of `connectOrStartDaemon` and spawn a
+   * fresh `kobed` from disk, picking up whatever edits the developer
+   * just made to daemon/orchestrator/engine code (Bun reads modules
+   * once at boot — there's no hot-reload, so a stale daemon silently
+   * masks fixes until restart).
+   *
+   * Multi-attach caveat: this drops the socket for EVERY attached
+   * TUI, not just this one. The confirm copy warns about it. Other
+   * windows will see their wire close and either spin or no-op until
+   * they're also relaunched.
+   */
+  async function confirmRestartDaemon(): Promise<void> {
+    const orch = props.orchestrator
+    if (!(orch instanceof RemoteOrchestrator)) return
+    const ok = await DialogConfirm.show(
+      dialog,
+      "Restart backend?",
+      "Stops the kobed daemon and quits this kobe window. Relaunch to spawn a fresh daemon with the latest code. Other attached kobe windows will lose their daemon connection too.",
+      "cancel",
+    )
+    if (ok !== true) return
+    try {
+      await orch.stopDaemon()
+    } catch (err) {
+      // daemon.stop closes the socket as part of its work; the
+      // request may reject with "daemon connection closed" before the
+      // response frame arrives. That's the success path — swallow.
+      // eslint-disable-next-line no-console
+      console.error("kobe: daemon.stop returned:", err)
+    }
+    try {
+      renderer?.destroy()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("kobe: renderer.destroy() failed during daemon restart:", err)
+    }
+    process.stderr.write("kobe: daemon stopped. Relaunch kobe to start fresh.\n")
+    process.exit(0)
+  }
+
   useBindings(() => ({
     bindings: [
       // Vertical nav — j/k or arrows. Cycles inside whichever level
@@ -269,7 +329,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
             if (name) themeCtx.set(name)
             return
           }
-          if (section() === "dev") void confirmReset()
+          if (section() === "dev") {
+            if (bodyRow() === 0) void confirmReset()
+            else if (hasDaemon && bodyRow() === 1) void confirmRestartDaemon()
+          }
         },
       },
       // `t` is still a quick toggle for transparent-bg from anywhere
@@ -487,6 +550,45 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   </box>
                 )
               })()}
+              {/* Restart-backend row. Only rendered when the TUI is
+                  attached to a daemon — in-process mode (KOBE_TEST_ENGINE
+                  / KOBE_NO_DAEMON) has nothing to restart. Sits at
+                  bodyRow=1 so j/k cycles Reset (0) ↔ Restart (1). */}
+              <Show when={hasDaemon}>
+                <box flexDirection="column" gap={0} paddingTop={1}>
+                  <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                    Restart backend
+                  </text>
+                  <text fg={theme.textMuted} wrapMode="word">
+                    Stops the kobed daemon and quits this kobe window so the next launch spawns a fresh daemon — picks
+                    up daemon / orchestrator / engine edits without a process kill. Other attached kobe windows will
+                    lose their connection too.
+                  </text>
+                  {(() => {
+                    const isCursor = () => level() === "body" && bodyRow() === 1
+                    return (
+                      <box
+                        flexDirection="row"
+                        paddingLeft={1}
+                        paddingRight={1}
+                        backgroundColor={isCursor() ? theme.primary : theme.backgroundElement}
+                        onMouseUp={() => {
+                          setLevel("body")
+                          setBodyRow(1)
+                          void confirmRestartDaemon()
+                        }}
+                      >
+                        <text
+                          fg={isCursor() ? theme.selectedListItemText : theme.accent}
+                          attributes={TextAttributes.BOLD}
+                        >
+                          [enter] Restart
+                        </text>
+                      </box>
+                    )
+                  })()}
+                </box>
+              </Show>
             </box>
           </Show>
         </box>
@@ -498,10 +600,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
   )
 }
 
-SettingsDialog.show = (dialog: DialogContext, kv: KVContext): Promise<void> => {
+SettingsDialog.show = (dialog: DialogContext, kv: KVContext, orchestrator?: KobeOrchestrator): Promise<void> => {
   return new Promise<void>((resolve) => {
     dialog.replace(
-      () => <SettingsDialog kv={kv} onClose={() => resolve()} />,
+      () => <SettingsDialog kv={kv} orchestrator={orchestrator} onClose={() => resolve()} />,
       () => resolve(),
     )
   })
