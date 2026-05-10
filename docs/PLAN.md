@@ -462,12 +462,21 @@ Polish + the bits that need cross-pane coordination.
 - Fix what's broken
 - Document known issues in `docs/PHASE1-NOTES.md`
 
-### ▶ Gate G4 — Phase 1 ship
+### ▶ Gate G4 — Phase 1 ship — **CLOSED 2026-05-09 (v0.1.0)**
 
-- [ ] All Wave 1–4 streams committed
-- [ ] DESIGN.md §11 open questions resolved or explicitly deferred
-- [ ] CLAUDE.md updated with Phase 2 entry plan
-- [ ] HANDOFF.md replaced or updated for next session
+- [x] All Wave 1–4 streams committed
+- [x] DESIGN.md §11 open questions resolved or explicitly deferred
+- [x] CLAUDE.md updated with Phase 2 entry plan
+- [x] HANDOFF.md replaced or updated for next session
+
+Shipped as `@sma1lboy/kobe@0.1.0` on npm (see [`CHANGELOG.md`](../CHANGELOG.md#010---2026-05-09)
+for the full feature manifest). Wave 4 polish landed via the
+worktree-agent merges between 2026-05-09 morning and afternoon
+plus the inline approval flows (ExitPlanMode + AskUserQuestion).
+Two known regressions caught post-ship by the new approval-flow
+behavior tests (composer lock not visible, AskUserQuestion crash);
+tracked in `test/behavior/approval-flow.test.ts` `test.skip` notes
+for follow-up.
 
 ---
 

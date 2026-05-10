@@ -27,15 +27,45 @@ shell wrapping it.
 Tests via vitest + PTY-driven behavior tests. Lint via biome. Engine spawns the `claude` CLI as a
 subprocess and parses `--output-format stream-json`.
 
-## Quick start
+## Install (end users)
+
+[![npm](https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg)](https://www.npmjs.com/package/@sma1lboy/kobe)
+
+Requires [Bun](https://bun.sh) ≥ 1.0 on the host (kobe's renderer is
+opentui, which uses Bun-FFI). The `claude` CLI must also be on `PATH`.
+
+```bash
+bun install -g @sma1lboy/kobe
+kobe                 # launches the TUI
+```
+
+Or run without installing:
+
+```bash
+bunx @sma1lboy/kobe
+```
+
+## Quick start (developing on kobe itself)
 
 ```bash
 bun install
 bun run dev          # boots the 5-pane TUI
 bun run test         # unit + type tests
 bun run test:behavior  # PTY-driven; spawns kobe as a real binary
+bun run build        # produces ./dist/index.js for `npm publish`
 ```
 
-Tasks live at `~/.kobe/tasks.json`; per-task git worktrees live at `<repo>/.kobe/worktrees/<task-id>/`.
+Tasks live at `~/.kobe/tasks.json`; per-task git worktrees live at
+`<repo>/.claude/worktrees/<task-id>/`.
 
-Current direction, what just shipped, and what's next live in [`HANDOFF.md`](./HANDOFF.md).
+## Releasing
+
+Bump `package.json`, move `## [Unreleased]` in `CHANGELOG.md` to the
+new version section, commit, then push the matching `vX.Y.Z` tag.
+The release workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml))
+runs typecheck + unit tests + build, asserts the tag matches
+`package.json`, then `npm publish --provenance` and creates a GitHub
+release with the changelog section as the body.
+
+Current direction, what just shipped, and what's next live in [`HANDOFF.md`](./HANDOFF.md)
+and [`CHANGELOG.md`](./CHANGELOG.md).

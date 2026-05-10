@@ -155,8 +155,8 @@ export interface ComposerProps {
  * want to. For now the behavior test asserts the streaming variant
  * is visible after submit.
  */
-function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean }): string {
-  if (!opts.hasTask) return "(no task — press n to create)"
+function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean; noTaskMessage?: string }): string {
+  if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
   if (opts.isStreaming) return "(streaming — wait for done)"
   return "Ask Claude…"
 }
@@ -708,7 +708,11 @@ export function Composer(props: ComposerProps) {
                     // <input focused={true}> behavior.
                     r.focus()
                   }}
-                  placeholder={resolvePlaceholder({ isStreaming: props.isStreaming, hasTask: props.hasTask })}
+                  placeholder={resolvePlaceholder({
+                    isStreaming: props.isStreaming,
+                    hasTask: props.hasTask,
+                    noTaskMessage: props.noTaskMessage,
+                  })}
                   placeholderColor={theme.textMuted}
                   textColor={theme.text}
                   backgroundColor={theme.backgroundElement}
