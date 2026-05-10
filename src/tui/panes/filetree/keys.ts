@@ -27,6 +27,7 @@
  */
 
 import type { Accessor } from "solid-js"
+import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 
 /** Tab identifiers — kept here so `keys.ts` doesn't import from the
@@ -64,16 +65,26 @@ export type FileTreeBindingsOpts = {
 export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
   useBindings(() => ({
     enabled: opts.focused(),
-    bindings: [
-      { key: "j", cmd: () => opts.moveDown() },
-      { key: "down", cmd: () => opts.moveDown() },
-      { key: "k", cmd: () => opts.moveUp() },
-      { key: "up", cmd: () => opts.moveUp() },
-      { key: "1", cmd: () => opts.setTab("all") },
-      { key: "2", cmd: () => opts.setTab("changes") },
-      { key: "3", cmd: () => opts.setTab("checks") },
-      { key: "return", cmd: () => opts.openCurrent() },
-      { key: "r", cmd: () => opts.refresh() },
-    ],
+    bindings: bindByIds({
+      "files.nav": (evt) => {
+        if (evt.name === "j" || evt.name === "down") opts.moveDown()
+        else if (evt.name === "k" || evt.name === "up") opts.moveUp()
+      },
+      "files.tab": (evt) => {
+        switch (evt.name) {
+          case "1":
+            opts.setTab("all")
+            break
+          case "2":
+            opts.setTab("changes")
+            break
+          case "3":
+            opts.setTab("checks")
+            break
+        }
+      },
+      "files.open": () => opts.openCurrent(),
+      "files.refresh": () => opts.refresh(),
+    }),
   }))
 }

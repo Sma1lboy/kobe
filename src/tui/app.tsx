@@ -25,7 +25,7 @@ import { homedir } from "node:os"
 import { basename, join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
-import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import pkg from "../../package.json" with { type: "json" }
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
@@ -41,7 +41,7 @@ import { UpdateDialog } from "./component/update-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
-import { useKobeKeybindings } from "./context/keybindings"
+import { KobeKeymap, bindByIds, useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, useTheme } from "./context/theme"
@@ -749,44 +749,35 @@ function StatusBar() {
         return "Terminal:"
     }
   }
+  // Pane-local hints come from KobeKeymap by scope; only rows with a
+  // non-pinned `hint` and a `scope` matching the focused pane and a
+  // workspace-detach exception (esc detach is global but we want it to
+  // surface only while workspace is focused — sidebar already IS sidebar,
+  // files/terminal use it more rarely). The condition is simple: `hint
+  // && !pin && (scope === focused || (id === "focus.detach" && focused
+  // === "workspace"))`.
+  const leftHints = () =>
+    KobeKeymap.filter((b) => {
+      if (!b.hint || b.hint.pin) return false
+      if (b.scope === focus.focused()) return true
+      if (b.id === "focus.detach" && focus.focused() === "workspace") return true
+      return false
+    })
+  // Right column = anything pinned right; order preserved from KobeKeymap.
+  const rightHints = KobeKeymap.filter((b) => b.hint?.pin === "right")
+
   return (
     <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingLeft={1} paddingRight={1}>
-      {/* Left: section label + pane-local hotkeys */}
+      {/* Left: section label + pane-local hotkeys (driven by KobeKeymap) */}
       <box flexDirection="row" gap={2} flexShrink={1}>
         <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
           {sectionLabel()}
         </text>
-        <Switch>
-          <Match when={focus.focused() === "sidebar"}>
-            <Hotkey keys="j/k" label="nav" />
-            <Hotkey keys="enter" label="select" />
-            <Hotkey keys="r" label="rename" />
-            <Hotkey keys="a" label="archive" />
-            <Hotkey keys="[/]" label="view" />
-            <Hotkey keys="d" label="delete" />
-          </Match>
-          <Match when={focus.focused() === "workspace"}>
-            <Hotkey keys="enter" label="send" />
-            <Hotkey keys="esc" label="back to sidebar" />
-          </Match>
-          <Match when={focus.focused() === "files"}>
-            <Hotkey keys="j/k" label="nav" />
-            <Hotkey keys="enter" label="open" />
-            <Hotkey keys="1/2/3" label="tab" />
-            <Hotkey keys="r" label="refresh" />
-          </Match>
-          <Match when={focus.focused() === "terminal"}>
-            <Hotkey keys="ctrl+pgup" label="scroll" />
-          </Match>
-        </Switch>
+        <For each={leftHints()}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
       </box>
       {/* Right: global hotkeys (always available) */}
       <box flexDirection="row" gap={2} flexShrink={0}>
-        <Hotkey keys="tab" label="cycle" />
-        <Hotkey keys="ctrl+1234" label="focus" />
-        <Hotkey keys="ctrl+n" label="new" />
-        <Hotkey keys="F1" label="help" />
-        <Hotkey keys="ctrl+shift+q" label="quit" />
+        <For each={rightHints}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
       </box>
     </box>
   )
@@ -1045,17 +1036,22 @@ function Shell(props: AppDeps) {
     return () => baseAcc() && dialog.stack.length === 0
   }
 
-  // Numeric jumps: ctrl+1..4 pick a pane explicitly. `ctrl` prefix avoids
-  // collision with FileTree's plain 1/2/3 tabs (All/Changes/Checks) and
+  // Numeric jumps: ctrl+1..4 pick a pane explicitly. The chord list lives
+  // in KobeKeymap as `focus.numeric`; the handler dispatches by chord.
+  // `ctrl` prefix avoids collision with FileTree's plain 1/2/3 tabs and
   // with composer typing. Always-on (modifier keys don't go to inputs).
+  const FOCUS_NUMERIC_TARGETS: readonly PaneId[] = ["sidebar", "workspace", "files", "terminal"]
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      { key: "ctrl+1", cmd: () => setFocusedPane("sidebar") },
-      { key: "ctrl+2", cmd: () => setFocusedPane("workspace") },
-      { key: "ctrl+3", cmd: () => setFocusedPane("files") },
-      { key: "ctrl+4", cmd: () => setFocusedPane("terminal") },
-    ],
+    bindings: bindByIds({
+      "focus.numeric": (evt) => {
+        const n = Number.parseInt(evt.name ?? "", 10)
+        if (n >= 1 && n <= FOCUS_NUMERIC_TARGETS.length) {
+          const target = FOCUS_NUMERIC_TARGETS[n - 1]
+          if (target) setFocusedPane(target)
+        }
+      },
+    }),
   }))
 
   // Keyboard resize for the focused pane — fallback when mouse drag
@@ -1087,24 +1083,16 @@ function Shell(props: AppDeps) {
   }
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      { key: "ctrl+=", cmd: () => nudgeFocusedPane(RESIZE_STEP) },
-      { key: "ctrl++", cmd: () => nudgeFocusedPane(RESIZE_STEP) },
-      { key: "ctrl+-", cmd: () => nudgeFocusedPane(-RESIZE_STEP) },
-      { key: "ctrl+_", cmd: () => nudgeFocusedPane(-RESIZE_STEP) },
-    ],
+    bindings: bindByIds({
+      "pane.resize-grow": () => nudgeFocusedPane(RESIZE_STEP),
+      "pane.resize-shrink": () => nudgeFocusedPane(-RESIZE_STEP),
+    }),
   }))
 
-  // Tab / shift+tab cycle. Disabled when workspace is focused — opentui
-  // inputs consume tab and we don't want focus-cycle racing with the
-  // composer's own tab handling (e.g. dialog field switches).
-  useBindings(() => ({
-    enabled: dialog.stack.length === 0 && focusedPane() !== "workspace",
-    bindings: [
-      { key: "tab", cmd: () => focus.cycle(1) },
-      { key: "shift+tab", cmd: () => focus.cycle(-1) },
-    ],
-  }))
+  // Tab / shift+tab pane cycling is registered via `useKobeKeybindings`'s
+  // onFocusNext / onFocusPrev callbacks below — we just gate them here
+  // (no-op when workspace is focused so opentui's textareas can claim
+  // tab for their own intra-input behavior).
 
   /* ------------------------------------------------------------------- */
   /*  Center-column tab state — per-task                                  */
@@ -1247,6 +1235,14 @@ function Shell(props: AppDeps) {
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
     onFocusDetach: () => setFocusedPane("sidebar"),
+    // Tab cycle is no-op while workspace is focused so the composer's
+    // own tab handling (dialog field cycling, indent, etc.) wins.
+    onFocusNext: () => {
+      if (focusedPane() !== "workspace") focus.cycle(1)
+    },
+    onFocusPrev: () => {
+      if (focusedPane() !== "workspace") focus.cycle(-1)
+    },
   })
 
   // Shared "open new-task dialog and create" handler. Bound to two
@@ -1339,28 +1335,20 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // `ctrl+n` is always available (when no dialog is open). The chat
-  // composer's input doesn't consume control chords, so this is the
-  // safe path for "I'm in a chat but want to spawn a sibling task."
+  // `ctrl+n` (task.new) and `ctrl+,` (settings.open) are always
+  // available when no dialog is open. Modifier chords don't go to
+  // inputs, so this is the safe path for "I'm in a chat but want to
+  // spawn a sibling task" or open settings.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      {
-        key: "ctrl+n",
-        cmd: () => {
-          void openNewTaskFlow()
-        },
+    bindings: bindByIds({
+      "task.new": () => {
+        void openNewTaskFlow()
       },
-      // ctrl+, opens the settings dialog from any pane (modifier
-      // chords don't go to inputs). Mirrors VS Code's command palette
-      // convention.
-      {
-        key: "ctrl+,",
-        cmd: () => {
-          void SettingsDialog.show(dialog, kv)
-        },
+      "settings.open": () => {
+        void SettingsDialog.show(dialog, kv)
       },
-    ],
+    }),
   }))
 
   // Test-only hidden hotkey affordance for the W4.PR behavior test.

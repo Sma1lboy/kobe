@@ -81,8 +81,12 @@ export function HelpDialog() {
               </text>
               <For each={group.rows}>
                 {(row) => {
-                  const primary = row.keys[0] ?? ""
-                  const aliases = row.keys.slice(1)
+                  // Prefer hint.keys (the user-facing chord label, e.g.
+                  // "j/k" or "enter") when present; fall back to the
+                  // first registered chord. Bindings with no chord and
+                  // no hint (shouldn't happen in practice) show "—".
+                  const primary = row.hint?.keys ?? row.keys[0] ?? "—"
+                  const aliases = row.hint ? row.keys : row.keys.slice(1)
                   return (
                     <box flexDirection="row" gap={2} paddingLeft={1}>
                       <box width={14}>

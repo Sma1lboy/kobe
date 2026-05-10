@@ -33,6 +33,7 @@
  */
 
 import type { Accessor } from "solid-js"
+import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 import { createSidebarController } from "./controller"
 
@@ -105,86 +106,53 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
     onSelect: (id) => opts.onSelect(id),
   })
 
+  // Resolve the task id under the cursor for d/a/r. Same source of
+  // truth as `enter` (sidebar.select) so the visible-highlight row is
+  // always the target.
+  const cursorTaskId = (): string | undefined => {
+    const ids = opts.flatTaskIds()
+    const idx = opts.cursorIndex()
+    if (idx < 0 || idx >= ids.length) return undefined
+    return ids[idx]
+  }
+
   useBindings(() => ({
     enabled: opts.focused(),
-    bindings: [
-      { key: "j", cmd: () => ctrl.moveDown() },
-      { key: "down", cmd: () => ctrl.moveDown() },
-      { key: "k", cmd: () => ctrl.moveUp() },
-      { key: "up", cmd: () => ctrl.moveUp() },
-      { key: "return", cmd: () => ctrl.selectCurrent() },
-      {
-        // Both `g` (arm `g g` chord, complete on second press) and `G`
-        // (jump to bottom) come through this binding because the local
-        // keymap layer (`src/tui/lib/keymap.tsx`) does not prefix
-        // `shift+` for single-letter names — `Shift+G` arrives as
-        // `name = "g", shift = true`. We discriminate via `event.shift`
-        // inside the handler, which keeps the binding table flat and
-        // avoids registering a no-op `shift+g` chord that the matcher
-        // would never produce.
-        key: "g",
-        cmd: (event) => {
-          if (event.shift) ctrl.pressShiftG()
-          else ctrl.pressG()
-        },
+    bindings: bindByIds({
+      // sidebar.nav covers j/k/down/up — handler discriminates direction
+      // via evt.name. The matcher delivers e.g. {name: "j"} or {name: "down"}.
+      "sidebar.nav": (evt) => {
+        if (evt.name === "j" || evt.name === "down") ctrl.moveDown()
+        else if (evt.name === "k" || evt.name === "up") ctrl.moveUp()
       },
-      {
-        // `d` = delete the task under the cursor. The sidebar only
-        // emits the request; the parent owns the confirm dialog and
-        // the orchestrator call (so delete UX evolves without the
-        // sidebar growing dialog state). The cursor's task id is
-        // resolved from `flatTaskIds[cursorIndex]` — the same source
-        // of truth `enter` uses, so `d` always targets exactly the
-        // visibly-highlighted row. Modifier-aware: `ctrl+d` will not
-        // match this binding (per `lib/keymap.tsx`).
-        key: "d",
-        cmd: () => {
-          const ids = opts.flatTaskIds()
-          const idx = opts.cursorIndex()
-          if (idx < 0 || idx >= ids.length) return
-          const id = ids[idx]
-          if (id === undefined) return
-          opts.onDeleteRequest?.(id)
-        },
+      "sidebar.select": () => ctrl.selectCurrent(),
+      // `g`: gg chord (top) on the second press; shift-G (bottom) on
+      // first press. opentui's keymap drops shift on letter keys
+      // (lib/keymap.tsx:70), so the chord registered is just "g" and
+      // we discriminate via evt.shift inside the handler.
+      "sidebar.goto": (evt) => {
+        if (evt.shift) ctrl.pressShiftG()
+        else ctrl.pressG()
       },
-      {
-        // `a` = toggle archived on the cursor task. In the active view
-        // it moves the row to Archives; in the archived view it brings
-        // it back. Same id-resolution as `d`.
-        key: "a",
-        cmd: () => {
-          const ids = opts.flatTaskIds()
-          const idx = opts.cursorIndex()
-          if (idx < 0 || idx >= ids.length) return
-          const id = ids[idx]
-          if (id === undefined) return
-          opts.onArchiveRequest?.(id)
-        },
+      "sidebar.delete": () => {
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onDeleteRequest?.(id)
       },
-      {
-        // `r` = rename the task under the cursor. The sidebar emits
-        // a request; the parent owns the input dialog and the
-        // orchestrator.setTitle call (so the dialog primitive evolves
-        // without the sidebar growing input state). Same id-resolution
-        // as `d`/`a`. Modifier-aware: `ctrl+r` will not match.
-        key: "r",
-        cmd: () => {
-          const ids = opts.flatTaskIds()
-          const idx = opts.cursorIndex()
-          if (idx < 0 || idx >= ids.length) return
-          const id = ids[idx]
-          if (id === undefined) return
-          opts.onRenameRequest?.(id)
-        },
+      "sidebar.archive": () => {
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onArchiveRequest?.(id)
       },
-      // `[` / `]` switch between the Working session and Archives
-      // views. Two views today, so both keys do the same thing
-      // (toggle), but the +1 / -1 signal is preserved so a future
-      // third view (e.g. "Stale" / "Pinned") slots in without a
-      // binding rewrite.
-      { key: "[", cmd: () => opts.onViewSwitch?.(-1) },
-      { key: "]", cmd: () => opts.onViewSwitch?.(1) },
-    ],
+      "sidebar.rename": () => {
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onRenameRequest?.(id)
+      },
+      // `[` and `]` both register against sidebar.view; handler routes
+      // by chord. `]` = +1 ("next view"), `[` = -1.
+      "sidebar.view": (evt) => {
+        if (evt.name === "]") opts.onViewSwitch?.(1)
+        else opts.onViewSwitch?.(-1)
+      },
+    }),
   }))
 }
 

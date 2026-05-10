@@ -32,6 +32,7 @@
 
 import type { KeyEvent } from "@opentui/core"
 import type { Accessor } from "solid-js"
+import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 import { DEFAULT_PAGE_SIZE, PASSTHROUGH_NAMES, TRAPPED_KEYS, keyEventToShellBytes } from "./keys-pure"
 
@@ -76,15 +77,14 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
 
   // Scrollback exceptions FIRST so they take precedence over any
   // passthrough variants of `pageup`/`pagedown` registered later in
-  // the table.
-  bindings.push({
-    key: "ctrl+pageup",
-    cmd: () => opts.scroll(-pageSize()),
-  })
-  bindings.push({
-    key: "ctrl+pagedown",
-    cmd: () => opts.scroll(pageSize()),
-  })
+  // the table. Chord strings come from KobeKeymap via bindByIds so
+  // this pane stays in sync with the central registry.
+  bindings.push(
+    ...bindByIds({
+      "terminal.scroll-up": () => opts.scroll(-pageSize()),
+      "terminal.scroll-down": () => opts.scroll(pageSize()),
+    }),
+  )
 
   for (const name of PASSTHROUGH_NAMES) {
     bindings.push({

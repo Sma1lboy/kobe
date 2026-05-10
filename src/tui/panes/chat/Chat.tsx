@@ -42,6 +42,7 @@ import { type Accessor, Show, createEffect, createMemo, createSignal, on, onClea
 import type { Orchestrator } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
+import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
@@ -505,26 +506,24 @@ export function Chat(props: ChatProps) {
   }
 
   // Pane-scoped keybindings: only fire when the chat pane is focused.
-  // Numeric ctrl+1..9 only register when there's >1 tab so we don't
-  // shadow app.tsx's global "ctrl+1..4 = pane focus" muscle memory.
+  // chat.tab.pick (ctrl+1..9) is the table's single chat-tab-pick id; we
+  // gate it on `tabs().length > 1` so we don't shadow app.tsx's global
+  // "ctrl+1..4 = pane focus" muscle memory when there's only one tab.
   useBindings(() => {
-    const en = props.focused?.() === true
-    const numericBindings: Array<{ key: string; cmd: () => void }> = []
-    if (tabs().length > 1) {
-      const max = Math.min(9, tabs().length)
-      for (let i = 0; i < max; i++) {
-        numericBindings.push({ key: `ctrl+${i + 1}`, cmd: () => selectTabByIndex(i) })
-      }
-    }
+    const tabsOpen = tabs().length
     return {
-      enabled: en,
-      bindings: [
-        { key: "ctrl+t", cmd: () => void newTab() },
-        { key: "ctrl+w", cmd: () => void closeActiveTab() },
-        { key: "ctrl+tab", cmd: () => cycleTab(1) },
-        { key: "ctrl+shift+tab", cmd: () => cycleTab(-1) },
-        ...numericBindings,
-      ],
+      enabled: props.focused?.() === true,
+      bindings: bindByIds({
+        "chat.tab.new": () => void newTab(),
+        "chat.tab.close": () => void closeActiveTab(),
+        "chat.tab.cycle-next": () => cycleTab(1),
+        "chat.tab.cycle-prev": () => cycleTab(-1),
+        "chat.tab.pick": (evt) => {
+          if (tabsOpen <= 1) return
+          const n = Number.parseInt(evt.name ?? "", 10)
+          if (n >= 1 && n <= Math.min(9, tabsOpen)) selectTabByIndex(n - 1)
+        },
+      }),
     }
   })
 
