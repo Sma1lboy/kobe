@@ -653,19 +653,19 @@ export function Composer(props: ComposerProps) {
   // Mode wins over focus so "you are in plan mode" persists even when
   // clicking into a sibling pane.
   //
-  // Engaged vs focused: when the workspace is engaged (textarea takes
-  // keys), the rail brightens to theme.primary — the same brand hue used
-  // in single-mode hosts that pre-date the two-tier focus model. When
-  // the workspace is merely focused/selected (border highlight, but the
-  // user hasn't pressed enter yet), we step down to theme.focusAccent so
-  // the visual cue tracks the keyboard semantics: brighter rail = your
-  // typing goes here.
+  // Two-color focus highlight: select and engaged use clearly different
+  // hues so the user can tell at a glance which mode they're in, even
+  // without reading the StatusBar.
+  //   engaged  → theme.primary  (bright brand — your keystrokes go here)
+  //   selected → theme.accent   (different hue — pane highlighted, but
+  //                              keys still navigate; press enter to engage)
+  //   idle     → theme.border   (muted gray)
   const railColor = () => {
     const badge = modeBadge()
     if (badge) return toneColor(badge.tone)
     const engaged = props.engaged?.() ?? props.focused?.() ?? false
     if (engaged) return theme.primary
-    if (props.focused?.()) return theme.focusAccent
+    if (props.focused?.()) return theme.accent
     return theme.border
   }
 

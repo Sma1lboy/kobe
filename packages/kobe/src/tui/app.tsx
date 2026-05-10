@@ -777,18 +777,24 @@ export type AppDeps = {
 /* --------------------------------------------------------------------- */
 /*  PaneHeader — uniform CAPS-bold pane label (agent-deck-style chunking)  */
 /* --------------------------------------------------------------------- */
-function PaneHeader(props: { title: string; subtitle?: string; focused?: boolean; ordinal?: string | number }) {
+function PaneHeader(props: {
+  title: string
+  subtitle?: string
+  focused?: boolean
+  engaged?: boolean
+  ordinal?: string | number
+}) {
   const { theme } = useTheme()
-  // Focused panes paint in `theme.focusAccent` — a user-controllable
-  // slot (Settings → General → Focus accent) that resolves to one of
-  // primary / success / info. Default is primary (terracotta under
-  // Claude's palette), which doubles as the brand hue. The leading
-  // `▌` block character is the visibility hammer the prior bold-only
-  // title was missing — it attaches the focus signal to the title
-  // visually so the user's eye doesn't scan the whole screen to pick
-  // up the active pane.
+  // Two-color focus highlight on the title row, matching the Composer
+  // rail and Terminal border:
+  //   engaged  → theme.primary    (bright brand — keystrokes go here)
+  //   selected → theme.accent     (different hue — pane highlighted but
+  //                                pane-local keys don't fire yet; press
+  //                                enter to engage)
+  //   idle     → theme.textMuted  (muted)
   const focused = () => props.focused !== false
-  const titleColor = () => (focused() ? theme.focusAccent : theme.textMuted)
+  const engaged = () => props.engaged === true
+  const titleColor = () => (engaged() ? theme.primary : focused() ? theme.accent : theme.textMuted)
   return (
     <box
       flexDirection="row"
@@ -1737,6 +1743,7 @@ function Shell(props: AppDeps) {
             ordinal="j"
             subtitle={activeTask()?.title ?? "no task"}
             focused={focusedPane() === "workspace"}
+            engaged={focus.isEngaged("workspace")()}
           />
           <CenterTabStrip
             isChatActive={isChatTabActive}
@@ -1790,7 +1797,12 @@ function Shell(props: AppDeps) {
             symmetric and the chat in the middle is visibly the focus. */}
         <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
           <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files", { engage: true })}>
-            <PaneHeader title="FILES" ordinal="k" focused={focusedPane() === "files"} />
+            <PaneHeader
+              title="FILES"
+              ordinal="k"
+              focused={focusedPane() === "files"}
+              engaged={focus.isEngaged("files")()}
+            />
             <box flexGrow={1}>
               <FileTree
                 worktreePath={worktreePathAcc}
@@ -1820,6 +1832,7 @@ function Shell(props: AppDeps) {
               ordinal="l"
               subtitle={worktreePathAcc() ? worktreePathAcc()?.split("/").slice(-1)[0] : undefined}
               focused={focusedPane() === "terminal"}
+              engaged={focus.isEngaged("terminal")()}
             />
             <box flexGrow={1}>
               <Terminal

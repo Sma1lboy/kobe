@@ -121,6 +121,11 @@ export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
 
   const focusedAccessor = () => (props.focused ? props.focused() : true)
+  const engagedAccessor = () => (props.engaged ? props.engaged() : focusedAccessor())
+  // Two-color title highlight: engaged → primary, selected → accent,
+  // idle → textMuted. See sidebar header render below.
+  const titleColor = () =>
+    engagedAccessor() ? theme.primary : focusedAccessor() ? theme.accent : theme.textMuted
 
   // Active view; default to the working session. `[` / `]` cycle
   // through `VIEW_TABS`.
@@ -206,25 +211,21 @@ export function Sidebar(props: SidebarProps) {
       paddingLeft={2}
       paddingRight={2}
     >
-      {/* Header: "kobe" with a focus-aware ▌ marker matching PaneHeader's
-         convention — focus-accent ▌ + focus-accent title when this
-         pane has focus, dimmed when not. Reads `theme.focusAccent`
-         so a Settings change unifies the focus signal across all
-         panes (default = primary / terracotta). */}
+      {/* Header: "h TASKS" with two-color focus highlight matching
+         PaneHeader / Composer / Terminal:
+           engaged  → theme.primary  (bright brand)
+           selected → theme.accent   (different hue — pane highlighted
+                                     but pane-local keys don't fire;
+                                     press enter to engage)
+           idle     → theme.textMuted */}
       <box flexDirection="row" gap={1} paddingBottom={1}>
         {/* Bold `h` flush left — matches WORKSPACE/FILES/TERMINAL
             shape. Letter is the ctrl+hjkl chord that focuses this
-            pane (h = sidebar, j = workspace, k = files, l = terminal).
-            Focus-tracking color (focusAccent vs textMuted) does the
-            chord-hint job. */}
-        <text
-          fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
-          attributes={TextAttributes.BOLD}
-          wrapMode="none"
-        >
+            pane (h = sidebar, j = workspace, k = files, l = terminal). */}
+        <text fg={titleColor()} attributes={TextAttributes.BOLD} wrapMode="none">
           h
         </text>
-        <text fg={focusedAccessor() ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        <text fg={titleColor()} attributes={TextAttributes.BOLD} wrapMode="none">
           TASKS
         </text>
       </box>
