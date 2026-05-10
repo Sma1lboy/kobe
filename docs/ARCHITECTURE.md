@@ -7,6 +7,13 @@
 > [`HARNESS.md`](./HARNESS.md). This document is a tour of the source tree as it
 > currently stands.
 
+> **Path convention.** kobe is the main package in a Bun-workspaces
+> monorepo; its source lives at `packages/kobe/`. **Every `src/...`,
+> `test/...`, and `scripts/...` path in this doc is relative to that
+> package root.** The other workspace, `packages/branding/`, is the
+> Remotion render pipeline for the brand artwork in `docs/assets/brand/`
+> and isn't covered here.
+
 ## Contents
 
 1. [The layer cake](#1-the-layer-cake)
