@@ -39,7 +39,7 @@ export type BindingsConfig = {
   bindings: Binding[]
 }
 
-type RegisteredBinding = {
+export type RegisteredBinding = {
   config: () => BindingsConfig
   id: number
 }
@@ -95,6 +95,43 @@ function matchKey(evt: KeyEvent): string[] {
   return base.map((n) => prefix + n)
 }
 
+/**
+ * Walk the binding stack top-down and fire the first matching binding.
+ * Returns true if a binding was fired (caller can inspect this; the
+ * production listener uses it to short-circuit). On a hit, the event's
+ * `preventDefault()` is called so opentui's native widgets (e.g. the
+ * textarea's onSubmit) don't also receive the key in the same tick.
+ *
+ * Pulled out of the listener body so unit tests can exercise the
+ * dispatch logic against a fake stack + KeyEvent-shaped object without
+ * needing a real renderer.
+ */
+export function dispatchKeyEvent(
+  bindingStack: readonly RegisteredBinding[],
+  evt: { defaultPrevented: boolean; preventDefault(): void; name?: string; ctrl?: boolean; meta?: boolean; option?: boolean; shift?: boolean },
+): boolean {
+  if (evt.defaultPrevented) return false
+  const candidates = matchKey(evt as KeyEvent)
+  for (let i = bindingStack.length - 1; i >= 0; i--) {
+    const reg = bindingStack[i]
+    if (!reg) continue
+    const cfg = reg.config()
+    if (cfg.enabled === false) continue
+    const hit = cfg.bindings.find((b) => candidates.includes(b.key))
+    if (hit) {
+      hit.cmd(evt as KeyEvent)
+      // Consume the event so native widgets (e.g. opentui's textarea
+      // onSubmit) don't also receive it in the same tick. Without this,
+      // an Enter that fires `sidebar.select` — whose handler pulls
+      // focus to the workspace — would then ALSO submit the
+      // freshly-focused composer's draft.
+      evt.preventDefault()
+      return true
+    }
+  }
+  return false
+}
+
 function ensureInstalled() {
   if (installed) return
   const renderer = useRenderer()
@@ -103,20 +140,7 @@ function ensureInstalled() {
   }
   installed = renderer.keyInput
   listener = (evt: KeyEvent) => {
-    if (evt.defaultPrevented) return
-    const candidates = matchKey(evt)
-    // walk top-down; first match wins
-    for (let i = stack.length - 1; i >= 0; i--) {
-      const reg = stack[i]
-      if (!reg) continue
-      const cfg = reg.config()
-      if (cfg.enabled === false) continue
-      const hit = cfg.bindings.find((b) => candidates.includes(b.key))
-      if (hit) {
-        hit.cmd(evt)
-        return
-      }
-    }
+    dispatchKeyEvent(stack, evt)
   }
   installed.on("keypress", listener)
 }
