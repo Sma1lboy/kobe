@@ -44,8 +44,8 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
-import { toTaskId } from "../../types/task.ts"
+import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus, VendorId } from "../../types/task.ts"
+import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
 
 export interface TaskIndexStoreOptions {
@@ -562,6 +562,12 @@ function coerceTask(value: unknown): Task | null {
     // stored choices to survive a model-list refresh (a user-pinned
     // `claude-opus-4-7` shouldn't get scrubbed when 4.8 drops).
     model: typeof v.model === "string" ? v.model : undefined,
+    // Engine vendor: optional. Records pre-dating the field normalize
+    // to DEFAULT_TASK_VENDOR ("claude") so the orchestrator can route
+    // without per-call fallback. Unknown strings also fall back to the
+    // default — defensive against hand-edited JSON or future vendor
+    // values that this kobe build doesn't yet know about.
+    vendor: isVendorId(v.vendor) ? v.vendor : DEFAULT_TASK_VENDOR,
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
@@ -569,6 +575,10 @@ function coerceTask(value: unknown): Task | null {
 
 function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMode {
   return v === "default" || v === "plan"
+}
+
+function isVendorId(v: unknown): v is VendorId {
+  return v === "claude" || v === "codex"
 }
 
 function isTaskStatus(s: string): s is TaskStatus {

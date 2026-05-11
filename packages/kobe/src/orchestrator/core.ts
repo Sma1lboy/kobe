@@ -62,6 +62,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
+import { capabilitiesForModelId } from "../engine/registry.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -1120,8 +1121,13 @@ export class Orchestrator {
    */
   async setModel(id: TaskId | string, model: string | undefined): Promise<void> {
     const task = this.requireTask(id)
-    if (task.model === model) return
-    await this.store.update(task.id, { model })
+    // Derive the vendor from the picked model so a codex pick routes
+    // the next runTask through the codex engine. When `model` is
+    // cleared (undefined), the vendor stays put — clearing means "use
+    // this vendor's default model," not "switch back to claude."
+    const vendor = model ? capabilitiesForModelId(model).vendorId : task.vendor
+    if (task.model === model && task.vendor === vendor) return
+    await this.store.update(task.id, { model, vendor })
   }
 
   /**
