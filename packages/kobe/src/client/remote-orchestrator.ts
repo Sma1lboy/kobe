@@ -1,13 +1,7 @@
 import { type Accessor, createSignal } from "solid-js"
 import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
-import type {
-  Message,
-  OrchestratorEvent,
-  PermissionMode,
-  SessionMeta,
-  UserInputResponse,
-} from "../types/engine.ts"
+import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { ChatTab, Task } from "../types/task.ts"
 import type { KobeDaemonClient } from "./index.ts"

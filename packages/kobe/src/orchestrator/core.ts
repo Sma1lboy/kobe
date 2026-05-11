@@ -76,6 +76,7 @@ import type {
   UserInputPayload,
   UserInputResponse,
 } from "../types/engine.ts"
+import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import {
   type ChatTab,
   type PermissionMode,
@@ -91,7 +92,6 @@ import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
-import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {

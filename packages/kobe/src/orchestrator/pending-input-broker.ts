@@ -14,8 +14,8 @@
  * used to live inside `Orchestrator` directly (now deleted from there).
  */
 
-import type { PendingInputBroker, PendingInputEntry, ResolvedInputEntry } from "../types/pending-input-broker"
 import type { UserInputPayload } from "../types/engine"
+import type { PendingInputBroker, PendingInputEntry, ResolvedInputEntry } from "../types/pending-input-broker"
 
 export class InMemoryPendingInputBroker implements PendingInputBroker {
   private readonly buckets = new Map<string, Map<string, UserInputPayload>>()

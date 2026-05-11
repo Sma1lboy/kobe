@@ -21,8 +21,8 @@
 
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
-import { useBindings } from "../../lib/keymap"
 import { useTheme } from "../../context/theme"
+import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
 import {
   DEFAULT_BASE_REF,

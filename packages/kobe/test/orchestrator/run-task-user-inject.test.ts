@@ -46,10 +46,7 @@ test("runTask emits user.inject for the user's prompt before any assistant event
   const events: OrchestratorEvent[] = []
   orch.subscribeEvents(task.id, (ev) => events.push(ev), task.activeTabId)
 
-  engine.script("fake-1", [
-    { type: "assistant.delta", text: "hi back" },
-    { type: "done" },
-  ])
+  engine.script("fake-1", [{ type: "assistant.delta", text: "hi back" }, { type: "done" }])
   await orch.runTask(task.id, "hi from user", task.activeTabId)
   await (orch as unknown as { _waitForPumpsIdle: () => Promise<void> })._waitForPumpsIdle()
 

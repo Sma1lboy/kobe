@@ -76,11 +76,13 @@ describe("RemoteOrchestrator", () => {
       // way the orchestrator would after detecting one at runtime.
       // Records through the broker now that the orchestrator delegates
       // its pending-input bucket — see `src/orchestrator/pending-input-broker.ts`.
-      const broker = (orch as unknown as {
-        pendingInputBroker: {
-          record: (taskId: string, tabKey: string, requestId: string, payload: unknown) => void
+      const broker = (
+        orch as unknown as {
+          pendingInputBroker: {
+            record: (taskId: string, tabKey: string, requestId: string, payload: unknown) => void
+          }
         }
-      }).pendingInputBroker
+      ).pendingInputBroker
       const requestId = "req-test-1"
       const payload = {
         kind: "approve_plan" as const,

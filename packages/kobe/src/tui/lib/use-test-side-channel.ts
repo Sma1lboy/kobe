@@ -30,14 +30,13 @@ export function useTestSideChannel(deps: {
   activeTask: Accessor<Task | undefined>
 }): void {
   const { orchestrator, activeTask } = deps
-  if (typeof globalThis === "undefined") return
-
-  // Side-channel PR trigger for the W4.PR behavior test. When
-  // KOBE_TEST_FAKE_PORT is active, the fake-engine HTTP server also
-  // exposes POST /pr which calls requestPR for the active task. The
-  // test uses this in preference to keystroke-driven invocation because
-  // key dispatch interacts with the focused composer's keymap in ways
-  // the test shouldn't have to debug.
+  if (typeof globalThis === "undefined")
+    return // Side-channel PR trigger for the W4.PR behavior test. When
+    // KOBE_TEST_FAKE_PORT is active, the fake-engine HTTP server also
+    // exposes POST /pr which calls requestPR for the active task. The
+    // test uses this in preference to keystroke-driven invocation because
+    // key dispatch interacts with the focused composer's keymap in ways
+    // the test shouldn't have to debug.
   ;(globalThis as { __kobeTestRequestPR?: () => Promise<{ taskId: string; prompt: string }> }).__kobeTestRequestPR =
     async () => {
       const task = activeTask()

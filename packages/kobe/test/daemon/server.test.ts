@@ -93,11 +93,13 @@ describe("daemon server", () => {
       if (!task) throw new Error("missing task")
       // Plant a pending input directly through the broker so the
       // enriched hello has something non-trivial to echo.
-      const broker = (orch as unknown as {
-        pendingInputBroker: {
-          record: (taskId: string, tabKey: string, requestId: string, payload: unknown) => void
+      const broker = (
+        orch as unknown as {
+          pendingInputBroker: {
+            record: (taskId: string, tabKey: string, requestId: string, payload: unknown) => void
+          }
         }
-      }).pendingInputBroker
+      ).pendingInputBroker
       const payload = {
         kind: "approve_plan" as const,
         plan: "Refactor X.",
@@ -277,12 +279,12 @@ describe("daemon server", () => {
       // Pre-seed history under the active tab's would-be sessionId by
       // setting the tab's sessionId then seeding the engine.
       const sessionId = "fake-history-1"
-      await (orch as unknown as {
-        store: { update: (id: string, patch: unknown) => Promise<void> }
-      }).store.update(spawned.taskId, {
-        tabs: task.tabs.map((t) =>
-          t.id === task.activeTabId ? { ...t, sessionId } : t,
-        ),
+      await (
+        orch as unknown as {
+          store: { update: (id: string, patch: unknown) => Promise<void> }
+        }
+      ).store.update(spawned.taskId, {
+        tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
       const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
       const messages = Array.from({ length: 5 }, (_, i) => ({
@@ -376,16 +378,26 @@ describe("daemon server", () => {
       const created = await client.request<{ tab: { id: string } }>("chat.tab.create", { taskId: spawned.taskId })
       const sidA = "session-tab-a"
       const sidB = "session-tab-b"
-      await (orch as unknown as {
-        store: { update: (id: string, patch: unknown) => Promise<void> }
-      }).store.update(spawned.taskId, {
+      await (
+        orch as unknown as {
+          store: { update: (id: string, patch: unknown) => Promise<void> }
+        }
+      ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t, i) =>
-          t.id === task.activeTabId ? { ...t, sessionId: sidA } : t.id === created.tab.id ? { ...t, sessionId: sidB } : t,
+          t.id === task.activeTabId
+            ? { ...t, sessionId: sidA }
+            : t.id === created.tab.id
+              ? { ...t, sessionId: sidB }
+              : t,
         ),
       })
       const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
-      fakeEngine.setHistory(sidA, [{ role: "user", content: "from A", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidA }])
-      fakeEngine.setHistory(sidB, [{ role: "user", content: "from B", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidB }])
+      fakeEngine.setHistory(sidA, [
+        { role: "user", content: "from A", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidA },
+      ])
+      fakeEngine.setHistory(sidB, [
+        { role: "user", content: "from B", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidB },
+      ])
       // Active tab is A; ask for B's transcript by passing sidB.
       const pageB = await client.request<{ messages: Array<{ content: string }> }>("chat.history", {
         taskId: spawned.taskId,

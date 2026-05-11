@@ -18,8 +18,8 @@
  */
 
 import { createEffect } from "solid-js"
-import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, type ThemeContext } from "../context/theme"
 import type { KVContext } from "../context/kv"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, type ThemeContext } from "../context/theme"
 
 export function useThemePersistence(themeCtx: ThemeContext, kv: KVContext): void {
   // Theme persistence — on mount, hydrate from KV (validates the

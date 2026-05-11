@@ -35,13 +35,13 @@
 import type { Accessor } from "solid-js"
 import type { KobeOrchestrator } from "../client/remote-orchestrator.ts"
 import type { Task } from "../types/task.ts"
-import { type PaneId } from "./context/focus"
+import { SettingsDialog } from "./component/settings-dialog"
+import type { PaneId } from "./context/focus"
 import { bindByIds } from "./context/keybindings"
 import type { KVContext } from "./context/kv"
 import { useBindings } from "./lib/keymap"
-import { SettingsDialog } from "./component/settings-dialog"
-import { DialogConfirm } from "./ui/dialog-confirm"
 import type { DialogContext } from "./ui/dialog"
+import { DialogConfirm } from "./ui/dialog-confirm"
 
 /* --------------------------------------------------------------------- */
 /*  Shape of dependencies                                                  */
