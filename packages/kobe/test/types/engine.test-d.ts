@@ -8,7 +8,15 @@
  * the type-level assertions are the source of truth for the contract.
  */
 import { describe, expectTypeOf, it } from "vitest"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "../../src/types/engine.ts"
+import type {
+  AIEngine,
+  ContentBlock,
+  EngineEvent,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "../../src/types/engine.ts"
 
 describe("EngineEvent", () => {
   it("is a discriminated union keyed on `type`", () => {
@@ -80,9 +88,9 @@ describe("SpawnOpts", () => {
 })
 
 describe("Message", () => {
-  it("has narrow role union and unknown content", () => {
+  it("has narrow role union and neutral blocks list", () => {
     expectTypeOf<Message["role"]>().toEqualTypeOf<"user" | "assistant" | "system">()
-    expectTypeOf<Message["content"]>().toEqualTypeOf<unknown>()
+    expectTypeOf<Message["blocks"]>().toEqualTypeOf<readonly ContentBlock[]>()
     expectTypeOf<Message["timestamp"]>().toEqualTypeOf<string>()
     expectTypeOf<Message["sessionId"]>().toEqualTypeOf<string>()
   })

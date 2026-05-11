@@ -54,12 +54,12 @@ describe("parseJsonl", () => {
     expect(msgs).toHaveLength(2)
     expect(msgs[0]).toEqual({
       role: "user",
-      content: "hello",
+      blocks: [{ type: "text", text: "hello" }],
       timestamp: "2026-05-09T03:59:51.343Z",
       sessionId: "s1",
     })
     expect(msgs[1]?.role).toBe("assistant")
-    expect(msgs[1]?.content).toEqual([{ type: "text", text: "hi back" }])
+    expect(msgs[1]?.blocks).toEqual([{ type: "text", text: "hi back" }])
   })
 
   it("skips non-message records (permission-mode, file-history-snapshot, etc.)", () => {
@@ -84,7 +84,7 @@ describe("parseJsonl", () => {
 
     const msgs = parseJsonl(raw, "s1")
     expect(msgs).toHaveLength(1)
-    expect(msgs[0]?.content).toBe("real message")
+    expect(msgs[0]?.blocks).toEqual([{ type: "text", text: "real message" }])
   })
 
   it("falls back to the supplied sessionId when the record omits one", () => {
@@ -143,7 +143,7 @@ describe("readHistory", () => {
 
     expect(messages).toHaveLength(1)
     expect(messages[0]?.role).toBe("user")
-    expect(messages[0]?.content).toBe("what is up")
+    expect(messages[0]?.blocks).toEqual([{ type: "text", text: "what is up" }])
     expect(messages[0]?.sessionId).toBe(sessionId)
   })
 
@@ -191,6 +191,6 @@ describe("readHistory", () => {
       },
       pathExists: async () => true,
     })
-    expect(messages[0]?.content).toBe("found me")
+    expect(messages[0]?.blocks).toEqual([{ type: "text", text: "found me" }])
   })
 })

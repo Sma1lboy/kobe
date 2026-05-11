@@ -10,6 +10,9 @@
  * needs must surface through {@link AIEngine} or {@link EngineEvent}.
  */
 
+import type { ContentBlock } from "./content"
+export type { ContentBlock } from "./content"
+
 /**
  * Opaque handle to a live engine session. The orchestrator treats this
  * as a black box; only the engine impl knows what's inside (PID, JSONL
@@ -80,16 +83,17 @@ export interface SpawnOpts {
 /**
  * One historical message read off disk via {@link AIEngine.readHistory}.
  *
- * Kept deliberately small. Tool calls and rich blocks live in `content`
- * as a free-form unknown — kobe's renderers narrow per block type. We
- * don't enumerate Claude Code's full content-block taxonomy here because
- * (a) it changes, and (b) Phase 2 remote backends won't share it.
+ * `blocks` is a vendor-neutral discriminated union — engine adapters
+ * normalize their native shape (Claude Code's content-block array) into
+ * {@link ContentBlock} before surfacing. See `types/content.ts` for the
+ * taxonomy and `engine/claude-code-local/normalize.ts` for the Claude
+ * mapping. Renderers downstream consume `blocks` (not raw vendor JSON).
  *
  * `timestamp` is ISO-8601 to match Claude Code's JSONL on-disk format.
  */
 export interface Message {
   readonly role: "user" | "assistant" | "system"
-  readonly content: unknown
+  readonly blocks: readonly ContentBlock[]
   readonly timestamp: string
   readonly sessionId: string
 }

@@ -29,15 +29,17 @@
  * records that carry a recognisable role+content pair, so the
  * orchestrator's chat pane only sees actual conversation.
  *
- * `Message.content` is intentionally typed as `unknown` (per
- * src/types/engine.ts §53) — the on-disk shape is sometimes a string,
- * sometimes a content-block array. Renderers narrow per-block.
+ * On-disk `content` is sometimes a bare string and sometimes a Claude
+ * content-block array. We normalize both shapes through
+ * {@link normalizeClaudeContent} and surface the vendor-neutral
+ * `Message.blocks` union (see src/types/content.ts).
  */
 
 import { readFile, readdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
+import { normalizeClaudeContent } from "./normalize"
 
 /** Optional FS injection for tests. */
 export interface HistoryDeps {
@@ -197,15 +199,17 @@ function extractMessage(record: Record<string, unknown>, fallbackSessionId: stri
   const role = inner.role
   if (role !== "user" && role !== "assistant" && role !== "system") return null
 
-  // `content` may be a string or a block array. We pass it through as
-  // `unknown` per the canonical Message contract.
   if (!("content" in inner)) return null
-  const content = inner.content
+  // Normalize Claude's vendor shape (string OR content-block array) into
+  // the neutral ContentBlock[] surfaced via Message.blocks. Empty arrays
+  // are kept so callers can distinguish "message with no renderable
+  // content" from "no message" (extractMessage returns null for the latter).
+  const blocks = normalizeClaudeContent(inner.content)
 
   const ts = typeof record.timestamp === "string" ? (record.timestamp as string) : new Date().toISOString()
   const sid = typeof record.sessionId === "string" ? (record.sessionId as string) : fallbackSessionId
 
-  return { role, content, timestamp: ts, sessionId: sid }
+  return { role, blocks, timestamp: ts, sessionId: sid }
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
