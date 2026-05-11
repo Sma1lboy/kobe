@@ -23,7 +23,7 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { render, useRenderer } from "@opentui/solid"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
+import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
@@ -39,8 +39,9 @@ import { PaneHeader } from "./component/pane-header"
 import { ResizableEdge } from "./component/resizable-edge"
 import { StatusBar } from "./component/status-bar"
 import { ToastOverlay } from "./component/toast-overlay"
+import { RcBridgeDialog } from "./component/rc-bridge-dialog"
 import { TopBar } from "./component/top-bar"
-import { CommandPaletteProvider } from "./context/command-palette"
+import { CommandPaletteProvider, useCommandPalette } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
@@ -126,6 +127,26 @@ function Shell(props: AppDeps) {
   // after `isChatTabActive` is destructured from `useWorkspaceTabs`.
   const planUsageAcc = props.orchestrator.planUsageSignal()
   const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
+
+  // Remote-control bridge (KOB-62) — daemon-only feature; in-process
+  // mode (KOBE_TEST_ENGINE / KOBE_NO_DAEMON) returns the permanently-off
+  // stub from `Orchestrator.rcBridgeSignal()`. Register the share
+  // command in the palette only when we're attached to a real daemon
+  // so the entry doesn't appear in tests / when there's nothing to start.
+  const palette = useCommandPalette()
+  const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
+  onMount(() => {
+    if (!(props.orchestrator instanceof RemoteOrchestrator)) return
+    const orch = props.orchestrator
+    const unregister = palette.addCommand({
+      name: "rcBridge.share",
+      title: "Share to claude.ai (remote-control)",
+      desc: "Register this machine as an environment claude.ai can spawn sessions onto.",
+      slashName: "share",
+      run: () => RcBridgeDialog.show(dialog, orch, rcBridgeAcc),
+    })
+    onCleanup(unregister)
+  })
 
   // Background npm-registry version check. Cached for 6h on disk, so
   // typical cold boots return synchronously off the cache. The first

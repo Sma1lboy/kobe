@@ -3,6 +3,7 @@ import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
 import type { KobeDaemonClient } from "./index.ts"
@@ -17,6 +18,8 @@ export class RemoteOrchestrator {
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
   private readonly planUsageAcc: Accessor<PlanUsage | null>
   private readonly setPlanUsage: (next: PlanUsage | null) => void
+  private readonly rcBridgeAcc: Accessor<RcBridgeStatus>
+  private readonly setRcBridge: (next: RcBridgeStatus) => void
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
@@ -38,12 +41,15 @@ export class RemoteOrchestrator {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
     const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
+    const [rcBridge, setRcBridge] = createSignal<RcBridgeStatus>({ state: "off" })
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
     this.runStateAcc = runState
     this.setRunState = (next) => setRunState(() => next)
     this.planUsageAcc = planUsage
     this.setPlanUsage = (next) => setPlanUsage(() => next)
+    this.rcBridgeAcc = rcBridge
+    this.setRcBridge = (next) => setRcBridge(() => next)
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
   }
 
@@ -57,6 +63,7 @@ export class RemoteOrchestrator {
       pending?: Record<string, PendingInput[]>
       runState?: Record<string, ChatRunState>
       planUsage?: PlanUsage | null
+      rcBridge?: RcBridgeStatus
     }>("hello", { clientId: `tui-${process.pid}`, version: "1" })
 
     let tasks: Task[]
@@ -76,6 +83,7 @@ export class RemoteOrchestrator {
       if (seed.size > 0) this.setRunState(seed)
     }
     if (hello.planUsage) this.setPlanUsage(hello.planUsage)
+    if (hello.rcBridge) this.setRcBridge(hello.rcBridge)
     await this.client.request("subscribe", { taskIds: "all" })
 
     if (hello.pending) {
@@ -126,6 +134,25 @@ export class RemoteOrchestrator {
    */
   planUsageSignal(): Accessor<PlanUsage | null> {
     return this.planUsageAcc
+  }
+
+  /**
+   * Latest remote-control bridge status broadcast by the daemon. Hydrated
+   * from `hello` snapshot, then updated by `rcBridge.changed` events.
+   * Defaults to `{ state: "off" }` until the daemon answers `hello`.
+   */
+  rcBridgeSignal(): Accessor<RcBridgeStatus> {
+    return this.rcBridgeAcc
+  }
+
+  async startRcBridge(opts: { cwd?: string } = {}): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", { cwd: opts.cwd })
+    return res.status
+  }
+
+  async stopRcBridge(): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.stop", {})
+    return res.status
   }
 
   listTasks(): Task[] {
@@ -315,6 +342,11 @@ export class RemoteOrchestrator {
     if (name === "plan.usage") {
       const usage = obj.usage as PlanUsage | null | undefined
       this.setPlanUsage(usage ?? null)
+      return
+    }
+    if (name === "rcBridge.changed") {
+      const status = obj.status as RcBridgeStatus | undefined
+      if (status) this.setRcBridge(status)
       return
     }
     const taskId = obj.taskId as string | undefined

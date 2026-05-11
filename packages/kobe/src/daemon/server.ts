@@ -6,6 +6,7 @@ import type { Message, OrchestratorEvent, UserInputResponse } from "../types/eng
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
+import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 import {
   DAEMON_PROTOCOL_VERSION,
   frameToLine,
@@ -26,6 +27,12 @@ export interface DaemonServerOptions {
    * the daemon doesn't actually hit Anthropic's API.
    */
   readonly planUsagePoller?: PlanUsagePoller
+  /**
+   * Override the remote-control bridge manager (KOB-62). Tests pass a
+   * fake whose `start`/`stop` resolve synchronously without spawning
+   * the real `claude remote-control` subprocess.
+   */
+  readonly rcBridge?: RcBridge
 }
 
 export interface DaemonServer {
@@ -96,6 +103,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       onUpdate: (usage) => broadcast(clients, { type: "event", name: "plan.usage", payload: { usage } }),
     })
 
+  // Remote-control bridge — off until the user enables it from settings.
+  // Each transition is broadcast so all attached TUIs repaint the chip
+  // and dialog at once. Spawning the real `claude remote-control` only
+  // happens on `rcBridge.start`; constructing the manager is free.
+  const rcBridge = options.rcBridge ?? createRcBridge()
+  rcBridge.onChange((status) => broadcast(clients, { type: "event", name: "rcBridge.changed", payload: { status } }))
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -103,6 +117,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     clients,
     async close() {
       planUsagePoller.stop()
+      // Stop the bridge before the socket so claude.ai gets the proper
+      // environment-deregistration call and we don't leak an "online"
+      // worker on the cloud side after kobed exits.
+      try {
+        await rcBridge.stop()
+      } catch {
+        /* best-effort — kobed shutdown should never block on bridge teardown */
+      }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       await new Promise<void>((resolve) => server.close(() => resolve()))
       for (const client of Array.from(clients)) {
@@ -161,6 +183,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           pending,
           runState,
           planUsage: planUsagePoller.current(),
+          rcBridge: rcBridge.status(),
         }
       }
       case "daemon.status":
@@ -376,6 +399,24 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
             : taskIds.map((id) => orch.getTask(id)).filter((t): t is Task => Boolean(t))
         for (const task of tasks) subscribeClientToTask(orch, client, task)
         return {}
+      }
+      case "rcBridge.start": {
+        // Default cwd to the daemon's own working directory — the
+        // workspace root the user launched kobed from. Callers may
+        // override (e.g. settings dialog wants to surface a per-repo
+        // bridge in a future iteration), but the daemon must validate
+        // the path is non-empty.
+        const cwd = optionalString(payload, "cwd") ?? process.cwd()
+        if (!cwd) throw new Error("rcBridge.start requires a non-empty cwd")
+        const status = await rcBridge.start({ cwd })
+        return { status }
+      }
+      case "rcBridge.stop": {
+        const status = await rcBridge.stop()
+        return { status }
+      }
+      case "rcBridge.status": {
+        return { status: rcBridge.status() }
       }
       default:
         throw new Error(`unknown daemon request: ${req.name satisfies never}`)
