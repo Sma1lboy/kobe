@@ -33,9 +33,9 @@
  *   - worktree path change
  *   - explicit `r` keypress
  *   - first mount
- *
- * No filesystem watcher in v1 — the brief explicitly defers it to Wave
- * 4 polish. The `r` refresh keystroke is the user's escape hatch.
+ *   - filesystem activity inside the worktree (recursive fs.watch,
+ *     debounced ~200ms, with `.git/` and `node_modules/` filtered to
+ *     avoid feedback loops and high-churn noise)
  *
  * Reactivity: `worktreePath` is an `Accessor` so the pane reacts to
  * task switches without a manual prop-equality check. The internal
@@ -58,7 +58,8 @@
  */
 
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on } from "solid-js"
+import { type FSWatcher, watch } from "node:fs"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
@@ -231,6 +232,43 @@ export function FileTree(props: FileTreeProps) {
       setCursorIndex(0)
       setExpandedDirs(new Set<string>())
       await refetch(tab(), path)
+    }),
+  )
+
+  // Realtime: watch the worktree recursively and bump `refreshTick` on
+  // any file change, debounced ~200ms to coalesce save bursts and
+  // formatter passes. We filter `.git/` (would loop on git's own
+  // writes — index.lock churn during commits, etc.) and `node_modules/`
+  // (high-churn, never user-interesting). If the watcher fails to
+  // attach (path missing, platform limitation) we silently fall back
+  // to the existing manual `r` refresh.
+  createEffect(
+    on(props.worktreePath, (path) => {
+      if (path == null) return
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null
+      let watcher: FSWatcher | null = null
+      try {
+        watcher = watch(path, { recursive: true }, (_event, filename) => {
+          if (filename == null) return
+          const f = filename.toString()
+          if (f === ".git" || f.startsWith(".git/") || f.startsWith(".git\\")) return
+          if (f.startsWith("node_modules/") || f.startsWith("node_modules\\")) return
+          if (debounceTimer != null) clearTimeout(debounceTimer)
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null
+            setRefreshTick((n) => n + 1)
+          }, 200)
+        })
+        watcher.on("error", () => {
+          // Swallow — the `r` keystroke remains as the escape hatch.
+        })
+      } catch {
+        // Path missing or not watchable — fall back to manual refresh.
+      }
+      onCleanup(() => {
+        if (debounceTimer != null) clearTimeout(debounceTimer)
+        if (watcher != null) watcher.close()
+      })
     }),
   )
 
