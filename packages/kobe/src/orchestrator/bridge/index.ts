@@ -16,9 +16,10 @@
  * desired behavior for now (no recursion guard yet).
  */
 
-import { writeFile } from "node:fs/promises"
+import { mkdir, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { fitSocketPath } from "../../daemon/paths.ts"
 import type { Orchestrator } from "../core.ts"
 import { type BridgeServer, startBridgeServer } from "./server.ts"
 
@@ -35,8 +36,19 @@ export interface BridgeHandles {
 export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}): Promise<BridgeHandles> {
   const home = opts.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const runDir = join(home, ".kobe", "run")
-  const socketPath = join(runDir, `bridge-${process.pid}.sock`)
+  // mcp-<pid>.json stays under the home dir — claude reads it once and
+  // path length isn't an issue for a regular file. Only the unix
+  // socket is subject to the 104-byte `sun_path` cap, so route the
+  // socket through fitSocketPath; deeply-nested homes get a short
+  // `$TMPDIR/kobe-<homeTag>-bridge-<pid>.sock` form instead of failing
+  // to listen.
+  const socketPath = fitSocketPath(join(runDir, `bridge-${process.pid}.sock`), home, "bridge", process.pid)
   const mcpConfigPath = join(runDir, `mcp-${process.pid}.json`)
+
+  // startBridgeServer already mkdir's the socket's parent; but if the
+  // socket fell back to $TMPDIR via fitSocketPath, the home-side runDir
+  // still needs to exist for the mcp.json writeFile below.
+  await mkdir(runDir, { recursive: true })
 
   const server: BridgeServer = await startBridgeServer(orch, socketPath)
 
