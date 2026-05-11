@@ -26,6 +26,7 @@
 import type { AIEngine, EngineCapabilities, ModelChoice } from "@/types/engine"
 import type { VendorId } from "@/types/vendor"
 import { claudeCapabilities } from "./claude-code-local/capabilities"
+import { codexCapabilities } from "./codex-local/capabilities"
 
 /**
  * Runtime engine map — vendor → live `AIEngine` instance.
@@ -46,7 +47,7 @@ type Registry = Partial<Record<VendorId, EngineCapabilities>>
 
 export const ENGINE_REGISTRY: Registry = {
   claude: claudeCapabilities,
-  // codex adapter slots in here once `engine/codex-local/` exists.
+  codex: codexCapabilities,
 }
 
 export const defaultCapabilities: EngineCapabilities = claudeCapabilities

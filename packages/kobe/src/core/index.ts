@@ -1,5 +1,7 @@
 import { homedir } from "node:os"
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
+import { CodexLocal } from "../engine/codex-local/index.ts"
+import type { EngineMap } from "../engine/registry.ts"
 import { type BridgeHandles, startBridge } from "../orchestrator/bridge/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -8,7 +10,19 @@ import type { AIEngine } from "../types/engine.ts"
 
 export interface KobeCoreOptions {
   readonly homeDir?: string
+  /**
+   * Single-engine override (back-compat). When supplied, it replaces the
+   * default claude/codex pair. Test fixtures use this to inject the
+   * FakeAIEngine.
+   */
   readonly engine?: AIEngine
+  /**
+   * Per-vendor engine override. When supplied, replaces the default
+   * production map (claude + codex). Mutually exclusive with
+   * {@link engine}; if both are passed, `engines` wins and `engine` is
+   * appended only for vendors `engines` didn't cover.
+   */
+  readonly engines?: EngineMap
   readonly startMcpBridge?: boolean
 }
 
@@ -27,8 +41,15 @@ export async function createKobeCore(options: KobeCoreOptions = {}): Promise<Kob
   await store.load()
 
   const worktrees = new GitWorktreeManager()
-  const engine = options.engine ?? new ClaudeCodeLocal()
-  const orchestrator = new Orchestrator({ engine, store, worktrees })
+  // Production default: register both vendors. Tests pass `options.engine`
+  // to swap in a FakeAIEngine and skip the production map.
+  const engines: EngineMap = options.engines ?? (options.engine
+    ? { [options.engine.capabilities.vendorId]: options.engine }
+    : {
+        claude: new ClaudeCodeLocal(),
+        codex: new CodexLocal(),
+      })
+  const orchestrator = new Orchestrator({ engines, store, worktrees })
   const bridge = options.startMcpBridge === false ? null : await startBridge(orchestrator, { homeDir })
 
   return {
