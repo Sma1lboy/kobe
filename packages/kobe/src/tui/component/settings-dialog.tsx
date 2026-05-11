@@ -108,7 +108,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return hasDaemon ? 2 : 1
   }
   function bodyRowCount(): number {
-    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length + 1
+    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length + 2
     if (section() === "dev") return devRowCount()
     return 0
   }
@@ -116,7 +116,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // 0..N-1                                       → theme at that index
   // N                                            → transparent-bg toggle
   // N+1..N+FOCUS_ACCENT_SLOTS.length             → focus-accent slot picker
-  // N+1+FOCUS_ACCENT_SLOTS.length                → notifications toggle
+  // N+1+FOCUS_ACCENT_SLOTS.length                → notifications: toast toggle
+  // N+2+FOCUS_ACCENT_SLOTS.length                → notifications: sound toggle
   function isTransparentRow(): boolean {
     return section() === "general" && bodyRow() === themeNames().length
   }
@@ -127,20 +128,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (i < 0 || i >= FOCUS_ACCENT_SLOTS.length) return null
     return i
   }
-  function notificationsRowIndex(): number {
+  function toastRowIndex(): number {
     return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
   }
-  function isNotificationsRow(): boolean {
-    return section() === "general" && bodyRow() === notificationsRowIndex()
+  function soundRowIndex(): number {
+    return toastRowIndex() + 1
+  }
+  function isToastRow(): boolean {
+    return section() === "general" && bodyRow() === toastRowIndex()
+  }
+  function isSoundRow(): boolean {
+    return section() === "general" && bodyRow() === soundRowIndex()
   }
   // Read through the reactive KV store so the toggle's `[x]/[ ]` label
-  // re-renders when toggled. Default `true` mirrors the contract in
-  // `notifications.tsx` — first-launch users get notifications on.
-  function notificationsEnabled(): boolean {
-    return (props.kv.get("notifications.enabled", true) as boolean) !== false
+  // re-renders when toggled. Defaults match the contract in
+  // `notifications.tsx` — both on for first-launch users.
+  function toastEnabled(): boolean {
+    return (props.kv.get("notifications.toast.enabled", true) as boolean) !== false
   }
-  function toggleNotifications(): void {
-    props.kv.set("notifications.enabled", !notificationsEnabled())
+  function soundEnabled(): boolean {
+    return (props.kv.get("notifications.sound.enabled", true) as boolean) !== false
+  }
+  function toggleToast(): void {
+    props.kv.set("notifications.toast.enabled", !toastEnabled())
+  }
+  function toggleSound(): void {
+    props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
   function moveCursor(delta: number): void {
@@ -341,8 +354,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
               if (slot) themeCtx.setFocusAccent(slot)
               return
             }
-            if (isNotificationsRow()) {
-              toggleNotifications()
+            if (isToastRow()) {
+              toggleToast()
+              return
+            }
+            if (isSoundRow()) {
+              toggleSound()
               return
             }
             const name = themeNames()[bodyRow()]
@@ -533,43 +550,57 @@ export function SettingsDialog(props: SettingsDialogProps) {
                   }}
                 </For>
               </box>
-              {/* Notifications toggle — gates the terminal bell + audible
-                  pulse + toast overlay fired when a background chat-tab
-                  transitions out of `running`. The unread dot on the tab
-                  chip is intentionally NOT gated: it's a passive marker,
-                  not an interruption, and turning the toggle off
-                  shouldn't lose the "you missed something" signal. */}
+              {/* Notifications — two independent toggles. Toast = the
+                  visual overlay; Sound = terminal BEL + bundled chime.
+                  The tab-chip unread dot is always on (passive marker;
+                  turning notifications off shouldn't lose the "you
+                  missed something" signal). */}
               <box flexDirection="column" gap={0} paddingTop={1}>
                 <text fg={theme.text} attributes={TextAttributes.BOLD}>
                   Notifications
                 </text>
                 <text fg={theme.textMuted} wrapMode="word">
-                  Ring the terminal bell, play a chime, and pop a toast when a background chat tab finishes or pauses on
-                  an approval. Tab-chip unread dot is always on.
+                  Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound
+                  = terminal bell + chime. Tab-chip unread dot is always on.
                 </text>
                 <box
                   flexDirection="row"
+                  gap={1}
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={isNotificationsRow() ? theme.primary : undefined}
+                  backgroundColor={isToastRow() ? theme.primary : undefined}
                   onMouseUp={() => {
                     setLevel("body")
-                    setBodyRow(notificationsRowIndex())
-                    toggleNotifications()
+                    setBodyRow(toastRowIndex())
+                    toggleToast()
                   }}
                 >
                   <text
-                    fg={
-                      isNotificationsRow()
-                        ? theme.selectedListItemText
-                        : notificationsEnabled()
-                          ? theme.accent
-                          : theme.textMuted
-                    }
+                    fg={isToastRow() ? theme.selectedListItemText : toastEnabled() ? theme.accent : theme.textMuted}
                     attributes={TextAttributes.BOLD}
                     wrapMode="none"
                   >
-                    {notificationsEnabled() ? "[x] on" : "[ ] off"}
+                    {toastEnabled() ? "[x]" : "[ ]"} Toast
+                  </text>
+                </box>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={isSoundRow() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    setLevel("body")
+                    setBodyRow(soundRowIndex())
+                    toggleSound()
+                  }}
+                >
+                  <text
+                    fg={isSoundRow() ? theme.selectedListItemText : soundEnabled() ? theme.accent : theme.textMuted}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {soundEnabled() ? "[x]" : "[ ]"} Sound
                   </text>
                 </box>
               </box>

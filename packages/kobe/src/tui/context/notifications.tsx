@@ -3,19 +3,27 @@
  *
  * Three coordinated signals fire when a background chat-tab transitions
  * out of `running` (either to `awaiting_input` or to idle/done):
- *   1. Terminal bell (`\x07`) — once per event, gated on the
- *      `notifications.enabled` KV toggle (default on). The host terminal
- *      decides whether the bell rings, flashes, or is silenced.
+ *   1. Audible cue — terminal BEL (`\x07`) + a bundled `pulse.wav`
+ *      chime via `lib/sound`. Gated together on the
+ *      `notifications.sound.enabled` KV toggle (default on); the host
+ *      terminal decides whether BEL rings, flashes, or is silenced,
+ *      and the chime no-ops when no audio player is on PATH.
  *   2. Transient toast — pushed onto the queue rendered by
  *      `<ToastOverlay />` at bottom-right. Auto-dismisses after
- *      `TOAST_DURATION_MS`.
+ *      `TOAST_DURATION_MS`. Gated on `notifications.toast.enabled`
+ *      (default on).
  *   3. Unread mark on the tab chip — until the user views that tab.
+ *      Always on; the dot is a passive marker, not an interruption.
+ *
+ * Sound and toast are independent toggles so users can pick visual-only
+ * (toast on, sound off — quiet office), audio-only (sound on, toast
+ * off — eyes elsewhere), both, or neither.
  *
  * "View" means the (task, tab) is currently the active chat tab in the
  * active task with the workspace showing chat. The hook upstream of
- * `notify()` (`useCompletionNotifications`) suppresses the toast and
- * bell entirely when the (task, tab) is already visible — the user can
- * see the transition happen in real time, no notification needed.
+ * `notify()` (`useCompletionNotifications`) suppresses every signal
+ * for an already-visible (task, tab) — the user can see the transition
+ * happen in real time.
  */
 
 import { type Accessor, type ParentProps, createContext, createSignal, useContext } from "solid-js"
@@ -62,9 +70,8 @@ export function NotificationsProvider(props: ParentProps) {
   let counter = 0
 
   function notify(input: NotifyInput): void {
-    const enabled = kv.get("notifications.enabled", true) as boolean
     // Always update the unread map — the dot is a passive marker, not
-    // an interruption, so the toggle only gates the bell + toast.
+    // an interruption, so neither toggle gates it.
     setUnread((prev) => {
       const next = new Map(prev)
       const key = unreadKey(input.taskId, input.tabId)
@@ -75,29 +82,34 @@ export function NotificationsProvider(props: ParentProps) {
       next.set(key, input.kind)
       return next
     })
-    if (!enabled) return
 
-    const id = ++counter
-    const toast: Toast = {
-      id,
-      kind: input.kind,
-      taskId: input.taskId,
-      tabId: input.tabId,
-      title: input.title,
+    // Sound gate (BEL + chime). BEL alone leaks past `pulse.wav`
+    // failure — they're the same intent (audible cue), so they share
+    // one toggle.
+    if ((kv.get("notifications.sound.enabled", true) as boolean) !== false) {
+      try {
+        process.stdout.write("\x07")
+      } catch {
+        /* swallow — bell is best-effort */
+      }
+      pulseSound()
     }
-    setToasts((prev) => [...prev, toast])
 
-    // BEL once per notification. Terminal honours its own bell settings.
-    try {
-      process.stdout.write("\x07")
-    } catch {
-      /* swallow — bell is best-effort */
+    // Toast gate. Independent of sound so a quiet-office user can keep
+    // the visual cue without audio, and an eyes-elsewhere user can keep
+    // audio without the popup.
+    if ((kv.get("notifications.toast.enabled", true) as boolean) !== false) {
+      const id = ++counter
+      const toast: Toast = {
+        id,
+        kind: input.kind,
+        taskId: input.taskId,
+        tabId: input.tabId,
+        title: input.title,
+      }
+      setToasts((prev) => [...prev, toast])
+      setTimeout(() => dismiss(id), TOAST_DURATION_MS)
     }
-    // Audible chime on top of BEL. Best-effort; no-ops when no audio
-    // player is on PATH (stripped CI containers, headless remote).
-    pulseSound()
-
-    setTimeout(() => dismiss(id), TOAST_DURATION_MS)
   }
 
   function dismiss(id: number): void {
