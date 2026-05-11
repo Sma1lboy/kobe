@@ -1,7 +1,7 @@
 # Handoff — kobe (post-0.2.x polish wave)
 
 > Written 2026-05-10 at the end of a long polish session that shipped 0.2.0 → 0.2.1 → 0.2.2.
-> Last refreshed 2026-05-10 after the permission-mode revision (KOB-17) and the architecture dive that's awaiting Jackson's call.
+> Last refreshed 2026-05-10 after the permission-mode revision (KOB-17) and **two architecture reviews** (AI-friendliness + depth-lens) both awaiting Jackson's call.
 > Prior handoffs:
 >   - [`docs/HANDOFF-v1.md`](./docs/HANDOFF-v1.md) — Phase 0 mission + framing.
 >   - [`docs/HANDOFF-v2.md`](./docs/HANDOFF-v2.md) — Wave 3 → 4 transition (5-pane TUI shipped).
@@ -113,11 +113,28 @@ Findings ranked by leverage:
 
 Recommendation order on the table: **#1 → #2 → #3 → #4 → #5**. Jackson hasn't picked yet.
 
+### Depth-lens pass (added 2026-05-10, second review same day)
+
+Second pass via `/improve-codebase-architecture` — Ousterhout depth lens (Module / Interface / Depth / Seam / Adapter / Leverage / Locality). Overlaps with #4 and #5 above but reframes them and adds two new candidates. Same status: surfaced for Jackson's call, **not started**.
+
+| # | Candidate | Friction (with line refs) | Why it earns being deeper |
+|---|---|---|---|
+| D1 | **user-input request lifecycle smeared across 4 files** | Detect/parse/render in `src/orchestrator/core.ts:1453–1541`; pendingInput map keyed by Task only in `core.ts:289 + 785–810` (comment at 796–802 admits wrong ChatTab receives banner); state mutation in `src/tui/panes/chat/store.ts:485–548`; pending-row lift in `Chat.tsx` ~680–720; render in `MessageList.tsx:100–137`. | Textbook cross-Pane concept smear. No Module owns "Claude paused, asking user" end-to-end. A `PendingInput` Module collapsing detect + bucket + route + render-where gains real **Locality** (one place per new tool) and makes the tabId-routing bug uncompilable. Removes reliance on HTTP side-channel for `respondToInput` testing. |
+| D2 | **Orchestrator god-Module — 1584 lines, ~6 concerns** | `src/orchestrator/core.ts` mixes Task CRUD + ChatTab lifecycle + `pumpEvents` (1083+) + user-input routing + `requestPR` with implicit preconditions (754–772, throws `PRPreconditionError` caller must pre-check) + `maybeRenameTempBranch` heuristics (541–590). Different change rates. Restates row #5 above. | Highest Leverage but riskiest. Splitting peels off pump (engine-shaped), PR flow (git-shaped), metadata (heuristic-shaped) — each gets its own unit-test seam without `FakeAIEngine`. `requestPR` preconditions become a typed `canRequestPR()` capability. Discuss WHICH slice peels first; depth lens prefers user-input (D1) as the cleanest extraction. |
+| D3 | **`app.tsx` Shell inlines two cohesive sub-Modules** | New-task dialog state machine at `src/tui/app.tsx:308–570` (~250 lines, untested in isolation, two pickers + field-cycle + validation). Keybinding wiring at `app.tsx:885–892 + 1205–1610` — seven sequential `useBindings` calls (lines 1205, 1242, 1248, 1409, 1571, 1582, 1608) where registration order *is* the priority. Restates row #4 above. | Dialog has a clean Interface (input: repos + initial values, output: task spec). A `Keymap` Module with declared priority order has same Leverage for callers but smaller Interface to learn — "where does ctrl+t go?" answerable in one read. |
+| D4 | **`KOBE_RESUME_CWD` is a load-bearing back-channel, not a typed Interface** | `core.ts:24–29` comments "load-bearing and tested below"; `engine/claude-code-local/index.ts:93` reads from env; `src/types/engine.ts` `AIEngine.resume(sessionId, prompt, opts?)` has no cwd parameter. NEW vs prior review. | Production has one adapter; tests have `FakeAIEngine`. **One adapter = hypothetical seam, two = real** — but the fake only works because env vars happen to forward. Any future adapter has no compile-time signal it must handle resume-cwd. Promote `cwd` to typed `ResumeOpts` field. Smallest/lowest-risk candidate. No ADR conflict (none exist). |
+
+**Depth-lens ranking suggested to Jackson:** D1 (highest payoff, latent bug) → D4 (smallest/safest) → D2 (most architectural) → D3 (cleanup-shaped).
+
+**Cross-reference with prior pass:** D2 ≈ table row 5. D3 ≈ table row 4. D1 and D4 are new (the prior pass looked at file size + import paths; this pass looked at Interface depth + Seam reality). The two reviews don't conflict — they prioritize differently and a future agent could pick from either list. Recommendation: land path-alias codemod (row 1) first regardless, then revisit.
+
+**Vocabulary note:** No CONTEXT.md or `docs/adr/` exist yet. If any of these get picked and naming crystallizes during grilling, the `/improve-codebase-architecture` skill creates them lazily.
+
 ---
 
 ## Open follow-ups (in rough priority order)
 
-0. **Architecture review (above).** Jackson is thinking. Don't start without his pick.
+0. **Architecture review (above).** Jackson is thinking. Don't start without his pick. **Two passes now exist** — original AI-friendliness pass (rows 1–5) and depth-lens pass (D1–D4). Pick from either or both.
 1. **Permission-prompt MCP bridge.** [Unreleased] settled for opcode-style `bypassPermissions` as kobe's `default`. Real fix is the MCP-server route described above. Tracked separately. ~2-3 day estimate.
 2. **Behavior tests are local-only.** They need tmux + node-pty terminal sizing that CI can't easily provide. CI runs typecheck + unit + build only. Some tests on this machine fail due to local environment quirks (terminal resize timing, tmux extended-keys in test environment). Re-running on Jackson's machine generally passes.
 3. **`extended-keys` requirement** for users who DO want ctrl+digit / CSI-u sequences (the few legitimate ctrl+digit chords in the keymap). `~/.tmux.conf` needs `set -g extended-keys on` + `set -as terminal-features 'xterm*:extkeys'`, AND iTerm2 needs profile-level "Report keys using CSI u." iTerm2's ctrl+1 quirk persists even with that. Documented in `docs/KEYBINDINGS.md`.
