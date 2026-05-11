@@ -63,11 +63,28 @@ function matchKey(evt: KeyEvent): string[] {
   if (name === "return") base.push("enter")
   if (name === "enter") base.push("return")
 
+  // Modifier mapping rules (the *only* place chord prefixes are minted):
+  //   - `evt.ctrl`   → `ctrl+`. Universal across terminals.
+  //   - `evt.meta`   → `cmd+`. The Command key on macOS / Win key on Windows.
+  //                    Most terminals do NOT forward this — Cmd+C is normally
+  //                    eaten by the terminal emulator itself for native copy.
+  //                    Kitty / Ghostty / iTerm2 *can* be configured to forward
+  //                    it; when they do, kobe sees `meta=true`. We keep `cmd+`
+  //                    as a separate prefix from `alt+` so a Cmd+X chord that
+  //                    leaks into the app doesn't accidentally fire an
+  //                    Option+X binding (the previous code aliased both to
+  //                    `alt+`, which made `cmd+p`/`cmd+k` bindings in
+  //                    KobeKeymap silently dead — KOB key-routing fix).
+  //   - `evt.option` → `alt+`. Option on macOS / Alt elsewhere. macOS Option+K
+  //                    arrives as `ESC k` which opentui surfaces as
+  //                    `option=true`, name=`k` → `alt+k`.
+  //   - shift+letter is just uppercase, so we only emit `shift+` for
+  //     non-letter keys (`shift+tab`, `shift+enter`, etc.).
   const mods: string[] = []
   if (evt.ctrl) mods.push("ctrl")
-  if (evt.meta) mods.push("alt")
+  if (evt.meta) mods.push("cmd")
   if (evt.option) mods.push("alt")
-  if (evt.shift && name && name.length > 1) mods.push("shift") // shift+letter is just uppercase, skip
+  if (evt.shift && name && name.length > 1) mods.push("shift")
 
   if (mods.length === 0) return base
   const prefix = `${mods.join("+")}+`

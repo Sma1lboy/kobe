@@ -36,10 +36,25 @@
  * No pane code has to change because pane registration goes through
  * `bindByIds`.
  *
- * Cmd vs Ctrl on macOS: terminals don't propagate the Command key to the
- * PTY. We register both `ctrl+k` and `alt+k` so the same logical chord
- * works across configurations (Option+K on macOS sends `ESC k` which our
- * keymap layer surfaces as `alt+k`).
+ * Cmd / Option / Ctrl on macOS — three different modifiers, three different
+ * chord prefixes:
+ *
+ *   - `ctrl+X`  always works; ctrl+letter has stable C0 byte mappings that
+ *     every terminal forwards to the TTY. Use this as the primary chord.
+ *   - `alt+X`   is the Option key on macOS. Sends `ESC X` in legacy mode and
+ *     opentui surfaces it as `evt.option = true`. Note: macOS launchers
+ *     (Raycast, Karabiner, Alfred) often grab Option+digit globally before it
+ *     reaches the terminal. Don't rely on alt-chords as the only path.
+ *   - `cmd+X`   is the Command key on macOS. Default-config terminals
+ *     (Terminal.app, iTerm2, Ghostty) handle Cmd+letter as an *application*
+ *     shortcut and never forward it to the TTY — so a `cmd+X` binding is a
+ *     no-op there. Terminals that *can* forward modifier keys (Kitty,
+ *     iTerm2 with "Send Modifier Keys" enabled, Ghostty with `keybind`) do
+ *     deliver Cmd+X as `evt.meta = true`, which our keymap layer surfaces
+ *     as `cmd+X`. Register `cmd+X` alongside the primary `ctrl+X` so users
+ *     on forwarding terminals get the chord they expect (and `cmd+X`
+ *     doesn't get silently swallowed by the stdin reader for lack of a
+ *     binding).
  *
  * Why `app.quit.keys` lists both `ctrl+shift+q` and `ctrl+q`: the keymap
  * layer (`src/tui/lib/keymap.tsx`) intentionally drops the shift modifier
@@ -252,7 +267,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "app.copy_or_quit",
     scope: "global",
-    keys: ["ctrl+c"],
+    // `cmd+c` is registered alongside `ctrl+c` so terminals that forward
+    // Cmd+C to the application (Kitty / Ghostty / iTerm2 with "Send
+    // Modifier Keys" on) get the same OSC52 copy + arm-quit behavior
+    // instead of being silently swallowed. Default-config macOS terminals
+    // never deliver Cmd+C to the TTY (the terminal app handles it), so
+    // this is a no-op there — the chord exists for the forwarding case.
+    keys: ["ctrl+c", "cmd+c"],
     category: "Global",
     description: "Copy selection / press twice within 1.5s to quit",
     // No hint — when ctrl+c is armed, the StatusBar swaps in a warning
