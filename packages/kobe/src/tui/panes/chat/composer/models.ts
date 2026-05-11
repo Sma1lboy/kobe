@@ -17,10 +17,13 @@
  * model.ts). The footer shows that real name; the picker lists real
  * models only.
  */
+import type { VendorId } from "@/types/vendor"
 import { resolveDefaultModelId } from "./claude-settings"
 
 export type ModelChoice = {
-  /** Anthropic model id passed to `claude --model`. */
+  /** Which engine adapter owns this model. */
+  readonly vendor: VendorId
+  /** Vendor-specific model id passed to the adapter (e.g. `claude --model`). */
   readonly id: string
   /** Short label shown in the composer footer + picker. */
   readonly label: string
@@ -40,11 +43,11 @@ export type ModelChoice = {
 export const DEFAULT_MODEL_ID = "claude-opus-4-7[1m]"
 
 export const MODEL_CHOICES: readonly ModelChoice[] = [
-  { id: "claude-opus-4-7[1m]", label: "Opus 4.7 1M", hint: "long context, default" },
-  { id: "claude-opus-4-7", label: "Opus 4.7", hint: "most capable, slowest" },
-  { id: "claude-sonnet-4-6[1m]", label: "sonnet 4.6 (1M)", hint: "long context" },
-  { id: "claude-sonnet-4-6", label: "sonnet 4.6" },
-  { id: "claude-haiku-4-5-20251001", label: "haiku 4.5", hint: "fastest, cheapest" },
+  { vendor: "claude", id: "claude-opus-4-7[1m]", label: "Opus 4.7 1M", hint: "long context, default" },
+  { vendor: "claude", id: "claude-opus-4-7", label: "Opus 4.7", hint: "most capable, slowest" },
+  { vendor: "claude", id: "claude-sonnet-4-6[1m]", label: "sonnet 4.6 (1M)", hint: "long context" },
+  { vendor: "claude", id: "claude-sonnet-4-6", label: "sonnet 4.6" },
+  { vendor: "claude", id: "claude-haiku-4-5-20251001", label: "haiku 4.5", hint: "fastest, cheapest" },
 ] as const
 
 /**
