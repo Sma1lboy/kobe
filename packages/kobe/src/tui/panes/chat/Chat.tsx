@@ -226,12 +226,14 @@ export function Chat(props: ChatProps) {
 
   // Reactive view of the active task's status. `canceled` blocks the
   // composer because the orchestrator rejects `canceled → in_progress`.
-  const taskStatus = createMemo(() => {
+  const activeTask = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return tasksAcc().find((t) => t.id === id)?.status
+    return tasksAcc().find((t) => t.id === id)
   })
+  const taskStatus = () => activeTask()?.status
   const isCanceled = () => taskStatus() === "canceled"
+  const isArchived = () => activeTask()?.archived === true
 
   // Look up the tail of the active tab for an unresolved user-input
   // row. Scans from the end (the picker is always near the bottom) and
@@ -847,13 +849,20 @@ export function Chat(props: ChatProps) {
           draft={draft()}
           onDraftChange={setDraft}
           isStreaming={activeState().isStreaming}
-          hasTask={props.taskId() !== undefined && !isCanceled() && !pendingApproval()}
+          hasTask={
+            props.taskId() !== undefined &&
+            !isArchived() &&
+            !isCanceled() &&
+            !pendingApproval()
+          }
           noTaskMessage={
-            isCanceled()
-              ? "(task canceled — pick another or press ctrl+n to create)"
-              : pendingApproval()
-                ? "(answer the prompt above to continue)"
-                : undefined
+            isArchived()
+              ? "(archived — unarchive to resume)"
+              : isCanceled()
+                ? "(task canceled — pick another or press ctrl+n to create)"
+                : pendingApproval()
+                  ? "(answer the prompt above to continue)"
+                  : undefined
           }
           onSubmit={handleComposerSubmit}
           focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
