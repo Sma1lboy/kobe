@@ -502,6 +502,45 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Previous chat tab",
     hint: { keys: "ctrl+[", label: "prev tab" },
   },
+  // AskUserQuestion picker bindings — only fire when a question card is
+  // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
+  // 1-9 are bare-letter chords by intent: while a picker is showing, the
+  // composer is hidden (Chat.tsx `<Show when={!pendingQuestion()}>`) so
+  // these never compete with composer typing. Workspace scope means the
+  // chat pane must own focus — the user can still navigate the file tree
+  // with j/k while a question is queued.
+  {
+    id: "chat.question.nav",
+    scope: "workspace",
+    keys: ["j", "k", "down", "up"],
+    category: "Workspace",
+    description: "Move highlight in question picker",
+    hint: { keys: "j/k", label: "pick" },
+  },
+  {
+    id: "chat.question.toggle",
+    scope: "workspace",
+    keys: ["space"],
+    category: "Workspace",
+    description: "Toggle highlighted option in question picker",
+    hint: { keys: "space", label: "toggle" },
+  },
+  {
+    id: "chat.question.submit",
+    scope: "workspace",
+    keys: ["return"],
+    category: "Workspace",
+    description: "Advance / submit question picker",
+    hint: { keys: "enter", label: "submit" },
+  },
+  {
+    id: "chat.question.pick-number",
+    scope: "workspace",
+    keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
+    category: "Workspace",
+    description: "Pick option by number in question picker",
+    hint: { keys: "1-9", label: "pick" },
+  },
 
   // ─── Files ────────────────────────────────────────────────────────────
   {

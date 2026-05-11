@@ -805,6 +805,7 @@ export function Chat(props: ChatProps) {
                   })
               }}
               onClaimComposerFocus={setQuestionInlineFocus}
+              chatFocused={() => props.focused?.() ?? false}
             />
           </box>
         </scrollbox>

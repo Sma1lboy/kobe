@@ -45,8 +45,10 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { type Accessor, For, Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
+import { useBindings } from "../../lib/keymap"
 import { Markdown } from "./Markdown"
 import {
   BASH_OUTPUT_COLLAPSED_CAP,
@@ -154,6 +156,13 @@ export interface MessageListProps {
    * picker).
    */
   onClaimComposerFocus?: (claim: boolean) => void
+  /**
+   * Whether the chat pane currently owns keyboard focus. Forwarded to
+   * `QuestionRow` so its bare-letter chords (j/k/space/enter/1-9) only
+   * fire when the workspace pane is focused — otherwise typing j in the
+   * file tree would get swallowed by the question picker.
+   */
+  chatFocused?: Accessor<boolean>
 }
 
 /**
@@ -854,6 +863,14 @@ export function QuestionRow(props: {
    * doesn't leave the composer perpetually defocused.
    */
   onClaimComposerFocus?: (claim: boolean) => void
+  /**
+   * Whether the chat pane owns focus right now. Gates this row's
+   * keyboard chords so j/k/space/enter/1-9 don't bleed into other
+   * panes' bare-letter handlers (file tree j/k, etc.) while a question
+   * is queued. Defaults to `() => true` for callers that don't wire it
+   * (tests, host-mode), preserving the pre-keyboard behavior.
+   */
+  chatFocused?: Accessor<boolean>
 }) {
   const { theme } = useTheme()
   const r = () => props.row
@@ -997,6 +1014,63 @@ export function QuestionRow(props: {
     }
   }
 
+  // Keyboard cursor — index into the current question's options list,
+  // with `q.options.length` reserved for the auto-added "Other" row at
+  // the bottom. Reset to 0 whenever the user advances to a new question
+  // so the cursor lands on the first option of the new card.
+  const [highlighted, setHighlighted] = createSignal(0)
+  createEffect(() => {
+    currentIndex()
+    setHighlighted(0)
+  })
+
+  function toggleByIndex(qIdx: number, optIdx: number): void {
+    const q = r().questions[qIdx]
+    if (!q) return
+    if (optIdx === q.options.length) {
+      toggle(q.question, q.multiSelect, OTHER_SENTINEL)
+    } else {
+      const opt = q.options[optIdx]
+      if (opt) toggle(q.question, q.multiSelect, opt.label)
+    }
+  }
+
+  // Pane-scoped keyboard chords for the picker. Gated on:
+  //   - chat pane focused (don't steal j/k from the file tree),
+  //   - row not yet submitted,
+  //   - the inline "Other" text input not active (when active, the
+  //     <input> owns keystrokes and our bindings would double-fire on
+  //     every letter typed). The composer itself is hidden during a
+  //     question so we don't gate on `questionInlineFocus` from the
+  //     parent — currentOtherActive() is the same signal one level up.
+  useBindings(() => ({
+    enabled: !isAnswered() && !currentOtherActive() && (props.chatFocused?.() ?? true),
+    bindings: bindByIds({
+      "chat.question.nav": (evt) => {
+        const q = r().questions[currentIndex()]
+        if (!q) return
+        const max = q.options.length
+        if (evt.name === "j" || evt.name === "down") {
+          setHighlighted((i) => Math.min(i + 1, max))
+        } else if (evt.name === "k" || evt.name === "up") {
+          setHighlighted((i) => Math.max(i - 1, 0))
+        }
+      },
+      "chat.question.toggle": () => toggleByIndex(currentIndex(), highlighted()),
+      "chat.question.submit": () => advanceOrSubmit(),
+      "chat.question.pick-number": (evt) => {
+        const n = Number.parseInt(evt.name ?? "", 10)
+        if (!Number.isFinite(n) || n < 1) return
+        const q = r().questions[currentIndex()]
+        if (!q) return
+        const idx = n - 1
+        if (idx > q.options.length) return
+        setHighlighted(idx)
+        toggleByIndex(currentIndex(), idx)
+      },
+    }),
+  }))
+
   return (
     <box paddingTop={1} flexDirection="column" gap={0}>
       {/* Banner */}
@@ -1070,15 +1144,24 @@ export function QuestionRow(props: {
                 <Show when={isCurrent()}>
                   <box paddingLeft={2} flexDirection="column">
                     <For each={q.options}>
-                      {(opt) => {
+                      {(opt, optIndex) => {
                         const isPicked = () => picked().has(opt.label)
+                        const isHl = () => highlighted() === optIndex()
                         const glyph = () => (q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )")
+                        // Single-digit shortcut: only options 1-9 get a
+                        // visible digit. Past 9 the prefix is two spaces
+                        // so the columns still line up under the picker.
+                        const digitChip = () => (optIndex() < 9 ? `${optIndex() + 1}.` : "  ")
                         return (
                           <box
                             flexDirection="row"
                             gap={1}
                             onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}
                           >
+                            <text fg={isHl() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {isHl() ? ">" : " "}
+                            </text>
+                            <text fg={theme.textMuted}>{digitChip()}</text>
                             <text fg={isPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
                               {glyph()}
                             </text>
@@ -1099,8 +1182,11 @@ export function QuestionRow(props: {
                         input below. */}
                     {(() => {
                       const otherPicked = () => picked().has(OTHER_SENTINEL)
+                      const otherIdx = q.options.length
+                      const isOtherHl = () => highlighted() === otherIdx
                       const otherGlyph = () =>
                         q.multiSelect ? (otherPicked() ? "[x]" : "[ ]") : otherPicked() ? "(•)" : "( )"
+                      const otherDigitChip = () => (otherIdx < 9 ? `${otherIdx + 1}.` : "  ")
                       return (
                         <>
                           <box
@@ -1108,6 +1194,10 @@ export function QuestionRow(props: {
                             gap={1}
                             onMouseUp={() => toggle(q.question, q.multiSelect, OTHER_SENTINEL)}
                           >
+                            <text fg={isOtherHl() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {isOtherHl() ? ">" : " "}
+                            </text>
+                            <text fg={theme.textMuted}>{otherDigitChip()}</text>
                             <text fg={otherPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
                               {otherGlyph()}
                             </text>
@@ -1216,6 +1306,7 @@ export function MessageList(props: MessageListProps) {
                 row={row}
                 onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)}
                 onClaimComposerFocus={props.onClaimComposerFocus}
+                chatFocused={props.chatFocused}
               />
             )
           }
