@@ -57,7 +57,7 @@
  * threads `worktreePath` and consumes `onOpenFile`).
  */
 
-import { TextAttributes } from "@opentui/core"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
@@ -426,6 +426,27 @@ export function FileTree(props: FileTreeProps) {
     collapseOrParent,
   })
 
+  // ---------- viewport follow ----------
+  // Each row renders as a height-1 box, so its y-offset inside the
+  // scrollbox content equals its index in `rows()`. When the cursor
+  // moves past the visible window (either edge), nudge the scrollbox
+  // so the cursor row is just inside the viewport.
+  let scrollRef: ScrollBoxRenderable | undefined
+  createEffect(
+    on([cursorIndex, rows], ([i, r]) => {
+      if (!scrollRef) return
+      if (r.length === 0) return
+      const top = scrollRef.scrollTop
+      const height = scrollRef.viewport.height
+      if (height <= 0) return
+      if (i < top) {
+        scrollRef.scrollTo({ x: 0, y: i })
+      } else if (i >= top + height) {
+        scrollRef.scrollTo({ x: 0, y: i - height + 1 })
+      }
+    }),
+  )
+
   // ---------- render ----------
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
@@ -452,6 +473,9 @@ export function FileTree(props: FileTreeProps) {
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
          into the panel bg, thumb is muted text color. */}
       <scrollbox
+        ref={(r: ScrollBoxRenderable) => {
+          scrollRef = r
+        }}
         flexGrow={1}
         verticalScrollbarOptions={{
           trackOptions: {
