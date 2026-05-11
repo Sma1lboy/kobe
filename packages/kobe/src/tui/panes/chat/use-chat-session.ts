@@ -42,6 +42,7 @@
 
 import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
+import { chatRunStateKey } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { ChatTab, Task, TaskStatus } from "../../../types/task.ts"
 import { type ChatState, applyEvent, createInitialState, pushSystemError, setMessagesFromHistory } from "./store"
@@ -189,6 +190,28 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         tabId,
       )
       tabSubs.set(tabId, unsub)
+      // Rehydrate per-tab live state from the orchestrator's snapshot.
+      // The daemon's `hello` handshake seeds the orchestrator's run-state
+      // map and pending-input broker on reconnect, but per-tab ChatState
+      // is built locally — without this seeding step a TUI that reattaches
+      // mid-stream sees `isStreaming: false` (composer unlocked, spinner
+      // missing) and an empty messages list with no approval / question
+      // row, until the next live event happens to land.
+      const tabKey = chatRunStateKey(taskId, tabId)
+      const runState = orchestrator.chatRunStateSignal()().get(tabKey)
+      if (runState === "running") {
+        patchStateForTab(tabId, (s) => ({ ...s, isStreaming: true }))
+      }
+      const replayPending = (): void => {
+        if (opts.taskId() !== taskId) return
+        const pending = orchestrator.peekPendingInput(taskId)
+        for (const entry of pending) {
+          if (entry.tabKey !== tabKey) continue
+          patchStateForTab(tabId, (s) =>
+            applyEvent(s, { type: "user_input.request", requestId: entry.requestId, payload: entry.payload }),
+          )
+        }
+      }
       if (tab.sessionId) {
         const sid = tab.sessionId
         orchestrator
@@ -196,11 +219,19 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
           .then((past) => {
             if (opts.taskId() !== taskId) return
             patchStateForTab(tabId, (s) => setMessagesFromHistory(s, past))
+            // Pending input rows must land AFTER history hydration —
+            // `setMessagesFromHistory` replaces `messages` wholesale, so
+            // a synthesized approval / question row dispatched before
+            // history loads would be wiped.
+            replayPending()
           })
           .catch((err) => {
             const msg = err instanceof Error ? err.message : String(err)
             patchStateForTab(tabId, (s) => pushSystemError(s, `history load failed: ${msg}`))
+            replayPending()
           })
+      } else {
+        replayPending()
       }
     }
     for (const [tabId, unsub] of tabSubs) {

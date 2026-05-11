@@ -128,12 +128,19 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           const entries = orch.peekPendingInput(task.id)
           if (entries.length > 0) pending[task.id] = entries
         }
+        // Snapshot per-tab run state so a reconnecting TUI repaints
+        // the green/yellow status dot on already-streaming tabs
+        // immediately — without this the indicator disappears until
+        // the next chat.delta / engine.status / chat.event arrives.
+        const runState: Record<string, string> = {}
+        for (const [key, value] of orch.chatRunStateSignal()()) runState[key] = value
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
           daemonPid: process.pid,
           clientId: client.id,
           tasks: tasks.map(serializeTask),
           pending,
+          runState,
         }
       }
       case "daemon.status":

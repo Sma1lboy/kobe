@@ -49,6 +49,7 @@ export class RemoteOrchestrator {
     const hello = await this.client.request<{
       tasks?: Task[]
       pending?: Record<string, PendingInput[]>
+      runState?: Record<string, ChatRunState>
     }>("hello", { clientId: `tui-${process.pid}`, version: "1" })
 
     let tasks: Task[]
@@ -59,6 +60,14 @@ export class RemoteOrchestrator {
       tasks = res.tasks
     }
     this.setTasks(tasks)
+    // Seed run-state from the hello snapshot so reconnecting onto a
+    // daemon mid-stream repaints the green/yellow tab dot immediately
+    // instead of waiting for the next event to flow through.
+    if (hello.runState) {
+      const seed = new Map<string, ChatRunState>()
+      for (const [key, value] of Object.entries(hello.runState)) seed.set(key, value)
+      if (seed.size > 0) this.setRunState(seed)
+    }
     await this.client.request("subscribe", { taskIds: "all" })
 
     if (hello.pending) {
