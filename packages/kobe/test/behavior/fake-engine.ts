@@ -21,7 +21,17 @@
  *     pulls. If a test needs paced delivery, add `delayMs` later.
  */
 
-import type { AIEngine, ContentBlock, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "./_engine-types"
+import { claudeCapabilities } from "@/engine/claude-code-local/capabilities"
+import type {
+  AIEngine,
+  ContentBlock,
+  EngineCapabilities,
+  EngineEvent,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "./_engine-types"
 
 function firstUserText(blocks: readonly ContentBlock[]): string | null {
   for (const b of blocks) {
@@ -38,6 +48,8 @@ type ScriptedQueue = {
 }
 
 export class FakeAIEngine implements AIEngine {
+  /** Fake impersonates claude — borrow its capabilities for tests. */
+  readonly capabilities: EngineCapabilities = claudeCapabilities
   private nextId = 1
   private queues = new Map<string, ScriptedQueue>()
   private historyBySession = new Map<string, Message[]>()

@@ -13,8 +13,10 @@
 export type {
   AIEngine,
   ContentBlock,
+  EngineCapabilities,
   EngineEvent,
   Message,
+  ModelChoice,
   SessionHandle,
   SessionMeta,
   SpawnOpts,

@@ -62,7 +62,6 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
-import { resolveDefaultModelId } from "../engine/claude-settings.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -823,13 +822,11 @@ export class Orchestrator {
       this.dispatchEvent(task.id, targetTab.id, { type: "user.inject", text: prompt })
     }
 
-    // Model resolution: per-task pin → claude-code's
-    // `~/.claude/settings.json` `model` key → kobe's hardcoded
-    // FALLBACK_DEFAULT_MODEL_ID (opus 4.7 [1m]). Mirrors claude-code's
-    // own getUserSpecifiedModelSetting() ordering. Doing the resolve
-    // here (rather than passing `task.model` raw) means kobe's UI
-    // label and the engine spawn agree on the same default.
-    const modelToUse = task.model ?? resolveDefaultModelId()
+    // Model resolution: per-task pin → vendor's default-model resolver
+    // (e.g. claude-code reads `~/.claude/settings.json` `model` key) →
+    // vendor's hardcoded fallback. The engine's capabilities surface is
+    // the single seam — adding a vendor doesn't touch this line.
+    const modelToUse = task.model ?? this.engine.capabilities.defaultModelId()
 
     let handle: SessionHandle
     if (targetTab.sessionId) {

@@ -11,7 +11,64 @@
  */
 
 import type { ContentBlock } from "./content"
+import type { VendorId } from "./vendor"
 export type { ContentBlock } from "./content"
+
+/**
+ * One model entry surfaced by a vendor adapter.
+ *
+ * `id` is what the adapter forwards to its CLI / API verbatim (e.g.
+ * `claude --model <id>`, `codex -m <id>`). `label`/`hint` are the
+ * presentation strings the composer's model picker renders.
+ *
+ * Lives in this file (not under `tui/`) because the model catalog is
+ * vendor-owned — each adapter exports its own `readonly ModelChoice[]`
+ * through {@link EngineCapabilities.models}. Putting the type next to
+ * `AIEngine` keeps the seam in one place; the TUI just consumes it.
+ */
+export type ModelChoice = {
+  /** Which engine adapter owns this model. */
+  readonly vendor: VendorId
+  /** Vendor-specific model id passed to the adapter. */
+  readonly id: string
+  /** Short label shown in the composer footer + picker. */
+  readonly label: string
+  /** Optional one-liner shown next to the label in the picker. */
+  readonly hint?: string
+}
+
+/**
+ * Vendor-supplied capability surface — the single way kobe's
+ * orchestrator and TUI ask "what does this engine know / offer?"
+ *
+ * Every piece of vendor-specific knowledge (model catalog, where the
+ * vendor's settings file lives, what counts as the context window for
+ * a given model id, how to format the model label) lives on this
+ * object. Callers that need any of that go through
+ * {@link AIEngine.capabilities} or the engine registry; no module
+ * outside the adapter should hard-code `~/.claude/...`, `[1m]` suffix
+ * parsing, or model-id literals.
+ *
+ * This object is intentionally static-ish — function members are
+ * pure (no IO beyond cached settings reads) so callers can invoke them
+ * freely from render code.
+ */
+export interface EngineCapabilities {
+  readonly vendorId: VendorId
+  /** Human-readable vendor name shown in UI ("Claude Code", "Codex"). */
+  readonly label: string
+  /** Catalog of models this vendor offers in the composer picker. */
+  readonly models: readonly ModelChoice[]
+  /**
+   * Resolve the current default model id for this vendor. Implementations
+   * read the vendor's settings file (e.g. `~/.claude/settings.json` for
+   * claude-code, `~/.codex/config.toml` for codex) and fall back to a
+   * hardcoded constant when unset.
+   */
+  defaultModelId(): string
+  /** Max context tokens for a given vendor model id. */
+  contextWindowFor(modelId: string): number
+}
 
 /**
  * Opaque handle to a live engine session. The orchestrator treats this
@@ -336,6 +393,16 @@ export type OrchestratorEvent =
  * interface leaking — fix it here, not there.
  */
 export interface AIEngine {
+  /**
+   * Vendor capabilities — model catalog, default-model resolution,
+   * context-window math. The orchestrator and TUI must consult this
+   * instead of importing vendor-specific helpers (see
+   * {@link EngineCapabilities}). The field is intentionally a readonly
+   * property, not a method, so consumers can pull it once and treat it
+   * as a stable descriptor for the lifetime of the engine instance.
+   */
+  readonly capabilities: EngineCapabilities
+
   /**
    * Start a fresh session in `cwd` with the given prompt.
    *

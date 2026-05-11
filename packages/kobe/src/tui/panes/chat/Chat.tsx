@@ -52,7 +52,7 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
-import { modelLabelFor, resolveDefaultModelId } from "./composer/models"
+import { defaultCapabilities, modelLabelFor } from "@/engine/registry"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
@@ -201,7 +201,7 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const modelId = task?.model ?? resolveDefaultModelId()
+    const modelId = task?.model ?? defaultCapabilities.defaultModelId()
     return formatContextUsageCompact(u, modelId)
   })
 

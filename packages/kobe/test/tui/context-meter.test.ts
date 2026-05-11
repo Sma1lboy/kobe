@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
-import {
-  contextWindowTokensForModel,
-  formatContextUsageCompact,
-  totalContextTokens,
-} from "../../src/tui/panes/chat/context-meter.ts"
+import { capabilitiesForModelId } from "../../src/engine/registry.ts"
+import { formatContextUsageCompact, totalContextTokens } from "../../src/tui/panes/chat/context-meter.ts"
+
+function contextWindowTokensForModel(id: string): number {
+  return capabilitiesForModelId(id).contextWindowFor(id)
+}
 
 describe("context-meter", () => {
   it("totals billed context fields", () => {

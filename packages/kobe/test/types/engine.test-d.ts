@@ -11,6 +11,7 @@ import { describe, expectTypeOf, it } from "vitest"
 import type {
   AIEngine,
   ContentBlock,
+  EngineCapabilities,
   EngineEvent,
   Message,
   SessionHandle,
@@ -97,11 +98,15 @@ describe("Message", () => {
 })
 
 describe("AIEngine", () => {
-  it("has the seven documented methods", () => {
+  it("exposes capabilities + the seven documented methods", () => {
     type Methods = keyof AIEngine
     expectTypeOf<Methods>().toEqualTypeOf<
-      "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
+      "capabilities" | "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
     >()
+  })
+
+  it("capabilities is an EngineCapabilities descriptor", () => {
+    expectTypeOf<AIEngine["capabilities"]>().toEqualTypeOf<EngineCapabilities>()
   })
 
   it("spawn returns Promise<SessionHandle>", () => {
@@ -132,6 +137,13 @@ describe("AIEngine", () => {
     // Smoke check: a minimal in-memory impl satisfies the interface.
     // If this fails to compile, Stream A's port is broken.
     class Impl implements AIEngine {
+      readonly capabilities: EngineCapabilities = {
+        vendorId: "claude",
+        label: "Stub",
+        models: [],
+        defaultModelId: () => "stub",
+        contextWindowFor: () => 200_000,
+      }
       async spawn(cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<SessionHandle> {
         return { sessionId: "x", cwd }
       }

@@ -38,8 +38,9 @@
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
+import type { AIEngine, EngineCapabilities, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
 import { findClaudeBinary } from "./binary"
+import { claudeCapabilities } from "./capabilities"
 import { deleteHistory as deleteHistoryImpl, readHistory as readHistoryImpl } from "./history"
 import { type ProcessHandle, SessionRegistry } from "./registry"
 import { listSessionsForCwd } from "./sessions"
@@ -71,6 +72,7 @@ interface RunningSession {
 }
 
 export class ClaudeCodeLocal implements AIEngine {
+  readonly capabilities: EngineCapabilities = claudeCapabilities
   private readonly registry = new SessionRegistry()
   private readonly running = new Map<string, RunningSession>()
   private readonly binaryPathResolver: () => Promise<string>

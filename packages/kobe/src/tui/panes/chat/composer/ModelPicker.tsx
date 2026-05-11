@@ -8,11 +8,11 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, createSignal } from "solid-js"
+import { For, createMemo, createSignal } from "solid-js"
+import { allModels, defaultCapabilities } from "@/engine/registry"
 import { useTheme } from "../../../context/theme"
 import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
-import { DEFAULT_MODEL_ID, MODEL_CHOICES } from "./models"
 
 export type ModelPickerResult = string | undefined
 
@@ -26,16 +26,20 @@ function ModelPicker(props: ModelPickerProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
 
+  // Memoised so adding vendors later (codex) doesn't recompute on every
+  // key event. The list is stable for the dialog's lifetime.
+  const choices = createMemo(() => allModels())
+
   // Cursor starts on the currently-pinned model so a single enter
   // re-confirms the existing choice without changing it. When unpinned,
-  // seed on the resolved default (Sonnet 4.6) so the picker reflects
+  // seed on the active vendor's resolved default so the picker reflects
   // what the user is actually running.
-  const seed = props.current ?? DEFAULT_MODEL_ID
-  const initial = MODEL_CHOICES.findIndex((m) => m.id === seed)
+  const seed = props.current ?? defaultCapabilities.defaultModelId()
+  const initial = choices().findIndex((m) => m.id === seed)
   const [cursor, setCursor] = createSignal(initial >= 0 ? initial : 0)
 
   function commit(): void {
-    const choice = MODEL_CHOICES[cursor()]
+    const choice = choices()[cursor()]
     if (!choice) return
     props.onPick(choice.id)
     dialog.clear()
@@ -43,10 +47,10 @@ function ModelPicker(props: ModelPickerProps) {
 
   useBindings(() => ({
     bindings: [
-      { key: "up", cmd: () => setCursor((c) => (c - 1 + MODEL_CHOICES.length) % MODEL_CHOICES.length) },
-      { key: "down", cmd: () => setCursor((c) => (c + 1) % MODEL_CHOICES.length) },
-      { key: "k", cmd: () => setCursor((c) => (c - 1 + MODEL_CHOICES.length) % MODEL_CHOICES.length) },
-      { key: "j", cmd: () => setCursor((c) => (c + 1) % MODEL_CHOICES.length) },
+      { key: "up", cmd: () => setCursor((c) => (c - 1 + choices().length) % choices().length) },
+      { key: "down", cmd: () => setCursor((c) => (c + 1) % choices().length) },
+      { key: "k", cmd: () => setCursor((c) => (c - 1 + choices().length) % choices().length) },
+      { key: "j", cmd: () => setCursor((c) => (c + 1) % choices().length) },
       { key: "return", cmd: commit },
     ],
   }))
@@ -62,7 +66,7 @@ function ModelPicker(props: ModelPickerProps) {
         </text>
       </box>
       <box flexDirection="column" paddingBottom={1}>
-        <For each={MODEL_CHOICES}>
+        <For each={choices()}>
           {(choice, i) => {
             const active = () => i() === cursor()
             return (

@@ -45,6 +45,7 @@ import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
+import { claudeCapabilities } from "../../src/engine/claude-code-local/capabilities.ts"
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -558,6 +559,7 @@ describe("Orchestrator.deleteTask", () => {
     // half-stuck child process. deleteTask must still archive and
     // not bubble up the engine-side failure to the UI.
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         return { sessionId: "sess-1", cwd } satisfies SessionHandle
       },
@@ -676,6 +678,7 @@ describe("Orchestrator.runTask on a main task", () => {
   test("skips ensureWorktree — engine spawns with cwd = repo root, no kobe/tmp-* branch on disk", async () => {
     const calls: { cwd: string }[] = []
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         calls.push({ cwd })
         return { sessionId: "sess-main", cwd } satisfies SessionHandle
@@ -1006,6 +1009,7 @@ describe("Orchestrator engine call shape", () => {
   test("spawn() receives the task's worktreePath as cwd", async () => {
     const calls: { cwd: string; prompt: string }[] = []
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd, prompt) {
         calls.push({ cwd, prompt })
         return { sessionId: "sess-1", cwd } satisfies SessionHandle
