@@ -43,21 +43,98 @@ describe("parseBlocks", () => {
 
   test("unordered list collapses contiguous - / *", () => {
     expect(parseBlocks("- one\n- two\n* three")).toEqual([
-      { kind: "list", ordered: false, start: 1, items: ["one", "two", "three"] },
+      { kind: "list", ordered: false, start: 1, items: [{ text: "one" }, { text: "two" }, { text: "three" }] },
     ])
   })
 
   test("ordered list captures start number", () => {
     expect(parseBlocks("5. five\n6. six\n7. seven")).toEqual([
-      { kind: "list", ordered: true, start: 5, items: ["five", "six", "seven"] },
+      { kind: "list", ordered: true, start: 5, items: [{ text: "five" }, { text: "six" }, { text: "seven" }] },
     ])
   })
 
   test("ordered and unordered lists do not merge", () => {
     expect(parseBlocks("- bullet\n1. number")).toEqual([
-      { kind: "list", ordered: false, start: 1, items: ["bullet"] },
-      { kind: "list", ordered: true, start: 1, items: ["number"] },
+      { kind: "list", ordered: false, start: 1, items: [{ text: "bullet" }] },
+      { kind: "list", ordered: true, start: 1, items: [{ text: "number" }] },
     ])
+  })
+
+  test("GFM task list items pick up checked state", () => {
+    expect(parseBlocks("- [ ] todo\n- [x] done\n- [X] also done\n- plain bullet")).toEqual([
+      {
+        kind: "list",
+        ordered: false,
+        start: 1,
+        items: [
+          { text: "todo", checked: false },
+          { text: "done", checked: true },
+          { text: "also done", checked: true },
+          { text: "plain bullet" },
+        ],
+      },
+    ])
+  })
+
+  test("horizontal rule — three dashes / asterisks / underscores", () => {
+    expect(parseBlocks("---")).toEqual([{ kind: "hr" }])
+    expect(parseBlocks("***")).toEqual([{ kind: "hr" }])
+    expect(parseBlocks("___")).toEqual([{ kind: "hr" }])
+    expect(parseBlocks("- - -")).toEqual([{ kind: "hr" }])
+  })
+
+  test("HR breaks paragraph flow", () => {
+    expect(parseBlocks("intro\n---\nafter")).toEqual([
+      { kind: "paragraph", text: "intro" },
+      { kind: "hr" },
+      { kind: "paragraph", text: "after" },
+    ])
+  })
+
+  test("simple GFM table — two cols, two rows", () => {
+    const src = "| Name | Score |\n| --- | --- |\n| Alice | 1 |\n| Bob | 2 |"
+    expect(parseBlocks(src)).toEqual([
+      {
+        kind: "table",
+        align: ["left", "left"],
+        header: ["Name", "Score"],
+        rows: [
+          ["Alice", "1"],
+          ["Bob", "2"],
+        ],
+      },
+    ])
+  })
+
+  test("table separator alignment markers", () => {
+    const src = "| L | C | R |\n| :--- | :---: | ---: |\n| a | b | c |"
+    expect(parseBlocks(src)).toEqual([
+      {
+        kind: "table",
+        align: ["left", "center", "right"],
+        header: ["L", "C", "R"],
+        rows: [["a", "b", "c"]],
+      },
+    ])
+  })
+
+  test("table row gets padded / clipped to header column count", () => {
+    const src = "| a | b |\n| --- | --- |\n| only-one |\n| one | two | three |"
+    expect(parseBlocks(src)).toEqual([
+      {
+        kind: "table",
+        align: ["left", "left"],
+        header: ["a", "b"],
+        rows: [
+          ["only-one", ""],
+          ["one", "two"],
+        ],
+      },
+    ])
+  })
+
+  test("paragraph with `|` but no separator stays a paragraph", () => {
+    expect(parseBlocks("a | b")).toEqual([{ kind: "paragraph", text: "a | b" }])
   })
 
   test("blockquote strips leading >", () => {
@@ -147,5 +224,34 @@ describe("parseInline", () => {
       { kind: "text", text: " " },
       { kind: "italic", text: "i" },
     ])
+  })
+
+  test("bare URL autolinks without [text](href) wrapper", () => {
+    expect(parseInline("see https://example.com for more")).toEqual([
+      { kind: "text", text: "see " },
+      { kind: "link", text: "https://example.com", href: "https://example.com" },
+      { kind: "text", text: " for more" },
+    ])
+  })
+
+  test("bare URL trims trailing sentence punctuation", () => {
+    expect(parseInline("visit https://example.com.")).toEqual([
+      { kind: "text", text: "visit " },
+      { kind: "link", text: "https://example.com", href: "https://example.com" },
+      { kind: "text", text: "." },
+    ])
+  })
+
+  test("bare URL inside [text](href) does not double-fire", () => {
+    expect(parseInline("[docs](https://example.com)")).toEqual([
+      { kind: "link", text: "docs", href: "https://example.com" },
+    ])
+  })
+
+  test("bare URL only fires at word boundary", () => {
+    // `xhttps://...` is not a real URL — the explicit-link branch is the
+    // only way to get one in mid-token.
+    const out = parseInline("xhttps://nope.com")
+    expect(out.every((t) => t.kind === "text")).toBe(true)
   })
 })

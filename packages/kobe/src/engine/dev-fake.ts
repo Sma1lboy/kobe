@@ -91,9 +91,10 @@ function buildAssistantReply(prompt: string): EngineEvent[] {
   const trimmed = prompt.trim().slice(0, 120)
   const echo = trimmed.length === 0 ? "(empty prompt)" : trimmed
   // Chunks intentionally exercise every Markdown shape the chat-pane
-  // renderer supports so `bun run dev:test` doubles as a visual smoke
-  // for KOB-28 (heading / ordered list / blockquote / link) on top of
-  // the older bold / italic / inline-code / bullet / fenced-code paths.
+  // renderer supports so `bun run dev:test` doubles as a visual smoke:
+  // KOB-28 (heading / ordered list / blockquote / link) on top of the
+  // older bold / italic / inline-code / bullet / fenced-code paths, plus
+  // KOB-47 (table / task list / horizontal rule / bare-URL autolink).
   const chunks = [
     "# Mock reply\n\n",
     "Got it — I read your prompt as: ",
@@ -105,7 +106,20 @@ function buildAssistantReply(prompt: string): EngineEvent[] {
     "3. Then a `done` so the composer unlocks\n\n",
     "### Bullet sanity\n\n",
     "- inline code: `cleanChatText`\n",
-    "- a [link to claude](https://claude.com)\n\n",
+    "- a [link to claude](https://claude.com)\n",
+    "- bare URL: visit https://opentui.dev for docs.\n\n",
+    "### Task list\n\n",
+    "- [x] parse markdown blocks\n",
+    "- [x] render tables with box-drawing\n",
+    "- [ ] syntax-highlight code fences\n",
+    "- [ ] wrap inside table cells\n\n",
+    "---\n\n",
+    "### Table\n\n",
+    "| Feature | Status | Notes |\n",
+    "| :--- | :---: | ---: |\n",
+    "| Tables | ✓ | GFM, with `:---` alignment |\n",
+    "| Task lists | ✓ | `[x]` / `[ ]` |\n",
+    "| Strikethrough | — | disabled, conflicts with `~100` |\n\n",
     "> Block quotes look like this — useful when the model cites itself.\n\n",
     "```ts\nexport const ok = true\n```\n",
   ]
