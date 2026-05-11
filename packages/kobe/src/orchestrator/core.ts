@@ -447,6 +447,18 @@ export class Orchestrator {
     return this.tasksAcc
   }
 
+  /**
+   * Stub parity with {@link RemoteOrchestrator.planUsageSignal} — the
+   * in-process Orchestrator does not poll Claude plan utilization
+   * (that's a daemon responsibility, see `daemon/plan-usage-poller.ts`).
+   * Returns a permanently-null accessor so the WORKSPACE topbar wiring
+   * in `tui/app.tsx` can read it unconditionally without an
+   * `instanceof` narrowing.
+   */
+  planUsageSignal(): Accessor<null> {
+    return () => null
+  }
+
   subscribeTasks(listener: TaskListListener): Unsubscribe {
     return this.store.subscribe(listener)
   }

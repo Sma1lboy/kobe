@@ -5,6 +5,7 @@ import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
 import {
   DAEMON_PROTOCOL_VERSION,
   frameToLine,
@@ -20,6 +21,11 @@ export interface DaemonServerOptions {
   readonly homeDir?: string
   readonly startedAt?: Date
   readonly onStop?: () => void | Promise<void>
+  /**
+   * Override the plan-usage poller. Tests inject a fake fetcher here so
+   * the daemon doesn't actually hit Anthropic's API.
+   */
+  readonly planUsagePoller?: PlanUsagePoller
 }
 
 export interface DaemonServer {
@@ -79,12 +85,24 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     })
   })
 
+  // Plan-usage poller — periodically refreshes claude plan utilization
+  // and broadcasts the snapshot to every attached client. Starts after
+  // `serverApi` is built so `broadcast` is in scope. The first tick
+  // fires immediately so `hello` responses can carry a fresh value
+  // shortly after daemon boot.
+  const planUsagePoller =
+    options.planUsagePoller ??
+    createPlanUsagePoller({
+      onUpdate: (usage) => broadcast(clients, { type: "event", name: "plan.usage", payload: { usage } }),
+    })
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
     startedAt,
     clients,
     async close() {
+      planUsagePoller.stop()
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       await new Promise<void>((resolve) => server.close(() => resolve()))
       for (const client of Array.from(clients)) {
@@ -96,6 +114,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       await unlink(pidPath).catch(() => {})
     },
   }
+  planUsagePoller.start()
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -141,6 +160,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           tasks: tasks.map(serializeTask),
           pending,
           runState,
+          planUsage: planUsagePoller.current(),
         }
       }
       case "daemon.status":

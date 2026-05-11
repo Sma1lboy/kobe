@@ -50,6 +50,7 @@ export type DaemonEventName =
   | "chat.event"
   | "chat.complete"
   | "engine.status"
+  | "plan.usage"
   | "daemon.stopping"
 
 export interface DaemonError {

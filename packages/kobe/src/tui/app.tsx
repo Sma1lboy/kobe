@@ -47,6 +47,7 @@ import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { buildEngine } from "./engine-bootstrap"
+import { formatPlanUsageCompact } from "./lib/format-plan-usage"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useTaskActions } from "./lib/use-task-actions"
 import { useTestSideChannel } from "./lib/use-test-side-channel"
@@ -115,6 +116,12 @@ function Shell(props: AppDeps) {
   const [pendingPrompt, setPendingPrompt] = createSignal<{ taskId: string; prompt: string } | null>(null)
   /** Workspace header context meter (`12% · 24k/200k`), fed by the active chat tab. */
   const [workspaceContextAside, setWorkspaceContextAside] = createSignal<string | null>(null)
+  // Claude plan utilization, fed by the daemon's plan-usage poller.
+  // Independent of the active tab — surfaces in the workspace header
+  // even when no chat is open. The combined memo lives further down,
+  // after `isChatTabActive` is destructured from `useWorkspaceTabs`.
+  const planUsageAcc = props.orchestrator.planUsageSignal()
+  const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
 
   // Background npm-registry version check. Cached for 6h on disk, so
   // typical cold boots return synchronously off the cache. The first
@@ -258,6 +265,18 @@ function Shell(props: AppDeps) {
     selectFileTab,
     closeFileTab,
   } = workspaceTabs
+
+  // Workspace header right-side chip: plan utilization always (when
+  // available) joined to the context meter when a chat tab is active.
+  // Defined here because the join depends on `isChatTabActive`, which
+  // only exists after the destructure above.
+  const workspaceAsideRight = createMemo<string | undefined>(() => {
+    const plan = workspacePlanAside()
+    const ctx = isChatTabActive() ? workspaceContextAside() : null
+    const parts = [plan, ctx].filter((v): v is string => Boolean(v))
+    if (parts.length === 0) return undefined
+    return parts.join("  •  ")
+  })
 
   // Auto-select on first task availability. Prefer the persisted task
   // from the previous run when it still exists; otherwise fall back to
@@ -424,7 +443,7 @@ function Shell(props: AppDeps) {
             title="WORKSPACE"
             ordinal="j"
             subtitle={activeTask()?.title ?? "no task"}
-            asideRight={isChatTabActive() ? (workspaceContextAside() ?? undefined) : undefined}
+            asideRight={workspaceAsideRight()}
             focused={focusedPane() === "workspace"}
           />
           <CenterTabStrip

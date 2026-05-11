@@ -3,6 +3,7 @@ import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
@@ -14,6 +15,8 @@ export class RemoteOrchestrator {
   private readonly setTasks: (next: Task[]) => void
   private readonly runStateAcc: Accessor<ReadonlyMap<string, ChatRunState>>
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
+  private readonly planUsageAcc: Accessor<PlanUsage | null>
+  private readonly setPlanUsage: (next: PlanUsage | null) => void
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
@@ -34,10 +37,13 @@ export class RemoteOrchestrator {
   constructor(private readonly client: KobeDaemonClient) {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
+    const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
     this.runStateAcc = runState
     this.setRunState = (next) => setRunState(() => next)
+    this.planUsageAcc = planUsage
+    this.setPlanUsage = (next) => setPlanUsage(() => next)
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
   }
 
@@ -50,6 +56,7 @@ export class RemoteOrchestrator {
       tasks?: Task[]
       pending?: Record<string, PendingInput[]>
       runState?: Record<string, ChatRunState>
+      planUsage?: PlanUsage | null
     }>("hello", { clientId: `tui-${process.pid}`, version: "1" })
 
     let tasks: Task[]
@@ -68,6 +75,7 @@ export class RemoteOrchestrator {
       for (const [key, value] of Object.entries(hello.runState)) seed.set(key, value)
       if (seed.size > 0) this.setRunState(seed)
     }
+    if (hello.planUsage) this.setPlanUsage(hello.planUsage)
     await this.client.request("subscribe", { taskIds: "all" })
 
     if (hello.pending) {
@@ -108,6 +116,16 @@ export class RemoteOrchestrator {
 
   chatRunStateSignal(): Accessor<ReadonlyMap<string, ChatRunState>> {
     return this.runStateAcc
+  }
+
+  /**
+   * Latest Claude plan-usage snapshot broadcast by the daemon. Returns
+   * `null` until the daemon has fetched at least once (or always, if the
+   * user isn't signed into claude-code). The WORKSPACE topbar reads this
+   * to render the `Plan 5h … · 7d …` chip alongside the context meter.
+   */
+  planUsageSignal(): Accessor<PlanUsage | null> {
+    return this.planUsageAcc
   }
 
   listTasks(): Task[] {
@@ -288,6 +306,11 @@ export class RemoteOrchestrator {
         this.setTasks(this.tasksAcc().filter((t) => t.id !== taskId))
         this.pendingInputBroker.clearForTask(taskId)
       }
+      return
+    }
+    if (name === "plan.usage") {
+      const usage = obj.usage as PlanUsage | null | undefined
+      this.setPlanUsage(usage ?? null)
       return
     }
     const taskId = obj.taskId as string | undefined
