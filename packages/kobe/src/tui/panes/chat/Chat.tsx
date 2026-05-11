@@ -274,6 +274,14 @@ export function Chat(props: ChatProps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)?.model
   })
+  // Per-task worktree path — feeds the composer's `@`-mention file
+  // picker (scoped to the active task's repo checkout, mirrors the
+  // FileTree pane's scoping).
+  const worktreePath = createMemo<string | undefined>(() => {
+    const id = props.taskId()
+    if (!id) return undefined
+    return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
+  })
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
 
   async function chooseModel(): Promise<void> {
@@ -766,6 +774,7 @@ export function Chat(props: ChatProps) {
         onCyclePermissionMode={cyclePermissionMode}
         modelLabel={modelLabel}
         onChooseModel={() => void chooseModel()}
+        worktreePath={worktreePath}
       />
     </box>
   )
