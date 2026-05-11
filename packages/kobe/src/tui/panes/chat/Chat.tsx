@@ -834,41 +834,38 @@ export function Chat(props: ChatProps) {
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
-      {/* Pending-question hint — rendered just above the composer when
-          a question picker is up. The composer stays typeable (text
-          becomes the free-text answer; see handleComposerSubmit) so
-          this is a soft affordance, not a lock. Approval pickers
-          still lock the composer because plan approval is binary. */}
-      <Show when={pendingQuestion() && props.taskId()}>
-        <box paddingLeft={1} paddingRight={1} paddingBottom={0}>
-          <text fg={theme.textMuted}>(pick an option above, or type your own answer here)</text>
-        </box>
+      {/* Composer — hidden entirely while a question picker is up so
+          the user's full attention is on picking (or typing into the
+          inline "Other" input). Reappears as soon as the picker
+          resolves; the user can then type freely again. Approval
+          pickers (ExitPlanMode) keep the composer rendered but locked
+          since approval is binary and the user might still want
+          history / model context affordances visible. */}
+      <Show when={!pendingQuestion()}>
+        <Composer
+          draft={draft()}
+          onDraftChange={setDraft}
+          isStreaming={activeState().isStreaming}
+          hasTask={props.taskId() !== undefined && !isCanceled() && !pendingApproval()}
+          noTaskMessage={
+            isCanceled()
+              ? "(task canceled — pick another or press ctrl+n to create)"
+              : pendingApproval()
+                ? "(answer the prompt above to continue)"
+                : undefined
+          }
+          onSubmit={handleComposerSubmit}
+          focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
+          // Per-tab history scope — prompt history shouldn't bleed across tabs.
+          historyKey={activeTabId() ?? props.taskId()}
+          slashes={slashes}
+          permissionMode={permissionMode}
+          onCyclePermissionMode={cyclePermissionMode}
+          modelLabel={modelLabel}
+          onChooseModel={() => void chooseModel()}
+          worktreePath={worktreePath}
+        />
       </Show>
-
-      {/* Composer. */}
-      <Composer
-        draft={draft()}
-        onDraftChange={setDraft}
-        isStreaming={activeState().isStreaming}
-        hasTask={props.taskId() !== undefined && !isCanceled() && !pendingApproval()}
-        noTaskMessage={
-          isCanceled()
-            ? "(task canceled — pick another or press ctrl+n to create)"
-            : pendingApproval()
-              ? "(answer the prompt above to continue)"
-              : undefined
-        }
-        onSubmit={handleComposerSubmit}
-        focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
-        // Per-tab history scope — prompt history shouldn't bleed across tabs.
-        historyKey={activeTabId() ?? props.taskId()}
-        slashes={slashes}
-        permissionMode={permissionMode}
-        onCyclePermissionMode={cyclePermissionMode}
-        modelLabel={modelLabel}
-        onChooseModel={() => void chooseModel()}
-        worktreePath={worktreePath}
-      />
     </box>
   )
 }
