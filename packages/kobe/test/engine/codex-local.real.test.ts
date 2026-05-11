@@ -134,6 +134,43 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
     const bad = new CodexLocal({ binaryPathResolver: async () => "/definitely/not/a/binary" })
     await expect(bad.spawn("/tmp", "noop", PERMISSION)).rejects.toBeDefined()
   })
+
+  // V8 pins each CODEX_MODELS catalog entry explicitly and asserts
+  // codex doesn't reject it with the ChatGPT-account 400 error. This
+  // is the regression that would have caught the initial bad catalog
+  // (`gpt-5-codex` / `gpt-5` / `o3`) — V1-V6 all used the codex config
+  // default, so the catalog could silently drift away from
+  // ChatGPT-account-compatible ids and tests would still pass.
+  test("V8: every CODEX_MODELS entry actually accepted by codex", { timeout: 120_000 }, async () => {
+    const { CODEX_MODELS } = await import("@/engine/codex-local/models")
+    const failures: { id: string; error: string }[] = []
+    for (const choice of CODEX_MODELS) {
+      const handle = await engine.spawn("/tmp", "Reply with exactly the word OK.", {
+        ...PERMISSION,
+        model: choice.id,
+      })
+      const events: any[] = []
+      for await (const ev of engine.stream(handle)) {
+        events.push(ev)
+        if (ev.type === "done" || ev.type === "error") break
+      }
+      const err = events.find((e) => e.type === "error")
+      if (err) {
+        const msg = String(err.message).toLowerCase()
+        // 400 invalid_request_error includes "model is not supported"
+        // or "not supported when using codex with a chatgpt account".
+        // Either is a catalog regression.
+        if (msg.includes("not supported") || msg.includes("invalid_request_error")) {
+          failures.push({ id: choice.id, error: err.message.slice(0, 200) })
+        }
+        // Other errors (rate limit, transient network) are tolerated
+        // — V8 only enforces the model-id contract.
+      }
+      // Best-effort cleanup so we don't pile up rollouts during this test.
+      try { await engine.deleteHistory(handle.sessionId) } catch { /* noop */ }
+    }
+    expect(failures, `unsupported models in catalog: ${JSON.stringify(failures)}`).toEqual([])
+  })
 })
 
 d("CodexLocal — orchestrator end-to-end (V7)", () => {
