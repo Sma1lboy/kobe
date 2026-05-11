@@ -212,7 +212,29 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       }
       case "task.ensureMain": {
-        const task = await orch.ensureMainTask(requireString(payload, "repo"))
+        const repo = requireString(payload, "repo")
+        // Snapshot the pre-call state so we can distinguish (a) fresh
+        // creation, (b) unarchive of a previously-removed-from-saved-
+        // repos main task, (c) idempotent no-op. Without this, the
+        // freshly-created or unarchived task never reaches other
+        // attached clients — RemoteOrchestrator's tasksSignal stays
+        // stale and the persisted lastSelectedTaskId can resolve to
+        // an "archived" main task that the sidebar / auto-select
+        // can't see. Mirrors the pattern used by every other task-
+        // mutating handler after the subscribeTasks broadcast was
+        // dropped.
+        const prior = orch.listTasks().find((t) => t.kind === "main" && t.repo === repo)
+        const task = await orch.ensureMainTask(repo)
+        if (!prior) {
+          // Fresh main task — subscribe every attached client to its
+          // tabs (mirrors task.spawn) then broadcast task.created.
+          for (const c of clients) subscribeClientToTask(orch, c, task)
+          broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
+        } else if (prior.archived && !task.archived) {
+          // Unarchive path inside ensureMainTask — broadcast as an
+          // update so sidebar buckets re-sort the row out of Archives.
+          broadcastTaskUpdated(orch, clients, task.id)
+        }
         return { task: serializeTask(task) }
       }
       case "chat.tab.create": {

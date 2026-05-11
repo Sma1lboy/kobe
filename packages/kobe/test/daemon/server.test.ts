@@ -418,6 +418,70 @@ describe("daemon server", () => {
     }
   })
 
+  test("task.ensureMain broadcasts task.created on fresh creation so RemoteOrchestrator picks it up", async () => {
+    // Regression: removing the auto-snapshot subscribeTasks listener
+    // left task.ensureMain silent. Fresh main tasks landed on disk
+    // but no attached client saw them — RemoteOrchestrator's
+    // tasksSignal stayed stale, breaking lastSelectedTaskId restore
+    // and the sidebar's "main task at top" placement.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const a = new KobeDaemonClient(socketPath)
+    const b = new KobeDaemonClient(socketPath)
+    try {
+      await a.connect()
+      await b.connect()
+      const created = new Promise<{ task: { id: string; kind?: string; repo: string } }>((resolve) => {
+        b.on("task.created", (frame) => resolve(frame.payload as { task: { id: string; kind?: string; repo: string } }))
+      })
+      await a.request<{ task: { id: string } }>("task.ensureMain", { repo })
+      const evt = await created
+      expect(evt.task.kind).toBe("main")
+      expect(evt.task.repo).toBe(repo)
+    } finally {
+      a.close()
+      b.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
+  test("task.ensureMain broadcasts task.updated when unarchiving an existing main task", async () => {
+    // Companion regression: re-adding a saved repo flips a previously
+    // archived main task to archived:false. Without the broadcast the
+    // sidebar Archives / Working session buckets stay desynced and
+    // the row appears stuck in Archives.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const driver = new KobeDaemonClient(socketPath)
+    const watcher = new KobeDaemonClient(socketPath)
+    try {
+      await driver.connect()
+      await watcher.connect()
+      // Seed: create main, then archive it directly through the store
+      // to simulate a prior "remove from saved repos" gesture.
+      const first = await driver.request<{ task: { id: string } }>("task.ensureMain", { repo })
+      await (orch as unknown as { store: { update: (id: string, patch: unknown) => Promise<void> } }).store.update(
+        first.task.id,
+        { archived: true },
+      )
+      const unarchived = new Promise<{ task: { id: string; archived: boolean } }>((resolve) => {
+        watcher.on("task.updated", (frame) => {
+          const payload = frame.payload as { task: { id: string; archived: boolean } }
+          if (payload.task.id === first.task.id && payload.task.archived === false) resolve(payload)
+        })
+      })
+      await driver.request("task.ensureMain", { repo })
+      const evt = await unarchived
+      expect(evt.task.archived).toBe(false)
+    } finally {
+      driver.close()
+      watcher.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("chat.tab.activate broadcasts task.updated so clients learn the new activeTabId", async () => {
     // Regression: chat-tab switching looked broken from the TUI side.
     // The composer flipped activeTabIdLocal optimistically, then
