@@ -147,10 +147,38 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     const role = payload.role
     if (role !== "user" && role !== "assistant" && role !== "system") continue
     const blocks = normalizeCodexContent(payload.content)
+    // Drop codex's synthetic "<environment_context>...</environment_context>"
+    // envelope. Codex injects this as the first user message of every
+    // session (cwd / shell / current_date / timezone / network access
+    // / sandbox mode payload), persists it in the rollout JSONL, and
+    // — unfiltered — surfaces in kobe's chat as a leading "user said
+    // <environment_context>...</environment_context>" row that
+    // doesn't belong to the conversation. The live `codex exec --json`
+    // stream does NOT replay it (it lives only on disk), so the leak
+    // is history-reload only. claude-code has the same shape with its
+    // own `<system-reminder>` blocks and filters them at the same
+    // layer.
+    if (role === "user" && isEnvironmentContextEnvelope(blocks)) continue
     const ts = typeof parsed.timestamp === "string" ? (parsed.timestamp as string) : new Date().toISOString()
     out.push({ role, blocks, timestamp: ts, sessionId })
   }
   return out
+}
+
+/**
+ * True when every text block in the message is just codex's
+ * `<environment_context>...</environment_context>` envelope.
+ * Conservative — anything else mixed in (a user prompt that happens to
+ * paste an envelope-shaped string) is preserved.
+ */
+function isEnvironmentContextEnvelope(blocks: readonly { type: string; text?: string }[]): boolean {
+  if (blocks.length === 0) return false
+  for (const b of blocks) {
+    if (b.type !== "text") return false
+    const t = (b.text ?? "").trim()
+    if (!t.startsWith("<environment_context>") || !t.endsWith("</environment_context>")) return false
+  }
+  return true
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

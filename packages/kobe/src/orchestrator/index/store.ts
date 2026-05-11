@@ -44,6 +44,7 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { ENGINE_REGISTRY, capabilitiesForModelId } from "../../engine/registry.ts"
 import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus, VendorId } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
@@ -567,7 +568,16 @@ function coerceTask(value: unknown): Task | null {
     // without per-call fallback. Unknown strings also fall back to the
     // default — defensive against hand-edited JSON or future vendor
     // values that this kobe build doesn't yet know about.
-    vendor: isVendorId(v.vendor) ? v.vendor : DEFAULT_TASK_VENDOR,
+    //
+    // Self-heal: if the stored model id sits in another vendor's
+    // catalog (e.g. early-codex tasks ended up with vendor="claude"
+    // when the catalog hadn't been corrected yet), trust the model id
+    // and override the vendor. The model id is the load-bearing pin
+    // — `Task.model="gpt-5.5" + vendor="claude"` is internally
+    // contradictory: claude rejects `--model gpt-5.5` with
+    // `error_during_execution`, which is exactly the regression this
+    // recovery catches.
+    vendor: resolveTaskVendor(v.vendor, typeof v.model === "string" ? v.model : undefined),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
@@ -579,6 +589,27 @@ function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMod
 
 function isVendorId(v: unknown): v is VendorId {
   return v === "claude" || v === "codex"
+}
+
+/**
+ * Pick a task's vendor at load time, preferring an explicit stored
+ * value but auto-correcting when the stored model id clearly belongs
+ * to a different vendor's catalog. See {@link Task.vendor} comment in
+ * `types/task.ts` for the contract.
+ *
+ * The `capabilitiesForModelId` helper returns `defaultCapabilities`
+ * (= claude) when no catalog matches — that's a "don't know" signal,
+ * not "should be claude". So we only override when the catalog
+ * actually identifies a vendor for this id. Free-form pinned ids
+ * (e.g. a custom model id the user typed in) round-trip with their
+ * stored vendor unchanged.
+ */
+function resolveTaskVendor(rawVendor: unknown, modelId: string | undefined): VendorId {
+  const stored = isVendorId(rawVendor) ? rawVendor : DEFAULT_TASK_VENDOR
+  if (!modelId) return stored
+  const matched = Object.values(ENGINE_REGISTRY).some((caps) => caps?.models.some((m) => m.id === modelId))
+  if (!matched) return stored
+  return capabilitiesForModelId(modelId).vendorId
 }
 
 function isTaskStatus(s: string): s is TaskStatus {

@@ -649,3 +649,71 @@ describe("ulid", () => {
     expect(b.slice(0, 10) > a.slice(0, 10)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// vendor self-heal
+// ---------------------------------------------------------------------------
+
+describe("TaskIndexStore — vendor self-heal", () => {
+  // The bug this guards: an early codex task got persisted with
+  // `model: "gpt-5.5"` (a codex id) but `vendor: "claude"` (the
+  // fallback at the time, because gpt-5.5 wasn't in any catalog yet).
+  // Orchestrator routed runTask to ClaudeCodeLocal which rejected the
+  // model id and crashed every turn with error_during_execution.
+  // Loader should now trust the model id over the stored vendor.
+
+  async function writeRawTask(taskOverride: Record<string, unknown>): Promise<void> {
+    await mkdir(join(homeDir, ".kobe"), { recursive: true })
+    const tasksJson = {
+      version: 2,
+      tasks: [
+        {
+          id: "01HZA",
+          title: "test",
+          repo: "/r",
+          branch: "kobe/x",
+          worktreePath: "/r/x",
+          sessionId: null,
+          tabs: [{ id: "01TAB", sessionId: null, seq: 1, createdAt: "2026-05-11T00:00:00Z" }],
+          activeTabId: "01TAB",
+          status: "backlog",
+          createdAt: "2026-05-11T00:00:00Z",
+          updatedAt: "2026-05-11T00:00:00Z",
+          ...taskOverride,
+        },
+      ],
+    }
+    await writeFile(join(homeDir, ".kobe", "tasks.json"), JSON.stringify(tasksJson), "utf8")
+  }
+
+  test("loader corrects vendor when stored model id sits in a different vendor's catalog", async () => {
+    await writeRawTask({ model: "gpt-5.5", vendor: "claude" })
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const task = store.get("01HZA")
+    expect(task?.model).toBe("gpt-5.5")
+    expect(task?.vendor).toBe("codex")
+  })
+
+  test("loader preserves stored vendor when the model id IS in that vendor's catalog", async () => {
+    await writeRawTask({ model: "claude-opus-4-7", vendor: "claude" })
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    expect(store.get("01HZA")?.vendor).toBe("claude")
+  })
+
+  test("loader preserves stored vendor when the model id matches no catalog (unknown id)", async () => {
+    // Free-form pinned ids must round-trip without surprise vendor flips.
+    await writeRawTask({ model: "some-future-model-id", vendor: "codex" })
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    expect(store.get("01HZA")?.vendor).toBe("codex")
+  })
+
+  test("loader defaults missing vendor to claude when no model is set", async () => {
+    await writeRawTask({ model: undefined, vendor: undefined })
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    expect(store.get("01HZA")?.vendor).toBe("claude")
+  })
+})
