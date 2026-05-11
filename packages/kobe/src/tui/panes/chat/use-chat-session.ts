@@ -93,13 +93,19 @@ export interface ChatSessionHandle {
   setDraft(value: string): void
 }
 
+// Composer drafts live at module scope so they survive `<Chat>`
+// unmount/remount. The workspace center column toggles between Chat
+// and Preview via `<Show>` (see app.tsx) — opening a file unmounts
+// Chat, which would wipe a hook-local draft signal. Tab ids are
+// globally unique, so a single shared map across the renderer is safe.
+// Per-closed-tab cleanup still happens in `syncTabSubs` below.
+const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
+
 export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   const { orchestrator, onTaskReset } = opts
 
-  // Per-tab reducer state + composer drafts. Both maps live behind
-  // copy-on-write so Solid notices the reference change.
+  // Per-tab reducer state — copy-on-write so Solid notices reference changes.
   const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
-  const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
   const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
 
   // Subscription registry. Lives outside the reactive system —
@@ -270,7 +276,6 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       if (currentSubsTaskId !== null) {
         teardownAllSubs()
         setStatesByTab(new Map())
-        setDraftsByTab(new Map())
         onTaskReset?.()
       }
       setActiveTabIdLocal(null)
@@ -286,9 +291,13 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     }
     if (currentSubsTaskId !== id) {
       // Switched tasks (or first time we see this task): reset.
+      // NB: `draftsByTab` is module-scoped and is NOT wiped here — this
+      // branch fires on every `<Chat>` remount (e.g. after the user
+      // opens a file in the workspace, which unmounts Chat via `<Show>`)
+      // and wiping would erase the in-progress composer text. Drafts
+      // are pruned per-tab in `syncTabSubs` when a tab is closed.
       teardownAllSubs()
       setStatesByTab(new Map())
-      setDraftsByTab(new Map())
       currentSubsTaskId = id
       setActiveTabIdLocal(live.activeTabId)
       onTaskReset?.()
@@ -316,7 +325,11 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   onCleanup(() => {
     teardownAllSubs()
     setStatesByTab(new Map())
-    setDraftsByTab(new Map())
+    // NOTE: do not wipe `draftsByTab` here. The workspace center column
+    // toggles Chat ↔ Preview via `<Show>` (app.tsx), so this cleanup
+    // fires every time the user opens a file — which would erase the
+    // in-progress draft. Drafts are at module scope and get pruned
+    // per-tab on close (`syncTabSubs`) and per-task on switch (above).
   })
 
   return {
