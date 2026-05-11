@@ -203,6 +203,10 @@ export class RemoteOrchestrator {
     return res.nextActive
   }
 
+  async clearTab(taskId: string, tabId: string): Promise<void> {
+    await this.client.request("chat.tab.clear", { taskId, tabId })
+  }
+
   async setActiveTab(taskId: string, tabId: string): Promise<void> {
     await this.client.request("chat.tab.activate", { taskId, tabId })
   }

@@ -1469,6 +1469,28 @@ export class Orchestrator {
   }
 
   /**
+   * Reset a chat tab back to an empty state. Stops any live engine
+   * session for the tab, drops its `sessionId` so the next `runTask`
+   * starts a brand-new Claude session instead of resuming the prior
+   * one, and dispatches a `chat.tab.cleared` event so every attached
+   * TUI's reducer wipes the tab's `ChatState` in lockstep.
+   *
+   * The on-disk JSONL transcript of the prior session is intentionally
+   * left intact — `/clear` is a "start over here" verb, not a delete.
+   * The user can still reach the old conversation via the resume picker
+   * (`ctrl+r`), which scans `~/.claude/projects/<cwd>/` directly.
+   */
+  async clearTab(id: TaskId | string, tabId: string): Promise<void> {
+    const task = this.requireTask(id)
+    if (!task.tabs.some((t) => t.id === tabId)) {
+      throw new Error(`clearTab: tab ${tabId} not found on task ${task.id}`)
+    }
+    await this.stopTab(task.id as TaskId, tabId)
+    await this.updateTab(task.id as TaskId, tabId, { sessionId: null })
+    this.dispatchEvent(task.id as TaskId, tabId, { type: "chat.tab.cleared" })
+  }
+
+  /**
    * Close (= remove) a chat tab. Stops the tab's engine session if
    * running. Refuses to close the last remaining tab — kobe's chat
    * shell always has at least one tab. If the closed tab was the

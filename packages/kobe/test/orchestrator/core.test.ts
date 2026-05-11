@@ -454,6 +454,57 @@ describe("Orchestrator.interruptTask", () => {
 })
 
 // ----------------------------------------------------------------------
+// clearTab
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.clearTab", () => {
+  test("drops sessionId, stops the engine, and emits chat.tab.cleared", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch, store } = await buildOrchestrator(fake)
+
+    const t = await orch.createTask({ repo, title: "clear", prompt: "" })
+    await orch.runTask(t.id, "first prompt")
+    const tabId = store.get(t.id)?.activeTabId ?? ""
+    expect(tabId).not.toBe("")
+    // runTask back-fills the tab's sessionId once the engine spawns.
+    expect(store.get(t.id)?.tabs.find((x) => x.id === tabId)?.sessionId).toBeTruthy()
+
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev), tabId)
+
+    await orch.clearTab(t.id, tabId)
+
+    expect(store.get(t.id)?.tabs.find((x) => x.id === tabId)?.sessionId).toBeNull()
+    expect(stopSpy).toHaveBeenCalled()
+    expect(events.some((e) => e.type === "chat.tab.cleared")).toBe(true)
+    await orch._waitForPumpsIdle()
+  })
+
+  test("is safe to call on an idle tab with no live handle", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "idle-clear", prompt: "" })
+    const tabId = store.get(t.id)?.activeTabId ?? ""
+    expect(tabId).not.toBe("")
+    // No runTask — sessionId is already null, but clearTab must still
+    // succeed and dispatch the event so any attached TUI re-renders.
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev), tabId)
+    await orch.clearTab(t.id, tabId)
+    expect(stopSpy).not.toHaveBeenCalled()
+    expect(events.some((e) => e.type === "chat.tab.cleared")).toBe(true)
+  })
+
+  test("rejects when the tab id does not exist on the task", async () => {
+    const { orch } = await buildOrchestrator()
+    const t = await orch.createTask({ repo, title: "bad-tab", prompt: "" })
+    await expect(orch.clearTab(t.id, "no-such-tab")).rejects.toThrow(/clearTab: tab .* not found/)
+  })
+})
+
+// ----------------------------------------------------------------------
 // archiveTask
 // ----------------------------------------------------------------------
 

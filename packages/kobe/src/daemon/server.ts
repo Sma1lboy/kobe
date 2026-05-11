@@ -293,6 +293,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
+      case "chat.tab.clear": {
+        const taskId = requireString(payload, "taskId")
+        await orch.clearTab(taskId, requireString(payload, "tabId"))
+        // Broadcast the task delta too — `clearTab` dropped the tab's
+        // sessionId, so any attached TUI's tab list mirror needs the
+        // refresh to reflect the new "fresh tab" state alongside the
+        // `chat.tab.cleared` event that resets the reducer.
+        broadcastTaskUpdated(orch, clients, taskId)
+        return {}
+      }
       case "chat.sessions": {
         const sessions = await orch.listSessions(requireString(payload, "taskId"))
         return { sessions }

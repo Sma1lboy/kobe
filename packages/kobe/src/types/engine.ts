@@ -322,6 +322,16 @@ export type SystemInfoEvent = {
 }
 
 /**
+ * Tells the chat shell to wipe a tab back to its empty state.
+ * Fired by `Orchestrator.clearTab` (the `/clear` slash command) after
+ * the tab's session id has been dropped server-side, so every attached
+ * TUI's reducer resets in lockstep over the multi-attach broadcast.
+ */
+export type ChatTabClearedEvent = {
+  readonly type: "chat.tab.cleared"
+}
+
+/**
  * Anything dispatched on the orchestrator's per-task subscriber bus.
  * UI subscribers (chat) consume this wider type; engine impls produce
  * only the {@link EngineEvent} subset.
@@ -332,6 +342,7 @@ export type OrchestratorEvent =
   | UserInputRequestEvent
   | UserInputResolvedEvent
   | SystemInfoEvent
+  | ChatTabClearedEvent
 
 /**
  * The single seam between kobe and "the thing running tasks."

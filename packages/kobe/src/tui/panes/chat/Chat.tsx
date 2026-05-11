@@ -152,8 +152,7 @@ export function Chat(props: ChatProps) {
     const map = new Map<string, Tagged>()
     for (const e of BUILTIN_CLAUDE_SLASHES) map.set(e.name, { entry: e, source: "builtin" })
     for (const e of userSlashes()) map.set(e.name, { entry: e, source: "user" })
-    return [...map.values()]
-      .sort((a, b) => a.entry.name.localeCompare(b.entry.name))
+    const claudeEntries: ComposerSlashEntry[] = [...map.values()]
       .map(({ entry, source }) => ({
         display: `/${entry.name}`,
         description: entry.description || undefined,
@@ -163,6 +162,20 @@ export function Chat(props: ChatProps) {
           void send(`/${entry.name}`)
         },
       }))
+    // kobe-side slashes are short-circuited in `send()` rather than
+    // forwarded to the engine. Listed here purely so the dropdown
+    // surfaces them as a discoverable command.
+    const kobeEntries: ComposerSlashEntry[] = [
+      {
+        display: "/clear",
+        description: "Reset this chat tab (drops session, keeps history on disk)",
+        source: "builtin",
+        onSelect: () => {
+          void send("/clear")
+        },
+      },
+    ]
+    return [...kobeEntries, ...claudeEntries].sort((a, b) => a.display.localeCompare(b.display))
   })
 
   // Per-ChatTab state + subscription lifecycle live in
@@ -445,6 +458,21 @@ export function Chat(props: ChatProps) {
     if (!text || !taskId || !tabId) return
     if (isCanceled()) return
     if (hasPendingInput()) return // approval/question picker has the floor
+
+    // kobe-side slash short-circuit: `/clear` resets the active tab.
+    // Handled here (not on the slash entry's onSelect) so a user
+    // typing `/clear` directly and pressing Enter — even with the
+    // dropdown dismissed — still hits the reset path instead of
+    // sending the literal string to the engine.
+    if (text === "/clear") {
+      setDraft("")
+      try {
+        await props.orchestrator.clearTab(taskId, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `/clear failed: ${stringifyErr(err)}`))
+      }
+      return
+    }
 
     const streaming = activeState().isStreaming
 

@@ -513,6 +513,13 @@ export function applyEvent(
         ...state,
         messages: capMessages([...state.messages, { kind: "system", text: ev.text, ts: nowIso }], nowIso),
       }
+    case "chat.tab.cleared":
+      // `/clear` slash command. Wipe the tab back to a freshly-mounted
+      // shape — no messages, no streaming flag, no queue, no pending
+      // approval, no usage meter. The orchestrator has already dropped
+      // the tab's sessionId server-side so the next runTask spawns a
+      // new Claude session instead of resuming the old one.
+      return createInitialState()
     case "user_input.request": {
       // Subprocess has exited (the tool runs to completion in -p mode
       // and just leaves a marker), so streaming flips off — the
