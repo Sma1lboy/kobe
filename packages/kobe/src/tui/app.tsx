@@ -486,19 +486,21 @@ function Shell(props: AppDeps) {
             asideRight={workspaceAsideRight()}
             focused={focusedPane() === "workspace"}
           />
-          <CenterTabStrip
-            isChatActive={isChatTabActive}
-            activeFile={activeFileTabPath}
-            chatTabs={activeChatTabsAcc}
-            activeChatTabId={activeChatTabIdAcc}
-            activeTaskId={taskIdAcc}
-            chatRunState={chatRunStateAcc}
-            unread={notifications.unread}
-            onSelectChat={selectChatTab}
-            onSelectChatTab={selectChatTabById}
-            onSelectFile={selectFileTab}
-            onCloseFile={closeFileTab}
-          />
+          <Show when={selectedId()}>
+            <CenterTabStrip
+              isChatActive={isChatTabActive}
+              activeFile={activeFileTabPath}
+              chatTabs={activeChatTabsAcc}
+              activeChatTabId={activeChatTabIdAcc}
+              activeTaskId={taskIdAcc}
+              chatRunState={chatRunStateAcc}
+              unread={notifications.unread}
+              onSelectChat={selectChatTab}
+              onSelectChatTab={selectChatTabById}
+              onSelectFile={selectFileTab}
+              onCloseFile={closeFileTab}
+            />
+          </Show>
           <box flexGrow={1}>
             <Show
               when={isChatTabActive()}
