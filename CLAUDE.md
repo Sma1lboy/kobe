@@ -19,7 +19,7 @@ The architecture decisions are not obvious from the code (the code is mostly emp
   - Run package scripts via `bun --filter @sma1lboy/kobe <script>` or `cd packages/kobe && bun <script>`.
   - Repo-wide tools at root: `biome.json`, `bun.lock`, `.github/workflows/`, `docs/`, `CLAUDE.md`, `HANDOFF.md`.
 - `refs/` contains study material (symlinks + clones), **gitignored**. **Never edit anything inside `refs/`.**
-- The user's name is Jackson (sma1lboy). Respond in the language they use (Chinese or English).
+- Respond in whatever language the current user is writing in. Don't assume their name — let them introduce themselves.
 - Tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun**. Do not re-litigate.
 
 ## Reference repos — clone before development
