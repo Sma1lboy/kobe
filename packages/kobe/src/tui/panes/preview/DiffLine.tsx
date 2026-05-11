@@ -68,7 +68,7 @@ export function FileLine(props: { text: string }) {
   const { theme } = useTheme()
   return (
     <box paddingLeft={1} paddingRight={1}>
-      <text fg={theme.text} wrapMode="none">
+      <text fg={theme.text} wrapMode="word">
         {props.text || " "}
       </text>
     </box>
