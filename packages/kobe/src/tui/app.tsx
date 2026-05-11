@@ -26,7 +26,7 @@ import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
-import { Orchestrator } from "../orchestrator/core.ts"
+import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
@@ -38,16 +38,19 @@ import { HelpDialog } from "./component/help-dialog"
 import { PaneHeader } from "./component/pane-header"
 import { ResizableEdge } from "./component/resizable-edge"
 import { StatusBar } from "./component/status-bar"
+import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
+import { NotificationsProvider, useNotifications } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { buildEngine } from "./engine-bootstrap"
 import { formatPlanUsageCompact } from "./lib/format-plan-usage"
+import { useCompletionNotifications } from "./lib/use-completion-notifications"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useTaskActions } from "./lib/use-task-actions"
 import { useTestSideChannel } from "./lib/use-test-side-channel"
@@ -91,6 +94,7 @@ function Shell(props: AppDeps) {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
+  const notifications = useNotifications()
 
   // Theme / KV round-trip — hydrate once on mount, then mirror every
   // change back. See `./lib/use-theme-persistence.ts` for the three
@@ -357,6 +361,42 @@ function Shell(props: AppDeps) {
     activeTask,
   })
 
+  // Per-ChatTab completion notifications.
+  //
+  // Compute the (task, tab) currently visible to the user — used to
+  // suppress notifications for in-view transitions. "Visible" means
+  // the workspace is on chat AND this is the active chat tab in the
+  // active task. The focused-pane is irrelevant: even if the user is
+  // currently typing in the sidebar, the chat tab they last looked at
+  // is still on screen; we shouldn't toast a "done" they can plainly
+  // see. We don't gate on the parent terminal having focus either —
+  // host focus isn't reliably observable from a TUI.
+  const visibleTabKey = createMemo<string | null>(() => {
+    const taskId = selectedId()
+    const tabId = activeChatTabIdAcc()
+    if (!taskId || !tabId) return null
+    if (!isChatTabActive()) return null
+    return chatRunStateKey(taskId, tabId)
+  })
+  useCompletionNotifications({
+    chatRunState: chatRunStateAcc,
+    tasks: tasksAcc,
+    visibleTabKey,
+    notifications,
+  })
+  // Clear the unread mark whenever the user is visibly looking at a
+  // tab. Wraps the visible-tab-key computation rather than hooking
+  // selectChatTabById so it also covers: switching back to chat from a
+  // file tab, swapping tasks where the new active tab had a pending
+  // unread, etc. — anywhere the chip becomes the in-view chip.
+  createEffect(() => {
+    const key = visibleTabKey()
+    if (!key) return
+    const idx = key.indexOf(":")
+    if (idx < 0) return
+    notifications.markRead(key.slice(0, idx), key.slice(idx + 1))
+  })
+
   // Behavior-test side-channel — mounts globals on `globalThis` that
   // the fake-engine HTTP server reads at request time. See
   // `./lib/use-test-side-channel.ts` for the two globals
@@ -453,6 +493,7 @@ function Shell(props: AppDeps) {
             activeChatTabId={activeChatTabIdAcc}
             activeTaskId={taskIdAcc}
             chatRunState={chatRunStateAcc}
+            unread={notifications.unread}
             onSelectChat={selectChatTab}
             onSelectChatTab={selectChatTabById}
             onSelectFile={selectFileTab}
@@ -536,6 +577,10 @@ function Shell(props: AppDeps) {
         </box>
       </box>
       <StatusBar />
+      {/* Bottom-right transient toasts for background-tab completions
+          and approval requests. Sits on its own position="absolute"
+          layer above the panes but below the dialog backdrop. */}
+      <ToastOverlay />
     </box>
   )
 }
@@ -544,15 +589,17 @@ function App(props: AppDeps) {
   return (
     <ThemeProvider mode="dark" theme={DEFAULT_THEME}>
       <KVProvider>
-        <SyncProvider>
-          <DialogProvider>
-            <CommandPaletteProvider>
-              <FocusProvider>
-                <Shell {...props} />
-              </FocusProvider>
-            </CommandPaletteProvider>
-          </DialogProvider>
-        </SyncProvider>
+        <NotificationsProvider>
+          <SyncProvider>
+            <DialogProvider>
+              <CommandPaletteProvider>
+                <FocusProvider>
+                  <Shell {...props} />
+                </FocusProvider>
+              </CommandPaletteProvider>
+            </DialogProvider>
+          </SyncProvider>
+        </NotificationsProvider>
       </KVProvider>
     </ThemeProvider>
   )

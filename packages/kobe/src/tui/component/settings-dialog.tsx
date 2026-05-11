@@ -108,14 +108,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return hasDaemon ? 2 : 1
   }
   function bodyRowCount(): number {
-    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
+    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length + 1
     if (section() === "dev") return devRowCount()
     return 0
   }
   // Map bodyRow to the underlying selection within the General section.
-  // 0..N-1                       → theme at that index
-  // N                            → transparent-bg toggle
-  // N+1..N+FOCUS_ACCENT_SLOTS.length → focus-accent slot picker
+  // 0..N-1                                       → theme at that index
+  // N                                            → transparent-bg toggle
+  // N+1..N+FOCUS_ACCENT_SLOTS.length             → focus-accent slot picker
+  // N+1+FOCUS_ACCENT_SLOTS.length                → notifications toggle
   function isTransparentRow(): boolean {
     return section() === "general" && bodyRow() === themeNames().length
   }
@@ -125,6 +126,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
     const i = bodyRow() - offset
     if (i < 0 || i >= FOCUS_ACCENT_SLOTS.length) return null
     return i
+  }
+  function notificationsRowIndex(): number {
+    return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
+  }
+  function isNotificationsRow(): boolean {
+    return section() === "general" && bodyRow() === notificationsRowIndex()
+  }
+  // Read through the reactive KV store so the toggle's `[x]/[ ]` label
+  // re-renders when toggled. Default `true` mirrors the contract in
+  // `notifications.tsx` — first-launch users get notifications on.
+  function notificationsEnabled(): boolean {
+    return (props.kv.get("notifications.enabled", true) as boolean) !== false
+  }
+  function toggleNotifications(): void {
+    props.kv.set("notifications.enabled", !notificationsEnabled())
   }
 
   function moveCursor(delta: number): void {
@@ -325,6 +341,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
               if (slot) themeCtx.setFocusAccent(slot)
               return
             }
+            if (isNotificationsRow()) {
+              toggleNotifications()
+              return
+            }
             const name = themeNames()[bodyRow()]
             if (name) themeCtx.set(name)
             return
@@ -512,6 +532,46 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     )
                   }}
                 </For>
+              </box>
+              {/* Notifications toggle — gates the terminal bell + audible
+                  pulse + toast overlay fired when a background chat-tab
+                  transitions out of `running`. The unread dot on the tab
+                  chip is intentionally NOT gated: it's a passive marker,
+                  not an interruption, and turning the toggle off
+                  shouldn't lose the "you missed something" signal. */}
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  Notifications
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Ring the terminal bell, play a chime, and pop a toast when a background chat tab finishes or pauses on
+                  an approval. Tab-chip unread dot is always on.
+                </text>
+                <box
+                  flexDirection="row"
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={isNotificationsRow() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    setLevel("body")
+                    setBodyRow(notificationsRowIndex())
+                    toggleNotifications()
+                  }}
+                >
+                  <text
+                    fg={
+                      isNotificationsRow()
+                        ? theme.selectedListItemText
+                        : notificationsEnabled()
+                          ? theme.accent
+                          : theme.textMuted
+                    }
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {notificationsEnabled() ? "[x] on" : "[ ] off"}
+                  </text>
+                </box>
               </box>
             </box>
           </Show>
