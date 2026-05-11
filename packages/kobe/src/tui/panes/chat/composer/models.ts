@@ -48,6 +48,21 @@ export const MODEL_CHOICES: readonly ModelChoice[] = [
 ] as const
 
 /**
+ * Claude-code aliases (`opus`, `opus[1m]`, `sonnet`, ...) that the CLI
+ * resolves to a current canonical id at *its* runtime. Users commonly
+ * pin one of these in `~/.claude/settings.json` (`model` key), so we
+ * map them to the matching canonical entry purely for *display* — the
+ * id we store / pass through to `claude --model` stays the alias.
+ */
+const ALIAS_TO_ID: Readonly<Record<string, string>> = {
+  opus: "claude-opus-4-7",
+  "opus[1m]": "claude-opus-4-7[1m]",
+  sonnet: "claude-sonnet-4-6",
+  "sonnet[1m]": "claude-sonnet-4-6[1m]",
+  haiku: "claude-haiku-4-5-20251001",
+}
+
+/**
  * Resolve the display label for a stored model id. When unset, returns
  * the label for the *resolved* default — claude-code settings file's
  * `model` key wins over our hardcoded {@link DEFAULT_MODEL_ID}. Falls
@@ -57,7 +72,8 @@ export const MODEL_CHOICES: readonly ModelChoice[] = [
  */
 export function modelLabelFor(id: string | undefined): string {
   const resolved = id ?? resolveDefaultModelId()
-  const match = MODEL_CHOICES.find((m) => m.id === resolved)
+  const canonical = ALIAS_TO_ID[resolved] ?? resolved
+  const match = MODEL_CHOICES.find((m) => m.id === canonical)
   return match?.label ?? resolved
 }
 
