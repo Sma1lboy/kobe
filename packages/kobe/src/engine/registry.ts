@@ -23,9 +23,24 @@
  * remains the kobe-preferred default until the codex adapter lands.
  */
 
-import type { EngineCapabilities, ModelChoice } from "@/types/engine"
+import type { AIEngine, EngineCapabilities, ModelChoice } from "@/types/engine"
 import type { VendorId } from "@/types/vendor"
 import { claudeCapabilities } from "./claude-code-local/capabilities"
+
+/**
+ * Runtime engine map — vendor → live `AIEngine` instance.
+ *
+ * The orchestrator consumes this to route per-task work to the right
+ * adapter. Built by `tui/engine-bootstrap.ts` (or `core/index.ts`)
+ * at boot. Not the same as {@link ENGINE_REGISTRY} (which is static
+ * capabilities only) — engine instances hold subprocess state and
+ * MUST stay singletons per vendor.
+ *
+ * Partial because a kobe build might not have every vendor's binary
+ * available; the orchestrator falls back to a registered default when
+ * a task names an unregistered vendor.
+ */
+export type EngineMap = Readonly<Partial<Record<VendorId, AIEngine>>>
 
 type Registry = Partial<Record<VendorId, EngineCapabilities>>
 

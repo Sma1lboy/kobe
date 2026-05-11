@@ -286,7 +286,7 @@ describe("daemon server", () => {
       ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
-      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       const messages = Array.from({ length: 5 }, (_, i) => ({
         role: "user" as const,
         blocks: [{ type: "text" as const, text: `m${i}` }],
@@ -391,7 +391,7 @@ describe("daemon server", () => {
               : t,
         ),
       })
-      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       fakeEngine.setHistory(sidA, [
         {
           role: "user",

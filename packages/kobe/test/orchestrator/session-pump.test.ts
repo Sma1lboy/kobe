@@ -31,7 +31,7 @@ function newPump(opts?: { nextRequestId?: () => string }) {
   const dispatched: Array<{ taskId: string; tabId: string; ev: OrchestratorEvent }> = []
   let counter = 0
   const pump = new SessionPump({
-    engine,
+    engineFor: () => engine,
     broker,
     dispatch: (taskId, tabId, ev) => {
       dispatched.push({ taskId, tabId, ev })
@@ -101,7 +101,7 @@ describe("SessionPump", () => {
     const engine = new FakeAIEngine()
     const broker = new InMemoryPendingInputBroker()
     const pump = new SessionPump({
-      engine,
+      engineFor: () => engine,
       broker,
       dispatch: () => {},
       nextRequestId: () => "req-1",
@@ -143,7 +143,7 @@ describe("SessionPump", () => {
       return originalStop(...args)
     }
     const pump = new SessionPump({
-      engine: baseEngine,
+      engineFor: () => baseEngine,
       broker: new InMemoryPendingInputBroker(),
       dispatch: () => {},
       nextRequestId: () => "req-1",

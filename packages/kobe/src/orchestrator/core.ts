@@ -62,7 +62,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
-import { capabilitiesForModelId } from "../engine/registry.ts"
+import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -79,10 +79,12 @@ import type {
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import {
   type ChatTab,
+  DEFAULT_TASK_VENDOR,
   type PermissionMode,
   type Task,
   type TaskId,
   type TaskStatus,
+  type VendorId,
   nextChatTabSeq,
 } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
@@ -95,7 +97,21 @@ import type { GitWorktreeManager } from "./worktree/manager.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {
-  readonly engine: AIEngine
+  /**
+   * Single engine (back-compat). When provided, the orchestrator
+   * registers it under its declared `capabilities.vendorId` and uses
+   * it as the fallback for any task whose vendor isn't separately
+   * registered. Tests that don't care about routing keep using this.
+   */
+  readonly engine?: AIEngine
+  /**
+   * Vendor → engine map. When provided, takes precedence over
+   * {@link engine}. Used by production bootstrap so codex/claude tasks
+   * route to their own adapters. At least one of `engine` / `engines`
+   * must be supplied — empty `engines` + no `engine` is rejected at
+   * construction time.
+   */
+  readonly engines?: EngineMap
   readonly store: TaskIndexStore
   readonly worktrees: GitWorktreeManager
   /**
@@ -301,7 +317,19 @@ export function summarizeWorktreeError(raw: string, repo: string, baseRef: strin
  * surface; they don't reach past it.
  */
 export class Orchestrator {
-  private readonly engine: AIEngine
+  /**
+   * Vendor → engine map. Populated by the constructor from
+   * `deps.engines` (preferred) or `deps.engine` (back-compat).
+   * Resolved per task via {@link engineFor}.
+   */
+  private readonly engines: Partial<Record<VendorId, AIEngine>>
+  /**
+   * Fallback engine used when a task's vendor isn't registered (a task
+   * from a newer kobe build, or unknown vendor in hand-edited JSON).
+   * Set to the first engine the constructor saw — that's claude in
+   * every production path today.
+   */
+  private readonly fallbackEngine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly metadataSuggester: MetadataSuggester
@@ -364,7 +392,33 @@ export class Orchestrator {
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
 
   constructor(deps: OrchestratorDeps) {
-    this.engine = deps.engine
+    // Build the per-vendor engine map. Two input shapes:
+    //   - `engines: EngineMap` — preferred; explicit per-vendor.
+    //   - `engine: AIEngine` — back-compat single-engine path; we slot
+    //     it under its declared vendor and treat it as the fallback.
+    // Either way we record one engine as the "fallback" for tasks whose
+    // vendor isn't registered (would otherwise throw mid-runTask on an
+    // unknown task.vendor — defensive against hand-edited JSON or kobe
+    // downgrade scenarios).
+    const built: Partial<Record<VendorId, AIEngine>> = {}
+    let fallback: AIEngine | undefined
+    if (deps.engines) {
+      for (const [vendor, eng] of Object.entries(deps.engines) as Array<[VendorId, AIEngine | undefined]>) {
+        if (!eng) continue
+        built[vendor] = eng
+        fallback ??= eng
+      }
+    }
+    if (deps.engine) {
+      const v = deps.engine.capabilities.vendorId
+      built[v] ??= deps.engine
+      fallback ??= deps.engine
+    }
+    if (!fallback) {
+      throw new Error("Orchestrator: at least one engine must be supplied via deps.engine or deps.engines")
+    }
+    this.engines = built
+    this.fallbackEngine = fallback
     this.store = deps.store
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
@@ -400,12 +454,50 @@ export class Orchestrator {
     // — it returns a result and the orchestrator does the post-run
     // bookkeeping in `runPumpAndCleanup`.
     this.sessionPump = new SessionPump({
-      engine: this.engine,
+      engineFor: (taskId) => this.engineForTaskId(taskId as TaskId),
       broker: this.pendingInputBroker,
       dispatch: (taskId, tabId, ev) => this.dispatchEvent(taskId as TaskId, tabId, ev),
       nextRequestId: () => `req-${++this.requestIdCounter}`,
       onPendingInputChange: () => this.bumpRunState(),
     })
+  }
+
+  /**
+   * Resolve the engine for a given vendor. Falls back to
+   * {@link fallbackEngine} when the vendor isn't registered (defensive
+   * against `Task.vendor` values that came from a newer kobe build or
+   * hand-edited JSON).
+   */
+  private engineForVendor(vendor: VendorId | undefined): AIEngine {
+    const v = vendor ?? DEFAULT_TASK_VENDOR
+    return this.engines[v] ?? this.fallbackEngine
+  }
+
+  /** Engine for a given task — single dispatch site for vendor routing. */
+  private engineForTask(task: Task): AIEngine {
+    return this.engineForVendor(task.vendor)
+  }
+
+  /** Engine for a task id; defensive against a stale id (returns fallback). */
+  private engineForTaskId(taskId: TaskId): AIEngine {
+    const task = this.store.get(taskId)
+    return task ? this.engineForTask(task) : this.fallbackEngine
+  }
+
+  /**
+   * Engine for a free-floating session id. Scans tasks to find which
+   * one owns the session; used by code paths (e.g. `readHistory`)
+   * that don't carry a task context. Falls back when no task matches —
+   * e.g. raw sessions opened by `claude --resume` outside kobe.
+   */
+  private engineForSessionId(sessionId: string): AIEngine {
+    for (const task of this.store.list()) {
+      if (task.sessionId === sessionId) return this.engineForTask(task)
+      for (const tab of task.tabs) {
+        if (tab.sessionId === sessionId) return this.engineForTask(task)
+      }
+    }
+    return this.fallbackEngine
   }
 
   /**
@@ -827,11 +919,12 @@ export class Orchestrator {
     // (e.g. claude-code reads `~/.claude/settings.json` `model` key) →
     // vendor's hardcoded fallback. The engine's capabilities surface is
     // the single seam — adding a vendor doesn't touch this line.
-    const modelToUse = task.model ?? this.engine.capabilities.defaultModelId()
+    const engine = this.engineForTask(task)
+    const modelToUse = task.model ?? engine.capabilities.defaultModelId()
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
-      handle = await this.engine.resume(targetTab.sessionId, promptToSend, {
+      handle = await engine.resume(targetTab.sessionId, promptToSend, {
         cwd: task.worktreePath,
         // Defensive duplicate: keep the env var alongside the typed
         // field for one release in case any external consumer (test
@@ -842,7 +935,7 @@ export class Orchestrator {
         model: modelToUse,
       })
     } else {
-      handle = await this.engine.spawn(task.worktreePath, promptToSend, {
+      handle = await engine.spawn(task.worktreePath, promptToSend, {
         permissionMode: task.permissionMode,
         model: modelToUse,
       })
@@ -1030,7 +1123,7 @@ export class Orchestrator {
       text: "(turn interrupted — sending new prompt)",
     })
     try {
-      await this.engine.stop(handle)
+      await this.engineForTask(task).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -1273,7 +1366,7 @@ export class Orchestrator {
 
     if (task.sessionId) {
       try {
-        await this.engine.deleteHistory(task.sessionId)
+        await this.engineForTask(task).deleteHistory(task.sessionId)
       } catch (err) {
         // Best-effort: stale FS state (file already gone, permission
         // issue) shouldn't block the index drop.
@@ -1302,7 +1395,7 @@ export class Orchestrator {
    */
   async readHistory(sessionId: string): Promise<Message[]> {
     try {
-      return await this.engine.readHistory(sessionId)
+      return await this.engineForSessionId(sessionId).readHistory(sessionId)
     } catch {
       return []
     }
@@ -1323,7 +1416,7 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (!task.worktreePath) return []
     try {
-      return await this.engine.listSessions(task.worktreePath)
+      return await this.engineForTask(task).listSessions(task.worktreePath)
     } catch {
       return []
     }
@@ -1529,7 +1622,7 @@ export class Orchestrator {
     const handle = this.handles.get(key)
     if (!handle) return
     try {
-      await this.engine.stop(handle)
+      await this.engineForTaskId(taskId).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -1544,11 +1637,12 @@ export class Orchestrator {
   private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
     const prefix = `${taskId}:`
     const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
+    const engine = this.engineForTaskId(taskId)
     for (const key of keys) {
       const handle = this.handles.get(key)
       if (!handle) continue
       try {
-        await this.engine.stop(handle)
+        await engine.stop(handle)
       } catch {
         // Best-effort; the lifecycle method that called us will surface
         // task-level state regardless.

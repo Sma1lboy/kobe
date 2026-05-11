@@ -41,8 +41,13 @@ import type { PendingInputBroker } from "../types/pending-input-broker.ts"
 import { chatRunStateKey, detectUserInputFromEngineEvent } from "./core.ts"
 
 export interface SessionPumpEnvironment {
-  /** Engine port. The pump never spawns / resumes — those are the orchestrator's job. */
-  readonly engine: AIEngine
+  /**
+   * Resolver for the engine to drive a given (Task, ChatTab). Each
+   * `run()` call invokes this once with the taskId so vendor routing
+   * is decided at run time, not when the pump was constructed.
+   * The pump never spawns / resumes — those are the orchestrator's job.
+   */
+  readonly engineFor: (taskId: string) => AIEngine
   /** Broker the pump writes into when a pause tool fires. */
   readonly broker: PendingInputBroker
   /**
@@ -97,10 +102,11 @@ export class SessionPump {
    */
   async run(taskId: string, tabId: string, handle: SessionHandle): Promise<PumpRunResult> {
     const tabKey = chatRunStateKey(taskId, tabId)
+    const engine = this.env.engineFor(taskId)
     let killedForInput = false
     let terminalEvent: EngineEvent | null = null
     try {
-      for await (const ev of this.env.engine.stream(handle)) {
+      for await (const ev of engine.stream(handle)) {
         // Pause-tool detection piggybacks on `tool.start` so the UI
         // surfaces the approval banner without waiting for the tool's
         // file write to complete in the subprocess.
@@ -124,7 +130,7 @@ export class SessionPump {
           // same session via --resume with the user's actual answer.
           killedForInput = true
           try {
-            await this.env.engine.stop(handle)
+            await engine.stop(handle)
           } catch {
             /* best-effort kill; the for-await still ends */
           }
@@ -151,7 +157,7 @@ export class SessionPump {
       // stop() to bound the timing.
       if (!killedForInput) {
         try {
-          await this.env.engine.stop(handle)
+          await engine.stop(handle)
         } catch {
           /* best-effort */
         }
