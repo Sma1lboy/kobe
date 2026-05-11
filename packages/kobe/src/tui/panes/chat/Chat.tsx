@@ -272,6 +272,14 @@ export function Chat(props: ChatProps) {
   // pending input"; new code should prefer the split memos.
   const hasPendingInput = createMemo(() => pendingApproval() !== null || pendingQuestion() !== null)
 
+  // True while a `QuestionRow`'s inline "Other" input is open and
+  // wants keystrokes. Driven from MessageList → QuestionRow via the
+  // onClaimComposerFocus callback. The composer's `focused` prop is
+  // forced false while this is true so the inline input — not the
+  // composer — receives input; otherwise opentui keeps the composer
+  // focused and the user's typing disappears into the chat draft.
+  const [questionInlineFocus, setQuestionInlineFocus] = createSignal(false)
+
   // Per-task permission mode (shift+tab cycle in the composer).
   const permissionMode = createMemo(() => {
     const id = props.taskId()
@@ -796,6 +804,7 @@ export function Chat(props: ChatProps) {
                     patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
                   })
               }}
+              onClaimComposerFocus={setQuestionInlineFocus}
             />
           </box>
         </scrollbox>
@@ -850,7 +859,7 @@ export function Chat(props: ChatProps) {
               : undefined
         }
         onSubmit={handleComposerSubmit}
-        focused={props.focused}
+        focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
         // Per-tab history scope — prompt history shouldn't bleed across tabs.
         historyKey={activeTabId() ?? props.taskId()}
         slashes={slashes}
