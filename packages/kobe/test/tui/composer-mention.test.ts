@@ -141,11 +141,7 @@ describe("filterMentionMatches", () => {
     // Realistic monorepo: README.md at repo root vs deep under
     // packages/<pkg>/test/.../README.md. Length tie-break must put
     // the shorter path first when both score the same filename-prefix.
-    const monorepoFiles = [
-      "packages/kobe/test/behavior/fixtures/README.md",
-      "packages/kobe/README.md",
-      "README.md",
-    ]
+    const monorepoFiles = ["packages/kobe/test/behavior/fixtures/README.md", "packages/kobe/README.md", "README.md"]
     const out = filterMentionMatches(monorepoFiles, "rea", 5)
     expect(out[0]?.path).toBe("README.md")
     expect(out[1]?.path).toBe("packages/kobe/README.md")

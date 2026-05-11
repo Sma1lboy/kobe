@@ -57,8 +57,8 @@
  * threads `worktreePath` and consumes `onOpenFile`).
  */
 
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type FSWatcher, watch } from "node:fs"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"

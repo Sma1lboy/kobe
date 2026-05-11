@@ -206,7 +206,9 @@ function extractMessage(record: Record<string, unknown>, fallbackSessionId: stri
   const sid = typeof record.sessionId === "string" ? (record.sessionId as string) : fallbackSessionId
 
   const usage = extractUsage(inner.usage)
-  return usage ? { role, content, timestamp: ts, sessionId: sid, usage } : { role, content, timestamp: ts, sessionId: sid }
+  return usage
+    ? { role, content, timestamp: ts, sessionId: sid, usage }
+    : { role, content, timestamp: ts, sessionId: sid }
 }
 
 function extractUsage(v: unknown): Message["usage"] {

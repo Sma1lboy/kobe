@@ -148,11 +148,7 @@ export function formatDisplayPath(path: string): string {
  * literal substring, NOT a regex or glob — matches opcode's behavior
  * and avoids surprising users who type `@.test`.
  */
-export function filterMentionMatches(
-  files: readonly string[],
-  query: string,
-  limit: number,
-): readonly MentionMatch[] {
+export function filterMentionMatches(files: readonly string[], query: string, limit: number): readonly MentionMatch[] {
   if (files.length === 0 || limit <= 0) return []
   const q = query.toLowerCase()
   if (q.length === 0) {
