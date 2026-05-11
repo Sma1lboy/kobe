@@ -24,7 +24,7 @@ The architecture decisions are not obvious from the code (the code is mostly emp
 
 ## Reference repos — clone before development
 
-kobe is built by deliberately copying ideas (and sometimes code) from four reference projects. New devs / agents must have all four cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.
+kobe is built by deliberately copying ideas (and sometimes code) from five reference projects. New devs / agents must have all of them cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.
 
 | `refs/` slot | Source | Borrowed surface |
 |---|---|---|
@@ -32,14 +32,16 @@ kobe is built by deliberately copying ideas (and sometimes code) from four refer
 | `conductor` (image only) | screenshots Jackson supplied | **Layout + product capability brief.** The 5-pane Conductor screenshot in `docs/DESIGN.md` §1 is the layout grammar. We don't have source access; we copy the chunking + capability set (multi-task, history sidebar, file tree, terminal, chat). Direction shifting per-session — see HANDOFF.md. |
 | `opcode` | fresh clone of [`winfunc/opcode`](https://github.com/winfunc/opcode) | **How to spawn + stream Claude Code as a subprocess.** kobe's `packages/kobe/src/engine/claude-code-local/` was algorithmically ported from opcode's `src-tauri/src/commands/claude.rs` (subprocess spawn + stream-json parser + JSONL reader + binary discovery). When extending the engine, port from opcode first. |
 | `claude-code` | fresh clone of [`tanbiralam/claude-code`](https://github.com/tanbiralam/claude-code) (leaked Anthropic source, March 2026) | **Match Claude Code's exact stream rendering style.** Has `src/ink/` (the Ink-based TUI components, layout, events). When implementing how the stream output looks (assistant text formatting, tool call display, thinking dots, code blocks, citations), mirror Claude Code's choices so kobe feels like Claude Code, not a third-party shell. |
+| `codexui` | fresh clone of [`friuns2/codexui`](https://github.com/friuns2/codexui) | **How to drive the `codex` CLI / app-server from another process.** Browser bridge for `codex app-server` (richer RPC than the `codex exec --json` path kobe's `engine/codex-local/` uses today). Read `src/server/codexAppServerBridge.ts` for the RPC envelope, `src/api/codexGateway.ts` + `src/api/normalizers/` for event normalization, and `src/api/codexRpcClient.ts` for the connection shape. Consult when extending codex support — auth/login flows, app-server features the exec path can't reach, or matching their normalization choices. kobe ≠ codexui (we're a TUI driving `codex exec` in worktrees, they're a web UI driving `codex app-server`), so port ideas, not architecture. |
 
-### Setup before developing (clone all four)
+### Setup before developing (clone all)
 
 ```bash
 mkdir -p refs && cd refs
 ln -s /Users/jacksonc/i/agent-deck agent-deck   # if you have it locally
 git clone --depth 1 https://github.com/winfunc/opcode.git
 git clone --depth 1 https://github.com/tanbiralam/claude-code.git
+git clone --depth 1 https://github.com/friuns2/codexui.git
 # `conductor` is image-only — read docs/DESIGN.md §1 for the layout
 ```
 
@@ -51,6 +53,7 @@ git clone --depth 1 https://github.com/tanbiralam/claude-code.git
 - "What feature is missing from kobe vs Conductor?" → `docs/DESIGN.md` §1 + Jackson's screenshots.
 - "How do I spawn / parse / resume a Claude Code session?" → `opcode/src-tauri/src/commands/claude.rs`.
 - "How does Claude Code render <X>?" (where X = stream content, tool call display, prompt formatting, etc.) → `claude-code/src/ink/`.
+- "How do I drive `codex` from another process / normalize its events / handle auth?" → `codexui/src/server/` + `codexui/src/api/`. Their bridge speaks `codex app-server` RPC, not `codex exec --json` — when kobe needs something the exec path can't deliver (auth refresh, archived sessions, richer cancel signals), consult here.
 
 If a ref disagrees with kobe's existing implementation, kobe wins (we already chose) — but read the ref before deciding to deviate further.
 
