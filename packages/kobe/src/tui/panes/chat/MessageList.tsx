@@ -801,23 +801,36 @@ export function ApprovalRow(props: {
 }
 
 /**
+ * Sentinel label for the auto-added "Other / type your own answer"
+ * option in `QuestionRow`. Per the AskUserQuestion tool spec the
+ * picker is required to always offer a custom-text escape hatch; we
+ * synthesize it on the client side rather than asking the model to
+ * include it. Use a non-printable-prefixed string so it can't collide
+ * with a real option label even if the model decided to call its
+ * option "Other".
+ */
+const OTHER_SENTINEL = "__kobe_other__"
+
+/**
  * Question row — kobe's host-side rendering of an `AskUserQuestion`
  * request. Per question we draw a card with header chip + question
  * text + clickable options (radio for single-select, checkbox for
- * multi-select). A single Submit at the bottom collects all answers
- * and routes them up via `onAnswer`. Once submitted, the row flips
- * to a static "answered" state showing each question's chosen value.
+ * multi-select), plus an auto-added "Other" row that reveals a
+ * free-text input when picked. A single Submit at the bottom collects
+ * all answers and routes them up via `onAnswer`. Once submitted, the
+ * row flips to a static "answered" state showing each question's
+ * chosen value.
  *
  * Wiring choices:
  *   - Selection state lives in component-local signals (one Set per
  *     question). The store only sees the final answers map, after
  *     Submit.
- *   - Submit is enabled only when every question has ≥1 selection.
- *     Multi-select with zero picks would otherwise leave the model
- *     waiting on an effectively-empty answer.
+ *   - Submit is enabled only when every question has ≥1 selection
+ *     AND, when "Other" is picked, the custom-text input is non-empty.
  *   - Multi-select answer encoding follows upstream: comma-separated
  *     option labels (`"Option A, Option C"`). Single-select is just
- *     the label.
+ *     the label. When "Other" is picked the user-typed text is what
+ *     ends up in the answer string — the sentinel never escapes.
  */
 export function QuestionRow(props: {
   row: Extract<ChatRow, { kind: "question" }>
@@ -833,8 +846,25 @@ export function QuestionRow(props: {
   // Solid reactivity.
   const [selections, setSelections] = createSignal<Record<string, ReadonlySet<string>>>({})
 
+  // Per-question custom-text buffer for the auto-added "Other" option.
+  // Only consulted when the OTHER_SENTINEL is in that question's
+  // selection set; otherwise irrelevant. Newlines stripped on input
+  // because opentui's <input> happily inserts a literal \n on enter
+  // even though enter also fires onSubmit (same quirk handled in
+  // new-task-dialog/state.ts:stripNewlines).
+  const [otherText, setOtherText] = createSignal<Record<string, string>>({})
+
   function pickedFor(questionText: string): ReadonlySet<string> {
     return selections()[questionText] ?? new Set<string>()
+  }
+
+  function customTextFor(questionText: string): string {
+    return otherText()[questionText] ?? ""
+  }
+
+  function setCustomText(questionText: string, value: string): void {
+    const sanitized = value.replace(/[\r\n]+/g, "")
+    setOtherText((prev) => ({ ...prev, [questionText]: sanitized }))
   }
 
   function toggle(questionText: string, multi: boolean, label: string): void {
@@ -859,7 +889,12 @@ export function QuestionRow(props: {
 
   const allAnswered = () => {
     for (const q of r().questions) {
-      if (pickedFor(q.question).size === 0) return false
+      const picked = pickedFor(q.question)
+      if (picked.size === 0) return false
+      // "Other" picked but the text box is blank — don't submit an
+      // empty custom answer, the model would just see "" for that
+      // question and the picker would have been pointless.
+      if (picked.has(OTHER_SENTINEL) && customTextFor(q.question).trim().length === 0) return false
     }
     return true
   }
@@ -868,11 +903,19 @@ export function QuestionRow(props: {
     if (!allAnswered() || isAnswered()) return
     const answers: Record<string, string> = {}
     for (const q of r().questions) {
-      const picked = Array.from(pickedFor(q.question))
+      const picked = pickedFor(q.question)
       // Preserve option order for stable comma-joining (Set iteration
       // order is insertion order in JS, but we re-order to match the
       // original options list so the model sees a deterministic string).
-      const ordered = q.options.map((o) => o.label).filter((l) => picked.includes(l))
+      const ordered: string[] = []
+      for (const o of q.options) {
+        if (picked.has(o.label)) ordered.push(o.label)
+      }
+      // Substitute the user-typed text for the sentinel — the model
+      // never sees `__kobe_other__`, only the actual answer.
+      if (picked.has(OTHER_SENTINEL)) {
+        ordered.push(customTextFor(q.question).trim())
+      }
       answers[q.question] = ordered.join(", ")
     }
     props.onAnswer(answers)
@@ -939,6 +982,43 @@ export function QuestionRow(props: {
                       )
                     }}
                   </For>
+                  {/* Auto-appended "Other" — synthesized client-side per
+                      the AskUserQuestion tool's "always offer custom
+                      text" contract. Same toggle path as real options;
+                      picking it reveals the inline text input below. */}
+                  {(() => {
+                    const otherPicked = () => picked().has(OTHER_SENTINEL)
+                    const otherGlyph = () =>
+                      q.multiSelect ? (otherPicked() ? "[x]" : "[ ]") : otherPicked() ? "(•)" : "( )"
+                    return (
+                      <>
+                        <box
+                          flexDirection="row"
+                          gap={1}
+                          onMouseUp={() => toggle(q.question, q.multiSelect, OTHER_SENTINEL)}
+                        >
+                          <text fg={otherPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                            {otherGlyph()}
+                          </text>
+                          <box flexGrow={1} flexDirection="column">
+                            <text fg={theme.text}>Other</text>
+                            <text fg={theme.textMuted}>Type your own answer</text>
+                          </box>
+                        </box>
+                        <Show when={otherPicked()}>
+                          <box paddingLeft={4} paddingTop={0}>
+                            <input
+                              value={customTextFor(q.question)}
+                              placeholder="type your answer…"
+                              focused={true}
+                              onInput={(v: string) => setCustomText(q.question, v)}
+                              onSubmit={() => submit()}
+                            />
+                          </box>
+                        </Show>
+                      </>
+                    )
+                  })()}
                 </box>
               </Show>
             </box>

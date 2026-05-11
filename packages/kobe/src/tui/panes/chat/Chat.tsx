@@ -56,6 +56,7 @@ import { modelLabelFor, resolveDefaultModelId } from "./composer/models"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
+  type ChatRow,
   type ChatState,
   createInitialState,
   dequeueFirst,
@@ -152,16 +153,15 @@ export function Chat(props: ChatProps) {
     const map = new Map<string, Tagged>()
     for (const e of BUILTIN_CLAUDE_SLASHES) map.set(e.name, { entry: e, source: "builtin" })
     for (const e of userSlashes()) map.set(e.name, { entry: e, source: "user" })
-    const claudeEntries: ComposerSlashEntry[] = [...map.values()]
-      .map(({ entry, source }) => ({
-        display: `/${entry.name}`,
-        description: entry.description || undefined,
-        aliases: entry.aliases?.map((a) => `/${a}`),
-        source,
-        onSelect: () => {
-          void send(`/${entry.name}`)
-        },
-      }))
+    const claudeEntries: ComposerSlashEntry[] = [...map.values()].map(({ entry, source }) => ({
+      display: `/${entry.name}`,
+      description: entry.description || undefined,
+      aliases: entry.aliases?.map((a) => `/${a}`),
+      source,
+      onSelect: () => {
+        void send(`/${entry.name}`)
+      },
+    }))
     // kobe-side slashes are short-circuited in `send()` rather than
     // forwarded to the engine. Listed here purely so the dropdown
     // surfaces them as a discoverable command.
@@ -233,30 +233,44 @@ export function Chat(props: ChatProps) {
   })
   const isCanceled = () => taskStatus() === "canceled"
 
-  // True when the active tab's message list ends with an unresolved
-  // approval/question row. While a user-input request is pending we
-  // lock the composer:
-  //   - The subprocess was killed (orchestrator.pumpEvents stops it on
-  //     tool.start so the model can't yap past the picker).
-  //   - The picker IS the only valid next action; typing a freeform
-  //     prompt would resume the session ahead of the picker's answer
-  //     and the model would see "[user said something else]" instead of
-  //     "[plan approved] / [question answered]".
-  // Scans from the end so a long history doesn't cost more than O(few)
-  // — the picker is always near the bottom. Stops at the first user/
-  // assistant row because anything newer than the picker means the
-  // conversation moved on (i.e. the picker was already resolved).
-  const hasPendingInput = createMemo(() => {
+  // Look up the tail of the active tab for an unresolved user-input
+  // row. Scans from the end (the picker is always near the bottom) and
+  // stops at the first user/assistant row — anything newer than the
+  // picker means the conversation moved on (i.e. the picker was
+  // already resolved). Returned shape is the row itself so callers
+  // can read the requestId / questions list for routing.
+  function findPending(): Extract<ChatRow, { kind: "approval" | "question" }> | null {
     const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (!m) continue
-      if (m.kind === "approval") return m.status === "pending"
-      if (m.kind === "question") return m.answers === null
-      if (m.kind === "user" || m.kind === "assistant") return false
+      if (m.kind === "approval") return m.status === "pending" ? m : null
+      if (m.kind === "question") return m.answers === null ? m : null
+      if (m.kind === "user" || m.kind === "assistant") return null
     }
-    return false
+    return null
+  }
+
+  // Pending approval lock — the subprocess was killed on tool.start
+  // and the only valid next action is Approve/Reject. Free-text would
+  // resume the session ahead of the picker's answer and the model
+  // would see "[user said something else]" instead of "[plan
+  // approved]". Approval stays locked.
+  const pendingApproval = createMemo(() => {
+    const p = findPending()
+    return p?.kind === "approval" ? p : null
   })
+  // Pending question — picker is up but the user can still type a
+  // free-text answer via the composer (per the AskUserQuestion tool's
+  // "always allow custom text" contract). Composer-submit reroutes
+  // to respondToInput; see handleComposerSubmit.
+  const pendingQuestion = createMemo(() => {
+    const p = findPending()
+    return p?.kind === "question" ? p : null
+  })
+  // Backwards-compat alias for legacy call sites that just want "any
+  // pending input"; new code should prefer the split memos.
+  const hasPendingInput = createMemo(() => pendingApproval() !== null || pendingQuestion() !== null)
 
   // Per-task permission mode (shift+tab cycle in the composer).
   const permissionMode = createMemo(() => {
@@ -694,6 +708,32 @@ export function Chat(props: ChatProps) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
       return
     }
+    // If a question picker is up, the composer's content is the user's
+    // free-text answer — same role as picking the auto-added "Other"
+    // option. Route through respondToInput so the orchestrator emits
+    // the right synthetic resume prompt; sending it as a fresh prompt
+    // instead would race the still-pending AskUserQuestion tool_result
+    // and the model would not know which input is the answer. Every
+    // question on the picker gets the same answer string — multi-
+    // question prompts are rare, and the alternative (only answer the
+    // first, leave the rest unanswered) violates the picker's
+    // all-questions-required contract.
+    const q = pendingQuestion()
+    if (q) {
+      const taskId = props.taskId()
+      if (!taskId) return
+      const answers: Record<string, string> = {}
+      for (const entry of q.questions) {
+        answers[entry.question] = trimmed
+      }
+      props.orchestrator
+        .respondToInput(taskId, q.requestId, { kind: "ask_question", answers })
+        .catch((err: unknown) => {
+          patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+        })
+      setDraft("")
+      return
+    }
     // `trimmed` is the composer's post-expansion text — `[Image #N]`
     // placeholders have already been rewritten to ` @/abs/path ` so
     // claude's `-p` mention parser can attach the image. Falling back
@@ -785,16 +825,27 @@ export function Chat(props: ChatProps) {
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
+      {/* Pending-question hint — rendered just above the composer when
+          a question picker is up. The composer stays typeable (text
+          becomes the free-text answer; see handleComposerSubmit) so
+          this is a soft affordance, not a lock. Approval pickers
+          still lock the composer because plan approval is binary. */}
+      <Show when={pendingQuestion() && props.taskId()}>
+        <box paddingLeft={1} paddingRight={1} paddingBottom={0}>
+          <text fg={theme.textMuted}>(pick an option above, or type your own answer here)</text>
+        </box>
+      </Show>
+
       {/* Composer. */}
       <Composer
         draft={draft()}
         onDraftChange={setDraft}
         isStreaming={activeState().isStreaming}
-        hasTask={props.taskId() !== undefined && !isCanceled() && !hasPendingInput()}
+        hasTask={props.taskId() !== undefined && !isCanceled() && !pendingApproval()}
         noTaskMessage={
           isCanceled()
             ? "(task canceled — pick another or press ctrl+n to create)"
-            : hasPendingInput()
+            : pendingApproval()
               ? "(answer the prompt above to continue)"
               : undefined
         }
