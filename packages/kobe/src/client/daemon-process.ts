@@ -84,7 +84,11 @@ function resolveKobedEntry(): { entry: string; runWithBun: boolean } {
   const dir = dirname(here)
   const sourceEntry = resolve(dir, "../bin/kobed.ts")
   if (existsSync(sourceEntry)) return { entry: sourceEntry, runWithBun: true }
-  const distEntry = join(dirname(process.argv[1] ?? here), "bin", "kobed.js")
+  // here = .../dist/cli/index.js, so kobed.js sits at ../bin/ relative to it.
+  // Using argv[1]'s dirname (the old path) double-counted /cli and produced
+  // .../dist/cli/bin/kobed.js, which doesn't exist; spawn then failed silently
+  // (stdio:"ignore") and the connect loop reported only "daemon did not start".
+  const distEntry = resolve(dir, "../bin/kobed.js")
   if (existsSync(distEntry)) return { entry: distEntry, runWithBun: true }
-  return { entry: join(process.cwd(), "dist", "bin", "kobed.js"), runWithBun: true }
+  throw new Error(`kobe: could not locate kobed entry near ${dir}; expected ../bin/kobed.{ts,js}`)
 }
