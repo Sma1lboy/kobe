@@ -22,6 +22,18 @@ The architecture decisions are not obvious from the code (the code is mostly emp
 - The user's name is Jackson (sma1lboy). Respond in the language they use (Chinese or English).
 - Tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/solid` + Solid.js + Bun**. Do not re-litigate.
 
+## Development environments
+
+Three flavours of `bun run dev:*` cover the spectrum from "shipped binary" to "fake engine":
+
+| Script | Engine | Home dir | Use when |
+|---|---|---|---|
+| `dev` | Real `claude` / `codex` | `~/.kobe` (production) | Touching production-style state. |
+| `dev:test` | `DevAIEngine` (auto-replying fake, no token cost) | `packages/kobe/.dev-fixture/home` (pre-seeded canned repos + tasks) | UI / chat-render iteration without burning tokens or hitting the network. Seeded by `scripts/dev-fixture.ts`. |
+| `dev:sandbox` | Real `claude` / `codex` | `packages/kobe/.dev-sandbox/home` (empty, throwaway) | Worktree-based dev where you want a real engine but MUST NOT touch the production `~/.kobe/tasks.json` (no leaking experimental tasks into the prod sidebar, no overwriting branch state). Reset with `bun run dev:sandbox:reset`. |
+
+Each gets its own daemon socket + pidfile under its respective `KOBE_HOME_DIR`, so all three can coexist. `defaultDaemonSocketPath` honours an explicit `KOBE_HOME_DIR` ahead of `XDG_RUNTIME_DIR`; the sandbox's socket is `packages/kobe/.dev-sandbox/home/.kobe/daemon.sock` and never collides with production.
+
 ## Reference repos — clone before development
 
 kobe is built by deliberately copying ideas (and sometimes code) from five reference projects. New devs / agents must have all of them cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.

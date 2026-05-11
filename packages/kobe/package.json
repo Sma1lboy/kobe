@@ -28,6 +28,8 @@
     "dev": "KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:test": "bun run scripts/dev-fixture.ts && KOBE_DEV=1 KOBE_TEST_ENGINE=dev-fake KOBE_HOME_DIR=$PWD/.dev-fixture/home bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:test:reset": "bun run scripts/dev-fixture.ts --reset",
+    "dev:sandbox": "mkdir -p .dev-sandbox/home && KOBE_DEV=1 KOBE_HOME_DIR=$PWD/.dev-sandbox/home bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
+    "dev:sandbox:reset": "bun run scripts/dev-sandbox.ts --reset",
     "build": "bun run scripts/build.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",

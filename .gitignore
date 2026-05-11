@@ -42,3 +42,9 @@ packages/*/.claude/
 # `bun run dev:test` mock environment — seeded by scripts/dev-fixture.ts,
 # contains throwaway git repos + ~/.kobe/~/.claude state.
 packages/*/.dev-fixture/
+
+# `bun run dev:sandbox` — isolated REAL-engine environment (real
+# claude / codex subprocesses, but their tasks.json + daemon socket +
+# worktrees live under here instead of $HOME). Wipe with
+# `bun run dev:sandbox:reset`.
+packages/*/.dev-sandbox/
