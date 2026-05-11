@@ -66,29 +66,38 @@ export function spawnCodexProcess(opts: SpawnCodexOpts): SpawnedCodex {
 }
 
 export function buildArgs(opts: SpawnCodexOpts): string[] {
+  const isResume = !!opts.resumeSessionId
   const args: string[] = ["exec"]
-  if (opts.resumeSessionId) {
-    args.push("resume", opts.resumeSessionId)
+  if (isResume) {
+    args.push("resume", opts.resumeSessionId as string)
   }
   args.push("--json", "--skip-git-repo-check")
-  // Codex defaults its cwd to the spawn cwd, but we pass -C explicitly
-  // for parity with claude-code-local (no surprises if a future caller
-  // forgets the cwd: opts.cwd in node spawn options).
-  args.push("-C", opts.cwd)
   if (opts.model) {
     args.push("-m", opts.model)
   }
-  // Trust mode mapping. See module header.
-  if (opts.permissionMode === "plan") {
-    args.push("-s", "read-only")
-  } else {
+  // Flags only valid on the top-level `codex exec` (not `codex exec
+  // resume`):
+  //   -C <dir>           — sets the new session's recorded cwd. Resume
+  //                        inherits cwd from the original rollout.
+  //   -s <sandbox>       — initial sandbox policy. Resume keeps the
+  //                        sandbox the original session was running in.
+  // Passing them on resume rejects with "unexpected argument", so we
+  // gate both behind `!isResume`. The node spawn `cwd:` option still
+  // sets the actual child process working dir in both cases — that's
+  // separate from the recorded session cwd codex bakes into the rollout.
+  if (!isResume) {
+    args.push("-C", opts.cwd)
+    if (opts.permissionMode === "plan") args.push("-s", "read-only")
+  }
+  // `--dangerously-bypass-approvals-and-sandbox` is valid on both
+  // top-level exec and the resume subcommand, so always include it for
+  // the `default` mode.
+  if (opts.permissionMode !== "plan") {
     args.push("--dangerously-bypass-approvals-and-sandbox")
   }
   if (opts.extraArgs && opts.extraArgs.length > 0) {
     args.push(...opts.extraArgs)
   }
-  // Prompt as the trailing positional. Must come last so it isn't
-  // interpreted as an option value.
   args.push(opts.prompt)
   return args
 }
