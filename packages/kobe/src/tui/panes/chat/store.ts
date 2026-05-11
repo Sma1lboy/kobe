@@ -24,7 +24,11 @@
  *        await orchestrator.runTask(taskId, prompt)
  *   4. On each EngineEvent:
  *        state = applyEvent(state, ev)
- *   5. On task switch: state = createInitialState() (no flush, no merge).
+ *   5. On task switch: state for the outgoing task's tabs is left in
+ *      place — `statesByTab` is module-scoped in useChatSession, so
+ *      returning to a tab brings its queue / messages back without
+ *      a fresh `createInitialState()` (KOB-61). Only the event
+ *      subscriptions are torn down + re-attached.
  *
  * No re-read on `done`. Live events ARE the canonical record while the
  * session is open; the next mount picks up everything from JSONL.
@@ -259,8 +263,10 @@ export interface ChatState {
   /**
    * Prompts the user typed mid-stream and chose to QUEUE (not steer).
    * FIFO; drained by the chat shell when {@link isStreaming} flips
-   * false. Cleared on task switch (the chat shell resets state per
-   * tab); not persisted to JSONL — these are pre-dispatch.
+   * false. Per-tab and **survives task switches + Chat remounts** —
+   * the queue lives with the tab via `useChatSession`'s module-scoped
+   * `statesByTab` (KOB-61). Not persisted to JSONL or the daemon, so
+   * a daemon restart or full TUI quit still drops the queue.
    */
   readonly queue: readonly QueuedPrompt[]
 }

@@ -10,8 +10,8 @@
  * don't also receive the key in the same tick.
  */
 
-import { describe, expect, test } from "bun:test"
-import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap"
+import { describe, expect, test } from "vitest"
+import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 
 function makeEvt(name: string, mods: Partial<{ ctrl: boolean; meta: boolean; option: boolean; shift: boolean }> = {}) {
   let defaultPrevented = false
