@@ -29,7 +29,7 @@ import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orch
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import { getSavedRepos } from "../state/repos.ts"
+import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
@@ -581,6 +581,14 @@ export async function startApp(): Promise<void> {
   // mounted yet, and we want behavior tests with a tmpdir HOME to see
   // the seeding too. Failures per repo are logged and swallowed so a
   // single bad path can't gate the whole UI from booting.
+  //
+  // Heal legacy saved-repos written before addSavedRepo normalized
+  // paths to the git toplevel: a subdir (e.g. `packages/kobe`) seeded
+  // a main task whose FileTree rendered the entire monorepo rooted at
+  // `packages/...` because `git ls-files --full-name` is toplevel-
+  // relative. Resolving once at boot folds the entry back to the repo
+  // root and dedupes any pair that collapses to the same toplevel.
+  normalizeSavedRepos()
   for (const repo of getSavedRepos()) {
     try {
       await orchestrator.ensureMainTask(repo)

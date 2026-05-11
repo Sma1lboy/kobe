@@ -63,6 +63,7 @@
 
 import { type Accessor, createSignal } from "solid-js"
 import { resolveDefaultModelId } from "../engine/claude-settings.ts"
+import { resolveRepoRoot } from "../state/repos.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -579,22 +580,59 @@ export class Orchestrator {
    */
   async ensureMainTask(repo: string): Promise<Task> {
     if (!repo) throw new Error("ensureMainTask: repo is required")
-    const existing = this.store.list().find((t) => t.kind === "main" && t.repo === repo)
-    if (existing) {
-      // Re-add path: if the user previously removed this repo from saved
-      // repos (which archives the main task) and is now re-adding it,
-      // unarchive so the pinned row reappears in Working session.
+    // Normalize `repo` to its git toplevel. Main-task worktreePath must
+    // equal the repo root because the FileTree pane drives off
+    // `git ls-files --full-name`, which emits paths relative to the
+    // toplevel — pointing a main task at a monorepo subdirectory makes
+    // the tree render rooted at the wrong level. resolveRepoRoot falls
+    // back to the input for non-git directories.
+    const normalized = resolveRepoRoot(repo)
+    // Collect every main task whose `repo` resolves to the same git
+    // toplevel as `normalized`. This includes both the canonical row
+    // (if any) and any legacy pre-normalization row pointing at a
+    // subdirectory. We keep one — preferring an already-canonical
+    // row, falling back to the first match — re-key it to `normalized`
+    // if needed, and delete the duplicates. This heals state files
+    // where a stale daemon raced the migration and ended up creating
+    // a second main task before the orchestrator-side normalization
+    // was live.
+    const all = this.store.list()
+    const candidates = all.filter(
+      (t) => t.kind === "main" && (t.repo === normalized || resolveRepoRoot(t.repo) === normalized),
+    )
+    const winner = candidates.find((t) => t.repo === normalized) ?? candidates[0]
+    if (winner) {
+      for (const dup of candidates) {
+        if (dup.id !== winner.id) {
+          try {
+            await this.deleteTask(dup.id)
+          } catch (err) {
+            // Worst case the orphan row stays — log and move on
+            // rather than throw and gate the whole boot.
+            // eslint-disable-next-line no-console
+            console.error(`[kobe orchestrator] ensureMainTask: failed to remove duplicate ${dup.id}:`, err)
+          }
+        }
+      }
+      let existing = winner
+      if (existing.repo !== normalized || existing.worktreePath !== normalized) {
+        existing = await this.store.update(existing.id, {
+          repo: normalized,
+          worktreePath: normalized,
+          title: normalized.split("/").filter(Boolean).pop() ?? normalized,
+        })
+      }
       if (existing.archived) {
         return await this.store.update(existing.id, { archived: false })
       }
       return existing
     }
-    const basename = repo.split("/").filter(Boolean).pop() ?? repo
+    const basename = normalized.split("/").filter(Boolean).pop() ?? normalized
     return await this.store.create({
       title: basename,
-      repo,
+      repo: normalized,
       branch: "",
-      worktreePath: repo,
+      worktreePath: normalized,
       sessionId: null,
       status: "backlog",
       archived: false,

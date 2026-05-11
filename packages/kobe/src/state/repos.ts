@@ -18,9 +18,42 @@
  * for v1; a real flock comes with multi-instance support later.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { kvStatePath } from "../env.ts"
+
+/**
+ * Resolve `absPath` to the git toplevel that owns it. A "main" task's
+ * worktreePath must equal the git repo root because FileTree's
+ * `git ls-files --full-name` emits paths relative to the toplevel, not
+ * the cwd — saving a subdirectory (e.g. `packages/kobe`) makes the
+ * tree render rooted at the monorepo root (`packages/...`) while the
+ * task label still claims the subdir, confusing the user.
+ *
+ * Falls back to `absPath` itself when:
+ *   - the directory isn't inside a git repo (rev-parse exits non-zero), or
+ *   - the input already points at the toplevel (compared by realpath, so
+ *     `/var/folders/...` is treated as equal to `/private/var/folders/...`
+ *     on macOS rather than being rewritten to the canonical form).
+ */
+export function resolveRepoRoot(absPath: string): string {
+  const r = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+    cwd: absPath,
+    encoding: "utf8",
+    shell: false,
+  })
+  if (r.status !== 0) return absPath
+  const top = (r.stdout ?? "").trim()
+  if (!top) return absPath
+  try {
+    if (realpathSync(absPath) === realpathSync(top)) return absPath
+  } catch {
+    // realpath can fail on broken symlinks / vanished dirs — fall
+    // through and use the toplevel string as-is.
+  }
+  return top
+}
 
 /**
  * Where the shared KV blob lives. Resolved on each access so a test's
@@ -63,16 +96,50 @@ export type AddResult = { added: boolean; path: string; total: number }
 /**
  * Append `absPath` to `savedRepos` if not already present.
  * Returns whether the entry was newly added and the resulting list size.
+ *
+ * The input is resolved to its git toplevel before storage (see
+ * {@link resolveRepoRoot}) — so `kobe add` from a monorepo subdirectory
+ * stores the repo root, not the subdir. The returned `path` is the
+ * normalized form so callers report what was actually saved.
  */
 export function addSavedRepo(absPath: string): AddResult {
+  const normalized = resolveRepoRoot(absPath)
   const state = load()
   const cur = getSavedRepos()
-  if (cur.includes(absPath)) {
-    return { added: false, path: absPath, total: cur.length }
+  if (cur.includes(normalized)) {
+    return { added: false, path: normalized, total: cur.length }
   }
-  state.savedRepos = [...cur, absPath]
+  state.savedRepos = [...cur, normalized]
   save(state)
-  return { added: true, path: absPath, total: cur.length + 1 }
+  return { added: true, path: normalized, total: cur.length + 1 }
+}
+
+/**
+ * One-shot migration: rewrite the on-disk `savedRepos` list so each
+ * entry is its git toplevel. Heals state files written before
+ * {@link addSavedRepo} normalized at write time. Duplicates that
+ * collapse to the same toplevel are de-duped. No-op when every entry
+ * is already canonical.
+ */
+export function normalizeSavedRepos(): void {
+  const state = load()
+  const cur = getSavedRepos()
+  const seen = new Set<string>()
+  const next: string[] = []
+  let changed = false
+  for (const p of cur) {
+    const top = resolveRepoRoot(p)
+    if (top !== p) changed = true
+    if (seen.has(top)) {
+      changed = true
+      continue
+    }
+    seen.add(top)
+    next.push(top)
+  }
+  if (!changed) return
+  state.savedRepos = next
+  save(state)
 }
 
 export type RemoveResult = { removed: boolean; path: string; total: number }
