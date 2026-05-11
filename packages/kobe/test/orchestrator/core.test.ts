@@ -717,6 +717,74 @@ describe("Orchestrator.ensureMainTask", () => {
     const { orch } = await buildOrchestrator()
     await expect(orch.ensureMainTask("")).rejects.toThrow()
   })
+
+  test("consolidates a legacy subdir main task into the toplevel on re-ensure", async () => {
+    // Reproduces the daemon-staleness incident: an older daemon
+    // created a main task pointing at a monorepo *subdirectory*
+    // (`<repo>/sub`), then a TUI on new code called
+    // `ensureMainTask(<repo>)`. The duplicate must collapse — same
+    // git toplevel can't have two main tasks — and the surviving
+    // row's repo/worktreePath must be the canonical toplevel.
+    const { orch, store } = await buildOrchestrator()
+    const subdir = path.join(repo, "sub")
+    fs.mkdirSync(subdir, { recursive: true })
+    // Seed the legacy row directly through the store so we don't
+    // rely on ensureMainTask's normalization for setup — that's the
+    // code under test.
+    const legacy = await store.create({
+      title: "sub",
+      repo: subdir,
+      branch: "",
+      worktreePath: subdir,
+      sessionId: null,
+      status: "backlog",
+      archived: false,
+      kind: "main",
+    })
+    const survivor = await orch.ensureMainTask(repo)
+    const mains = store.list().filter((t) => t.kind === "main")
+    expect(mains).toHaveLength(1)
+    expect(mains[0]?.id).toBe(legacy.id)
+    expect(survivor.id).toBe(legacy.id)
+    expect(survivor.repo).toBe(repo)
+    expect(survivor.worktreePath).toBe(repo)
+    expect(survivor.title).toBe(path.basename(repo))
+  })
+
+  test("consolidates an archived legacy duplicate alongside a canonical row", async () => {
+    // Variant: both rows already exist — the canonical one (the
+    // duplicate that the stale daemon created) and an *archived*
+    // legacy subdir row that deleteTask would refuse to remove
+    // (CannotDeleteMainTaskError). The consolidation path must use
+    // store.remove directly so the orphan actually drops.
+    const { orch, store } = await buildOrchestrator()
+    const subdir = path.join(repo, "sub")
+    fs.mkdirSync(subdir, { recursive: true })
+    const canonical = await store.create({
+      title: path.basename(repo),
+      repo,
+      branch: "",
+      worktreePath: repo,
+      sessionId: null,
+      status: "backlog",
+      archived: false,
+      kind: "main",
+    })
+    const archivedLegacy = await store.create({
+      title: "sub",
+      repo: subdir,
+      branch: "",
+      worktreePath: subdir,
+      sessionId: null,
+      status: "backlog",
+      archived: true,
+      kind: "main",
+    })
+    const survivor = await orch.ensureMainTask(repo)
+    expect(survivor.id).toBe(canonical.id)
+    expect(store.get(archivedLegacy.id)).toBeUndefined()
+    expect(store.list().filter((t) => t.kind === "main")).toHaveLength(1)
+  })
 })
 
 // ----------------------------------------------------------------------

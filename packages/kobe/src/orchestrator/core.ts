@@ -63,7 +63,7 @@
 
 import { type Accessor, createSignal } from "solid-js"
 import { resolveDefaultModelId } from "../engine/claude-settings.ts"
-import { resolveRepoRoot } from "../state/repos.ts"
+import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -609,15 +609,18 @@ export class Orchestrator {
     // a second main task before the orchestrator-side normalization
     // was live.
     const all = this.store.list()
-    const candidates = all.filter(
-      (t) => t.kind === "main" && (t.repo === normalized || resolveRepoRoot(t.repo) === normalized),
-    )
+    const candidates = all.filter((t) => t.kind === "main" && sameRepoToplevel(t.repo, normalized))
     const winner = candidates.find((t) => t.repo === normalized) ?? candidates[0]
     if (winner) {
       for (const dup of candidates) {
         if (dup.id !== winner.id) {
           try {
-            await this.deleteTask(dup.id)
+            // store.remove (not deleteTask): main tasks point at the
+            // user's actual checkout, not a kobe-allocated worktree,
+            // so deleteTask both (a) refuses with CannotDeleteMain-
+            // TaskError and (b) would try to `git worktree remove`
+            // the repo root. We just want the orphan row gone.
+            await this.store.remove(dup.id)
           } catch (err) {
             // Worst case the orphan row stays — log and move on
             // rather than throw and gate the whole boot.
