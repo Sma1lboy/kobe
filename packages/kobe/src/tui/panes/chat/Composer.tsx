@@ -11,9 +11,9 @@
  *   - Per-key prompt history (in-memory): up arrow at line 1 recalls
  *     the previous submission, down arrow at the last line walks
  *     forward (and falls off the end into the live draft).
- *   - The placeholder cadence — "Ask Claude…" by default, "(streaming
- *     — wait for done)" while a turn is in flight, "(no task — press n
- *     to create)" when no task is selected.
+ *   - The placeholder cadence — "Ask Claude…" by default, blank while
+ *     a turn is in flight, "(no task — press n to create)" when no
+ *     task is selected.
  *   - Bracketed paste support — opentui's textarea handles multi-line
  *     paste natively, no flicker, no per-character replay. We don't
  *     have to do anything; the renderable's `handlePaste` decodes
@@ -80,6 +80,7 @@ import {
   findMentionContext,
   getWorktreeFiles,
 } from "./composer/mention"
+import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
  * Slash entry with an optional `source` discriminator. Defined as an
@@ -211,18 +212,6 @@ export interface ComposerProps {
  * claude-code's `PromptInputQueuedCommands` overflow shape.
  */
 const QUEUE_VISIBLE_CAP = 4
-
-/**
- * Resolve the placeholder text given the current state. Pure — no
- * Solid signals — so it can be unit-tested in isolation if we ever
- * want to. For now the behavior test asserts the streaming variant
- * is visible after submit.
- */
-function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean; noTaskMessage?: string }): string {
-  if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
-  if (opts.isStreaming) return "(streaming — enter to queue, ctrl+enter to steer)"
-  return "Ask Claude…"
-}
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
