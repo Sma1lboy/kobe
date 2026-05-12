@@ -27,3 +27,25 @@ export function toTextChunk(c: Chunk): TextChunk {
     ...(c.attributes !== undefined ? { attributes: c.attributes } : {}),
   }
 }
+
+/**
+ * Flatten a 2D parsed snapshot (one chunk-list per row) into a single
+ * `StyledText` whose chunks span every row with `\n` separators
+ * between rows. Used by the terminal pane: rendering ONE `<text>`
+ * element per snapshot keeps opentui's layout / screenY computation
+ * in the same shape as the pre-SGR plain-text version, so the
+ * cursor positioning math (`screenY + cursor.y`) lands on the right
+ * row. Per-row `<text>` rendering (via Solid `<For>`) breaks that
+ * invariant because flex column children don't necessarily occupy
+ * exactly one row each.
+ */
+export function rowsToStyledText(rows: readonly (readonly Chunk[])[]): TextChunk[] {
+  const chunks: TextChunk[] = []
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0) chunks.push({ __isChunk: true, text: "\n" })
+    const row = rows[i]
+    if (!row) continue
+    for (const c of row) chunks.push(toTextChunk(c))
+  }
+  return chunks
+}

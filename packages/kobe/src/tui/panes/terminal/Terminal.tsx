@@ -30,9 +30,15 @@
  * Snapshots come from `capture-pane -e` (SGR-preserving) so colors
  * and attributes survive; cursor-motion and other control codes were
  * already applied to tmux's grid before capture. The snapshot is fed
- * through `./sgr.ts` which returns one chunk-list per row. Each row
- * renders as its own `<text>` carrying a `StyledText` of those
- * chunks — opentui composes the per-cell fg/bg/attrs from there.
+ * through `./sgr.ts` which returns one chunk-list per row. We then
+ * flatten those rows into a single `StyledText` (with `\n` between
+ * rows) and render via ONE `<text>` element — opentui composes the
+ * per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
+ * per-row `<text>` inside a flex column shifted the body's
+ * `screenY` reference, breaking the cursor positioning math
+ * (`screenY + cursor.y` → wrong row). The flat layout keeps the
+ * body's screenY pinned to the row right under the header, which is
+ * what the cursor positioning math assumes.
  *
  * Scrollback / viewport: we keep the latest snapshot in a Solid
  * signal, parse it into chunks, and slice to the visible window.
@@ -52,23 +58,13 @@
 import { basename } from "node:path"
 import { type BoxRenderable, StyledText, TextAttributes } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import {
-  type Accessor,
-  For,
-  type JSXElement,
-  Show,
-  createEffect,
-  createMemo,
-  createSignal,
-  on,
-  onCleanup,
-} from "solid-js"
+import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
 import { parseAnsiSnapshot } from "./sgr"
-import { toTextChunk } from "./sgr-to-text-chunk"
+import { rowsToStyledText } from "./sgr-to-text-chunk"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -253,32 +249,26 @@ export function Terminal(props: TerminalProps): JSXElement {
   // tmux-reported `cursor.y` indexes into this array 1:1.
   const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
 
-  // Per-row `StyledText` view used by the body's `<For>` render. We
-  // produce one StyledText per row instead of N <span>s per cell —
-  // opentui's <text> efficiently consumes a single chunks array.
-  // `toTextChunk` is the thin adapter that maps `sgr.ts`'s
-  // opentui-free Chunk into the RGBA-flavored TextChunk opentui
-  // wants.
-  const styledRows = createMemo(() =>
-    parsedRows().map((chunks) => {
-      // An empty row is still a meaningful position (blank line in
-      // the pane). We emit a StyledText with a single empty chunk so
-      // the row's `<text>` still renders and occupies one line.
-      if (chunks.length === 0) return new StyledText([{ __isChunk: true, text: "" }])
-      return new StyledText(chunks.map(toTextChunk))
-    }),
-  )
-
-  // Lines visible after applying scroll offset. We slice off the
+  // Rows visible after applying scroll offset. We slice off the
   // bottom `scrollOffset` rows so scrolling back reveals older
   // content; offset 0 means "show everything = follow live".
-  const visibleStyledRows = createMemo(() => {
-    const all = styledRows()
+  const visibleRows = createMemo(() => {
+    const all = parsedRows()
     const offset = Math.max(0, scrollOffset())
     if (offset === 0) return all
     const cut = Math.max(0, all.length - offset)
     return all.slice(0, cut)
   })
+
+  // Flatten every visible row into ONE `StyledText` separated by
+  // `\n`s. We render this as a single `<text>` element inside the
+  // body so opentui's layout treats the body as a 1:1 cell grid —
+  // crucial for the cursor positioning math (`body.screenY + c.y`).
+  // An earlier attempt rendered one `<text>` per row inside a flex
+  // column; opentui's per-row layout didn't keep `screenY` aligned
+  // with tmux's row indexing, and the cursor landed one row above
+  // the visible prompt.
+  const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(visibleRows())))
 
   // Cursor is only meaningful when we're following the bottom of the
   // buffer; once the user scrolls back, the cursor's reported (x,y)
@@ -449,25 +439,19 @@ export function Terminal(props: TerminalProps): JSXElement {
           flexGrow={1}
           paddingLeft={1}
           paddingRight={1}
-          flexDirection="column"
         >
-          {/* One <text> per row. Each row carries its own StyledText
-              built from the SGR-parsed chunks of that row, so colors
-              and attributes render natively. We render per-row (not
-              one big multi-line <text>) so the chunks array doesn't
-              have to encode line breaks — that was the old plain-text
-              approach and it lost the per-cell color shape. The cursor
-              still lands at (screenX + 1 + x, screenY + y) via the
-              renderer's native cursor (see createEffect below); the
-              column flex layout means row N maps to screenY + N
-              regardless of how each row's chunks lay out. */}
-          <For each={visibleStyledRows()}>
-            {(row) => (
-              <text fg={theme.text} wrapMode="none">
-                {row}
-              </text>
-            )}
-          </For>
+          {/* Single `<text>` element rendering the whole snapshot.
+              Per-row chunks are flattened into one StyledText with
+              `\n` separators (see `rowsToStyledText`). This shape
+              matters: rendering one <text> per row inside a flex
+              column shifted the body's `screenY` reference such that
+              `screenY + cursor.y` landed one row above the prompt.
+              Keeping a single multi-line `<text>` preserves the
+              original layout assumption that drives the cursor math
+              in the createEffect below. */}
+          <text fg={theme.text} wrapMode="none">
+            {styledSnapshot()}
+          </text>
         </box>
       </Show>
     </box>
