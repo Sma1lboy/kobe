@@ -442,6 +442,26 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "New chat tab",
   },
   {
+    // KOB-74. Quick-fork: from a focused chat tab, spin up a child
+    // task that inherits repo + branch + model from the source. The
+    // dialog asks only for a prompt; the fork's first turn fires
+    // immediately. `ctrl+t` is taken by `chat.tab.new` (same task,
+    // new tab) so the requested `ctrl+shift+t` would collide — the
+    // keymap layer drops `shift+` on letter keys (terminals deliver
+    // shift+letter as uppercase, not as a modifier event), making
+    // `ctrl+shift+t` and `ctrl+t` indistinguishable at match time.
+    // Picked `ctrl+f` ("fork") because it's free across the keymap,
+    // ctrl+letter has stable C0 byte mappings that work in every
+    // terminal, and the workspace scope keeps it from intruding on
+    // other panes. See docs/KEYBINDINGS.md decision log.
+    id: "chat.fork.new",
+    scope: "workspace",
+    keys: ["ctrl+f"],
+    category: "Workspace",
+    description: "Quick-fork: create child task seeded with current repo/branch/model",
+    hint: { keys: "ctrl+f", label: "fork" },
+  },
+  {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing
     // every persisted session for the active task's worktree so the
     // user can jump back to (or fork from) any prior conversation.

@@ -126,6 +126,14 @@ export type ChatProps = {
    * forwards the request.
    */
   onOpenFilePath?: (relPath: string) => void
+  /**
+   * Quick-fork callback (KOB-74). Fires on `ctrl+f` from a focused
+   * chat tab; the parent opens QuickForkDialog seeded with the active
+   * task's repo/branch/model and dispatches the first prompt against
+   * the resulting child task. Chat owns the chord but not the
+   * orchestrator coupling — the parent already has those handles.
+   */
+  onQuickForkRequest?: () => void
 }
 
 export function Chat(props: ChatProps) {
@@ -943,6 +951,9 @@ export function Chat(props: ChatProps) {
         const tid = props.taskId()
         if (!tid) return
         ResumeDialog.show(dialog, props.orchestrator, tid)
+      },
+      "chat.fork.new": () => {
+        props.onQuickForkRequest?.()
       },
     }),
   }))
