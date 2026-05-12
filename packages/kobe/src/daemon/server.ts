@@ -2,6 +2,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
+import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
@@ -405,12 +406,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       }
       case "rcBridge.start": {
-        // Default cwd to the daemon's own working directory — the
-        // workspace root the user launched kobed from. Callers may
-        // override (e.g. settings dialog wants to surface a per-repo
-        // bridge in a future iteration), but the daemon must validate
-        // the path is non-empty.
-        const cwd = optionalString(payload, "cwd") ?? process.cwd()
+        // Default cwd to the git toplevel that owns the daemon's process
+        // cwd, NOT process.cwd() itself. When kobed is launched from a
+        // monorepo subdir (e.g. `bun --filter @sma1lboy/kobe ...` lands
+        // in `packages/kobe`), `process.cwd()` is the subdir, but the
+        // user's mental model of "the kobe repo I'm sharing to claude.ai"
+        // is the toplevel. claude.ai sessions also need the toplevel so
+        // file tools can reach sibling packages and root config.
+        // resolveRepoRoot falls back to process.cwd() unchanged when
+        // we're not inside a git repo at all.
+        const cwd = optionalString(payload, "cwd") ?? resolveRepoRoot(process.cwd())
         if (!cwd) throw new Error("rcBridge.start requires a non-empty cwd")
         const status = await rcBridge.start({ cwd })
         return { status }
