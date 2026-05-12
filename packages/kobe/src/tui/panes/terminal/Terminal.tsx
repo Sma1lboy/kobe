@@ -370,13 +370,23 @@ export function Terminal(props: TerminalProps): JSXElement {
     } catch {
       /* older opentui versions may not expose setCursorStyle; ignore */
     }
-    // body has paddingLeft=1, so column 0 of the snapshot is at screenX+1.
-    // Cursor coords are 0-based pane row/col, atomically captured with
-    // the snapshot. Now that the PTY constructor forces the detached
-    // session's `window-size` to `manual`, tmux's pane grid actually
-    // matches our body height — so cursor_y indexes our rendered lines
-    // 1:1 and no off-by-one fudge is needed.
-    renderer.setCursorPosition(ref.screenX + 1 + c.x, ref.screenY + c.y, true)
+    // Translate tmux pane coords → screen coords for the renderer.
+    //
+    // - `screenX + 1`: body has `paddingLeft=1`, so the first visible
+    //   column of the snapshot is at `body.screenX + 1`. Same for cy
+    //   below — we need to offset the cursor by the same padding the
+    //   text rendering uses.
+    // - `screenY + 1`: parent box (`<box borderColor=...>`) draws a
+    //   border that takes one screen row at the top. opentui's
+    //   `ref.screenY` for the body reports the parent's outer edge
+    //   (i.e. the border row), not the content row inside; meanwhile
+    //   the text content is rendered starting one row below the
+    //   border. Without the +1, the cursor lands on the border row,
+    //   one row above the visible prompt. Verified empirically via a
+    //   debug dump in /tmp/kobe-terminal-debug.log: with body
+    //   screenY=35, cursor at y=29 was reported by tmux but the
+    //   rendered prompt was at screen row 65 (i.e. 35+1+29), not 64.
+    renderer.setCursorPosition(ref.screenX + 1 + c.x, ref.screenY + 1 + c.y, true)
   })
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
