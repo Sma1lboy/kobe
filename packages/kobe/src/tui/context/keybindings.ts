@@ -183,6 +183,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "n", label: "new" },
   },
   {
+    id: "task.openEditor",
+    scope: "global",
+    keys: ["ctrl+o"],
+    category: "Global",
+    description: "Open active task worktree in editor",
+  },
+  {
     id: "settings.open",
     scope: "global",
     keys: ["ctrl+,"],

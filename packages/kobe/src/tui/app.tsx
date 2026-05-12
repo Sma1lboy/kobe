@@ -57,6 +57,7 @@ import { useTaskActions } from "./lib/use-task-actions"
 import { useTestSideChannel } from "./lib/use-test-side-channel"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { useWorkspaceTabs } from "./lib/use-workspace-tabs"
+import { detectWorktreeOpener, openWorktree } from "./lib/worktree-opener"
 import { Chat } from "./panes/chat/Chat"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
@@ -155,6 +156,16 @@ function Shell(props: AppDeps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)
   })
+  const worktreeOpener = createMemo(() => detectWorktreeOpener())
+  function openActiveTaskInEditor(): void {
+    const task = activeTask()
+    const opener = worktreeOpener()
+    if (!task?.worktreePath || !opener) return
+    if (!openWorktree(task.worktreePath, opener)) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] failed to open worktree:", task.worktreePath)
+    }
+  }
 
   // Accessor for the chat pane that yields a prompt only when it
   // matches the currently active task. This keeps the chat from
@@ -308,6 +319,15 @@ function Shell(props: AppDeps) {
     })
     onCleanup(unregister)
   })
+  onMount(() => {
+    const unregister = palette.addCommand({
+      name: "task.openEditor",
+      title: "Open task in editor",
+      desc: "Open the active task worktree in Cursor, VS Code, or the detected system editor.",
+      run: openActiveTaskInEditor,
+    })
+    onCleanup(unregister)
+  })
 
   // Auto-select on first task availability. Prefer the persisted task
   // from the previous run when it still exists; otherwise fall back to
@@ -385,6 +405,7 @@ function Shell(props: AppDeps) {
     orchestrator: props.orchestrator,
     renderer,
     activeTask,
+    openActiveTaskInEditor,
   })
 
   // Per-ChatTab completion notifications.
@@ -439,6 +460,7 @@ function Shell(props: AppDeps) {
         activeTask={activeTask}
         activeChatTabId={activeChatTabIdAcc}
         updateInfo={updateInfo}
+        worktreeOpener={worktreeOpener}
       />
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
