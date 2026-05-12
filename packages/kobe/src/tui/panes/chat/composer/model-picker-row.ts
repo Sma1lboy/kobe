@@ -2,7 +2,7 @@ import { getCapabilities } from "@/engine/registry"
 import type { ModelChoice } from "@/types/engine"
 
 export type ModelPickerRowParts = {
-  readonly level: "level1"
+  readonly level: string
   readonly vendor: string
   readonly engine: string
   readonly from: "catalog"
@@ -13,7 +13,7 @@ export type ModelPickerRowParts = {
 export function modelPickerRowParts(choice: ModelChoice): ModelPickerRowParts {
   const caps = getCapabilities(choice.vendor)
   return {
-    level: "level1",
+    level: choice.level ?? "level1",
     vendor: choice.vendor,
     engine: caps.label,
     from: "catalog",

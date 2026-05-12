@@ -20,12 +20,14 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { spawn } from "node:child_process"
 import type { Readable } from "node:stream"
+import type { ModelEffortLevel } from "@/types/engine"
 
 export interface SpawnCodexOpts {
   readonly binaryPath: string
   readonly cwd: string
   readonly prompt: string
   readonly model?: string
+  readonly modelEffort?: ModelEffortLevel
   readonly resumeSessionId?: string
   /** kobe's neutral mode; mapped onto codex flags inside this module. */
   readonly permissionMode?: "default" | "plan"
@@ -74,6 +76,9 @@ export function buildArgs(opts: SpawnCodexOpts): string[] {
   args.push("--json", "--skip-git-repo-check")
   if (opts.model) {
     args.push("-m", opts.model)
+  }
+  if (opts.modelEffort) {
+    args.push("-c", `model_reasoning_effort="${opts.modelEffort}"`)
   }
   // Flags only valid on the top-level `codex exec` (not `codex exec
   // resume`):

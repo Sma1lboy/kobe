@@ -263,7 +263,20 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "task.model": {
         const taskId = requireString(payload, "taskId")
-        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"))
+        const modelEffort = optionalString(payload, "modelEffort")
+        if (
+          modelEffort !== undefined &&
+          modelEffort !== "none" &&
+          modelEffort !== "minimal" &&
+          modelEffort !== "low" &&
+          modelEffort !== "medium" &&
+          modelEffort !== "high" &&
+          modelEffort !== "xhigh" &&
+          modelEffort !== "max"
+        ) {
+          throw new Error("modelEffort must be a supported effort level")
+        }
+        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"), modelEffort)
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }

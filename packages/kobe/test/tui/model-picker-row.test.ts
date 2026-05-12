@@ -30,4 +30,19 @@ describe("modelPickerRowParts", () => {
     expect(modelPickerMetaLabel(parts)).toBe("level1 codex Codex from catalog")
     expect(parts.model).toBe("GPT-5.5")
   })
+
+  test("uses model-bound effort level when present", () => {
+    const choice: ModelChoice = {
+      vendor: "codex",
+      id: "gpt-5.5",
+      effort: "xhigh",
+      level: "xhigh",
+      label: "GPT-5.5 · xhigh",
+    }
+
+    const parts = modelPickerRowParts(choice)
+
+    expect(modelPickerMetaLabel(parts)).toBe("xhigh codex Codex from catalog")
+    expect(parts.model).toBe("GPT-5.5 · xhigh")
+  })
 })

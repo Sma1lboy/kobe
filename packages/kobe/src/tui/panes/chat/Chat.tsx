@@ -316,6 +316,13 @@ export function Chat(props: ChatProps) {
     const tab = task?.tabs.find((t) => t.id === activeTabId())
     return tab?.model ?? task?.model
   })
+  const modelEffort = createMemo(() => {
+    const id = props.taskId()
+    if (!id) return undefined
+    const task = tasksAcc().find((t) => t.id === id)
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    return tab?.modelEffort ?? task?.modelEffort
+  })
   // Per-task worktree path — feeds the composer's `@`-mention file
   // picker (scoped to the active task's repo checkout, mirrors the
   // FileTree pane's scoping).
@@ -324,7 +331,7 @@ export function Chat(props: ChatProps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
   })
-  const modelLabel = createMemo(() => modelLabelFor(modelId()))
+  const modelLabel = createMemo(() => modelLabelFor(modelId(), modelEffort()))
   const activeVendor = createMemo(() => {
     const id = props.taskId()
     const task = id ? tasksAcc().find((t) => t.id === id) : undefined
@@ -340,9 +347,9 @@ export function Chat(props: ChatProps) {
     const id = props.taskId()
     if (!id) return
     const tabId = activeTabId() ?? undefined
-    const result = await ModelPicker.show(dialog, modelId())
+    const result = await ModelPicker.show(dialog, modelId(), modelEffort())
     if (result === undefined) return
-    await props.orchestrator.setModel(id, result, tabId).catch((err: unknown) => {
+    await props.orchestrator.setModel(id, result.id, tabId, result.effort).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setModel failed:", err)
     })

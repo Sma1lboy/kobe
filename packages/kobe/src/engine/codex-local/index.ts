@@ -129,6 +129,7 @@ export class CodexLocal implements AIEngine {
       cwd: args.cwd,
       prompt: args.prompt,
       model: args.opts?.model,
+      modelEffort: args.opts?.modelEffort,
       permissionMode: args.opts?.permissionMode,
       env: args.opts?.env,
       resumeSessionId: args.resumeSessionId,

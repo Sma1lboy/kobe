@@ -80,6 +80,7 @@ export interface SerializedTask {
   readonly pinned: boolean
   readonly permissionMode?: Task["permissionMode"]
   readonly model?: string
+  readonly modelEffort?: Task["modelEffort"]
   readonly vendor?: Task["vendor"]
   readonly createdAt: string
   readonly updatedAt: string
@@ -108,6 +109,7 @@ export function serializeTask(task: Task): SerializedTask {
     pinned: task.pinned ?? false,
     permissionMode: task.permissionMode,
     model: task.model,
+    modelEffort: task.modelEffort,
     vendor: task.vendor,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,

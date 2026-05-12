@@ -8,6 +8,7 @@
  */
 
 import { allModels, defaultCapabilities } from "@/engine/registry"
+import type { ModelChoice } from "@/types/engine"
 import { TextAttributes } from "@opentui/core"
 import { For, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../../context/theme"
@@ -15,11 +16,12 @@ import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
 import { modelPickerMetaLabel, modelPickerRowParts } from "./model-picker-row"
 
-export type ModelPickerResult = string | undefined
+export type ModelPickerResult = Pick<ModelChoice, "id" | "effort"> | undefined
 
 export type ModelPickerProps = {
   current: string | undefined
-  onPick: (id: string) => void
+  currentEffort?: string | undefined
+  onPick: (choice: Pick<ModelChoice, "id" | "effort">) => void
   onCancel: () => void
 }
 
@@ -36,13 +38,13 @@ function ModelPicker(props: ModelPickerProps) {
   // seed on the active vendor's resolved default so the picker reflects
   // what the user is actually running.
   const seed = props.current ?? defaultCapabilities.defaultModelId()
-  const initial = choices().findIndex((m) => m.id === seed)
+  const initial = choices().findIndex((m) => m.id === seed && m.effort === props.currentEffort)
   const [cursor, setCursor] = createSignal(initial >= 0 ? initial : 0)
 
   function commit(): void {
     const choice = choices()[cursor()]
     if (!choice) return
-    props.onPick(choice.id)
+    props.onPick({ id: choice.id, effort: choice.effort })
     dialog.clear()
   }
 
@@ -143,10 +145,21 @@ function ModelPicker(props: ModelPickerProps) {
   )
 }
 
-ModelPicker.show = (dialog: DialogContext, current: string | undefined): Promise<ModelPickerResult> => {
+ModelPicker.show = (
+  dialog: DialogContext,
+  current: string | undefined,
+  currentEffort?: string | undefined,
+): Promise<ModelPickerResult> => {
   return new Promise<ModelPickerResult>((resolve) => {
     dialog.replace(
-      () => <ModelPicker current={current} onPick={(id) => resolve(id)} onCancel={() => resolve(undefined)} />,
+      () => (
+        <ModelPicker
+          current={current}
+          currentEffort={currentEffort}
+          onPick={(choice) => resolve(choice)}
+          onCancel={() => resolve(undefined)}
+        />
+      ),
       () => resolve(undefined),
     )
   })

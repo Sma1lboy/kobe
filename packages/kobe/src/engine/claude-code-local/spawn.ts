@@ -24,6 +24,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { spawn } from "node:child_process"
 import type { Readable } from "node:stream"
+import type { ModelEffortLevel } from "@/types/engine"
 
 /** Options for spawning a Claude Code subprocess. */
 export interface SpawnClaudeOpts {
@@ -35,6 +36,8 @@ export interface SpawnClaudeOpts {
   readonly prompt: string
   /** Optional `--model <name>`. Omit to let `claude` pick its default. */
   readonly model?: string
+  /** Optional `--effort <level>`. Only set for model-bound effort variants. */
+  readonly modelEffort?: ModelEffortLevel
   /** Optional `--resume <sessionId>`. Set by `ClaudeCodeLocal.resume()`. */
   readonly resumeSessionId?: string
   /** Optional `--permission-mode <mode>`. Forwarded verbatim from the orchestrator. */
@@ -99,6 +102,9 @@ export function buildArgs(opts: SpawnClaudeOpts): string[] {
   args.push("-p", opts.prompt)
   if (opts.model) {
     args.push("--model", opts.model)
+  }
+  if (opts.modelEffort) {
+    args.push("--effort", opts.modelEffort)
   }
   if (opts.permissionMode) {
     args.push("--permission-mode", opts.permissionMode)

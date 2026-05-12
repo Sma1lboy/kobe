@@ -23,7 +23,7 @@
  * remains the kobe-preferred default until the codex adapter lands.
  */
 
-import type { AIEngine, EngineCapabilities, EngineIdentity, ModelChoice } from "@/types/engine"
+import type { AIEngine, EngineCapabilities, EngineIdentity, ModelChoice, ModelEffortLevel } from "@/types/engine"
 import type { VendorId } from "@/types/vendor"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities"
@@ -93,7 +93,7 @@ export function allModels(): readonly ModelChoice[] {
   for (const caps of Object.values(ENGINE_REGISTRY)) {
     if (!caps) continue
     for (const m of caps.models) {
-      const key = `${m.vendor}:${m.id}`
+      const key = `${m.vendor}:${m.id}:${m.effort ?? ""}`
       if (seen.has(key)) continue
       seen.add(key)
       out.push(m)
@@ -108,12 +108,13 @@ export function allModels(): readonly ModelChoice[] {
  * always renders *something* meaningful, even for ids pinned outside
  * the picker shortlist.
  */
-export function modelLabelFor(modelId: string | undefined): string {
+export function modelLabelFor(modelId: string | undefined, effort?: ModelEffortLevel): string {
   const resolved = modelId ?? defaultCapabilities.defaultModelId()
   for (const caps of Object.values(ENGINE_REGISTRY)) {
     if (!caps) continue
-    const match = caps.models.find((m) => m.id === resolved)
+    const match = caps.models.find((m) => m.id === resolved && (effort === undefined || m.effort === effort))
     if (match) return match.label
   }
+  if (effort) return `${resolved} · ${effort}`
   return resolved
 }

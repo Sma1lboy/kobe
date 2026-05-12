@@ -24,10 +24,27 @@
  * `~/.codex/config.toml`.
  */
 
-import type { ModelChoice } from "@/types/engine"
+import type { ModelChoice, ModelEffortLevel } from "@/types/engine"
+
+const CODEX_GPT55_EFFORT_LEVELS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const satisfies readonly ModelEffortLevel[]
 
 export const CODEX_MODELS: readonly ModelChoice[] = [
   { vendor: "codex", id: "gpt-5.5", label: "GPT-5.5", hint: "latest, ChatGPT-account compatible" },
+  ...CODEX_GPT55_EFFORT_LEVELS.map((effort) => ({
+    vendor: "codex" as const,
+    id: "gpt-5.5",
+    effort,
+    level: effort,
+    label: `GPT-5.5 · ${effort}`,
+    hint: effort === "none" ? "no reasoning effort" : `${effort} reasoning`,
+  })),
   { vendor: "codex", id: "gpt-5.4", label: "GPT-5.4", hint: "stable" },
   { vendor: "codex", id: "gpt-5.4-mini", label: "GPT-5.4 mini", hint: "fastest, always supported" },
 ] as const

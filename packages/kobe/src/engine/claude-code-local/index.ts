@@ -211,6 +211,7 @@ export class ClaudeCodeLocal implements AIEngine {
       cwd: args.cwd,
       prompt: args.prompt,
       model: args.opts?.model,
+      modelEffort: args.opts?.modelEffort,
       permissionMode: cliPermissionMode,
       env: args.opts?.env,
       resumeSessionId: args.resumeSessionId,

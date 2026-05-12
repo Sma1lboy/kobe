@@ -61,8 +61,8 @@ export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "can
  * `Task` don't have to drag in the engine module just for the type
  * union. Defined canonically in `types/engine.ts`.
  */
-export type { PermissionMode } from "./engine.ts"
-import type { PermissionMode } from "./engine.ts"
+export type { ModelEffortLevel, PermissionMode } from "./engine.ts"
+import type { ModelEffortLevel, PermissionMode } from "./engine.ts"
 export type { VendorId } from "./vendor.ts"
 import type { VendorId } from "./vendor.ts"
 
@@ -81,6 +81,7 @@ export interface ChatTab {
    * Claude/Codex conversations without history reads crossing engines.
    */
   readonly model?: string
+  readonly modelEffort?: ModelEffortLevel
   readonly vendor?: VendorId
   /**
    * Per-task display ordinal. Assigned at creation as
@@ -221,6 +222,7 @@ export interface Task {
    * on each runTask.
    */
   readonly model?: string
+  readonly modelEffort?: ModelEffortLevel
   /**
    * Legacy task-level engine vendor. Used as a fallback for tabs
    * written before model/vendor became tab-scoped. New UI writes
