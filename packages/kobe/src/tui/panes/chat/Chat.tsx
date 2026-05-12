@@ -53,6 +53,7 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
+import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
@@ -324,12 +325,15 @@ export function Chat(props: ChatProps) {
     return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
   })
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
-  const inputPlaceholder = createMemo(() => {
+  const activeVendor = createMemo(() => {
     const id = props.taskId()
     const task = id ? tasksAcc().find((t) => t.id === id) : undefined
     const tab = task?.tabs.find((t) => t.id === activeTabId())
-    const vendor = tab?.vendor ?? task?.vendor ?? "claude"
-    return getIdentity(vendor).inputPlaceholder
+    return tab?.vendor ?? task?.vendor ?? "claude"
+  })
+  const permissionModeText = createMemo(() => permissionModeLabel(getCapabilities(activeVendor()), permissionMode()))
+  const inputPlaceholder = createMemo(() => {
+    return getIdentity(activeVendor()).inputPlaceholder
   })
 
   async function chooseModel(): Promise<void> {
@@ -927,6 +931,7 @@ export function Chat(props: ChatProps) {
           historyKey={activeTabId() ?? props.taskId()}
           slashes={slashes}
           permissionMode={permissionMode}
+          permissionModeLabel={permissionModeText}
           onCyclePermissionMode={cyclePermissionMode}
           modelLabel={modelLabel}
           inputPlaceholder={inputPlaceholder}

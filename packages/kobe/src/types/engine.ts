@@ -59,6 +59,8 @@ export interface EngineCapabilities {
   readonly label: string
   /** Catalog of models this vendor offers in the composer picker. */
   readonly models: readonly ModelChoice[]
+  /** Permission/trust modes this vendor can run through kobe. */
+  readonly permissionModes: readonly PermissionModeChoice[]
   /**
    * Resolve the current default model id for this vendor. Implementations
    * read the vendor's settings file (e.g. `~/.claude/settings.json` for
@@ -113,6 +115,11 @@ export interface SessionHandle {
  * claude unchanged.
  */
 export type PermissionMode = "default" | "plan"
+
+export interface PermissionModeChoice {
+  readonly id: PermissionMode
+  readonly label: string
+}
 
 /**
  * Optional knobs at spawn time. All fields optional — engine impls supply

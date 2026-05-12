@@ -692,6 +692,8 @@ export type KobeKeybindingsOpts = {
    */
   onFocusNext?: () => void
   onFocusPrev?: () => void
+  /** Whether tab / shift+tab pane cycling should be registered. */
+  focusCycleEnabled?: () => boolean
   /**
    * Called after the user confirms quit. Defaults to `process.exit(0)`
    * which is correct in the production binary. Tests can pass a spy.
@@ -737,6 +739,7 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
     })
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
+  const focusCycleEnabled = opts.focusCycleEnabled ?? (() => true)
 
   // Auto-copy on selection finish.
   //
@@ -811,8 +814,6 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       ...bindByIds({
         "palette.open": () => palette.show(),
         "help.open": () => opts.onShowHelp(),
-        "focus.next": () => onFocusNext(),
-        "focus.prev": () => onFocusPrev(),
         // Ctrl+C is modifier-prefixed so it never collides with composer
         // typing. DialogProvider's own ctrl+c binding sits higher on the
         // stack and still wins while a dialog is open — that's the
@@ -821,6 +822,13 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       }),
     ]
   })
+  const focusCycleBindings = createMemo<Binding[]>(() =>
+    bindByIds({
+      "focus.next": () => onFocusNext(),
+      "focus.prev": () => onFocusPrev(),
+    }),
+  )
 
   useBindings(() => ({ bindings: bindings() }))
+  useBindings(() => ({ enabled: focusCycleEnabled(), bindings: focusCycleBindings() }))
 }

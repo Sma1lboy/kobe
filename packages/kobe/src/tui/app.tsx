@@ -417,6 +417,7 @@ function Shell(props: AppDeps) {
     onFocusPrev: () => {
       if (focusedPane() !== "workspace") focus.cycle(-1)
     },
+    focusCycleEnabled: () => focusedPane() !== "workspace",
   })
 
   // User-action handlers — every "verb that opens a dialog and calls
