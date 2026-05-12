@@ -21,17 +21,24 @@
  * tolerant branch here without standing up a real repo).
  */
 
+import * as os from "node:os"
 import { describe, expect, test } from "vitest"
 import {
   DEFAULT_BASE_REF,
   PICKER_MAX_VISIBLE,
   clampCursor,
   computeRepoOptions,
+  expandHome,
   filterBranches,
   filterRepos,
+  filterSubdirs,
+  joinDrill,
   listLocalBranches,
+  listSubdirs,
   nextField,
+  pickerModeFor,
   resolveBaseRef,
+  splitPathForDirSuggest,
   stripNewlines,
   validateRepoPath,
   windowAround,
@@ -50,10 +57,42 @@ describe("stripNewlines", () => {
 })
 
 describe("nextField — tab cycling", () => {
-  test("cycles repoPicker → repoCustom → baseRef → repoPicker", () => {
-    expect(nextField("repoPicker")).toBe("repoCustom")
-    expect(nextField("repoCustom")).toBe("baseRef")
-    expect(nextField("baseRef")).toBe("repoPicker")
+  test("toggles repo ↔ baseRef", () => {
+    expect(nextField("repo")).toBe("baseRef")
+    expect(nextField("baseRef")).toBe("repo")
+  })
+})
+
+describe("pickerModeFor — saved vs browse decision", () => {
+  const SAVED = ["/Users/me/projects/kobe", "/Users/me/projects/widget"]
+
+  test("empty input → saved", () => {
+    expect(pickerModeFor("", SAVED)).toBe("saved")
+    expect(pickerModeFor("   ", SAVED)).toBe("saved")
+  })
+
+  test("non-path substring → saved (filter mode)", () => {
+    expect(pickerModeFor("kobe", SAVED)).toBe("saved")
+    expect(pickerModeFor("widget", SAVED)).toBe("saved")
+  })
+
+  test("path-shaped input → browse", () => {
+    expect(pickerModeFor("/Users/", SAVED)).toBe("browse")
+    expect(pickerModeFor("/Users/me/proj", SAVED)).toBe("browse")
+    expect(pickerModeFor("~/", SAVED)).toBe("browse")
+    expect(pickerModeFor("~/projects", SAVED)).toBe("browse")
+  })
+
+  test("exact match against a saved repo → saved (so the cwd-prefilled state stays in saved mode)", () => {
+    expect(pickerModeFor("/Users/me/projects/kobe", SAVED)).toBe("saved")
+    expect(pickerModeFor("  /Users/me/projects/kobe  ", SAVED)).toBe("saved")
+  })
+
+  test("backspacing past an exact match flips back to browse", () => {
+    // After `/Users/me/projects/kob` (one char short of saved), the
+    // user is mid-edit — they want directory suggestions, not the
+    // curated list filtered to nothing.
+    expect(pickerModeFor("/Users/me/projects/kob", SAVED)).toBe("browse")
   })
 })
 
@@ -207,5 +246,125 @@ describe("listLocalBranches — fault-tolerance", () => {
   test("returns [] for an empty / missing repo path (no throw)", () => {
     expect(listLocalBranches("")).toEqual([])
     expect(listLocalBranches("/this/path/definitely/does/not/exist")).toEqual([])
+  })
+})
+
+describe("expandHome — ~ resolution", () => {
+  test("bare ~ resolves to homedir without trailing slash", () => {
+    expect(expandHome("~")).toBe(os.homedir())
+  })
+  test("~/ resolves with trailing slash preserved", () => {
+    expect(expandHome("~/")).toBe(`${os.homedir()}/`)
+  })
+  test("~/path keeps the suffix", () => {
+    expect(expandHome("~/projects/kobe")).toBe(`${os.homedir()}/projects/kobe`)
+  })
+  test("non-~ paths are passed through unchanged", () => {
+    expect(expandHome("/Users/foo")).toBe("/Users/foo")
+    expect(expandHome("relative/path")).toBe("relative/path")
+    expect(expandHome("")).toBe("")
+  })
+})
+
+describe("splitPathForDirSuggest — base/filter parsing", () => {
+  test("trailing slash → entire path is base, empty filter", () => {
+    expect(splitPathForDirSuggest("/Users/")).toEqual({ base: "/Users/", filter: "" })
+    expect(splitPathForDirSuggest("/Users/me/projects/")).toEqual({
+      base: "/Users/me/projects/",
+      filter: "",
+    })
+  })
+
+  test("partial leaf → base is the dirname, filter is the partial leaf", () => {
+    expect(splitPathForDirSuggest("/Users/me/proj")).toEqual({
+      base: "/Users/me/",
+      filter: "proj",
+    })
+  })
+
+  test("no slash → empty base, whole input is the filter", () => {
+    expect(splitPathForDirSuggest("foo")).toEqual({ base: "", filter: "foo" })
+  })
+
+  test("empty input → empty split", () => {
+    expect(splitPathForDirSuggest("")).toEqual({ base: "", filter: "" })
+  })
+
+  test("bare ~ is normalized to ~/ and expanded to homedir", () => {
+    const out = splitPathForDirSuggest("~")
+    expect(out.base).toBe(`${os.homedir()}/`)
+    expect(out.filter).toBe("")
+  })
+
+  test("~/partial expands base to homedir and keeps partial filter", () => {
+    expect(splitPathForDirSuggest("~/proj")).toEqual({
+      base: `${os.homedir()}/`,
+      filter: "proj",
+    })
+  })
+})
+
+describe("listSubdirs — fault-tolerance and dir-only filtering", () => {
+  test("returns [] for empty / missing base (no throw)", () => {
+    expect(listSubdirs("")).toEqual([])
+    expect(listSubdirs("/this/path/definitely/does/not/exist")).toEqual([])
+  })
+
+  test("returns directory names only, alphabetically sorted", () => {
+    // Use a known-stable directory: the system tmp root has a small,
+    // predictable set of dirs across CI runs. We just verify shape:
+    // any returned name should be a string, and the list is sorted.
+    const out = listSubdirs(`${os.tmpdir()}/`)
+    expect(Array.isArray(out)).toBe(true)
+    const sorted = [...out].sort((a, b) => a.localeCompare(b))
+    expect(out).toEqual(sorted)
+    for (const name of out) {
+      expect(typeof name).toBe("string")
+      expect(name).not.toContain("/")
+    }
+  })
+})
+
+describe("filterSubdirs — prefix match + hidden-by-default", () => {
+  test("empty filter returns the list with hidden entries dropped", () => {
+    const all = ["projects", ".git", "Documents", ".config"]
+    expect(filterSubdirs(all, "")).toEqual(["projects", "Documents"])
+  })
+
+  test("non-`.` filter is a case-insensitive prefix match, hidden still dropped", () => {
+    const all = ["projects", "Projector", "my-projects", ".project"]
+    // "proj" matches projects + Projector (prefix); my-projects is not
+    // a prefix match; .project is hidden because filter doesn't start
+    // with `.`.
+    expect(filterSubdirs(all, "proj")).toEqual(["projects", "Projector"])
+    expect(filterSubdirs(all, "PROJ")).toEqual(["projects", "Projector"])
+  })
+
+  test("filter starting with `.` reveals hidden entries", () => {
+    const all = ["projects", ".git", ".github", ".config"]
+    expect(filterSubdirs(all, ".gi")).toEqual([".git", ".github"])
+    // Bare `.` reveals all hidden entries
+    expect(filterSubdirs(all, ".")).toEqual([".git", ".github", ".config"])
+  })
+
+  test("no match returns empty list", () => {
+    expect(filterSubdirs(["a", "b"], "z")).toEqual([])
+  })
+})
+
+describe("joinDrill — preserves ~ prefix when applicable", () => {
+  test("absolute base + name produces an absolute drill path", () => {
+    expect(joinDrill("/Users/me/proj", "/Users/me/", "projects")).toBe("/Users/me/projects/")
+  })
+
+  test("~-relative typed value rewraps the drill in ~/...", () => {
+    const home = os.homedir()
+    expect(joinDrill("~/proj", `${home}/`, "projects")).toBe("~/projects/")
+  })
+
+  test("absolute typed value is NOT rewrapped even if it lives under home", () => {
+    const home = os.homedir()
+    // User explicitly typed an absolute path — respect that.
+    expect(joinDrill(`${home}/proj`, `${home}/`, "projects")).toBe(`${home}/projects/`)
   })
 })

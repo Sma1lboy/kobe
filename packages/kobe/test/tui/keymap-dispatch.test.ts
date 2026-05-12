@@ -40,7 +40,11 @@ function makeReg(id: number, key: string, cmd: () => void, enabled = true): Regi
 describe("dispatchKeyEvent", () => {
   test("fires the first matching binding and consumes the event", () => {
     let fired = false
-    const stack: RegisteredBinding[] = [makeReg(1, "enter", () => (fired = true))]
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "enter", () => {
+        fired = true
+      }),
+    ]
     const evt = makeEvt("return") // "return" should alias to "enter"
 
     const handled = dispatchKeyEvent(stack, evt)
@@ -77,7 +81,9 @@ describe("dispatchKeyEvent", () => {
   test("skips disabled registrations and falls through to enabled ones", () => {
     let bottomFired = false
     const stack: RegisteredBinding[] = [
-      makeReg(1, "enter", () => (bottomFired = true)),
+      makeReg(1, "enter", () => {
+        bottomFired = true
+      }),
       makeReg(2, "enter", () => {}, /* enabled */ false),
     ]
     const evt = makeEvt("return")
@@ -90,7 +96,11 @@ describe("dispatchKeyEvent", () => {
 
   test("an already-prevented event short-circuits without firing anything", () => {
     let fired = false
-    const stack: RegisteredBinding[] = [makeReg(1, "enter", () => (fired = true))]
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "enter", () => {
+        fired = true
+      }),
+    ]
     const evt = makeEvt("return")
     evt.preventDefault() // simulate a higher-priority handler having already consumed
 
@@ -106,7 +116,11 @@ describe("dispatchKeyEvent", () => {
     // pulls focus elsewhere. Native widgets reading `defaultPrevented`
     // should see `true` and stay quiet.
     let sidebarFired = false
-    const stack: RegisteredBinding[] = [makeReg(1, "enter", () => (sidebarFired = true))]
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "enter", () => {
+        sidebarFired = true
+      }),
+    ]
     const evt = makeEvt("return")
 
     dispatchKeyEvent(stack, evt)
@@ -119,7 +133,11 @@ describe("dispatchKeyEvent", () => {
 
   test("modifier chords (ctrl+k) match correctly", () => {
     let fired = false
-    const stack: RegisteredBinding[] = [makeReg(1, "ctrl+k", () => (fired = true))]
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+k", () => {
+        fired = true
+      }),
+    ]
     const evt = makeEvt("k", { ctrl: true })
 
     dispatchKeyEvent(stack, evt)
@@ -130,7 +148,11 @@ describe("dispatchKeyEvent", () => {
 
   test("bare letter does not match modifier-prefixed binding", () => {
     let fired = false
-    const stack: RegisteredBinding[] = [makeReg(1, "ctrl+k", () => (fired = true))]
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "ctrl+k", () => {
+        fired = true
+      }),
+    ]
     const evt = makeEvt("k") // no ctrl
 
     dispatchKeyEvent(stack, evt)
