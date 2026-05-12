@@ -28,7 +28,6 @@ import type { ModelChoice, ModelEffortLevel } from "@/types/engine"
 
 const CODEX_GPT55_EFFORT_LEVELS = [
   "none",
-  "minimal",
   "low",
   "medium",
   "high",

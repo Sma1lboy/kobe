@@ -20,6 +20,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Codex model picker no longer offers the broken `minimal` reasoning option** — real `codex exec` rejects `model_reasoning_effort="minimal"` with the default tool set, so the picker now exposes only the effort levels that smoke-tested successfully (`none`, `low`, `medium`, `high`, `xhigh`).
 - **Topbar session ids now come from the active engine session** — the branch header no longer falls back to the deprecated task-level `sessionId`, and Codex sessions bind to the persisted rollout id from `session_meta` so the displayed `sid` is the id that history and resume actually use.
 - **Plan-mode switching is visible again for Claude Code and Codex** — the composer footer now always shows the active engine-owned mode label (`default` / `full access` / `plan mode`) as a clickable control, with shift+tab still cycling the same mode.
 
