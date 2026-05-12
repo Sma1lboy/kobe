@@ -2,8 +2,11 @@
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
- * Header: `terminal — <cwd-basename>`. Body: SGR-rendered scrollback
- * (colors, bold/italic/underline) with a native viewport cursor.
+ * Body: SGR-rendered scrollback (colors, bold/italic/underline) with
+ * a native viewport cursor. The worktree-id label that used to live
+ * in an inner header row was removed — it duplicated what the parent
+ * PaneHeader already shows, AND it threw off the body's `screenY` by
+ * 1 row, parking the cursor on the header instead of the prompt.
  *
  * Lifecycle (per the Stream J brief):
  *   - When `cwd` and `taskId` resolve to non-null values, acquire a
@@ -55,8 +58,7 @@
  * stable end-state snapshot.
  */
 
-import { basename } from "node:path"
-import { type BoxRenderable, StyledText, TextAttributes } from "@opentui/core"
+import { type BoxRenderable, StyledText } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
@@ -237,12 +239,6 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   /* --------- view ---------- */
 
-  const headerLabel = createMemo(() => {
-    const cwd = props.cwd()
-    if (!cwd) return "terminal — (no task)"
-    return `terminal — ${basename(cwd)}`
-  })
-
   // Parse the snapshot (text + SGR escapes) into one chunk-list per
   // row. Memoized on `snapshot()`, so a cursor-only update doesn't
   // re-parse the (unchanged) text. Empty rows are preserved so the
@@ -400,18 +396,20 @@ export function Terminal(props: TerminalProps): JSXElement {
       borderColor={focused() ? theme.focusAccent : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
-      {/* Header (the parent PaneHeader already labels TERMINAL; this
-          row keeps the worktree-id detail Stream J shipped). */}
-      <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
-        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-          {headerLabel()}
-        </text>
-        <Show when={scrollOffset() > 0}>
+      {/* Scroll affordance — only rendered when the user has scrolled
+          back into history. Replaces what used to be a permanent
+          worktree-id header row; that row was redundant with the
+          parent PaneHeader's right-side label AND it threw off the
+          body's `screenY` by 1, parking the cursor on the header
+          instead of the prompt. Conditional render means the body's
+          screenY equals the pane's content top in the steady state. */}
+      <Show when={scrollOffset() > 0}>
+        <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
           <text fg={theme.warning} wrapMode="none">
-            {"  "}↑ scrolled {scrollOffset()}L (ctrl+pgdn to follow)
+            ↑ scrolled {scrollOffset()}L (ctrl+pgdn to follow)
           </text>
-        </Show>
-      </box>
+        </box>
+      </Show>
 
       {/* Body */}
       <Show
