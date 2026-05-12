@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-05-11
+
+### Fixed
+
+- **ESC stops yanking focus out of the chat composer** — ESC was globally bound to "back to sidebar" (`focus.detach`), so any idle ESC press while editing silently kicked the keyboard back to the task list. Removed the global binding entirely; ESC now belongs to DialogProvider (close top dialog) and Chat.tsx (interrupt streaming turn) only, and idle ESC is a no-op so the composer keeps focus mid-edit. Use `ctrl+q` for an explicit "back to sidebar" detach.
+
 ## [0.5.7] - 2026-05-11
 
 ### Fixed
