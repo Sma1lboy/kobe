@@ -24,19 +24,44 @@
  */
 
 import { parse } from "@ansi-tools/parser"
-import { RGBA, TextAttributes, ansi256IndexToRgb } from "@opentui/core"
+
+/**
+ * RGB triple in 0-255 ints. Used in place of opentui's RGBA so this
+ * file has zero opentui dependency — that lets vitest load it without
+ * dragging in opentui's tree-sitter `.scm` assets (which vitest's
+ * default loader refuses on sight). The thin adapter in
+ * `./sgr-to-text-chunk.ts` converts RGB → RGBA at render time.
+ */
+export type RGB = readonly [r: number, g: number, b: number]
+
+/**
+ * Attribute bitmask values. Intentionally match opentui's
+ * `TextAttributes` enum (BOLD=1, DIM=2, ITALIC=4, …) so a chunk
+ * produced here can be handed straight to a `TextChunk` consumer
+ * without remapping. Hard-coded rather than imported from opentui
+ * for the same vitest reason described on RGB above.
+ */
+export const ATTR = Object.freeze({
+  BOLD: 1, // 1 << 0
+  DIM: 2, // 1 << 1
+  ITALIC: 4, // 1 << 2
+  UNDERLINE: 8, // 1 << 3
+  BLINK: 16, // 1 << 4
+  INVERSE: 32, // 1 << 5
+  HIDDEN: 64, // 1 << 6
+  STRIKETHROUGH: 128, // 1 << 7
+})
 
 export interface Style {
-  fg: RGBA | undefined
-  bg: RGBA | undefined
+  fg: RGB | undefined
+  bg: RGB | undefined
   attributes: number
 }
 
 export interface Chunk {
-  readonly __isChunk: true
   readonly text: string
-  readonly fg?: RGBA
-  readonly bg?: RGBA
+  readonly fg?: RGB
+  readonly bg?: RGB
   readonly attributes?: number
 }
 
@@ -46,10 +71,55 @@ export const EMPTY_STYLE: Style = Object.freeze({
   attributes: 0,
 })
 
-function rgbaFromAnsi256(index: number): RGBA {
-  const [r, g, b] = ansi256IndexToRgb(index)
-  return RGBA.fromInts(r, g, b)
+/**
+ * Inline ANSI 256-color palette. The first 16 entries are the xterm
+ * defaults for the standard / bright system colors; entries 16-231
+ * are the 6×6×6 RGB cube; entries 232-255 are the 24-step grayscale
+ * ramp. Reference: https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
+ *
+ * We don't import opentui's `ansi256IndexToRgb` because that would
+ * pull opentui's full module graph into the test runtime (see file
+ * top-of-comment for why we keep this file opentui-free).
+ */
+function ansi256ToRgb(index: number): RGB {
+  if (index < 0) return [0, 0, 0]
+  if (index < 16) return SYSTEM_PALETTE[index] ?? [0, 0, 0]
+  if (index < 232) {
+    // 6x6x6 cube. cube_step[0..5] = {0, 95, 135, 175, 215, 255} —
+    // matches xterm's published table.
+    const i = index - 16
+    const r = Math.floor(i / 36)
+    const g = Math.floor((i / 6) % 6)
+    const b = i % 6
+    const step = (n: number) => (n === 0 ? 0 : 55 + 40 * n)
+    return [step(r), step(g), step(b)]
+  }
+  if (index < 256) {
+    // Grayscale ramp. 24 entries from #080808 to #eeeeee, step 10.
+    const gray = 8 + 10 * (index - 232)
+    return [gray, gray, gray]
+  }
+  return [0, 0, 0]
 }
+
+const SYSTEM_PALETTE: readonly RGB[] = [
+  [0, 0, 0], // black
+  [205, 0, 0], // red
+  [0, 205, 0], // green
+  [205, 205, 0], // yellow
+  [0, 0, 238], // blue
+  [205, 0, 205], // magenta
+  [0, 205, 205], // cyan
+  [229, 229, 229], // white
+  [127, 127, 127], // bright black
+  [255, 0, 0], // bright red
+  [0, 255, 0], // bright green
+  [255, 255, 0], // bright yellow
+  [92, 92, 255], // bright blue
+  [255, 0, 255], // bright magenta
+  [0, 255, 255], // bright cyan
+  [255, 255, 255], // bright white
+]
 
 /**
  * Apply one SGR escape's params to the running style, returning the
@@ -82,89 +152,89 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
     }
     // Single-byte attribute toggles.
     if (p === 1) {
-      attr |= TextAttributes.BOLD
+      attr |= ATTR.BOLD
       i += 1
       continue
     }
     if (p === 2) {
-      attr |= TextAttributes.DIM
+      attr |= ATTR.DIM
       i += 1
       continue
     }
     if (p === 3) {
-      attr |= TextAttributes.ITALIC
+      attr |= ATTR.ITALIC
       i += 1
       continue
     }
     if (p === 4) {
-      attr |= TextAttributes.UNDERLINE
+      attr |= ATTR.UNDERLINE
       i += 1
       continue
     }
     if (p === 5 || p === 6) {
-      attr |= TextAttributes.BLINK
+      attr |= ATTR.BLINK
       i += 1
       continue
     }
     if (p === 7) {
-      attr |= TextAttributes.INVERSE
+      attr |= ATTR.INVERSE
       i += 1
       continue
     }
     if (p === 8) {
-      attr |= TextAttributes.HIDDEN
+      attr |= ATTR.HIDDEN
       i += 1
       continue
     }
     if (p === 9) {
-      attr |= TextAttributes.STRIKETHROUGH
+      attr |= ATTR.STRIKETHROUGH
       i += 1
       continue
     }
     // Attribute resets.
     if (p === 22) {
-      attr &= ~(TextAttributes.BOLD | TextAttributes.DIM)
+      attr &= ~(ATTR.BOLD | ATTR.DIM)
       i += 1
       continue
     }
     if (p === 23) {
-      attr &= ~TextAttributes.ITALIC
+      attr &= ~ATTR.ITALIC
       i += 1
       continue
     }
     if (p === 24) {
-      attr &= ~TextAttributes.UNDERLINE
+      attr &= ~ATTR.UNDERLINE
       i += 1
       continue
     }
     if (p === 25) {
-      attr &= ~TextAttributes.BLINK
+      attr &= ~ATTR.BLINK
       i += 1
       continue
     }
     if (p === 27) {
-      attr &= ~TextAttributes.INVERSE
+      attr &= ~ATTR.INVERSE
       i += 1
       continue
     }
     if (p === 28) {
-      attr &= ~TextAttributes.HIDDEN
+      attr &= ~ATTR.HIDDEN
       i += 1
       continue
     }
     if (p === 29) {
-      attr &= ~TextAttributes.STRIKETHROUGH
+      attr &= ~ATTR.STRIKETHROUGH
       i += 1
       continue
     }
     // Standard fg (30-37) / bright fg (90-97).
     if (p >= 30 && p <= 37) {
-      fg = rgbaFromAnsi256(p - 30)
+      fg = ansi256ToRgb(p - 30)
       i += 1
       continue
     }
     if (p >= 90 && p <= 97) {
-      fg = rgbaFromAnsi256(p - 90 + 8)
+      fg = ansi256ToRgb(p - 90 + 8)
       i += 1
       continue
     }
@@ -176,12 +246,12 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
     }
     // Standard bg (40-47) / bright bg (100-107).
     if (p >= 40 && p <= 47) {
-      bg = rgbaFromAnsi256(p - 40)
+      bg = ansi256ToRgb(p - 40)
       i += 1
       continue
     }
     if (p >= 100 && p <= 107) {
-      bg = rgbaFromAnsi256(p - 100 + 8)
+      bg = ansi256ToRgb(p - 100 + 8)
       i += 1
       continue
     }
@@ -204,7 +274,7 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
       const sub = params[i + 1]
       if (sub === 5) {
         const idx = params[i + 2] ?? 0
-        fg = rgbaFromAnsi256(idx)
+        fg = ansi256ToRgb(idx)
         i += 3
         continue
       }
@@ -212,7 +282,7 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
         const r = params[i + 3] ?? 0
         const g = params[i + 4] ?? 0
         const b = params[i + 5] ?? 0
-        fg = RGBA.fromInts(r, g, b)
+        fg = [r, g, b]
         i += 6
         continue
       }
@@ -225,7 +295,7 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
       const sub = params[i + 1]
       if (sub === 5) {
         const idx = params[i + 2] ?? 0
-        bg = rgbaFromAnsi256(idx)
+        bg = ansi256ToRgb(idx)
         i += 3
         continue
       }
@@ -233,7 +303,7 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
         const r = params[i + 3] ?? 0
         const g = params[i + 4] ?? 0
         const b = params[i + 5] ?? 0
-        bg = RGBA.fromInts(r, g, b)
+        bg = [r, g, b]
         i += 6
         continue
       }
@@ -265,7 +335,6 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
   const flush = () => {
     if (buf.length === 0) return
     const c: Chunk = {
-      __isChunk: true,
       text: buf,
       ...(style.fg ? { fg: style.fg } : {}),
       ...(style.bg ? { bg: style.bg } : {}),

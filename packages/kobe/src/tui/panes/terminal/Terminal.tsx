@@ -68,6 +68,7 @@ import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
 import { parseAnsiSnapshot } from "./sgr"
+import { toTextChunk } from "./sgr-to-text-chunk"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -255,13 +256,16 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Per-row `StyledText` view used by the body's `<For>` render. We
   // produce one StyledText per row instead of N <span>s per cell —
   // opentui's <text> efficiently consumes a single chunks array.
+  // `toTextChunk` is the thin adapter that maps `sgr.ts`'s
+  // opentui-free Chunk into the RGBA-flavored TextChunk opentui
+  // wants.
   const styledRows = createMemo(() =>
     parsedRows().map((chunks) => {
       // An empty row is still a meaningful position (blank line in
       // the pane). We emit a StyledText with a single empty chunk so
       // the row's `<text>` still renders and occupies one line.
       if (chunks.length === 0) return new StyledText([{ __isChunk: true, text: "" }])
-      return new StyledText(chunks.map((c) => ({ ...c })))
+      return new StyledText(chunks.map(toTextChunk))
     }),
   )
 
