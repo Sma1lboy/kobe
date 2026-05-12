@@ -172,6 +172,13 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
         }
       }
       const subtype = typeof msg.subtype === "string" ? (msg.subtype as string) : "success"
+      const isApiError = msg.is_error === true || typeof msg.api_error_status === "number"
+      if (isApiError) {
+        const status = typeof msg.api_error_status === "number" ? ` ${msg.api_error_status}` : ""
+        const result = typeof msg.result === "string" ? msg.result.trim() : ""
+        yield { type: "error", message: result ? `claude API error${status}: ${result}` : `claude API error${status}` }
+        return
+      }
       if (subtype === "success") {
         yield { type: "done" }
       } else {
