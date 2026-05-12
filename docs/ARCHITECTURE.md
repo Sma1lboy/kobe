@@ -182,7 +182,7 @@ Wire-up (in `src/tui/app.tsx`, function `Shell`):
 | Chat | `src/tui/panes/chat/` | Multi-tab per task; `Composer.tsx` + `MessageList.tsx`; pure-data store at `store.ts` |
 | File tree | `src/tui/panes/filetree/` | `git ls-files`-driven, three top tabs (All / Changes / Checks) |
 | Preview | `src/tui/panes/preview/` | Multi-tab (one per opened file); File / Diff modes |
-| Terminal | `src/tui/panes/terminal/` | direct shell pipe per task; lightweight, not a full PTY |
+| Terminal | `src/tui/panes/terminal/` | Bun native PTY per task, rendered through `@xterm/headless`; pipe backend is fallback only |
 
 ### Focus + keymap routing
 

@@ -2,8 +2,8 @@
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
- * Body: SGR-rendered pipe output (colors, bold/italic/underline when
- * the shell emits SGR). The worktree-id label that used to live
+ * Body: a headless xterm screen snapshot fed by the task PTY. The
+ * worktree-id label that used to live
  * in an inner header row was removed — it duplicated what the parent
  * PaneHeader already shows, AND it threw off the body's `screenY` by
  * 1 row, parking the cursor on the header instead of the prompt.
@@ -46,9 +46,8 @@
  * offset is 0 we follow the bottom (so new output is always visible
  * by default).
  *
- * Cursor: the pipe backend cannot report a terminal cursor, so cursor
- * overlay is absent by default. A future real PTY backend can fill the
- * same `CursorPos` contract without changing this component.
+ * Cursor: the PTY backend reports cursor coordinates from the headless
+ * xterm buffer; this component maps them onto opentui's native cursor.
  */
 
 import { type BoxRenderable, StyledText } from "@opentui/core"
@@ -175,7 +174,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       setScrollOffset(0)
 
       // Subscribe; the listener receives a full snapshot and an
-      // optional cursor. The pipe backend reports no cursor.
+      // optional cursor.
       const unsubscribe = handle.onData((snap, c) => {
         setSnapshot(snap)
         setCursor(c)
@@ -272,8 +271,8 @@ export function Terminal(props: TerminalProps): JSXElement {
    * reposition it as soon as focus moves elsewhere.
    *
    * We ALSO push the body's measured (cols, rows) into the backend via
-   * `pty.resize`. The current pipe backend stores those values only; a
-   * future real PTY backend can translate them into SIGWINCH.
+   * `pty.resize`. The Bun PTY backend translates those into terminal
+   * resize events.
    */
   const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const renderer = useRenderer()

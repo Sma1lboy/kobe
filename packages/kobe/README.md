@@ -147,7 +147,7 @@ and confirm `claude --version` works in the same shell you launched kobe from.
 **`bun: command not found`** — install [Bun](https://bun.sh) (`curl -fsSL https://bun.sh/install | bash`).
 kobe's renderer requires Bun ≥ 1.0; it does not run under Node.
 
-**The terminal pane is blank** — kobe starts your `$SHELL` directly through pipes. Confirm `$SHELL` points at an installed shell and that the active task's worktree path still exists.
+**The terminal pane is blank** — kobe starts your `$SHELL` through Bun's native PTY. Confirm `$SHELL` points at an installed shell, your Bun version supports `Bun.spawn({ terminal })`, and the active task's worktree path still exists. `KOBE_TERMINAL_BACKEND=pipe` is available only as a fallback.
 
 **`posix_spawnp failed` when running `bun run test:behavior`** — on macOS arm64,
 Bun's installer occasionally ships `node-pty`'s prebuilt `spawn-helper` without

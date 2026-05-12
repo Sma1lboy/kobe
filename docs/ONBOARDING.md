@@ -28,7 +28,7 @@ cd ..
 # 3. typecheck + tests
 bun --filter @sma1lboy/kobe typecheck
 bun --filter @sma1lboy/kobe test
-bun --filter @sma1lboy/kobe test:behavior   # needs tmux + node-pty
+bun --filter @sma1lboy/kobe test:behavior   # needs node-pty for the test driver
 
 # 4. run it
 bun --filter @sma1lboy/kobe dev
@@ -106,7 +106,7 @@ work in an area, ping the listed owner first to avoid stomping.
 | **Engine (subprocess)** | `src/engine/claude-code-local/` | Jackson | Algorithmically ported from `refs/opcode/src-tauri/.../claude.rs`. Mirror opcode's stream-json parser when extending. |
 | **Orchestrator / task state** | `src/orchestrator/`, `src/state/` | Jackson | State definition recently simplified (5 states removed). Spec doc forthcoming. |
 | **Worktrees** | `.claude/worktrees/`, orchestrator integration | Jackson | Always `.claude/worktrees/`, never `.kobe/worktrees/`. |
-| **Behavior tests** | `test/behavior/` | Jackson | PTY/tmux driven (`docs/HARNESS.md`). Local-only — CI runs unit + typecheck only. |
+| **Behavior tests** | `test/behavior/` | Jackson | PTY driven (`docs/HARNESS.md`). Local-only — CI runs unit + typecheck only. |
 | **General triage** | — | Allen | First responder for "saw a bug, fix it" — small fixes go through Allen. |
 
 ---

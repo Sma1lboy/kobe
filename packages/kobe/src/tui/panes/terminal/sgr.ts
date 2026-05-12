@@ -1,14 +1,11 @@
 /**
  * SGR (Select Graphic Rendition) parser for the terminal pane.
  *
- * The pipe-backed terminal backend forwards shell stdout/stderr into
- * this parser. We preserve SGR escape sequences (colors,
- * bold/italic/underline/...) and drop non-SGR control sequences rather
- * than trying to emulate a full terminal.
- *
- * Why not pull in a full xterm emulator (`@xterm/headless`): this pane
- * is currently a lightweight command-output surface, not a real PTY.
- * SGR-only parsing is small and good enough for ordinary shell output.
+ * The terminal pane historically forwarded pipe stdout/stderr into
+ * this parser. The default backend now uses `@xterm/headless` first,
+ * so snapshots are already terminal-emulated text; this parser remains
+ * as a light styling layer for any SGR that reaches the render path and
+ * for the explicit pipe fallback backend.
  *
  * Reference for SGR semantics:
  *   - ECMA-48 §8.3.117
@@ -346,9 +343,9 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
     // SGR escapes come back from @ansi-tools/parser as CSI codes
     // with command "m" — the parser doesn't separately label SGR, it
     // just exposes the raw CSI envelope. Anything else with type
-    // "CSI" (cursor motion, erase-in-line, etc.) shouldn't appear in
-    // a lightweight pipe snapshot; we drop those rather than rendering
-    // raw bytes.
+    // "CSI" (cursor motion, erase-in-line, etc.) is either already
+    // handled by @xterm/headless or unsupported in the pipe fallback;
+    // we drop those rather than rendering raw bytes.
     if (code.type === "CSI" && code.command === "m") {
       flush()
       style = applySgr(style, code.params)

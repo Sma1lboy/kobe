@@ -1,19 +1,19 @@
 /**
  * Terminal pane process abstraction.
  *
- * kobe deliberately does NOT use tmux here anymore. The terminal pane
- * starts one non-interactive shell process per task and connects
- * stdin/stdout/stderr through ordinary pipes. That keeps the
- * implementation small and avoids tmux session/control-mode bugs.
+ * kobe deliberately does NOT use tmux here anymore. The default backend
+ * uses Bun's native PTY support (`Bun.spawn(..., { terminal })`) and a
+ * headless xterm emulator to turn terminal control bytes into a stable
+ * screen buffer for opentui to render.
  *
- * Tradeoff: this is not a real PTY. Ordinary shell commands work, but
- * shell prompts, job control, and full-screen TTY programs (`vim`,
- * `htop`, interactive `claude`) may degrade or refuse because stdout is
- * not a terminal. A future pass can add a real PTY through a
- * Bun-compatible PTY library; tmux is not the fallback.
+ * A pipe backend remains available through `KOBE_TERMINAL_BACKEND=pipe`
+ * as a fallback for old Bun builds or unsupported platforms, but it is
+ * not the production path.
  */
 
+import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
+import { Terminal as XtermHeadless } from "@xterm/headless"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -35,7 +35,7 @@ export type TaskPtyOpts = {
 /** Listener for new pane snapshots. Receives the full buffer. */
 export type DataListener = (snapshot: string, cursor: CursorPos | null) => void
 
-/** Cursor position within the visible pane, 0-based. Pipe backend cannot report it. */
+/** Cursor position within the rendered pane, 0-based. */
 export type CursorPos = { x: number; y: number }
 
 export interface TaskPtyLike {
@@ -57,6 +57,166 @@ const PIPE_SCROLLBACK_LIMIT = 200_000
 
 function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
+}
+
+/* --------------------------------------------------------------------- */
+/*  Bun PTY backend                                                       */
+/* --------------------------------------------------------------------- */
+
+export class BunTerminalTaskPty implements TaskPtyLike {
+  readonly taskId: string
+  readonly cwd: string
+  private readonly proc: ReturnType<typeof Bun.spawn>
+  private readonly term: XtermHeadless
+  private readonly listeners = new Set<DataListener>()
+  private buffer = ""
+  private cursor: CursorPos | null = null
+  private _killed = false
+  private cols: number
+  private rows: number
+  private refreshQueued = false
+
+  constructor(opts: TaskPtyOpts) {
+    this.taskId = opts.taskId
+    this.cwd = opts.cwd
+    this.cols = opts.cols ?? DEFAULT_COLS
+    this.rows = opts.rows ?? DEFAULT_ROWS
+    this.term = new XtermHeadless({
+      allowProposedApi: true,
+      cols: this.cols,
+      rows: this.rows,
+      scrollback: Math.floor(PIPE_SCROLLBACK_LIMIT / Math.max(20, this.cols)),
+    })
+
+    const shell = opts.shell ?? defaultShell()
+    this.proc = Bun.spawn([shell], {
+      cwd: opts.cwd,
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+        COLUMNS: String(this.cols),
+        LINES: String(this.rows),
+        BASH_SILENCE_DEPRECATION_WARNING: "1",
+        KOBE_TERMINAL_PTY: "1",
+      },
+      terminal: {
+        cols: this.cols,
+        rows: this.rows,
+        name: "xterm-256color",
+        data: (_terminal, data) => this.onTerminalData(data),
+        exit: () => this.markDead(false),
+      },
+    })
+    void this.proc.exited.then(
+      () => this.markDead(false),
+      () => this.markDead(false),
+    )
+    this.proc.unref?.()
+  }
+
+  get killed(): boolean {
+    return this._killed
+  }
+
+  write(data: string): void {
+    if (this._killed || data.length === 0) return
+    try {
+      this.proc.terminal?.write(data)
+    } catch {
+      this.markDead(false)
+    }
+  }
+
+  onData(cb: DataListener): () => void {
+    this.listeners.add(cb)
+    if (this.buffer !== "") {
+      try {
+        cb(this.buffer, this.cursor)
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+    return () => {
+      this.listeners.delete(cb)
+    }
+  }
+
+  resize(cols: number, rows: number): void {
+    if (this._killed) return
+    this.cols = cols
+    this.rows = rows
+    try {
+      this.term.resize(cols, rows)
+      this.proc.terminal?.resize(cols, rows)
+      this.refreshSnapshot()
+    } catch {
+      this.markDead(false)
+    }
+  }
+
+  capture(): string {
+    return this.buffer
+  }
+
+  captureCursor(): CursorPos | null {
+    return this.cursor
+  }
+
+  kill(): void {
+    if (this._killed) return
+    this.markDead(true)
+  }
+
+  private onTerminalData(data: string | Uint8Array): void {
+    if (this._killed) return
+    const chunk = typeof data === "string" ? data : Buffer.from(data).toString("utf8")
+    this.term.write(chunk, () => this.queueRefresh())
+  }
+
+  private queueRefresh(): void {
+    if (this.refreshQueued) return
+    this.refreshQueued = true
+    queueMicrotask(() => {
+      this.refreshQueued = false
+      this.refreshSnapshot()
+    })
+  }
+
+  private refreshSnapshot(): void {
+    if (this._killed) return
+    const active = this.term.buffer.active
+    const rows: string[] = []
+    for (let y = 0; y < active.length; y++) {
+      rows.push(active.getLine(y)?.translateToString(true) ?? "")
+    }
+    this.buffer = rows.join("\n")
+    this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY }
+    for (const cb of this.listeners) {
+      try {
+        cb(this.buffer, this.cursor)
+      } catch {
+        /* one listener must not break the others */
+      }
+    }
+  }
+
+  private markDead(killProcess: boolean): void {
+    if (this._killed) return
+    this._killed = true
+    if (killProcess) {
+      try {
+        this.proc.terminal?.close()
+      } catch {
+        /* best effort */
+      }
+      try {
+        this.proc.kill("SIGTERM")
+      } catch {
+        /* best effort */
+      }
+    }
+    this.listeners.clear()
+  }
 }
 
 /* --------------------------------------------------------------------- */
@@ -285,9 +445,11 @@ export class MockTaskPty implements TaskPtyLike {
 /* --------------------------------------------------------------------- */
 
 export function createTaskPty(opts: TaskPtyOpts): TaskPtyLike {
-  const backend = process.env.KOBE_TERMINAL_BACKEND ?? "pipe"
+  const backend = process.env.KOBE_TERMINAL_BACKEND ?? "bun-pty"
   if (backend === "mock") return new MockTaskPty(opts)
-  return new PipeTaskPty(opts)
+  if (backend === "pipe") return new PipeTaskPty(opts)
+  if (backend === "bun-pty") return new BunTerminalTaskPty(opts)
+  throw new Error(`unknown terminal backend: ${backend}`)
 }
 
 export type TaskPty = TaskPtyLike

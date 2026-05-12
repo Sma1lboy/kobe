@@ -12,13 +12,14 @@
  * use a freshly-`mkdtemp`'d directory so the captured `basename` in
  * the header is predictable.
  *
- * Backend: direct non-interactive shell pipes. This intentionally avoids
- * tmux so the behavior test matches the production default.
+ * Backend: Bun's native PTY plus a headless xterm buffer. This
+ * intentionally avoids tmux so the behavior test matches the
+ * production default.
  *
  * What we assert:
  *   1. The header `terminal — <basename>` is visible.
- *   2. After typing `echo hello\n`, "hello" appears in the rendered
- *      scrollback.
+ *   2. After typing `tty; echo hello\n`, a real tty path and "hello"
+ *      appear in the rendered scrollback.
  *   3. After typing `exit\n`, the shell process dies. The
  *      pane is allowed to render either an empty body or the shell's
  *      farewell line. We assert that "kobe terminal host" (from the
@@ -78,14 +79,16 @@ test("Stream J — embedded shell echoes 'hello' and survives exit", async () =>
   await kobe.waitFor((s) => s.includes("kobe terminal host"), 10_000)
 
   // Type a command. The fixture host signals `focused = () => true`,
-  // so keystrokes are forwarded to the PTY. We send `echo hello`
-  // followed by Enter (\r). The pipe backend normalizes CR to LF.
-  await kobe.typeText("echo hello\r")
+  // so keystrokes are forwarded to the PTY. `tty` is the key assertion
+  // here: the old pipe backend printed "not a tty".
+  await kobe.typeText("tty; echo hello\r")
 
   // Wait for "hello" to appear in the captured scrollback. Generous
   // timeout — process startup and shell prompts can vary on dev boxes.
   const after = await kobe.waitFor((s) => s.includes("hello"), 15_000)
   expect(after).toContain("hello")
+  expect(after).toContain("/dev/")
+  expect(after).not.toContain("not a tty")
 
   // Tell the shell to exit. We don't strictly verify a "shell
   // exited" message (different shells emit different farewells, or

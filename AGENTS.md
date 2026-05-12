@@ -97,6 +97,8 @@ linear auth login                     # interactive browser OAuth — user must 
 linear auth whoami                    # verify: should print Workspace + User
 ```
 
+If keyring auth is unavailable on the agent host, set `LINEAR_API_KEY` in the local shell environment (for example `~/.zshrc`) and run Linear commands from a shell that has sourced it. Never commit the actual API key to `AGENTS.md`, `CLAUDE.md`, or any tracked repo file.
+
 Agents who find `linear` missing on PATH should surface to the user — do not try to fall back to the MCP, and do not silently skip filing.
 
 ### Cheat sheet
