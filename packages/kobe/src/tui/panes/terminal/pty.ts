@@ -54,9 +54,150 @@ export interface TaskPtyLike {
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
 const PIPE_SCROLLBACK_LIMIT = 200_000
+const XTERM_COLOR_MODE_DEFAULT = 0
+const XTERM_COLOR_MODE_PALETTE = 1 << 24
+const XTERM_COLOR_MODE_RGB = 3 << 24
 
 function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
+}
+
+type XtermCellLike = {
+  getChars(): string
+  getWidth(): number
+  isFgDefault(): boolean
+  isBgDefault(): boolean
+  isFgPalette(): boolean
+  isBgPalette(): boolean
+  isFgRGB(): boolean
+  isBgRGB(): boolean
+  getFgColorMode(): number
+  getBgColorMode(): number
+  getFgColor(): number
+  getBgColor(): number
+  isAttributeDefault(): boolean
+  isBold(): boolean | number
+  isDim(): boolean | number
+  isItalic(): boolean | number
+  isUnderline(): boolean | number
+  isBlink(): boolean | number
+  isInverse(): boolean | number
+  isInvisible(): boolean | number
+  isStrikethrough(): boolean | number
+}
+
+type RenderStyle = {
+  fg: string
+  bg: string
+  attrs: number
+}
+
+const DEFAULT_RENDER_STYLE: RenderStyle = Object.freeze({ fg: "", bg: "", attrs: 0 })
+
+function sgrEscape(params: readonly (number | string)[]): string {
+  return `\x1b[${params.join(";")}m`
+}
+
+function paletteColorToSgr(index: number, base: 30 | 40): number[] {
+  if (index >= 0 && index <= 7) return [base + index]
+  if (index >= 8 && index <= 15) return [base + 60 + (index - 8)]
+  return [base === 30 ? 38 : 48, 5, index]
+}
+
+function rgbColorToSgr(rgb: number, base: 38 | 48): number[] {
+  const r = (rgb >> 16) & 0xff
+  const g = (rgb >> 8) & 0xff
+  const b = rgb & 0xff
+  return [base, 2, r, g, b]
+}
+
+function colorKey(cell: XtermCellLike, kind: "fg" | "bg"): string {
+  const isDefault = kind === "fg" ? cell.isFgDefault() : cell.isBgDefault()
+  if (isDefault) return ""
+  const mode = kind === "fg" ? cell.getFgColorMode() : cell.getBgColorMode()
+  const color = kind === "fg" ? cell.getFgColor() : cell.getBgColor()
+  if (mode === XTERM_COLOR_MODE_RGB || (kind === "fg" ? cell.isFgRGB() : cell.isBgRGB())) return `rgb:${color}`
+  if (mode === XTERM_COLOR_MODE_PALETTE || (kind === "fg" ? cell.isFgPalette() : cell.isBgPalette())) {
+    return `pal:${color}`
+  }
+  if (mode === XTERM_COLOR_MODE_DEFAULT) return ""
+  return ""
+}
+
+function cellStyle(cell: XtermCellLike): RenderStyle {
+  let attrs = 0
+  if (cell.isBold()) attrs |= 1 << 0
+  if (cell.isDim()) attrs |= 1 << 1
+  if (cell.isItalic()) attrs |= 1 << 2
+  if (cell.isUnderline()) attrs |= 1 << 3
+  if (cell.isBlink()) attrs |= 1 << 4
+  if (cell.isInverse()) attrs |= 1 << 5
+  if (cell.isInvisible()) attrs |= 1 << 6
+  if (cell.isStrikethrough()) attrs |= 1 << 7
+  return {
+    fg: colorKey(cell, "fg"),
+    bg: colorKey(cell, "bg"),
+    attrs,
+  }
+}
+
+function styleEquals(a: RenderStyle, b: RenderStyle): boolean {
+  return a.fg === b.fg && a.bg === b.bg && a.attrs === b.attrs
+}
+
+function styleToSgr(style: RenderStyle): string {
+  if (styleEquals(style, DEFAULT_RENDER_STYLE)) return sgrEscape([0])
+  const params: (number | string)[] = [0]
+  if (style.attrs & (1 << 0)) params.push(1)
+  if (style.attrs & (1 << 1)) params.push(2)
+  if (style.attrs & (1 << 2)) params.push(3)
+  if (style.attrs & (1 << 3)) params.push(4)
+  if (style.attrs & (1 << 4)) params.push(5)
+  if (style.attrs & (1 << 5)) params.push(7)
+  if (style.attrs & (1 << 6)) params.push(8)
+  if (style.attrs & (1 << 7)) params.push(9)
+  for (const [kind, key] of [
+    ["fg", style.fg],
+    ["bg", style.bg],
+  ] as const) {
+    if (key === "") continue
+    const [, raw] = key.split(":")
+    const value = Number(raw)
+    if (key.startsWith("rgb:")) params.push(...rgbColorToSgr(value, kind === "fg" ? 38 : 48))
+    if (key.startsWith("pal:")) params.push(...paletteColorToSgr(value, kind === "fg" ? 30 : 40))
+  }
+  return sgrEscape(params)
+}
+
+function isVisibleCell(cell: XtermCellLike): boolean {
+  const chars = cell.getChars()
+  if (chars !== "" && chars !== " ") return true
+  return !cell.isAttributeDefault() || !cell.isFgDefault() || !cell.isBgDefault()
+}
+
+function xtermLineToAnsi(line: { length: number; getCell(index: number): XtermCellLike | undefined }): string {
+  let last = -1
+  for (let x = 0; x < line.length; x++) {
+    const cell = line.getCell(x)
+    if (!cell || cell.getWidth() === 0) continue
+    if (isVisibleCell(cell)) last = x
+  }
+  if (last === -1) return ""
+
+  let out = ""
+  let active = DEFAULT_RENDER_STYLE
+  for (let x = 0; x <= last; x++) {
+    const cell = line.getCell(x)
+    if (!cell || cell.getWidth() === 0) continue
+    const next = cellStyle(cell)
+    if (!styleEquals(active, next)) {
+      out += styleToSgr(next)
+      active = next
+    }
+    out += cell.getChars() || " "
+  }
+  if (!styleEquals(active, DEFAULT_RENDER_STYLE)) out += styleToSgr(DEFAULT_RENDER_STYLE)
+  return out
 }
 
 /* --------------------------------------------------------------------- */
@@ -187,7 +328,8 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     const active = this.term.buffer.active
     const rows: string[] = []
     for (let y = 0; y < active.length; y++) {
-      rows.push(active.getLine(y)?.translateToString(true) ?? "")
+      const line = active.getLine(y)
+      rows.push(line ? xtermLineToAnsi(line) : "")
     }
     this.buffer = rows.join("\n")
     this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY }
