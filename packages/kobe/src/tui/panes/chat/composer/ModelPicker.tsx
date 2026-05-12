@@ -14,13 +14,7 @@ import { For, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../../context/theme"
 import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
-import {
-  type ModelPickerModelOption,
-  modelPickerEffortOptions,
-  modelPickerMetaLabel,
-  modelPickerModelOptions,
-  modelPickerRowParts,
-} from "./model-picker-row"
+import { type ModelPickerModelOption, modelPickerEffortOptions, modelPickerModelOptions } from "./model-picker-row"
 
 export type ModelPickerResult = Pick<ModelChoice, "id" | "effort"> | undefined
 
@@ -193,13 +187,6 @@ function ModelPicker(props: ModelPickerProps) {
           <For each={models()}>
             {(model, i) => {
               const active = () => i() === cursor()
-              const parts = () =>
-                modelPickerRowParts({
-                  vendor: model.vendor,
-                  id: model.id,
-                  label: model.label,
-                  hint: model.hint,
-                })
               const hasEfforts = () => modelPickerEffortOptions(model).some((choice) => choice.effort !== undefined)
               return (
                 <box
@@ -226,14 +213,10 @@ function ModelPicker(props: ModelPickerProps) {
                     wrapMode="none"
                   >
                     {active() ? "▸ " : "  "}
-                    {modelPickerMetaLabel(parts())}
-                  </text>
-                  <text
-                    fg={active() ? theme.selectedListItemText : theme.text}
-                    attributes={active() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
                     {model.label}
+                  </text>
+                  <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                    {model.vendor}
                   </text>
                   {hasEfforts() ? (
                     <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
