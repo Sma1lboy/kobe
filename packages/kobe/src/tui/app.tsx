@@ -772,15 +772,16 @@ export async function startApp(): Promise<void> {
   // Ctrl+C. Jackson wants the standard "first press copies / arms,
   // second press quits" UX, owned by useKobeKeybindings.
   // useKittyKeyboard:{} — opt into the kitty / CSI-u keyboard
-  // protocol. Without this, modifier-prefixed digit chords
-  // (ctrl+1..4 for pane focus) don't fire in most terminals because
-  // ctrl+<digit> isn't a distinct byte sequence in legacy terminal
-  // mode — the ctrl modifier is silently dropped. Kitty/foot/iTerm2/
-  // recent Terminal.app reply to the enable sequence and start
-  // sending CSI-u events with full modifier info. tmux users need
-  // `set -g extended-keys on` (and recent enough tmux) for the
-  // sequences to pass through. Non-supporting terminals fall back
-  // to legacy mode silently — no regression, just no ctrl+digit.
+  // protocol. Most kobe shortcuts are deliberately legacy-safe
+  // ctrl+letter chords, but CSI-u lets supporting terminals distinguish
+  // richer shortcuts such as shift+enter, ctrl+enter, ctrl+pageup, and
+  // modifier-prefixed punctuation/digits. Kitty/foot/iTerm2/recent
+  // Terminal.app reply to the enable sequence and start sending events
+  // with full modifier info. tmux users need `set -g extended-keys on`
+  // (and recent enough tmux) plus an `*:extkeys` terminal feature for
+  // those sequences to pass through. Non-supporting terminals fall back
+  // to legacy mode silently — no regression, just fewer distinguishable
+  // shortcuts.
   await render(() => <App orchestrator={orchestrator} />, {
     backgroundColor: "transparent",
     exitOnCtrlC: false,

@@ -412,7 +412,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // Shift+tab inside the composer cycles the per-task permission mode
-    // (default → accept edits → plan → …); the chord is registered in
+    // (default ↔ plan); the chord is registered in
     // Composer's onKeyDown, not here. Doc-only entry so the status bar
     // advertises the binding to a focused user.
     id: "chat.cycle-mode",

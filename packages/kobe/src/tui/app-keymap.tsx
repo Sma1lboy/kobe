@@ -134,7 +134,7 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
   /* ----- 2. Workspace-scoped ----- */
   // ctrl+q from the workspace (chat pane) jumps focus back to the
   // sidebar. Workspace-scoped — this is the "trapped in the chat
-  // composer, want out" verb. Other panes use ctrl+1..4 / esc.
+  // composer, want out" verb. Direct pane focus uses ctrl+hjkl.
   useBindings(() => ({
     enabled: focusedPane() === "workspace" && dialog.stack.length === 0,
     bindings: bindByIds({
