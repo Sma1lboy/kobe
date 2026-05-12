@@ -19,6 +19,7 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { fitSocketPath } from "../../daemon/paths.ts"
 import type { Orchestrator } from "../core.ts"
 import { type BridgeServer, startBridgeServer } from "./server.ts"
@@ -33,6 +34,11 @@ export interface BridgeHandles {
   close(): Promise<void>
 }
 
+export function bridgeSocketPathForHome(home: string, pid = process.pid): string {
+  const runDir = join(home, ".kobe", "run")
+  return fitSocketPath(join(runDir, `bridge-${pid}.sock`), home, "bridge", pid)
+}
+
 export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}): Promise<BridgeHandles> {
   const home = opts.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const runDir = join(home, ".kobe", "run")
@@ -42,7 +48,7 @@ export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}
   // socket through fitSocketPath; deeply-nested homes get a short
   // `$TMPDIR/kobe-<homeTag>-bridge-<pid>.sock` form instead of failing
   // to listen.
-  const socketPath = fitSocketPath(join(runDir, `bridge-${process.pid}.sock`), home, "bridge", process.pid)
+  const socketPath = bridgeSocketPathForHome(home)
   const mcpConfigPath = join(runDir, `mcp-${process.pid}.json`)
 
   // startBridgeServer already mkdir's the socket's parent; but if the
@@ -51,12 +57,18 @@ export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}
   await mkdir(runDir, { recursive: true })
 
   const server: BridgeServer = await startBridgeServer(orch, socketPath)
+  await mkdir(runDir, { recursive: true })
 
-  // process.argv[1] is the script entry. In the built binary it's
-  // `dist/index.js`; in `bun run dev` it's `src/cli/index.ts`. Use
-  // process.execPath as the interpreter so the same row works in
-  // both modes without a packaged shim.
-  const entry = process.argv[1] ?? ""
+  // The mcp-bridge subcommand only exists in the `kobe` CLI entry
+  // (src/cli/index.ts → dist/cli/index.js), not in `kobed`. Resolve
+  // it relative to this module so the config is correct regardless
+  // of who called startBridge — kobed daemon, TUI no-daemon path, or
+  // test fixtures. Extension follows our own (`.ts` in dev, `.js` in
+  // the built bundle), keyed off import.meta.url. process.argv[1] is
+  // unsafe here: when kobed calls startBridge, argv[1] points at
+  // kobed.ts which has no mcp-bridge handler. See KOB-54.
+  const moduleExt = import.meta.url.endsWith(".ts") ? ".ts" : ".js"
+  const entry = fileURLToPath(new URL(`../../cli/index${moduleExt}`, import.meta.url))
   const mcpConfig = {
     mcpServers: {
       kobe: {

@@ -3,21 +3,21 @@
 # Trigger: pushing a `vX.Y.Z` tag (semver only — no `v0.1.0-rc.1` etc.;
 # add a separate prerelease workflow if/when we need one).
 #
-# Steps, in order:
-#   1. Sanity gates — typecheck, test, build. If any fail the release
-#      stops before any side-effect (npm publish, GitHub release).
-#   2. Verify the tag's version matches package.json. Cuts off the
-#      "I forgot to bump package.json" footgun.
-#   3. Extract the matching CHANGELOG section as the release body.
-#      If the section is missing we fall back to a placeholder rather
-#      than failing — better to ship + amend than to block on docs.
-#   4. `npm publish --provenance`. The provenance flag uses the
-#      OIDC token (granted by `id-token: write` below) to attach
-#      build attestation to the published tarball — surfaces in the
-#      npm UI as "this build came from this CI run on this commit".
-#   5. Create the GitHub release with the extracted notes. Attach the
-#      built `dist/index.js` so users who don't want npm can grab the
-#      binary directly.
+# Two job families run in parallel after the tag lands:
+#
+#   `publish`   — gates (typecheck/test/build) → npm publish → create
+#                 the GitHub Release shell with the extracted CHANGELOG
+#                 notes.
+#   `binaries`  — matrix per OS+arch. Each runner builds standalone
+#                 `kobe` + `kobed` executables for its native platform
+#                 (no cross-compile: `@opentui/core` resolves
+#                 `@opentui/core-${platform}-${arch}` via a runtime
+#                 template-literal import, and the matching native
+#                 subpackage carries `os`/`cpu` restrictions that block
+#                 install on foreign hosts), tarballs them, and appends
+#                 the artifact to the release. `softprops/action-gh-release`
+#                 is idempotent on the same `tag_name`, so the matrix
+#                 jobs upload concurrently without stomping each other.
 #
 # Required repo secrets:
 #   - NPM_TOKEN: an npm automation token (Settings → Access Tokens
@@ -118,13 +118,69 @@ jobs:
         run: npm publish --access public --provenance
 
       - name: Create GitHub release
+        # Creates the release shell with the changelog notes. The
+        # `binaries` matrix appends executables to this same release
+        # via subsequent `softprops/action-gh-release` invocations
+        # against the same `tag_name`.
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
-          files: packages/kobe/dist/index.js
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  binaries:
+    # Wait for `publish` so the release shell exists before we append
+    # binaries; also avoids burning four runners on a release that fails
+    # the typecheck/test/build gate.
+    needs: publish
+    permissions:
+      contents: write   # appending assets to the release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14            # M1 host
+            asset: kobe-darwin-arm64
+          - runner: macos-13            # Intel host
+            asset: kobe-darwin-x64
+          - runner: ubuntu-latest       # x86_64 host
+            asset: kobe-linux-x64
+          - runner: ubuntu-24.04-arm    # Graviton-class arm64 host
+            asset: kobe-linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        # Each runner installs its own platform's `@opentui/core-*`
+        # native subpackage automatically via optional dependencies.
+        run: bun install --frozen-lockfile
+
+      - name: Compile standalone binaries
+        working-directory: packages/kobe
+        run: bun run scripts/compile.ts
+
+      - name: Tar binaries
+        # Tar from inside release-bin so the archive contains bare
+        # `kobe` + `kobed` at the root — users can extract straight onto
+        # their PATH directory.
+        working-directory: packages/kobe/release-bin
+        run: tar -czf "${{ matrix.asset }}.tar.gz" kobe kobed
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: packages/kobe/release-bin/${{ matrix.asset }}.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

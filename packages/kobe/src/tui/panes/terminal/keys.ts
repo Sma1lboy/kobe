@@ -18,12 +18,11 @@
  *     no way back to the tasks list.
  *
  * Rationale for the exception: the scrollback view is a kobe-rendered
- * widget, not the live tmux pane content. Scrolling is a UI gesture,
+ * widget, not the live shell PTY content. Scrolling is a UI gesture,
  * not a shell input. Without these we'd never be able to see history
  * once it scrolled past the visible viewport. We pick `ctrl+pgup/down`
  * because:
- *   - tmux uses the same chord pair under its prefix for buffer scroll;
- *     the muscle memory transfers.
+ *   - `ctrl+pgup/down` is unlikely to collide with normal shell input.
  *   - bare `pgup`/`pgdown` already mean "scroll the shell's primary
  *     buffer" in many terminals — we leave those for the shell.
  *

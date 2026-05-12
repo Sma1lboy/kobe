@@ -13,7 +13,15 @@
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
-import type { AIEngine, EngineCapabilities, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
+import type {
+  AIEngine,
+  EngineCapabilities,
+  EngineEvent,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "@/types/engine"
 import { type ProcessHandle, SessionRegistry } from "../claude-code-local/registry"
 import { findCodexBinary } from "./binary"
 import { codexCapabilities } from "./capabilities"
@@ -150,6 +158,7 @@ export class CodexLocal implements AIEngine {
         cwd: args.cwd,
         proc: spawned.proc,
         startedAt: Date.now(),
+        prompt: args.prompt,
       } satisfies ProcessHandle)
       resolveHandle({ sessionId, cwd: args.cwd })
     }

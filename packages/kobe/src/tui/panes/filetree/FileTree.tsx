@@ -33,9 +33,10 @@
  *   - worktree path change
  *   - explicit `r` keypress
  *   - first mount
- *
- * No filesystem watcher in v1 — the brief explicitly defers it to Wave
- * 4 polish. The `r` refresh keystroke is the user's escape hatch.
+ *   - optional filesystem activity inside the worktree when
+ *     `KOBE_FILETREE_WATCH=1` is set. Recursive watch is intentionally
+ *     opt-in because large monorepos can make the watcher itself more
+ *     expensive than a manual refresh.
  *
  * Reactivity: `worktreePath` is an `Accessor` so the pane reacts to
  * task switches without a manual prop-equality check. The internal
@@ -57,8 +58,9 @@
  * threads `worktreePath` and consumes `onOpenFile`).
  */
 
-import { TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on } from "solid-js"
+import { type FSWatcher, watch } from "node:fs"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
@@ -190,6 +192,7 @@ export function FileTree(props: FileTreeProps) {
   // tree renders top-level entries always; deeper levels show only
   // when their parent is in the set. Reset on worktree change.
   const [expandedDirs, setExpandedDirs] = createSignal<ReadonlySet<string>>(new Set())
+  let fetchSeq = 0
 
   /**
    * Fetch the data for the current tab. Errors land in `error()` and
@@ -199,6 +202,7 @@ export function FileTree(props: FileTreeProps) {
    * wasteful and disorienting.
    */
   async function refetch(currentTab: FileTreeTab, path: string | null): Promise<void> {
+    const seq = ++fetchSeq
     if (path == null) {
       setAllFiles(null)
       setChanges(null)
@@ -209,15 +213,17 @@ export function FileTree(props: FileTreeProps) {
     try {
       if (currentTab === "all") {
         const files = await listFiles(path)
+        if (seq !== fetchSeq || props.worktreePath() !== path) return
         setAllFiles(files)
       } else if (currentTab === "changes") {
         const entries = await statusFiles(path)
+        if (seq !== fetchSeq || props.worktreePath() !== path) return
         setChanges(entries)
       }
       // `checks` has no data to fetch in v1.
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setError(message)
+      if (seq === fetchSeq && props.worktreePath() === path) setError(message)
     }
   }
 
@@ -231,6 +237,40 @@ export function FileTree(props: FileTreeProps) {
       setCursorIndex(0)
       setExpandedDirs(new Set<string>())
       await refetch(tab(), path)
+    }),
+  )
+
+  // Realtime watch is opt-in. On large repos a recursive watcher can
+  // overwhelm the TUI process before the user does anything, so the
+  // default path is explicit refresh (`r`) plus tab/worktree changes.
+  createEffect(
+    on(props.worktreePath, (path) => {
+      if (path == null) return
+      if (process.env.KOBE_FILETREE_WATCH !== "1") return
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null
+      let watcher: FSWatcher | null = null
+      try {
+        watcher = watch(path, { recursive: true }, (_event, filename) => {
+          if (filename == null) return
+          const f = filename.toString()
+          if (f === ".git" || f.startsWith(".git/") || f.startsWith(".git\\")) return
+          if (f.startsWith("node_modules/") || f.startsWith("node_modules\\")) return
+          if (debounceTimer != null) clearTimeout(debounceTimer)
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null
+            setRefreshTick((n) => n + 1)
+          }, 500)
+        })
+        watcher.on("error", () => {
+          // Swallow — the `r` keystroke remains as the escape hatch.
+        })
+      } catch {
+        // Path missing or not watchable — fall back to manual refresh.
+      }
+      onCleanup(() => {
+        if (debounceTimer != null) clearTimeout(debounceTimer)
+        if (watcher != null) watcher.close()
+      })
     }),
   )
 
@@ -426,6 +466,27 @@ export function FileTree(props: FileTreeProps) {
     collapseOrParent,
   })
 
+  // ---------- viewport follow ----------
+  // Each row renders as a height-1 box, so its y-offset inside the
+  // scrollbox content equals its index in `rows()`. When the cursor
+  // moves past the visible window (either edge), nudge the scrollbox
+  // so the cursor row is just inside the viewport.
+  let scrollRef: ScrollBoxRenderable | undefined
+  createEffect(
+    on([cursorIndex, rows], ([i, r]) => {
+      if (!scrollRef) return
+      if (r.length === 0) return
+      const top = scrollRef.scrollTop
+      const height = scrollRef.viewport.height
+      if (height <= 0) return
+      if (i < top) {
+        scrollRef.scrollTo({ x: 0, y: i })
+      } else if (i >= top + height) {
+        scrollRef.scrollTo({ x: 0, y: i - height + 1 })
+      }
+    }),
+  )
+
   // ---------- render ----------
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
@@ -452,6 +513,9 @@ export function FileTree(props: FileTreeProps) {
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
          into the panel bg, thumb is muted text color. */}
       <scrollbox
+        ref={(r: ScrollBoxRenderable) => {
+          scrollRef = r
+        }}
         flexGrow={1}
         verticalScrollbarOptions={{
           trackOptions: {

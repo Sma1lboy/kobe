@@ -142,7 +142,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return hasDaemon ? 2 : 1
   }
   function bodyRowCount(): number {
-    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
+    if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length + 2
     if (section() === "dev") return devRowCount()
     // Accounts is read-only — no row-level navigation. j/k inside the
     // body is a no-op there, and l/right is harmless because there's
@@ -151,9 +151,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return 0
   }
   // Map bodyRow to the underlying selection within the General section.
-  // 0..N-1                       → theme at that index
-  // N                            → transparent-bg toggle
-  // N+1..N+FOCUS_ACCENT_SLOTS.length → focus-accent slot picker
+  // 0..N-1                                       → theme at that index
+  // N                                            → transparent-bg toggle
+  // N+1..N+FOCUS_ACCENT_SLOTS.length             → focus-accent slot picker
+  // N+1+FOCUS_ACCENT_SLOTS.length                → notifications: toast toggle
+  // N+2+FOCUS_ACCENT_SLOTS.length                → notifications: sound toggle
   function isTransparentRow(): boolean {
     return section() === "general" && bodyRow() === themeNames().length
   }
@@ -163,6 +165,33 @@ export function SettingsDialog(props: SettingsDialogProps) {
     const i = bodyRow() - offset
     if (i < 0 || i >= FOCUS_ACCENT_SLOTS.length) return null
     return i
+  }
+  function toastRowIndex(): number {
+    return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
+  }
+  function soundRowIndex(): number {
+    return toastRowIndex() + 1
+  }
+  function isToastRow(): boolean {
+    return section() === "general" && bodyRow() === toastRowIndex()
+  }
+  function isSoundRow(): boolean {
+    return section() === "general" && bodyRow() === soundRowIndex()
+  }
+  // Read through the reactive KV store so the toggle's `[x]/[ ]` label
+  // re-renders when toggled. Defaults match the contract in
+  // `notifications.tsx` — both on for first-launch users.
+  function toastEnabled(): boolean {
+    return (props.kv.get("notifications.toast.enabled", true) as boolean) !== false
+  }
+  function soundEnabled(): boolean {
+    return (props.kv.get("notifications.sound.enabled", true) as boolean) !== false
+  }
+  function toggleToast(): void {
+    props.kv.set("notifications.toast.enabled", !toastEnabled())
+  }
+  function toggleSound(): void {
+    props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
   function moveCursor(delta: number): void {
@@ -363,6 +392,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
               if (slot) themeCtx.setFocusAccent(slot)
               return
             }
+            if (isToastRow()) {
+              toggleToast()
+              return
+            }
+            if (isSoundRow()) {
+              toggleSound()
+              return
+            }
             const name = themeNames()[bodyRow()]
             if (name) themeCtx.set(name)
             return
@@ -550,6 +587,60 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     )
                   }}
                 </For>
+              </box>
+              {/* Notifications — two independent toggles. Toast = the
+                  visual overlay; Sound = terminal BEL + bundled chime.
+                  The tab-chip unread dot is always on (passive marker;
+                  turning notifications off shouldn't lose the "you
+                  missed something" signal). */}
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  Notifications
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound
+                  = terminal bell + chime. Tab-chip unread dot is always on.
+                </text>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={isToastRow() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    setLevel("body")
+                    setBodyRow(toastRowIndex())
+                    toggleToast()
+                  }}
+                >
+                  <text
+                    fg={isToastRow() ? theme.selectedListItemText : toastEnabled() ? theme.accent : theme.textMuted}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {toastEnabled() ? "[x]" : "[ ]"} Toast
+                  </text>
+                </box>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  paddingLeft={1}
+                  paddingRight={1}
+                  backgroundColor={isSoundRow() ? theme.primary : undefined}
+                  onMouseUp={() => {
+                    setLevel("body")
+                    setBodyRow(soundRowIndex())
+                    toggleSound()
+                  }}
+                >
+                  <text
+                    fg={isSoundRow() ? theme.selectedListItemText : soundEnabled() ? theme.accent : theme.textMuted}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {soundEnabled() ? "[x]" : "[ ]"} Sound
+                  </text>
+                </box>
               </box>
             </box>
           </Show>

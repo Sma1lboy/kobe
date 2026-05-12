@@ -45,8 +45,10 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createSignal } from "solid-js"
+import { type Accessor, For, Show, createEffect, createSignal, onCleanup } from "solid-js"
+import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
+import { useBindings } from "../../lib/keymap"
 import { Markdown } from "./Markdown"
 import {
   BASH_OUTPUT_COLLAPSED_CAP,
@@ -55,6 +57,7 @@ import {
   readBashInput,
   splitBashOutput,
 } from "./bash-render"
+import { prettifyPastedImageRefs } from "./composer/image-paste"
 import {
   COMMAND_ARGS_TAG,
   COMMAND_NAME_TAG,
@@ -72,8 +75,8 @@ import {
   formatWriteDiff,
 } from "./edit-diff"
 import type { ChatRow } from "./store"
-import { classifyTool, lookupToolMeta } from "./tool-registry"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "./tool-banners"
+import { classifyTool, lookupToolMeta } from "./tool-registry"
 
 /**
  * Claude Code's `BLACK_CIRCLE` figure. Source:
@@ -145,6 +148,22 @@ export interface MessageListProps {
    * `Orchestrator.respondToInput({kind: "ask_question", answers})`.
    */
   onAnswer?: (requestId: string, answers: Record<string, string>) => void
+  /**
+   * Reported true while a `QuestionRow`'s inline "Other" input is
+   * visible and waiting for keystrokes — the chat shell uses this to
+   * release the composer's focus so typing lands in the inline input
+   * (otherwise both inputs have `focused={true}` and opentui keeps the
+   * composer focused, swallowing every keystroke meant for the
+   * picker).
+   */
+  onClaimComposerFocus?: (claim: boolean) => void
+  /**
+   * Whether the chat pane currently owns keyboard focus. Forwarded to
+   * `QuestionRow` so its bare-letter chords (j/k/space/enter/1-9) only
+   * fire when the workspace pane is focused — otherwise typing j in the
+   * file tree would get swallowed by the question picker.
+   */
+  chatFocused?: Accessor<boolean>
 }
 
 /**
@@ -221,7 +240,11 @@ function UserRow(props: { text: string }) {
     if (stdout || stderr) {
       return { kind: "command-output" as const, stdout: stdout?.trim() ?? "", stderr: stderr?.trim() ?? "" }
     }
-    return { kind: "plain" as const, text }
+    // Fold ` @<pastedImagesDir>/<uuid>.<ext> ` refs (what `expand` wrote
+    // to the engine prompt) back into `[Image #N]` for human eyes. The
+    // engine still sees the absolute path on submit and on history
+    // recall — this transform is render-only.
+    return { kind: "plain" as const, text: prettifyPastedImageRefs(text) }
   }
   const view = parsed()
   if (view.kind === "command") {
@@ -351,7 +374,8 @@ function ToolRow(props: {
   const usesCustomBanner = () => meta().banner !== "default" || meta().body !== "default"
   /** Tools whose body renders inline so the generic preview/expanded
    *  blocks below should be suppressed. */
-  const usesCustomBody = () => meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
+  const usesCustomBody = () =>
+    meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -791,27 +815,58 @@ export function ApprovalRow(props: {
 }
 
 /**
+ * Sentinel label for the auto-added "Other / type your own answer"
+ * option in `QuestionRow`. Per the AskUserQuestion tool spec the
+ * picker is required to always offer a custom-text escape hatch; we
+ * synthesize it on the client side rather than asking the model to
+ * include it. Use a non-printable-prefixed string so it can't collide
+ * with a real option label even if the model decided to call its
+ * option "Other".
+ */
+const OTHER_SENTINEL = "__kobe_other__"
+
+/**
  * Question row — kobe's host-side rendering of an `AskUserQuestion`
  * request. Per question we draw a card with header chip + question
  * text + clickable options (radio for single-select, checkbox for
- * multi-select). A single Submit at the bottom collects all answers
- * and routes them up via `onAnswer`. Once submitted, the row flips
- * to a static "answered" state showing each question's chosen value.
+ * multi-select), plus an auto-added "Other" row that reveals a
+ * free-text input when picked. A single Submit at the bottom collects
+ * all answers and routes them up via `onAnswer`. Once submitted, the
+ * row flips to a static "answered" state showing each question's
+ * chosen value.
  *
  * Wiring choices:
  *   - Selection state lives in component-local signals (one Set per
  *     question). The store only sees the final answers map, after
  *     Submit.
- *   - Submit is enabled only when every question has ≥1 selection.
- *     Multi-select with zero picks would otherwise leave the model
- *     waiting on an effectively-empty answer.
+ *   - Submit is enabled only when every question has ≥1 selection
+ *     AND, when "Other" is picked, the custom-text input is non-empty.
  *   - Multi-select answer encoding follows upstream: comma-separated
  *     option labels (`"Option A, Option C"`). Single-select is just
- *     the label.
+ *     the label. When "Other" is picked the user-typed text is what
+ *     ends up in the answer string — the sentinel never escapes.
  */
 export function QuestionRow(props: {
   row: Extract<ChatRow, { kind: "question" }>
   onAnswer: (answers: Record<string, string>) => void
+  /**
+   * Called with `true` while any question on this row has the "Other"
+   * sentinel picked but the row hasn't been submitted yet, and with
+   * `false` otherwise. The chat shell uses this signal to release the
+   * composer's `focused` prop so the inline "Other" input can actually
+   * receive keystrokes — without this, both inputs claim focus and the
+   * composer wins. Cleaned up on unmount so a row scrolling off-screen
+   * doesn't leave the composer perpetually defocused.
+   */
+  onClaimComposerFocus?: (claim: boolean) => void
+  /**
+   * Whether the chat pane owns focus right now. Gates this row's
+   * keyboard chords so j/k/space/enter/1-9 don't bleed into other
+   * panes' bare-letter handlers (file tree j/k, etc.) while a question
+   * is queued. Defaults to `() => true` for callers that don't wire it
+   * (tests, host-mode), preserving the pre-keyboard behavior.
+   */
+  chatFocused?: Accessor<boolean>
 }) {
   const { theme } = useTheme()
   const r = () => props.row
@@ -823,9 +878,56 @@ export function QuestionRow(props: {
   // Solid reactivity.
   const [selections, setSelections] = createSignal<Record<string, ReadonlySet<string>>>({})
 
+  // Per-question custom-text buffer for the auto-added "Other" option.
+  // Only consulted when the OTHER_SENTINEL is in that question's
+  // selection set; otherwise irrelevant. Newlines stripped on input
+  // because opentui's <input> happily inserts a literal \n on enter
+  // even though enter also fires onSubmit (same quirk handled in
+  // new-task-dialog/state.ts:stripNewlines).
+  const [otherText, setOtherText] = createSignal<Record<string, string>>({})
+
+  // Index of the question the user is currently working on. Questions
+  // before this are "locked in" (still editable by clicking) and shown
+  // collapsed with their captured answer; questions after this are
+  // completely hidden. This makes a multi-question AskUserQuestion
+  // feel like a flow rather than a wall of pickers — answer one,
+  // advance to the next.
+  const [currentIndex, setCurrentIndex] = createSignal(0)
+
   function pickedFor(questionText: string): ReadonlySet<string> {
     return selections()[questionText] ?? new Set<string>()
   }
+
+  function customTextFor(questionText: string): string {
+    return otherText()[questionText] ?? ""
+  }
+
+  function setCustomText(questionText: string, value: string): void {
+    const sanitized = value.replace(/[\r\n]+/g, "")
+    setOtherText((prev) => ({ ...prev, [questionText]: sanitized }))
+  }
+
+  // True while the CURRENT question's "Other" sentinel is picked and
+  // the row is still pending. Scoped to the current question only —
+  // past questions' Other inputs aren't rendered any more so they
+  // shouldn't keep claiming composer focus. The createEffect below
+  // mirrors this into the parent so the composer can release focus to
+  // our inline input — opentui keeps a single focused input at a time
+  // and the composer otherwise wins.
+  function currentOtherActive(): boolean {
+    if (isAnswered()) return false
+    const q = r().questions[currentIndex()]
+    if (!q) return false
+    return pickedFor(q.question).has(OTHER_SENTINEL)
+  }
+  createEffect(() => {
+    props.onClaimComposerFocus?.(currentOtherActive())
+  })
+  onCleanup(() => {
+    // Row unmounting (task switch, scroll-off, etc.) — release any
+    // outstanding claim so the composer doesn't stay defocused.
+    props.onClaimComposerFocus?.(false)
+  })
 
   function toggle(questionText: string, multi: boolean, label: string): void {
     setSelections((prev) => {
@@ -847,9 +949,39 @@ export function QuestionRow(props: {
     })
   }
 
+  // Build the final answer string for a single question. Preserves
+  // option order (Set iteration is insertion order, but we re-order
+  // to match the upstream options list so the model sees a
+  // deterministic string). The OTHER_SENTINEL is replaced with the
+  // user's typed text — the model never sees the internal label.
+  function renderedAnswerFor(q: { question: string; options: readonly { label: string }[] }): string {
+    const picked = pickedFor(q.question)
+    const ordered: string[] = []
+    for (const o of q.options) {
+      if (picked.has(o.label)) ordered.push(o.label)
+    }
+    if (picked.has(OTHER_SENTINEL)) {
+      const txt = customTextFor(q.question).trim()
+      if (txt) ordered.push(txt)
+    }
+    return ordered.join(", ")
+  }
+
+  // A question is "complete" when there's at least one pick AND, if
+  // "Other" is picked, the typed text is non-empty. Sequential mode
+  // gates advance / submit on this per-question check.
+  function isQuestionComplete(qIdx: number): boolean {
+    const q = r().questions[qIdx]
+    if (!q) return false
+    const picked = pickedFor(q.question)
+    if (picked.size === 0) return false
+    if (picked.has(OTHER_SENTINEL) && customTextFor(q.question).trim().length === 0) return false
+    return true
+  }
+
   const allAnswered = () => {
-    for (const q of r().questions) {
-      if (pickedFor(q.question).size === 0) return false
+    for (let i = 0; i < r().questions.length; i++) {
+      if (!isQuestionComplete(i)) return false
     }
     return true
   }
@@ -858,15 +990,82 @@ export function QuestionRow(props: {
     if (!allAnswered() || isAnswered()) return
     const answers: Record<string, string> = {}
     for (const q of r().questions) {
-      const picked = Array.from(pickedFor(q.question))
-      // Preserve option order for stable comma-joining (Set iteration
-      // order is insertion order in JS, but we re-order to match the
-      // original options list so the model sees a deterministic string).
-      const ordered = q.options.map((o) => o.label).filter((l) => picked.includes(l))
-      answers[q.question] = ordered.join(", ")
+      answers[q.question] = renderedAnswerFor(q)
     }
     props.onAnswer(answers)
   }
+
+  // Per-card action: advance to the next question if the current one
+  // is complete, OR fire the final submit if we're on the last
+  // question. This is the only place the user "commits" — picking an
+  // option just updates local state; commit happens here.
+  function advanceOrSubmit(): void {
+    if (isAnswered()) return
+    const i = currentIndex()
+    if (!isQuestionComplete(i)) return
+    if (i >= r().questions.length - 1) {
+      submit()
+    } else {
+      setCurrentIndex(i + 1)
+    }
+  }
+
+  // Keyboard cursor — index into the current question's options list,
+  // with `q.options.length` reserved for the auto-added "Other" row at
+  // the bottom. Reset to 0 whenever the user advances to a new question
+  // so the cursor lands on the first option of the new card.
+  const [highlighted, setHighlighted] = createSignal(0)
+  createEffect(() => {
+    currentIndex()
+    setHighlighted(0)
+  })
+
+  function toggleByIndex(qIdx: number, optIdx: number): void {
+    const q = r().questions[qIdx]
+    if (!q) return
+    if (optIdx === q.options.length) {
+      toggle(q.question, q.multiSelect, OTHER_SENTINEL)
+    } else {
+      const opt = q.options[optIdx]
+      if (opt) toggle(q.question, q.multiSelect, opt.label)
+    }
+  }
+
+  // Pane-scoped keyboard chords for the picker. Gated on:
+  //   - chat pane focused (don't steal j/k from the file tree),
+  //   - row not yet submitted,
+  //   - the inline "Other" text input not active (when active, the
+  //     <input> owns keystrokes and our bindings would double-fire on
+  //     every letter typed). The composer itself is hidden during a
+  //     question so we don't gate on `questionInlineFocus` from the
+  //     parent — currentOtherActive() is the same signal one level up.
+  useBindings(() => ({
+    enabled: !isAnswered() && !currentOtherActive() && (props.chatFocused?.() ?? true),
+    bindings: bindByIds({
+      "chat.question.nav": (evt) => {
+        const q = r().questions[currentIndex()]
+        if (!q) return
+        const max = q.options.length
+        if (evt.name === "j" || evt.name === "down") {
+          setHighlighted((i) => Math.min(i + 1, max))
+        } else if (evt.name === "k" || evt.name === "up") {
+          setHighlighted((i) => Math.max(i - 1, 0))
+        }
+      },
+      "chat.question.toggle": () => toggleByIndex(currentIndex(), highlighted()),
+      "chat.question.submit": () => advanceOrSubmit(),
+      "chat.question.pick-number": (evt) => {
+        const n = Number.parseInt(evt.name ?? "", 10)
+        if (!Number.isFinite(n) || n < 1) return
+        const q = r().questions[currentIndex()]
+        if (!q) return
+        const idx = n - 1
+        if (idx > q.options.length) return
+        setHighlighted(idx)
+        toggleByIndex(currentIndex(), idx)
+      },
+    }),
+  }))
 
   return (
     <box paddingTop={1} flexDirection="column" gap={0}>
@@ -880,84 +1079,177 @@ export function QuestionRow(props: {
         </text>
       </box>
 
-      {/* One card per question. */}
+      {/* One card per question. Sequential mode: past questions show a
+          collapsed "captured answer" preview and are clickable to go
+          back; the current question is fully interactive; future
+          questions are hidden until the user advances. Post-submit,
+          every question shows in `answered` form. */}
       <For each={r().questions}>
-        {(q) => {
+        {(q, index) => {
           const finalAnswer = () => r().answers?.[q.question] ?? null
           const picked = () => pickedFor(q.question)
+          const isCurrent = () => !isAnswered() && index() === currentIndex()
+          const isPast = () => !isAnswered() && index() < currentIndex()
+          const isFuture = () => !isAnswered() && index() > currentIndex()
+          const isLast = () => index() === r().questions.length - 1
+          const buttonLabel = () => (isLast() ? "[ Submit ]" : "[ Next ]")
           return (
-            <box paddingLeft={2} paddingTop={1} flexDirection="column" gap={0}>
-              <box flexDirection="row" gap={1}>
-                <Show when={q.header}>
-                  <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-                    [{q.header}]
-                  </text>
+            <Show when={!isFuture()}>
+              <box
+                paddingLeft={2}
+                paddingTop={1}
+                flexDirection="column"
+                gap={0}
+                onMouseUp={isPast() ? () => setCurrentIndex(index()) : undefined}
+              >
+                <box flexDirection="row" gap={1}>
+                  <Show when={q.header}>
+                    <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                      [{q.header}]
+                    </text>
+                  </Show>
+                  <text fg={isPast() ? theme.textMuted : theme.text}>{q.question}</text>
+                  <Show when={q.multiSelect && isCurrent()}>
+                    <text fg={theme.textMuted}>(pick any)</text>
+                  </Show>
+                  <Show when={isPast()}>
+                    <text fg={theme.textMuted}>(click to edit)</text>
+                  </Show>
+                </box>
+                {/* Final answered state: render the chosen value(s) as a single line. */}
+                <Show when={isAnswered()}>
+                  <box paddingLeft={2}>
+                    <text fg={theme.success}>
+                      {RESULT_PREFIX}
+                      {finalAnswer() && finalAnswer()!.length > 0 ? finalAnswer() : "(no answer)"}
+                    </text>
+                  </box>
                 </Show>
-                <text fg={theme.text}>{q.question}</text>
-                <Show when={q.multiSelect}>
-                  <text fg={theme.textMuted}>(pick any)</text>
+                {/* Past state: locked-in answer summary derived from
+                    local selections. Visual only — still mutable by
+                    clicking the row to jump back. */}
+                <Show when={isPast()}>
+                  <box paddingLeft={2}>
+                    <text fg={theme.textMuted}>
+                      {RESULT_PREFIX}
+                      {renderedAnswerFor(q).length > 0 ? renderedAnswerFor(q) : "(no answer)"}
+                    </text>
+                  </box>
+                </Show>
+                {/* Current state: list options, click to toggle. */}
+                <Show when={isCurrent()}>
+                  <box paddingLeft={2} flexDirection="column">
+                    <For each={q.options}>
+                      {(opt, optIndex) => {
+                        const isPicked = () => picked().has(opt.label)
+                        const isHl = () => highlighted() === optIndex()
+                        const glyph = () => (q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )")
+                        // Single-digit shortcut: only options 1-9 get a
+                        // visible digit. Past 9 the prefix is two spaces
+                        // so the columns still line up under the picker.
+                        const digitChip = () => (optIndex() < 9 ? `${optIndex() + 1}.` : "  ")
+                        return (
+                          <box
+                            flexDirection="row"
+                            gap={1}
+                            onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}
+                          >
+                            <text fg={isHl() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {isHl() ? ">" : " "}
+                            </text>
+                            <text fg={theme.textMuted}>{digitChip()}</text>
+                            <text fg={isPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {glyph()}
+                            </text>
+                            <box flexGrow={1} flexDirection="column">
+                              <text fg={theme.text}>{opt.label}</text>
+                              <Show when={opt.description}>
+                                <text fg={theme.textMuted}>{opt.description}</text>
+                              </Show>
+                            </box>
+                          </box>
+                        )
+                      }}
+                    </For>
+                    {/* Auto-appended "Other" — synthesized client-side
+                        per the AskUserQuestion tool's "always offer
+                        custom text" contract. Same toggle path as real
+                        options; picking it reveals the inline text
+                        input below. */}
+                    {(() => {
+                      const otherPicked = () => picked().has(OTHER_SENTINEL)
+                      const otherIdx = q.options.length
+                      const isOtherHl = () => highlighted() === otherIdx
+                      const otherGlyph = () =>
+                        q.multiSelect ? (otherPicked() ? "[x]" : "[ ]") : otherPicked() ? "(•)" : "( )"
+                      const otherDigitChip = () => (otherIdx < 9 ? `${otherIdx + 1}.` : "  ")
+                      return (
+                        <>
+                          <box
+                            flexDirection="row"
+                            gap={1}
+                            onMouseUp={() => toggle(q.question, q.multiSelect, OTHER_SENTINEL)}
+                          >
+                            <text fg={isOtherHl() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {isOtherHl() ? ">" : " "}
+                            </text>
+                            <text fg={theme.textMuted}>{otherDigitChip()}</text>
+                            <text fg={otherPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
+                              {otherGlyph()}
+                            </text>
+                            <box flexGrow={1} flexDirection="column">
+                              <text fg={theme.text}>Other</text>
+                              <text fg={theme.textMuted}>Type your own answer</text>
+                            </box>
+                          </box>
+                          <Show when={otherPicked()}>
+                            <box paddingLeft={4} paddingTop={0}>
+                              <input
+                                value={customTextFor(q.question)}
+                                placeholder="type your answer…"
+                                focused={true}
+                                onInput={(v: string) => setCustomText(q.question, v)}
+                                onSubmit={() => advanceOrSubmit()}
+                              />
+                            </box>
+                          </Show>
+                        </>
+                      )
+                    })()}
+                    {/* Per-card Next / Submit. The last question's
+                        button reads "Submit" so the existing behavior
+                        tests still find the substring. Earlier
+                        questions read "Next" — advances currentIndex
+                        without sending anything to the engine. */}
+                    <box paddingLeft={0} paddingTop={1} flexDirection="row" gap={2}>
+                      <text
+                        fg={isQuestionComplete(index()) ? theme.success : theme.textMuted}
+                        attributes={TextAttributes.BOLD}
+                        onMouseUp={() => advanceOrSubmit()}
+                      >
+                        {buttonLabel()}
+                      </text>
+                      <Show when={!isQuestionComplete(index())}>
+                        <text fg={theme.textMuted}>(pick an option to continue)</text>
+                      </Show>
+                    </box>
+                  </box>
                 </Show>
               </box>
-              {/* Answered state: render the chosen value(s) as a single line. */}
-              <Show when={isAnswered()}>
-                <box paddingLeft={2}>
-                  <text fg={theme.success}>
-                    {RESULT_PREFIX}
-                    {finalAnswer() && finalAnswer()!.length > 0 ? finalAnswer() : "(no answer)"}
-                  </text>
-                </box>
-              </Show>
-              {/* Pending state: list options, click to toggle. */}
-              <Show when={!isAnswered()}>
-                <box paddingLeft={2} flexDirection="column">
-                  <For each={q.options}>
-                    {(opt) => {
-                      const isPicked = () => picked().has(opt.label)
-                      const glyph = () => (q.multiSelect ? (isPicked() ? "[x]" : "[ ]") : isPicked() ? "(•)" : "( )")
-                      return (
-                        <box flexDirection="row" gap={1} onMouseUp={() => toggle(q.question, q.multiSelect, opt.label)}>
-                          <text fg={isPicked() ? theme.accent : theme.textMuted} attributes={TextAttributes.BOLD}>
-                            {glyph()}
-                          </text>
-                          <box flexGrow={1} flexDirection="column">
-                            <text fg={theme.text}>{opt.label}</text>
-                            <Show when={opt.description}>
-                              <text fg={theme.textMuted}>{opt.description}</text>
-                            </Show>
-                          </box>
-                        </box>
-                      )
-                    }}
-                  </For>
-                </box>
-              </Show>
-            </box>
+            </Show>
           )
         }}
       </For>
 
-      {/* Submit (pending) or static chip (answered). */}
-      <box paddingLeft={2} paddingTop={1} flexDirection="row" gap={2}>
-        <Show
-          when={!isAnswered()}
-          fallback={
-            <text fg={theme.success} attributes={TextAttributes.BOLD}>
-              [submitted]
-            </text>
-          }
-        >
-          <text
-            fg={allAnswered() ? theme.success : theme.textMuted}
-            attributes={TextAttributes.BOLD}
-            onMouseUp={() => submit()}
-          >
-            [ Submit ]
+      {/* Final-state chip — only rendered post-submit. Drives the
+          existing behavior-test assertion on "[submitted]". */}
+      <Show when={isAnswered()}>
+        <box paddingLeft={2} paddingTop={1}>
+          <text fg={theme.success} attributes={TextAttributes.BOLD}>
+            [submitted]
           </text>
-          <Show when={!allAnswered()}>
-            <text fg={theme.textMuted}>(answer all questions to enable)</text>
-          </Show>
-        </Show>
-      </box>
+        </box>
+      </Show>
     </box>
   )
 }
@@ -1005,7 +1297,14 @@ export function MessageList(props: MessageListProps) {
             return <ApprovalRow row={row} onApprove={(approve) => props.onApprove?.(row.requestId, approve)} />
           }
           if (row.kind === "question") {
-            return <QuestionRow row={row} onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)} />
+            return (
+              <QuestionRow
+                row={row}
+                onAnswer={(answers) => props.onAnswer?.(row.requestId, answers)}
+                onClaimComposerFocus={props.onClaimComposerFocus}
+                chatFocused={props.chatFocused}
+              />
+            )
           }
           // tool row
           return (

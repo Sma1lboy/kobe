@@ -44,16 +44,9 @@
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { For, Show } from "solid-js"
-import { useTheme } from "../../context/theme"
 import { EmptyBorder } from "../../component/border"
-import {
-  type Block,
-  type Inline,
-  inlinePlainText,
-  parseBlocks,
-  parseInline,
-  type TableAlign,
-} from "./markdown-parser"
+import { useTheme } from "../../context/theme"
+import { type Block, type Inline, type TableAlign, inlinePlainText, parseBlocks, parseInline } from "./markdown-parser"
 
 // Re-export the parser surface so callers see one import per concern.
 export { parseBlocks, parseInline }
@@ -205,9 +198,15 @@ function Table(props: { block: Extract<Block, { kind: "table" }>; maxWidth?: num
           const [lp, rp] = padding(cellWidth(cell), columnWidths[ci()] ?? 0, align)
           return (
             <>
-              <span>{" " + " ".repeat(lp)}</span>
-              {rowProps.isHeader ? <b><InlineSpans tokens={tokens} /></b> : <InlineSpans tokens={tokens} />}
-              <span>{" ".repeat(rp) + " │"}</span>
+              <span>{` ${" ".repeat(lp)}`}</span>
+              {rowProps.isHeader ? (
+                <b>
+                  <InlineSpans tokens={tokens} />
+                </b>
+              ) : (
+                <InlineSpans tokens={tokens} />
+              )}
+              <span>{`${" ".repeat(rp)} │`}</span>
             </>
           )
         }}
@@ -255,9 +254,7 @@ function VerticalTable(props: { block: Extract<Block, { kind: "table" }> }) {
             <For each={row}>
               {(cell, ci) => (
                 <text fg={theme.text}>
-                  <b style={{ fg: theme.accent }}>
-                    {(props.block.header[ci()] ?? `Column ${ci() + 1}`) + ": "}
-                  </b>
+                  <b style={{ fg: theme.accent }}>{`${props.block.header[ci()] ?? `Column ${ci() + 1}`}: `}</b>
                   <InlineSpans tokens={parseInline(cell)} />
                 </text>
               )}
@@ -274,11 +271,7 @@ function VerticalTable(props: { block: Extract<Block, { kind: "table" }> }) {
 function HorizontalRule() {
   const { theme } = useTheme()
   return (
-    <box
-      paddingTop={1}
-      paddingBottom={1}
-      flexDirection="column"
-    >
+    <box paddingTop={1} paddingBottom={1} flexDirection="column">
       <box
         height={1}
         border={["top"]}

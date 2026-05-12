@@ -11,7 +11,7 @@
  *      staged-only, worktree-only, deleted, blank lines, malformed
  *      rows.
  *   2. `listFiles` / `statusFiles` — the spawn-glue around git. We
- *      mock `gitWrapper.spawnSync` so the test never touches a real
+ *      mock `gitWrapper.spawn` so the test never touches a real
  *      git binary or filesystem; assert that the right args are passed
  *      and the returned shape is what the pane consumes.
  *
@@ -20,9 +20,9 @@
  * the real kobe binary against a real fixture worktree.
  */
 
-import type { SpawnSyncReturns } from "node:child_process"
 import {
   type FileStatus,
+  type GitRunResult,
   type StatusEntry,
   buildTree,
   gitWrapper,
@@ -34,19 +34,17 @@ import {
 import { describe, expect, test, vi } from "vitest"
 
 /**
- * Build a fake `SpawnSyncReturns<string>` for stubbing
- * `gitWrapper.spawnSync`. Defaults to a successful call with empty
+ * Build a fake `GitRunResult` for stubbing `gitWrapper.spawn`. Defaults
+ * to a successful call with empty
  * stderr — tests override stdout / status as needed.
  */
-function fakeSpawnReturn(stdout: string, status = 0, stderr = ""): SpawnSyncReturns<string> {
+function fakeSpawnReturn(stdout: string, status = 0, stderr = ""): GitRunResult {
   return {
-    pid: 0,
-    output: [null, stdout, stderr],
     stdout,
     stderr,
     status,
     signal: null,
-  } as unknown as SpawnSyncReturns<string>
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -137,7 +135,7 @@ describe("parsePorcelain", () => {
 
 describe("listFiles", () => {
   test("invokes git ls-files with the documented flags and the cwd", async () => {
-    const spy = vi.spyOn(gitWrapper, "spawnSync").mockReturnValue(fakeSpawnReturn("a.txt\nb.txt\n"))
+    const spy = vi.spyOn(gitWrapper, "spawn").mockResolvedValue(fakeSpawnReturn("a.txt\nb.txt\n"))
     try {
       const files = await listFiles("/tmp/repo")
       expect(files).toEqual(["a.txt", "b.txt"])
@@ -154,8 +152,8 @@ describe("listFiles", () => {
     // ls-files can produce both --cached and --others; rare but
     // possible to see the same path twice. Dedup is the contract.
     const spy = vi
-      .spyOn(gitWrapper, "spawnSync")
-      .mockReturnValue(fakeSpawnReturn("zeta.txt\n\nalpha.txt\nzeta.txt\nbeta.txt\n"))
+      .spyOn(gitWrapper, "spawn")
+      .mockResolvedValue(fakeSpawnReturn("zeta.txt\n\nalpha.txt\nzeta.txt\nbeta.txt\n"))
     try {
       const files = await listFiles("/tmp/repo")
       expect(files).toEqual(["alpha.txt", "beta.txt", "zeta.txt"])
@@ -165,9 +163,7 @@ describe("listFiles", () => {
   })
 
   test("throws when git exits non-zero", async () => {
-    const spy = vi
-      .spyOn(gitWrapper, "spawnSync")
-      .mockReturnValue(fakeSpawnReturn("", 128, "fatal: not a git repository"))
+    const spy = vi.spyOn(gitWrapper, "spawn").mockResolvedValue(fakeSpawnReturn("", 128, "fatal: not a git repository"))
     try {
       await expect(listFiles("/not-a-repo")).rejects.toThrow(/not a git repository/)
     } finally {
@@ -176,7 +172,7 @@ describe("listFiles", () => {
   })
 
   test("returns an empty list when git stdout is empty", async () => {
-    const spy = vi.spyOn(gitWrapper, "spawnSync").mockReturnValue(fakeSpawnReturn(""))
+    const spy = vi.spyOn(gitWrapper, "spawn").mockResolvedValue(fakeSpawnReturn(""))
     try {
       const files = await listFiles("/tmp/repo")
       expect(files).toEqual([])
@@ -195,9 +191,9 @@ describe("statusFiles", () => {
     // `statusFiles` makes two git calls now: porcelain for the file
     // list and numstat for +/- counts. We mock both via call-order.
     const spy = vi
-      .spyOn(gitWrapper, "spawnSync")
-      .mockImplementationOnce(() => fakeSpawnReturn(" M src/a.ts\n?? b.ts\n"))
-      .mockImplementationOnce(() => fakeSpawnReturn("3\t1\tsrc/a.ts\n"))
+      .spyOn(gitWrapper, "spawn")
+      .mockResolvedValueOnce(fakeSpawnReturn(" M src/a.ts\n?? b.ts\n"))
+      .mockResolvedValueOnce(fakeSpawnReturn("3\t1\tsrc/a.ts\n"))
     try {
       const entries = await statusFiles("/tmp/repo")
       expect(entries).toEqual<StatusEntry[]>([
@@ -219,9 +215,9 @@ describe("statusFiles", () => {
     // A fresh repo without HEAD makes `git diff HEAD` exit non-zero;
     // we still want the porcelain rows to come through (without stats).
     const spy = vi
-      .spyOn(gitWrapper, "spawnSync")
-      .mockImplementationOnce(() => fakeSpawnReturn(" M src/a.ts\n"))
-      .mockImplementationOnce(() => fakeSpawnReturn("", 128, "fatal: bad revision 'HEAD'"))
+      .spyOn(gitWrapper, "spawn")
+      .mockResolvedValueOnce(fakeSpawnReturn(" M src/a.ts\n"))
+      .mockResolvedValueOnce(fakeSpawnReturn("", 128, "fatal: bad revision 'HEAD'"))
     try {
       const entries = await statusFiles("/tmp/repo")
       expect(entries).toEqual<StatusEntry[]>([{ path: "src/a.ts", status: "M" }])
@@ -231,7 +227,7 @@ describe("statusFiles", () => {
   })
 
   test("returns an empty list when nothing is dirty", async () => {
-    const spy = vi.spyOn(gitWrapper, "spawnSync").mockReturnValue(fakeSpawnReturn(""))
+    const spy = vi.spyOn(gitWrapper, "spawn").mockResolvedValue(fakeSpawnReturn(""))
     try {
       const entries = await statusFiles("/tmp/repo")
       expect(entries).toEqual([])
@@ -241,9 +237,7 @@ describe("statusFiles", () => {
   })
 
   test("throws when porcelain git exits non-zero", async () => {
-    const spy = vi
-      .spyOn(gitWrapper, "spawnSync")
-      .mockReturnValue(fakeSpawnReturn("", 128, "fatal: not a git repository"))
+    const spy = vi.spyOn(gitWrapper, "spawn").mockResolvedValue(fakeSpawnReturn("", 128, "fatal: not a git repository"))
     try {
       await expect(statusFiles("/not-a-repo")).rejects.toThrow(/not a git repository/)
     } finally {

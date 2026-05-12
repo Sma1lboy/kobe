@@ -56,13 +56,20 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
   // Shared "open new-task dialog and create" handler. Bound to two
   // keys with different `enabled` guards (see useBindings calls below).
   async function openNewTaskFlow(): Promise<void> {
-    // Default the dialog to the last repo the user picked, falling
-    // back to cwd. Persisted via KV so it survives kobe restarts.
-    const lastRepo = (() => {
+    // Default the dialog to the currently-selected task's repo when
+    // one is selected — same-repo follow-ups are the common case, so
+    // pre-pick the path the user is already looking at. Falls back to
+    // the persisted `lastNewTaskRepo`, then to cwd.
+    const defaultRepo = (() => {
+      const sid = selectedId()
+      if (sid) {
+        const task = orchestrator.getTask(sid)
+        if (task?.repo?.trim()) return task.repo
+      }
       const raw = kv.get("lastNewTaskRepo")
       return typeof raw === "string" && raw.trim() ? raw : process.cwd()
     })()
-    const result = await NewTaskDialog.show(dialog, lastRepo, savedRepos())
+    const result = await NewTaskDialog.show(dialog, defaultRepo, savedRepos())
     if (!result) return
     try {
       // Dialog no longer asks for a first prompt — orchestrator gives

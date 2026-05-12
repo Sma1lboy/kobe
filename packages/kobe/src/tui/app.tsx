@@ -23,41 +23,48 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { render, useRenderer } from "@opentui/solid"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
+import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
-import { Orchestrator } from "../orchestrator/core.ts"
+import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import { getSavedRepos } from "../state/repos.ts"
+import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
 import { CenterTabStrip } from "./component/center-tab-strip"
 import { HelpDialog } from "./component/help-dialog"
 import { PaneHeader } from "./component/pane-header"
+import { RcBridgeDialog } from "./component/rc-bridge-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
 import { StatusBar } from "./component/status-bar"
+import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
-import { CommandPaletteProvider } from "./context/command-palette"
+import { CommandPaletteProvider, useCommandPalette } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
+import { NotificationsProvider, useNotifications } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { buildEngines } from "./engine-bootstrap"
+import { formatPlanUsageCompact } from "./lib/format-plan-usage"
+import { useCompletionNotifications } from "./lib/use-completion-notifications"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useTaskActions } from "./lib/use-task-actions"
 import { useTestSideChannel } from "./lib/use-test-side-channel"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { useWorkspaceTabs } from "./lib/use-workspace-tabs"
+import { detectWorktreeOpener, openWorktree } from "./lib/worktree-opener"
 import { Chat } from "./panes/chat/Chat"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { Terminal } from "./panes/terminal"
 import { DialogProvider, useDialog } from "./ui/dialog"
+import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
 
@@ -90,6 +97,7 @@ function Shell(props: AppDeps) {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
+  const notifications = useNotifications()
 
   // Theme / KV round-trip — hydrate once on mount, then mirror every
   // change back. See `./lib/use-theme-persistence.ts` for the three
@@ -115,11 +123,23 @@ function Shell(props: AppDeps) {
   const [pendingPrompt, setPendingPrompt] = createSignal<{ taskId: string; prompt: string } | null>(null)
   /** Workspace header context meter (`12% · 24k/200k`), fed by the active chat tab. */
   const [workspaceContextAside, setWorkspaceContextAside] = createSignal<string | null>(null)
+  // Claude plan utilization, fed by the daemon's plan-usage poller.
+  // Independent of the active tab — surfaces in the workspace header
+  // even when no chat is open. The combined memo lives further down,
+  // after `isChatTabActive` is destructured from `useWorkspaceTabs`.
+  const planUsageAcc = props.orchestrator.planUsageSignal()
+  const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
 
-  // Background npm-registry version check. Cached for 6h on disk, so
-  // typical cold boots return synchronously off the cache. The first
-  // launch (or once per cache window) hits the network with a 3s
-  // timeout — failures are silent, the chip just doesn't render.
+  // Remote-control bridge (KOB-62) — accessor declared up here so
+  // anyone above-the-fold (TopBar) can read it. The palette command
+  // that opens the dialog is registered further down in Shell, after
+  // `activeTask` / `activeChatTabIdAcc` exist — the dialog binds the
+  // bridge to the focused tab so claude.ai sees the right worktree.
+  const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
+
+  // Background npm-registry version check. Runs on every TUI launch so
+  // freshly published versions show up in the topbar immediately. The
+  // request has a 3s timeout; failures are silent, the chip just doesn't render.
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   onMount(() => {
     void checkLatestVersion()
@@ -136,6 +156,16 @@ function Shell(props: AppDeps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)
   })
+  const worktreeOpener = createMemo(() => detectWorktreeOpener())
+  function openActiveTaskInEditor(): void {
+    const task = activeTask()
+    const opener = worktreeOpener()
+    if (!task?.worktreePath || !opener) return
+    if (!openWorktree(task.worktreePath, opener)) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] failed to open worktree:", task.worktreePath)
+    }
+  }
 
   // Accessor for the chat pane that yields a prompt only when it
   // matches the currently active task. This keeps the chat from
@@ -208,6 +238,51 @@ function Shell(props: AppDeps) {
     return () => baseAcc() && dialog.stack.length === 0
   }
 
+  /* ------------------------------------------------------------------- */
+  /*  Daemon disconnect modal (KOB-38)                                    */
+  /* ------------------------------------------------------------------- */
+  // When the kobed socket drops, RemoteOrchestrator flips
+  // `connectionState` to `"disconnected"`. We pop a modal letting the
+  // user pick Restart (spawn kobed + reconnect) or Quit (process.exit).
+  // Esc on the modal counts as Quit — daemon-less kobe is useless so
+  // dismissing the prompt would just leave the user stranded.
+  // In-process Orchestrator (KOBE_NO_DAEMON) has no socket and stays
+  // `"online"` forever, so the effect is a no-op there.
+  let showingDisconnectDialog = false
+  async function showDisconnectDialog(): Promise<void> {
+    const orch = props.orchestrator
+    if (!(orch instanceof RemoteOrchestrator)) return
+    let message = "kobed is no longer reachable. Restart it and reconnect, or quit kobe?"
+    while (true) {
+      const choice = await DialogConfirm.show(dialog, "daemon disconnected", message, "Quit", "Restart")
+      if (choice !== true) {
+        try {
+          renderer?.destroy()
+        } catch {
+          /* swallow */
+        }
+        process.exit(0)
+      }
+      try {
+        await orch.manualReconnect()
+        return
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        message = `Restart failed: ${errMsg}\n\nTry again or quit?`
+      }
+    }
+  }
+  createEffect(() => {
+    const orch = props.orchestrator
+    if (!(orch instanceof RemoteOrchestrator)) return
+    if (orch.connectionStateSignal()() !== "disconnected") return
+    if (showingDisconnectDialog) return
+    showingDisconnectDialog = true
+    void showDisconnectDialog().finally(() => {
+      showingDisconnectDialog = false
+    })
+  })
+
   // ctrl+hjkl pane focus. h/j/k/l → sidebar / workspace / files /
   // terminal (ordinal 1/2/3/4 mapped onto the vim row). ctrl+letter
   // chords have stable C0 control byte mappings, so they work in
@@ -259,6 +334,46 @@ function Shell(props: AppDeps) {
     closeFileTab,
   } = workspaceTabs
 
+  // Workspace header right-side chip: plan utilization always (when
+  // available) joined to the context meter when a chat tab is active.
+  // Defined here because the join depends on `isChatTabActive`, which
+  // only exists after the destructure above.
+  const workspaceAsideRight = createMemo<string | undefined>(() => {
+    const plan = workspacePlanAside()
+    const ctx = isChatTabActive() ? workspaceContextAside() : null
+    const parts = [plan, ctx].filter((v): v is string => Boolean(v))
+    if (parts.length === 0) return undefined
+    return parts.join("  •  ")
+  })
+
+  // Register the remote-control share command in the palette. Daemon-only —
+  // the in-process Orchestrator stub returns "off" forever, so even if a
+  // test somehow invoked the command it would be a no-op. The dialog
+  // binds to whichever task + chat tab is focused at the moment of
+  // invocation; switching focus later doesn't reassign a running bridge.
+  const palette = useCommandPalette()
+  onMount(() => {
+    if (!(props.orchestrator instanceof RemoteOrchestrator)) return
+    const orch = props.orchestrator
+    const unregister = palette.addCommand({
+      name: "rcBridge.share",
+      title: "Share to claude.ai (remote-control)",
+      desc: "Bind this task's worktree to a claude.ai environment so you can resume the conversation from another device.",
+      slashName: "share",
+      run: () => RcBridgeDialog.show(dialog, orch, rcBridgeAcc, activeTask, activeChatTabIdAcc),
+    })
+    onCleanup(unregister)
+  })
+  onMount(() => {
+    const unregister = palette.addCommand({
+      name: "task.openEditor",
+      title: "Open task in editor",
+      desc: "Open the active task worktree in Cursor, VS Code, or the detected system editor.",
+      run: openActiveTaskInEditor,
+    })
+    onCleanup(unregister)
+  })
+
   // Auto-select on first task availability. Prefer the persisted task
   // from the previous run when it still exists; otherwise fall back to
   // tasks[0]. The `persistedSelectedId` reference is consumed exactly
@@ -294,7 +409,6 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
-    onFocusDetach: () => setFocusedPane("sidebar"),
     // Tab cycle is no-op while workspace is focused so the composer's
     // own tab handling (dialog field cycling, indent, etc.) wins.
     onFocusNext: () => {
@@ -336,6 +450,43 @@ function Shell(props: AppDeps) {
     orchestrator: props.orchestrator,
     renderer,
     activeTask,
+    openActiveTaskInEditor,
+  })
+
+  // Per-ChatTab completion notifications.
+  //
+  // Compute the (task, tab) currently visible to the user — used to
+  // suppress notifications for in-view transitions. "Visible" means
+  // the workspace is on chat AND this is the active chat tab in the
+  // active task. The focused-pane is irrelevant: even if the user is
+  // currently typing in the sidebar, the chat tab they last looked at
+  // is still on screen; we shouldn't toast a "done" they can plainly
+  // see. We don't gate on the parent terminal having focus either —
+  // host focus isn't reliably observable from a TUI.
+  const visibleTabKey = createMemo<string | null>(() => {
+    const taskId = selectedId()
+    const tabId = activeChatTabIdAcc()
+    if (!taskId || !tabId) return null
+    if (!isChatTabActive()) return null
+    return chatRunStateKey(taskId, tabId)
+  })
+  useCompletionNotifications({
+    chatRunState: chatRunStateAcc,
+    tasks: tasksAcc,
+    visibleTabKey,
+    notifications,
+  })
+  // Clear the unread mark whenever the user is visibly looking at a
+  // tab. Wraps the visible-tab-key computation rather than hooking
+  // selectChatTabById so it also covers: switching back to chat from a
+  // file tab, swapping tasks where the new active tab had a pending
+  // unread, etc. — anywhere the chip becomes the in-view chip.
+  createEffect(() => {
+    const key = visibleTabKey()
+    if (!key) return
+    const idx = key.indexOf(":")
+    if (idx < 0) return
+    notifications.markRead(key.slice(0, idx), key.slice(idx + 1))
   })
 
   // Behavior-test side-channel — mounts globals on `globalThis` that
@@ -349,7 +500,13 @@ function Shell(props: AppDeps) {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <TopBar orchestrator={props.orchestrator} activeTask={activeTask} updateInfo={updateInfo} />
+      <TopBar
+        orchestrator={props.orchestrator}
+        activeTask={activeTask}
+        activeChatTabId={activeChatTabIdAcc}
+        updateInfo={updateInfo}
+        worktreeOpener={worktreeOpener}
+      />
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
             focus it. The right edge is a separate <ResizableEdge /> that
@@ -424,21 +581,24 @@ function Shell(props: AppDeps) {
             title="WORKSPACE"
             ordinal="j"
             subtitle={activeTask()?.title ?? "no task"}
-            asideRight={isChatTabActive() ? (workspaceContextAside() ?? undefined) : undefined}
+            asideRight={workspaceAsideRight()}
             focused={focusedPane() === "workspace"}
           />
-          <CenterTabStrip
-            isChatActive={isChatTabActive}
-            activeFile={activeFileTabPath}
-            chatTabs={activeChatTabsAcc}
-            activeChatTabId={activeChatTabIdAcc}
-            activeTaskId={taskIdAcc}
-            chatRunState={chatRunStateAcc}
-            onSelectChat={selectChatTab}
-            onSelectChatTab={selectChatTabById}
-            onSelectFile={selectFileTab}
-            onCloseFile={closeFileTab}
-          />
+          <Show when={selectedId()}>
+            <CenterTabStrip
+              isChatActive={isChatTabActive}
+              activeFile={activeFileTabPath}
+              chatTabs={activeChatTabsAcc}
+              activeChatTabId={activeChatTabIdAcc}
+              activeTaskId={taskIdAcc}
+              chatRunState={chatRunStateAcc}
+              unread={notifications.unread}
+              onSelectChat={selectChatTab}
+              onSelectChatTab={selectChatTabById}
+              onSelectFile={selectFileTab}
+              onCloseFile={closeFileTab}
+            />
+          </Show>
           <box flexGrow={1}>
             <Show
               when={isChatTabActive()}
@@ -517,6 +677,10 @@ function Shell(props: AppDeps) {
         </box>
       </box>
       <StatusBar />
+      {/* Bottom-right transient toasts for background-tab completions
+          and approval requests. Sits on its own position="absolute"
+          layer above the panes but below the dialog backdrop. */}
+      <ToastOverlay />
     </box>
   )
 }
@@ -525,15 +689,17 @@ function App(props: AppDeps) {
   return (
     <ThemeProvider mode="dark" theme={DEFAULT_THEME}>
       <KVProvider>
-        <SyncProvider>
-          <DialogProvider>
-            <CommandPaletteProvider>
-              <FocusProvider>
-                <Shell {...props} />
-              </FocusProvider>
-            </CommandPaletteProvider>
-          </DialogProvider>
-        </SyncProvider>
+        <NotificationsProvider>
+          <SyncProvider>
+            <DialogProvider>
+              <CommandPaletteProvider>
+                <FocusProvider>
+                  <Shell {...props} />
+                </FocusProvider>
+              </CommandPaletteProvider>
+            </DialogProvider>
+          </SyncProvider>
+        </NotificationsProvider>
       </KVProvider>
     </ThemeProvider>
   )
@@ -581,6 +747,14 @@ export async function startApp(): Promise<void> {
   // mounted yet, and we want behavior tests with a tmpdir HOME to see
   // the seeding too. Failures per repo are logged and swallowed so a
   // single bad path can't gate the whole UI from booting.
+  //
+  // Heal legacy saved-repos written before addSavedRepo normalized
+  // paths to the git toplevel: a subdir (e.g. `packages/kobe`) seeded
+  // a main task whose FileTree rendered the entire monorepo rooted at
+  // `packages/...` because `git ls-files --full-name` is toplevel-
+  // relative. Resolving once at boot folds the entry back to the repo
+  // root and dedupes any pair that collapses to the same toplevel.
+  normalizeSavedRepos()
   for (const repo of getSavedRepos()) {
     try {
       await orchestrator.ensureMainTask(repo)

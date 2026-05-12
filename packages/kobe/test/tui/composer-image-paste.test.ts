@@ -33,7 +33,7 @@
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { ImagePasteRegistry, pastedImagesDir } from "@/tui/panes/chat/composer/image-paste"
+import { ImagePasteRegistry, pastedImagesDir, prettifyPastedImageRefs } from "@/tui/panes/chat/composer/image-paste"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 let tmpRoot: string
@@ -132,6 +132,36 @@ describe("ImagePasteRegistry.expand", () => {
     const reg = new ImagePasteRegistry()
     expect(reg.hasEntries()).toBe(false)
     expect(reg.expand("plain text [Image #1] still here")).toBe("plain text [Image #1] still here")
+  })
+})
+
+describe("prettifyPastedImageRefs", () => {
+  test("collapses a single ref to `[Image #1]` with single spaces", () => {
+    const reg = new ImagePasteRegistry()
+    const { entry } = reg.saveBytes(FAKE_PNG, "image/png")
+    const expanded = reg.expand("look at [Image #1] please")
+    // Sanity: `expand` produces double-spaced ` @path ` around the path.
+    expect(expanded).toBe(`look at  @${entry.absPath}  please`)
+    expect(prettifyPastedImageRefs(expanded)).toBe("look at [Image #1] please")
+  })
+
+  test("numbers multiple refs in order", () => {
+    const reg = new ImagePasteRegistry()
+    reg.saveBytes(FAKE_PNG, "image/png")
+    reg.saveBytes(FAKE_PNG, "image/png")
+    const expanded = reg.expand("compare [Image #1] vs [Image #2]")
+    expect(prettifyPastedImageRefs(expanded)).toBe("compare [Image #1] vs [Image #2]")
+  })
+
+  test("leaves non-paste-dir `@/path` refs alone", () => {
+    // A user-typed `@/etc/hosts` should NOT be folded into `[Image]` —
+    // the prettifier only matches paths under the kobe paste dir.
+    const text = "see @/etc/hosts for routing"
+    expect(prettifyPastedImageRefs(text)).toBe(text)
+  })
+
+  test("is a no-op when no `@` is present", () => {
+    expect(prettifyPastedImageRefs("plain message")).toBe("plain message")
   })
 })
 

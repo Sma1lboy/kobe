@@ -28,11 +28,10 @@ that's the gap kobe fills.
 
 [![npm](https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg)](https://www.npmjs.com/package/@sma1lboy/kobe)
 
-You need three things on `PATH`:
+You need two things on `PATH`:
 
 - [**Bun**](https://bun.sh) ≥ 1.0 — kobe's renderer is opentui, which uses Bun-FFI.
 - [**`claude`** CLI](https://docs.anthropic.com/en/docs/claude-code) — the engine kobe drives. Run `claude --version` to confirm it's installed and signed in.
-- **`tmux`** — the embedded terminal pane uses one tmux session per task. On macOS: `brew install tmux`.
 
 Then:
 
@@ -68,6 +67,7 @@ Once you're in, the keys you'll use most:
 | `ctrl+1` / `2` / `3` / `4` | Jump straight to a pane (sidebar, workspace, files, terminal) |
 | `tab`              | Cycle focus to the next pane                                   |
 | `ctrl+q`           | Detach back to the sidebar (your task keeps streaming)         |
+| `ctrl+o`           | Open the active task's worktree in your editor                 |
 | `?`                | Show the full keybinding help dialog                           |
 | `,` or `ctrl+,`    | Open Settings (theme, transparent background, dev reset)       |
 | `q`                | Quit (with confirm)                                            |
@@ -86,6 +86,29 @@ Inside the chat composer:
 
 A given task can host **multiple chat tabs** on the same worktree — useful when
 you want a parallel sub-conversation without losing the main thread.
+
+## Opening tasks in your editor
+
+The top bar shows an `[Open] <editor>` chip when kobe can find an editor for the
+active task. Click it, use `ctrl+o`, or run **Open task in editor** from the
+command palette to open the task's worktree.
+
+Detection order is:
+
+1. `KOBE_OPEN_EDITOR`
+2. `code` (VS Code)
+3. `cursor`
+4. `windsurf`
+5. `zed`
+6. platform fallback (`open` on macOS, `xdg-open` on Linux)
+
+Set `KOBE_OPEN_EDITOR` globally if you want to force a specific tool:
+
+```bash
+export KOBE_OPEN_EDITOR=cursor
+export KOBE_OPEN_EDITOR=code
+export KOBE_OPEN_EDITOR=/Applications/Cursor.app/Contents/Resources/app/bin/cursor
+```
 
 For the full feature manifest, see [`CHANGELOG.md`](./CHANGELOG.md).
 
@@ -124,9 +147,7 @@ and confirm `claude --version` works in the same shell you launched kobe from.
 **`bun: command not found`** — install [Bun](https://bun.sh) (`curl -fsSL https://bun.sh/install | bash`).
 kobe's renderer requires Bun ≥ 1.0; it does not run under Node.
 
-**The terminal pane is blank / errors about tmux** — install `tmux` (`brew install tmux` on macOS).
-The embedded terminal is one tmux session per task; without `tmux` on `PATH`,
-the pane stays empty but the rest of kobe still works.
+**The terminal pane is blank** — kobe starts your `$SHELL` through Bun's native PTY. Confirm `$SHELL` points at an installed shell, your Bun version supports `Bun.spawn({ terminal })`, and the active task's worktree path still exists. `KOBE_TERMINAL_BACKEND=pipe` is available only as a fallback.
 
 **`posix_spawnp failed` when running `bun run test:behavior`** — on macOS arm64,
 Bun's installer occasionally ships `node-pty`'s prebuilt `spawn-helper` without
@@ -152,8 +173,8 @@ If you want to hack on kobe itself rather than just use it:
 ```bash
 bun install
 bun run dev          # boots the 5-pane TUI under KOBE_DEV=1 (no update chip, etc.)
-bun run test         # unit + type tests
-bun run test:behavior  # PTY-driven; spawns kobe as a real binary
+bun run test         # normal suite: fast tests + serial socket tests
+bun run test:behavior  # slow PTY suite; only run for user-visible TUI behavior
 bun run typecheck    # strict tsc
 bun run build        # produces ./dist/index.js for `npm publish`
 ```

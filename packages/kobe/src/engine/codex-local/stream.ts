@@ -125,7 +125,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
       if (usage) {
         const inTok = numberOr(usage.input_tokens, 0)
         const outTok = numberOr(usage.output_tokens, 0) + numberOr(usage.reasoning_output_tokens, 0)
-        const cacheRead = typeof usage.cached_input_tokens === "number" ? (usage.cached_input_tokens as number) : undefined
+        const cacheRead =
+          typeof usage.cached_input_tokens === "number" ? (usage.cached_input_tokens as number) : undefined
         yield {
           type: "usage",
           input_tokens: inTok,

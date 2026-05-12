@@ -66,7 +66,6 @@ export function normalizeClaudeContent(content: unknown): ContentBlock[] {
 
     if (b.type === "thinking" && typeof b.thinking === "string") {
       out.push({ type: "thinking", text: b.thinking })
-      continue
     }
     // Unknown / image / redacted_thinking — drop.
   }

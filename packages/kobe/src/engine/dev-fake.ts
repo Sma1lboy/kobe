@@ -18,7 +18,15 @@
  */
 
 import { FakeAIEngine } from "../../test/behavior/fake-engine.ts"
-import type { AIEngine, EngineCapabilities, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "../types/engine.ts"
+import type {
+  AIEngine,
+  EngineCapabilities,
+  EngineEvent,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "../types/engine.ts"
 import { claudeCapabilities } from "./claude-code-local/capabilities.ts"
 
 export interface DevAIEngineOpts {

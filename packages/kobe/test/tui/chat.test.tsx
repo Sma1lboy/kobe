@@ -206,6 +206,77 @@ describe("setMessagesFromHistory", () => {
     expect(s.messages[0]).toEqual({ kind: "assistant", text: "hello world", ts: FIXED_TS })
   })
 
+  test("rehydrates lastUsage from the latest persisted usage record", () => {
+    const past: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", text: "old prompt" }],
+        timestamp: "2026-05-09T00:00:00Z",
+        sessionId: "s",
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", text: "old turn" }],
+        timestamp: "2026-05-09T00:00:01Z",
+        sessionId: "s",
+        usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 100 },
+      },
+      {
+        role: "user",
+        blocks: [{ type: "text", text: "new prompt" }],
+        timestamp: "2026-05-09T00:00:03Z",
+        sessionId: "s",
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", text: "newer turn" }],
+        timestamp: "2026-05-09T00:00:05Z",
+        sessionId: "s",
+        usage: {
+          input_tokens: 6,
+          output_tokens: 259,
+          cache_creation_input_tokens: 2169,
+          cache_read_input_tokens: 66900,
+        },
+      },
+      { role: "user", blocks: [{ type: "text", text: "after" }], timestamp: "2026-05-09T00:00:06Z", sessionId: "s" },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.lastUsage).toEqual({
+      input_tokens: 6,
+      output_tokens: 259,
+      cache_creation_input_tokens: 2169,
+      cache_read_input_tokens: 66900,
+      total_speed_tokens_per_second: 89,
+    })
+  })
+
+  test("leaves lastUsage undefined when no historical record carries usage", () => {
+    const past: Message[] = [
+      { role: "user", blocks: [{ type: "text", text: "hi" }], timestamp: "2026-05-09T00:00:00Z", sessionId: "s" },
+      { role: "assistant", blocks: [{ type: "text", text: "ok" }], timestamp: "2026-05-09T00:00:01Z", sessionId: "s" },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.lastUsage).toBeUndefined()
+  })
+
+  test("extracts text blocks from array-shaped content", () => {
+    const past: Message[] = [
+      {
+        role: "assistant",
+        blocks: [
+          { type: "text", text: "hello " },
+          { type: "text", text: "world" },
+        ],
+        timestamp: FIXED_TS,
+        sessionId: "s",
+      },
+    ]
+    const s = setMessagesFromHistory(createInitialState(), past)
+    expect(s.messages).toHaveLength(1)
+    expect(s.messages[0]).toEqual({ kind: "assistant", text: "hello world", ts: FIXED_TS })
+  })
+
   test("renders tool_call blocks as collapsed tool rows", () => {
     const past: Message[] = [
       {
@@ -429,7 +500,7 @@ describe("applyEvent — usage / done / error", () => {
         cache_read_input_tokens: 2000,
         cache_creation_input_tokens: 100,
       },
-      FIXED_TS,
+      "2026-05-09T00:00:05.000Z",
     )
     expect(s.messages).toEqual(start.messages)
     expect(s.isStreaming).toBe(start.isStreaming)
@@ -438,6 +509,7 @@ describe("applyEvent — usage / done / error", () => {
       output_tokens: 500,
       cache_read_input_tokens: 2000,
       cache_creation_input_tokens: 100,
+      total_speed_tokens_per_second: 300,
     })
   })
 
@@ -572,9 +644,7 @@ describe("cleanChatText / noise filtering", () => {
     const past: Message[] = [
       {
         role: "user",
-        blocks: [
-          { type: "text", text: "<local-command-caveat>Caveat: don't respond.</local-command-caveat>" },
-        ],
+        blocks: [{ type: "text", text: "<local-command-caveat>Caveat: don't respond.</local-command-caveat>" }],
         timestamp: FIXED_TS,
         sessionId: "s",
       },

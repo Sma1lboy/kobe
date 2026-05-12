@@ -78,6 +78,11 @@ async function main(): Promise<void> {
     await runDiagnoseSubcommand()
     return
   }
+  if (subcommand === "update") {
+    const { runUpdateSubcommand } = await import("./update.ts")
+    await runUpdateSubcommand(rest)
+    return
+  }
   if (subcommand === "theme") {
     const { runThemeSubcommand } = await import("./theme.ts")
     await runThemeSubcommand(rest)

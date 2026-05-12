@@ -7,9 +7,9 @@
  * post-bug-fix), or `undefined` when the user dismisses with esc.
  */
 
+import { allModels, defaultCapabilities } from "@/engine/registry"
 import { TextAttributes } from "@opentui/core"
 import { For, createMemo, createSignal } from "solid-js"
-import { allModels, defaultCapabilities } from "@/engine/registry"
 import { useTheme } from "../../../context/theme"
 import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"

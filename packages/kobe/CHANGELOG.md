@@ -14,9 +14,143 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.15] - 2026-05-12
+
+### Added
+
+- **Terminal pane now uses a real Bun PTY rendered through headless xterm** — task shells run under `Bun.spawn({ terminal })` so `tty`, prompts, cursor movement, resize, and ordinary interactive shell behavior work without tmux; `@xterm/headless` maintains the screen buffer and kobe reads per-cell colors/attrs back into the opentui render path.
+- **Topbar can self-update kobe** — when the npm version check finds a newer release, the left topbar shows `[Update]`; confirming leaves alt-screen, runs the existing GitHub-hosted update script, then exits so relaunch starts the new binary.
+
+### Changed
+
+- **Workspace pane now opens wider by default** — fresh layouts seed the center WORKSPACE pane at 70% of the space remaining after the task sidebar, leaving the right FILES/TERMINAL rail at 30% while preserving any width the user already dragged and persisted.
+- **Terminal pane no longer depends on tmux** — embedded task shells now run through Bun's native PTY path, removing tmux session/control-mode state from the terminal path while preserving real terminal behavior.
+- **Pipe terminal fallback no longer suspends the host TUI** — the opt-in pipe backend runs shells non-interactively over stdin/stdout pipes instead of passing `-i`, avoiding shell job-control reads from the controlling terminal that could suspend `bun run dev`.
+
 ### Fixed
 
+- **Terminal input is less laggy and the viewport follows live output** — the PTY renderer now converts only the visible window plus a small scrollback margin, coalesces refreshes to roughly one frame, keeps the pane pinned to the bottom while live, and renders the cursor inline with the xterm text so typed spaces and cursor position share one coordinate system.
+
+## [0.5.14] - 2026-05-12
+
+### Changed
+
+- **Workspace pane now opens wider by default** — fresh layouts seed the center WORKSPACE pane at 70% of the space remaining after the task sidebar, leaving the right FILES/TERMINAL rail at 30% while preserving any width the user already dragged and persisted.
+
+## [0.5.13] - 2026-05-12
+
+### Fixed
+
+- **Large worktrees no longer freeze the TUI during pane IO** — file-tree git scans and preview git/file reads now run asynchronously instead of blocking the JS event loop, preview reads cap huge files at 2 MiB, recursive file-tree watching is opt-in via `KOBE_FILETREE_WATCH=1`, and stale slow scans can no longer overwrite newer pane state.
+
+## [0.5.12] - 2026-05-12
+
+### Fixed
+
+- **Update notifications check npm on every launch** — the topbar no longer waits on the old 6-hour version cache, so newly published versions show the `↑ vX.Y.Z available!` chip as soon as the registry reports them.
+
+## [0.5.11] - 2026-05-12
+
+### Added
+
+- **Active task worktrees can open directly in an editor** — the top bar now shows a dynamic `[Open] VS Code/Cursor/...` chip and `ctrl+o` opens the active task worktree via the first detected editor (`KOBE_OPEN_EDITOR`, VS Code, Cursor, Windsurf, Zed, or the platform opener).
+
+## [0.5.10] - 2026-05-12
+
+### Fixed
+
+- **Update prompt now points at a GitHub-hosted script** — the update dialog no longer suggests `bun install -g`; it shows `curl -fsSL https://raw.githubusercontent.com/Sma1lboy/kobe/main/scripts/update.sh | sh`, and `kobe update` delegates to the same remote script so future install-flow changes only require editing `scripts/update.sh`.
+
+## [0.5.9] - 2026-05-11
+
+### Fixed
+
+- **Interrupted prompts now reach the model on the next turn** — `claude -p` only persists the user turn to its session JSONL on natural completion, so a mid-stream SIGTERM (steer / ESC) used to drop the prompt on the floor and the next `--resume` read an incomplete history. The engine now appends a synthetic user record on `stop()` (with merge-into-prior-user when a chain of steers stacks, plus an idempotent skip when claude flushed just before our kill). Because the rescue is on disk, a kobe restart preserves the prompt too.
+- **Rapid-fire prompts no longer fragment a chat across N orphan sessions** — a fast typist firing Enter twice before the first turn's `user.inject` had round-tripped through the daemon's event bus used to enter the spawn branch N times, each opening a fresh JSONL, all but the last orphan on disk and the model cold-starting its prompt cache every turn. A first-spawn coalescing latch on the orchestrator now serialises the initial spawn per tab; later runTasks await it and resume the just-established session. Regression test asserts 3 concurrent `runTask` calls = 1 spawn + 2 resumes.
+- **Steer (ctrl+enter and `[▶]`) is now atomic** — replaces the chat-side `interruptTask + runTask` compound with a single `chat.steer` RPC. The dispatch lock on the TUI wraps one await instead of two, closing the race where the queue-drain effect dispatched a duplicate `runTask` between the interrupt and the new prompt landing.
+
+### Added
+
+- **Queued prompts render inside the composer rail with a `[▶]` retrigger button** — the queue list used to sit between the spinner and the composer as a separate block; it now lives above the textarea inside the same bordered block as the input it'll flush. Each row has `[▶]` next to `[x]`; clicking `[▶]` interrupts the in-flight turn and immediately dispatches that queued prompt instead of waiting for the head to drain (engine-side JSONL rescue applies, so the abandoned head's prompt still reaches the model).
+- **New-task dialog gains an explicit Create button** — Tab now cycles `repo → baseRef → confirm → repo`; Enter on the repo or baseRef inputs is pure selection (advances focus, never submits), and commit lives exclusively on the bottom-right `[ Create ]` chip (Enter when focused, or mouse click). Closes the "Enter to dismiss picker = accidentally create task" footgun.
+- **New-task baseRef defaults to the repo's actual current branch** — reads `git rev-parse --abbrev-ref HEAD` (2-second timeout, fault-tolerant) so a worktree forked from a feature branch defaults to that feature branch instead of silently jumping to `main`. The field auto-syncs when you change the repo path; a manual edit pins the override.
+- **New-task dialog defaults to the currently-selected task's repo** — `openNewTaskFlow` now prefers the selected task's `repo` over the persisted `lastNewTaskRepo` (falling back to `cwd` as a last resort). Same-repo follow-ups are the common case, so the dialog opens pre-pointed at the path you're already looking at.
+
+## [0.5.8] - 2026-05-11
+
+### Fixed
+
+- **ESC stops yanking focus out of the chat composer** — ESC was globally bound to "back to sidebar" (`focus.detach`), so any idle ESC press while editing silently kicked the keyboard back to the task list. Removed the global binding entirely; ESC now belongs to DialogProvider (close top dialog) and Chat.tsx (interrupt streaming turn) only, and idle ESC is a no-op so the composer keeps focus mid-edit. Use `ctrl+q` for an explicit "back to sidebar" detach.
+
+## [0.5.7] - 2026-05-11
+
+### Fixed
+
+- **Queued prompts survive task switches** — switching to another task and back used to wipe the per-tab `ChatState` map in one shot, so anything queued with shift+enter was gone the moment focus left the task. Hoists `statesByTab` to module scope in `useChatSession` (mirroring the same fix #16 just landed for `draftsByTab`), so both per-tab maps now outlive every Chat unmount — task switches, file-preview swaps, anything that flips the workspace `<Show>`. `isStreaming` is also re-synced from the orchestrator's authoritative run-state on every re-attach so a turn that completed off-screen drops its spinner instead of locking the composer (KOB-61).
+
+## [0.5.6] - 2026-05-11
+
+### Fixed
+
+- **`npm install -g @sma1lboy/kobe` actually launches** — first-run `kobe` could fail with `daemon did not start at ~/.kobe/daemon.sock` because the CLI looked for the kobed entry at `dist/cli/bin/kobed.js` (double-counted the `/cli` segment) instead of `dist/bin/kobed.js`, fell back to a `process.cwd()`-relative path that also didn't exist, then spawned a nonexistent script with `stdio: "ignore"` so the ENOENT was silently swallowed and only the 5-second connect-loop timeout surfaced. Resolves the entry via `import.meta.url` instead of `process.argv[1]` and throws on a missing entry so any future regression is loud (KOB-60).
+
+## [0.5.5] - 2026-05-11
+
+### Added
+
+- **Standalone executables on the GitHub Release page** — every release now ships pre-built `kobe` + `kobed` binaries for darwin-arm64, darwin-x64, linux-x64, and linux-arm64 as `kobe-<platform>-<arch>.tar.gz`. Extract the tarball and drop both binaries onto your `PATH`; no Bun runtime install required. The npm package (`@sma1lboy/kobe`) keeps shipping the JS bundle for users who prefer `npm install -g` plus their own Bun.
+- **Per-ChatTab completion notifications** — chat tabs that finish a turn while in the background now ring the terminal bell, optionally play a `pulse.wav` chime via the first audio player on `PATH` (afplay / ffplay / mpv / aplay / …), and surface a transient toast in the workspace header. Settings dialog exposes a Sound toggle and a Toast toggle independently (KOB-56, KOB-57).
+- **Composer locks for archived tasks** — opening an archived task now disables the chat composer with a placeholder explaining why, so a stray keystroke can't try to send into a frozen session (KOB-58).
+
+### Fixed
+
+- **GitHub Release page actually has assets** — the workflow's upload glob pointed at `packages/kobe/dist/index.js`, but the build emits `dist/cli/index.js` and `dist/bin/kobed.js`; the upload step silently matched zero files, so every prior release shipped with only the auto-generated source archives. Replaced by the matrix-driven binary attach above.
+- **Legacy duplicate "main task" rows consolidated** — opening a saved repo that had picked up a stale duplicate main-task entry now collapses through `store.remove`, so the task list shows a single canonical row instead of two stacked tabs.
+- **File preview wraps long lines** — preview pane now soft-wraps wide lines instead of horizontally clipping past the viewport (#10).
+
+## [0.5.4] - 2026-05-10
+
+### Added
+
+- **`/clear` slash command resets the active chat tab** — typing `/clear` (or picking it from the slash dropdown) wipes the visible messages, drops the tab's Claude session id so the next prompt spawns a fresh session instead of resuming, and stops any in-flight engine handle for the tab; the on-disk JSONL transcript is intentionally preserved so the prior conversation is still reachable via the resume picker (`ctrl+r`). Broadcast over the daemon so every attached TUI resets in lockstep (KOB-55).
+
+## [0.5.3] - 2026-05-10
+
+### Fixed
+
+- **Workspace focus reliably returns to the chat input** — clicking a chat-tab chip, re-clicking inside the workspace, or interacting with the MessageList while the workspace pane was already focused used to leave native opentui focus on whatever child the click landed on, so the composer textarea silently stopped receiving keystrokes; the focus context now ticks a refocus signal on every `setFocused` call (same-pane included) and the composer mirrors it, so the textarea grabs focus on every workspace focus event whenever a chat tab is active (KOB-53).
+
+## [0.5.2] - 2026-05-10
+
+### Fixed
+
+- **MCP bridge config entry now points at the kobe CLI, not whatever `argv[1]` happens to be** — kobe's RPC bridge writes an MCP config so every spawned Claude Code subprocess gets the `kobe_spawn_task` / `kobe_list_tasks` / `kobe_get_task` / `kobe_send_message` tools, but the entry path was derived from `process.argv[1]`. In daemon mode that pointed at `kobed.ts mcp-bridge`, which has no such subcommand, so the MCP server exited immediately and no `kobe_*` tools registered. Resolved by anchoring the entry to `cli/index.{ts,js}` via `import.meta.url` regardless of caller (KOB-54).
+
+## [0.5.1] - 2026-05-10
+
+### Added
+
+- **Claude plan utilization in the WORKSPACE header** — a new `Plan 5h X% · 7d Y%` chip sits next to the per-tab context meter, fed by a 60-second daemon-side poller against Anthropic's `/api/oauth/usage` endpoint and broadcast to every attached TUI; reads the OAuth token from claude-code's macOS Keychain entry (or the Linux `~/.claude/.credentials.json` fallback) and stays read-only — when the token is expired or the request fails the chip simply hides, letting the user refresh via `claude` itself (KOB-51).
+
+## [0.5.0] - 2026-05-10
+
+### Added
+
+- **File tree auto-refreshes on disk changes** — a recursive `fs.watch` on the active worktree bumps the refresh tick whenever a file changes, debounced ~200 ms; `.git/` and `node_modules/` are filtered to avoid feedback loops and high-churn noise. The `r` keystroke remains as a manual fallback when the watcher can't attach.
 - **Multi-attach chat broadcast** — a fresh task's events now reach every attached TUI, not just the one that spawned it; opening two kobe windows on the same daemon shows the same chat in real time (KOB-36).
+- **Per-tab streaming rehydrate on reconnect** — a TUI reattaching to the daemon mid-stream now resumes the in-flight assistant turn instead of waiting for the next message boundary; daemon replays the pending delta buffer keyed by tab.
+- **Settings dialog "Restart backend" button** — the kobed daemon can be cycled from inside the TUI without dropping to a shell (KOB-36).
+- **`@`-mention file picker** — typing `@` in the composer opens an inline picker scoped to the active task's worktree; selections drop a real path into the prompt that the engine can resolve.
+- **Deeper assistant markdown** — tables, task lists, horizontal rules, and autolinks now render in the transcript (KOB-47).
+- **Pasted-image refs collapse to `[Image #N]` in transcript** — user messages display the image attachments as `[Image #1]` / `[Image #2]` instead of raw `@/abs/path` strings while the engine still receives the full path on submit and history recall.
+- **Model picker maps claude-code aliases to canonical labels** — `opus`, `sonnet`, `haiku` (and `[1m]` variants) pinned in `~/.claude/settings.json` now show their friendly label (`opus 4.7`, …) in the composer footer; the alias is still what gets passed to `claude --model`.
+
+### Fixed
+
+- **Cmd vs Alt key split** — Cmd+C on macOS now reaches its own handler instead of being eaten by the Alt-bound mention picker, so terminal-style copy works again (KOB-48).
+- **Auto-copy on selection drag-end** — releasing the mouse on a chat selection writes the text to the system clipboard directly, matching native terminals (KOB-48).
+- **File tree cursor stays in viewport on j/k scroll** — moving the cursor past the visible window now nudges the scrollbox so the highlighted row stays on-screen.
+- **Main-task path normalization** — saved-repo paths now resolve to the git toplevel before tasks attach, so a main task pinned at a subdirectory still finds its worktree.
 - **`chat.tab.create` no longer leaks subscriptions** — opening a new tab used to re-subscribe every existing tab, so each delta fired N callbacks after N tabs.
 - **`chat.send` accepts empty / continue prompts** — server stops rejecting blank text; the resume-without-prompt path works end-to-end again.
 - **`chat.history` pagination** — response now includes `nextBefore` + `hasMore`, so the older-page cursor is actually usable.
@@ -24,11 +158,19 @@ All notable changes to this project are documented here. The format follows [Kee
 - **`kobed restart` no longer races itself** — the relaunch waits for the previous daemon's pid to actually exit (poll `kill -0`) instead of a fixed 150 ms sleep that could trip EADDRINUSE on slow shutdowns.
 - **User prompt is broadcast over the wire** — the chat composer used to push the user row into a local signal before calling `runTask`; other attached TUIs missed it and successive assistant turns concatenated into one blob. `runTask` now emits `user.inject` on the per-task event bus so every client sees the user message and the chat reducer re-anchors message boundaries.
 - **ESC-interrupt clears "thinking" indicator** — `interruptTask` now dispatches a synthesized `done` after `engine.stop`, so the chat composer flips back to idle instead of staying stuck on the "Harmonizing… (Ns)" loading row.
+- **`task.created` / `task.updated` broadcast from `ensureMain`** — clients observing the main-task slot now see it appear in real time on a fresh daemon, not only after the first chat event.
+- **`dist` layout matches Bun's LCA-rooted output** — fixes a published-artifact path mismatch that could cause `kobe`/`kobed` shims to miss their entry points.
 
 ### Changed
 
 - **`task.updated` payload field renamed `patch` → `task`** — the wire never carried a partial patch (always a full task); the field name now matches.
 - **Root `package.json` exposes daemon scripts** — `bun run daemon` / `daemon:stop` / `daemon:restart` / `daemon:status`, plus `dev:test` and `dev:test:reset`, are now available from the monorepo root without `cd packages/kobe`.
+
+## [0.4.0] - 2026-05-10
+
+### Added
+
+- **Context-usage meter in WORKSPACE header** — shows compact `pct · used/window` per tab, derived from streamed `usage` events. Knows about `[1m]` and the standard 200k context windows. The stream parser now picks up `cache_read_input_tokens` / `cache_creation_input_tokens` from `result` frames; chat state keeps `lastUsage` per tab and clears it on each fresh user turn so the meter reflects only the current draw.
 
 ## [0.3.0] - 2026-05-10
 

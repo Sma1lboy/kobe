@@ -37,8 +37,9 @@
  *     to the new ones.
  */
 
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import { defaultCapabilities, modelLabelFor } from "@/engine/registry"
+import type { ScrollBoxRenderable } from "@opentui/core"
+import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
 import type { ChatTab } from "../../../types/task.ts"
@@ -52,10 +53,10 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
-import { defaultCapabilities, modelLabelFor } from "@/engine/registry"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
+  type ChatRow,
   type ChatState,
   createInitialState,
   dequeueFirst,
@@ -152,17 +153,29 @@ export function Chat(props: ChatProps) {
     const map = new Map<string, Tagged>()
     for (const e of BUILTIN_CLAUDE_SLASHES) map.set(e.name, { entry: e, source: "builtin" })
     for (const e of userSlashes()) map.set(e.name, { entry: e, source: "user" })
-    return [...map.values()]
-      .sort((a, b) => a.entry.name.localeCompare(b.entry.name))
-      .map(({ entry, source }) => ({
-        display: `/${entry.name}`,
-        description: entry.description || undefined,
-        aliases: entry.aliases?.map((a) => `/${a}`),
-        source,
+    const claudeEntries: ComposerSlashEntry[] = [...map.values()].map(({ entry, source }) => ({
+      display: `/${entry.name}`,
+      description: entry.description || undefined,
+      aliases: entry.aliases?.map((a) => `/${a}`),
+      source,
+      onSelect: () => {
+        void send(`/${entry.name}`)
+      },
+    }))
+    // kobe-side slashes are short-circuited in `send()` rather than
+    // forwarded to the engine. Listed here purely so the dropdown
+    // surfaces them as a discoverable command.
+    const kobeEntries: ComposerSlashEntry[] = [
+      {
+        display: "/clear",
+        description: "Reset this chat tab (drops session, keeps history on disk)",
+        source: "builtin",
         onSelect: () => {
-          void send(`/${entry.name}`)
+          void send("/clear")
         },
-      }))
+      },
+    ]
+    return [...kobeEntries, ...claudeEntries].sort((a, b) => a.display.localeCompare(b.display))
   })
 
   // Per-ChatTab state + subscription lifecycle live in
@@ -213,37 +226,61 @@ export function Chat(props: ChatProps) {
 
   // Reactive view of the active task's status. `canceled` blocks the
   // composer because the orchestrator rejects `canceled → in_progress`.
-  const taskStatus = createMemo(() => {
+  const activeTask = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return tasksAcc().find((t) => t.id === id)?.status
+    return tasksAcc().find((t) => t.id === id)
   })
+  const taskStatus = () => activeTask()?.status
   const isCanceled = () => taskStatus() === "canceled"
+  const isArchived = () => activeTask()?.archived === true
 
-  // True when the active tab's message list ends with an unresolved
-  // approval/question row. While a user-input request is pending we
-  // lock the composer:
-  //   - The subprocess was killed (orchestrator.pumpEvents stops it on
-  //     tool.start so the model can't yap past the picker).
-  //   - The picker IS the only valid next action; typing a freeform
-  //     prompt would resume the session ahead of the picker's answer
-  //     and the model would see "[user said something else]" instead of
-  //     "[plan approved] / [question answered]".
-  // Scans from the end so a long history doesn't cost more than O(few)
-  // — the picker is always near the bottom. Stops at the first user/
-  // assistant row because anything newer than the picker means the
-  // conversation moved on (i.e. the picker was already resolved).
-  const hasPendingInput = createMemo(() => {
+  // Look up the tail of the active tab for an unresolved user-input
+  // row. Scans from the end (the picker is always near the bottom) and
+  // stops at the first user/assistant row — anything newer than the
+  // picker means the conversation moved on (i.e. the picker was
+  // already resolved). Returned shape is the row itself so callers
+  // can read the requestId / questions list for routing.
+  function findPending(): Extract<ChatRow, { kind: "approval" | "question" }> | null {
     const msgs = activeState().messages
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]
       if (!m) continue
-      if (m.kind === "approval") return m.status === "pending"
-      if (m.kind === "question") return m.answers === null
-      if (m.kind === "user" || m.kind === "assistant") return false
+      if (m.kind === "approval") return m.status === "pending" ? m : null
+      if (m.kind === "question") return m.answers === null ? m : null
+      if (m.kind === "user" || m.kind === "assistant") return null
     }
-    return false
+    return null
+  }
+
+  // Pending approval lock — the subprocess was killed on tool.start
+  // and the only valid next action is Approve/Reject. Free-text would
+  // resume the session ahead of the picker's answer and the model
+  // would see "[user said something else]" instead of "[plan
+  // approved]". Approval stays locked.
+  const pendingApproval = createMemo(() => {
+    const p = findPending()
+    return p?.kind === "approval" ? p : null
   })
+  // Pending question — picker is up but the user can still type a
+  // free-text answer via the composer (per the AskUserQuestion tool's
+  // "always allow custom text" contract). Composer-submit reroutes
+  // to respondToInput; see handleComposerSubmit.
+  const pendingQuestion = createMemo(() => {
+    const p = findPending()
+    return p?.kind === "question" ? p : null
+  })
+  // Backwards-compat alias for legacy call sites that just want "any
+  // pending input"; new code should prefer the split memos.
+  const hasPendingInput = createMemo(() => pendingApproval() !== null || pendingQuestion() !== null)
+
+  // True while a `QuestionRow`'s inline "Other" input is open and
+  // wants keystrokes. Driven from MessageList → QuestionRow via the
+  // onClaimComposerFocus callback. The composer's `focused` prop is
+  // forced false while this is true so the inline input — not the
+  // composer — receives input; otherwise opentui keeps the composer
+  // focused and the user's typing disappears into the chat draft.
+  const [questionInlineFocus, setQuestionInlineFocus] = createSignal(false)
 
   // Per-task permission mode (shift+tab cycle in the composer).
   const permissionMode = createMemo(() => {
@@ -367,12 +404,22 @@ export function Chat(props: ChatProps) {
    * pendingInput)` — multiple unrelated state changes within one tick
    * could schedule multiple drain microtasks. We hold a boolean lock
    * across the dispatch's async runTask call so the second microtask
-   * sees `draining=true` and bails. Without the guard, two queued
+   * sees `dispatching=true` and bails. Without the guard, two queued
    * prompts could hit `runTask` before either has flipped `isStreaming`
    * back to true — the second one's `engine.resume(sid)` then collides
    * with the first's still-being-released session.
+   *
+   * The same lock is held by the steer path in {@link send} (and by
+   * extension {@link sendQueuedNow}). Without that extension, a user
+   * who clicks `[▶]` on a queued prompt while two other prompts sit in
+   * the queue races: `interruptTask` flips `isStreaming` false via the
+   * `done` event in the gap between `await interruptTask` and
+   * `await runTask`, the drain effect wakes up, pops the head, and now
+   * we have two concurrent `runTask` calls fighting for the same
+   * session id — engine logs "claude session ended:
+   * error_during_execution" for each loser.
    */
-  let draining = false
+  let dispatching = false
   createEffect(() => {
     const taskId = props.taskId()
     const tabId = activeTabId()
@@ -381,15 +428,15 @@ export function Chat(props: ChatProps) {
     if (state.isStreaming) return
     if (state.queue.length === 0) return
     if (hasPendingInput()) return
-    if (draining) return
+    if (dispatching) return
     // Dequeue inside a microtask so the createEffect's reactive read
     // graph is settled before we mutate state. Without the defer, the
     // patch races the effect's tracking and we can miss the next tick.
     queueMicrotask(async () => {
-      if (draining) return
+      if (dispatching) return
       const cur = activeState()
       if (cur.isStreaming || cur.queue.length === 0) return
-      draining = true
+      dispatching = true
       try {
         let head: { id: string; text: string; ts: string } | null = null
         patchActiveState((s) => {
@@ -411,7 +458,7 @@ export function Chat(props: ChatProps) {
           patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
         }
       } finally {
-        draining = false
+        dispatching = false
       }
     })
   })
@@ -446,24 +493,49 @@ export function Chat(props: ChatProps) {
     if (isCanceled()) return
     if (hasPendingInput()) return // approval/question picker has the floor
 
+    // kobe-side slash short-circuit: `/clear` resets the active tab.
+    // Handled here (not on the slash entry's onSelect) so a user
+    // typing `/clear` directly and pressing Enter — even with the
+    // dropdown dismissed — still hits the reset path instead of
+    // sending the literal string to the engine.
+    if (text === "/clear") {
+      setDraft("")
+      try {
+        await props.orchestrator.clearTab(taskId, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `/clear failed: ${stringifyErr(err)}`))
+      }
+      return
+    }
+
     const streaming = activeState().isStreaming
 
     if (streaming && mode === "steer") {
       setDraft("")
+      // Claim the dispatch lock BEFORE awaiting steer. Without this,
+      // the `done` event from the killed subprocess flips `isStreaming`
+      // false while steerTask is mid-execution — and the drain effect
+      // wakes up to pop the head of the queue, giving us two
+      // concurrent runTasks fighting for the same session id. Bail if
+      // another dispatch already owns the lock; the user can re-click
+      // rather than queue another race.
+      if (dispatching) return
+      dispatching = true
       try {
-        await props.orchestrator.interruptTask(taskId, tabId)
-      } catch (err) {
-        patchActiveState((s) => pushSystemError(s, `interrupt failed: ${stringifyErr(err)}`))
-        return
-      }
-      // The pump's `finally` flips isStreaming false via the `done`
-      // event; the drain effect won't run because we own the next
-      // dispatch. runTask fires user.inject at the start, so the
-      // user row lands via the event bus (no local pushUser).
-      try {
-        await props.orchestrator.runTask(taskId, text, tabId)
-      } catch (err) {
-        patchActiveState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
+        // steerTask owns the interrupt + run-with-merged-prompt
+        // sequence atomically on the orchestrator side. Critically,
+        // it captures the in-flight prompt BEFORE the kill so the
+        // model still sees what the user had been saying — claude -p
+        // never persists a mid-stream user turn to its JSONL log on
+        // its own, so a naive interrupt+resume would drop the
+        // abandoned prompt entirely.
+        try {
+          await props.orchestrator.steerTask(taskId, text, tabId)
+        } catch (err) {
+          patchActiveState((s) => pushSystemError(s, `steer failed: ${stringifyErr(err)}`))
+        }
+      } finally {
+        dispatching = false
       }
       return
     }
@@ -492,10 +564,26 @@ export function Chat(props: ChatProps) {
 
   /**
    * Cancel one queued prompt by id. Called by the cancel-button on
-   * each `QueuedPromptList` row.
+   * each queued row inside the composer.
    */
   function cancelQueued(id: string): void {
     patchActiveState((s) => removeFromQueue(s, id))
+  }
+
+  /**
+   * Promote a queued prompt to "send now". Pulls it out of the queue
+   * and re-dispatches via the steer path — interrupts the in-flight
+   * turn and runs the chosen prompt against the same session, so the
+   * user doesn't have to wait for the head to drain naturally. Idle
+   * fallback (queue should normally be empty when idle, but the drain
+   * effect runs on a microtask so there's a brief race window) just
+   * calls send normally.
+   */
+  function sendQueuedNow(id: string): void {
+    const entry = activeState().queue.find((q) => q.id === id)
+    if (!entry) return
+    patchActiveState((s) => removeFromQueue(s, id))
+    void send(entry.text, "steer")
   }
 
   /** Create a new tab and switch focus to it. Wired from `ctrl+t`. */
@@ -577,12 +665,11 @@ export function Chat(props: ChatProps) {
     }),
   }))
 
-  // Esc-to-interrupt while streaming. Higher precedence than the global
-  // `focus.detach` esc (LIFO stack — Chat mounts after the global hook,
-  // so this binding sits on top). Gated on `streaming` so an idle ESC
-  // still falls through to the global handler and detaches to the
-  // sidebar; gated on `!dialog.stack.length` so DialogProvider's esc
-  // (close top dialog) isn't shadowed.
+  // Esc-to-interrupt while streaming. Gated on `streaming` so an idle
+  // ESC is a no-op (the global "back to sidebar" detach was removed
+  // because it pulled focus out from under the user mid-edit; use
+  // `ctrl+q` for an explicit detach). Gated on `!dialog.stack.length`
+  // so DialogProvider's esc (close top dialog) isn't shadowed.
   async function interruptStream(): Promise<void> {
     const taskId = props.taskId()
     const tabId = activeTabId()
@@ -666,7 +753,38 @@ export function Chat(props: ChatProps) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
       return
     }
-    void send(undefined, mode)
+    // If a question picker is up, the composer's content is the user's
+    // free-text answer — same role as picking the auto-added "Other"
+    // option. Route through respondToInput so the orchestrator emits
+    // the right synthetic resume prompt; sending it as a fresh prompt
+    // instead would race the still-pending AskUserQuestion tool_result
+    // and the model would not know which input is the answer. Every
+    // question on the picker gets the same answer string — multi-
+    // question prompts are rare, and the alternative (only answer the
+    // first, leave the rest unanswered) violates the picker's
+    // all-questions-required contract.
+    const q = pendingQuestion()
+    if (q) {
+      const taskId = props.taskId()
+      if (!taskId) return
+      const answers: Record<string, string> = {}
+      for (const entry of q.questions) {
+        answers[entry.question] = trimmed
+      }
+      props.orchestrator
+        .respondToInput(taskId, q.requestId, { kind: "ask_question", answers })
+        .catch((err: unknown) => {
+          patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+        })
+      setDraft("")
+      return
+    }
+    // `trimmed` is the composer's post-expansion text — `[Image #N]`
+    // placeholders have already been rewritten to ` @/abs/path ` so
+    // claude's `-p` mention parser can attach the image. Falling back
+    // to `draft()` here would silently drop the attachments because
+    // the draft signal mirrors the literal textarea content.
+    void send(trimmed, mode)
   }
 
   return (
@@ -723,6 +841,8 @@ export function Chat(props: ChatProps) {
                     patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
                   })
               }}
+              onClaimComposerFocus={setQuestionInlineFocus}
+              chatFocused={() => props.focused?.() ?? false}
             />
           </box>
         </scrollbox>
@@ -737,45 +857,47 @@ export function Chat(props: ChatProps) {
           showed up when Loading was the last child of an opentui flex
           column alongside a reactive <For> — its position is now
           deterministic by source order at this layer. */}
-      {/* Queued prompts — sits between the spinner and the composer
-          so the user can see what's pending before the next turn fires.
-          Each row has a [x] cancel affordance; clicking it drops the
-          entry from the queue without dispatching. Empty queue =
-          nothing renders. Mirrors the visual placement of claude-code's
-          `QueuedCommandsDisplay` (above the prompt input) so the user
-          finds the affordance at the same eye level. */}
-      <Show when={props.taskId() && activeState().queue.length > 0}>
-        <QueuedPromptList queue={activeState().queue} onCancel={cancelQueued} />
-      </Show>
-
       <Show when={showThinking() && props.taskId()}>
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
-      {/* Composer. */}
-      <Composer
-        draft={draft()}
-        onDraftChange={setDraft}
-        isStreaming={activeState().isStreaming}
-        hasTask={props.taskId() !== undefined && !isCanceled() && !hasPendingInput()}
-        noTaskMessage={
-          isCanceled()
-            ? "(task canceled — pick another or press ctrl+n to create)"
-            : hasPendingInput()
-              ? "(answer the prompt above to continue)"
-              : undefined
-        }
-        onSubmit={handleComposerSubmit}
-        focused={props.focused}
-        // Per-tab history scope — prompt history shouldn't bleed across tabs.
-        historyKey={activeTabId() ?? props.taskId()}
-        slashes={slashes}
-        permissionMode={permissionMode}
-        onCyclePermissionMode={cyclePermissionMode}
-        modelLabel={modelLabel}
-        onChooseModel={() => void chooseModel()}
-        worktreePath={worktreePath}
-      />
+      {/* Composer — hidden entirely while a question picker is up so
+          the user's full attention is on picking (or typing into the
+          inline "Other" input). Reappears as soon as the picker
+          resolves; the user can then type freely again. Approval
+          pickers (ExitPlanMode) keep the composer rendered but locked
+          since approval is binary and the user might still want
+          history / model context affordances visible. */}
+      <Show when={!pendingQuestion()}>
+        <Composer
+          draft={draft()}
+          onDraftChange={setDraft}
+          isStreaming={activeState().isStreaming}
+          hasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingApproval()}
+          noTaskMessage={
+            isArchived()
+              ? "(archived — unarchive to resume)"
+              : isCanceled()
+                ? "(task canceled — pick another or press ctrl+n to create)"
+                : pendingApproval()
+                  ? "(answer the prompt above to continue)"
+                  : undefined
+          }
+          onSubmit={handleComposerSubmit}
+          focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
+          // Per-tab history scope — prompt history shouldn't bleed across tabs.
+          historyKey={activeTabId() ?? props.taskId()}
+          slashes={slashes}
+          permissionMode={permissionMode}
+          onCyclePermissionMode={cyclePermissionMode}
+          modelLabel={modelLabel}
+          onChooseModel={() => void chooseModel()}
+          worktreePath={worktreePath}
+          queue={() => activeState().queue}
+          onCancelQueued={cancelQueued}
+          onSendQueuedNow={sendQueuedNow}
+        />
+      </Show>
     </box>
   )
 }
@@ -787,69 +909,4 @@ function stringifyErr(err: unknown): string {
   } catch {
     return String(err)
   }
-}
-
-/**
- * Mid-stream user prompts the user chose to QUEUE (plain enter while
- * streaming). Renders one row per pending prompt with a `+` prefix
- * (the `>` chip is reserved for dispatched user rows in the transcript)
- * and a clickable `[x]` cancel chip. Lives outside the scrollbox so
- * it shares horizontal layout with the spinner and composer — the user
- * finds queued prompts at the same eye-line as the live status row,
- * not buried inside the scrollback.
- *
- * Caps the visible rows at {@link QUEUE_VISIBLE_CAP} so a fast typist
- * who queued 30 prompts doesn't push the composer off-screen. Excess
- * shows as a single muted `+ … N more queued` summary row at the
- * bottom — same shape claude-code uses for its task-notification
- * overflow (`refs/claude-code/src/components/PromptInput/
- * PromptInputQueuedCommands.tsx:33-40`). The full queue still lives
- * in state; cancellation just isn't reachable for hidden rows until
- * earlier ones drain or get cancelled.
- *
- * Tone is intentionally muted: queued prompts haven't reached the
- * model yet, so we don't paint them as accent-coloured the way an
- * in-flight user message gets the `theme.accent` `>` chip.
- */
-const QUEUE_VISIBLE_CAP = 4
-
-function QueuedPromptList(props: {
-  queue: readonly { id: string; text: string }[]
-  onCancel: (id: string) => void
-}) {
-  const { theme } = useTheme()
-  const visible = () => props.queue.slice(0, QUEUE_VISIBLE_CAP)
-  const hidden = () => Math.max(0, props.queue.length - QUEUE_VISIBLE_CAP)
-  return (
-    <box flexDirection="column" gap={0} paddingTop={1} paddingLeft={1} paddingRight={1}>
-      <For each={visible()}>
-        {(entry, idx) => (
-          <box flexDirection="row" gap={1} alignItems="flex-start">
-            <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
-              +
-            </text>
-            <box flexGrow={1} flexDirection="row" gap={1}>
-              <text fg={theme.textMuted} wrapMode="none">
-                queued{idx() === 0 ? " (next)" : ""}:
-              </text>
-              <box flexGrow={1}>
-                <text fg={theme.text}>{entry.text}</text>
-              </box>
-              <text fg={theme.error} attributes={TextAttributes.BOLD} onMouseUp={() => props.onCancel(entry.id)}>
-                [x]
-              </text>
-            </box>
-          </box>
-        )}
-      </For>
-      <Show when={hidden() > 0}>
-        <box flexDirection="row" gap={1} alignItems="flex-start">
-          <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
-            +
-          </text>
-          <text fg={theme.textMuted}>{`… ${hidden()} more queued`}</text>
-        </box>
-      </Show>
-    </box>
-  )
 }

@@ -140,6 +140,50 @@ export class ImagePasteRegistry {
 }
 
 /**
+ * Inverse of {@link ImagePasteRegistry.expand} for *display* only.
+ * Walks `text` and replaces ` @<pastedImagesDir>/<file> ` references
+ * (the form `expand` wrote to the engine prompt) with `[Image #N]`
+ * placeholders, numbered in the order they appear.
+ *
+ * Why this lives outside the registry: by the time we render a user
+ * message back in the transcript, the registry has already been
+ * cleared, and the chat history persists the *expanded* path string
+ * (so a recalled prompt still resolves on the engine side). The
+ * renderer just needs to know "this @-ref points at our paste dir,
+ * collapse it for human eyes". Match scope is intentionally tight
+ * — only paths under `pastedImagesDir()` — so a real `@/some/file.png`
+ * the user typed by hand keeps its literal form.
+ *
+ * Numbering restarts per call (per message), matching the user's
+ * mental model in the composer: each turn starts at `#1`.
+ */
+export function prettifyPastedImageRefs(text: string): string {
+  if (!text.includes("@")) return text
+  const dirPattern = escapeRegExp(pastedImagesDir())
+  // Match all surrounding whitespace so we can fold the double / triple
+  // spaces `expand` plus the composer's ` [Image] ` insertion produce
+  // back to single spaces. The path body is `[^\s]+` to swallow the
+  // uuid + extension without running across a word boundary.
+  const re = new RegExp(`(\\s*)@${dirPattern}/[^\\s]+(\\s*)`, "g")
+  let n = 0
+  return text.replace(re, (match, lead: string, trail: string, offset: number) => {
+    n++
+    // Collapse to a single space on each side. Drop the side-space
+    // entirely when the match touches a string boundary so we don't
+    // synthesise leading/trailing whitespace the user never typed.
+    const atStart = offset === 0
+    const atEnd = offset + match.length === text.length
+    const left = !atStart && lead.length > 0 ? " " : ""
+    const right = !atEnd && trail.length > 0 ? " " : ""
+    return `${left}[Image #${n}]${right}`
+  })
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
  * Map a clipboard mime type to a file extension (with leading dot).
  * Defaults to `.png` for anything we don't recognise — Claude's
  * file-type detection is content-based, so the extension is mostly

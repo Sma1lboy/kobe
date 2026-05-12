@@ -1,3 +1,4 @@
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type { Message, OrchestratorEvent } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 
@@ -32,14 +33,19 @@ export type DaemonRequestName =
   | "chat.tab.close"
   | "chat.tab.activate"
   | "chat.tab.rename"
+  | "chat.tab.clear"
   | "chat.sessions"
   | "chat.session.open"
   | "chat.interrupt"
+  | "chat.steer"
   | "chat.input.pending"
   | "chat.input.respond"
   | "pr.request"
   | "chat.history"
   | "chat.send"
+  | "rcBridge.start"
+  | "rcBridge.stop"
+  | "rcBridge.status"
 
 export type DaemonEventName =
   | "task.created"
@@ -50,6 +56,8 @@ export type DaemonEventName =
   | "chat.event"
   | "chat.complete"
   | "engine.status"
+  | "plan.usage"
+  | "rcBridge.changed"
   | "daemon.stopping"
 
 export interface DaemonError {
@@ -74,6 +82,13 @@ export interface SerializedTask {
   readonly model?: string
   readonly createdAt: string
   readonly updatedAt: string
+}
+
+export interface SerializedHistoryPage {
+  readonly messages: Message[]
+  readonly usageMetrics?: SessionUsageMetrics
+  readonly nextBefore: string | null
+  readonly hasMore: boolean
 }
 
 export function serializeTask(task: Task): SerializedTask {

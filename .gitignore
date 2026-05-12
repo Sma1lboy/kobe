@@ -1,6 +1,7 @@
 refs/
 node_modules/
 dist/
+release-bin/
 .kobe/
 # Ignore everything under .claude/ except the project-scoped skills
 # directory — those need to live in the repo so Claude Code users

@@ -1,3 +1,5 @@
+import { type SessionUsageMetrics, totalContextTokens } from "../../../session/usage-metrics.ts"
+export { totalContextTokens } from "../../../session/usage-metrics.ts"
 /**
  * Workspace header "context used" meter — turns the engine's terminal
  * `usage` frame + the active model id into a short string (e.g.
@@ -10,16 +12,12 @@
 
 import { capabilitiesForModelId } from "@/engine/registry"
 
-export type UsageSnapshot = {
-  readonly input_tokens: number
-  readonly output_tokens: number
-  readonly cache_read_input_tokens?: number
-  readonly cache_creation_input_tokens?: number
-}
+export type UsageSnapshot = SessionUsageMetrics
 
-/** Sum billed tokens that occupy context (matches common API usage breakdown). */
-export function totalContextTokens(u: UsageSnapshot): number {
-  return u.input_tokens + u.output_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+export function contextWindowTokensForModel(modelId: string | undefined): number {
+  const caps = capabilitiesForModelId(modelId)
+  const id = modelId ?? caps.defaultModelId()
+  return caps.contextWindowFor(id)
 }
 
 function formatTokShort(n: number): string {
@@ -32,6 +30,12 @@ function formatTokShort(n: number): string {
   return String(n)
 }
 
+export function formatTotalSpeed(tokensPerSecond: number | undefined): string | null {
+  if (typeof tokensPerSecond !== "number" || !Number.isFinite(tokensPerSecond)) return null
+  if (tokensPerSecond >= 1000) return `${(tokensPerSecond / 1000).toFixed(1)}k t/s`
+  return `${tokensPerSecond.toFixed(1)} t/s`
+}
+
 /**
  * Compact label for the WORKSPACE pane header. Returns `null` when totals are zero.
  */
@@ -42,5 +46,6 @@ export function formatContextUsageCompact(u: UsageSnapshot, modelId: string | un
   const total = totalContextTokens(u)
   if (total <= 0 || window <= 0) return null
   const pct = Math.min(100, Math.max(0, Math.round((total / window) * 100)))
-  return `${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`
+  const speed = formatTotalSpeed(u.total_speed_tokens_per_second)
+  return [`${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`, speed].filter(Boolean).join(" · ")
 }

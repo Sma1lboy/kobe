@@ -43,12 +43,14 @@ export async function createKobeCore(options: KobeCoreOptions = {}): Promise<Kob
   const worktrees = new GitWorktreeManager()
   // Production default: register both vendors. Tests pass `options.engine`
   // to swap in a FakeAIEngine and skip the production map.
-  const engines: EngineMap = options.engines ?? (options.engine
-    ? { [options.engine.capabilities.vendorId]: options.engine }
-    : {
-        claude: new ClaudeCodeLocal(),
-        codex: new CodexLocal(),
-      })
+  const engines: EngineMap =
+    options.engines ??
+    (options.engine
+      ? { [options.engine.capabilities.vendorId]: options.engine }
+      : {
+          claude: new ClaudeCodeLocal(),
+          codex: new CodexLocal(),
+        })
   const orchestrator = new Orchestrator({ engines, store, worktrees })
   const bridge = options.startMcpBridge === false ? null : await startBridge(orchestrator, { homeDir })
 

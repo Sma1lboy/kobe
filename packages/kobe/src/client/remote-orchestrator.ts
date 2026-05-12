@@ -1,19 +1,41 @@
 import { type Accessor, createSignal } from "solid-js"
+import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
+import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
 type PendingInput = PendingInputEntry
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
+
+/**
+ * Daemon connection lifecycle as observed by the TUI. Two states because
+ * reconnect is user-driven (the host shows a "Restart daemon or Quit?"
+ * prompt when we go `disconnected`); no auto-retry, no intermediate
+ * "reconnecting" state.
+ *
+ * Surfaced via {@link RemoteOrchestrator.connectionStateSignal} so the
+ * top bar and the disconnect modal can react. The local in-process
+ * `Orchestrator` has no equivalent — there's no socket to lose.
+ */
+export type DaemonConnectionState = "online" | "disconnected"
 
 export class RemoteOrchestrator {
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
   private readonly runStateAcc: Accessor<ReadonlyMap<string, ChatRunState>>
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
+  private readonly planUsageAcc: Accessor<PlanUsage | null>
+  private readonly setPlanUsage: (next: PlanUsage | null) => void
+  private readonly connectionStateAcc: Accessor<DaemonConnectionState>
+  private readonly setConnectionState: (next: DaemonConnectionState) => void
+  private readonly rcBridgeAcc: Accessor<RcBridgeStatus>
+  private readonly setRcBridge: (next: RcBridgeStatus) => void
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
@@ -34,11 +56,26 @@ export class RemoteOrchestrator {
   constructor(private readonly client: KobeDaemonClient) {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
+    const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
+    const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
+    const [rcBridge, setRcBridge] = createSignal<RcBridgeStatus>({ state: "off" })
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
     this.runStateAcc = runState
     this.setRunState = (next) => setRunState(() => next)
+    this.planUsageAcc = planUsage
+    this.setPlanUsage = (next) => setPlanUsage(() => next)
+    this.connectionStateAcc = connectionState
+    this.setConnectionState = (next) => setConnectionState(() => next)
+    this.rcBridgeAcc = rcBridge
+    this.setRcBridge = (next) => setRcBridge(() => next)
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
+    // KOB-38: socket dropping flips us to `disconnected` and stops
+    // there. The host TUI watches this signal, shows a modal, and the
+    // user picks Restart (→ `manualReconnect`) or Quit. No backoff
+    // loop, no banner-only state — daemon death is rare and never
+    // transient, so a user-driven prompt fits the actual flake pattern.
+    this.client.onLifecycle("close", () => this.setConnectionState("disconnected"))
   }
 
   async init(): Promise<void> {
@@ -50,6 +87,8 @@ export class RemoteOrchestrator {
       tasks?: Task[]
       pending?: Record<string, PendingInput[]>
       runState?: Record<string, ChatRunState>
+      planUsage?: PlanUsage | null
+      rcBridge?: RcBridgeStatus
     }>("hello", { clientId: `tui-${process.pid}`, version: "1" })
 
     let tasks: Task[]
@@ -68,6 +107,8 @@ export class RemoteOrchestrator {
       for (const [key, value] of Object.entries(hello.runState)) seed.set(key, value)
       if (seed.size > 0) this.setRunState(seed)
     }
+    if (hello.planUsage) this.setPlanUsage(hello.planUsage)
+    if (hello.rcBridge) this.setRcBridge(hello.rcBridge)
     await this.client.request("subscribe", { taskIds: "all" })
 
     if (hello.pending) {
@@ -98,6 +139,34 @@ export class RemoteOrchestrator {
     )
   }
 
+  /**
+   * KOB-38: invoked by the host TUI when the user clicks "Restart" in
+   * the disconnect modal. Spawns kobed if it isn't already running,
+   * opens a fresh socket on the existing client, then runs the same
+   * hello + subscribe seeding as {@link init} — pending-input replicas
+   * for previously-known tasks are cleared first so a request resolved
+   * while we were offline doesn't stick as a zombie "awaiting input".
+   *
+   * Throws if the daemon can't be brought up or hello/subscribe fail;
+   * caller (the modal) is expected to surface the error and re-prompt.
+   */
+  async manualReconnect(): Promise<void> {
+    // Make sure any half-open socket is torn down before we try to
+    // reuse the client — otherwise `connect()` short-circuits on a
+    // dead socket reference.
+    this.client.forceDisconnect()
+    await ensureDaemonReachable()
+    for (const task of this.tasksAcc()) this.pendingInputBroker.clearForTask(task.id)
+    await this.init()
+    this.setConnectionState("online")
+  }
+
+  /** Reactive accessor for the daemon connection state — read by the
+   *  TopBar (red text when disconnected) and the disconnect modal. */
+  connectionStateSignal(): Accessor<DaemonConnectionState> {
+    return this.connectionStateAcc
+  }
+
   dispose(): void {
     this.client.close()
   }
@@ -108,6 +177,48 @@ export class RemoteOrchestrator {
 
   chatRunStateSignal(): Accessor<ReadonlyMap<string, ChatRunState>> {
     return this.runStateAcc
+  }
+
+  /**
+   * Latest Claude plan-usage snapshot broadcast by the daemon. Returns
+   * `null` until the daemon has fetched at least once (or always, if the
+   * user isn't signed into claude-code). The WORKSPACE topbar reads this
+   * to render the `Plan 5h … · 7d …` chip alongside the context meter.
+   */
+  planUsageSignal(): Accessor<PlanUsage | null> {
+    return this.planUsageAcc
+  }
+
+  /**
+   * Latest remote-control bridge status broadcast by the daemon. Hydrated
+   * from `hello` snapshot, then updated by `rcBridge.changed` events.
+   * Defaults to `{ state: "off" }` until the daemon answers `hello`.
+   */
+  rcBridgeSignal(): Accessor<RcBridgeStatus> {
+    return this.rcBridgeAcc
+  }
+
+  /**
+   * Start the remote-control bridge. When `taskId` is supplied the
+   * daemon binds the bridge to that task's worktree (and to the
+   * specific tab when `tabId` is also given) so the dialog can show
+   * a `/resume <sid>` hint. Without `taskId` the daemon falls back
+   * to its own process cwd's git toplevel — useful for kobed
+   * installations that aren't task-anchored, but the dialog won't
+   * surface a session-resume hint.
+   */
+  async startRcBridge(opts: { taskId?: string; tabId?: string; cwd?: string } = {}): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", {
+      taskId: opts.taskId,
+      tabId: opts.tabId,
+      cwd: opts.cwd,
+    })
+    return res.status
+  }
+
+  async stopRcBridge(): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.stop", {})
+    return res.status
   }
 
   listTasks(): Task[] {
@@ -145,6 +256,11 @@ export class RemoteOrchestrator {
 
   async interruptTask(taskId: string, tabId?: string): Promise<void> {
     await this.client.request("chat.interrupt", { taskId, tabId })
+  }
+
+  async steerTask(taskId: string, text: string, tabId?: string): Promise<void> {
+    await this.client.request("chat.steer", { taskId, text, tabId })
+    this.markRunState(taskId, tabId ?? this.getTask(taskId)?.activeTabId, "running")
   }
 
   async setArchived(taskId: string, archived?: boolean): Promise<void> {
@@ -185,26 +301,39 @@ export class RemoteOrchestrator {
     return res.nextActive
   }
 
+  async clearTab(taskId: string, tabId: string): Promise<void> {
+    await this.client.request("chat.tab.clear", { taskId, tabId })
+  }
+
   async setActiveTab(taskId: string, tabId: string): Promise<void> {
     await this.client.request("chat.tab.activate", { taskId, tabId })
   }
 
   async readHistory(sessionId: string): Promise<Message[]> {
+    return (await this.readHistoryWithMetrics(sessionId)).messages
+  }
+
+  async readHistoryWithMetrics(
+    sessionId: string,
+  ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
     const task = this.tasksAcc().find(
       (t) => t.sessionId === sessionId || t.tabs.some((tab) => tab.sessionId === sessionId),
     )
-    if (!task) return []
+    if (!task) return { messages: [] }
     // Pass the requested sessionId through to the daemon so it returns
     // history for the specific tab the caller asked about, not the
     // task's currently-active tab. Without this, Chat's per-tab
     // hydration runs N times for the same active-tab transcript and
     // every tab ends up rendering identical content.
-    const res = await this.client.request<{ messages: Message[] }>("chat.history", {
+    const res = await this.client.request<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }>("chat.history", {
       taskId: task.id,
       sessionId,
       limit: 500,
     })
-    return res.messages
+    return {
+      messages: res.messages,
+      ...(res.usageMetrics ? { usageMetrics: res.usageMetrics } : {}),
+    }
   }
 
   async listSessions(taskId: string): Promise<SessionMeta[]> {
@@ -288,6 +417,16 @@ export class RemoteOrchestrator {
         this.setTasks(this.tasksAcc().filter((t) => t.id !== taskId))
         this.pendingInputBroker.clearForTask(taskId)
       }
+      return
+    }
+    if (name === "plan.usage") {
+      const usage = obj.usage as PlanUsage | null | undefined
+      this.setPlanUsage(usage ?? null)
+      return
+    }
+    if (name === "rcBridge.changed") {
+      const status = obj.status as RcBridgeStatus | undefined
+      if (status) this.setRcBridge(status)
       return
     }
     const taskId = obj.taskId as string | undefined

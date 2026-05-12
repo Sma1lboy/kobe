@@ -24,6 +24,14 @@ export interface ProcessHandle {
   readonly cwd: string
   readonly proc: ChildProcess
   readonly startedAt: number
+  /**
+   * The prompt this subprocess is processing. Kept on the handle so a
+   * mid-stream SIGTERM (steer / ESC interrupt) can rescue the user
+   * turn into the session JSONL — `claude -p` only commits the turn
+   * to disk when it completes naturally, so a kill drops the message
+   * on the floor unless we step in.
+   */
+  readonly prompt: string
 }
 
 /**

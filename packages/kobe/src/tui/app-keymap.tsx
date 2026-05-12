@@ -79,6 +79,8 @@ export type AppKeymapDeps = {
   renderer: RendererHandle | undefined
   /** Active task accessor — needed by the test-only ctrl+y PR hotkey. */
   activeTask: Accessor<Task | undefined>
+  /** Open the active task's worktree in the detected editor. */
+  openActiveTaskInEditor: () => void
 }
 
 /* --------------------------------------------------------------------- */
@@ -176,6 +178,7 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: bindByIds({
+      "task.openEditor": deps.openActiveTaskInEditor,
       "settings.open": () => {
         void SettingsDialog.show(dialog, deps.kv, deps.orchestrator)
       },

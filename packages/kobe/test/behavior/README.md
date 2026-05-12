@@ -7,7 +7,7 @@
 ## Run
 
 ```bash
-bun run test:behavior          # run every test/behavior/**/*.test.ts
+bun run test:behavior          # run every test/behavior/**/*.test.ts serially
 bun run test:behavior --watch  # iterate
 ```
 

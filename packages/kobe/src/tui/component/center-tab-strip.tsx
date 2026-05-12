@@ -13,6 +13,7 @@ import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show } from "solid-js"
 import { type ChatRunState, chatRunStateKey } from "../../orchestrator/core.ts"
 import type { ChatTab } from "../../types/task.ts"
+import { type NotificationKind, notificationKey } from "../context/notifications"
 import { useTheme } from "../context/theme"
 
 export function CenterTabStrip(props: {
@@ -47,6 +48,15 @@ export function CenterTabStrip(props: {
    * idle. Absence of an entry == idle.
    */
   chatRunState: Accessor<ReadonlyMap<string, ChatRunState>>
+  /**
+   * Per-chat-tab unread marker keyed by `${taskId}:${tabId}` (compose via
+   * {@link notificationKey}). A non-undefined value means the user
+   * hasn't viewed this tab since its last completion / approval event;
+   * the chip paints a small filled circle after the label. `done`
+   * resolves to success-coloured, `needs_input` to warning-coloured —
+   * matches the toast's colour vocabulary.
+   */
+  unread: Accessor<ReadonlyMap<string, NotificationKind>>
   onSelectChat: () => void
   onSelectChatTab: (tabId: string) => void
   onSelectFile: (path: string) => void
@@ -129,6 +139,19 @@ export function CenterTabStrip(props: {
               if (s === "running") return theme.success
               return theme.textMuted
             }
+            // Unread badge — paints AFTER the label. Suppressed when
+            // this tab is the active chip (the user is already looking
+            // at it, so seeing a "you haven't read this" marker is
+            // noise). Colour mirrors the toast kind: warning for an
+            // awaiting-approval transition, success for a plain
+            // completion.
+            const unreadKind = (): NotificationKind | undefined => {
+              const taskId = props.activeTaskId()
+              if (!taskId) return undefined
+              return props.unread().get(notificationKey(taskId, tab.id))
+            }
+            const showUnread = () => !isPrimary() && unreadKind() !== undefined
+            const unreadColor = () => (unreadKind() === "needs_input" ? theme.warning : theme.success)
             return (
               <box
                 flexDirection="row"
@@ -156,6 +179,11 @@ export function CenterTabStrip(props: {
                 >
                   {chatTabLabel(tab)}
                 </text>
+                <Show when={showUnread()}>
+                  <text fg={unreadColor()} wrapMode="none">
+                    ●
+                  </text>
+                </Show>
               </box>
             )
           }}

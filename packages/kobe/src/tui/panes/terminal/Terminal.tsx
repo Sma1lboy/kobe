@@ -2,8 +2,11 @@
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
- * Header: `terminal — <cwd-basename>`. Body: ANSI-stripped scrollback
- * with a viewport cursor.
+ * Body: a headless xterm screen snapshot fed by the task PTY. The
+ * worktree-id label that used to live
+ * in an inner header row was removed — it duplicated what the parent
+ * PaneHeader already shows, AND it threw off the body's `screenY` by
+ * 1 row, parking the cursor on the header instead of the prompt.
  *
  * Lifecycle (per the Stream J brief):
  *   - When `cwd` and `taskId` resolve to non-null values, acquire a
@@ -26,33 +29,36 @@
  * explicit: clicking focuses the pane, that's all — no mouse-passthrough
  * to the shell.
  *
- * Output rendering: tmux gives us full pane snapshots, not deltas. We
- * pass the snapshot through `stripAnsi` (re-imported from the behavior
- * harness — it's pure and lives at `test/behavior/screen.ts`; see the
- * import below for why we expose it from there). The result is plain
- * text; we render line-by-line so the opentui `<text>` renderable can
- * lay it out without trying to interpret ANSI escapes.
+ * Output rendering: the backend gives us full snapshots, not deltas.
+ * The snapshot is fed through `./sgr.ts` which returns one chunk-list
+ * per row. We then flatten those rows into a single `StyledText` (with
+ * `\n` between rows) and render via ONE `<text>` element — opentui
+ * composes the per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
+ * per-row `<text>` inside a flex column shifted the body's
+ * `screenY` reference, breaking the cursor positioning math
+ * (`screenY + cursor.y` → wrong row). The flat layout keeps the
+ * body's screenY pinned to the row right under the header, which is
+ * what the cursor positioning math assumes.
  *
- * Scrollback / viewport: we keep the latest snapshot in a Solid signal
- * and slice it to the visible window. `ctrl+pgup`/`ctrl+pgdown` shift
- * a `scrollOffset` signal; when offset is 0 we follow the bottom (so
- * new output is always visible by default). The brief says "v1 is
- * plain-text scrollback; ANSI control codes are stripped using the
- * existing `test/behavior/screen.ts` utility (export it from there or
- * reimplement minimally)" — we import from the behavior path. That
- * file is already part of the source tree and exporting it here is a
- * one-liner.
+ * Scrollback / viewport: we keep the latest snapshot in a Solid
+ * signal, parse it into chunks, and slice to the visible window.
+ * `ctrl+pgup`/`ctrl+pgdown` shift a `scrollOffset` signal; when
+ * offset is 0 we follow the bottom (so new output is always visible
+ * by default).
+ *
+ * Cursor: the PTY backend reports cursor coordinates from the headless
+ * xterm buffer; this component maps them onto opentui's native cursor.
  */
 
-import { basename } from "node:path"
-import { type BoxRenderable, TextAttributes } from "@opentui/core"
+import { type BoxRenderable, StyledText } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
-import { stripAnsi } from "../../../../test/behavior/screen"
 import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
+import { ATTR, type Chunk, parseAnsiSnapshot } from "./sgr"
+import { rowsToStyledText } from "./sgr-to-text-chunk"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -61,7 +67,7 @@ import { PtyRegistry } from "./registry"
 export type TerminalProps = {
   /** Working dir for the shell. Null disables the pane (no task). */
   cwd: Accessor<string | null>
-  /** Stable id used for tmux session naming or pty registry keying. */
+  /** Stable id used for pty registry keying. */
   taskId: Accessor<string | null>
   focused?: Accessor<boolean>
   /**
@@ -92,7 +98,7 @@ export function getDefaultPtyRegistry(): PtyRegistry {
 
 /**
  * Reset the module-level registry. Tests use this between cases so a
- * leftover registry doesn't leak tmux sessions across tests.
+ * leftover registry doesn't leak shell processes across tests.
  */
 export function _resetDefaultPtyRegistry(): void {
   if (defaultRegistry) defaultRegistry.releaseAll()
@@ -100,15 +106,57 @@ export function _resetDefaultPtyRegistry(): void {
 }
 
 /**
- * Heuristic: is this acquire-error message about tmux being absent /
- * unreachable on PATH? Used to swap a plain-English hint in for the
- * raw error tail. We match a couple of phrasings the pty backend
- * emits ("requires tmux on PATH"), plus the bare ENOENT shape Node
- * uses when the binary itself is missing.
+ * Heuristic: is this acquire-error message about the user's shell
+ * being absent / unreachable? Used to swap a plain-English hint in for
+ * the raw error tail.
  */
-function isTmuxMissing(message: string): boolean {
+function isShellMissing(message: string): boolean {
   const m = message.toLowerCase()
-  return m.includes("tmux on path") || m.includes("enoent") || m.includes("not found")
+  return m.includes("enoent") || m.includes("not found")
+}
+
+function cloneChunk(c: Chunk, text: string, attrs = c.attributes ?? 0): Chunk {
+  return {
+    text,
+    ...(c.fg ? { fg: c.fg } : {}),
+    ...(c.bg ? { bg: c.bg } : {}),
+    ...(attrs !== 0 ? { attributes: attrs } : {}),
+  }
+}
+
+function overlayCursorRow(row: readonly Chunk[], x: number): Chunk[] {
+  const out: Chunk[] = []
+  let col = 0
+  let inserted = false
+
+  for (const chunk of row) {
+    const chars = Array.from(chunk.text)
+    const start = col
+    const end = start + chars.length
+    if (!inserted && x >= start && x < end) {
+      const idx = x - start
+      const before = chars.slice(0, idx).join("")
+      const cursorChar = chars[idx] ?? " "
+      const after = chars.slice(idx + 1).join("")
+      if (before) out.push(cloneChunk(chunk, before))
+      out.push(cloneChunk(chunk, cursorChar || " ", (chunk.attributes ?? 0) | ATTR.INVERSE))
+      if (after) out.push(cloneChunk(chunk, after))
+      inserted = true
+    } else {
+      out.push(chunk)
+    }
+    col = end
+  }
+
+  if (!inserted) {
+    out.push({ text: " ", attributes: ATTR.INVERSE })
+  }
+  return out
+}
+
+function overlayCursor(rows: readonly (readonly Chunk[])[], cursor: CursorPos | null): readonly (readonly Chunk[])[] {
+  if (!cursor) return rows
+  return rows.map((row, y) => (y === cursor.y ? overlayCursorRow(row, cursor.x) : row))
 }
 
 /* --------------------------------------------------------------------- */
@@ -128,8 +176,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // The current PTY — null when no task is active.
   const [pty, setPty] = createSignal<TaskPty | null>(null)
 
-  // Surfaced when `registry.acquire()` throws (most commonly: tmux not
-  // on PATH). Without this, the effect's exception bubbles out of the
+  // Surfaced when `registry.acquire()` throws. Without this, the effect's exception bubbles out of the
   // Solid scheduler and the pane renders blank with no hint as to why.
   const [acquireError, setAcquireError] = createSignal<string | null>(null)
 
@@ -142,26 +189,28 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Scroll offset: 0 = follow bottom; positive = N lines back into history.
   const [scrollOffset, setScrollOffset] = createSignal(0)
 
+  const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
+  const [bodyRows, setBodyRows] = createSignal(4)
+  const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
+  const bodyGeometryReady = createMemo(() => bodyGeometry() !== null)
   /* --------- pty lifecycle ---------- */
 
   createEffect(
-    on([props.cwd, props.taskId], ([cwd, taskId]) => {
-      if (!cwd || !taskId) {
+    on([props.cwd, props.taskId, bodyGeometryReady], ([cwd, taskId, geometryReady]) => {
+      if (!cwd || !taskId || !geometryReady) {
         setPty(null)
         setSnapshot("")
         setCursor(null)
         setAcquireError(null)
         return
       }
+      const geometry = bodyGeometry()
+      if (!geometry) return
       const reg = registry()
       let handle: TaskPty
       try {
-        handle = reg.acquire(taskId, cwd)
+        handle = reg.acquire(taskId, cwd, geometry)
       } catch (err) {
-        // The most common failure here is tmux missing on PATH (the
-        // pty backend probes synchronously in its constructor). Show
-        // a plain-English summary; the raw message is still appended
-        // so a user willing to dig can act on it.
         const message = err instanceof Error ? err.message : String(err)
         setAcquireError(message)
         setPty(null)
@@ -174,21 +223,20 @@ export function Terminal(props: TerminalProps): JSXElement {
       // Reset scroll on task switch — every task gets its own viewport.
       setScrollOffset(0)
 
-      // Subscribe; the listener receives `(snapshot, cursor)` from a
-      // single atomic tmux roundtrip — they describe the SAME grid
-      // state, so we never display a stale cursor on a fresh snapshot.
+      // Subscribe; the listener receives a full snapshot and an
+      // optional cursor.
       const unsubscribe = handle.onData((snap, c) => {
-        setSnapshot(stripAnsi(snap))
+        setSnapshot(snap)
         setCursor(c)
       })
       // If the pty already had a buffer, prime the renderer immediately
       // so a freshly-mounted Terminal doesn't blink empty for one tick.
       try {
         const initial = handle.capture()
-        if (initial) setSnapshot(stripAnsi(initial))
+        if (initial) setSnapshot(initial)
         setCursor(handle.captureCursor())
       } catch {
-        /* capture can fail on a freshly-spawned tmux pane; ignore */
+        /* capture can fail on a freshly-spawned shell; ignore */
       }
       onCleanup(() => {
         unsubscribe()
@@ -222,54 +270,70 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   /* --------- view ---------- */
 
-  const headerLabel = createMemo(() => {
-    const cwd = props.cwd()
-    if (!cwd) return "terminal — (no task)"
-    return `terminal — ${basename(cwd)}`
+  // Parse the snapshot (text + SGR escapes) into one chunk-list per
+  // row. Memoized on `snapshot()`, so a cursor-only update doesn't
+  // re-parse the (unchanged) text. Empty rows are preserved so the
+  // Cursor-capable backends report y coordinates against this array.
+  const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
+
+  // Rows visible after applying scroll offset. offset 0 means
+  // follow-bottom: render only the last body-height rows, not the
+  // whole scrollback. Positive offset moves the viewport upward into
+  // history.
+  const visibleRange = createMemo(() => {
+    const all = parsedRows()
+    const height = Math.max(1, bodyRows())
+    const offset = Math.max(0, scrollOffset())
+    const end = Math.max(0, all.length - offset)
+    const start = Math.max(0, end - height)
+    return { start, end }
   })
 
-  // Lines visible after applying scroll offset. We split by \n, then
-  // slice off the bottom `scrollOffset` lines (negative offset would
-  // be below the bottom, which we clamp).
-  const visibleLines = createMemo(() => {
-    const all = snapshot().split("\n")
-    const offset = Math.max(0, scrollOffset())
-    if (offset === 0) return all
-    const cut = Math.max(0, all.length - offset)
-    return all.slice(0, cut)
+  const visibleRows = createMemo(() => {
+    const all = parsedRows()
+    const range = visibleRange()
+    return all.slice(range.start, range.end)
   })
 
   // Cursor is only meaningful when we're following the bottom of the
   // buffer; once the user scrolls back, the cursor's reported (x,y)
   // refers to the *live* viewport, not what's currently rendered.
-  const showCursor = createMemo(() => focused() && scrollOffset() === 0 && cursor() !== null)
+  const visibleCursor = createMemo(() => {
+    const c = cursor()
+    if (!c || scrollOffset() !== 0) return null
+    const range = visibleRange()
+    if (c.y < range.start || c.y >= range.end) return null
+    return { x: c.x, y: c.y - range.start }
+  })
 
-  /* --------- native cursor positioning ----------
+  const cursorRows = createMemo(() => {
+    const c = focused() ? visibleCursor() : null
+    return overlayCursor(visibleRows(), c)
+  })
+
+  // Flatten every visible row into ONE `StyledText` separated by
+  // `\n`s. We render this as a single `<text>` element inside the
+  // body so opentui's layout treats the body as a 1:1 cell grid —
+  // crucial for the cursor positioning math (`body.screenY + c.y`).
+  // An earlier attempt rendered one `<text>` per row inside a flex
+  // column; opentui's per-row layout didn't keep `screenY` aligned
+  // with pane row indexing, and the cursor landed one row above
+  // the visible prompt.
+  const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(cursorRows())))
+
+  /* --------- cursor handling ----------
    *
-   * opentui ships a real terminal cursor (the one the host emulator
-   * draws — block, blinking if the host supports it). Earlier we
-   * tried inline INVERSE-styled cells but they're hard to see against
-   * dim backgrounds AND don't match the rest of the app's typing
-   * affordances. So instead we drive opentui's own cursor: when the
-   * pane is focused and we know the pty cursor's (x,y), we ask the
-   * renderer to place the cursor at the body's absolute screen
-   * position + (cursor.x, cursor.y). Padding-1 is added to x because
-   * the body has paddingLeft=1 — the snapshot's column 0 lives at
-   * screen column body.screenX + 1.
+   * The terminal cursor is rendered inline into the StyledText snapshot
+   * above instead of using opentui's native host cursor. Keeping text
+   * and cursor in one render path avoids the coordinate split that made
+   * typed spaces and cursorX look wrong in the nested terminal pane.
+   * When terminal has focus we explicitly hide the host cursor so it
+   * cannot leave a stale block/bar on top of xterm-rendered text.
    *
-   * When the pane is unfocused or no cursor info is available, we
-   * hide it so the host terminal doesn't leave a stray block in the
-   * pane. The orchestrator-level cursor (e.g. the chat composer) will
-   * reposition it as soon as focus moves elsewhere.
-   *
-   * We ALSO push the body's measured (cols, rows) into the tmux pane
-   * via `pty.resize`. tmux's default 80×24 doesn't match our actual
-   * render area, and the cursor (x,y) it reports is in the *tmux*
-   * grid — without resizing, the prompt sits at one row in the kobe
-   * render but tmux's cursor lives in a different coordinate space,
-   * which is exactly the off-by-many-rows symptom the user reported.
+   * We ALSO push the body's measured (cols, rows) into the backend via
+   * `pty.resize`. The Bun PTY backend translates those into terminal
+   * resize events.
    */
-  const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const renderer = useRenderer()
   // Reactive terminal dims — when the host window resizes, this changes
   // and re-fires effects that read the body's live `width/height`.
@@ -281,75 +345,61 @@ export function Terminal(props: TerminalProps): JSXElement {
   // splitter drag in app.tsx mutates pane-size signals, but the *body*
   // box's width is computed downstream, and Solid doesn't observe it
   // through the BoxRenderable instance). We deliberately DO NOT use
-  // a per-frame callback here — it triggered tmux `resize-window` every
-  // frame, and the resulting SIGWINCH storm made p10k / pure / oh-my-zsh
-  // re-emit their prompt several times on mount.
+  // a per-frame callback here; real PTY backends may turn resizes into
+  // SIGWINCH and prompt-rendering shells can reprint on every resize.
   const [geomTick, setGeomTick] = createSignal(0)
+  // 1 s is plenty for catching splitter drags; the previous 250 ms
+  // tick fired the cursor-positioning effect 4×/sec doing nothing
+  // most of the time, which added measurable CPU floor.
   const geomTimer = setInterval(() => {
     setGeomTick((n) => (n + 1) & 0xff)
-  }, 250)
+  }, 1000)
   onCleanup(() => clearInterval(geomTimer))
 
   // Track last pushed geometry so we don't fire `pty.resize` on every
-  // re-render — tmux re-applying the same dims still sends SIGWINCH and
-  // makes prompt-rendering shells (oh-my-zsh, p10k) reprint their
-  // prompt, which surfaces as spurious empty `>` lines on mount.
+  // re-render; real PTY backends may emit SIGWINCH even when geometry
+  // is unchanged.
   let lastResize: { cols: number; rows: number } | null = null
 
-  // Push the rendered body's geometry to tmux so cursor coords align.
+  // Measure the rendered body's geometry before spawning the PTY. This
+  // avoids booting shells at the default 80x24 and immediately resizing
+  // them, which makes zsh/starship-style prompts redraw into stray
+  // standalone prompt lines on startup.
   createEffect(() => {
-    const handle = pty()
     const ref = bodyRef()
     // Read dims + geomTick so this effect re-runs when the host
     // terminal resizes OR a splitter drag changes our body size.
     dims()
     geomTick()
-    if (!handle || !ref) return
+    if (!ref) return
     // Subtract the body's own paddingLeft/paddingRight (1+1) from the
     // usable width so the shell doesn't try to write into the padding.
     const cols = Math.max(20, ref.width - 2)
     const rows = Math.max(4, ref.height)
+    setBodyRows(rows)
+    setBodyGeometry((cur) => (cur && cur.cols === cols && cur.rows === rows ? cur : { cols, rows }))
+  })
+
+  // Push geometry changes after startup to the backend.
+  createEffect(() => {
+    const handle = pty()
+    const geometry = bodyGeometry()
+    if (!handle || !geometry) return
+    const { cols, rows } = geometry
     if (lastResize && lastResize.cols === cols && lastResize.rows === rows) return
     lastResize = { cols, rows }
     try {
       handle.resize(cols, rows)
     } catch {
-      /* best effort — resize fails silently in tmux when geometry is unchanged */
+      /* best effort */
     }
   })
 
-  // Drive the native cursor. Re-runs on cursor(), focused(),
-  // scrollOffset(), bodyRef, and host-window resize. Cursor() updates
-  // every ~80 ms from the PTY poll loop, which is more than enough to
-  // keep the visible block in sync with the shell.
+  // Hide the native host cursor while this pane owns focus; the visible
+  // cursor is the inline inverse cell in `cursorRows`.
   createEffect(() => {
-    const ref = bodyRef()
-    dims()
-    geomTick()
-    if (!ref) return
-    const c = cursor()
-    if (!showCursor() || !c) {
-      // Hide the cursor by parking it off-screen with visible=false.
-      renderer.setCursorPosition(0, 0, false)
-      return
-    }
-    // Make sure the host terminal actually draws something — some
-    // emulators default to a hidden cursor inside alt-screen until a
-    // style is explicitly set. Block + blinking matches what a normal
-    // shell looks like, so the user sees the same affordance they'd
-    // see typing into bash directly.
-    try {
-      renderer.setCursorStyle({ style: "block", blinking: true })
-    } catch {
-      /* older opentui versions may not expose setCursorStyle; ignore */
-    }
-    // body has paddingLeft=1, so column 0 of the snapshot is at screenX+1.
-    // Cursor coords are 0-based pane row/col, atomically captured with
-    // the snapshot. Now that the PTY constructor forces the detached
-    // session's `window-size` to `manual`, tmux's pane grid actually
-    // matches our body height — so cursor_y indexes our rendered lines
-    // 1:1 and no off-by-one fudge is needed.
-    renderer.setCursorPosition(ref.screenX + 1 + c.x, ref.screenY + c.y, true)
+    if (!focused()) return
+    renderer.setCursorPosition(0, 0, false)
   })
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
@@ -369,57 +419,60 @@ export function Terminal(props: TerminalProps): JSXElement {
       borderColor={focused() ? theme.focusAccent : theme.border}
       onMouseUp={() => setFocusedLocal(true)}
     >
-      {/* Header (the parent PaneHeader already labels TERMINAL; this
-          row keeps the worktree-id detail Stream J shipped). */}
-      <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
-        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-          {headerLabel()}
-        </text>
-        <Show when={scrollOffset() > 0}>
+      {/* Scroll affordance — only rendered when the user has scrolled
+          back into history. Replaces what used to be a permanent
+          worktree-id header row; that row was redundant with the
+          parent PaneHeader's right-side label AND it threw off the
+          body's `screenY` by 1, parking the cursor on the header
+          instead of the prompt. Conditional render means the body's
+          screenY equals the pane's content top in the steady state. */}
+      <Show when={scrollOffset() > 0}>
+        <box flexDirection="row" flexShrink={0} paddingLeft={1} paddingRight={1}>
           <text fg={theme.warning} wrapMode="none">
-            {"  "}↑ scrolled {scrollOffset()}L (ctrl+pgdn to follow)
-          </text>
-        </Show>
-      </box>
-
-      {/* Body */}
-      <Show
-        when={pty()}
-        fallback={
-          <box flexGrow={1} paddingLeft={2} paddingTop={1} flexDirection="column" gap={0}>
-            <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
-              <text fg={theme.error} wrapMode="word">
-                terminal unavailable —{" "}
-                {isTmuxMissing(acquireError() ?? "")
-                  ? "tmux is not installed (try `brew install tmux` or set KOBE_TMUX_BIN)"
-                  : "shell could not start"}
-              </text>
-              <text fg={theme.textMuted} wrapMode="word">
-                {acquireError()}
-              </text>
-            </Show>
-          </box>
-        }
-      >
-        <box
-          ref={(r: BoxRenderable) => {
-            setBodyRef(r)
-          }}
-          flexGrow={1}
-          paddingLeft={1}
-          paddingRight={1}
-        >
-          {/* Single multi-line `<text>`. opentui's text renderable handles
-              `\n`-broken content with `wrapMode="none"`. We tried per-line
-              `<For>` rendering earlier — it works, but mixing `<text>`
-              and `<box>` siblings made laying out the cursor overlay
-              flaky, so the cursor is now driven through the renderer's
-              native cursor (see the createEffect above). */}
-          <text fg={theme.text} wrapMode="none">
-            {visibleLines().join("\n")}
+            ↑ scrolled {scrollOffset()}L (ctrl+pgdn to follow)
           </text>
         </box>
       </Show>
+
+      <box
+        ref={(r: BoxRenderable) => {
+          setBodyRef(r)
+        }}
+        flexGrow={1}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        {/* Body */}
+        <Show
+          when={pty()}
+          fallback={
+            <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={0}>
+              <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
+                <text fg={theme.error} wrapMode="word">
+                  terminal unavailable —{" "}
+                  {isShellMissing(acquireError() ?? "") ? "configured shell is not available" : "shell could not start"}
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  {acquireError()}
+                </text>
+              </Show>
+            </box>
+          }
+        >
+          {/* Single `<text>` element rendering the whole snapshot.
+              Per-row chunks are flattened into one StyledText with
+              `\n` separators (see `rowsToStyledText`). This shape
+              matters: rendering one <text> per row inside a flex
+              column shifted the body's `screenY` reference such that
+              `screenY + cursor.y` landed one row above the prompt.
+              Keeping a single multi-line `<text>` preserves the
+              original layout assumption that drives the cursor math
+              in the createEffect below. */}
+          <text fg={theme.text} wrapMode="none">
+            {styledSnapshot()}
+          </text>
+        </Show>
+      </box>
     </box>
   )
 }

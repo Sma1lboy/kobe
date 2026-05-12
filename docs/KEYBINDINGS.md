@@ -26,8 +26,9 @@ open dialog — every binding registration in `app.tsx` includes `enabled: dialo
 
 `tab` / `shift+tab` cycle the focused pane (`focus.next` / `focus.prev`). Same global rule.
 
-`esc` from workspace focus also goes back to sidebar (`focus.detach`); `ctrl+q` from workspace is an alternate alias
-(`focus.sidebar`). Sidebar focus owns plain `q` (quit confirm) and plain `n` (new task).
+`ctrl+q` from workspace focus jumps back to the sidebar (`focus.sidebar`). `esc` is **not** a global "back to sidebar" — it
+would yank focus out of the chat composer mid-edit. ESC is reserved for: closing the top dialog (DialogProvider) and
+interrupting a streaming turn (Chat). Sidebar focus owns plain `q` (quit confirm) and plain `n` (new task).
 
 ## Binding categories — three flavours
 
@@ -54,8 +55,9 @@ site — they should agree.
 | ---------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ctrl+hjkl`      | `focus.numeric` (global) — works without any terminal config | Pane focus uses `ctrl+hjkl` (vim-style direction keys mapped onto pane ordinals h/j/k/l = sidebar/workspace/files/terminal). **Why not ctrl+digit?** ctrl+digit needs CSI-u / kitty keyboard support; even with kobe's `useKittyKeyboard: {}` enabled, iTerm2 has a quirk where ctrl+1 / ctrl+9 / ctrl+0 fall through to a bare digit byte while ctrl+2..8 emit CSI-u correctly. **Why not alt+digit?** Option+digit on macOS gets eaten by launchers like Raycast before reaching the terminal. ctrl+letter has stable C0 control byte mappings that every terminal sends, no protocol negotiation, no per-key quirks. |
 | `ctrl+k` palette vs focus | `palette.open` moved to ctrl+p (vscode/Cursor convention) | `ctrl+k` was the palette chord but is now the "focus files pane" chord (k = ordinal 3). Palette is reachable via `ctrl+p` / `cmd+p` instead. |
-| `esc`            | dialog dismiss vs `focus.detach`        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog, `focus.detach` runs and lands on sidebar.                    |
+| `esc`            | dialog dismiss vs chat interrupt        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog and chat focused while streaming, `chat.interrupt` cancels the turn. Idle ESC is a no-op so the composer doesn't lose focus mid-edit. |
 | `ctrl+c`         | copy selection vs double-tap quit       | Selection-aware. With text selected → copy via OSC52 + clear. Else first press arms a 1.5s quit window; second press in window = quit. Both behaviours live in `useKobeKeybindings`. `cmd+c` is a synonym for terminals that forward Cmd-chords (Kitty, Ghostty, iTerm2 with "Send Modifier Keys") so the chord doesn't get silently swallowed there. |
+| `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
 | `tab`            | pane cycle vs textarea focus actions    | `useKobeKeybindings` no-ops `tab` when workspace has focus so the composer's own tab handling (slash completion, indent) wins.                                                      |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
 

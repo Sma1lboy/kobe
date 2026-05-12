@@ -153,6 +153,19 @@ export interface Message {
   readonly blocks: readonly ContentBlock[]
   readonly timestamp: string
   readonly sessionId: string
+  /**
+   * Anthropic token usage for this assistant turn, when persisted on disk.
+   * Claude Code stores it inline on each assistant record's `message.usage`.
+   * Surfaced so the chat pane can repopulate the "context used" meter on
+   * history hydration (otherwise the meter is blank until the next turn
+   * runs and the engine emits a live `usage` EngineEvent).
+   */
+  readonly usage?: {
+    readonly input_tokens: number
+    readonly output_tokens: number
+    readonly cache_read_input_tokens?: number
+    readonly cache_creation_input_tokens?: number
+  }
 }
 
 /**
@@ -370,6 +383,16 @@ export type SystemInfoEvent = {
 }
 
 /**
+ * Tells the chat shell to wipe a tab back to its empty state.
+ * Fired by `Orchestrator.clearTab` (the `/clear` slash command) after
+ * the tab's session id has been dropped server-side, so every attached
+ * TUI's reducer resets in lockstep over the multi-attach broadcast.
+ */
+export type ChatTabClearedEvent = {
+  readonly type: "chat.tab.cleared"
+}
+
+/**
  * Anything dispatched on the orchestrator's per-task subscriber bus.
  * UI subscribers (chat) consume this wider type; engine impls produce
  * only the {@link EngineEvent} subset.
@@ -380,6 +403,7 @@ export type OrchestratorEvent =
   | UserInputRequestEvent
   | UserInputResolvedEvent
   | SystemInfoEvent
+  | ChatTabClearedEvent
 
 /**
  * The single seam between kobe and "the thing running tasks."

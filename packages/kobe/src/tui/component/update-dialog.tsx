@@ -4,7 +4,7 @@
  *
  * Renders three sections:
  *   1. Header with current → latest version arrow.
- *   2. Install command (one-liner; user copies it themselves —
+ *   2. Update command (one-liner; user copies it themselves —
  *      no auto-update per the original "暂时不提供更新api" decision).
  *   3. "What's new" — the GitHub release body for the latest tag,
  *      rendered through kobe's Markdown component so it looks like
@@ -19,10 +19,11 @@
 import { TextAttributes } from "@opentui/core"
 import { type JSXElement, Match, Show, Switch, createResource } from "solid-js"
 import {
-  INSTALL_COMMAND,
   type ReleaseNotes,
+  UPDATE_COMMAND,
   type UpdateInfo,
   fetchReleaseNotes,
+  recommendedGlobalInstallCommand,
   releasePageUrl,
 } from "../../version.ts"
 import { useTheme } from "../context/theme"
@@ -67,7 +68,7 @@ export function UpdateDialog(props: UpdateDialogProps): JSXElement {
         </text>
       </box>
 
-      {/* Install command — rendered as a "code block" with a copy hint.
+      {/* Update command — rendered as a "code block" with a copy hint.
           We don't auto-copy because OSC52 isn't available everywhere,
           and the visible string is short enough to select with the
           terminal's own selection. */}
@@ -75,8 +76,11 @@ export function UpdateDialog(props: UpdateDialogProps): JSXElement {
         <text fg={theme.textMuted}>Run this to update:</text>
         <box paddingLeft={2}>
           <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-            {INSTALL_COMMAND}
+            {UPDATE_COMMAND}
           </text>
+        </box>
+        <box paddingLeft={2}>
+          <text fg={theme.textMuted}>Manual fallback: {recommendedGlobalInstallCommand()}</text>
         </box>
       </box>
 

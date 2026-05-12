@@ -28,10 +28,10 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { setTimeout as sleep } from "node:timers/promises"
-import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import { createKobeCore } from "@/core/index"
-import { CodexLocal } from "@/engine/codex-local/index"
 import { findRolloutFile } from "@/engine/codex-local/history"
+import { CodexLocal } from "@/engine/codex-local/index"
+import { afterAll, beforeAll, describe, expect, test } from "vitest"
 
 const codexAvailable =
   process.env.KOBE_SKIP_CODEX_REAL !== "1" && spawnSync("which", ["codex"], { encoding: "utf8" }).status === 0
@@ -65,10 +65,14 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
 
   test("V2: resume on existing session — context carries over", { timeout: 60_000 }, async () => {
     expect(v1SessionId).toBeDefined()
-    const handle = await engine.resume(v1SessionId as string, "What word did I ask you to say? Reply with just that word.", {
-      cwd: "/tmp",
-      ...PERMISSION,
-    })
+    const handle = await engine.resume(
+      v1SessionId as string,
+      "What word did I ask you to say? Reply with just that word.",
+      {
+        cwd: "/tmp",
+        ...PERMISSION,
+      },
+    )
     expect(handle.sessionId).toBe(v1SessionId)
     const events: any[] = []
     for await (const ev of engine.stream(handle)) {
@@ -167,7 +171,11 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
         // — V8 only enforces the model-id contract.
       }
       // Best-effort cleanup so we don't pile up rollouts during this test.
-      try { await engine.deleteHistory(handle.sessionId) } catch { /* noop */ }
+      try {
+        await engine.deleteHistory(handle.sessionId)
+      } catch {
+        /* noop */
+      }
     }
     expect(failures, `unsupported models in catalog: ${JSON.stringify(failures)}`).toEqual([])
   })
@@ -188,85 +196,86 @@ d("CodexLocal — orchestrator end-to-end (V7)", () => {
     spawnSync("git", ["init", "-q", "-b", "main", repo])
     writeFileSync(path.join(repo, "README.md"), "hello\n")
     spawnSync("git", ["-C", repo, "add", "-A"])
-    spawnSync("git", [
-      "-C",
-      repo,
-      "-c",
-      "user.email=t@t",
-      "-c",
-      "user.name=t",
-      "commit",
-      "-q",
-      "-m",
-      "init",
-    ])
+    spawnSync("git", ["-C", repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"])
   })
 
   afterAll(() => {
-    try { rmSync(tmpHome, { recursive: true, force: true }) } catch { /* noop */ }
-    try { rmSync(repo, { recursive: true, force: true }) } catch { /* noop */ }
+    try {
+      rmSync(tmpHome, { recursive: true, force: true })
+    } catch {
+      /* noop */
+    }
+    try {
+      rmSync(repo, { recursive: true, force: true })
+    } catch {
+      /* noop */
+    }
   })
 
-  test("Task with vendor=codex routes to CodexLocal; full event stream reaches subscribers", { timeout: 120_000 }, async () => {
-    let codexSpawned = false
-    const codex = new CodexLocal()
-    const origSpawn = codex.spawn.bind(codex)
-    codex.spawn = async (cwd, prompt, opts) => {
-      codexSpawned = true
-      return origSpawn(cwd, prompt, opts)
-    }
+  test(
+    "Task with vendor=codex routes to CodexLocal; full event stream reaches subscribers",
+    { timeout: 120_000 },
+    async () => {
+      let codexSpawned = false
+      const codex = new CodexLocal()
+      const origSpawn = codex.spawn.bind(codex)
+      codex.spawn = async (cwd, prompt, opts) => {
+        codexSpawned = true
+        return origSpawn(cwd, prompt, opts)
+      }
 
-    const core = await createKobeCore({
-      homeDir: tmpHome,
-      engines: { codex },
-      startMcpBridge: false,
-    })
-    try {
-      const orch = core.orchestrator
-      const task = await orch.createTask({ repo, title: "codex e2e", prompt: "" })
-      // Don't pin a model — let codex use its config-resolved default
-      // (whatever the running user's `~/.codex/config.toml` says).
-      // Force vendor directly via the store so routing kicks in.
-      await (orch as unknown as { store: { update: (id: string, patch: unknown) => Promise<void> } }).store.update(
-        task.id,
-        { vendor: "codex" },
-      )
-      const after = orch.getTask(task.id)
-      expect(after?.vendor).toBe("codex")
-      const tab = after?.tabs[0]
-      expect(tab).toBeDefined()
-
-      const events: any[] = []
-      const unsub = orch.subscribeEvents(
-        task.id,
-        (ev) => {
-          events.push(ev)
-        },
-        tab!.id,
-      )
+      const core = await createKobeCore({
+        homeDir: tmpHome,
+        engines: { codex },
+        startMcpBridge: false,
+      })
       try {
-        await orch.runTask(task.id, "Reply with exactly the word PONG and nothing else.")
-        const deadline = Date.now() + 90_000
-        while (Date.now() < deadline) {
-          if (events.some((e) => e.type === "done" || e.type === "error")) break
-          await sleep(200)
+        const orch = core.orchestrator
+        const task = await orch.createTask({ repo, title: "codex e2e", prompt: "" })
+        // Don't pin a model — let codex use its config-resolved default
+        // (whatever the running user's `~/.codex/config.toml` says).
+        // Force vendor directly via the store so routing kicks in.
+        await (orch as unknown as { store: { update: (id: string, patch: unknown) => Promise<void> } }).store.update(
+          task.id,
+          { vendor: "codex" },
+        )
+        const after = orch.getTask(task.id)
+        expect(after?.vendor).toBe("codex")
+        const tab = after?.tabs[0]
+        expect(tab).toBeDefined()
+
+        const events: any[] = []
+        const unsub = orch.subscribeEvents(
+          task.id,
+          (ev) => {
+            events.push(ev)
+          },
+          tab!.id,
+        )
+        try {
+          await orch.runTask(task.id, "Reply with exactly the word PONG and nothing else.")
+          const deadline = Date.now() + 90_000
+          while (Date.now() < deadline) {
+            if (events.some((e) => e.type === "done" || e.type === "error")) break
+            await sleep(200)
+          }
+        } finally {
+          unsub()
+        }
+
+        expect(codexSpawned, "CodexLocal.spawn should have been invoked by runTask routing").toBe(true)
+        const terminal = events.find((e) => e.type === "done" || e.type === "error")
+        expect(terminal, "should reach a terminal event").toBeDefined()
+        // The user's codex auth may reject specific model ids; we accept
+        // a terminal "error" here as long as the routing reached codex.
+        // Happy-path users see a done + a PONG reply.
+        if (terminal?.type === "done") {
+          const reply = events.find((e) => e.type === "assistant.delta")?.text ?? ""
+          expect(reply).toMatch(/pong/i)
         }
       } finally {
-        unsub()
+        await core.close()
       }
-
-      expect(codexSpawned, "CodexLocal.spawn should have been invoked by runTask routing").toBe(true)
-      const terminal = events.find((e) => e.type === "done" || e.type === "error")
-      expect(terminal, "should reach a terminal event").toBeDefined()
-      // The user's codex auth may reject specific model ids; we accept
-      // a terminal "error" here as long as the routing reached codex.
-      // Happy-path users see a done + a PONG reply.
-      if (terminal?.type === "done") {
-        const reply = events.find((e) => e.type === "assistant.delta")?.text ?? ""
-        expect(reply).toMatch(/pong/i)
-      }
-    } finally {
-      await core.close()
-    }
-  })
+    },
+  )
 })

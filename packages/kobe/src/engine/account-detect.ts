@@ -53,10 +53,7 @@ export type ClaudeAccount =
     }
   | { kind: "none" }
 
-export type CodexAccount =
-  | { kind: "chatgpt"; email: string; plan?: string }
-  | { kind: "apikey" }
-  | { kind: "none" }
+export type CodexAccount = { kind: "chatgpt"; email: string; plan?: string } | { kind: "apikey" } | { kind: "none" }
 
 export type BinaryStatus = { found: true; path: string } | { found: false; error: string }
 
@@ -244,4 +241,3 @@ export async function detectCodexAccount(deps: DetectDeps = defaultDeps): Promis
   }
   return { binary, account: { kind: "none" } }
 }
-

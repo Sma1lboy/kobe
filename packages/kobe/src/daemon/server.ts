@@ -2,9 +2,12 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
+import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
 import {
   DAEMON_PROTOCOL_VERSION,
   frameToLine,
@@ -12,7 +15,8 @@ import {
   serializeMessages,
   serializeTask,
 } from "./protocol.ts"
-import type { DaemonFrame } from "./protocol.ts"
+import type { DaemonFrame, SerializedHistoryPage } from "./protocol.ts"
+import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 
 export interface DaemonServerOptions {
   readonly socketPath?: string
@@ -20,6 +24,17 @@ export interface DaemonServerOptions {
   readonly homeDir?: string
   readonly startedAt?: Date
   readonly onStop?: () => void | Promise<void>
+  /**
+   * Override the plan-usage poller. Tests inject a fake fetcher here so
+   * the daemon doesn't actually hit Anthropic's API.
+   */
+  readonly planUsagePoller?: PlanUsagePoller
+  /**
+   * Override the remote-control bridge manager (KOB-62). Tests pass a
+   * fake whose `start`/`stop` resolve synchronously without spawning
+   * the real `claude remote-control` subprocess.
+   */
+  readonly rcBridge?: RcBridge
 }
 
 export interface DaemonServer {
@@ -79,23 +94,55 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     })
   })
 
+  // Plan-usage poller — periodically refreshes claude plan utilization
+  // and broadcasts the snapshot to every attached client. Starts after
+  // `serverApi` is built so `broadcast` is in scope. The first tick
+  // fires immediately so `hello` responses can carry a fresh value
+  // shortly after daemon boot.
+  const planUsagePoller =
+    options.planUsagePoller ??
+    createPlanUsagePoller({
+      onUpdate: (usage) => broadcast(clients, { type: "event", name: "plan.usage", payload: { usage } }),
+    })
+
+  // Remote-control bridge — off until the user enables it from settings.
+  // Each transition is broadcast so all attached TUIs repaint the chip
+  // and dialog at once. Spawning the real `claude remote-control` only
+  // happens on `rcBridge.start`; constructing the manager is free.
+  const rcBridge = options.rcBridge ?? createRcBridge()
+  rcBridge.onChange((status) => broadcast(clients, { type: "event", name: "rcBridge.changed", payload: { status } }))
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
     startedAt,
     clients,
     async close() {
+      planUsagePoller.stop()
+      // Stop the bridge before the socket so claude.ai gets the proper
+      // environment-deregistration call and we don't leak an "online"
+      // worker on the cloud side after kobed exits.
+      try {
+        await rcBridge.stop()
+      } catch {
+        /* best-effort — kobed shutdown should never block on bridge teardown */
+      }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+      // End attached client sockets BEFORE closing the server. server.close()
+      // waits for every active connection to drain — if we close it first,
+      // any TUI that doesn't disconnect on `daemon.stopping` will deadlock
+      // shutdown forever (this was the root cause of `kobed restart` hangs).
       for (const client of Array.from(clients)) {
         for (const unsub of client.subscriptions.values()) unsub()
         client.subscriptions.clear()
-        client.socket.end()
+        client.socket.destroy()
       }
+      await new Promise<void>((resolve) => server.close(() => resolve()))
       await unlink(socketPath).catch(() => {})
       await unlink(pidPath).catch(() => {})
     },
   }
+  planUsagePoller.start()
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -141,6 +188,8 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           tasks: tasks.map(serializeTask),
           pending,
           runState,
+          planUsage: planUsagePoller.current(),
+          rcBridge: rcBridge.status(),
         }
       }
       case "daemon.status":
@@ -273,6 +322,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
+      case "chat.tab.clear": {
+        const taskId = requireString(payload, "taskId")
+        await orch.clearTab(taskId, requireString(payload, "tabId"))
+        // Broadcast the task delta too — `clearTab` dropped the tab's
+        // sessionId, so any attached TUI's tab list mirror needs the
+        // refresh to reflect the new "fresh tab" state alongside the
+        // `chat.tab.cleared` event that resets the reducer.
+        broadcastTaskUpdated(orch, clients, taskId)
+        return {}
+      }
       case "chat.sessions": {
         const sessions = await orch.listSessions(requireString(payload, "taskId"))
         return { sessions }
@@ -290,6 +349,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "chat.interrupt": {
         await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
+        return {}
+      }
+      case "chat.steer": {
+        await orch.steerTask(
+          requireString(payload, "taskId"),
+          requireString(payload, "text"),
+          optionalString(payload, "tabId"),
+        )
         return {}
       }
       case "chat.input.pending": {
@@ -315,9 +382,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const result = await readTaskHistory(orch, taskId, sessionId, limit, before)
         return {
           messages: serializeMessages(result.messages),
+          ...(result.usageMetrics ? { usageMetrics: result.usageMetrics } : {}),
           nextBefore: result.nextBefore,
           hasMore: result.hasMore,
-        }
+        } satisfies SerializedHistoryPage
       }
       case "chat.send": {
         const taskId = requireString(payload, "taskId")
@@ -346,6 +414,46 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
             : taskIds.map((id) => orch.getTask(id)).filter((t): t is Task => Boolean(t))
         for (const task of tasks) subscribeClientToTask(orch, client, task)
         return {}
+      }
+      case "rcBridge.start": {
+        // Per-tab bridge: callers pass `taskId` so the bridge spawns
+        // with `cwd = task.worktreePath` and surfaces the tab's session
+        // id in the dialog (so the user can `/resume <sid>` in
+        // claude.ai to continue THIS conversation rather than start a
+        // fresh one). When `taskId` is omitted (legacy callers, palette
+        // command with no active task), we fall back to the git
+        // toplevel of the daemon's process cwd — claude.ai still gets
+        // a usable environment but bound to no specific session.
+        const taskId = optionalString(payload, "taskId")
+        const tabId = optionalString(payload, "tabId")
+        let cwd: string
+        let bound: { taskId: string; tabId: string; sessionId?: string | null; taskTitle?: string } | undefined
+        if (taskId) {
+          const task = orch.getTask(taskId)
+          if (!task) throw new Error(`rcBridge.start: unknown taskId ${taskId}`)
+          const resolvedTabId = tabId ?? task.activeTabId
+          const tab = task.tabs.find((t) => t.id === resolvedTabId)
+          if (!tab) throw new Error(`rcBridge.start: unknown tabId ${resolvedTabId} on task ${taskId}`)
+          cwd = task.worktreePath
+          bound = {
+            taskId: task.id,
+            tabId: tab.id,
+            sessionId: tab.sessionId,
+            taskTitle: task.title,
+          }
+        } else {
+          cwd = optionalString(payload, "cwd") ?? resolveRepoRoot(process.cwd())
+        }
+        if (!cwd) throw new Error("rcBridge.start requires a non-empty cwd")
+        const status = await rcBridge.start({ cwd, bound })
+        return { status }
+      }
+      case "rcBridge.stop": {
+        const status = await rcBridge.stop()
+        return { status }
+      }
+      case "rcBridge.status": {
+        return { status: rcBridge.status() }
       }
       default:
         throw new Error(`unknown daemon request: ${req.name satisfies never}`)
@@ -448,6 +556,7 @@ function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
 
 interface TaskHistoryPage {
   messages: Message[]
+  usageMetrics?: SessionUsageMetrics
   /**
    * Token the client passes back as `before` to fetch the previous
    * page. `null` when this page already includes the oldest message
@@ -478,6 +587,7 @@ async function readTaskHistory(
     requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
   if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
   const messages = await orch.readHistory(sessionId)
+  const usageMetrics = deriveSessionUsageMetrics(messages)
   const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1
   const end = beforeIdx >= 0 ? beforeIdx : messages.length
   const start = Math.max(0, end - limit)
@@ -488,7 +598,7 @@ async function readTaskHistory(
   // no messages OR when this page already covers the start.
   const first = page[0]
   const nextBefore = hasMore && first ? `${first.timestamp}:${first.sessionId}` : null
-  return { messages: page, nextBefore, hasMore }
+  return { messages: page, ...(usageMetrics ? { usageMetrics } : {}), nextBefore, hasMore }
 }
 
 function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {

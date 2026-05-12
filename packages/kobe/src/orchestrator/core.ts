@@ -62,7 +62,10 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
+import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
+import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
@@ -340,6 +343,28 @@ export class Orchestrator {
    */
   private readonly handles = new Map<string, SessionHandle>()
   /**
+   * Per-tab first-spawn coalescing latch. Keyed by `${taskId}:${tabId}`.
+   *
+   * When a chat tab has no `sessionId` yet, two concurrent {@link runTask}
+   * calls would each enter the spawn branch, each fire `engine.spawn`,
+   * each allocate a fresh JSONL session — and only the *last* updateTab
+   * survives on the tab, leaving the other sessions orphaned on disk
+   * and breaking conversation continuity (the model sees the chat
+   * fragmented across N single-prompt sessions instead of one chained
+   * conversation). The race fires for real when a fast typist hits
+   * Enter twice before the first spawn's `user.inject` event has
+   * round-tripped through the daemon's event bus and flipped the
+   * chat's `isStreaming` signal — the queue path can't intercept
+   * because, as far as the chat reducer can see, no turn is in flight.
+   *
+   * The latch closes that window at the orchestrator boundary: the
+   * first runTask claims the slot, awaits its spawn + updateTab, then
+   * resolves the promise. Concurrent runTask callers see the latch,
+   * await it, then re-read the tab — which now has the established
+   * sessionId — and proceed as a normal resume.
+   */
+  private readonly firstSpawnLatches = new Map<string, Promise<void>>()
+  /**
    * Event-bus subscribers keyed by `${taskId}:${tabId}`. Subscribers
    * stay attached when the user switches tabs in the UI — the switch is
    * a render-side change only; engine streams keep flowing in the
@@ -538,6 +563,31 @@ export class Orchestrator {
     return this.tasksAcc
   }
 
+  /**
+   * Stub parity with {@link RemoteOrchestrator.planUsageSignal} — the
+   * in-process Orchestrator does not poll Claude plan utilization
+   * (that's a daemon responsibility, see `daemon/plan-usage-poller.ts`).
+   * Returns a permanently-null accessor so the WORKSPACE topbar wiring
+   * in `tui/app.tsx` can read it unconditionally without an
+   * `instanceof` narrowing.
+   */
+  planUsageSignal(): Accessor<null> {
+    return () => null
+  }
+
+  /**
+   * Stub parity with {@link RemoteOrchestrator.rcBridgeSignal} — the
+   * in-process Orchestrator never spawns the `claude remote-control`
+   * bridge (that's a daemon-owned side process; see
+   * `daemon/rc-bridge.ts`). Returns a permanently-"off" accessor so
+   * the TopBar chip / share dialog wiring can read this unconditionally
+   * without `instanceof` narrowing. The TUI gates the dialog opener
+   * itself on `orchestrator instanceof RemoteOrchestrator`.
+   */
+  rcBridgeSignal(): Accessor<RcBridgeStatus> {
+    return () => ({ state: "off" })
+  }
+
   subscribeTasks(listener: TaskListListener): Unsubscribe {
     return this.store.subscribe(listener)
   }
@@ -671,22 +721,62 @@ export class Orchestrator {
    */
   async ensureMainTask(repo: string): Promise<Task> {
     if (!repo) throw new Error("ensureMainTask: repo is required")
-    const existing = this.store.list().find((t) => t.kind === "main" && t.repo === repo)
-    if (existing) {
-      // Re-add path: if the user previously removed this repo from saved
-      // repos (which archives the main task) and is now re-adding it,
-      // unarchive so the pinned row reappears in Working session.
+    // Normalize `repo` to its git toplevel. Main-task worktreePath must
+    // equal the repo root because the FileTree pane drives off
+    // `git ls-files --full-name`, which emits paths relative to the
+    // toplevel — pointing a main task at a monorepo subdirectory makes
+    // the tree render rooted at the wrong level. resolveRepoRoot falls
+    // back to the input for non-git directories.
+    const normalized = resolveRepoRoot(repo)
+    // Collect every main task whose `repo` resolves to the same git
+    // toplevel as `normalized`. This includes both the canonical row
+    // (if any) and any legacy pre-normalization row pointing at a
+    // subdirectory. We keep one — preferring an already-canonical
+    // row, falling back to the first match — re-key it to `normalized`
+    // if needed, and delete the duplicates. This heals state files
+    // where a stale daemon raced the migration and ended up creating
+    // a second main task before the orchestrator-side normalization
+    // was live.
+    const all = this.store.list()
+    const candidates = all.filter((t) => t.kind === "main" && sameRepoToplevel(t.repo, normalized))
+    const winner = candidates.find((t) => t.repo === normalized) ?? candidates[0]
+    if (winner) {
+      for (const dup of candidates) {
+        if (dup.id !== winner.id) {
+          try {
+            // store.remove (not deleteTask): main tasks point at the
+            // user's actual checkout, not a kobe-allocated worktree,
+            // so deleteTask both (a) refuses with CannotDeleteMain-
+            // TaskError and (b) would try to `git worktree remove`
+            // the repo root. We just want the orphan row gone.
+            await this.store.remove(dup.id)
+          } catch (err) {
+            // Worst case the orphan row stays — log and move on
+            // rather than throw and gate the whole boot.
+            // eslint-disable-next-line no-console
+            console.error(`[kobe orchestrator] ensureMainTask: failed to remove duplicate ${dup.id}:`, err)
+          }
+        }
+      }
+      let existing = winner
+      if (existing.repo !== normalized || existing.worktreePath !== normalized) {
+        existing = await this.store.update(existing.id, {
+          repo: normalized,
+          worktreePath: normalized,
+          title: normalized.split("/").filter(Boolean).pop() ?? normalized,
+        })
+      }
       if (existing.archived) {
         return await this.store.update(existing.id, { archived: false })
       }
       return existing
     }
-    const basename = repo.split("/").filter(Boolean).pop() ?? repo
+    const basename = normalized.split("/").filter(Boolean).pop() ?? normalized
     return await this.store.create({
       title: basename,
-      repo,
+      repo: normalized,
       branch: "",
-      worktreePath: repo,
+      worktreePath: normalized,
       sessionId: null,
       status: "backlog",
       archived: false,
@@ -871,8 +961,23 @@ export class Orchestrator {
     // Resolve the target tab. Default to the active one so existing
     // single-tab callers keep working. We don't auto-create — the
     // caller is expected to know the tab id (the active one is fine).
-    const targetTab = this.resolveTab(task, tabId)
+    let targetTab = this.resolveTab(task, tabId)
     const key = tabKey(task.id, targetTab.id)
+
+    // First-spawn coalescing: if this tab has no sessionId yet AND a
+    // sibling runTask is already partway through spawning the initial
+    // session, wait for it instead of opening a duplicate `claude -p`.
+    // See {@link firstSpawnLatches} for the why-this-matters
+    // commentary. After the latch resolves we re-read the task so
+    // `targetTab.sessionId` reflects the just-established sid.
+    if (!targetTab.sessionId) {
+      const inflight = this.firstSpawnLatches.get(key)
+      if (inflight) {
+        await inflight.catch(() => {})
+        task = this.requireTask(id)
+        targetTab = this.resolveTab(task, tabId)
+      }
+    }
 
     // Cap check covers both fresh runs and resumes — every running
     // tab counts as one slot. (We deliberately count tabs not tasks:
@@ -935,25 +1040,40 @@ export class Orchestrator {
         model: modelToUse,
       })
     } else {
-      handle = await engine.spawn(task.worktreePath, promptToSend, {
-        permissionMode: task.permissionMode,
-        model: modelToUse,
+      // Claim the first-spawn latch so any sibling runTask racing us
+      // sees the in-flight promise and waits — see
+      // {@link firstSpawnLatches}. The latch is held across spawn +
+      // updateTab so a waiter that wakes up immediately after the
+      // promise resolves reads the persisted sessionId.
+      let releaseLatch: () => void = () => {}
+      const latch = new Promise<void>((resolve) => {
+        releaseLatch = resolve
       })
-      // Persist the freshly-allocated session id back onto the tab so
-      // a future kobe restart can resume.
-      await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
-      // First user submit on a placeholder-titled task → derive the
-      // sidebar label from the prompt.
-      if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
-        const derived = deriveTitleFromPrompt(prompt)
-        if (derived) await this.store.update(task.id, { title: derived })
-      }
-      // Background: ask claude for a tighter sidebar title to replace
-      // the truncate-derived one. Fire-and-forget; the rename method
-      // bails out if the user manually rewrote the title in the
-      // meantime, so this never stomps an explicit choice.
-      if (prompt && prompt.trim().length > 0) {
-        void this.maybeUpgradeTitle(task.id, prompt)
+      this.firstSpawnLatches.set(key, latch)
+      try {
+        handle = await engine.spawn(task.worktreePath, promptToSend, {
+          permissionMode: task.permissionMode,
+          model: modelToUse,
+        })
+        // Persist the freshly-allocated session id back onto the tab so
+        // a future kobe restart can resume.
+        await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
+        // First user submit on a placeholder-titled task → derive the
+        // sidebar label from the prompt.
+        if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
+          const derived = deriveTitleFromPrompt(prompt)
+          if (derived) await this.store.update(task.id, { title: derived })
+        }
+        // Background: ask claude for a tighter sidebar title to replace
+        // the truncate-derived one. Fire-and-forget; the rename method
+        // bails out if the user manually rewrote the title in the
+        // meantime, so this never stomps an explicit choice.
+        if (prompt && prompt.trim().length > 0) {
+          void this.maybeUpgradeTitle(task.id, prompt)
+        }
+      } finally {
+        releaseLatch()
+        this.firstSpawnLatches.delete(key)
       }
     }
     this.handles.set(key, handle)
@@ -1138,6 +1258,26 @@ export class Orchestrator {
     // emits user.inject which re-arms isStreaming — the false→true
     // flicker is the correct render: prior turn ended, new turn begins.
     this.dispatchEvent(task.id, targetTab.id, { type: "done" })
+  }
+
+  /**
+   * Steer the in-flight turn: interrupt the current subprocess and
+   * dispatch a new prompt against the same session, atomically.
+   *
+   * The recovery of the lost in-flight prompt — the one claude -p
+   * had been processing when we killed it — happens inside the
+   * engine's `stop()` (it appends a synthetic user record to the
+   * session JSONL so the next `--resume` reads a complete history).
+   * From the orchestrator's perspective `steerTask` is just an
+   * interrupt followed by a runTask; bundling them into one method
+   * is a TUI ergonomics thing (one RPC, one dispatch-lock window
+   * on the chat side).
+   */
+  async steerTask(id: TaskId | string, prompt: string, tabId?: string): Promise<void> {
+    const task = this.requireTask(id)
+    const targetTab = this.resolveTab(task, tabId)
+    await this.interruptTask(task.id, targetTab.id)
+    await this.runTask(task.id, prompt, targetTab.id)
   }
 
   /**
@@ -1401,6 +1541,17 @@ export class Orchestrator {
     }
   }
 
+  async readHistoryWithMetrics(
+    sessionId: string,
+  ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
+    const messages = await this.readHistory(sessionId)
+    const usageMetrics = deriveSessionUsageMetrics(messages)
+    return {
+      messages,
+      ...(usageMetrics ? { usageMetrics } : {}),
+    }
+  }
+
   /**
    * List every persisted Claude Code session for a task's worktree.
    *
@@ -1512,6 +1663,28 @@ export class Orchestrator {
     const tabs = [...task.tabs, tab]
     await this.store.update(task.id, { tabs })
     return tab
+  }
+
+  /**
+   * Reset a chat tab back to an empty state. Stops any live engine
+   * session for the tab, drops its `sessionId` so the next `runTask`
+   * starts a brand-new Claude session instead of resuming the prior
+   * one, and dispatches a `chat.tab.cleared` event so every attached
+   * TUI's reducer wipes the tab's `ChatState` in lockstep.
+   *
+   * The on-disk JSONL transcript of the prior session is intentionally
+   * left intact — `/clear` is a "start over here" verb, not a delete.
+   * The user can still reach the old conversation via the resume picker
+   * (`ctrl+r`), which scans `~/.claude/projects/<cwd>/` directly.
+   */
+  async clearTab(id: TaskId | string, tabId: string): Promise<void> {
+    const task = this.requireTask(id)
+    if (!task.tabs.some((t) => t.id === tabId)) {
+      throw new Error(`clearTab: tab ${tabId} not found on task ${task.id}`)
+    }
+    await this.stopTab(task.id as TaskId, tabId)
+    await this.updateTab(task.id as TaskId, tabId, { sessionId: null })
+    this.dispatchEvent(task.id as TaskId, tabId, { type: "chat.tab.cleared" })
   }
 
   /**

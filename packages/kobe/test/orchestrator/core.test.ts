@@ -29,6 +29,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { claudeCapabilities } from "../../src/engine/claude-code-local/capabilities.ts"
 import {
   CONCURRENCY_CAP,
   CannotDeleteMainTaskError,
@@ -45,7 +46,6 @@ import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
-import { claudeCapabilities } from "../../src/engine/claude-code-local/capabilities.ts"
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -346,6 +346,35 @@ describe("Orchestrator.runTask", () => {
     await expect(orch.runTask("does-not-exist")).rejects.toBeInstanceOf(TaskNotFoundError)
   })
 
+  test("concurrent first-prompt runTasks coalesce onto one spawn + resume the rest", async () => {
+    // Regression: a fast typist firing N prompts before the chat's
+    // isStreaming signal has flipped used to enter N parallel spawn
+    // branches at the orchestrator, each opening a fresh JSONL session
+    // and orphaning all but the last `updateTab` write. The first-spawn
+    // latch is supposed to coalesce them so only one spawn fires and
+    // the rest resume the just-established session.
+    const fake = new FakeAIEngine()
+    const spawnSpy = vi.spyOn(fake, "spawn")
+    const resumeSpy = vi.spyOn(fake, "resume")
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "rapid fire", prompt: "" })
+
+    // Pre-script "fake-1" (the only sid the spawn should hand out)
+    // so each turn terminates promptly without a hand-finish.
+    fake.script("fake-1", [{ type: "done" }])
+
+    await Promise.all([orch.runTask(t.id, "1"), orch.runTask(t.id, "2"), orch.runTask(t.id, "3")])
+    await orch._waitForPumpsIdle()
+
+    // Exactly one spawn, the other two resumed against the established sid.
+    expect(spawnSpy).toHaveBeenCalledTimes(1)
+    expect(resumeSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
+    for (const call of resumeSpy.mock.calls) {
+      expect(call[0]).toBe("fake-1")
+    }
+    expect(store.get(t.id)?.sessionId).toBe("fake-1")
+  })
+
   test("rejects canceled tasks", async () => {
     const { orch } = await buildOrchestrator()
     const t = await orch.createTask({ repo, title: "x", prompt: "" })
@@ -451,6 +480,57 @@ describe("Orchestrator.interruptTask", () => {
     // No runTask — no handle.
     await orch.interruptTask(t.id)
     expect(stopSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ----------------------------------------------------------------------
+// clearTab
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.clearTab", () => {
+  test("drops sessionId, stops the engine, and emits chat.tab.cleared", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch, store } = await buildOrchestrator(fake)
+
+    const t = await orch.createTask({ repo, title: "clear", prompt: "" })
+    await orch.runTask(t.id, "first prompt")
+    const tabId = store.get(t.id)?.activeTabId ?? ""
+    expect(tabId).not.toBe("")
+    // runTask back-fills the tab's sessionId once the engine spawns.
+    expect(store.get(t.id)?.tabs.find((x) => x.id === tabId)?.sessionId).toBeTruthy()
+
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev), tabId)
+
+    await orch.clearTab(t.id, tabId)
+
+    expect(store.get(t.id)?.tabs.find((x) => x.id === tabId)?.sessionId).toBeNull()
+    expect(stopSpy).toHaveBeenCalled()
+    expect(events.some((e) => e.type === "chat.tab.cleared")).toBe(true)
+    await orch._waitForPumpsIdle()
+  })
+
+  test("is safe to call on an idle tab with no live handle", async () => {
+    const fake = new FakeAIEngine()
+    const stopSpy = vi.spyOn(fake, "stop")
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "idle-clear", prompt: "" })
+    const tabId = store.get(t.id)?.activeTabId ?? ""
+    expect(tabId).not.toBe("")
+    // No runTask — sessionId is already null, but clearTab must still
+    // succeed and dispatch the event so any attached TUI re-renders.
+    const events: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => events.push(ev), tabId)
+    await orch.clearTab(t.id, tabId)
+    expect(stopSpy).not.toHaveBeenCalled()
+    expect(events.some((e) => e.type === "chat.tab.cleared")).toBe(true)
+  })
+
+  test("rejects when the tab id does not exist on the task", async () => {
+    const { orch } = await buildOrchestrator()
+    const t = await orch.createTask({ repo, title: "bad-tab", prompt: "" })
+    await expect(orch.clearTab(t.id, "no-such-tab")).rejects.toThrow(/clearTab: tab .* not found/)
   })
 })
 
@@ -667,6 +747,74 @@ describe("Orchestrator.ensureMainTask", () => {
   test("rejects empty repo path", async () => {
     const { orch } = await buildOrchestrator()
     await expect(orch.ensureMainTask("")).rejects.toThrow()
+  })
+
+  test("consolidates a legacy subdir main task into the toplevel on re-ensure", async () => {
+    // Reproduces the daemon-staleness incident: an older daemon
+    // created a main task pointing at a monorepo *subdirectory*
+    // (`<repo>/sub`), then a TUI on new code called
+    // `ensureMainTask(<repo>)`. The duplicate must collapse — same
+    // git toplevel can't have two main tasks — and the surviving
+    // row's repo/worktreePath must be the canonical toplevel.
+    const { orch, store } = await buildOrchestrator()
+    const subdir = path.join(repo, "sub")
+    fs.mkdirSync(subdir, { recursive: true })
+    // Seed the legacy row directly through the store so we don't
+    // rely on ensureMainTask's normalization for setup — that's the
+    // code under test.
+    const legacy = await store.create({
+      title: "sub",
+      repo: subdir,
+      branch: "",
+      worktreePath: subdir,
+      sessionId: null,
+      status: "backlog",
+      archived: false,
+      kind: "main",
+    })
+    const survivor = await orch.ensureMainTask(repo)
+    const mains = store.list().filter((t) => t.kind === "main")
+    expect(mains).toHaveLength(1)
+    expect(mains[0]?.id).toBe(legacy.id)
+    expect(survivor.id).toBe(legacy.id)
+    expect(survivor.repo).toBe(repo)
+    expect(survivor.worktreePath).toBe(repo)
+    expect(survivor.title).toBe(path.basename(repo))
+  })
+
+  test("consolidates an archived legacy duplicate alongside a canonical row", async () => {
+    // Variant: both rows already exist — the canonical one (the
+    // duplicate that the stale daemon created) and an *archived*
+    // legacy subdir row that deleteTask would refuse to remove
+    // (CannotDeleteMainTaskError). The consolidation path must use
+    // store.remove directly so the orphan actually drops.
+    const { orch, store } = await buildOrchestrator()
+    const subdir = path.join(repo, "sub")
+    fs.mkdirSync(subdir, { recursive: true })
+    const canonical = await store.create({
+      title: path.basename(repo),
+      repo,
+      branch: "",
+      worktreePath: repo,
+      sessionId: null,
+      status: "backlog",
+      archived: false,
+      kind: "main",
+    })
+    const archivedLegacy = await store.create({
+      title: "sub",
+      repo: subdir,
+      branch: "",
+      worktreePath: subdir,
+      sessionId: null,
+      status: "backlog",
+      archived: true,
+      kind: "main",
+    })
+    const survivor = await orch.ensureMainTask(repo)
+    expect(survivor.id).toBe(canonical.id)
+    expect(store.get(archivedLegacy.id)).toBeUndefined()
+    expect(store.list().filter((t) => t.kind === "main")).toHaveLength(1)
   })
 })
 

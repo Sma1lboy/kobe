@@ -4,8 +4,9 @@
  *
  * Sidebar default 42 (the long-standing "history rail" convention from
  * opencode/agent-deck). Workspace and files are seeded from the
- * pre-resize 2:1 flex ratio so the layout looks the same on first paint
- * and starts diverging only when the user drags. We keep the sizes as
+ * pre-resize 70:30 flex ratio so the layout gives the chat/file preview
+ * the default breathing room users expect. It starts diverging only
+ * when the user drags. We keep the sizes as
  * plain numbers (not optional) so the layout is always controlled —
  * simpler than juggling a "have they dragged yet" flag, at the cost of
  * not auto-rebalancing on terminal resize (just clamps to fit).
@@ -34,6 +35,7 @@ const MIN_WORKSPACE_WIDTH = 30
 const MIN_RIGHT_COLUMN_WIDTH = 30
 const MIN_FILES_HEIGHT = 5
 const MIN_TERMINAL_HEIGHT = 5
+const DEFAULT_WORKSPACE_SHARE = 0.7
 
 export type PaneSizes = {
   sidebarWidth: Accessor<number>
@@ -80,7 +82,8 @@ export function usePaneSizes(kv: KVContext): PaneSizes {
   // dims at mount when KV has nothing. These are deliberately not
   // reactive to terminal resizes — the user's last drag wins.
   const [workspaceWidth, setWorkspaceWidth] = createSignal(
-    persistedWorkspace ?? Math.max(MIN_WORKSPACE_WIDTH, Math.floor((initialDims.width - 42 - 1) * (2 / 3))),
+    persistedWorkspace ??
+      Math.max(MIN_WORKSPACE_WIDTH, Math.floor((initialDims.width - 42 - 1) * DEFAULT_WORKSPACE_SHARE)),
   )
   const initialRightColumnHeight = Math.max(20, initialDims.height - 2 - 1)
   const [filesHeight, setFilesHeight] = createSignal(

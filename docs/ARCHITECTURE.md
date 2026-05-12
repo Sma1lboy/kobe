@@ -101,8 +101,8 @@ The seams matter:
 ## 2. Reference projects under `refs/`
 
 `refs/` is gitignored study material. **Never edit anything inside it.** Each
-contributor clones it locally per the setup block in `CLAUDE.md`. The four
-slots and what each one teaches kobe:
+contributor clones it locally per the setup block in `AGENTS.md` (`CLAUDE.md`
+is a symlink). The slots and what each one teaches kobe:
 
 | `refs/` slot | Source | What kobe borrows from it |
 |---|---|---|
@@ -110,6 +110,7 @@ slots and what each one teaches kobe:
 | `conductor` | screenshots only — no source | The 5-pane layout grammar (sidebar / workspace / files / preview / terminal) — see DESIGN.md §1 |
 | `opcode` | clone of `winfunc/opcode` | Subprocess wrapping for Claude Code — kobe's `src/engine/claude-code-local/` was algorithmically ported from `opcode/src-tauri/src/commands/claude.rs` |
 | `claude-code` | clone of `tanbiralam/claude-code` (leaked Anthropic source) | Render parity — match Claude Code's text formatting, tool display, citations exactly. See `src/ink/` in the ref |
+| `ccstatusline` | clone of `sirmalloc/ccstatusline` | Status/context/speed derivation — especially transcript JSONL usage parsing, context-window math, and token-speed calculations |
 
 Concrete provenance examples in the kobe source:
 
@@ -128,6 +129,9 @@ Concrete provenance examples in the kobe source:
 - The chat composer's noise-tag stripper at
   `src/tui/panes/chat/store.ts:55-78` uses Claude Code's wrapper-tag
   taxonomy verbatim.
+- Session usage metrics in `src/session/usage-metrics.ts` mirror
+  `refs/ccstatusline/src/utils/jsonl-metrics.ts` by deriving total speed
+  from conversation timestamps rather than trusting a precomputed speed field.
 
 When two refs disagree with kobe, **kobe wins** (we already chose). But
 read the ref before deciding to deviate further.
@@ -178,7 +182,7 @@ Wire-up (in `src/tui/app.tsx`, function `Shell`):
 | Chat | `src/tui/panes/chat/` | Multi-tab per task; `Composer.tsx` + `MessageList.tsx`; pure-data store at `store.ts` |
 | File tree | `src/tui/panes/filetree/` | `git ls-files`-driven, three top tabs (All / Changes / Checks) |
 | Preview | `src/tui/panes/preview/` | Multi-tab (one per opened file); File / Diff modes |
-| Terminal | `src/tui/panes/terminal/` | tmux-backed (one session per task); `node-pty` doesn't work cleanly under Bun for this |
+| Terminal | `src/tui/panes/terminal/` | Bun native PTY per task, rendered through `@xterm/headless`; pipe backend is fallback only |
 
 ### Focus + keymap routing
 

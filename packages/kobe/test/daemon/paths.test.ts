@@ -9,10 +9,10 @@
  * + cross-contamination.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { defaultDaemonPidPath, defaultDaemonSocketPath, fitSocketPath, shortHomeTag } from "@/daemon/paths"
+import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {
   KOBE_HOME_DIR: process.env.KOBE_HOME_DIR,
@@ -20,14 +20,14 @@ const PREV = {
 }
 
 beforeEach(() => {
-  delete process.env.KOBE_HOME_DIR
-  delete process.env.XDG_RUNTIME_DIR
+  Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+  Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR")
 })
 
 afterEach(() => {
-  if (PREV.KOBE_HOME_DIR === undefined) delete process.env.KOBE_HOME_DIR
+  if (PREV.KOBE_HOME_DIR === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = PREV.KOBE_HOME_DIR
-  if (PREV.XDG_RUNTIME_DIR === undefined) delete process.env.XDG_RUNTIME_DIR
+  if (PREV.XDG_RUNTIME_DIR === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR")
   else process.env.XDG_RUNTIME_DIR = PREV.XDG_RUNTIME_DIR
 })
 
@@ -114,15 +114,13 @@ describe("fitSocketPath — sun_path length fallback", () => {
   })
 
   test("pidTag is appended for ephemeral sockets (bridge)", () => {
-    const longHome =
-      "/Users/me/i/kobe/.claude/worktrees/01KRAHRS48X42YK9TRJ2VE5X1F/packages/kobe/.dev-sandbox/home"
+    const longHome = "/Users/me/i/kobe/.claude/worktrees/01KRAHRS48X42YK9TRJ2VE5X1F/packages/kobe/.dev-sandbox/home"
     const fitted = fitSocketPath(`${longHome}/.kobe/run/bridge-12345.sock`, longHome, "bridge", 12345)
     expect(fitted).toMatch(/kobe-[0-9a-f]{8}-bridge-12345\.sock$/)
   })
 
   test("daemon socket falls back automatically through defaultDaemonSocketPath", () => {
-    const longHome =
-      "/Users/me/i/kobe/.claude/worktrees/01KRAHRS48X42YK9TRJ2VE5X1F/packages/kobe/.dev-sandbox/home"
+    const longHome = "/Users/me/i/kobe/.claude/worktrees/01KRAHRS48X42YK9TRJ2VE5X1F/packages/kobe/.dev-sandbox/home"
     const result = defaultDaemonSocketPath(longHome)
     expect(result.startsWith(tmpdir())).toBe(true)
     expect(result.length).toBeLessThanOrEqual(100)

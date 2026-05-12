@@ -49,6 +49,15 @@ export type FocusContextValue = {
   setFocused: (pane: PaneId) => void
   /** Cycle by ±1 through PANE_ORDER. Used by `tab` / `shift+tab`. */
   cycle: (delta: 1 | -1) => void
+  /**
+   * Increments on every `setFocused` call — even when the pane signal
+   * didn't change. Pane-internal inputs that want to re-assert native
+   * focus on every focus event (e.g. the chat composer's textarea
+   * when the user re-clicks the workspace pane or switches chat tabs
+   * while workspace was already focused) track this in their focus
+   * effect so they refocus reliably even without a pane transition.
+   */
+  refocusTick: Accessor<number>
 }
 
 const FocusContext = createContext<FocusContextValue | null>(null)
@@ -64,6 +73,7 @@ const FocusContext = createContext<FocusContextValue | null>(null)
  */
 export function FocusProvider(props: { children: JSXElement; initial?: PaneId }): JSXElement {
   const [focused, setFocusedSignal] = createSignal<PaneId>(props.initial ?? "sidebar")
+  const [refocusTick, setRefocusTick] = createSignal(0)
   const renderer = useRenderer()
 
   /**
@@ -90,6 +100,16 @@ export function FocusProvider(props: { children: JSXElement; initial?: PaneId })
    * unaffected.
    */
   function setFocused(pane: PaneId): void {
+    // Always tick — even when the pane signal won't change. Same-pane
+    // setFocused calls happen when the user clicks the chat tab strip,
+    // re-clicks inside the workspace pane, or switches between chat
+    // tabs while workspace was already focused. The chat composer's
+    // textarea may have lost native focus to a child renderable in the
+    // meantime (a MessageList box click, a tab chip), and the tick is
+    // the signal it tracks to re-grab focus. Without this, the focus
+    // mirror only fired on cross-pane transitions and the textarea
+    // would silently stop receiving keystrokes inside workspace.
+    setRefocusTick((t) => t + 1)
     if (focused() === pane) return
     const current = renderer?.currentFocusedRenderable
     if (current && !current.isDestroyed) {
@@ -123,7 +143,7 @@ export function FocusProvider(props: { children: JSXElement; initial?: PaneId })
     return acc
   }
 
-  const value: FocusContextValue = { focused, is, setFocused, cycle }
+  const value: FocusContextValue = { focused, is, setFocused, cycle, refocusTick }
   return <FocusContext.Provider value={value}>{props.children}</FocusContext.Provider>
 }
 

@@ -20,7 +20,12 @@
  *
  * What the controller owns:
  *   - `statesByTab` / `draftsByTab` — per-ChatTab reducer state and
- *     composer draft text. Both move with the tab, not the task.
+ *     composer draft text. Both move with the tab, not the task, and
+ *     both live at module scope so they survive every Chat unmount
+ *     (file-preview swap in the workspace, task switches, …) — wiping
+ *     either map across remounts is what caused KOB-61 (queued
+ *     prompts disappeared on every task switch). Per-tab pruning runs
+ *     only when a tab is actually closed (`syncTabSubs`).
  *   - `activeTabId` — local mirror, sync'd in both directions with
  *     `Task.activeTabId`.
  *   - Subscriptions to `orchestrator.subscribeEvents` per ChatTab.
@@ -93,13 +98,21 @@ export interface ChatSessionHandle {
   setDraft(value: string): void
 }
 
+// Both per-tab maps live at module scope so they survive `<Chat>`
+// unmount/remount AND task switches. The workspace center column
+// toggles between Chat and Preview via `<Show>` (see app.tsx), and
+// the task-switch branch below tears Chat's subs down per task — a
+// hook-local signal would wipe either map in both cases, dropping
+// queued prompts and in-progress composer text. Tab ids are globally
+// unique, so a single shared map across the renderer is safe.
+// Per-closed-tab cleanup still happens in `syncTabSubs` below
+// (`unsub() + delete tabId from both maps`).
+const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
+const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
+
 export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   const { orchestrator, onTaskReset } = opts
 
-  // Per-tab reducer state + composer drafts. Both maps live behind
-  // copy-on-write so Solid notices the reference change.
-  const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
-  const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
   const [activeTabId, setActiveTabIdLocal] = createSignal<string | null>(null)
 
   // Subscription registry. Lives outside the reactive system —
@@ -199,9 +212,14 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       // row, until the next live event happens to land.
       const tabKey = chatRunStateKey(taskId, tabId)
       const runState = orchestrator.chatRunStateSignal()().get(tabKey)
-      if (runState === "running") {
-        patchStateForTab(tabId, (s) => ({ ...s, isStreaming: true }))
-      }
+      // Sync isStreaming in BOTH directions on re-attach. Now that
+      // statesByTab is module-scoped and survives Chat remounts +
+      // task switches, a turn that finished while the user was on
+      // another task / inside the file preview would otherwise leave
+      // `isStreaming: true` from before the switch — locking the
+      // composer until the user manually submitted something. The
+      // orchestrator's chat-run-state map is authoritative; mirror it.
+      patchStateForTab(tabId, (s) => ({ ...s, isStreaming: runState === "running" }))
       const replayPending = (): void => {
         if (opts.taskId() !== taskId) return
         const pending = orchestrator.peekPendingInput(taskId)
@@ -215,10 +233,10 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       if (tab.sessionId) {
         const sid = tab.sessionId
         orchestrator
-          .readHistory(sid)
-          .then((past) => {
+          .readHistoryWithMetrics(sid)
+          .then(({ messages, usageMetrics }) => {
             if (opts.taskId() !== taskId) return
-            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, past))
+            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, messages, usageMetrics))
             // Pending input rows must land AFTER history hydration —
             // `setMessagesFromHistory` replaces `messages` wholesale, so
             // a synthesized approval / question row dispatched before
@@ -268,9 +286,11 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     const id = opts.taskId()
     if (!id) {
       if (currentSubsTaskId !== null) {
+        // Tear down event subs only. statesByTab + draftsByTab are
+        // module-scoped now and must survive every transition — wiping
+        // them here would erase queued prompts + composer drafts the
+        // moment the user lands on a no-task state (rare but possible).
         teardownAllSubs()
-        setStatesByTab(new Map())
-        setDraftsByTab(new Map())
         onTaskReset?.()
       }
       setActiveTabIdLocal(null)
@@ -285,10 +305,15 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       return
     }
     if (currentSubsTaskId !== id) {
-      // Switched tasks (or first time we see this task): reset.
+      // Switched tasks (or first time we see this task). Tear the
+      // outgoing task's event subs down, but DO NOT wipe statesByTab /
+      // draftsByTab — both are module-scoped per-tab maps that have to
+      // survive a task round-trip so queued prompts and composer drafts
+      // come back when the user returns to the tab (KOB-61). syncTabSubs
+      // below's `if (prev.has(tab.id)) return prev` guard preserves
+      // returning tabs' state instead of clobbering it with a fresh
+      // createInitialState().
       teardownAllSubs()
-      setStatesByTab(new Map())
-      setDraftsByTab(new Map())
       currentSubsTaskId = id
       setActiveTabIdLocal(live.activeTabId)
       onTaskReset?.()
@@ -314,9 +339,13 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   })
 
   onCleanup(() => {
+    // Tear subs down only. Both statesByTab and draftsByTab are at
+    // module scope and must outlive every Chat unmount — opening the
+    // file preview (workspace `<Show>` flips), task switches, and any
+    // other transient remount would otherwise wipe queued prompts and
+    // composer drafts. Per-tab pruning happens in `syncTabSubs` when a
+    // tab is closed; full process exit drops module state naturally.
     teardownAllSubs()
-    setStatesByTab(new Map())
-    setDraftsByTab(new Map())
   })
 
   return {

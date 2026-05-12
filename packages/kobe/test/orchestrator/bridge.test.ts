@@ -18,7 +18,8 @@ import { connect } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { startBridge } from "../../src/orchestrator/bridge/index.ts"
+import { shortHomeTag } from "../../src/daemon/paths.ts"
+import { bridgeSocketPathForHome, startBridge } from "../../src/orchestrator/bridge/index.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
@@ -76,6 +77,25 @@ function call(socketPath: string, method: string, params: Record<string, unknown
 }
 
 describe("orchestrator bridge", () => {
+  test("uses a short socket path when KOBE_HOME_DIR would exceed Unix socket limits", () => {
+    const longHome = path.join(
+      os.tmpdir(),
+      "kobe-bridge-long-home",
+      "nested",
+      "path",
+      "with",
+      "enough",
+      "segments",
+      "to",
+      "exceed",
+      "socket",
+      "limits",
+    )
+    const socketPath = bridgeSocketPathForHome(longHome, 12345)
+    expect(socketPath).toBe(path.join(os.tmpdir(), `kobe-${shortHomeTag(longHome)}-bridge-12345.sock`))
+    expect(socketPath.length).toBeLessThanOrEqual(103)
+  })
+
   test("startBridge writes mcp.json and exports KOBE_MCP_CONFIG", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()

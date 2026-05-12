@@ -67,6 +67,7 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, o
 import type { PermissionMode } from "../../../types/engine"
 import { EmptyBorder, SplitBorder } from "../../component/border"
 import type { SlashEntry } from "../../context/command-palette"
+import { useFocus } from "../../context/focus"
 import { useTheme } from "../../context/theme"
 import { clipboardImageSupported } from "./composer/clipboard-image"
 import { getHistory, pushHistory } from "./composer/history"
@@ -186,7 +187,30 @@ export interface ComposerProps {
    * Accessor so task switches re-trigger the file-list fetch.
    */
   worktreePath?: Accessor<string | undefined>
+  /**
+   * Mid-stream queued prompts (FIFO, head fires next). Rendered as a
+   * muted list inside the composer rail, immediately above the textarea
+   * row, so the queue shares the same bordered block as the input it
+   * will feed. Empty list = nothing renders.
+   */
+  queue?: Accessor<readonly { readonly id: string; readonly text: string }[]>
+  /** Drop a queued prompt by id (cancel button). */
+  onCancelQueued?: (id: string) => void
+  /**
+   * "Send now" / retrigger — interrupt the in-flight turn and dispatch
+   * this queued prompt immediately. Parent removes it from the queue
+   * and routes through the steer path.
+   */
+  onSendQueuedNow?: (id: string) => void
 }
+
+/**
+ * Hard cap on visible queued rows so a fast typist who stacked 30
+ * prompts doesn't push the textarea off-screen. Overflow rolls up
+ * into a single muted `+ … N more queued` summary row. Mirrors
+ * claude-code's `PromptInputQueuedCommands` overflow shape.
+ */
+const QUEUE_VISIBLE_CAP = 4
 
 /**
  * Resolve the placeholder text given the current state. Pure — no
@@ -202,6 +226,7 @@ function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean; noTa
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
+  const focusCtx = useFocus()
 
   // Imperative ref to the textarea renderable. Set via the `ref` prop
   // callback once opentui mounts the node. We need imperative access
@@ -280,7 +305,15 @@ export function Composer(props: ComposerProps) {
   // this, Tab-ing into the workspace highlights the rail but keystrokes
   // still go to whichever pane previously held opentui focus, and
   // Tab-ing away leaves the textarea greedily eating keys it shouldn't.
+  //
+  // Also tracks `focusCtx.refocusTick` so that a same-pane setFocused
+  // call (re-clicking the workspace, switching chat tabs while
+  // workspace was already focused) re-asserts native focus on the
+  // textarea — without this, a click on a MessageList box or tab chip
+  // can steal opentui focus and leave the composer silently deaf to
+  // keystrokes even though the workspace pane is "focused".
   createEffect(() => {
+    focusCtx.refocusTick()
     const ref = textareaRef
     if (!ref) return
     if (props.focused?.()) ref.focus()
@@ -1170,6 +1203,55 @@ export function Composer(props: ComposerProps) {
           flexGrow={1}
           backgroundColor={theme.backgroundElement}
         >
+          {/* Queued prompts — live inside the composer rail so the
+              queue shares the same bordered block as the textarea
+              that will eventually flush them. Each row carries `[▶]`
+              (interrupt + send now) and `[x]` (cancel) affordances.
+              Hidden entirely when the queue is empty so the textarea
+              keeps its natural eye-line. */}
+          <Show when={(props.queue?.() ?? []).length > 0}>
+            <box flexDirection="column" paddingBottom={1}>
+              <For each={(props.queue?.() ?? []).slice(0, QUEUE_VISIBLE_CAP)}>
+                {(entry, idx) => (
+                  <box flexDirection="row" gap={1} alignItems="flex-start">
+                    <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
+                      +
+                    </text>
+                    <text fg={theme.textMuted} wrapMode="none">
+                      queued{idx() === 0 ? " (next)" : ""}:
+                    </text>
+                    <box flexGrow={1}>
+                      <text fg={theme.text}>{entry.text}</text>
+                    </box>
+                    <text
+                      fg={theme.primary}
+                      attributes={TextAttributes.BOLD}
+                      onMouseUp={() => props.onSendQueuedNow?.(entry.id)}
+                    >
+                      [▶]
+                    </text>
+                    <text
+                      fg={theme.error}
+                      attributes={TextAttributes.BOLD}
+                      onMouseUp={() => props.onCancelQueued?.(entry.id)}
+                    >
+                      [x]
+                    </text>
+                  </box>
+                )}
+              </For>
+              <Show when={(props.queue?.() ?? []).length > QUEUE_VISIBLE_CAP}>
+                <box flexDirection="row" gap={1} alignItems="flex-start">
+                  <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
+                    +
+                  </text>
+                  <text fg={theme.textMuted}>
+                    {`… ${(props.queue?.() ?? []).length - QUEUE_VISIBLE_CAP} more queued`}
+                  </text>
+                </box>
+              </Show>
+            </box>
+          </Show>
           <box flexDirection="row" gap={1} alignItems="flex-start">
             <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
             <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>

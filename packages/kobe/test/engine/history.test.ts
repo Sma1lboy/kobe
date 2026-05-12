@@ -96,6 +96,42 @@ describe("parseJsonl", () => {
     expect(msgs[0]?.sessionId).toBe("fallback-sid")
   })
 
+  it("captures the assistant turn's usage block when present", () => {
+    const raw = JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "ok" }],
+        usage: {
+          input_tokens: 6,
+          output_tokens: 259,
+          cache_creation_input_tokens: 2169,
+          cache_read_input_tokens: 66900,
+          server_tool_use: { web_search_requests: 0 },
+        },
+      },
+      timestamp: "2026-05-09T00:00:00.000Z",
+      sessionId: "s1",
+    })
+    const msgs = parseJsonl(raw, "s1")
+    expect(msgs[0]?.usage).toEqual({
+      input_tokens: 6,
+      output_tokens: 259,
+      cache_creation_input_tokens: 2169,
+      cache_read_input_tokens: 66900,
+    })
+  })
+
+  it("leaves usage undefined when the record has no usage block", () => {
+    const raw = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "hi" },
+      timestamp: "2026-05-09T00:00:00.000Z",
+      sessionId: "s1",
+    })
+    expect(parseJsonl(raw, "s1")[0]?.usage).toBeUndefined()
+  })
+
   it("skips bad JSON lines without crashing", () => {
     const raw = [
       "{this is not json",

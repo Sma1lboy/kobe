@@ -21,8 +21,8 @@
 
 import { existsSync, readFileSync, rmSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
-import { fileURLToPath } from "node:url"
 import { setTimeout as sleep } from "node:timers/promises"
+import { fileURLToPath } from "node:url"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)

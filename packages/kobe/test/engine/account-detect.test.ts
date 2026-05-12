@@ -13,15 +13,15 @@
  * paths and the error-vs-none distinction.
  */
 
-import { ClaudeBinaryNotFoundError } from "@/engine/claude-code-local/binary"
-import { CodexBinaryNotFoundError } from "@/engine/codex-local/binary"
 import {
+  type DetectDeps,
   claudeGlobalConfigPath,
   codexAuthPath,
   detectClaudeAccount,
   detectCodexAccount,
-  type DetectDeps,
 } from "@/engine/account-detect"
+import { ClaudeBinaryNotFoundError } from "@/engine/claude-code-local/binary"
+import { CodexBinaryNotFoundError } from "@/engine/codex-local/binary"
 import { describe, expect, it } from "vitest"
 
 function makeDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
@@ -100,17 +100,13 @@ describe("detectClaudeAccount", () => {
   })
 
   it("reports 'none' when config exists but oauthAccount is absent", async () => {
-    const r = await detectClaudeAccount(
-      makeDeps({ readFile: () => JSON.stringify({ numStartups: 1 }) }),
-    )
+    const r = await detectClaudeAccount(makeDeps({ readFile: () => JSON.stringify({ numStartups: 1 }) }))
     expect(r.account).toEqual({ kind: "none" })
     expect(r.accountError).toBeUndefined()
   })
 
   it("surfaces parse errors as accountError (NOT as 'not logged in')", async () => {
-    const r = await detectClaudeAccount(
-      makeDeps({ readFile: () => "{ this is not json" }),
-    )
+    const r = await detectClaudeAccount(makeDeps({ readFile: () => "{ this is not json" }))
     expect(r.account).toEqual({ kind: "none" })
     expect(r.accountError).toMatch(/parse .*\.claude\.json/)
   })
@@ -190,8 +186,7 @@ describe("detectCodexAccount", () => {
   it("surfaces malformed JWT as accountError (NOT as 'not logged in')", async () => {
     const r = await detectCodexAccount(
       makeDeps({
-        readFile: () =>
-          JSON.stringify({ OPENAI_API_KEY: null, tokens: { id_token: "not.a.jwt.too.many.parts" } }),
+        readFile: () => JSON.stringify({ OPENAI_API_KEY: null, tokens: { id_token: "not.a.jwt.too.many.parts" } }),
       }),
     )
     expect(r.account).toEqual({ kind: "none" })
@@ -210,9 +205,7 @@ describe("detectCodexAccount", () => {
   })
 
   it("surfaces JSON parse errors", async () => {
-    const r = await detectCodexAccount(
-      makeDeps({ readFile: () => "{ not json" }),
-    )
+    const r = await detectCodexAccount(makeDeps({ readFile: () => "{ not json" }))
     expect(r.account).toEqual({ kind: "none" })
     expect(r.accountError).toMatch(/parse .*auth\.json/)
   })

@@ -40,12 +40,7 @@ export function shortHomeTag(homeDir: string): string {
  * restart). For the daemon socket itself the pidTag is omitted so the
  * path stays stable across kobed restarts.
  */
-export function fitSocketPath(
-  naturalPath: string,
-  homeDir: string,
-  role: string,
-  pidTag?: number,
-): string {
+export function fitSocketPath(naturalPath: string, homeDir: string, role: string, pidTag?: number): string {
   if (naturalPath.length <= SOCKET_PATH_SAFETY_LIMIT) return naturalPath
   const tag = shortHomeTag(homeDir)
   const suffix = pidTag === undefined ? "" : `-${pidTag}`
@@ -89,5 +84,6 @@ export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? home
 }
 
 export function fallbackTestSocketPath(name: string): string {
-  return join(tmpdir(), `${name}-${process.pid}.sock`)
+  const dir = process.platform === "darwin" ? "/tmp" : tmpdir()
+  return join(dir, `${name}-${process.pid}.sock`)
 }

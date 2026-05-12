@@ -18,7 +18,7 @@
  */
 
 import { mkdir, unlink } from "node:fs/promises"
-import { type Server, createServer } from "node:net"
+import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../core.ts"
 
@@ -43,7 +43,16 @@ export async function startBridgeServer(orch: Orchestrator, socketPath: string):
   await mkdir(dirname(socketPath), { recursive: true })
   await unlink(socketPath).catch(() => {})
 
+  // Track live connections so close() can force them shut. server.close()
+  // alone only stops accepting new connections — it waits indefinitely
+  // for existing sockets to drain, which would deadlock daemon shutdown
+  // any time a long-lived MCP bridge client (claude subprocess) was
+  // still attached. We destroy the sockets explicitly during close.
+  const conns = new Set<Socket>()
+
   const server: Server = createServer((conn) => {
+    conns.add(conn)
+    conn.on("close", () => conns.delete(conn))
     let buffer = ""
     conn.on("data", (chunk) => {
       buffer += chunk.toString("utf8")
@@ -78,6 +87,8 @@ export async function startBridgeServer(orch: Orchestrator, socketPath: string):
   return {
     socketPath,
     async close() {
+      for (const conn of conns) conn.destroy()
+      conns.clear()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       await unlink(socketPath).catch(() => {})
     },

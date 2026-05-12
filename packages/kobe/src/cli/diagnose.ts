@@ -9,7 +9,7 @@
  *   - **Plain text, ASCII only.** No ANSI colors, no box-drawing — the
  *     user might be piping into `pbcopy`, a `gh issue` body, or a chat
  *     window. Anything fancier loses fidelity in transit.
- *   - **Section per concern.** kobe / claude / tmux / state dir / config
+ *   - **Section per concern.** kobe / claude / state dir / config
  *     dir / worktrees. Each section is independent and prints
  *     `(unavailable: <reason>)` rather than disappearing on failure;
  *     silent gaps mislead.
@@ -17,11 +17,9 @@
  *     binary present but corrupt) cannot be allowed to abort the rest
  *     of the report. The whole point is "I have one button to push
  *     when something is wrong".
- *   - **No network.** `checkLatestVersion()` already caches + has a 3s
- *     timeout + returns null on failure, so it's safe; but we don't
- *     `force: true` (we use the same cache the TUI does), and we're
- *     comfortable printing "no version-check data yet" if the user has
- *     never launched the TUI.
+ *   - **Network is bounded.** `checkLatestVersion()` has a 3s timeout
+ *     and returns null on failure, so diagnose can reuse the same
+ *     best-effort npm check as the TUI without making the report fragile.
  *
  * Late dynamic-imported from the CLI dispatcher so the diagnose path
  * doesn't pay the cost of loading the Solid graph or opentui.
@@ -33,7 +31,7 @@ import { stat } from "node:fs/promises"
 import { homedir, arch as osArch, platform as osPlatform, release as osRelease } from "node:os"
 import { join } from "node:path"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
-import { kobeStateDir, tmuxBin } from "../env.ts"
+import { kobeStateDir } from "../env.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 import type { Task, TaskStatus } from "../types/task.ts"
@@ -163,7 +161,7 @@ export function reconcileWorktrees(
 /**
  * Try to read a binary's `--version`. Strips trailing whitespace; we
  * don't try to parse it because every CLI's format is different
- * (`claude` prints `1.x.y (Claude Code)`, `tmux` prints `tmux 3.x`).
+ * (`claude` prints `1.x.y (Claude Code)`).
  * Caller already knows what binary they asked about.
  *
  * Returns null on any failure: missing binary, non-zero exit, timeout.
@@ -174,14 +172,7 @@ function probeVersion(bin: string): string | null {
       encoding: "utf8",
       timeout: 3_000,
     })
-    if (out.status !== 0) {
-      // tmux uses `-V`, not `--version`. Try once more before giving up
-      // — covers the most common case without having to special-case
-      // each binary up here.
-      const alt = spawnSync(bin, ["-V"], { encoding: "utf8", timeout: 3_000 })
-      if (alt.status !== 0) return null
-      return alt.stdout.trim() || alt.stderr.trim() || null
-    }
+    if (out.status !== 0) return null
     return out.stdout.trim() || out.stderr.trim() || null
   } catch {
     return null
@@ -316,36 +307,6 @@ export async function buildDiagnoseReport(): Promise<string> {
     lines.push(formatKv("detail:", msg))
   }
 
-  // --- tmux ---
-  section("tmux")
-  const tmux = tmuxBin()
-  // `which` lookup so we report the absolute path the embedded terminal
-  // pane will actually invoke, not just the configured name.
-  let tmuxPath: string | null = null
-  try {
-    const out = spawnSync(process.platform === "win32" ? "where" : "which", [tmux], {
-      encoding: "utf8",
-      timeout: 3_000,
-    })
-    if (out.status === 0) {
-      tmuxPath =
-        out.stdout
-          .split("\n")
-          .map((l) => l.trim())
-          .find((l) => l.length > 0) ?? null
-    }
-  } catch {
-    /* swallow — handled below */
-  }
-  if (tmuxPath) {
-    lines.push(formatKv("path:", tmuxPath))
-    const v = probeVersion(tmuxPath)
-    lines.push(formatKv("version:", v ?? "(unavailable: -V failed)"))
-  } else {
-    lines.push(formatKv("path:", "NOT FOUND"))
-    lines.push(formatKv("hint:", "install tmux (e.g. `brew install tmux`); the terminal pane needs it"))
-  }
-
   // --- state dir (~/.kobe/) ---
   section("state dir (~/.kobe/)")
   const stateDir = kobeStateDir()
@@ -465,7 +426,7 @@ export async function buildDiagnoseReport(): Promise<string> {
  * `kobe diagnose` is a tool for the user to copy-paste into a bug
  * report, and a non-zero exit would make `kobe diagnose | pbcopy` look
  * like the diagnose itself failed when really it's just reporting that
- * (say) tmux is missing.
+ * (say) claude is missing.
  */
 export async function runDiagnoseSubcommand(): Promise<void> {
   const report = await buildDiagnoseReport()

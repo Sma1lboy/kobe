@@ -321,12 +321,24 @@ test("approval — AskUserQuestion renders the question + options + locks compos
   // text is always there).
   expect(withQuestion).toContain("Submit")
 
-  // Composer locked. Whitespace-collapsed compare — see the
-  // ExitPlanMode test for why.
+  // Auto-added "Other" affordance — kobe synthesizes this client-side
+  // per the AskUserQuestion spec's "always offer custom text" contract.
+  // The label is rendered as a normal option row alongside the
+  // model-supplied options.
+  expect(withQuestion).toContain("Other")
+
+  // Composer is NOT locked for questions (only ExitPlanMode locks —
+  // approval is binary, but questions accept free-text via composer
+  // as a parallel path to picking "Other"). The lock copy must NOT
+  // appear; instead we render a soft hint telling the user they can
+  // either pick or type. Whitespace-collapsed compare to be robust
+  // against opentui's text-wrap quirk.
   await new Promise((r) => setTimeout(r, 500))
-  const lockedScreen = await kobe.capture()
-  expect(lockedScreen.replace(/\s+/g, "")).toContain("answertheprompt")
-  expect(lockedScreen.replace(/\s+/g, "")).toContain("tocontinue")
+  const screen = await kobe.capture()
+  const collapsed = screen.replace(/\s+/g, "")
+  expect(collapsed).not.toContain("answertheprompt")
+  // Soft hint copy from Chat.tsx — see the pendingQuestion <Show> block.
+  expect(collapsed).toContain("typeyourownanswer")
 
   await kobe.exit()
 }, 60_000)
