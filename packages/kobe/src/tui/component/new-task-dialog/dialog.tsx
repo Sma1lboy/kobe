@@ -31,11 +31,16 @@ import {
   type PickerWindow,
   clampCursor,
   computeRepoOptions,
+  expandHome,
   filterBranches,
   filterRepos,
+  filterSubdirs,
+  joinDrill,
   listLocalBranches,
+  listSubdirs,
   nextField,
   resolveBaseRef,
+  splitPathForDirSuggest,
   stripNewlines,
   validateRepoPath,
   windowAround,
@@ -83,12 +88,27 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   })
   const [repoCursor, setRepoCursor] = createSignal(0)
 
+  // Directory drill-down picker — sits under the custom-path input.
+  // Reads the live `repo()` value, splits it into base + filter, and
+  // lists subdirs of `base` filtered by `filter`. Up/Down navigates;
+  // Enter drills into the highlight (replaces the input with
+  // `base + name + "/"`). Drilling is preferred over committing while
+  // the user is mid-completion or the typed path isn't yet a usable
+  // repo — see `tryDrillOrCommit` for the exact rule.
+  const subdirSplit = createMemo(() => splitPathForDirSuggest(repo()))
+  const subdirAll = createMemo<readonly string[]>(() => listSubdirs(subdirSplit().base))
+  const subdirFiltered = createMemo<readonly string[]>(() => filterSubdirs(subdirAll(), subdirSplit().filter))
+  const [subdirCursor, setSubdirCursor] = createSignal(0)
+  const subdirWindow = createMemo<PickerWindow>(() => windowAround(subdirFiltered(), subdirCursor()))
+
   // Branch picker — refreshed whenever the repo path changes. The
   // baseRef field still accepts free text (so tags / commit SHAs / refs
   // not in the local branch list still work), but typing is augmented
   // with up/down navigation over the discovered branches: highlights
   // the cursor row and pre-fills the input as the user moves.
-  const branches = createMemo<readonly string[]>(() => listLocalBranches(repo().trim()))
+  // listLocalBranches doesn't expand `~`, so we resolve it here — same
+  // as `commit()` does before validating.
+  const branches = createMemo<readonly string[]>(() => listLocalBranches(expandHome(repo().trim())))
   // Type-to-filter on the baseRef input.
   const branchFiltered = createMemo<readonly string[]>(() => filterBranches(branches(), baseRef()))
   const [branchCursor, setBranchCursor] = createSignal(0)
@@ -103,6 +123,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   createEffect(() => {
     void repoFiltered()
     setRepoCursor(0)
+  })
+  createEffect(() => {
+    void subdirFiltered()
+    setSubdirCursor(0)
   })
 
   const repoWindow = createMemo<PickerWindow>(() => windowAround(repoFiltered(), repoCursor()))
@@ -119,7 +143,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   })
 
   function commit() {
-    const r = repo().trim()
+    // expandHome before validating — `~/foo` won't fs.statSync without
+    // resolution. We submit the expanded path so downstream consumers
+    // (orchestrator.createTask, git worktree add) get an absolute one.
+    const r = expandHome(repo().trim())
     if (!r) return
     const reason = validateRepoPath(r)
     if (reason) {
@@ -133,6 +160,28 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     const b = baseRef().trim() || DEFAULT_BASE_REF
     props.onSubmit({ repo: r, baseRef: b })
     dialog.clear()
+  }
+
+  // Decide whether Enter on the custom-path input should autocomplete
+  // a subdir suggestion or commit the typed path.
+  //   - Mid-completion (filter non-empty): always drill — that's the
+  //     point of typing a prefix.
+  //   - Trailing-slash (filter empty): drill UNLESS the typed path is
+  //     already a usable git repo, in which case the user clearly
+  //     wants to commit.
+  //   - No suggestions at all: fall through to commit so the
+  //     validation error surfaces.
+  function tryDrillOrCommit(): "drilled" | "commit" {
+    const list = subdirFiltered()
+    const picked = list[subdirCursor()]
+    if (!picked) return "commit"
+    const split = subdirSplit()
+    if (!split.filter) {
+      const resolved = expandHome(repo().trim())
+      if (resolved && validateRepoPath(resolved) === null) return "commit"
+    }
+    setRepo(joinDrill(repo(), split.base, picked))
+    return "drilled"
   }
 
   // When the user picks a repo (enter on the picker row), commit the
@@ -165,7 +214,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             setRepoCursor(clampCursor(repoCursor() - 1, list.length))
             return
           }
-          if (field() === "repoCustom") return
+          if (field() === "repoCustom") {
+            const list = subdirFiltered()
+            if (list.length === 0) return
+            setSubdirCursor(clampCursor(subdirCursor() - 1, list.length))
+            return
+          }
           if (field() !== "baseRef") return
           const list = branchFiltered()
           if (list.length === 0) return
@@ -181,7 +235,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             setRepoCursor(clampCursor(repoCursor() + 1, list.length))
             return
           }
-          if (field() === "repoCustom") return
+          if (field() === "repoCustom") {
+            const list = subdirFiltered()
+            if (list.length === 0) return
+            setSubdirCursor(clampCursor(subdirCursor() + 1, list.length))
+            return
+          }
           if (field() !== "baseRef") return
           const list = branchFiltered()
           if (list.length === 0) return
@@ -267,10 +326,55 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           onInput={(v: string) => setRepo(stripNewlines(v))}
           onSubmit={() => {
             if (!repo().trim()) return
+            // Drill into a highlighted subdir when one is offered;
+            // otherwise commit the typed path.
+            if (tryDrillOrCommit() === "drilled") return
             commit()
           }}
         />
       </box>
+      {/* Subdir drill-down picker. Visible only when the user is on
+          the custom-path field and the typed path resolves to a
+          directory with at least one matching subdir. Up/Down navigate
+          the list; Enter applies the highlighted subdir + `/` so the
+          user can continue drilling deeper. Hidden (`.`-prefixed)
+          entries are filtered out unless the user types a leading `.`,
+          matching `ls` conventions. */}
+      <Show when={field() === "repoCustom" && subdirFiltered().length > 0}>
+        <box gap={0} paddingLeft={2}>
+          <Show when={subdirWindow().start > 0}>
+            <text fg={theme.textMuted} wrapMode="none">
+              ↑ {subdirWindow().start} more
+            </text>
+          </Show>
+          <For each={subdirWindow().items}>
+            {(name, i) => {
+              const absoluteIndex = () => subdirWindow().start + i()
+              const isCursor = () => absoluteIndex() === subdirCursor()
+              return (
+                <text
+                  fg={isCursor() ? theme.primary : theme.textMuted}
+                  attributes={isCursor() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => {
+                    setSubdirCursor(absoluteIndex())
+                    const split = subdirSplit()
+                    setRepo(joinDrill(repo(), split.base, name))
+                  }}
+                >
+                  {isCursor() ? "▸ " : "  "}
+                  {name}/
+                </text>
+              )
+            }}
+          </For>
+          <Show when={subdirWindow().start + subdirWindow().items.length < subdirWindow().total}>
+            <text fg={theme.textMuted} wrapMode="none">
+              ↓ {subdirWindow().total - subdirWindow().start - subdirWindow().items.length} more
+            </text>
+          </Show>
+        </box>
+      </Show>
       <Show when={submitError()}>
         <text fg={theme.error}>※ {submitError()}</text>
       </Show>
