@@ -176,13 +176,15 @@ describe("setMessagesFromHistory", () => {
 
   test("rehydrates lastUsage from the latest persisted usage record", () => {
     const past: Message[] = [
+      { role: "user", content: "old prompt", timestamp: "2026-05-09T00:00:00Z", sessionId: "s" },
       {
         role: "assistant",
         content: "old turn",
-        timestamp: "2026-05-09T00:00:00Z",
+        timestamp: "2026-05-09T00:00:01Z",
         sessionId: "s",
         usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 100 },
       },
+      { role: "user", content: "new prompt", timestamp: "2026-05-09T00:00:03Z", sessionId: "s" },
       {
         role: "assistant",
         content: "newer turn",
@@ -203,6 +205,7 @@ describe("setMessagesFromHistory", () => {
       output_tokens: 259,
       cache_creation_input_tokens: 2169,
       cache_read_input_tokens: 66900,
+      total_speed_tokens_per_second: 89,
     })
   })
 
@@ -456,7 +459,7 @@ describe("applyEvent — usage / done / error", () => {
         cache_read_input_tokens: 2000,
         cache_creation_input_tokens: 100,
       },
-      FIXED_TS,
+      "2026-05-09T00:00:05.000Z",
     )
     expect(s.messages).toEqual(start.messages)
     expect(s.isStreaming).toBe(start.isStreaming)
@@ -465,6 +468,7 @@ describe("applyEvent — usage / done / error", () => {
       output_tokens: 500,
       cache_read_input_tokens: 2000,
       cache_creation_input_tokens: 100,
+      total_speed_tokens_per_second: 300,
     })
   })
 

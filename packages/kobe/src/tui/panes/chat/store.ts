@@ -37,7 +37,7 @@
  */
 
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
-import type { UsageSnapshot } from "./context-meter.ts"
+import { type UsageSnapshot, deriveUsageMetricsFromHistory, withTotalSpeedForTurn } from "./context-meter.ts"
 
 /* --------------------------------------------------------------------- */
 /*  Bounded scrollback                                                    */
@@ -261,6 +261,12 @@ export interface ChatState {
    */
   readonly lastUsage?: UsageSnapshot
   /**
+   * Timestamp for the user turn currently awaiting a terminal usage frame.
+   * Used to derive total token speed the same way ccstatusline does:
+   * total input+output tokens divided by active user→assistant duration.
+   */
+  readonly activeTurnStartedAt?: string
+  /**
    * Prompts the user typed mid-stream and chose to QUEUE (not steer).
    * FIFO; drained by the chat shell when {@link isStreaming} flips
    * false. Per-tab and **survives task switches + Chat remounts** —
@@ -324,14 +330,7 @@ export function setMessagesFromHistory(state: ChatState, past: readonly Message[
   // so the workspace header shows last-turn usage on tab open instead of
   // sitting blank until the user sends a new prompt. Claude Code stores
   // `usage` on each assistant record's `message.usage` block.
-  let latestUsage: ChatState["lastUsage"]
-  for (let i = past.length - 1; i >= 0; i--) {
-    const u = past[i]?.usage
-    if (u) {
-      latestUsage = u
-      break
-    }
-  }
+  const latestUsage = deriveUsageMetricsFromHistory(past)
 
   // Apply the cap on the hydration path too — don't load 5000
   // historical rows just to drop 4000 immediately on the next delta.
@@ -349,6 +348,7 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
     isStreaming: true,
     error: null,
     lastUsage: undefined,
+    activeTurnStartedAt: nowIso,
     messages: capMessages([...state.messages, { kind: "user", text: prompt, ts: nowIso }], nowIso),
   }
 }
@@ -482,19 +482,24 @@ export function applyEvent(
     case "usage":
       return {
         ...state,
-        lastUsage: {
-          input_tokens: ev.input_tokens,
-          output_tokens: ev.output_tokens,
-          cache_read_input_tokens: ev.cache_read_input_tokens,
-          cache_creation_input_tokens: ev.cache_creation_input_tokens,
-        },
+        lastUsage: withTotalSpeedForTurn(
+          {
+            input_tokens: ev.input_tokens,
+            output_tokens: ev.output_tokens,
+            cache_read_input_tokens: ev.cache_read_input_tokens,
+            cache_creation_input_tokens: ev.cache_creation_input_tokens,
+          },
+          state.activeTurnStartedAt,
+          nowIso,
+        ),
       }
     case "done":
-      return { ...state, isStreaming: false }
+      return { ...state, isStreaming: false, activeTurnStartedAt: undefined }
     case "error":
       return {
         ...state,
         isStreaming: false,
+        activeTurnStartedAt: undefined,
         error: ev.message,
         messages: capMessages(
           [...state.messages, { kind: "system", text: `error: ${ev.message}`, ts: nowIso }],
@@ -507,6 +512,7 @@ export function applyEvent(
         isStreaming: true,
         error: null,
         lastUsage: undefined,
+        activeTurnStartedAt: nowIso,
         messages: capMessages([...state.messages, { kind: "user", text: ev.text, ts: nowIso }], nowIso),
       }
     case "system.info":

@@ -1,3 +1,4 @@
+import type { Message } from "../../../types/engine.ts"
 import { resolveDefaultModelId } from "./composer/claude-settings.ts"
 /**
  * Workspace header "context used" meter — turns the engine's terminal
@@ -14,6 +15,12 @@ export type UsageSnapshot = {
   readonly output_tokens: number
   readonly cache_read_input_tokens?: number
   readonly cache_creation_input_tokens?: number
+  readonly total_speed_tokens_per_second?: number
+}
+
+type SpeedInterval = {
+  startMs: number
+  endMs: number
 }
 
 /**
@@ -28,6 +35,102 @@ export type UsageSnapshot = {
  */
 export function totalContextTokens(u: UsageSnapshot): number {
   return u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
+}
+
+function parseTimestampMs(value: string): number | null {
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function mergeIntervals(intervals: readonly SpeedInterval[]): SpeedInterval[] {
+  if (intervals.length === 0) return []
+  const sorted = [...intervals].sort((a, b) => a.startMs - b.startMs)
+  const first = sorted[0]
+  if (!first) return []
+  const merged: SpeedInterval[] = [{ startMs: first.startMs, endMs: first.endMs }]
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i]
+    const last = merged[merged.length - 1]
+    if (!current || !last) continue
+    if (current.startMs <= last.endMs) {
+      last.endMs = Math.max(last.endMs, current.endMs)
+    } else {
+      merged.push({ startMs: current.startMs, endMs: current.endMs })
+    }
+  }
+
+  return merged
+}
+
+function durationMs(intervals: readonly SpeedInterval[]): number {
+  return intervals.reduce((total, interval) => total + (interval.endMs - interval.startMs), 0)
+}
+
+/**
+ * Calculate ccstatusline-style total token speed from conversation history.
+ *
+ * Each assistant usage block is paired with the most recent preceding user
+ * timestamp. Duration is active request time, not whole wall-clock session
+ * time; overlapping intervals are merged so parallel/subagent work does not
+ * double-count elapsed time.
+ */
+export function deriveUsageMetricsFromHistory(past: readonly Message[]): UsageSnapshot | undefined {
+  let latestUsage: UsageSnapshot | undefined
+  let latestUsageTimestampMs: number | null = null
+  let lastUserTimestampMs: number | null = null
+  let inputTokens = 0
+  let outputTokens = 0
+  const intervals: SpeedInterval[] = []
+
+  for (const message of past) {
+    const timestampMs = parseTimestampMs(message.timestamp)
+    if (message.role === "user" && timestampMs !== null) {
+      lastUserTimestampMs = timestampMs
+      continue
+    }
+
+    if (message.role !== "assistant" || !message.usage) continue
+
+    if (timestampMs !== null && (latestUsageTimestampMs === null || timestampMs > latestUsageTimestampMs)) {
+      latestUsageTimestampMs = timestampMs
+      latestUsage = message.usage
+    } else if (latestUsage === undefined) {
+      latestUsage = message.usage
+    }
+
+    inputTokens += message.usage.input_tokens
+    outputTokens += message.usage.output_tokens
+
+    if (timestampMs !== null && lastUserTimestampMs !== null && timestampMs > lastUserTimestampMs) {
+      intervals.push({ startMs: lastUserTimestampMs, endMs: timestampMs })
+    }
+  }
+
+  if (!latestUsage) return undefined
+
+  const totalDurationMs = durationMs(mergeIntervals(intervals))
+  if (totalDurationMs <= 0) return latestUsage
+
+  return {
+    ...latestUsage,
+    total_speed_tokens_per_second: (inputTokens + outputTokens) / (totalDurationMs / 1000),
+  }
+}
+
+export function withTotalSpeedForTurn(
+  usage: Omit<UsageSnapshot, "total_speed_tokens_per_second">,
+  startedAtIso: string | undefined,
+  endedAtIso: string,
+): UsageSnapshot {
+  const startMs = startedAtIso ? parseTimestampMs(startedAtIso) : null
+  const endMs = parseTimestampMs(endedAtIso)
+  if (startMs === null || endMs === null || endMs <= startMs) return usage
+
+  return {
+    ...usage,
+    total_speed_tokens_per_second: (usage.input_tokens + usage.output_tokens) / ((endMs - startMs) / 1000),
+  }
 }
 
 const LONG_CTX = 1_000_000
@@ -55,6 +158,12 @@ function formatTokShort(n: number): string {
   return String(n)
 }
 
+export function formatTotalSpeed(tokensPerSecond: number | undefined): string | null {
+  if (typeof tokensPerSecond !== "number" || !Number.isFinite(tokensPerSecond)) return null
+  if (tokensPerSecond >= 1000) return `${(tokensPerSecond / 1000).toFixed(1)}k t/s`
+  return `${tokensPerSecond.toFixed(1)} t/s`
+}
+
 /**
  * Compact label for the WORKSPACE pane header. Returns `null` when totals are zero.
  */
@@ -63,5 +172,6 @@ export function formatContextUsageCompact(u: UsageSnapshot, modelId: string | un
   const total = totalContextTokens(u)
   if (total <= 0 || window <= 0) return null
   const pct = Math.min(100, Math.max(0, Math.round((total / window) * 100)))
-  return `${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`
+  const speed = formatTotalSpeed(u.total_speed_tokens_per_second)
+  return [`${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`, speed].filter(Boolean).join(" · ")
 }
