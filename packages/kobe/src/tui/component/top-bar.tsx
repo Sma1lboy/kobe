@@ -29,6 +29,12 @@ import { UpdateDialog } from "./update-dialog"
 export function TopBar(props: {
   orchestrator: KobeOrchestrator
   activeTask: Accessor<Task | undefined>
+  /**
+   * Active chat tab id within the active task — threaded through so the
+   * RC bridge dialog (opened from the chip) can re-bind on Enable when
+   * the user has stopped+restarted from the same dialog.
+   */
+  activeChatTabId?: Accessor<string | null | undefined>
   updateInfo: Accessor<UpdateInfo | null>
 }) {
   const { theme } = useTheme()
@@ -75,10 +81,12 @@ export function TopBar(props: {
             attributes={TextAttributes.BOLD}
             onMouseUp={() => {
               const orch = remoteOrch
-              if (orch) RcBridgeDialog.show(dialog, orch, rcBridge)
+              if (orch) RcBridgeDialog.show(dialog, orch, rcBridge, props.activeTask, props.activeChatTabId)
             }}
           >
-            ◉ {rcBridge().state === "running" ? (rcBridge().envId ?? "RC") : "RC connecting…"}
+            ◉ {rcBridge().state === "running"
+              ? rcBridge().bound?.taskTitle ?? rcBridge().envId ?? "RC"
+              : "RC connecting…"}
           </text>
         </Show>
       </box>

@@ -145,8 +145,21 @@ export class RemoteOrchestrator {
     return this.rcBridgeAcc
   }
 
-  async startRcBridge(opts: { cwd?: string } = {}): Promise<RcBridgeStatus> {
-    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", { cwd: opts.cwd })
+  /**
+   * Start the remote-control bridge. When `taskId` is supplied the
+   * daemon binds the bridge to that task's worktree (and to the
+   * specific tab when `tabId` is also given) so the dialog can show
+   * a `/resume <sid>` hint. Without `taskId` the daemon falls back
+   * to its own process cwd's git toplevel — useful for kobed
+   * installations that aren't task-anchored, but the dialog won't
+   * surface a session-resume hint.
+   */
+  async startRcBridge(opts: { taskId?: string; tabId?: string; cwd?: string } = {}): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", {
+      taskId: opts.taskId,
+      tabId: opts.tabId,
+      cwd: opts.cwd,
+    })
     return res.status
   }
 

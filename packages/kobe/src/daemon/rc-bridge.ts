@@ -43,6 +43,29 @@ type RcBridgeChild = ChildProcessByStdio<null, Readable, Readable>
 /** Lifecycle state of the bridge process. */
 export type RcBridgeState = "off" | "starting" | "running" | "stopping" | "error"
 
+/**
+ * Identity of the kobe chat tab whose worktree the bridge is currently
+ * sharing. Set on `start()` and surfaced through `status` so the dialog
+ * can render "you're sharing X (resume sessionId Y)" instead of just an
+ * opaque env id. The daemon never validates these — the server-side
+ * dispatch in `daemon/server.ts` looks up the task from its real id and
+ * fills these in before calling `start()`.
+ */
+export interface RcBridgeBoundTab {
+  readonly taskId: string
+  readonly tabId: string
+  /**
+   * The kobe session id (UUID) the user can `/resume <sid>` in claude.ai
+   * to continue the in-flight conversation rather than starting a fresh
+   * one. Null/undefined when the tab hasn't run a turn yet — share-mode
+   * still works in that case (claude.ai gets a fresh session in the
+   * worktree), but there's nothing to resume.
+   */
+  readonly sessionId?: string | null
+  /** Task title at the moment of bind, for dialog display. */
+  readonly taskTitle?: string
+}
+
 /** Wire-shaped snapshot of the bridge for `rcBridge.status` responses + `rcBridge.changed` events. */
 export interface RcBridgeStatus {
   readonly state: RcBridgeState
@@ -52,6 +75,7 @@ export interface RcBridgeStatus {
   readonly pid?: number
   readonly startedAt?: string
   readonly errorMessage?: string
+  readonly bound?: RcBridgeBoundTab
 }
 
 /** Test injection seam — production callers pass nothing. */
@@ -71,7 +95,7 @@ export interface RcBridgeOptions {
 }
 
 export interface RcBridge {
-  start(opts: { cwd: string }): Promise<RcBridgeStatus>
+  start(opts: { cwd: string; bound?: RcBridgeBoundTab }): Promise<RcBridgeStatus>
   stop(): Promise<RcBridgeStatus>
   status(): RcBridgeStatus
   /** Subscribe to status transitions. Returns an unsubscribe function. */
@@ -201,6 +225,7 @@ export function createRcBridge(options: RcBridgeOptions = {}): RcBridge {
         state: "starting",
         cwd: opts.cwd,
         startedAt: new Date().toISOString(),
+        bound: opts.bound,
       })
       const args = ["remote-control", "--verbose", "--remote-control-session-name-prefix", "kobe"]
       let child: RcBridgeChild

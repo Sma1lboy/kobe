@@ -110,6 +110,33 @@ describe("rc-bridge", () => {
     expect(stopped.state).toBe("off")
   })
 
+  it("forwards bound-tab metadata onto every status snapshot", async () => {
+    const { bridge } = makeFakeBridge({
+      onReady: (c) => {
+        c.stdout.push("Environment ID: env_BOUND\n")
+      },
+    })
+    const ready = await bridge.start({
+      cwd: "/tmp/fake/worktree",
+      bound: {
+        taskId: "task_01",
+        tabId: "tab_01",
+        sessionId: "01HZ-session-uuid",
+        taskTitle: "fix the spinner",
+      },
+    })
+    expect(ready.bound).toEqual({
+      taskId: "task_01",
+      tabId: "tab_01",
+      sessionId: "01HZ-session-uuid",
+      taskTitle: "fix the spinner",
+    })
+    // The dialog uses status.bound to render `/resume <sid>`; assert the
+    // post-ready snapshot carries it through (the `update({...snapshot, ...})`
+    // in onStdout must not drop bound).
+    expect(bridge.status().bound?.sessionId).toBe("01HZ-session-uuid")
+  })
+
   it("rejects with a timeout error when the child never prints the env id", async () => {
     const { bridge } = makeFakeBridge({
       onReady: () => {

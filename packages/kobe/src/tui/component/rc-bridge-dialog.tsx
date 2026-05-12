@@ -1,38 +1,36 @@
 /**
  * "Share to claude.ai" dialog (KOB-62) — exposes the remote-control
- * bridge daemon to the user.
+ * bridge to the focused chat tab.
  *
- * What this is: kobed manages a single `claude remote-control` child
- * process (see `src/daemon/rc-bridge.ts`). When running, the bridge
- * registers this machine as an environment that claude.ai (web /
- * mobile) can spawn sessions onto. Cloud-side sessions execute under
- * the daemon's cwd with the user's local file/bash tools, so a session
- * started from the phone really runs on your laptop.
+ * Per-tab semantics: when the user enables share-mode while focused on
+ * a kobe chat tab, the bridge spawns with `cwd = task.worktreePath` and
+ * binds to the tab's `sessionId`. The dialog surfaces both so the user
+ * can open the env URL on another device, pick the environment in
+ * claude.ai, and `/resume <sessionId>` to continue the conversation
+ * they were having locally — instead of starting an unrelated fresh
+ * session in the same worktree.
  *
- * What this is NOT: a way to migrate an in-flight kobe task into the
- * cloud. Bridge-spawned sessions are independent of kobe's task model
- * — they don't appear as kobe tabs, and we don't render their
- * conversation. They live entirely in claude.ai. (See the KOB-62 S1
- * comment for why; the worker JSONL is bridge-private and the worker
- * stdout never reaches us.)
+ * Limitation (and why this is "manual resume" not "auto-attach"):
+ * Anthropic's bridge only exposes the cwd as an environment, not a
+ * session-migration API. Kobe still owns its local claude subprocess;
+ * the cloud worker is independent. The two share access to the
+ * worktree's JSONL on disk, which is what makes `/resume <sid>` work.
+ * See the KOB-62 S1 spike for the full reasoning.
  *
- * UX:
- *   - off       → "[ enter ] Enable" button. Click → start daemon, dialog
- *                 stays open and re-renders as state advances to "running".
- *   - starting  → "Connecting to claude.ai…" + spinner.
- *   - running   → env id + claude.ai deeplink (selectable terminal text)
- *                 + "[ enter ] Disable" button. The TopBar chip mirrors
- *                 this state so the user sees the bridge is on even
- *                 after they close the dialog.
+ * UX states:
+ *   - off       → "[ enter ] Enable" — disabled when no active task to bind.
+ *   - starting  → "Connecting to claude.ai…"
+ *   - running   → env id, deeplink, bound task title + sessionId
+ *                 + "[ enter ] Disable".
  *   - stopping  → "Disconnecting…"
- *   - error     → red error message (auth failure, workspace untrusted,
- *                 timeout) + "[ enter ] Retry" button.
+ *   - error     → red error message + "[ enter ] Retry".
  */
 
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, Match, Show, Switch, createSignal } from "solid-js"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { RcBridgeStatus } from "../../daemon/rc-bridge.ts"
+import type { Task } from "../../types/task.ts"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
@@ -40,7 +38,20 @@ import { type DialogContext, useDialog } from "../ui/dialog"
 export type RcBridgeDialogProps = {
   orchestrator: RemoteOrchestrator
   status: Accessor<RcBridgeStatus>
+  /**
+   * Currently focused task (used to bind the bridge on Enable). Optional
+   * because the chip in the top bar can open the dialog from contexts
+   * where no task happens to be active — in that case Enable is disabled.
+   */
+  activeTask?: Accessor<Task | undefined>
+  /**
+   * Currently focused chat tab id within the active task. Defaults to
+   * the task's `activeTabId` server-side if omitted (or null/undefined).
+   */
+  activeTabId?: Accessor<string | null | undefined>
 }
+
+type ActiveTabIdAccessor = Accessor<string | null | undefined>
 
 export function RcBridgeDialog(props: RcBridgeDialogProps) {
   const dialog = useDialog()
@@ -49,13 +60,22 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
   // twice while the daemon is still transitioning.
   const [busy, setBusy] = createSignal(false)
 
+  // What we'd bind on Enable. Only consulted when state is off / error.
+  const targetTask = (): Task | undefined => props.activeTask?.()
+  const canEnable = (): boolean => Boolean(targetTask())
+
   async function activate(): Promise<void> {
     if (busy()) return
     const s = props.status()
     setBusy(true)
     try {
       if (s.state === "off" || s.state === "error") {
-        await props.orchestrator.startRcBridge({})
+        const task = targetTask()
+        if (!task) return
+        await props.orchestrator.startRcBridge({
+          taskId: task.id,
+          tabId: props.activeTabId?.() ?? undefined,
+        })
       } else if (s.state === "running") {
         await props.orchestrator.stopRcBridge()
       }
@@ -86,15 +106,33 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
       </box>
 
       <text fg={theme.textMuted} wrapMode="word">
-        Registers this machine as an environment claude.ai can spawn sessions onto. Sessions run locally under the kobed
-        cwd, with your worktree's files. Cloud-side sessions are independent of kobe tabs — they appear in your
-        claude.ai history, not here.
+        Binds this task's worktree to a claude.ai environment so you can pick it up from another device. claude.ai
+        sessions on that environment run on your machine under the task's worktree — and if this tab already has a
+        kobe conversation, you can `/resume {"<id>"}` it in claude.ai to keep going from where you left off.
       </text>
 
       {/* State block — switches body by current bridge state. */}
       <Switch>
         <Match when={props.status().state === "off"}>
-          <text fg={theme.textMuted}>Bridge is off.</text>
+          <Show
+            when={canEnable()}
+            fallback={
+              <text fg={theme.textMuted}>No active task — select a task in the sidebar first, then re-open this dialog.</text>
+            }
+          >
+            <box flexDirection="column" gap={0}>
+              <text fg={theme.textMuted}>Will share:</text>
+              <box flexDirection="row" gap={1}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  {targetTask()?.title ?? ""}
+                </text>
+                <text fg={theme.textMuted}>·</text>
+                <text fg={theme.text} wrapMode="none">
+                  {targetTask()?.worktreePath ?? ""}
+                </text>
+              </box>
+            </box>
+          </Show>
         </Match>
         <Match when={props.status().state === "starting"}>
           <text fg={theme.accent}>Connecting to claude.ai…</text>
@@ -111,6 +149,31 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
               <box flexDirection="column" gap={0} paddingTop={1}>
                 <text fg={theme.textMuted}>Open from another device:</text>
                 <text fg={theme.accent}>{props.status().deeplink}</text>
+              </box>
+            </Show>
+            <Show when={props.status().bound}>
+              <box flexDirection="column" gap={0} paddingTop={1}>
+                <box flexDirection="row" gap={1}>
+                  <text fg={theme.textMuted}>Sharing:</text>
+                  <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+                    {props.status().bound?.taskTitle ?? props.status().bound?.taskId}
+                  </text>
+                </box>
+                <Show
+                  when={props.status().bound?.sessionId}
+                  fallback={
+                    <text fg={theme.textMuted} wrapMode="word">
+                      (no kobe session yet — claude.ai will start a fresh one in this worktree)
+                    </text>
+                  }
+                >
+                  <box flexDirection="column" gap={0}>
+                    <text fg={theme.textMuted}>To continue this tab's conversation in claude.ai, run:</text>
+                    <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                      /resume {props.status().bound?.sessionId}
+                    </text>
+                  </box>
+                </Show>
               </box>
             </Show>
             <Show when={props.status().cwd}>
@@ -143,13 +206,13 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
       {/* Action button — label + behavior derived from current state. */}
       <Switch>
         <Match when={props.status().state === "off"}>
-          <ActionButton label="[ enter ] Enable" disabled={busy()} onClick={activate} />
+          <ActionButton label="[ enter ] Enable" disabled={busy() || !canEnable()} onClick={activate} />
         </Match>
         <Match when={props.status().state === "running"}>
           <ActionButton label="[ enter ] Disable" disabled={busy()} onClick={activate} variant="warning" />
         </Match>
         <Match when={props.status().state === "error"}>
-          <ActionButton label="[ enter ] Retry" disabled={busy()} onClick={activate} />
+          <ActionButton label="[ enter ] Retry" disabled={busy() || !canEnable()} onClick={activate} />
         </Match>
         <Match when={props.status().state === "starting" || props.status().state === "stopping"}>
           <ActionButton label="working…" disabled />
@@ -191,6 +254,15 @@ RcBridgeDialog.show = (
   dialog: DialogContext,
   orchestrator: RemoteOrchestrator,
   status: Accessor<RcBridgeStatus>,
+  activeTask?: Accessor<Task | undefined>,
+  activeTabId?: ActiveTabIdAccessor,
 ): void => {
-  dialog.replace(() => <RcBridgeDialog orchestrator={orchestrator} status={status} />)
+  dialog.replace(() => (
+    <RcBridgeDialog
+      orchestrator={orchestrator}
+      status={status}
+      activeTask={activeTask}
+      activeTabId={activeTabId}
+    />
+  ))
 }
