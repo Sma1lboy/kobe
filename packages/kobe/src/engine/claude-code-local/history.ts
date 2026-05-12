@@ -336,8 +336,7 @@ export async function appendInterruptedUserPrompt(
     return
   }
 
-  const parentUuid =
-    lastConvRecord && typeof lastConvRecord.uuid === "string" ? (lastConvRecord.uuid as string) : null
+  const parentUuid = lastConvRecord && typeof lastConvRecord.uuid === "string" ? (lastConvRecord.uuid as string) : null
   const record = {
     type: "user",
     message: { role: "user", content: prompt },

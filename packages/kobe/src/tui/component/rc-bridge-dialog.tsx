@@ -107,8 +107,8 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
 
       <text fg={theme.textMuted} wrapMode="word">
         Binds this task's worktree to a claude.ai environment so you can pick it up from another device. claude.ai
-        sessions on that environment run on your machine under the task's worktree — and if this tab already has a
-        kobe conversation, you can `/resume {"<id>"}` it in claude.ai to keep going from where you left off.
+        sessions on that environment run on your machine under the task's worktree — and if this tab already has a kobe
+        conversation, you can `/resume {"<id>"}` it in claude.ai to keep going from where you left off.
       </text>
 
       {/* State block — switches body by current bridge state. */}
@@ -117,7 +117,9 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
           <Show
             when={canEnable()}
             fallback={
-              <text fg={theme.textMuted}>No active task — select a task in the sidebar first, then re-open this dialog.</text>
+              <text fg={theme.textMuted}>
+                No active task — select a task in the sidebar first, then re-open this dialog.
+              </text>
             }
           >
             <box flexDirection="column" gap={0}>
@@ -258,11 +260,6 @@ RcBridgeDialog.show = (
   activeTabId?: ActiveTabIdAccessor,
 ): void => {
   dialog.replace(() => (
-    <RcBridgeDialog
-      orchestrator={orchestrator}
-      status={status}
-      activeTask={activeTask}
-      activeTabId={activeTabId}
-    />
+    <RcBridgeDialog orchestrator={orchestrator} status={status} activeTask={activeTask} activeTabId={activeTabId} />
   ))
 }

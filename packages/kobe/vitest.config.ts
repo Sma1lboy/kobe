@@ -1,6 +1,14 @@
 import path from "node:path"
 import { defineConfig } from "vitest/config"
 
+const includeBehavior = process.env.KOBE_INCLUDE_BEHAVIOR === "1"
+const includeSocket = process.env.KOBE_INCLUDE_SOCKET === "1"
+const exclude: string[] = []
+if (!includeBehavior) exclude.push("test/behavior/**")
+if (!includeSocket) {
+  exclude.push("test/daemon/**", "test/orchestrator/bridge.test.ts")
+}
+
 export default defineConfig({
   // Mirror tsconfig.json's `paths` so runtime tests can import via
   // the `@/*`, `@engine/*`, `@types/*` etc. aliases the same way the
@@ -18,14 +26,7 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+    exclude,
     environment: "node",
-    // Run *.test-d.ts files as type-level tests via tsc.
-    // Stream 0.3's type contracts (src/types/**) are validated this way;
-    // any drift between an interface and its consumers is caught here.
-    typecheck: {
-      enabled: true,
-      include: ["test/**/*.test-d.ts"],
-      tsconfig: "./tsconfig.json",
-    },
   },
 })

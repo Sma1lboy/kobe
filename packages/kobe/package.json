@@ -31,8 +31,10 @@
     "build": "bun run scripts/build.ts",
     "compile": "bun run scripts/compile.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
-    "test:behavior": "vitest run test/behavior --passWithNoTests",
+    "test": "bun run test:fast && bun run test:socket",
+    "test:fast": "vitest run --passWithNoTests",
+    "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon test/orchestrator/bridge.test.ts --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
+    "test:behavior": "KOBE_INCLUDE_BEHAVIOR=1 vitest run test/behavior --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
     "lint": "biome check .",
     "prepublishOnly": "bun run typecheck && bun run build"
   },

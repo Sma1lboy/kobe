@@ -910,4 +910,3 @@ function stringifyErr(err: unknown): string {
     return String(err)
   }
 }
-

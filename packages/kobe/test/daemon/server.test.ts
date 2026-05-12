@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { KobeDaemonClient } from "../../src/client/index.ts"
+import { fallbackTestSocketPath } from "../../src/daemon/paths.ts"
 import { startDaemonServer } from "../../src/daemon/server.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
@@ -23,7 +24,7 @@ beforeEach(() => {
   homeDir = path.join(tmpRoot, "home")
   fs.mkdirSync(homeDir, { recursive: true })
   repo = path.join(tmpRoot, "repo")
-  socketPath = path.join(tmpRoot, "daemon.sock")
+  socketPath = fallbackTestSocketPath(`kobe-daemon-${path.basename(tmpRoot)}`)
   pidPath = path.join(tmpRoot, "daemon.pid")
   const result = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (result.status !== 0) throw new Error(`repo-init.sh failed: ${result.stderr}\n${result.stdout}`)
