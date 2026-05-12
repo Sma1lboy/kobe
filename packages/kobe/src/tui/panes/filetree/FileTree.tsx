@@ -33,9 +33,10 @@
  *   - worktree path change
  *   - explicit `r` keypress
  *   - first mount
- *   - filesystem activity inside the worktree (recursive fs.watch,
- *     debounced ~200ms, with `.git/` and `node_modules/` filtered to
- *     avoid feedback loops and high-churn noise)
+ *   - optional filesystem activity inside the worktree when
+ *     `KOBE_FILETREE_WATCH=1` is set. Recursive watch is intentionally
+ *     opt-in because large monorepos can make the watcher itself more
+ *     expensive than a manual refresh.
  *
  * Reactivity: `worktreePath` is an `Accessor` so the pane reacts to
  * task switches without a manual prop-equality check. The internal
@@ -191,6 +192,7 @@ export function FileTree(props: FileTreeProps) {
   // tree renders top-level entries always; deeper levels show only
   // when their parent is in the set. Reset on worktree change.
   const [expandedDirs, setExpandedDirs] = createSignal<ReadonlySet<string>>(new Set())
+  let fetchSeq = 0
 
   /**
    * Fetch the data for the current tab. Errors land in `error()` and
@@ -200,6 +202,7 @@ export function FileTree(props: FileTreeProps) {
    * wasteful and disorienting.
    */
   async function refetch(currentTab: FileTreeTab, path: string | null): Promise<void> {
+    const seq = ++fetchSeq
     if (path == null) {
       setAllFiles(null)
       setChanges(null)
@@ -210,15 +213,17 @@ export function FileTree(props: FileTreeProps) {
     try {
       if (currentTab === "all") {
         const files = await listFiles(path)
+        if (seq !== fetchSeq || props.worktreePath() !== path) return
         setAllFiles(files)
       } else if (currentTab === "changes") {
         const entries = await statusFiles(path)
+        if (seq !== fetchSeq || props.worktreePath() !== path) return
         setChanges(entries)
       }
       // `checks` has no data to fetch in v1.
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setError(message)
+      if (seq === fetchSeq && props.worktreePath() === path) setError(message)
     }
   }
 
@@ -235,16 +240,13 @@ export function FileTree(props: FileTreeProps) {
     }),
   )
 
-  // Realtime: watch the worktree recursively and bump `refreshTick` on
-  // any file change, debounced ~200ms to coalesce save bursts and
-  // formatter passes. We filter `.git/` (would loop on git's own
-  // writes — index.lock churn during commits, etc.) and `node_modules/`
-  // (high-churn, never user-interesting). If the watcher fails to
-  // attach (path missing, platform limitation) we silently fall back
-  // to the existing manual `r` refresh.
+  // Realtime watch is opt-in. On large repos a recursive watcher can
+  // overwhelm the TUI process before the user does anything, so the
+  // default path is explicit refresh (`r`) plus tab/worktree changes.
   createEffect(
     on(props.worktreePath, (path) => {
       if (path == null) return
+      if (process.env.KOBE_FILETREE_WATCH !== "1") return
       let debounceTimer: ReturnType<typeof setTimeout> | null = null
       let watcher: FSWatcher | null = null
       try {
@@ -257,7 +259,7 @@ export function FileTree(props: FileTreeProps) {
           debounceTimer = setTimeout(() => {
             debounceTimer = null
             setRefreshTick((n) => n + 1)
-          }, 200)
+          }, 500)
         })
         watcher.on("error", () => {
           // Swallow — the `r` keystroke remains as the escape hatch.

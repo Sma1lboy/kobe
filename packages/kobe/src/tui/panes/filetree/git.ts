@@ -16,14 +16,10 @@
  * that matches Stream B's pattern but lives in the pane's slice.
  *
  * Implementation notes:
- *   - We use Node's `child_process.spawnSync`. The brief says to "use
- *     `Bun.spawnSync`, matching B's pattern" — but B's actual file uses
- *     `child_process.spawnSync` because the test runner (vitest) hosts
- *     under Node and `Bun` is undefined there. Matching B's *real*
- *     pattern keeps the unit tests runnable under both runtimes. The
- *     production binary runs under Bun, where Node's `child_process`
- *     also works (Bun ships a compatible shim). Same trade-off, same
- *     answer.
+ *   - We use Node's async `child_process.spawn`, not `spawnSync`. The
+ *     pane sits on the TUI process' event loop; a large repository can
+ *     make `git ls-files` / `git status` take long enough that sync
+ *     spawn freezes typing and rendering.
  *   - Args always pass as an array. Never a shell string. `shell: false`
  *     defends against any upstream layer that might flip the default.
  *   - `cwd` is required on every call. The pane never relies on
@@ -32,12 +28,12 @@
  *   - On non-zero exit we throw — the pane shows an error empty-state.
  *     This mirrors the orchestrator's behaviour and avoids silently
  *     rendering stale data.
- *   - We export `spawnGit` as a named symbol so unit tests can mock it
- *     via `vi.spyOn` (vitest cannot stub a top-level `import` directly,
- *     but it can stub a property of the same module's exported object).
+ *   - We export `gitWrapper.spawn` as a named seam so unit tests can
+ *     mock it via `vi.spyOn` (vitest cannot stub a top-level `import`
+ *     directly, but it can stub a property of an exported object).
  */
 
-import { type SpawnSyncReturns, spawnSync as nodeSpawnSync } from "node:child_process"
+import { spawn as nodeSpawn } from "node:child_process"
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
  * collapsed to a single-char headline. */
@@ -65,25 +61,48 @@ export type NumstatEntry = {
   deleted: number | null
 }
 
+export type GitRunResult = {
+  stdout: string
+  stderr: string
+  status: number | null
+  signal: NodeJS.Signals | null
+}
+
 /**
- * Wrapper around `child_process.spawnSync` that we expose as a named
+ * Wrapper around `child_process.spawn` that we expose as a named
  * export so tests can replace it. Production callers should prefer
  * {@link listFiles} and {@link statusFiles}; this is the seam.
  */
 export const gitWrapper = {
-  spawnSync(args: readonly string[], cwd: string): SpawnSyncReturns<string> {
-    return nodeSpawnSync("git", [...args], {
-      cwd,
-      encoding: "utf8",
-      shell: false,
+  spawn(args: readonly string[], cwd: string): Promise<GitRunResult> {
+    return new Promise((resolve, reject) => {
+      const child = nodeSpawn("git", [...args], {
+        cwd,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let stdout = ""
+      let stderr = ""
+      child.stdout.setEncoding("utf8")
+      child.stderr.setEncoding("utf8")
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk
+      })
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk
+      })
+      child.on("error", reject)
+      child.on("close", (status, signal) => {
+        resolve({ stdout, stderr, status, signal })
+      })
     })
   },
 }
 
-/** Internal helper — drives gitWrapper.spawnSync, throws on non-zero. */
-function runGit(args: readonly string[], cwd: string): string {
+/** Internal helper — drives gitWrapper.spawn, throws on non-zero. */
+async function runGit(args: readonly string[], cwd: string): Promise<string> {
   if (!cwd) throw new Error("git(): cwd is required")
-  const result = gitWrapper.spawnSync(args, cwd)
+  const result = await gitWrapper.spawn(args, cwd)
   const exitCode = result.status ?? -1
   if (exitCode !== 0) {
     const stderr = (result.stderr ?? "").trim()
@@ -104,7 +123,7 @@ function runGit(args: readonly string[], cwd: string): string {
  * that).
  */
 export async function listFiles(worktreePath: string): Promise<string[]> {
-  const out = runGit(["ls-files", "--cached", "--others", "--exclude-standard", "--full-name"], worktreePath)
+  const out = await runGit(["ls-files", "--cached", "--others", "--exclude-standard", "--full-name"], worktreePath)
   const lines = out.split("\n").map((l) => l.replace(/\r$/, ""))
   // De-dup: --cached + --others can in theory list the same file twice
   // when the working tree has both an index entry and an untracked
@@ -129,7 +148,7 @@ export async function listFiles(worktreePath: string): Promise<string[]> {
  * like `R  old -> new` — we keep only the "new" path and report `R`.
  */
 export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> {
-  const out = runGit(["status", "--porcelain"], worktreePath)
+  const out = await runGit(["status", "--porcelain"], worktreePath)
   const entries = parsePorcelain(out)
   // Merge in `git diff HEAD --numstat` so each row carries +/- counts.
   // Untracked files don't appear in `git diff` output — for those we
@@ -138,7 +157,7 @@ export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> 
   // handles missing stats by rendering blanks.
   let stats: Map<string, { added: number | null; deleted: number | null }> | null = null
   try {
-    const diffOut = runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
+    const diffOut = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
     stats = new Map(parseNumstat(diffOut).map((n) => [n.path, { added: n.added, deleted: n.deleted }]))
   } catch {
     // No HEAD yet (initial commit), or other diff failure — skip
@@ -158,7 +177,7 @@ export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> 
  * porcelain status. Throws on non-zero exit (caller can wrap to soften).
  */
 export async function numstatFiles(worktreePath: string): Promise<NumstatEntry[]> {
-  const out = runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
+  const out = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
   return parseNumstat(out)
 }
 
