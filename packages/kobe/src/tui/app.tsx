@@ -61,6 +61,7 @@ import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { Terminal } from "./panes/terminal"
+import { DialogConfirm } from "./ui/dialog-confirm"
 import { DialogProvider, useDialog } from "./ui/dialog"
 
 const DEFAULT_THEME = "claude"
@@ -218,6 +219,51 @@ function Shell(props: AppDeps) {
     const baseAcc = focus.is(pane)
     return () => baseAcc() && dialog.stack.length === 0
   }
+
+  /* ------------------------------------------------------------------- */
+  /*  Daemon disconnect modal (KOB-38)                                    */
+  /* ------------------------------------------------------------------- */
+  // When the kobed socket drops, RemoteOrchestrator flips
+  // `connectionState` to `"disconnected"`. We pop a modal letting the
+  // user pick Restart (spawn kobed + reconnect) or Quit (process.exit).
+  // Esc on the modal counts as Quit — daemon-less kobe is useless so
+  // dismissing the prompt would just leave the user stranded.
+  // In-process Orchestrator (KOBE_NO_DAEMON) has no socket and stays
+  // `"online"` forever, so the effect is a no-op there.
+  let showingDisconnectDialog = false
+  async function showDisconnectDialog(): Promise<void> {
+    const orch = props.orchestrator
+    if (!(orch instanceof RemoteOrchestrator)) return
+    let message = "kobed is no longer reachable. Restart it and reconnect, or quit kobe?"
+    while (true) {
+      const choice = await DialogConfirm.show(dialog, "daemon disconnected", message, "Quit", "Restart")
+      if (choice !== true) {
+        try {
+          renderer?.destroy()
+        } catch {
+          /* swallow */
+        }
+        process.exit(0)
+      }
+      try {
+        await orch.manualReconnect()
+        return
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
+        message = `Restart failed: ${errMsg}\n\nTry again or quit?`
+      }
+    }
+  }
+  createEffect(() => {
+    const orch = props.orchestrator
+    if (!(orch instanceof RemoteOrchestrator)) return
+    if (orch.connectionStateSignal()() !== "disconnected") return
+    if (showingDisconnectDialog) return
+    showingDisconnectDialog = true
+    void showDisconnectDialog().finally(() => {
+      showingDisconnectDialog = false
+    })
+  })
 
   // ctrl+hjkl pane focus. h/j/k/l → sidebar / workspace / files /
   // terminal (ordinal 1/2/3/4 mapped onto the vim row). ctrl+letter

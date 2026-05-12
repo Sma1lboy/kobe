@@ -5,10 +5,19 @@ import { fileURLToPath } from "node:url"
 import { defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { KobeDaemonClient } from "./index.ts"
 
-export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
+/**
+ * If the daemon socket already accepts connections, do nothing. Otherwise
+ * spawn a detached `kobed start` and poll until the socket is reachable
+ * (5s deadline). Both the TUI startup path and the in-session "Restart
+ * daemon" prompt share this so the spawn+poll loop lives in exactly one
+ * place.
+ *
+ * Returns the resolved socket path so the caller can build a client
+ * pointed at it. Throws if the daemon never comes up within the deadline.
+ */
+export async function ensureDaemonReachable(): Promise<string> {
   const socketPath = defaultDaemonSocketPath()
-  const client = new KobeDaemonClient(socketPath)
-  if (await canConnect(client)) return client
+  if (await testCanConnect(socketPath)) return socketPath
 
   const { entry, runWithBun } = resolveKobedEntry()
   const child = runWithBun
@@ -27,27 +36,29 @@ export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
   const deadline = Date.now() + 5000
   let lastErr: unknown
   while (Date.now() < deadline) {
-    const next = new KobeDaemonClient(socketPath)
-    try {
-      await next.connect()
-      return next
-    } catch (err) {
-      lastErr = err
-      next.close()
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    }
+    if (await testCanConnect(socketPath)) return socketPath
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
   }
   throw new Error(
-    `kobe: daemon did not start at ${socketPath}: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    `kobe: daemon did not start at ${socketPath}: ${lastErr instanceof Error ? lastErr.message : "timeout"}`,
   )
 }
 
-async function canConnect(client: KobeDaemonClient): Promise<boolean> {
+export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
+  const socketPath = await ensureDaemonReachable()
+  const client = new KobeDaemonClient(socketPath)
+  await client.connect()
+  return client
+}
+
+async function testCanConnect(socketPath: string): Promise<boolean> {
+  const probe = new KobeDaemonClient(socketPath)
   try {
-    await client.connect()
+    await probe.connect()
+    probe.close()
     return true
   } catch {
-    client.close()
+    probe.close()
     return false
   }
 }
