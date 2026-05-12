@@ -40,7 +40,11 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
 import { findClaudeBinary } from "./binary"
-import { deleteHistory as deleteHistoryImpl, readHistory as readHistoryImpl } from "./history"
+import {
+  appendInterruptedUserPrompt,
+  deleteHistory as deleteHistoryImpl,
+  readHistory as readHistoryImpl,
+} from "./history"
 import { type ProcessHandle, SessionRegistry } from "./registry"
 import { listSessionsForCwd } from "./sessions"
 import { type SpawnedClaude, spawnClaudeProcess } from "./spawn"
@@ -68,6 +72,10 @@ interface RunningSession {
   waiters: Array<() => void>
   /** True once the parser saw a terminal event or stdout closed. */
   closed: boolean
+  /** True once the parser observed a `done` or terminal `result` record. */
+  completedNaturally: boolean
+  /** The prompt this session is processing — used by stop() to rescue an interrupted turn. */
+  readonly prompt: string
 }
 
 export class ClaudeCodeLocal implements AIEngine {
@@ -134,12 +142,36 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async stop(handle: SessionHandle): Promise<void> {
     const sid = handle.sessionId
-    await this.registry.kill(sid, this.stopGraceMs)
     const session = this.running.get(sid)
+    // Capture the state we need to decide whether to rescue the
+    // prompt BEFORE we tear the session down. We rescue iff this
+    // stop() is a real interrupt — the parser hasn't seen a `done`
+    // record yet, so claude -p hasn't committed the user message to
+    // its session JSONL. (A stop() racing a natural completion is
+    // benign: completedNaturally is already true and we skip.)
+    const shouldRescue = !!session && !session.completedNaturally && session.prompt.trim().length > 0
+    const rescuePrompt = session?.prompt ?? ""
+    const rescueCwd = session?.cwd ?? handle.cwd
+    await this.registry.kill(sid, this.stopGraceMs)
     if (session) {
       session.closed = true
       this.notify(session)
       this.running.delete(sid)
+    }
+    if (shouldRescue) {
+      // `claude -p` only persists the user turn to its session JSONL
+      // on natural completion; a mid-stream SIGTERM (which is exactly
+      // what this codepath is) drops the prompt on the floor and
+      // blinds the model on the next `--resume`. Inject a synthetic
+      // user record so the rescued prompt round-trips into context.
+      // Swallow I/O errors — a steer that can't write to disk is
+      // still better than no steer.
+      try {
+        await appendInterruptedUserPrompt(sid, rescueCwd, rescuePrompt)
+      } catch {
+        /* best-effort rescue; failure surfaces only in the model's
+           subsequent unawareness of the abandoned prompt. */
+      }
     }
   }
 
@@ -193,6 +225,8 @@ export class ClaudeCodeLocal implements AIEngine {
         queue,
         waiters: [],
         closed: false,
+        completedNaturally: false,
+        prompt: args.prompt,
       }
       this.running.set(sessionId, session)
       this.registry.register({
@@ -200,6 +234,7 @@ export class ClaudeCodeLocal implements AIEngine {
         cwd: args.cwd,
         proc: spawned.proc,
         startedAt: Date.now(),
+        prompt: args.prompt,
       } satisfies ProcessHandle)
       resolveHandle({ sessionId, cwd: args.cwd })
     }
@@ -237,6 +272,14 @@ export class ClaudeCodeLocal implements AIEngine {
       try {
         for await (const ev of events) {
           queue.push(ev)
+          if (ev.type === "done" && session) {
+            // The turn finished on its own — claude -p has fully
+            // committed the user message to the session JSONL.
+            // stop() reads this flag to decide whether to rescue
+            // the prompt into the file ourselves (we shouldn't, in
+            // this branch — claude already did).
+            session.completedNaturally = true
+          }
           if (session) this.notify(session)
         }
       } catch (err) {

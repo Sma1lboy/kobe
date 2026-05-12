@@ -350,6 +350,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
         return {}
       }
+      case "chat.steer": {
+        await orch.steerTask(
+          requireString(payload, "taskId"),
+          requireString(payload, "text"),
+          optionalString(payload, "tabId"),
+        )
+        return {}
+      }
       case "chat.input.pending": {
         return { pending: orch.peekPendingInput(requireString(payload, "taskId")) }
       }

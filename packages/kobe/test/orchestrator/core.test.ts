@@ -345,6 +345,35 @@ describe("Orchestrator.runTask", () => {
     await expect(orch.runTask("does-not-exist")).rejects.toBeInstanceOf(TaskNotFoundError)
   })
 
+  test("concurrent first-prompt runTasks coalesce onto one spawn + resume the rest", async () => {
+    // Regression: a fast typist firing N prompts before the chat's
+    // isStreaming signal has flipped used to enter N parallel spawn
+    // branches at the orchestrator, each opening a fresh JSONL session
+    // and orphaning all but the last `updateTab` write. The first-spawn
+    // latch is supposed to coalesce them so only one spawn fires and
+    // the rest resume the just-established session.
+    const fake = new FakeAIEngine()
+    const spawnSpy = vi.spyOn(fake, "spawn")
+    const resumeSpy = vi.spyOn(fake, "resume")
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "rapid fire", prompt: "" })
+
+    // Pre-script "fake-1" (the only sid the spawn should hand out)
+    // so each turn terminates promptly without a hand-finish.
+    fake.script("fake-1", [{ type: "done" }])
+
+    await Promise.all([orch.runTask(t.id, "1"), orch.runTask(t.id, "2"), orch.runTask(t.id, "3")])
+    await orch._waitForPumpsIdle()
+
+    // Exactly one spawn, the other two resumed against the established sid.
+    expect(spawnSpy).toHaveBeenCalledTimes(1)
+    expect(resumeSpy.mock.calls.length).toBeGreaterThanOrEqual(1)
+    for (const call of resumeSpy.mock.calls) {
+      expect(call[0]).toBe("fake-1")
+    }
+    expect(store.get(t.id)?.sessionId).toBe("fake-1")
+  })
+
   test("rejects canceled tasks", async () => {
     const { orch } = await buildOrchestrator()
     const t = await orch.createTask({ repo, title: "x", prompt: "" })

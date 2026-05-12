@@ -314,6 +314,28 @@ export class Orchestrator {
    */
   private readonly handles = new Map<string, SessionHandle>()
   /**
+   * Per-tab first-spawn coalescing latch. Keyed by `${taskId}:${tabId}`.
+   *
+   * When a chat tab has no `sessionId` yet, two concurrent {@link runTask}
+   * calls would each enter the spawn branch, each fire `engine.spawn`,
+   * each allocate a fresh JSONL session — and only the *last* updateTab
+   * survives on the tab, leaving the other sessions orphaned on disk
+   * and breaking conversation continuity (the model sees the chat
+   * fragmented across N single-prompt sessions instead of one chained
+   * conversation). The race fires for real when a fast typist hits
+   * Enter twice before the first spawn's `user.inject` event has
+   * round-tripped through the daemon's event bus and flipped the
+   * chat's `isStreaming` signal — the queue path can't intercept
+   * because, as far as the chat reducer can see, no turn is in flight.
+   *
+   * The latch closes that window at the orchestrator boundary: the
+   * first runTask claims the slot, awaits its spawn + updateTab, then
+   * resolves the promise. Concurrent runTask callers see the latch,
+   * await it, then re-read the tab — which now has the established
+   * sessionId — and proceed as a normal resume.
+   */
+  private readonly firstSpawnLatches = new Map<string, Promise<void>>()
+  /**
    * Event-bus subscribers keyed by `${taskId}:${tabId}`. Subscribers
    * stay attached when the user switches tabs in the UI — the switch is
    * a render-side change only; engine streams keep flowing in the
@@ -846,8 +868,23 @@ export class Orchestrator {
     // Resolve the target tab. Default to the active one so existing
     // single-tab callers keep working. We don't auto-create — the
     // caller is expected to know the tab id (the active one is fine).
-    const targetTab = this.resolveTab(task, tabId)
+    let targetTab = this.resolveTab(task, tabId)
     const key = tabKey(task.id, targetTab.id)
+
+    // First-spawn coalescing: if this tab has no sessionId yet AND a
+    // sibling runTask is already partway through spawning the initial
+    // session, wait for it instead of opening a duplicate `claude -p`.
+    // See {@link firstSpawnLatches} for the why-this-matters
+    // commentary. After the latch resolves we re-read the task so
+    // `targetTab.sessionId` reflects the just-established sid.
+    if (!targetTab.sessionId) {
+      const inflight = this.firstSpawnLatches.get(key)
+      if (inflight) {
+        await inflight.catch(() => {})
+        task = this.requireTask(id)
+        targetTab = this.resolveTab(task, tabId)
+      }
+    }
 
     // Cap check covers both fresh runs and resumes — every running
     // tab counts as one slot. (We deliberately count tabs not tasks:
@@ -911,25 +948,40 @@ export class Orchestrator {
         model: modelToUse,
       })
     } else {
-      handle = await this.engine.spawn(task.worktreePath, promptToSend, {
-        permissionMode: task.permissionMode,
-        model: modelToUse,
+      // Claim the first-spawn latch so any sibling runTask racing us
+      // sees the in-flight promise and waits — see
+      // {@link firstSpawnLatches}. The latch is held across spawn +
+      // updateTab so a waiter that wakes up immediately after the
+      // promise resolves reads the persisted sessionId.
+      let releaseLatch: () => void = () => {}
+      const latch = new Promise<void>((resolve) => {
+        releaseLatch = resolve
       })
-      // Persist the freshly-allocated session id back onto the tab so
-      // a future kobe restart can resume.
-      await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
-      // First user submit on a placeholder-titled task → derive the
-      // sidebar label from the prompt.
-      if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
-        const derived = deriveTitleFromPrompt(prompt)
-        if (derived) await this.store.update(task.id, { title: derived })
-      }
-      // Background: ask claude for a tighter sidebar title to replace
-      // the truncate-derived one. Fire-and-forget; the rename method
-      // bails out if the user manually rewrote the title in the
-      // meantime, so this never stomps an explicit choice.
-      if (prompt && prompt.trim().length > 0) {
-        void this.maybeUpgradeTitle(task.id, prompt)
+      this.firstSpawnLatches.set(key, latch)
+      try {
+        handle = await this.engine.spawn(task.worktreePath, promptToSend, {
+          permissionMode: task.permissionMode,
+          model: modelToUse,
+        })
+        // Persist the freshly-allocated session id back onto the tab so
+        // a future kobe restart can resume.
+        await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
+        // First user submit on a placeholder-titled task → derive the
+        // sidebar label from the prompt.
+        if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
+          const derived = deriveTitleFromPrompt(prompt)
+          if (derived) await this.store.update(task.id, { title: derived })
+        }
+        // Background: ask claude for a tighter sidebar title to replace
+        // the truncate-derived one. Fire-and-forget; the rename method
+        // bails out if the user manually rewrote the title in the
+        // meantime, so this never stomps an explicit choice.
+        if (prompt && prompt.trim().length > 0) {
+          void this.maybeUpgradeTitle(task.id, prompt)
+        }
+      } finally {
+        releaseLatch()
+        this.firstSpawnLatches.delete(key)
       }
     }
     this.handles.set(key, handle)
@@ -1114,6 +1166,26 @@ export class Orchestrator {
     // emits user.inject which re-arms isStreaming — the false→true
     // flicker is the correct render: prior turn ended, new turn begins.
     this.dispatchEvent(task.id, targetTab.id, { type: "done" })
+  }
+
+  /**
+   * Steer the in-flight turn: interrupt the current subprocess and
+   * dispatch a new prompt against the same session, atomically.
+   *
+   * The recovery of the lost in-flight prompt — the one claude -p
+   * had been processing when we killed it — happens inside the
+   * engine's `stop()` (it appends a synthetic user record to the
+   * session JSONL so the next `--resume` reads a complete history).
+   * From the orchestrator's perspective `steerTask` is just an
+   * interrupt followed by a runTask; bundling them into one method
+   * is a TUI ergonomics thing (one RPC, one dispatch-lock window
+   * on the chat side).
+   */
+  async steerTask(id: TaskId | string, prompt: string, tabId?: string): Promise<void> {
+    const task = this.requireTask(id)
+    const targetTab = this.resolveTab(task, tabId)
+    await this.interruptTask(task.id, targetTab.id)
+    await this.runTask(task.id, prompt, targetTab.id)
   }
 
   /**

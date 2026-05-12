@@ -205,6 +205,11 @@ export class RemoteOrchestrator {
     await this.client.request("chat.interrupt", { taskId, tabId })
   }
 
+  async steerTask(taskId: string, text: string, tabId?: string): Promise<void> {
+    await this.client.request("chat.steer", { taskId, text, tabId })
+    this.markRunState(taskId, tabId ?? this.getTask(taskId)?.activeTabId, "running")
+  }
+
   async setArchived(taskId: string, archived?: boolean): Promise<void> {
     await this.client.request("task.archive", { taskId, archived })
   }
