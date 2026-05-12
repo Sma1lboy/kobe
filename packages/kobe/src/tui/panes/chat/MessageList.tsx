@@ -132,8 +132,6 @@ export interface MessageListProps {
    * the "answered" version.
    */
   hideRowIndex?: number | null
-  /** Optional banner-state error message. Renders below the list. */
-  error: string | null
   /**
    * Click handler for the Approve/Reject buttons rendered on `approval`
    * rows. The chat shell wraps `Orchestrator.respondToInput` here so
@@ -1317,15 +1315,6 @@ export function MessageList(props: MessageListProps) {
           )
         }}
       </For>
-
-      <Show when={props.error}>
-        <box paddingTop={1} flexDirection="row" gap={1}>
-          <text fg={theme.error} attributes={TextAttributes.BOLD}>
-            {REFERENCE_MARK}
-          </text>
-          <text fg={theme.error}>error: {props.error}</text>
-        </box>
-      </Show>
     </box>
   )
 }

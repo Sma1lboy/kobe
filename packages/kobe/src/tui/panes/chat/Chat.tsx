@@ -38,7 +38,7 @@
  */
 
 import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
-import type { ScrollBoxRenderable } from "@opentui/core"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
@@ -834,7 +834,6 @@ export function Chat(props: ChatProps) {
               expandedFoldStartIndex={expandedFoldStartIndex()}
               onToggleFold={toggleFold}
               showEmptyPlaceholder={!showThinking()}
-              error={activeState().error}
               onApprove={(requestId, approve) => {
                 const taskId = props.taskId()
                 if (!taskId) return
@@ -871,6 +870,33 @@ export function Chat(props: ChatProps) {
           deterministic by source order at this layer. */}
       <Show when={showThinking() && props.taskId()}>
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
+      </Show>
+
+      {/* Current-turn error banner. Keep it outside the transcript
+          scrollbox and above the composer so it reads as status, not
+          as text inside the input control. The full error is also kept
+          as a system row in history. */}
+      <Show when={activeState().error}>
+        {(err) => (
+          <box
+            flexDirection="row"
+            gap={1}
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={theme.backgroundElement}
+            flexShrink={0}
+          >
+            <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+              !
+            </text>
+            <text fg={theme.warning} wrapMode="none">
+              error
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              {err()}
+            </text>
+          </box>
+        )}
       </Show>
 
       {/* Composer — hidden entirely while a question picker is up so
