@@ -312,9 +312,12 @@ export function Terminal(props: TerminalProps): JSXElement {
   // frame, and the resulting SIGWINCH storm made p10k / pure / oh-my-zsh
   // re-emit their prompt several times on mount.
   const [geomTick, setGeomTick] = createSignal(0)
+  // 1 s is plenty for catching splitter drags; the previous 250 ms
+  // tick fired the cursor-positioning effect 4×/sec doing nothing
+  // most of the time, which added measurable CPU floor.
   const geomTimer = setInterval(() => {
     setGeomTick((n) => (n + 1) & 0xff)
-  }, 250)
+  }, 1000)
   onCleanup(() => clearInterval(geomTimer))
 
   // Track last pushed geometry so we don't fire `pty.resize` on every

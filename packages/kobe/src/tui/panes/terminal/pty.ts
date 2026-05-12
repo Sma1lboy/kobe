@@ -152,29 +152,30 @@ const DEFAULT_ROWS = 24
 /**
  * Heartbeat poll interval. Used purely as a fallback when the
  * control-mode subscription isn't delivering events (old tmux, killed
- * client). The actual update cadence under normal operation comes from
- * `%output` events through `TmuxControlClient`, debounced by
- * `CAPTURE_DEBOUNCE_MS`. Bigger interval than the original "fast
- * poll" because we no longer rely on it for primary timing.
+ * client). Under normal operation, `%output` events drive captures via
+ * `TmuxControlClient` — this heartbeat is just safety. 1.5 s is enough
+ * to notice a dead control client without burning CPU on idle
+ * subprocess spawns.
  */
-const DEFAULT_POLL_MS = 500
+const DEFAULT_POLL_MS = 1500
 /**
- * Settle window after the last `%output` event. fancy prompts (p10k,
- * starship, pure) repaint in multiple passes — capturing during one
- * of those passes returns a (snapshot, cursor) pair where cursor.y
- * lands on the row tmux was repainting, not where the prompt
- * ultimately ends up. Waiting for `CAPTURE_DEBOUNCE_MS` of quiet
- * after the last event guarantees we capture only stable end-states.
+ * Settle window after the last `%output` event. Kept short so typing
+ * feels live: every keystroke turns into a `%output` from the shell's
+ * echo, and waiting too long here is exactly the "I type 'a' and
+ * nothing happens for 50 ms" symptom. fancy prompts (p10k, starship)
+ * still repaint in multiple passes, but their per-pass writes land
+ * within 5-10 ms, so a 16 ms window batches them while staying
+ * imperceptible to typing.
  */
-const CAPTURE_DEBOUNCE_MS = 50
+const CAPTURE_DEBOUNCE_MS = 16
 /**
  * Maximum delay we'll postpone a capture even if events keep coming.
- * Long-running streaming commands (`tail -f`, `yes`, ANSI-art tools)
- * keep `%output` events landing; without a cap the debounce would
- * defer indefinitely. With this cap, the pane updates at least
- * `1000 / CAPTURE_MAX_DELAY_MS` times a second during a flood.
+ * Caps the worst-case latency during streaming output (`tail -f`,
+ * `yes`, ANSI-art tools) to one capture per `CAPTURE_MAX_DELAY_MS`
+ * window. 120 ms = ~8 captures/sec under flood — plenty for the eye
+ * and keeps the CPU cost bounded.
  */
-const CAPTURE_MAX_DELAY_MS = 200
+const CAPTURE_MAX_DELAY_MS = 120
 const SESSION_NAME_PREFIX = "kobe-task-"
 
 function defaultShell(): string {
@@ -271,17 +272,65 @@ class TmuxControlClient {
 
   constructor(tmuxBin: string, sessionName: string) {
     this.proc = spawn(tmuxBin, ["-CC", "attach-session", "-t", sessionName], {
-      // stdin needs to be a pipe so tmux waits for commands; stdout
-      // streams notifications. We don't write anything to stdin, but
-      // closing it makes tmux's -CC client exit immediately.
+      // stdin is BOTH how tmux knows we're attached AND our keystroke
+      // write channel: `sendKeys` writes `send-keys -t <pane> -H <hex>`
+      // lines through it so the typed-char path doesn't fork a tmux
+      // client per keystroke.
       stdio: ["pipe", "pipe", "ignore"],
     })
     this.proc.stdout?.setEncoding("utf8")
     this.proc.stdout?.on("data", (chunk: string) => this.onChunk(chunk))
+    // Without this listener, an EPIPE on stdin (tmux client died)
+    // bubbles up as an unhandled `error` and crashes the host process.
+    this.proc.stdin?.on("error", () => this.markDead())
     this.proc.on("error", () => this.markDead())
     this.proc.on("exit", () => this.markDead())
     // Don't keep the host alive solely on this subprocess.
     this.proc.unref?.()
+  }
+
+  get killed(): boolean {
+    return this._killed
+  }
+
+  /**
+   * Forward raw bytes to a tmux pane through the already-attached
+   * control client's stdin — the fast path for typed characters.
+   *
+   * The previous implementation forked `tmux send-keys ...` per write,
+   * burning ~5-10 ms per keystroke on fork + exec + IPC + wait. Going
+   * through the existing stdin pipe drops the cost to a single
+   * `Writable.write` (microseconds); tmux processes the command
+   * in-server and dispatches it synchronously. Visible difference is
+   * "smooth typing / arrow keys" vs "perceptibly laggy."
+   *
+   * Returns `false` if the client is dead so the caller can fall back
+   * to the spawn path rather than silently dropping the keystroke.
+   *
+   * We do NOT read the command's `%begin`/`%end` response: `send-keys`
+   * produces no payload, and `onChunk` already ignores those lines.
+   */
+  sendKeys(paneTarget: string, bytes: Buffer): boolean {
+    if (this._killed) return false
+    const stdin = this.proc.stdin
+    if (!stdin || stdin.destroyed) return false
+    // 256 hex bytes per line keeps each tmux command under 1 KB and
+    // well under any practical argv limit. Multi-byte UTF-8 is fine
+    // — we emit raw bytes, not characters.
+    const CHUNK = 256
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length))
+      const hex: string[] = []
+      for (const b of slice) hex.push(b.toString(16).padStart(2, "0"))
+      const cmd = `send-keys -t ${paneTarget} -H ${hex.join(" ")}\n`
+      try {
+        stdin.write(cmd)
+      } catch {
+        this.markDead()
+        return false
+      }
+    }
+    return true
   }
 
   onOutput(cb: () => void): () => void {
@@ -355,6 +404,17 @@ export class TmuxTaskPty implements TaskPtyLike {
   private _killed = false
   private cols: number
   private rows: number
+  /**
+   * Timestamp of the most recent `write()` call. The `%output` debounce
+   * uses this to tell apart two cases:
+   *   - "user just typed" → next `%output` is the echo of that keystroke,
+   *     capture immediately so the character shows up with no delay
+   *   - "command is producing output" → fancy prompts (p10k, starship)
+   *     repaint in multiple passes, so debounce for stability
+   * Without this distinction, every keystroke would wait the full
+   * debounce window, surfacing as typing lag.
+   */
+  private justWroteAt = 0
   /**
    * Serialized write queue. Each write spawns a tmux process; if we
    * fired them concurrently they could land out of order in the pty
@@ -491,10 +551,15 @@ export class TmuxTaskPty implements TaskPtyLike {
       const now = Date.now()
       if (firstEventAt === 0) firstEventAt = now
       const elapsed = now - firstEventAt
-      // Cap the wait so a long-running streaming command (`tail -f`,
-      // `yes`) still gets visual updates instead of waiting forever
-      // for the burst to settle.
-      const wait = Math.min(debounceMs, Math.max(0, maxDelayMs - elapsed))
+      // Typing echo bypass: if the user just pressed a key, the
+      // `%output` we're handling is almost certainly the shell
+      // echoing that character. Render immediately so typing feels
+      // live. The 50 ms window is well above any plausible round-trip
+      // (write → tmux → shell → tmux → %output) but well below the
+      // delay needed for fancy-prompt repaint batches to settle, so
+      // we keep both behaviours.
+      const isEcho = now - this.justWroteAt < 50
+      const wait = isEcho ? 0 : Math.min(debounceMs, Math.max(0, maxDelayMs - elapsed))
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(captureNow, wait)
     }
@@ -547,17 +612,28 @@ export class TmuxTaskPty implements TaskPtyLike {
     if (this._killed) return
     if (data.length === 0) return
 
+    // Note "user typed something" so the next `%output` (the echo)
+    // bypasses the debounce window — see scheduleCapture in the
+    // constructor.
+    this.justWroteAt = Date.now()
+
     // Snapshot the data NOW so the closure below doesn't see a
     // mutated value across queue ticks.
     const bytes = Buffer.from(data, "utf8")
 
-    // Append to the serialized queue. Each chunk waits for the prior
-    // tmux spawn to exit before launching its own. The queue captures
-    // ordering across both intra-call chunks AND back-to-back
-    // `write()` invocations.
+    // Fast path: write through the control client's stdin pipe (no
+    // fork). tmux's command pipeline is strictly FIFO so order is
+    // preserved across back-to-back keystrokes without us paying ~10 ms
+    // per keystroke on fork+IPC. This is the difference between
+    // "smooth typing" and "perceptibly laggy."
+    if (this.controlClient && !this.controlClient.killed) {
+      if (this.controlClient.sendKeys(this.sessionName, bytes)) return
+    }
+
+    // Fallback: serialized spawn queue. Kicks in when the control
+    // client is dead (old tmux, manually killed) or never came up.
+    // Same ordering guarantees: each chunk awaits the prior spawn.
     this.writeQueue = this.writeQueue.then(() => this.sendBytesSerialized(bytes))
-    // Swallow rejections so a transient send-keys failure doesn't
-    // poison the queue forever.
     this.writeQueue = this.writeQueue.catch(() => {})
   }
 
