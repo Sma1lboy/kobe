@@ -1401,13 +1401,13 @@ export class Orchestrator {
   }
 
   /**
-   * Set the active chat tab's model. Persisted to the tab and forwarded
+   * Set a chat tab's model. Persisted to the tab and forwarded
    * to that tab's engine on the next spawn/resume. Other tabs on the
    * same task keep their own engine/model pins.
    */
-  async setModel(id: TaskId | string, model: string | undefined): Promise<void> {
+  async setModel(id: TaskId | string, model: string | undefined, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
-    const tab = this.resolveTab(task)
+    const tab = this.resolveTab(task, tabId)
     // Derive the vendor from the picked model so a codex pick routes
     // the next runTask through the codex engine. When `model` is
     // cleared (undefined), the vendor stays put — clearing means "use

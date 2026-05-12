@@ -1255,7 +1255,7 @@ describe("Orchestrator engine call shape", () => {
     expect(calls[0]?.prompt).toBe("first")
   })
 
-  test("model/vendor selection is scoped to the active chat tab", async () => {
+  test("model/vendor selection can target a chat tab explicitly", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const claude = new HistoryEngine("claude")
@@ -1273,8 +1273,8 @@ describe("Orchestrator engine call shape", () => {
     expect(firstTab?.sessionId).toBe("claude-1")
 
     const secondTab = await orch.createTab(task.id)
+    await orch.setModel(task.id, "gpt-5.4-mini", secondTab.id)
     await orch.setActiveTab(task.id, secondTab.id)
-    await orch.setModel(task.id, "gpt-5.4-mini")
     await orch.runTask(task.id, "second tab")
     await orch._waitForPumpsIdle()
 

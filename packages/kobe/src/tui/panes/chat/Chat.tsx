@@ -335,9 +335,10 @@ export function Chat(props: ChatProps) {
   async function chooseModel(): Promise<void> {
     const id = props.taskId()
     if (!id) return
+    const tabId = activeTabId() ?? undefined
     const result = await ModelPicker.show(dialog, modelId())
     if (result === undefined) return
-    await props.orchestrator.setModel(id, result).catch((err: unknown) => {
+    await props.orchestrator.setModel(id, result, tabId).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setModel failed:", err)
     })

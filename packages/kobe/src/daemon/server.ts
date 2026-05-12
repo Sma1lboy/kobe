@@ -263,7 +263,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "task.model": {
         const taskId = requireString(payload, "taskId")
-        await orch.setModel(taskId, optionalString(payload, "model"))
+        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"))
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
