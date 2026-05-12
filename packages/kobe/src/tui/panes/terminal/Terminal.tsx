@@ -57,7 +57,7 @@ import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
-import { parseAnsiSnapshot } from "./sgr"
+import { ATTR, type Chunk, parseAnsiSnapshot } from "./sgr"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 
 /* --------------------------------------------------------------------- */
@@ -115,6 +115,51 @@ function isShellMissing(message: string): boolean {
   return m.includes("enoent") || m.includes("not found")
 }
 
+function cloneChunk(c: Chunk, text: string, attrs = c.attributes ?? 0): Chunk {
+  return {
+    text,
+    ...(c.fg ? { fg: c.fg } : {}),
+    ...(c.bg ? { bg: c.bg } : {}),
+    ...(attrs !== 0 ? { attributes: attrs } : {}),
+  }
+}
+
+function overlayCursorRow(row: readonly Chunk[], x: number): Chunk[] {
+  const out: Chunk[] = []
+  let col = 0
+  let inserted = false
+
+  for (const chunk of row) {
+    const chars = Array.from(chunk.text)
+    const start = col
+    const end = start + chars.length
+    if (!inserted && x >= start && x < end) {
+      const idx = x - start
+      const before = chars.slice(0, idx).join("")
+      const cursorChar = chars[idx] ?? " "
+      const after = chars.slice(idx + 1).join("")
+      if (before) out.push(cloneChunk(chunk, before))
+      out.push(cloneChunk(chunk, cursorChar || " ", (chunk.attributes ?? 0) | ATTR.INVERSE))
+      if (after) out.push(cloneChunk(chunk, after))
+      inserted = true
+    } else {
+      out.push(chunk)
+    }
+    col = end
+  }
+
+  if (!inserted) {
+    if (x > col) out.push({ text: " ".repeat(x - col) })
+    out.push({ text: " ", attributes: ATTR.INVERSE })
+  }
+  return out
+}
+
+function overlayCursor(rows: readonly (readonly Chunk[])[], cursor: CursorPos | null): readonly (readonly Chunk[])[] {
+  if (!cursor) return rows
+  return rows.map((row, y) => (y === cursor.y ? overlayCursorRow(row, cursor.x) : row))
+}
+
 /* --------------------------------------------------------------------- */
 /*  Component                                                             */
 /* --------------------------------------------------------------------- */
@@ -149,6 +194,11 @@ export function Terminal(props: TerminalProps): JSXElement {
   const [bodyRows, setBodyRows] = createSignal(4)
   const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
   const bodyGeometryReady = createMemo(() => bodyGeometry() !== null)
+  const [cursorBlinkOn, setCursorBlinkOn] = createSignal(true)
+  const cursorBlinkTimer = setInterval(() => {
+    setCursorBlinkOn((on) => !on)
+  }, 530)
+  onCleanup(() => clearInterval(cursorBlinkTimer))
 
   /* --------- pty lifecycle ---------- */
 
@@ -252,16 +302,6 @@ export function Terminal(props: TerminalProps): JSXElement {
     return all.slice(range.start, range.end)
   })
 
-  // Flatten every visible row into ONE `StyledText` separated by
-  // `\n`s. We render this as a single `<text>` element inside the
-  // body so opentui's layout treats the body as a 1:1 cell grid —
-  // crucial for the cursor positioning math (`body.screenY + c.y`).
-  // An earlier attempt rendered one `<text>` per row inside a flex
-  // column; opentui's per-row layout didn't keep `screenY` aligned
-  // with pane row indexing, and the cursor landed one row above
-  // the visible prompt.
-  const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(visibleRows())))
-
   // Cursor is only meaningful when we're following the bottom of the
   // buffer; once the user scrolls back, the cursor's reported (x,y)
   // refers to the *live* viewport, not what's currently rendered.
@@ -273,25 +313,29 @@ export function Terminal(props: TerminalProps): JSXElement {
     return { x: c.x, y: c.y - range.start }
   })
 
-  const showCursor = createMemo(() => focused() && visibleCursor() !== null)
+  const cursorRows = createMemo(() => {
+    const c = focused() && cursorBlinkOn() ? visibleCursor() : null
+    return overlayCursor(visibleRows(), c)
+  })
 
-  /* --------- native cursor positioning ----------
+  // Flatten every visible row into ONE `StyledText` separated by
+  // `\n`s. We render this as a single `<text>` element inside the
+  // body so opentui's layout treats the body as a 1:1 cell grid —
+  // crucial for the cursor positioning math (`body.screenY + c.y`).
+  // An earlier attempt rendered one `<text>` per row inside a flex
+  // column; opentui's per-row layout didn't keep `screenY` aligned
+  // with pane row indexing, and the cursor landed one row above
+  // the visible prompt.
+  const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(cursorRows())))
+
+  /* --------- cursor handling ----------
    *
-   * opentui ships a real terminal cursor (the one the host emulator
-   * draws — block, blinking if the host supports it). Earlier we
-   * tried inline INVERSE-styled cells but they're hard to see against
-   * dim backgrounds AND don't match the rest of the app's typing
-   * affordances. So instead we drive opentui's own cursor: when the
-   * pane is focused and we know the pty cursor's (x,y), we ask the
-   * renderer to place the cursor at the body's absolute screen
-   * position + (cursor.x, cursor.y). Padding-1 is added to x because
-   * the body has paddingLeft=1 — the snapshot's column 0 lives at
-   * screen column body.screenX + 1.
-   *
-   * When the pane is unfocused or no cursor info is available, we
-   * hide it so the host terminal doesn't leave a stray block in the
-   * pane. The orchestrator-level cursor (e.g. the chat composer) will
-   * reposition it as soon as focus moves elsewhere.
+   * The terminal cursor is rendered inline into the StyledText snapshot
+   * above instead of using opentui's native host cursor. Keeping text
+   * and cursor in one render path avoids the coordinate split that made
+   * typed spaces and cursorX look wrong in the nested terminal pane.
+   * When terminal has focus we explicitly hide the host cursor so it
+   * cannot leave a stale block/bar on top of xterm-rendered text.
    *
    * We ALSO push the body's measured (cols, rows) into the backend via
    * `pty.resize`. The Bun PTY backend translates those into terminal
@@ -358,47 +402,11 @@ export function Terminal(props: TerminalProps): JSXElement {
     }
   })
 
-  // Drive the native cursor. Re-runs on cursor(), focused(),
-  // scrollOffset(), bodyRef, and host-window resize. Cursor() updates
-  // every ~80 ms from the PTY poll loop, which is more than enough to
-  // keep the visible block in sync with the shell.
+  // Hide the native host cursor while this pane owns focus; the visible
+  // cursor is the inline inverse cell in `cursorRows`.
   createEffect(() => {
-    const ref = bodyRef()
-    dims()
-    geomTick()
-    if (!ref) return
-    const c = visibleCursor()
-    if (!showCursor() || !c) {
-      // Hide the cursor by parking it off-screen with visible=false.
-      renderer.setCursorPosition(0, 0, false)
-      return
-    }
-    // Make sure the host terminal actually draws something — some
-    // emulators default to a hidden cursor inside alt-screen until a
-    // style is explicitly set. A blinking bar is less visually noisy
-    // than a permanent block inside the nested terminal pane.
-    try {
-      renderer.setCursorStyle({ style: "line", blinking: true })
-    } catch {
-      /* older opentui versions may not expose setCursorStyle; ignore */
-    }
-    // Translate pane coords -> screen coords for the renderer.
-    //
-    // - `screenX + 1`: body has `paddingLeft=1`, so the first visible
-    //   column of the snapshot is at `body.screenX + 1`. Same for cy
-    //   below — we need to offset the cursor by the same padding the
-    //   text rendering uses.
-    // - `screenY + 1`: parent box (`<box borderColor=...>`) draws a
-    //   border that takes one screen row at the top. opentui's
-    //   `ref.screenY` for the body reports the parent's outer edge
-    //   (i.e. the border row), not the content row inside; meanwhile
-    //   the text content is rendered starting one row below the
-    //   border. Without the +1, the cursor lands on the border row,
-    //   one row above the visible prompt. Verified empirically via a
-    //   debug dump in /tmp/kobe-terminal-debug.log: with body
-    //   screenY=35, cursor at y=29 was reported by the backend but the
-    //   rendered prompt was at screen row 65 (i.e. 35+1+29), not 64.
-    renderer.setCursorPosition(ref.screenX + 1 + c.x, ref.screenY + 1 + c.y, true)
+    if (!focused()) return
+    renderer.setCursorPosition(0, 0, false)
   })
 
   // On unmount, hide the cursor so it doesn't leak into whichever pane
