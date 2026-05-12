@@ -41,6 +41,9 @@ export type DaemonRequestName =
   | "pr.request"
   | "chat.history"
   | "chat.send"
+  | "rcBridge.start"
+  | "rcBridge.stop"
+  | "rcBridge.status"
 
 export type DaemonEventName =
   | "task.created"
@@ -52,6 +55,7 @@ export type DaemonEventName =
   | "chat.complete"
   | "engine.status"
   | "plan.usage"
+  | "rcBridge.changed"
   | "daemon.stopping"
 
 export interface DaemonError {

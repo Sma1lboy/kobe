@@ -62,6 +62,7 @@
  */
 
 import { type Accessor, createSignal } from "solid-js"
+import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { resolveDefaultModelId } from "../engine/claude-settings.ts"
 import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
@@ -457,6 +458,19 @@ export class Orchestrator {
    */
   planUsageSignal(): Accessor<null> {
     return () => null
+  }
+
+  /**
+   * Stub parity with {@link RemoteOrchestrator.rcBridgeSignal} — the
+   * in-process Orchestrator never spawns the `claude remote-control`
+   * bridge (that's a daemon-owned side process; see
+   * `daemon/rc-bridge.ts`). Returns a permanently-"off" accessor so
+   * the TopBar chip / share dialog wiring can read this unconditionally
+   * without `instanceof` narrowing. The TUI gates the dialog opener
+   * itself on `orchestrator instanceof RemoteOrchestrator`.
+   */
+  rcBridgeSignal(): Accessor<RcBridgeStatus> {
+    return () => ({ state: "off" })
   }
 
   subscribeTasks(listener: TaskListListener): Unsubscribe {

@@ -3,6 +3,7 @@ import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
@@ -32,6 +33,8 @@ export class RemoteOrchestrator {
   private readonly setPlanUsage: (next: PlanUsage | null) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
+  private readonly rcBridgeAcc: Accessor<RcBridgeStatus>
+  private readonly setRcBridge: (next: RcBridgeStatus) => void
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
@@ -54,6 +57,7 @@ export class RemoteOrchestrator {
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
     const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
+    const [rcBridge, setRcBridge] = createSignal<RcBridgeStatus>({ state: "off" })
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
     this.runStateAcc = runState
@@ -62,6 +66,8 @@ export class RemoteOrchestrator {
     this.setPlanUsage = (next) => setPlanUsage(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
+    this.rcBridgeAcc = rcBridge
+    this.setRcBridge = (next) => setRcBridge(() => next)
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
     // KOB-38: socket dropping flips us to `disconnected` and stops
     // there. The host TUI watches this signal, shows a modal, and the
@@ -81,6 +87,7 @@ export class RemoteOrchestrator {
       pending?: Record<string, PendingInput[]>
       runState?: Record<string, ChatRunState>
       planUsage?: PlanUsage | null
+      rcBridge?: RcBridgeStatus
     }>("hello", { clientId: `tui-${process.pid}`, version: "1" })
 
     let tasks: Task[]
@@ -100,6 +107,7 @@ export class RemoteOrchestrator {
       if (seed.size > 0) this.setRunState(seed)
     }
     if (hello.planUsage) this.setPlanUsage(hello.planUsage)
+    if (hello.rcBridge) this.setRcBridge(hello.rcBridge)
     await this.client.request("subscribe", { taskIds: "all" })
 
     if (hello.pending) {
@@ -178,6 +186,25 @@ export class RemoteOrchestrator {
    */
   planUsageSignal(): Accessor<PlanUsage | null> {
     return this.planUsageAcc
+  }
+
+  /**
+   * Latest remote-control bridge status broadcast by the daemon. Hydrated
+   * from `hello` snapshot, then updated by `rcBridge.changed` events.
+   * Defaults to `{ state: "off" }` until the daemon answers `hello`.
+   */
+  rcBridgeSignal(): Accessor<RcBridgeStatus> {
+    return this.rcBridgeAcc
+  }
+
+  async startRcBridge(opts: { cwd?: string } = {}): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", { cwd: opts.cwd })
+    return res.status
+  }
+
+  async stopRcBridge(): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.stop", {})
+    return res.status
   }
 
   listTasks(): Task[] {
@@ -367,6 +394,11 @@ export class RemoteOrchestrator {
     if (name === "plan.usage") {
       const usage = obj.usage as PlanUsage | null | undefined
       this.setPlanUsage(usage ?? null)
+      return
+    }
+    if (name === "rcBridge.changed") {
+      const status = obj.status as RcBridgeStatus | undefined
+      if (status) this.setRcBridge(status)
       return
     }
     const taskId = obj.taskId as string | undefined

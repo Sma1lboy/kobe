@@ -22,6 +22,7 @@ import type { UpdateInfo } from "../../version.ts"
 import { useTheme } from "../context/theme"
 import { useDialog } from "../ui/dialog"
 import { CreatePRButton } from "./create-pr-button"
+import { RcBridgeDialog } from "./rc-bridge-dialog"
 import { UpdateDialog } from "./update-dialog"
 
 export function TopBar(props: {
@@ -39,6 +40,13 @@ export function TopBar(props: {
     const orch = props.orchestrator
     return orch instanceof RemoteOrchestrator ? orch.connectionStateSignal()() : "online"
   })
+  // KOB-62 bridge chip — daemon-only (in-process Orchestrator returns
+  // a permanently-"off" stub, so the chip would never render anyway —
+  // but capturing the typed RemoteOrchestrator here avoids a cast
+  // when handing it to RcBridgeDialog).
+  const remoteOrch = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
+  const rcBridge = props.orchestrator.rcBridgeSignal()
+  const isBridgeOn = () => rcBridge().state === "running" || rcBridge().state === "starting"
   return (
     <box flexDirection="row" paddingLeft={2} paddingRight={2} flexShrink={0}>
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={1} justifyContent="flex-start">
@@ -62,6 +70,22 @@ export function TopBar(props: {
             }}
           >
             ↑ v{props.updateInfo()?.latest} available
+          </text>
+        </Show>
+        {/* Remote-control bridge chip (KOB-62) — visible only while
+            the bridge is starting or running, so the user always sees
+            that this machine is exposed to claude.ai. Click opens the
+            same share dialog as the command palette entry. */}
+        <Show when={remoteOrch && isBridgeOn()}>
+          <text
+            fg={theme.accent}
+            attributes={TextAttributes.BOLD}
+            onMouseUp={() => {
+              const orch = remoteOrch
+              if (orch) RcBridgeDialog.show(dialog, orch, rcBridge)
+            }}
+          >
+            ◉ {rcBridge().state === "running" ? rcBridge().envId ?? "RC" : "RC connecting…"}
           </text>
         </Show>
       </box>
