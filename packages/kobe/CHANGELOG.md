@@ -14,6 +14,21 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-05-11
+
+### Fixed
+
+- **Interrupted prompts now reach the model on the next turn** — `claude -p` only persists the user turn to its session JSONL on natural completion, so a mid-stream SIGTERM (steer / ESC) used to drop the prompt on the floor and the next `--resume` read an incomplete history. The engine now appends a synthetic user record on `stop()` (with merge-into-prior-user when a chain of steers stacks, plus an idempotent skip when claude flushed just before our kill). Because the rescue is on disk, a kobe restart preserves the prompt too.
+- **Rapid-fire prompts no longer fragment a chat across N orphan sessions** — a fast typist firing Enter twice before the first turn's `user.inject` had round-tripped through the daemon's event bus used to enter the spawn branch N times, each opening a fresh JSONL, all but the last orphan on disk and the model cold-starting its prompt cache every turn. A first-spawn coalescing latch on the orchestrator now serialises the initial spawn per tab; later runTasks await it and resume the just-established session. Regression test asserts 3 concurrent `runTask` calls = 1 spawn + 2 resumes.
+- **Steer (ctrl+enter and `[▶]`) is now atomic** — replaces the chat-side `interruptTask + runTask` compound with a single `chat.steer` RPC. The dispatch lock on the TUI wraps one await instead of two, closing the race where the queue-drain effect dispatched a duplicate `runTask` between the interrupt and the new prompt landing.
+
+### Added
+
+- **Queued prompts render inside the composer rail with a `[▶]` retrigger button** — the queue list used to sit between the spinner and the composer as a separate block; it now lives above the textarea inside the same bordered block as the input it'll flush. Each row has `[▶]` next to `[x]`; clicking `[▶]` interrupts the in-flight turn and immediately dispatches that queued prompt instead of waiting for the head to drain (engine-side JSONL rescue applies, so the abandoned head's prompt still reaches the model).
+- **New-task dialog gains an explicit Create button** — Tab now cycles `repo → baseRef → confirm → repo`; Enter on the repo or baseRef inputs is pure selection (advances focus, never submits), and commit lives exclusively on the bottom-right `[ Create ]` chip (Enter when focused, or mouse click). Closes the "Enter to dismiss picker = accidentally create task" footgun.
+- **New-task baseRef defaults to the repo's actual current branch** — reads `git rev-parse --abbrev-ref HEAD` (2-second timeout, fault-tolerant) so a worktree forked from a feature branch defaults to that feature branch instead of silently jumping to `main`. The field auto-syncs when you change the repo path; a manual edit pins the override.
+- **New-task dialog defaults to the currently-selected task's repo** — `openNewTaskFlow` now prefers the selected task's `repo` over the persisted `lastNewTaskRepo` (falling back to `cwd` as a last resort). Same-repo follow-ups are the common case, so the dialog opens pre-pointed at the path you're already looking at.
+
 ## [0.5.8] - 2026-05-11
 
 ### Fixed
