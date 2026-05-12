@@ -86,6 +86,27 @@ export function nextChatTabSeq(tabs: readonly ChatTab[]): number {
 }
 
 /**
+ * Worktree directory slug for `task` — the basename of
+ * `task.worktreePath`. Animal name for tasks created after KOB-65, the
+ * task's ULID for older worktrees. Returns `""` for `kind: "main"`
+ * tasks (which point at the repo root, not a sub-worktree) and for
+ * tasks that haven't allocated a worktree yet (`backlog` state).
+ *
+ * Derived rather than stored: keeping it as a separate field on Task
+ * just duplicates state that's already in `worktreePath`. Read through
+ * this helper at every consumer (slug allocator, sidebar, diagnose).
+ */
+export function worktreeSlug(task: Pick<Task, "kind" | "worktreePath">): string {
+  if (task.kind === "main") return ""
+  if (!task.worktreePath) return ""
+  // Last path segment, robust to both POSIX and Windows separators.
+  // `path.basename` would do the same; inlined here to avoid a node
+  // import in this types-only module.
+  const match = task.worktreePath.match(/([^/\\]+)[/\\]*$/)
+  return match ? (match[1] ?? "") : ""
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of the {@link TaskIndex}.
  *
  * Field invariants:
@@ -107,19 +128,6 @@ export interface Task {
   readonly repo: string
   readonly branch: string
   readonly worktreePath: string
-  /**
-   * Directory slug under `<repo>/.claude/worktrees/`. The basename of
-   * `worktreePath`. Allocated from the animal-name pool at worktree-
-   * create time (KOB-65); recyclable once the task is archived. Older
-   * tasks predating KOB-65 used the ULID id as their dir name and
-   * carry that ULID here at load time, so the on-disk path is always
-   * `path.join(worktreeRootFor(repo), worktreeSlug)`.
-   *
-   * Empty string for tasks that haven't allocated a worktree yet
-   * (lazy-created tasks in `backlog`), and for `kind: "main"` tasks
-   * (which point at the repo root, not a sub-worktree).
-   */
-  readonly worktreeSlug: string
   /**
    * Discriminator: KOB-15 introduces a "main" task per saved repo —
    * a persistent, pinned task bound to the repo's root checkout (no

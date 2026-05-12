@@ -87,6 +87,7 @@ import {
   type TaskId,
   type TaskStatus,
   nextChatTabSeq,
+  worktreeSlug,
 } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
@@ -417,8 +418,9 @@ export class Orchestrator {
     this.slugAllocator = new SlugAllocator((repo) =>
       this.store
         .list()
-        .filter((t) => t.repo === repo && !t.archived && t.worktreeSlug.length > 0)
-        .map((t) => t.worktreeSlug),
+        .filter((t) => t.repo === repo && !t.archived)
+        .map((t) => worktreeSlug(t))
+        .filter((s) => s.length > 0),
     )
     // Seed the signal with the current store snapshot so synchronous
     // readers (the Sidebar's `createMemo`) see the right initial
@@ -736,11 +738,10 @@ export class Orchestrator {
     if (task.worktreePath) return task
     // Coalesce concurrent first-prompt callers onto one allocation.
     // The runner-up awaits the in-flight latch, then re-reads the task
-    // from the store so it sees the now-populated branch/worktreePath/
-    // worktreeSlug. Without this latch, both callers would each pick
-    // a distinct slug and each fire `git worktree add` against the
-    // same temp branch — git rejects the second one with "branch
-    // already in use".
+    // from the store so it sees the now-populated branch/worktreePath.
+    // Without this latch, both callers would each pick a distinct slug
+    // and each fire `git worktree add` against the same temp branch —
+    // git rejects the second one with "branch already in use".
     const inflight = this.ensureWorktreeLatches.get(task.id)
     if (inflight) {
       await inflight.catch(() => {})
@@ -783,7 +784,6 @@ export class Orchestrator {
     const updated = await this.store.update(task.id, {
       branch: info.branch,
       worktreePath: info.path,
-      worktreeSlug: slug,
     })
     this.slugAllocator.commit(slug)
     return updated

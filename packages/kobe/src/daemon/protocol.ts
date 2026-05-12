@@ -71,7 +71,6 @@ export interface SerializedTask {
   readonly repo: string
   readonly branch: string
   readonly worktreePath: string
-  readonly worktreeSlug: string
   readonly kind: "main" | "task"
   readonly sessionId: string | null
   readonly tabs: Task["tabs"]
@@ -99,7 +98,6 @@ export function serializeTask(task: Task): SerializedTask {
     repo: task.repo,
     branch: task.branch,
     worktreePath: task.worktreePath,
-    worktreeSlug: task.worktreeSlug ?? "",
     kind: task.kind ?? "task",
     sessionId: task.sessionId,
     tabs: task.tabs,

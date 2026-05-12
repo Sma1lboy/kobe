@@ -47,6 +47,7 @@ import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
+import { worktreeSlug } from "../../src/types/task.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
 const REPO_INIT = path.resolve(__dirname, "../behavior/fixtures/repo-init.sh")
@@ -137,9 +138,9 @@ describe("Orchestrator.createTask", () => {
     await orch._waitForPumpsIdle()
     const updated = store.get(task.id)!
     // KOB-65: dir name is now an allocated animal slug, not the ULID.
-    // Verify the path joins repo + worktreeSlug and the slug landed.
-    expect(updated.worktreeSlug).not.toBe("")
-    expect(updated.worktreePath).toBe(worktreePathFor(repo, updated.worktreeSlug))
+    const slug = worktreeSlug(updated)
+    expect(slug).not.toBe("")
+    expect(updated.worktreePath).toBe(worktreePathFor(repo, slug))
     expect(fs.existsSync(updated.worktreePath)).toBe(true)
     expect(fs.existsSync(path.join(updated.worktreePath, "README.md"))).toBe(true)
     expect(updated.branch.startsWith("kobe/")).toBe(true)
@@ -621,7 +622,7 @@ describe("Orchestrator.deleteTask", () => {
     await orch.runTask(t.id, "go")
     await orch._waitForPumpsIdle()
 
-    const slug = orch.getTask(t.id)!.worktreeSlug
+    const slug = worktreeSlug(orch.getTask(t.id)!)
     expect(slug).not.toBe("")
     const wt = orch.getTask(t.id)!.worktreePath
     expect(fs.existsSync(wt)).toBe(true)
@@ -640,8 +641,9 @@ describe("Orchestrator.deleteTask", () => {
       (r) =>
         store
           .list()
-          .filter((task) => task.repo === r && !task.archived && task.worktreeSlug.length > 0)
-          .map((task) => task.worktreeSlug),
+          .filter((task) => task.repo === r && !task.archived)
+          .map((task) => worktreeSlug(task))
+          .filter((s) => s.length > 0),
       { pool: [slug] },
     )
     const reused = await allocator.allocate(repo)

@@ -30,7 +30,6 @@ function task(over: Partial<Task> = {}): Task {
     repo: "/repo",
     branch: "main",
     worktreePath: "/repo/.claude/worktrees/01J0000000000000000000000T",
-    worktreeSlug: "01J0000000000000000000000T",
     sessionId: null,
     tabs: [{ id: "tab-1", sessionId: null, seq: 1, createdAt: "2026-05-09T00:00:00.000Z" }],
     activeTabId: "tab-1",
