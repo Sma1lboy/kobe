@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **Terminal pane no longer depends on tmux** — embedded task shells now run directly through lightweight process pipes, removing tmux session/control-mode state from the terminal path. This keeps ordinary command output working without a host tmux install; full-screen TTY apps remain a future real-PTY follow-up.
+- **Pipe terminal no longer suspends the host TUI** — embedded shells now run non-interactively over stdin/stdout pipes instead of passing `-i`, avoiding shell job-control reads from the controlling terminal that could suspend `bun run dev`.
 
 ## [0.5.13] - 2026-05-12
 

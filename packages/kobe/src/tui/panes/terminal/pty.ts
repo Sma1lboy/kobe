@@ -2,15 +2,15 @@
  * Terminal pane process abstraction.
  *
  * kobe deliberately does NOT use tmux here anymore. The terminal pane
- * starts one shell process per task and connects stdin/stdout/stderr
- * through ordinary pipes. That keeps the implementation small and
- * avoids tmux session/control-mode bugs.
+ * starts one non-interactive shell process per task and connects
+ * stdin/stdout/stderr through ordinary pipes. That keeps the
+ * implementation small and avoids tmux session/control-mode bugs.
  *
  * Tradeoff: this is not a real PTY. Ordinary shell commands work, but
- * full-screen TTY programs (`vim`, `htop`, interactive `claude`) may
- * degrade or refuse because stdout is not a terminal. A future pass can
- * add a real PTY through a Bun-compatible PTY library; tmux is not the
- * fallback.
+ * shell prompts, job control, and full-screen TTY programs (`vim`,
+ * `htop`, interactive `claude`) may degrade or refuse because stdout is
+ * not a terminal. A future pass can add a real PTY through a
+ * Bun-compatible PTY library; tmux is not the fallback.
  */
 
 import { spawn } from "node:child_process"
@@ -59,12 +59,6 @@ function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
 }
 
-function shellArgs(shell: string): string[] {
-  const base = shell.split("/").pop() ?? shell
-  if (base.includes("bash") || base.includes("zsh") || base.includes("fish")) return ["-i"]
-  return []
-}
-
 /* --------------------------------------------------------------------- */
 /*  Pipe backend                                                          */
 /* --------------------------------------------------------------------- */
@@ -86,7 +80,9 @@ export class PipeTaskPty implements TaskPtyLike {
     this.rows = opts.rows ?? DEFAULT_ROWS
 
     const shell = opts.shell ?? defaultShell()
-    this.proc = spawn(shell, shellArgs(shell), {
+    // Do not pass `-i`: interactive shells expect a controlling TTY for
+    // job control and can suspend the host TUI when backed only by pipes.
+    this.proc = spawn(shell, [], {
       cwd: opts.cwd,
       env: {
         ...process.env,

@@ -12,8 +12,8 @@
  * use a freshly-`mkdtemp`'d directory so the captured `basename` in
  * the header is predictable.
  *
- * Backend: direct shell pipes. This intentionally avoids tmux so the
- * behavior test matches the production default.
+ * Backend: direct non-interactive shell pipes. This intentionally avoids
+ * tmux so the behavior test matches the production default.
  *
  * What we assert:
  *   1. The header `terminal — <basename>` is visible.
@@ -76,9 +76,6 @@ test("Stream J — embedded shell echoes 'hello' and survives exit", async () =>
   // The host shell renders 'kobe terminal host' as a banner above
   // the pane. Wait for it as a boot signal.
   await kobe.waitFor((s) => s.includes("kobe terminal host"), 10_000)
-
-  // Wait until the embedded shell has produced its first prompt/output.
-  await kobe.waitFor((s) => s.includes("$") || s.includes("%") || s.includes("#"), 10_000)
 
   // Type a command. The fixture host signals `focused = () => true`,
   // so keystrokes are forwarded to the PTY. We send `echo hello`
