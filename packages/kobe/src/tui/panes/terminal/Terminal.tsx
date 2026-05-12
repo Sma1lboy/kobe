@@ -149,7 +149,6 @@ function overlayCursorRow(row: readonly Chunk[], x: number): Chunk[] {
   }
 
   if (!inserted) {
-    if (x > col) out.push({ text: " ".repeat(x - col) })
     out.push({ text: " ", attributes: ATTR.INVERSE })
   }
   return out
@@ -194,12 +193,6 @@ export function Terminal(props: TerminalProps): JSXElement {
   const [bodyRows, setBodyRows] = createSignal(4)
   const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
   const bodyGeometryReady = createMemo(() => bodyGeometry() !== null)
-  const [cursorBlinkOn, setCursorBlinkOn] = createSignal(true)
-  const cursorBlinkTimer = setInterval(() => {
-    setCursorBlinkOn((on) => !on)
-  }, 530)
-  onCleanup(() => clearInterval(cursorBlinkTimer))
-
   /* --------- pty lifecycle ---------- */
 
   createEffect(
@@ -314,7 +307,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   })
 
   const cursorRows = createMemo(() => {
-    const c = focused() && cursorBlinkOn() ? visibleCursor() : null
+    const c = focused() ? visibleCursor() : null
     return overlayCursor(visibleRows(), c)
   })
 
