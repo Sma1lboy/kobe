@@ -47,7 +47,7 @@ export interface SessionPumpEnvironment {
    * is decided at run time, not when the pump was constructed.
    * The pump never spawns / resumes — those are the orchestrator's job.
    */
-  readonly engineFor: (taskId: string) => AIEngine
+  readonly engineFor: (taskId: string, tabId: string) => AIEngine
   /** Broker the pump writes into when a pause tool fires. */
   readonly broker: PendingInputBroker
   /**
@@ -102,7 +102,7 @@ export class SessionPump {
    */
   async run(taskId: string, tabId: string, handle: SessionHandle): Promise<PumpRunResult> {
     const tabKey = chatRunStateKey(taskId, tabId)
-    const engine = this.env.engineFor(taskId)
+    const engine = this.env.engineFor(taskId, tabId)
     let killedForInput = false
     let terminalEvent: EngineEvent | null = null
     try {

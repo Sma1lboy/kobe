@@ -83,6 +83,8 @@ class HistoryEngine implements AIEngine {
   readonly identity: EngineIdentity
   readonly capabilities: EngineCapabilities
   readonly spawns: Array<{ cwd: string; prompt: string; model?: string }> = []
+  readonly streamCalls: string[] = []
+  private readonly scripts = new Map<string, readonly EngineEvent[]>()
   private next = 1
 
   constructor(private readonly vendor: VendorId) {
@@ -95,13 +97,19 @@ class HistoryEngine implements AIEngine {
     return { sessionId: `${this.vendor}-${this.next++}`, cwd }
   }
 
+  script(sessionId: string, events: readonly EngineEvent[]): void {
+    this.scripts.set(sessionId, events)
+  }
+
   async resume(sessionId: string, _prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
     return { sessionId, cwd: opts?.cwd ?? "/" }
   }
 
-  stream(_h: SessionHandle): AsyncIterable<EngineEvent> {
+  stream(h: SessionHandle): AsyncIterable<EngineEvent> {
+    this.streamCalls.push(h.sessionId)
+    const events = this.scripts.get(h.sessionId) ?? ([{ type: "done" }] as const)
     return (async function* () {
-      yield { type: "done" } as const
+      for (const ev of events) yield ev
     })()
   }
 
@@ -344,6 +352,36 @@ describe("Orchestrator.runTask", () => {
     await orch.runTask(t.id, "go")
     await orch._waitForPumpsIdle()
 
+    expect(store.get(t.id)?.status).toBe("error")
+  })
+
+  test("pump consumes the stream from the chat tab's engine, not the legacy task vendor", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const codex = new HistoryEngine("codex")
+    const orch = new Orchestrator({
+      engines: { claude, codex },
+      store,
+      worktrees: new GitWorktreeManager(),
+    })
+    const t = await orch.createTask({ repo, title: "mixed vendor", prompt: "" })
+    const firstTab = t.tabs[0]!
+    await store.update(t.id, {
+      vendor: "codex",
+      tabs: [{ ...firstTab, vendor: "claude" }],
+    })
+    claude.script("claude-1", [{ type: "error", message: "rate limited" }])
+    codex.script("claude-1", [])
+    const seen: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => seen.push(ev), firstTab.id)
+
+    await orch.runTask(t.id, "go", firstTab.id)
+    await orch._waitForPumpsIdle()
+
+    expect(claude.streamCalls).toEqual(["claude-1"])
+    expect(codex.streamCalls).toEqual([])
+    expect(seen.at(-1)).toEqual({ type: "error", message: "rate limited" })
     expect(store.get(t.id)?.status).toBe("error")
   })
 

@@ -482,7 +482,7 @@ export class Orchestrator {
     // — it returns a result and the orchestrator does the post-run
     // bookkeeping in `runPumpAndCleanup`.
     this.sessionPump = new SessionPump({
-      engineFor: (taskId) => this.engineForTaskId(taskId as TaskId),
+      engineFor: (taskId, tabId) => this.engineForTaskTabId(taskId as TaskId, tabId),
       broker: this.pendingInputBroker,
       dispatch: (taskId, tabId, ev) => this.dispatchEvent(taskId as TaskId, tabId, ev),
       nextRequestId: () => `req-${++this.requestIdCounter}`,
@@ -561,6 +561,14 @@ export class Orchestrator {
   private engineForTaskId(taskId: TaskId): AIEngine {
     const task = this.store.get(taskId)
     return task ? this.engineForTask(task) : this.fallbackEngine
+  }
+
+  /** Engine for a concrete task tab; used by the live stream pump. */
+  private engineForTaskTabId(taskId: TaskId, tabId: string): AIEngine {
+    const task = this.store.get(taskId)
+    if (!task) return this.fallbackEngine
+    const tab = task.tabs.find((t) => t.id === tabId)
+    return tab ? this.engineForTab(task, tab) : this.engineForTask(task)
   }
 
   /**
