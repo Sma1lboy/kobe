@@ -54,6 +54,7 @@ export interface TaskPtyLike {
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
 const PIPE_SCROLLBACK_LIMIT = 200_000
+const VISIBLE_SCROLLBACK_MARGIN_ROWS = 200
 const XTERM_COLOR_MODE_DEFAULT = 0
 const XTERM_COLOR_MODE_PALETTE = 1 << 24
 const XTERM_COLOR_MODE_RGB = 3 << 24
@@ -229,7 +230,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       allowProposedApi: true,
       cols: this.cols,
       rows: this.rows,
-      scrollback: Math.floor(PIPE_SCROLLBACK_LIMIT / Math.max(20, this.cols)),
+      scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
     })
 
     const shell = opts.shell ?? defaultShell()
@@ -320,10 +321,10 @@ export class BunTerminalTaskPty implements TaskPtyLike {
   private queueRefresh(): void {
     if (this.refreshQueued) return
     this.refreshQueued = true
-    queueMicrotask(() => {
+    setTimeout(() => {
       this.refreshQueued = false
       this.refreshSnapshot()
-    })
+    }, 16)
   }
 
   private refreshSnapshot(): void {
@@ -331,13 +332,14 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     const active = this.term.buffer.active
     const rows: string[] = []
     const cursorY = active.baseY + active.cursorY
-    for (let y = 0; y < active.length; y++) {
+    const start = Math.max(0, active.length - (this.rows + VISIBLE_SCROLLBACK_MARGIN_ROWS))
+    for (let y = start; y < active.length; y++) {
       const line = active.getLine(y)
       const minLast = y === cursorY ? active.cursorX - 1 : -1
       rows.push(line ? xtermLineToAnsi(line, minLast) : "")
     }
     this.buffer = rows.join("\n")
-    this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY }
+    this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY - start }
     for (const cb of this.listeners) {
       try {
         cb(this.buffer, this.cursor)
