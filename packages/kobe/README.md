@@ -68,6 +68,7 @@ Once you're in, the keys you'll use most:
 | `ctrl+1` / `2` / `3` / `4` | Jump straight to a pane (sidebar, workspace, files, terminal) |
 | `tab`              | Cycle focus to the next pane                                   |
 | `ctrl+q`           | Detach back to the sidebar (your task keeps streaming)         |
+| `ctrl+o`           | Open the active task's worktree in your editor                 |
 | `?`                | Show the full keybinding help dialog                           |
 | `,` or `ctrl+,`    | Open Settings (theme, transparent background, dev reset)       |
 | `q`                | Quit (with confirm)                                            |
@@ -86,6 +87,29 @@ Inside the chat composer:
 
 A given task can host **multiple chat tabs** on the same worktree — useful when
 you want a parallel sub-conversation without losing the main thread.
+
+## Opening tasks in your editor
+
+The top bar shows an `[Open] <editor>` chip when kobe can find an editor for the
+active task. Click it, use `ctrl+o`, or run **Open task in editor** from the
+command palette to open the task's worktree.
+
+Detection order is:
+
+1. `KOBE_OPEN_EDITOR`
+2. `code` (VS Code)
+3. `cursor`
+4. `windsurf`
+5. `zed`
+6. platform fallback (`open` on macOS, `xdg-open` on Linux)
+
+Set `KOBE_OPEN_EDITOR` globally if you want to force a specific tool:
+
+```bash
+export KOBE_OPEN_EDITOR=cursor
+export KOBE_OPEN_EDITOR=code
+export KOBE_OPEN_EDITOR=/Applications/Cursor.app/Contents/Resources/app/bin/cursor
+```
 
 For the full feature manifest, see [`CHANGELOG.md`](./CHANGELOG.md).
 

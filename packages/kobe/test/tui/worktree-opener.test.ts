@@ -11,13 +11,13 @@ describe("detectWorktreeOpener", () => {
     ).toEqual({ id: "env", label: "Cursor", command: "cursor", args: [] })
   })
 
-  it("prefers Cursor on PATH before VS Code", () => {
+  it("prefers VS Code on PATH before Cursor", () => {
     const opener = detectWorktreeOpener({
       env: { PATH: "/bin:/apps" },
       exists: (path) => path === "/apps/cursor" || path === "/apps/code",
     })
 
-    expect(opener).toEqual({ id: "cursor", label: "Cursor", command: "cursor", args: [] })
+    expect(opener).toEqual({ id: "code", label: "VS Code", command: "code", args: [] })
   })
 
   it("falls back to macOS app opening when editor CLIs are absent", () => {

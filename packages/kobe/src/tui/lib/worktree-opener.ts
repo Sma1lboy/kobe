@@ -30,24 +30,24 @@ type SpawnDeps = {
 }
 
 const CLI_CANDIDATES: ReadonlyArray<{ id: string; label: string; command: string }> = [
-  { id: "cursor", label: "Cursor", command: "cursor" },
   { id: "code", label: "VS Code", command: "code" },
+  { id: "cursor", label: "Cursor", command: "cursor" },
   { id: "windsurf", label: "Windsurf", command: "windsurf" },
   { id: "zed", label: "Zed", command: "zed" },
 ]
 
 const MAC_APP_CANDIDATES: ReadonlyArray<{ id: string; label: string; appName: string; paths: readonly string[] }> = [
   {
-    id: "cursor.app",
-    label: "Cursor",
-    appName: "Cursor",
-    paths: ["/Applications/Cursor.app", "/System/Applications/Cursor.app"],
-  },
-  {
     id: "vscode.app",
     label: "VS Code",
     appName: "Visual Studio Code",
     paths: ["/Applications/Visual Studio Code.app"],
+  },
+  {
+    id: "cursor.app",
+    label: "Cursor",
+    appName: "Cursor",
+    paths: ["/Applications/Cursor.app", "/System/Applications/Cursor.app"],
   },
   {
     id: "windsurf.app",
