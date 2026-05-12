@@ -1,3 +1,4 @@
+import type { ChildProcessByStdio } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { Readable } from "node:stream"
 import { describe, expect, it } from "vitest"
@@ -44,7 +45,11 @@ function makeFakeBridge(opts: {
       // Defer the test's stdout pushes one tick so RcBridge has
       // finished attaching its `on("data", ...)` listener.
       setImmediate(() => opts.onReady(ee))
-      return ee
+      // FakeChild only implements the surface RcBridge actually uses
+      // (stdout / stderr / pid / kill / EventEmitter). Cast through
+      // unknown so the strict ChildProcessByStdio shape doesn't force
+      // the test to stub stdin / killed / connected / etc.
+      return ee as unknown as ChildProcessByStdio<null, Readable, Readable>
     },
   })
   return { bridge, child: () => child }

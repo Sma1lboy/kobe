@@ -82,7 +82,7 @@ const ENV_ID_RE = /Environment ID:\s*(env_[A-Za-z0-9]+)/
 const DEEPLINK_RE = /https:\/\/claude\.ai\/code\?environment=([A-Za-z0-9_]+)/
 // Drop ANSI escape sequences before pattern-matching — the bridge UI
 // repaints constantly and wraps the env id in cursor-positioning codes.
-// eslint-disable-next-line no-control-regex
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape (0x1B) is the point of the pattern
 const ANSI_RE = /\x1b\[[0-9;?]*[A-Za-z]/g
 
 export function createRcBridge(options: RcBridgeOptions = {}): RcBridge {
@@ -178,7 +178,8 @@ export function createRcBridge(options: RcBridgeOptions = {}): RcBridge {
     // Unexpected exit: surface tail of stderr (or stdout) so the dialog
     // can show a useful message (auth failure, workspace not trusted, etc.).
     const tail = (text: string): string => text.trim().split("\n").slice(-3).join("\n")
-    const msg = tail(stderrBuffer) || tail(stdoutBuffer) || `claude remote-control exited (code=${code}, signal=${signal})`
+    const msg =
+      tail(stderrBuffer) || tail(stdoutBuffer) || `claude remote-control exited (code=${code}, signal=${signal})`
     const errored = update({ state: "error", errorMessage: msg })
     failReady(new Error(errored.errorMessage ?? "claude remote-control exited"))
   }
