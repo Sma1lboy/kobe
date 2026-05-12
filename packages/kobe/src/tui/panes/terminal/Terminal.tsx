@@ -2,8 +2,8 @@
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
- * Header: `terminal — <cwd-basename>`. Body: ANSI-stripped scrollback
- * with a viewport cursor.
+ * Header: `terminal — <cwd-basename>`. Body: SGR-rendered scrollback
+ * (colors, bold/italic/underline) with a native viewport cursor.
  *
  * Lifecycle (per the Stream J brief):
  *   - When `cwd` and `taskId` resolve to non-null values, acquire a
@@ -26,33 +26,48 @@
  * explicit: clicking focuses the pane, that's all — no mouse-passthrough
  * to the shell.
  *
- * Output rendering: tmux gives us full pane snapshots, not deltas. We
- * pass the snapshot through `stripAnsi` (re-imported from the behavior
- * harness — it's pure and lives at `test/behavior/screen.ts`; see the
- * import below for why we expose it from there). The result is plain
- * text; we render line-by-line so the opentui `<text>` renderable can
- * lay it out without trying to interpret ANSI escapes.
+ * Output rendering: tmux gives us full pane snapshots, not deltas.
+ * Snapshots come from `capture-pane -e` (SGR-preserving) so colors
+ * and attributes survive; cursor-motion and other control codes were
+ * already applied to tmux's grid before capture. The snapshot is fed
+ * through `./sgr.ts` which returns one chunk-list per row. Each row
+ * renders as its own `<text>` carrying a `StyledText` of those
+ * chunks — opentui composes the per-cell fg/bg/attrs from there.
  *
- * Scrollback / viewport: we keep the latest snapshot in a Solid signal
- * and slice it to the visible window. `ctrl+pgup`/`ctrl+pgdown` shift
- * a `scrollOffset` signal; when offset is 0 we follow the bottom (so
- * new output is always visible by default). The brief says "v1 is
- * plain-text scrollback; ANSI control codes are stripped using the
- * existing `test/behavior/screen.ts` utility (export it from there or
- * reimplement minimally)" — we import from the behavior path. That
- * file is already part of the source tree and exporting it here is a
- * one-liner.
+ * Scrollback / viewport: we keep the latest snapshot in a Solid
+ * signal, parse it into chunks, and slice to the visible window.
+ * `ctrl+pgup`/`ctrl+pgdown` shift a `scrollOffset` signal; when
+ * offset is 0 we follow the bottom (so new output is always visible
+ * by default).
+ *
+ * Cursor race: an earlier polling-only design caught fancy prompts
+ * mid-repaint and rendered the cursor one row above the visible
+ * prompt. The current model has `TmuxControlClient` (push-based via
+ * `tmux -CC`) wake `TmuxTaskPty` whenever the shell wrote output,
+ * with a debounce so capture only fires after a quiet window — see
+ * `./pty.ts`. The cursor (x, y) we render is always paired with a
+ * stable end-state snapshot.
  */
 
 import { basename } from "node:path"
-import { type BoxRenderable, TextAttributes } from "@opentui/core"
+import { type BoxRenderable, StyledText, TextAttributes } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
-import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
-import { stripAnsi } from "../../../../test/behavior/screen"
+import {
+  type Accessor,
+  For,
+  type JSXElement,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+} from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
+import { parseAnsiSnapshot } from "./sgr"
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -177,15 +192,18 @@ export function Terminal(props: TerminalProps): JSXElement {
       // Subscribe; the listener receives `(snapshot, cursor)` from a
       // single atomic tmux roundtrip — they describe the SAME grid
       // state, so we never display a stale cursor on a fresh snapshot.
+      // The snapshot now carries SGR escapes (tmux capture-pane -e);
+      // we keep them verbatim because the SGR parser in `./sgr.ts`
+      // turns them into per-cell color spans at render time.
       const unsubscribe = handle.onData((snap, c) => {
-        setSnapshot(stripAnsi(snap))
+        setSnapshot(snap)
         setCursor(c)
       })
       // If the pty already had a buffer, prime the renderer immediately
       // so a freshly-mounted Terminal doesn't blink empty for one tick.
       try {
         const initial = handle.capture()
-        if (initial) setSnapshot(stripAnsi(initial))
+        if (initial) setSnapshot(initial)
         setCursor(handle.captureCursor())
       } catch {
         /* capture can fail on a freshly-spawned tmux pane; ignore */
@@ -228,11 +246,30 @@ export function Terminal(props: TerminalProps): JSXElement {
     return `terminal — ${basename(cwd)}`
   })
 
-  // Lines visible after applying scroll offset. We split by \n, then
-  // slice off the bottom `scrollOffset` lines (negative offset would
-  // be below the bottom, which we clamp).
-  const visibleLines = createMemo(() => {
-    const all = snapshot().split("\n")
+  // Parse the snapshot (text + SGR escapes) into one chunk-list per
+  // row. Memoized on `snapshot()`, so a cursor-only update doesn't
+  // re-parse the (unchanged) text. Empty rows are preserved so the
+  // tmux-reported `cursor.y` indexes into this array 1:1.
+  const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
+
+  // Per-row `StyledText` view used by the body's `<For>` render. We
+  // produce one StyledText per row instead of N <span>s per cell —
+  // opentui's <text> efficiently consumes a single chunks array.
+  const styledRows = createMemo(() =>
+    parsedRows().map((chunks) => {
+      // An empty row is still a meaningful position (blank line in
+      // the pane). We emit a StyledText with a single empty chunk so
+      // the row's `<text>` still renders and occupies one line.
+      if (chunks.length === 0) return new StyledText([{ __isChunk: true, text: "" }])
+      return new StyledText(chunks.map((c) => ({ ...c })))
+    }),
+  )
+
+  // Lines visible after applying scroll offset. We slice off the
+  // bottom `scrollOffset` rows so scrolling back reveals older
+  // content; offset 0 means "show everything = follow live".
+  const visibleStyledRows = createMemo(() => {
+    const all = styledRows()
     const offset = Math.max(0, scrollOffset())
     if (offset === 0) return all
     const cut = Math.max(0, all.length - offset)
@@ -408,16 +445,25 @@ export function Terminal(props: TerminalProps): JSXElement {
           flexGrow={1}
           paddingLeft={1}
           paddingRight={1}
+          flexDirection="column"
         >
-          {/* Single multi-line `<text>`. opentui's text renderable handles
-              `\n`-broken content with `wrapMode="none"`. We tried per-line
-              `<For>` rendering earlier — it works, but mixing `<text>`
-              and `<box>` siblings made laying out the cursor overlay
-              flaky, so the cursor is now driven through the renderer's
-              native cursor (see the createEffect above). */}
-          <text fg={theme.text} wrapMode="none">
-            {visibleLines().join("\n")}
-          </text>
+          {/* One <text> per row. Each row carries its own StyledText
+              built from the SGR-parsed chunks of that row, so colors
+              and attributes render natively. We render per-row (not
+              one big multi-line <text>) so the chunks array doesn't
+              have to encode line breaks — that was the old plain-text
+              approach and it lost the per-cell color shape. The cursor
+              still lands at (screenX + 1 + x, screenY + y) via the
+              renderer's native cursor (see createEffect below); the
+              column flex layout means row N maps to screenY + N
+              regardless of how each row's chunks lay out. */}
+          <For each={visibleStyledRows()}>
+            {(row) => (
+              <text fg={theme.text} wrapMode="none">
+                {row}
+              </text>
+            )}
+          </For>
         </box>
       </Show>
     </box>
