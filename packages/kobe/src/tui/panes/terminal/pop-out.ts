@@ -1,39 +1,35 @@
 /**
- * Pop a kobe terminal pane out into a real external terminal — as a
- * Windows Terminal **split pane** in the current window, not a new tab
- * or new window.
+ * Pop a kobe terminal pane out into a real external terminal window.
  *
- * Why split-pane: the user wants the visual experience of "kobe + a
- * real terminal in the bottom right of the same window." A TUI can't
- * embed a real terminal in one of its own regions (host terminal owns
- * the cell grid), but the HOST TERMINAL can split itself — so kobe
- * asks Windows Terminal to carve off a pane next to itself and put a
- * `tmux attach -t <session>` inside. From the user's perspective the
- * outcome is identical: one Windows Terminal window, kobe on top /
- * left, real native-latency terminal on bottom / right.
+ * The embedded terminal pane (whether tmux- or `@xterm/headless`-backed)
+ * routes every keystroke through Solid + opentui's render loop, which
+ * adds ~10-20 ms of paint cost per character. Once you've felt a real
+ * terminal, that's perceptible. The trick: kobe's tmux backend already
+ * keeps the live shell in a tmux session — any external terminal can
+ * attach to that same session with `tmux attach -t <name>` and get
+ * truly native typing latency. Same shell, same cwd, same env, same
+ * scrollback. kobe's pane keeps mirroring it via `capture-pane`.
  *
- * The split pane is a sibling of kobe's pane at the WT layer, NOT
- * inside kobe's TUI. WT handles cursor placement, GPU rendering, and
- * focus/resize for both panes natively.
- *
- * Today only WSL hosts are supported (we shell out to `wt.exe`). On
- * macOS / native Linux this no-ops; the caller falls back to the
- * embedded pane.
+ * Today this targets WSL hosts and shells out to Windows Terminal
+ * (`wt.exe`). On macOS / native Linux we'd want a different terminal
+ * spawn, so the function is best-effort: returns false on unsupported
+ * platforms instead of throwing, so the caller can show a hint.
  */
 
 import { spawn } from "node:child_process"
 import { readFileSync } from "node:fs"
 
 /**
- * Sessions we've already split a WT pane for. Each `<Terminal />`
- * mount triggers the auto-pop, but we don't want to keep spawning
- * panes for the same session as the user navigates around kobe.
+ * Sessions we've already opened a window for, so re-renders of
+ * `<Terminal />` don't keep spawning windows. Stored by the
+ * `tmux attach -t` target string.
  */
 const popped = new Set<string>()
 
 /**
  * Cheap, sync WSL probe. WSL kernels report "microsoft" or "WSL" in
- * `/proc/version`.
+ * `/proc/version`. The string is fixed per-host so reading once and
+ * caching would also work, but the cost is low enough.
  */
 function isWsl(): boolean {
   try {
@@ -46,63 +42,40 @@ function isWsl(): boolean {
 export type PopOutResult = { ok: true } | { ok: false; reason: string }
 
 /**
- * Ask Windows Terminal to split the active window and run
- * `wsl tmux attach -t <attachTarget>` in the new pane. Idempotent
- * per session.
+ * Spawn a Windows Terminal window that runs `tmux attach -t <name>`
+ * inside the default WSL distro. Detaches the child so it survives a
+ * kobe restart and doesn't keep stdin/stdout open against the kobe
+ * process. Idempotent per `attachTarget`.
  *
- * Args we pass to `wt.exe`:
- *   - `-w 0` targets the currently-focused WT window. If kobe is
- *     running inside WT (the common case), this splits THIS window
- *     instead of opening a new one.
- *   - `split-pane -H` creates a horizontal split — new pane appears
- *     **below** the current one. (Use `-V` for a side-by-side split
- *     if you want a right-hand pane instead. `-H` matches Conductor's
- *     bottom-row terminal placement, which is what kobe targets.)
- *   - `-s 0.4` sizes the new pane at 40 % of the parent's height.
- *     User can drag the WT pane divider to adjust.
- *   - The rest is the command the new pane runs: `wsl tmux attach -t
- *     <name>`. `wsl` invokes the default distro; tmux then attaches
- *     to the shell kobe already created for this task.
- *
- * Disable with `KOBE_TERMINAL_NO_POPOUT=1` (run on a host without WT,
- * or to keep kobe single-paned for testing).
+ * Honors `KOBE_TERMINAL_NO_POPOUT=1` as a per-host opt-out for users
+ * who want kobe's embedded pane to stay primary (e.g. running kobe in
+ * a non-WSL container).
  */
 export function popOutToExternalTerminal(attachTarget: string): PopOutResult {
-  if (process.env.KOBE_TERMINAL_NO_POPOUT === "1") {
-    return { ok: false, reason: "disabled via KOBE_TERMINAL_NO_POPOUT=1" }
+  // Default is opt-IN now: the in-window modal terminal (click the pane,
+  // double-Esc to exit) is the primary "native typing" path. External
+  // pop-out is for users who want a persistent separate window — set
+  // `KOBE_TERMINAL_POPOUT=1` to re-enable.
+  if (process.env.KOBE_TERMINAL_POPOUT !== "1") {
+    return { ok: false, reason: "external pop-out is opt-in; set KOBE_TERMINAL_POPOUT=1" }
   }
   if (popped.has(attachTarget)) return { ok: true }
   if (!isWsl()) {
     return { ok: false, reason: "pop-out only supported on WSL right now" }
   }
 
-  // wt.exe inherits Windows %PATH% and is reachable as a bare command
-  // from inside WSL. No cmd.exe wrapper needed; wt.exe parses its own
-  // args including the tail command.
+  // wt.exe is on Windows %PATH%; WSL inherits Windows PATH, so a bare
+  // `wt.exe` resolves correctly. We don't shell out through cmd.exe to
+  // dodge its quoting rules — wt.exe accepts a free-form command line
+  // and runs it through the chosen distro.
   try {
-    const proc = spawn(
-      "wt.exe",
-      [
-        "-w",
-        "0",
-        "split-pane",
-        "-H",
-        "-s",
-        "0.4",
-        "wsl",
-        "tmux",
-        "attach",
-        "-t",
-        attachTarget,
-      ],
-      {
-        detached: true,
-        stdio: "ignore",
-      },
-    )
+    const proc = spawn("wt.exe", ["wsl", "tmux", "attach", "-t", attachTarget], {
+      detached: true,
+      stdio: "ignore",
+    })
     proc.on("error", () => {
-      // Either wt.exe is missing, or `-w 0` refused (kobe not in a WT
-      // window). Drop the cache so a later run can retry.
+      // wt.exe not installed (rare on modern Windows) — don't crash; the
+      // caller already treats a non-ok result as "show a hint".
       popped.delete(attachTarget)
     })
     proc.unref()
@@ -114,7 +87,8 @@ export function popOutToExternalTerminal(attachTarget: string): PopOutResult {
 }
 
 /**
- * Reset the "already split" cache. Tests use this between cases.
+ * Reset the "already popped" cache. Tests use this between cases so
+ * one test's pop-out doesn't suppress another's.
  */
 export function _resetPopOutCache(): void {
   popped.clear()
