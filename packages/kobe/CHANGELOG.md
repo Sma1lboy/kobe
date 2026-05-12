@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-05-12
+
 ### Fixed
 
 - **Model picker now chooses model before effort** — the picker first lists each model once, then asks for an effort/reasoning level when the selected model supports one, and the composer footer continues to show the active `model · effort` combination (KOB-81).
