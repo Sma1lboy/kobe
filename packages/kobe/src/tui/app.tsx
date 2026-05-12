@@ -49,7 +49,7 @@ import { NotificationsProvider, useNotifications } from "./context/notifications
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
-import { buildEngine } from "./engine-bootstrap"
+import { buildEngines } from "./engine-bootstrap"
 import { formatPlanUsageCompact } from "./lib/format-plan-usage"
 import { useCompletionNotifications } from "./lib/use-completion-notifications"
 import { usePaneSizes } from "./lib/use-pane-sizes"
@@ -721,11 +721,11 @@ export async function startApp(): Promise<void> {
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   let orchestrator: KobeOrchestrator
   if (process.env.KOBE_TEST_ENGINE || process.env.KOBE_NO_DAEMON === "1") {
-    const engine = await buildEngine()
+    const engines = await buildEngines()
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const worktrees = new GitWorktreeManager()
-    orchestrator = new Orchestrator({ engine, store, worktrees })
+    orchestrator = new Orchestrator({ engines, store, worktrees })
     // Bridge: bind a Unix-socket RPC server + write an MCP config so
     // every claude subprocess kobe spawns gets the `kobe_*` tools.
     try {

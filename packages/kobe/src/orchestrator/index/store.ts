@@ -44,8 +44,9 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
-import { toTaskId } from "../../types/task.ts"
+import { ENGINE_REGISTRY, capabilitiesForModelId } from "../../engine/registry.ts"
+import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus, VendorId } from "../../types/task.ts"
+import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
 
 export interface TaskIndexStoreOptions {
@@ -562,6 +563,21 @@ function coerceTask(value: unknown): Task | null {
     // stored choices to survive a model-list refresh (a user-pinned
     // `claude-opus-4-7` shouldn't get scrubbed when 4.8 drops).
     model: typeof v.model === "string" ? v.model : undefined,
+    // Engine vendor: optional. Records pre-dating the field normalize
+    // to DEFAULT_TASK_VENDOR ("claude") so the orchestrator can route
+    // without per-call fallback. Unknown strings also fall back to the
+    // default — defensive against hand-edited JSON or future vendor
+    // values that this kobe build doesn't yet know about.
+    //
+    // Self-heal: if the stored model id sits in another vendor's
+    // catalog (e.g. early-codex tasks ended up with vendor="claude"
+    // when the catalog hadn't been corrected yet), trust the model id
+    // and override the vendor. The model id is the load-bearing pin
+    // — `Task.model="gpt-5.5" + vendor="claude"` is internally
+    // contradictory: claude rejects `--model gpt-5.5` with
+    // `error_during_execution`, which is exactly the regression this
+    // recovery catches.
+    vendor: resolveTaskVendor(v.vendor, typeof v.model === "string" ? v.model : undefined),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
@@ -569,6 +585,31 @@ function coerceTask(value: unknown): Task | null {
 
 function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMode {
   return v === "default" || v === "plan"
+}
+
+function isVendorId(v: unknown): v is VendorId {
+  return typeof v === "string" && v in ENGINE_REGISTRY
+}
+
+/**
+ * Pick a task's vendor at load time, preferring an explicit stored
+ * value but auto-correcting when the stored model id clearly belongs
+ * to a different vendor's catalog. See {@link Task.vendor} comment in
+ * `types/task.ts` for the contract.
+ *
+ * The `capabilitiesForModelId` helper returns `defaultCapabilities`
+ * (= claude) when no catalog matches — that's a "don't know" signal,
+ * not "should be claude". So we only override when the catalog
+ * actually identifies a vendor for this id. Free-form pinned ids
+ * (e.g. a custom model id the user typed in) round-trip with their
+ * stored vendor unchanged.
+ */
+function resolveTaskVendor(rawVendor: unknown, modelId: string | undefined): VendorId {
+  const stored = isVendorId(rawVendor) ? rawVendor : DEFAULT_TASK_VENDOR
+  if (!modelId) return stored
+  const matched = Object.values(ENGINE_REGISTRY).some((caps) => caps?.models.some((m) => m.id === modelId))
+  if (!matched) return stored
+  return capabilitiesForModelId(modelId).vendorId
 }
 
 function isTaskStatus(s: string): s is TaskStatus {

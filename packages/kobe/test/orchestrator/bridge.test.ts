@@ -18,6 +18,7 @@ import { connect } from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
+import { shortHomeTag } from "../../src/daemon/paths.ts"
 import { bridgeSocketPathForHome, startBridge } from "../../src/orchestrator/bridge/index.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
@@ -91,8 +92,7 @@ describe("orchestrator bridge", () => {
       "limits",
     )
     const socketPath = bridgeSocketPathForHome(longHome, 12345)
-    const expectedTmp = process.platform === "darwin" ? "/tmp" : os.tmpdir()
-    expect(socketPath).toBe(path.join(expectedTmp, "kobe-bridge-12345.sock"))
+    expect(socketPath).toBe(path.join(os.tmpdir(), `kobe-${shortHomeTag(longHome)}-bridge-12345.sock`))
     expect(socketPath.length).toBeLessThanOrEqual(103)
   })
 

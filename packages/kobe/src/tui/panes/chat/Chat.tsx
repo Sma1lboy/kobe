@@ -37,6 +37,7 @@
  *     to the new ones.
  */
 
+import { getCapabilities, modelLabelFor } from "@/engine/registry"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
@@ -52,7 +53,6 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
-import { modelLabelFor, resolveDefaultModelId } from "./composer/models"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
@@ -214,7 +214,7 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const modelId = task?.model ?? resolveDefaultModelId()
+    const modelId = task?.model ?? getCapabilities(task?.vendor ?? "claude").defaultModelId()
     return formatContextUsageCompact(u, modelId)
   })
 

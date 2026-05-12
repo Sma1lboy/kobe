@@ -20,28 +20,45 @@
  */
 
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
+import { CodexLocal } from "../engine/codex-local/index.ts"
+import type { EngineMap } from "../engine/registry.ts"
 import type { AIEngine } from "../types/engine.ts"
 
 /**
- * Build the AI engine the orchestrator will drive. Test mode uses
- * `FakeAIEngine` and mounts the side-channel HTTP server.
+ * Single-engine build path. Test modes return a `FakeAIEngine` or
+ * `DevAIEngine`; production callers should use {@link buildEngines}
+ * instead so codex is wired alongside claude.
  */
 export async function buildEngine(): Promise<AIEngine> {
   if (process.env.KOBE_TEST_ENGINE === "fake") {
-    // Late import — keep test-only deps out of production bundles.
     const { FakeAIEngine } = await import("../../test/behavior/fake-engine.ts")
     const fake = new FakeAIEngine()
     await mountFakeEngineServer(fake)
     return fake
   }
   if (process.env.KOBE_TEST_ENGINE === "dev-fake") {
-    // `bun run dev:test` mode — auto-replying fake so the dev TUI
-    // exercises the chat round-trip without a real `claude` binary.
-    // No HTTP scripter; canned replies live in DevAIEngine itself.
     const { DevAIEngine } = await import("../engine/dev-fake.ts")
     return new DevAIEngine()
   }
   return new ClaudeCodeLocal()
+}
+
+/**
+ * Build the per-vendor engine map the orchestrator routes through.
+ * Test modes still go through {@link buildEngine} — they have one
+ * fake engine and the orchestrator's fallback path covers any vendor a
+ * task is pinned to. Production registers both claude and codex so a
+ * task pinned to `vendor: "codex"` lands on the right adapter.
+ */
+export async function buildEngines(): Promise<EngineMap> {
+  if (process.env.KOBE_TEST_ENGINE) {
+    const engine = await buildEngine()
+    return { [engine.capabilities.vendorId]: engine }
+  }
+  return {
+    claude: new ClaudeCodeLocal(),
+    codex: new CodexLocal(),
+  }
 }
 
 /**

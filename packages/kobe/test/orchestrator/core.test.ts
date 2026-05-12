@@ -29,6 +29,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { claudeCapabilities } from "../../src/engine/claude-code-local/capabilities.ts"
 import {
   CONCURRENCY_CAP,
   CannotDeleteMainTaskError,
@@ -638,6 +639,7 @@ describe("Orchestrator.deleteTask", () => {
     // half-stuck child process. deleteTask must still archive and
     // not bubble up the engine-side failure to the UI.
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         return { sessionId: "sess-1", cwd } satisfies SessionHandle
       },
@@ -824,6 +826,7 @@ describe("Orchestrator.runTask on a main task", () => {
   test("skips ensureWorktree — engine spawns with cwd = repo root, no kobe/tmp-* branch on disk", async () => {
     const calls: { cwd: string }[] = []
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         calls.push({ cwd })
         return { sessionId: "sess-main", cwd } satisfies SessionHandle
@@ -1154,6 +1157,7 @@ describe("Orchestrator engine call shape", () => {
   test("spawn() receives the task's worktreePath as cwd", async () => {
     const calls: { cwd: string; prompt: string }[] = []
     const stub: AIEngine = {
+      capabilities: claudeCapabilities,
       async spawn(cwd, prompt) {
         calls.push({ cwd, prompt })
         return { sessionId: "sess-1", cwd } satisfies SessionHandle

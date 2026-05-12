@@ -8,7 +8,16 @@
  * the type-level assertions are the source of truth for the contract.
  */
 import { describe, expectTypeOf, it } from "vitest"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "../../src/types/engine.ts"
+import type {
+  AIEngine,
+  ContentBlock,
+  EngineCapabilities,
+  EngineEvent,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "../../src/types/engine.ts"
 
 describe("EngineEvent", () => {
   it("is a discriminated union keyed on `type`", () => {
@@ -80,20 +89,24 @@ describe("SpawnOpts", () => {
 })
 
 describe("Message", () => {
-  it("has narrow role union and unknown content", () => {
+  it("has narrow role union and neutral blocks list", () => {
     expectTypeOf<Message["role"]>().toEqualTypeOf<"user" | "assistant" | "system">()
-    expectTypeOf<Message["content"]>().toEqualTypeOf<unknown>()
+    expectTypeOf<Message["blocks"]>().toEqualTypeOf<readonly ContentBlock[]>()
     expectTypeOf<Message["timestamp"]>().toEqualTypeOf<string>()
     expectTypeOf<Message["sessionId"]>().toEqualTypeOf<string>()
   })
 })
 
 describe("AIEngine", () => {
-  it("has the seven documented methods", () => {
+  it("exposes capabilities + the seven documented methods", () => {
     type Methods = keyof AIEngine
     expectTypeOf<Methods>().toEqualTypeOf<
-      "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
+      "capabilities" | "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
     >()
+  })
+
+  it("capabilities is an EngineCapabilities descriptor", () => {
+    expectTypeOf<AIEngine["capabilities"]>().toEqualTypeOf<EngineCapabilities>()
   })
 
   it("spawn returns Promise<SessionHandle>", () => {
@@ -124,6 +137,13 @@ describe("AIEngine", () => {
     // Smoke check: a minimal in-memory impl satisfies the interface.
     // If this fails to compile, Stream A's port is broken.
     class Impl implements AIEngine {
+      readonly capabilities: EngineCapabilities = {
+        vendorId: "claude",
+        label: "Stub",
+        models: [],
+        defaultModelId: () => "stub",
+        contextWindowFor: () => 200_000,
+      }
       async spawn(cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<SessionHandle> {
         return { sessionId: "x", cwd }
       }

@@ -10,4 +10,14 @@
  * If you're writing new code, import directly from `@/types/engine`.
  */
 
-export type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
+export type {
+  AIEngine,
+  ContentBlock,
+  EngineCapabilities,
+  EngineEvent,
+  Message,
+  ModelChoice,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "@/types/engine"

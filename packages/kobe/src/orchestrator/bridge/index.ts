@@ -17,13 +17,12 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises"
-import { homedir, tmpdir } from "node:os"
+import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
+import { fitSocketPath } from "../../daemon/paths.ts"
 import type { Orchestrator } from "../core.ts"
 import { type BridgeServer, startBridgeServer } from "./server.ts"
-
-const UNIX_SOCKET_PATH_LIMIT = 103
 
 export interface StartBridgeOpts {
   readonly homeDir?: string
@@ -37,19 +36,25 @@ export interface BridgeHandles {
 
 export function bridgeSocketPathForHome(home: string, pid = process.pid): string {
   const runDir = join(home, ".kobe", "run")
-  const preferred = join(runDir, `bridge-${pid}.sock`)
-  const macTempSocket = process.platform === "darwin" && preferred.startsWith(tmpdir())
-  if (preferred.length <= UNIX_SOCKET_PATH_LIMIT && !macTempSocket) return preferred
-
-  const shortTmp = process.platform === "darwin" ? "/tmp" : tmpdir()
-  return join(shortTmp, `kobe-bridge-${pid}.sock`)
+  return fitSocketPath(join(runDir, `bridge-${pid}.sock`), home, "bridge", pid)
 }
 
 export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}): Promise<BridgeHandles> {
   const home = opts.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const runDir = join(home, ".kobe", "run")
+  // mcp-<pid>.json stays under the home dir — claude reads it once and
+  // path length isn't an issue for a regular file. Only the unix
+  // socket is subject to the 104-byte `sun_path` cap, so route the
+  // socket through fitSocketPath; deeply-nested homes get a short
+  // `$TMPDIR/kobe-<homeTag>-bridge-<pid>.sock` form instead of failing
+  // to listen.
   const socketPath = bridgeSocketPathForHome(home)
   const mcpConfigPath = join(runDir, `mcp-${process.pid}.json`)
+
+  // startBridgeServer already mkdir's the socket's parent; but if the
+  // socket fell back to $TMPDIR via fitSocketPath, the home-side runDir
+  // still needs to exist for the mcp.json writeFile below.
+  await mkdir(runDir, { recursive: true })
 
   const server: BridgeServer = await startBridgeServer(orch, socketPath)
   await mkdir(runDir, { recursive: true })
