@@ -13,15 +13,18 @@
  * Extracted from `src/tui/app.tsx` during the Shell refactor.
  */
 
+import { spawnSync } from "node:child_process"
 import { TextAttributes } from "@opentui/core"
+import { useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createMemo } from "solid-js"
 import pkg from "../../../package.json" with { type: "json" }
 import { type KobeOrchestrator, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { Task } from "../../types/task.ts"
-import type { UpdateInfo } from "../../version.ts"
+import { UPDATE_COMMAND, type UpdateInfo } from "../../version.ts"
 import { useTheme } from "../context/theme"
 import type { WorktreeOpener } from "../lib/worktree-opener"
 import { useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 import { CreatePRButton } from "./create-pr-button"
 import { OpenWorktreeButton } from "./open-worktree-button"
 import { RcBridgeDialog } from "./rc-bridge-dialog"
@@ -41,6 +44,7 @@ export function TopBar(props: {
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
+  const renderer = useRenderer()
   // KOB-38: only the daemon-backed orchestrator has a wire to lose.
   // The in-process Orchestrator (KOBE_NO_DAEMON / test engine) always
   // reports `online` so the banner never paints. Two states only —
@@ -56,6 +60,38 @@ export function TopBar(props: {
   const remoteOrch = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
   const rcBridge = props.orchestrator.rcBridgeSignal()
   const isBridgeOn = () => rcBridge().state === "running" || rcBridge().state === "starting"
+
+  async function confirmUpdate(): Promise<void> {
+    const info = props.updateInfo()
+    if (!info?.hasUpdate) return
+    const ok = await DialogConfirm.show(
+      dialog,
+      `Update to v${info.latest}?`,
+      "Closes kobe, runs the updater in this terminal, then exits. Relaunch kobe after it finishes.",
+      "cancel",
+      "update",
+    )
+    if (ok !== true) return
+
+    try {
+      renderer?.destroy()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("kobe: renderer.destroy() failed before update:", err)
+    }
+    process.stderr.write(`kobe: updating ${info.current} -> ${info.latest}\n`)
+    process.stderr.write(`running: ${UPDATE_COMMAND}\n`)
+    const result = spawnSync("sh", ["-c", UPDATE_COMMAND], { stdio: "inherit" })
+    if (result.error) {
+      process.stderr.write(`kobe: update failed to start: ${result.error.message}\n`)
+      process.exit(1)
+    }
+    const code = result.status ?? 1
+    if (code === 0) process.stderr.write("kobe: update complete. Relaunch kobe to use the new version.\n")
+    else process.stderr.write(`kobe: update failed with exit code ${code}.\n`)
+    process.exit(code)
+  }
+
   return (
     <box flexDirection="row" paddingLeft={2} paddingRight={2} flexShrink={0}>
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={1} justifyContent="flex-start">
@@ -63,16 +99,24 @@ export function TopBar(props: {
           KobeCode
         </text>
         <text fg={theme.textMuted}>v{pkg.version}</text>
-        {/* Update chip — clickable: opens the UpdateDialog with the
-            install command and the GitHub release notes for what's new.
+        {/* Update controls. `[Update]` performs the self-update after
+            confirming and leaving alt-screen; the version chip opens
+            the UpdateDialog with the install command + release notes.
             Only renders when the npm-registry check found a newer
-            published version. Informational only — no auto-update.
-            Suppressed entirely in dev mode (KOBE_DEV=1, set by
-            `bun run dev`). */}
+            published version. Suppressed entirely in dev mode
+            (KOBE_DEV=1, set by `bun run dev`). */}
         <Show when={props.updateInfo()?.hasUpdate}>
           <text
             fg={theme.warning}
             attributes={TextAttributes.BOLD}
+            onMouseUp={() => {
+              void confirmUpdate()
+            }}
+          >
+            [Update]
+          </text>
+          <text
+            fg={theme.warning}
             onMouseUp={() => {
               const info = props.updateInfo()
               if (info) UpdateDialog.show(dialog, info)
