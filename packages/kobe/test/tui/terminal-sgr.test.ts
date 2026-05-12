@@ -2,12 +2,10 @@
  * Behavior tests for the SGR parser at
  * `src/tui/panes/terminal/sgr.ts`.
  *
- * The parser converts a tmux `capture-pane -e` snapshot (text + SGR
- * escapes only — all cursor motion already applied by tmux) into a
- * list of per-row chunks. We assert each SGR family parses to the
- * right `{fg, bg, attributes}` triple so the terminal pane can
- * render colors without the rest of the stack needing to know about
- * ANSI.
+ * The parser converts shell output containing text + SGR escapes into
+ * a list of per-row chunks. We assert each SGR family parses to the
+ * right `{fg, bg, attributes}` triple so the terminal pane can render
+ * colors without the rest of the stack needing to know about ANSI.
  *
  * Imports here MUST NOT pull in `@opentui/core` directly or
  * transitively — under vitest, opentui's tree-sitter `.scm` assets

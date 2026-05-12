@@ -28,11 +28,10 @@ that's the gap kobe fills.
 
 [![npm](https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg)](https://www.npmjs.com/package/@sma1lboy/kobe)
 
-You need three things on `PATH`:
+You need two things on `PATH`:
 
 - [**Bun**](https://bun.sh) ≥ 1.0 — kobe's renderer is opentui, which uses Bun-FFI.
 - [**`claude`** CLI](https://docs.anthropic.com/en/docs/claude-code) — the engine kobe drives. Run `claude --version` to confirm it's installed and signed in.
-- **`tmux`** — the embedded terminal pane uses one tmux session per task. On macOS: `brew install tmux`.
 
 Then:
 
@@ -148,9 +147,7 @@ and confirm `claude --version` works in the same shell you launched kobe from.
 **`bun: command not found`** — install [Bun](https://bun.sh) (`curl -fsSL https://bun.sh/install | bash`).
 kobe's renderer requires Bun ≥ 1.0; it does not run under Node.
 
-**The terminal pane is blank / errors about tmux** — install `tmux` (`brew install tmux` on macOS).
-The embedded terminal is one tmux session per task; without `tmux` on `PATH`,
-the pane stays empty but the rest of kobe still works.
+**The terminal pane is blank** — kobe starts your `$SHELL` directly through pipes. Confirm `$SHELL` points at an installed shell and that the active task's worktree path still exists.
 
 **`posix_spawnp failed` when running `bun run test:behavior`** — on macOS arm64,
 Bun's installer occasionally ships `node-pty`'s prebuilt `spawn-helper` without

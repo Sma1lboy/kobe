@@ -71,13 +71,3 @@ export function kobeStateDir(): string {
 export function kvStatePath(): string {
   return join(homeDir(), ".config", "kobe", "state.json")
 }
-
-/**
- * `KOBE_TMUX_BIN` — path to the tmux binary the embedded terminal
- * pane should spawn. Defaults to `tmux` (resolved against PATH).
- * Mostly for hosts where tmux is installed under a non-standard
- * prefix, or for tests that point at a stub tmux.
- */
-export function tmuxBin(): string {
-  return process.env.KOBE_TMUX_BIN ?? "tmux"
-}

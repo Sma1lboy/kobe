@@ -18,7 +18,7 @@
  *   - `release(taskId)` kills the PTY and forgets it. Called when the
  *     orchestrator archives the task.
  *   - `releaseAll()` kills every registered PTY. Called on app
- *     teardown to avoid leaking tmux sessions.
+ *     teardown to avoid leaking shell processes.
  *
  * What the registry deliberately does NOT do:
  *   - It does not subscribe to task status changes. The orchestrator
@@ -32,10 +32,9 @@
  *
  * Concurrency: every method is synchronous and JS is single-threaded,
  * so there's no race within a single registry. Two registries pointing
- * at the same task id WOULD collide on the underlying tmux session
- * name. The Solid component creates exactly one registry per app
- * instance, so this isn't a realistic concern; tests stand up
- * disposable registries inside a single `describe` block.
+ * at the same task id return the same in-process shell handle. The
+ * Solid component creates exactly one registry per app instance; tests
+ * stand up disposable registries inside a single `describe` block.
  */
 
 import { type TaskPty, type TaskPtyOpts, createTaskPty } from "./pty"
@@ -111,7 +110,7 @@ export class PtyRegistry {
 
   /**
    * Kill every PTY and forget them all. Called on TUI teardown to
-   * leave no orphan tmux sessions.
+   * leave no orphan shell processes.
    */
   releaseAll(): void {
     const ids = Array.from(this.map.keys())

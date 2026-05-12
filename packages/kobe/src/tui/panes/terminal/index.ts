@@ -26,7 +26,7 @@ export { useTerminalBindings } from "./keys"
 export { DEFAULT_PAGE_SIZE, PASSTHROUGH_NAMES, TRAPPED_KEYS, keyEventToShellBytes } from "./keys-pure"
 export {
   MockTaskPty,
-  TmuxTaskPty,
+  PipeTaskPty,
   type TaskPty,
   type TaskPtyLike,
   type TaskPtyOpts,

@@ -1,18 +1,14 @@
 /**
  * SGR (Select Graphic Rendition) parser for the terminal pane.
  *
- * tmux's `capture-pane -e` returns the pane snapshot with SGR escape
- * sequences re-emitted (colors, bold/italic/underline/...). All cursor
- * motion and other control codes have already been applied by tmux's
- * internal VT emulator — only SGR survives in the byte stream. We
- * walk that stream and produce one `Chunk` per same-style run, ready
- * to drop into an opentui `StyledText`.
+ * The pipe-backed terminal backend forwards shell stdout/stderr into
+ * this parser. We preserve SGR escape sequences (colors,
+ * bold/italic/underline/...) and drop non-SGR control sequences rather
+ * than trying to emulate a full terminal.
  *
- * Why not pull in a full xterm emulator (`@xterm/headless`): tmux is
- * already the ground-truth emulator for what the user sees. Re-doing
- * the work would be 2 MB of code, plus a perpetual risk of the two
- * emulators disagreeing in edge cases. SGR-only parsing is ~150 lines
- * and stays in lockstep with what tmux captured.
+ * Why not pull in a full xterm emulator (`@xterm/headless`): this pane
+ * is currently a lightweight command-output surface, not a real PTY.
+ * SGR-only parsing is small and good enough for ordinary shell output.
  *
  * Reference for SGR semantics:
  *   - ECMA-48 §8.3.117
@@ -320,9 +316,7 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
 /**
  * Parse one line of text containing SGR escapes into a list of style
  * runs. Caller passes the carry-in style (the style state at the end
- * of the previous line — though in practice tmux's `-e` mode tends to
- * re-emit attributes per line, so passing EMPTY_STYLE per line is
- * usually fine).
+ * of the previous line).
  *
  * Returned chunks are ready to feed into a `StyledText`:
  *   `new StyledText(parseAnsiLine(s, style).map(toTextChunk))`
@@ -353,16 +347,15 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
     // with command "m" — the parser doesn't separately label SGR, it
     // just exposes the raw CSI envelope. Anything else with type
     // "CSI" (cursor motion, erase-in-line, etc.) shouldn't appear in
-    // a tmux `-e` snapshot because tmux already applied it; we drop
-    // those rather than rendering raw bytes.
+    // a lightweight pipe snapshot; we drop those rather than rendering
+    // raw bytes.
     if (code.type === "CSI" && code.command === "m") {
       flush()
       style = applySgr(style, code.params)
     }
     // Any other control code we let through as raw text is silently
-    // dropped — tmux's `-e` capture shouldn't contain anything but
-    // TEXT + SGR, but if a stray OSC / CSI slips through, dropping it
-    // is safer than rendering its raw bytes.
+    // dropped. If a stray OSC / CSI slips through, dropping it is safer
+    // than rendering its raw bytes.
   }
   flush()
   return { chunks: out, endStyle: style }
@@ -370,13 +363,12 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
 
 /**
  * Parse a full multi-line snapshot into one chunk-list per row.
- * Splits on `\n`. Carries SGR state across line breaks because tmux's
- * `-e` output keeps a single state machine across the whole capture;
- * resetting per-line would mis-color any run that spans a wrap point.
+ * Splits on `\n`. Carries SGR state across line breaks because shell
+ * output can keep a single style state across multiple rows.
  *
  * Empty trailing lines (from a stripped-final-newline capture) are
- * preserved so cursor.y indexing into the returned array stays 1:1
- * with what tmux reports.
+ * preserved so cursor-capable backends can index into the returned
+ * array 1:1.
  */
 export function parseAnsiSnapshot(input: string): Chunk[][] {
   const lines = input.split("\n")

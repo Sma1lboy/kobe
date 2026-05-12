@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Terminal pane no longer depends on tmux** — embedded task shells now run directly through lightweight process pipes, removing tmux session/control-mode state from the terminal path. This keeps ordinary command output working without a host tmux install; full-screen TTY apps remain a future real-PTY follow-up.
+
 ## [0.5.13] - 2026-05-12
 
 ### Fixed

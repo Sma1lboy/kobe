@@ -14,7 +14,7 @@
  *
  * The Solid component itself is exercised end-to-end in
  * `test/behavior/terminal.test.ts`, which spawns the real binary
- * under tmux and asserts on visible behavior.
+ * against the real runtime and asserts on visible behavior.
  */
 
 import type { KeyEvent } from "@opentui/core"
@@ -57,7 +57,7 @@ describe("MockTaskPty", () => {
     pty.onData((s) => got.push(s))
     pty.feed("first\n")
     pty.feed("second\n")
-    // Listeners receive the full buffer each tick (matches tmux backend).
+    // Listeners receive the full buffer each tick (matches the pipe backend).
     expect(got).toEqual(["first\n", "first\nsecond\n"])
   })
 

@@ -2,8 +2,8 @@
  * Terminal pane (Stream J) — bottom-right of the Conductor layout.
  *
  * Renders an embedded shell scoped to the active task's worktree.
- * Body: SGR-rendered scrollback (colors, bold/italic/underline) with
- * a native viewport cursor. The worktree-id label that used to live
+ * Body: SGR-rendered pipe output (colors, bold/italic/underline when
+ * the shell emits SGR). The worktree-id label that used to live
  * in an inner header row was removed — it duplicated what the parent
  * PaneHeader already shows, AND it threw off the body's `screenY` by
  * 1 row, parking the cursor on the header instead of the prompt.
@@ -29,14 +29,11 @@
  * explicit: clicking focuses the pane, that's all — no mouse-passthrough
  * to the shell.
  *
- * Output rendering: tmux gives us full pane snapshots, not deltas.
- * Snapshots come from `capture-pane -e` (SGR-preserving) so colors
- * and attributes survive; cursor-motion and other control codes were
- * already applied to tmux's grid before capture. The snapshot is fed
- * through `./sgr.ts` which returns one chunk-list per row. We then
- * flatten those rows into a single `StyledText` (with `\n` between
- * rows) and render via ONE `<text>` element — opentui composes the
- * per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
+ * Output rendering: the backend gives us full snapshots, not deltas.
+ * The snapshot is fed through `./sgr.ts` which returns one chunk-list
+ * per row. We then flatten those rows into a single `StyledText` (with
+ * `\n` between rows) and render via ONE `<text>` element — opentui
+ * composes the per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
  * per-row `<text>` inside a flex column shifted the body's
  * `screenY` reference, breaking the cursor positioning math
  * (`screenY + cursor.y` → wrong row). The flat layout keeps the
@@ -49,13 +46,9 @@
  * offset is 0 we follow the bottom (so new output is always visible
  * by default).
  *
- * Cursor race: an earlier polling-only design caught fancy prompts
- * mid-repaint and rendered the cursor one row above the visible
- * prompt. The current model has `TmuxControlClient` (push-based via
- * `tmux -CC`) wake `TmuxTaskPty` whenever the shell wrote output,
- * with a debounce so capture only fires after a quiet window — see
- * `./pty.ts`. The cursor (x, y) we render is always paired with a
- * stable end-state snapshot.
+ * Cursor: the pipe backend cannot report a terminal cursor, so cursor
+ * overlay is absent by default. A future real PTY backend can fill the
+ * same `CursorPos` contract without changing this component.
  */
 
 import { type BoxRenderable, StyledText } from "@opentui/core"
@@ -75,7 +68,7 @@ import { rowsToStyledText } from "./sgr-to-text-chunk"
 export type TerminalProps = {
   /** Working dir for the shell. Null disables the pane (no task). */
   cwd: Accessor<string | null>
-  /** Stable id used for tmux session naming or pty registry keying. */
+  /** Stable id used for pty registry keying. */
   taskId: Accessor<string | null>
   focused?: Accessor<boolean>
   /**
@@ -106,7 +99,7 @@ export function getDefaultPtyRegistry(): PtyRegistry {
 
 /**
  * Reset the module-level registry. Tests use this between cases so a
- * leftover registry doesn't leak tmux sessions across tests.
+ * leftover registry doesn't leak shell processes across tests.
  */
 export function _resetDefaultPtyRegistry(): void {
   if (defaultRegistry) defaultRegistry.releaseAll()
@@ -114,15 +107,13 @@ export function _resetDefaultPtyRegistry(): void {
 }
 
 /**
- * Heuristic: is this acquire-error message about tmux being absent /
- * unreachable on PATH? Used to swap a plain-English hint in for the
- * raw error tail. We match a couple of phrasings the pty backend
- * emits ("requires tmux on PATH"), plus the bare ENOENT shape Node
- * uses when the binary itself is missing.
+ * Heuristic: is this acquire-error message about the user's shell
+ * being absent / unreachable? Used to swap a plain-English hint in for
+ * the raw error tail.
  */
-function isTmuxMissing(message: string): boolean {
+function isShellMissing(message: string): boolean {
   const m = message.toLowerCase()
-  return m.includes("tmux on path") || m.includes("enoent") || m.includes("not found")
+  return m.includes("enoent") || m.includes("not found")
 }
 
 /* --------------------------------------------------------------------- */
@@ -142,8 +133,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // The current PTY — null when no task is active.
   const [pty, setPty] = createSignal<TaskPty | null>(null)
 
-  // Surfaced when `registry.acquire()` throws (most commonly: tmux not
-  // on PATH). Without this, the effect's exception bubbles out of the
+  // Surfaced when `registry.acquire()` throws. Without this, the effect's exception bubbles out of the
   // Solid scheduler and the pane renders blank with no hint as to why.
   const [acquireError, setAcquireError] = createSignal<string | null>(null)
 
@@ -172,10 +162,6 @@ export function Terminal(props: TerminalProps): JSXElement {
       try {
         handle = reg.acquire(taskId, cwd)
       } catch (err) {
-        // The most common failure here is tmux missing on PATH (the
-        // pty backend probes synchronously in its constructor). Show
-        // a plain-English summary; the raw message is still appended
-        // so a user willing to dig can act on it.
         const message = err instanceof Error ? err.message : String(err)
         setAcquireError(message)
         setPty(null)
@@ -188,12 +174,8 @@ export function Terminal(props: TerminalProps): JSXElement {
       // Reset scroll on task switch — every task gets its own viewport.
       setScrollOffset(0)
 
-      // Subscribe; the listener receives `(snapshot, cursor)` from a
-      // single atomic tmux roundtrip — they describe the SAME grid
-      // state, so we never display a stale cursor on a fresh snapshot.
-      // The snapshot now carries SGR escapes (tmux capture-pane -e);
-      // we keep them verbatim because the SGR parser in `./sgr.ts`
-      // turns them into per-cell color spans at render time.
+      // Subscribe; the listener receives a full snapshot and an
+      // optional cursor. The pipe backend reports no cursor.
       const unsubscribe = handle.onData((snap, c) => {
         setSnapshot(snap)
         setCursor(c)
@@ -205,7 +187,7 @@ export function Terminal(props: TerminalProps): JSXElement {
         if (initial) setSnapshot(initial)
         setCursor(handle.captureCursor())
       } catch {
-        /* capture can fail on a freshly-spawned tmux pane; ignore */
+        /* capture can fail on a freshly-spawned shell; ignore */
       }
       onCleanup(() => {
         unsubscribe()
@@ -242,7 +224,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Parse the snapshot (text + SGR escapes) into one chunk-list per
   // row. Memoized on `snapshot()`, so a cursor-only update doesn't
   // re-parse the (unchanged) text. Empty rows are preserved so the
-  // tmux-reported `cursor.y` indexes into this array 1:1.
+  // Cursor-capable backends report y coordinates against this array.
   const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
 
   // Rows visible after applying scroll offset. We slice off the
@@ -262,7 +244,7 @@ export function Terminal(props: TerminalProps): JSXElement {
   // crucial for the cursor positioning math (`body.screenY + c.y`).
   // An earlier attempt rendered one `<text>` per row inside a flex
   // column; opentui's per-row layout didn't keep `screenY` aligned
-  // with tmux's row indexing, and the cursor landed one row above
+  // with pane row indexing, and the cursor landed one row above
   // the visible prompt.
   const styledSnapshot = createMemo(() => new StyledText(rowsToStyledText(visibleRows())))
 
@@ -289,12 +271,9 @@ export function Terminal(props: TerminalProps): JSXElement {
    * pane. The orchestrator-level cursor (e.g. the chat composer) will
    * reposition it as soon as focus moves elsewhere.
    *
-   * We ALSO push the body's measured (cols, rows) into the tmux pane
-   * via `pty.resize`. tmux's default 80×24 doesn't match our actual
-   * render area, and the cursor (x,y) it reports is in the *tmux*
-   * grid — without resizing, the prompt sits at one row in the kobe
-   * render but tmux's cursor lives in a different coordinate space,
-   * which is exactly the off-by-many-rows symptom the user reported.
+   * We ALSO push the body's measured (cols, rows) into the backend via
+   * `pty.resize`. The current pipe backend stores those values only; a
+   * future real PTY backend can translate them into SIGWINCH.
    */
   const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const renderer = useRenderer()
@@ -308,9 +287,8 @@ export function Terminal(props: TerminalProps): JSXElement {
   // splitter drag in app.tsx mutates pane-size signals, but the *body*
   // box's width is computed downstream, and Solid doesn't observe it
   // through the BoxRenderable instance). We deliberately DO NOT use
-  // a per-frame callback here — it triggered tmux `resize-window` every
-  // frame, and the resulting SIGWINCH storm made p10k / pure / oh-my-zsh
-  // re-emit their prompt several times on mount.
+  // a per-frame callback here; real PTY backends may turn resizes into
+  // SIGWINCH and prompt-rendering shells can reprint on every resize.
   const [geomTick, setGeomTick] = createSignal(0)
   // 1 s is plenty for catching splitter drags; the previous 250 ms
   // tick fired the cursor-positioning effect 4×/sec doing nothing
@@ -321,12 +299,11 @@ export function Terminal(props: TerminalProps): JSXElement {
   onCleanup(() => clearInterval(geomTimer))
 
   // Track last pushed geometry so we don't fire `pty.resize` on every
-  // re-render — tmux re-applying the same dims still sends SIGWINCH and
-  // makes prompt-rendering shells (oh-my-zsh, p10k) reprint their
-  // prompt, which surfaces as spurious empty `>` lines on mount.
+  // re-render; real PTY backends may emit SIGWINCH even when geometry
+  // is unchanged.
   let lastResize: { cols: number; rows: number } | null = null
 
-  // Push the rendered body's geometry to tmux so cursor coords align.
+  // Push the rendered body's geometry to the backend.
   createEffect(() => {
     const handle = pty()
     const ref = bodyRef()
@@ -344,7 +321,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     try {
       handle.resize(cols, rows)
     } catch {
-      /* best effort — resize fails silently in tmux when geometry is unchanged */
+      /* best effort */
     }
   })
 
@@ -373,7 +350,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     } catch {
       /* older opentui versions may not expose setCursorStyle; ignore */
     }
-    // Translate tmux pane coords → screen coords for the renderer.
+    // Translate pane coords -> screen coords for the renderer.
     //
     // - `screenX + 1`: body has `paddingLeft=1`, so the first visible
     //   column of the snapshot is at `body.screenX + 1`. Same for cy
@@ -387,7 +364,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     //   border. Without the +1, the cursor lands on the border row,
     //   one row above the visible prompt. Verified empirically via a
     //   debug dump in /tmp/kobe-terminal-debug.log: with body
-    //   screenY=35, cursor at y=29 was reported by tmux but the
+    //   screenY=35, cursor at y=29 was reported by the backend but the
     //   rendered prompt was at screen row 65 (i.e. 35+1+29), not 64.
     renderer.setCursorPosition(ref.screenX + 1 + c.x, ref.screenY + 1 + c.y, true)
   })
@@ -432,9 +409,7 @@ export function Terminal(props: TerminalProps): JSXElement {
             <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
               <text fg={theme.error} wrapMode="word">
                 terminal unavailable —{" "}
-                {isTmuxMissing(acquireError() ?? "")
-                  ? "tmux is not installed (try `brew install tmux` or set KOBE_TMUX_BIN)"
-                  : "shell could not start"}
+                {isShellMissing(acquireError() ?? "") ? "configured shell is not available" : "shell could not start"}
               </text>
               <text fg={theme.textMuted} wrapMode="word">
                 {acquireError()}
