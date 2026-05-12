@@ -84,8 +84,9 @@ export function TopBar(props: {
               if (orch) RcBridgeDialog.show(dialog, orch, rcBridge, props.activeTask, props.activeChatTabId)
             }}
           >
-            ◉ {rcBridge().state === "running"
-              ? rcBridge().bound?.taskTitle ?? rcBridge().envId ?? "RC"
+            ◉{" "}
+            {rcBridge().state === "running"
+              ? (rcBridge().bound?.taskTitle ?? rcBridge().envId ?? "RC")
               : "RC connecting…"}
           </text>
         </Show>
