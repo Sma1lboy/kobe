@@ -14,10 +14,9 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { type Accessor, Show } from "solid-js"
+import { type Accessor, Show, createMemo } from "solid-js"
 import pkg from "../../../package.json" with { type: "json" }
-import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import type { KobeOrchestrator } from "../../client/remote-orchestrator.ts"
+import { type KobeOrchestrator, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { Task } from "../../types/task.ts"
 import type { UpdateInfo } from "../../version.ts"
 import { useTheme } from "../context/theme"
@@ -42,8 +41,16 @@ export function TopBar(props: {
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
-  // Bridge chip is daemon-only (in-process Orchestrator returns a
-  // permanently-"off" stub, so the chip would never render anyway —
+  // KOB-38: only the daemon-backed orchestrator has a wire to lose.
+  // The in-process Orchestrator (KOBE_NO_DAEMON / test engine) always
+  // reports `online` so the banner never paints. Two states only —
+  // the disconnect modal handles the "what next" choice.
+  const connectionState = createMemo<"online" | "disconnected">(() => {
+    const orch = props.orchestrator
+    return orch instanceof RemoteOrchestrator ? orch.connectionStateSignal()() : "online"
+  })
+  // KOB-62 bridge chip — daemon-only (in-process Orchestrator returns
+  // a permanently-"off" stub, so the chip would never render anyway —
   // but capturing the typed RemoteOrchestrator here avoids a cast
   // when handing it to RcBridgeDialog).
   const remoteOrch = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
@@ -95,10 +102,22 @@ export function TopBar(props: {
         </Show>
       </box>
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={1} justifyContent="center">
-        <Show when={props.activeTask() !== undefined}>
-          <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-            {props.activeTask()?.branch}
-          </text>
+        <Show
+          when={connectionState() === "online"}
+          fallback={
+            // Disconnect indicator (KOB-38). The disconnect modal owns
+            // the recovery flow; this red text is just a fallback signal
+            // if the modal gets dismissed.
+            <text fg={theme.error} attributes={TextAttributes.BOLD} wrapMode="none">
+              daemon disconnected
+            </text>
+          }
+        >
+          <Show when={props.activeTask() !== undefined}>
+            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+              {props.activeTask()?.branch}
+            </text>
+          </Show>
         </Show>
       </box>
       <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={2} justifyContent="flex-end">

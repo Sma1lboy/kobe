@@ -7,10 +7,23 @@ import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInput
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
+import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
 type PendingInput = PendingInputEntry
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
+
+/**
+ * Daemon connection lifecycle as observed by the TUI. Two states because
+ * reconnect is user-driven (the host shows a "Restart daemon or Quit?"
+ * prompt when we go `disconnected`); no auto-retry, no intermediate
+ * "reconnecting" state.
+ *
+ * Surfaced via {@link RemoteOrchestrator.connectionStateSignal} so the
+ * top bar and the disconnect modal can react. The local in-process
+ * `Orchestrator` has no equivalent — there's no socket to lose.
+ */
+export type DaemonConnectionState = "online" | "disconnected"
 
 export class RemoteOrchestrator {
   private readonly tasksAcc: Accessor<Task[]>
@@ -19,6 +32,8 @@ export class RemoteOrchestrator {
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
   private readonly planUsageAcc: Accessor<PlanUsage | null>
   private readonly setPlanUsage: (next: PlanUsage | null) => void
+  private readonly connectionStateAcc: Accessor<DaemonConnectionState>
+  private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly rcBridgeAcc: Accessor<RcBridgeStatus>
   private readonly setRcBridge: (next: RcBridgeStatus) => void
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
@@ -42,6 +57,7 @@ export class RemoteOrchestrator {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
     const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
+    const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     const [rcBridge, setRcBridge] = createSignal<RcBridgeStatus>({ state: "off" })
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
@@ -49,9 +65,17 @@ export class RemoteOrchestrator {
     this.setRunState = (next) => setRunState(() => next)
     this.planUsageAcc = planUsage
     this.setPlanUsage = (next) => setPlanUsage(() => next)
+    this.connectionStateAcc = connectionState
+    this.setConnectionState = (next) => setConnectionState(() => next)
     this.rcBridgeAcc = rcBridge
     this.setRcBridge = (next) => setRcBridge(() => next)
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
+    // KOB-38: socket dropping flips us to `disconnected` and stops
+    // there. The host TUI watches this signal, shows a modal, and the
+    // user picks Restart (→ `manualReconnect`) or Quit. No backoff
+    // loop, no banner-only state — daemon death is rare and never
+    // transient, so a user-driven prompt fits the actual flake pattern.
+    this.client.onLifecycle("close", () => this.setConnectionState("disconnected"))
   }
 
   async init(): Promise<void> {
@@ -113,6 +137,34 @@ export class RemoteOrchestrator {
         }
       }),
     )
+  }
+
+  /**
+   * KOB-38: invoked by the host TUI when the user clicks "Restart" in
+   * the disconnect modal. Spawns kobed if it isn't already running,
+   * opens a fresh socket on the existing client, then runs the same
+   * hello + subscribe seeding as {@link init} — pending-input replicas
+   * for previously-known tasks are cleared first so a request resolved
+   * while we were offline doesn't stick as a zombie "awaiting input".
+   *
+   * Throws if the daemon can't be brought up or hello/subscribe fail;
+   * caller (the modal) is expected to surface the error and re-prompt.
+   */
+  async manualReconnect(): Promise<void> {
+    // Make sure any half-open socket is torn down before we try to
+    // reuse the client — otherwise `connect()` short-circuits on a
+    // dead socket reference.
+    this.client.forceDisconnect()
+    await ensureDaemonReachable()
+    for (const task of this.tasksAcc()) this.pendingInputBroker.clearForTask(task.id)
+    await this.init()
+    this.setConnectionState("online")
+  }
+
+  /** Reactive accessor for the daemon connection state — read by the
+   *  TopBar (red text when disconnected) and the disconnect modal. */
+  connectionStateSignal(): Accessor<DaemonConnectionState> {
+    return this.connectionStateAcc
   }
 
   dispose(): void {

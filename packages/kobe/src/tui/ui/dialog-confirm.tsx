@@ -28,7 +28,10 @@ export type DialogConfirmProps = {
   message: string
   onConfirm?: () => void
   onCancel?: () => void
+  /** Custom label for the cancel button (default: `cancel`). Titlecased on render. */
   label?: string
+  /** Custom label for the confirm button (default: `confirm`). Titlecased on render. */
+  confirmLabel?: string
 }
 
 export type DialogConfirmResult = boolean | undefined
@@ -89,7 +92,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
               }}
             >
               <text fg={key === store.active ? theme.selectedListItemText : theme.textMuted}>
-                {titlecase(key === "cancel" ? (props.label ?? key) : key)}
+                {titlecase(key === "cancel" ? (props.label ?? key) : (props.confirmLabel ?? key))}
               </text>
             </box>
           )}
@@ -104,6 +107,7 @@ DialogConfirm.show = (
   title: string,
   message: string,
   label?: string,
+  confirmLabel?: string,
 ): Promise<DialogConfirmResult> => {
   return new Promise<DialogConfirmResult>((resolve) => {
     dialog.replace(
@@ -114,6 +118,7 @@ DialogConfirm.show = (
           onConfirm={() => resolve(true)}
           onCancel={() => resolve(false)}
           label={label}
+          confirmLabel={confirmLabel}
         />
       ),
       () => resolve(undefined),
