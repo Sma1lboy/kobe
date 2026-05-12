@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-05-12
+
+### Fixed
+
+- **Large worktrees no longer freeze the TUI during pane IO** — file-tree git scans and preview git/file reads now run asynchronously instead of blocking the JS event loop, preview reads cap huge files at 2 MiB, recursive file-tree watching is opt-in via `KOBE_FILETREE_WATCH=1`, and stale slow scans can no longer overwrite newer pane state.
+
 ## [0.5.12] - 2026-05-12
 
 ### Fixed
