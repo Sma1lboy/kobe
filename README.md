@@ -40,7 +40,5 @@ bun run lint              # Biome across the whole monorepo
 bun run lint:fix          # Biome --write across the whole monorepo
 ```
 
-Useful local shell alias: `alias codex-full='codex --dangerously-bypass-approvals-and-sandbox'` for running Codex with full access.
-
 Per-package commands (Remotion renders for branding, etc.) live in each
 package's `package.json` and are invoked with `bun --filter`.
