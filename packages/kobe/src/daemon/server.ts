@@ -126,12 +126,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         /* best-effort — kobed shutdown should never block on bridge teardown */
       }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
-      await new Promise<void>((resolve) => server.close(() => resolve()))
+      // End attached client sockets BEFORE closing the server. server.close()
+      // waits for every active connection to drain — if we close it first,
+      // any TUI that doesn't disconnect on `daemon.stopping` will deadlock
+      // shutdown forever (this was the root cause of `kobed restart` hangs).
       for (const client of Array.from(clients)) {
         for (const unsub of client.subscriptions.values()) unsub()
         client.subscriptions.clear()
-        client.socket.end()
+        client.socket.destroy()
       }
+      await new Promise<void>((resolve) => server.close(() => resolve()))
       await unlink(socketPath).catch(() => {})
       await unlink(pidPath).catch(() => {})
     },
