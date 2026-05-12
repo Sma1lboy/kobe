@@ -191,6 +191,11 @@ describe("Orchestrator.createTask", () => {
     const [a, b] = await Promise.allSettled([orch.runTask(t.id, "go-a"), orch.runTask(t.id, "go-b")])
     expect(a.status).toBe("rejected")
     expect(b.status).toBe("rejected")
+    if (a.status === "rejected" && b.status === "rejected") {
+      expect(a.reason).toBeInstanceOf(Error)
+      expect(b.reason).toBeInstanceOf(Error)
+      expect((b.reason as Error).message).toBe((a.reason as Error).message)
+    }
     expect(store.get(t.id)?.worktreePath).toBe("")
   })
 
