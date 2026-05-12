@@ -5,10 +5,11 @@
  *
  *     ~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-<TS>-<UUID>.jsonl
  *
- * The cwd is encoded inside the file (first `session_meta` line) — we
- * read JUST the head of each rollout to recover the id, cwd, and first
- * user message, then filter by cwd. Reading only the first ~20 lines
- * keeps the scan cheap even for years of history.
+ * The cwd is encoded inside the file (first `session_meta` line). We
+ * scan the whole rollout because `messageCount` is the count the
+ * resume-picker shows — capping at the head window systematically
+ * under-reports any session longer than the window. The scan is still
+ * line-by-line streaming, so memory cost stays bounded.
  */
 
 import { open, stat } from "node:fs/promises"
@@ -16,7 +17,6 @@ import type { SessionMeta } from "@/types/engine"
 import { type HistoryDeps, listRolloutFiles } from "./history"
 import { visibleCodexUserText } from "./synthetic"
 
-const PREVIEW_HEAD_LINES = 40
 const PREVIEW_CHAR_CAP = 200
 
 export async function listSessionsForCwd(cwd: string, deps?: HistoryDeps): Promise<SessionMeta[]> {
@@ -43,7 +43,6 @@ interface RolloutHead {
   cwd: string
   mtimeMs: number
   firstUserMessage: string | null
-  /** Approximate; we only count what we read in the head window. */
   messageCount: number
 }
 
@@ -63,42 +62,40 @@ async function tryReadMeta(file: string): Promise<RolloutHead | null> {
   if (!handle) return null
   try {
     let buf = ""
-    let lineCount = 0
-    const processLine = (line: string): boolean => {
-      lineCount++
+    const processLine = (line: string): void => {
       const parsed = safeParse(line)
-      if (parsed) {
-        if (parsed.type === "session_meta") {
-          const payload = parsed.payload
-          if (isObject(payload)) {
-            if (typeof payload.id === "string") sessionId = payload.id as string
-            if (typeof payload.cwd === "string") cwd = payload.cwd as string
-          }
-        } else if (parsed.type === "response_item" && isObject(parsed.payload)) {
-          const p = parsed.payload as Record<string, unknown>
-          if (p.type === "message") {
-            messageCount++
-            if (!firstUser && p.role === "user") {
-              const text = visibleCodexUserText(p.content)
-              if (text) firstUser = text.slice(0, PREVIEW_CHAR_CAP)
-            }
+      if (!parsed) return
+      if (parsed.type === "session_meta") {
+        const payload = parsed.payload
+        if (isObject(payload)) {
+          if (typeof payload.id === "string") sessionId = payload.id as string
+          if (typeof payload.cwd === "string") cwd = payload.cwd as string
+        }
+        return
+      }
+      if (parsed.type === "response_item" && isObject(parsed.payload)) {
+        const p = parsed.payload as Record<string, unknown>
+        if (p.type === "message") {
+          messageCount++
+          if (!firstUser && p.role === "user") {
+            const text = visibleCodexUserText(p.content)
+            if (text) firstUser = text.slice(0, PREVIEW_CHAR_CAP)
           }
         }
       }
-      return lineCount >= PREVIEW_HEAD_LINES
     }
     const reader = handle.createReadStream({ encoding: "utf8" })
-    outer: for await (const chunk of reader) {
+    for await (const chunk of reader) {
       buf += chunk as string
       let nl = buf.indexOf("\n")
       while (nl !== -1) {
         const line = buf.slice(0, nl)
         buf = buf.slice(nl + 1)
         nl = buf.indexOf("\n")
-        if (processLine(line)) break outer
+        processLine(line)
       }
     }
-    if (lineCount < PREVIEW_HEAD_LINES && buf.trim()) processLine(buf)
+    if (buf.trim()) processLine(buf)
   } finally {
     await handle.close().catch(() => {})
   }

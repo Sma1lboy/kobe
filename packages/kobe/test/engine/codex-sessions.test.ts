@@ -46,6 +46,34 @@ describe("codex session listing", () => {
     expect(out[0]?.firstUserMessage).toBe("real first prompt")
   })
 
+  it("counts every message line, not just the head window", async () => {
+    const sessionsRoot = await makeSessionsRoot()
+    const rolloutDir = path.join(sessionsRoot, "2026", "05", "12")
+    await mkdir(rolloutDir, { recursive: true })
+
+    const TOTAL_MESSAGES = 120
+    const lines = [JSON.stringify({ type: "session_meta", payload: { id: "session-long", cwd: CWD } })]
+    for (let i = 0; i < TOTAL_MESSAGES; i++) {
+      lines.push(
+        JSON.stringify({
+          type: "response_item",
+          timestamp: `2026-05-12T10:${String(i % 60).padStart(2, "0")}:00Z`,
+          payload: {
+            type: "message",
+            role: i % 2 === 0 ? "user" : "assistant",
+            content: [{ type: "input_text", text: `message ${i}` }],
+          },
+        }),
+      )
+    }
+    await writeFile(path.join(rolloutDir, "rollout-2026-05-12T10-00-00-000Z-session-long.jsonl"), lines.join("\n"), "utf8")
+
+    const out = await listSessionsForCwd(CWD, depsFor(sessionsRoot))
+
+    expect(out).toHaveLength(1)
+    expect(out[0]?.messageCount).toBe(TOTAL_MESSAGES)
+  })
+
   it("skips synthetic environment rows when deriving firstUserMessage", async () => {
     const sessionsRoot = await makeSessionsRoot()
     const rolloutDir = path.join(sessionsRoot, "2026", "05", "12")
