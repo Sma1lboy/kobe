@@ -66,7 +66,11 @@ describe("codex session listing", () => {
         }),
       )
     }
-    await writeFile(path.join(rolloutDir, "rollout-2026-05-12T10-00-00-000Z-session-long.jsonl"), lines.join("\n"), "utf8")
+    await writeFile(
+      path.join(rolloutDir, "rollout-2026-05-12T10-00-00-000Z-session-long.jsonl"),
+      lines.join("\n"),
+      "utf8",
+    )
 
     const out = await listSessionsForCwd(CWD, depsFor(sessionsRoot))
 
