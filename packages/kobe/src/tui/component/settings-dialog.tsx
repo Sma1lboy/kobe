@@ -27,9 +27,16 @@ import { unlinkSync } from "node:fs"
 import { join } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, Show, createMemo, createSignal, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator"
+import {
+  type ClaudeAccount,
+  type CodexAccount,
+  type EngineAccountStatus,
+  detectClaudeAccount,
+  detectCodexAccount,
+} from "../../engine/account-detect"
 import { homeDir } from "../../env"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
@@ -43,10 +50,11 @@ const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
   info: "Info (cool blue)",
 }
 
-type SectionId = "general" | "dev"
+type SectionId = "general" | "accounts" | "dev"
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
+  { id: "accounts", label: "Accounts" },
   { id: "dev", label: "Dev" },
 ]
 
@@ -97,6 +105,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // daemon to restart, so we omit the row entirely rather than
   // showing a disabled affordance.
   const hasDaemon = props.orchestrator instanceof RemoteOrchestrator
+
+  // Account detection state. Read-only — we just surface what `claude`
+  // and `codex` already wrote to disk. Runs async on mount so opening
+  // the dialog never blocks on fs I/O; until results land we render a
+  // muted "Checking…" placeholder. Future login flows hook in here.
+  const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
+  const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
+  onMount(() => {
+    void detectClaudeAccount()
+      .then(setClaudeStatus)
+      .catch((err: unknown) => {
+        // Unexpected: detection swallows expected errors internally
+        // and surfaces them via accountError. Anything that lands here
+        // is a programmer error worth keeping visible in the logs.
+        // eslint-disable-next-line no-console
+        console.error("kobe: detectClaudeAccount threw:", err)
+        setClaudeStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
+      })
+    void detectCodexAccount()
+      .then(setCodexStatus)
+      .catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("kobe: detectCodexAccount threw:", err)
+        setCodexStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
+      })
+  })
   // How many rows the current section's body has. General =
   //   N themes
   //   + 1 transparent-bg toggle
@@ -110,6 +144,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
   function bodyRowCount(): number {
     if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length
     if (section() === "dev") return devRowCount()
+    // Accounts is read-only — no row-level navigation. j/k inside the
+    // body is a no-op there, and l/right is harmless because there's
+    // nothing to highlight.
+    if (section() === "accounts") return 0
     return 0
   }
   // Map bodyRow to the underlying selection within the General section.
@@ -512,6 +550,96 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     )
                   }}
                 </For>
+              </box>
+            </box>
+          </Show>
+          <Show when={section() === "accounts"}>
+            <box flexDirection="column" gap={1}>
+              <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                Accounts
+              </text>
+              <text fg={theme.textMuted} wrapMode="word">
+                Read-only view of locally-detected engine accounts. Login flows land here later.
+              </text>
+              {/* claude-code */}
+              <box flexDirection="column" gap={0}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  claude-code
+                </text>
+                <Show when={claudeStatus() === null}>
+                  <text fg={theme.textMuted}>Checking…</text>
+                </Show>
+                <Show when={claudeStatus()}>
+                  {(s) => (
+                    <box flexDirection="column" gap={0}>
+                      <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                        {s().binary.found
+                          ? `Binary: ${(s().binary as { path: string }).path}`
+                          : `Binary: ${(s().binary as { error: string }).error}`}
+                      </text>
+                      {(() => {
+                        const a = s().account
+                        if (a.kind === "oauth") {
+                          const tail = [a.organization, a.billingType].filter((x): x is string => !!x).join(" · ")
+                          return (
+                            <text fg={theme.success} wrapMode="word">
+                              {`● Logged in: ${a.email}${tail ? ` (${tail})` : ""}`}
+                            </text>
+                          )
+                        }
+                        return <text fg={theme.textMuted}>○ Not logged in</text>
+                      })()}
+                      <Show when={s().accountError}>
+                        {(err) => (
+                          <text fg={theme.warning} wrapMode="word">
+                            {`! ${err()}`}
+                          </text>
+                        )}
+                      </Show>
+                    </box>
+                  )}
+                </Show>
+              </box>
+              {/* codex */}
+              <box flexDirection="column" gap={0}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                  codex
+                </text>
+                <Show when={codexStatus() === null}>
+                  <text fg={theme.textMuted}>Checking…</text>
+                </Show>
+                <Show when={codexStatus()}>
+                  {(s) => (
+                    <box flexDirection="column" gap={0}>
+                      <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                        {s().binary.found
+                          ? `Binary: ${(s().binary as { path: string }).path}`
+                          : `Binary: ${(s().binary as { error: string }).error}`}
+                      </text>
+                      {(() => {
+                        const a = s().account
+                        if (a.kind === "chatgpt") {
+                          return (
+                            <text fg={theme.success} wrapMode="word">
+                              {`● ChatGPT login: ${a.email}${a.plan ? ` (${a.plan})` : ""}`}
+                            </text>
+                          )
+                        }
+                        if (a.kind === "apikey") {
+                          return <text fg={theme.success}>● API key configured</text>
+                        }
+                        return <text fg={theme.textMuted}>○ Not logged in</text>
+                      })()}
+                      <Show when={s().accountError}>
+                        {(err) => (
+                          <text fg={theme.warning} wrapMode="word">
+                            {`! ${err()}`}
+                          </text>
+                        )}
+                      </Show>
+                    </box>
+                  )}
+                </Show>
               </box>
             </box>
           </Show>
