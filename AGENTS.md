@@ -191,5 +191,8 @@ Update this section's status as gates G0–G4 close. See PLAN.md for the canonic
   so the rendered placeholder is `answerthe promptabove to continue`.
   Both `packages/kobe/test/behavior/approval-flow.test.ts` cases now run.
 - CI gate: `.github/workflows/ci.yml` runs typecheck + unit tests + build
-  on every push to main and every PR. Behavior tests stay local-only
-  (need tmux + node-pty terminal sizing).
+  on every push to main and every PR. `bun run test` is split into fast
+  Vitest coverage plus the Unix-socket daemon/bridge suite. Behavior
+  tests stay local-only and opt-in via `bun run test:behavior` (need tmux
+  + node-pty terminal sizing). Do not loop on `test:behavior` unless the
+  change is user-visible or the behavior harness itself is the target.

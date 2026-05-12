@@ -152,8 +152,8 @@ If you want to hack on kobe itself rather than just use it:
 ```bash
 bun install
 bun run dev          # boots the 5-pane TUI under KOBE_DEV=1 (no update chip, etc.)
-bun run test         # unit + type tests
-bun run test:behavior  # PTY-driven; spawns kobe as a real binary
+bun run test         # normal suite: fast tests + serial socket tests
+bun run test:behavior  # slow PTY suite; only run for user-visible TUI behavior
 bun run typecheck    # strict tsc
 bun run build        # produces ./dist/index.js for `npm publish`
 ```
