@@ -29,6 +29,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { normalizeCodexContent } from "./normalize"
+import { isSyntheticCodexUserRow } from "./synthetic"
 
 export interface HistoryDeps {
   /** Absolute path to `~/.codex/sessions`. */
@@ -265,33 +266,6 @@ function mergedDurationMs(intervals: readonly { startMs: number; endMs: number }
 
 function numberOr(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback
-}
-
-/**
- * True when every text block in the message is one of codex's
- * synthetic envelopes. Conservative — anything else mixed in (a user
- * prompt that happens to paste an envelope-shaped string) is preserved.
- */
-function isSyntheticCodexUserRow(blocks: readonly { type: string; text?: string }[]): boolean {
-  if (blocks.length === 0) return false
-  for (const b of blocks) {
-    if (b.type !== "text") return false
-    const t = (b.text ?? "").trim()
-    if (!isEnvironmentContextEnvelope(t) && !isInstructionsEnvelope(t)) return false
-  }
-  return true
-}
-
-function isEnvironmentContextEnvelope(text: string): boolean {
-  return text.startsWith("<environment_context>") && text.endsWith("</environment_context>")
-}
-
-function isInstructionsEnvelope(text: string): boolean {
-  return (
-    text.startsWith("# AGENTS.md instructions for ") &&
-    text.includes("\n<INSTRUCTIONS>\n") &&
-    text.endsWith("</INSTRUCTIONS>")
-  )
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

@@ -14,6 +14,7 @@
 import { open, stat } from "node:fs/promises"
 import type { SessionMeta } from "@/types/engine"
 import { type HistoryDeps, listRolloutFiles } from "./history"
+import { visibleCodexUserText } from "./synthetic"
 
 const PREVIEW_HEAD_LINES = 40
 const PREVIEW_CHAR_CAP = 200
@@ -78,7 +79,8 @@ async function tryReadMeta(file: string): Promise<RolloutHead | null> {
           if (p.type === "message") {
             messageCount++
             if (!firstUser && p.role === "user") {
-              firstUser = extractText(p.content)?.slice(0, PREVIEW_CHAR_CAP) ?? null
+              const text = visibleCodexUserText(p.content)
+              if (text) firstUser = text.slice(0, PREVIEW_CHAR_CAP)
             }
           }
         }
@@ -119,21 +121,6 @@ function safeParse(line: string): { type?: string; payload?: unknown } | null {
   } catch {
     return null
   }
-}
-
-function extractText(content: unknown): string | null {
-  if (typeof content === "string") return content
-  if (!Array.isArray(content)) return null
-  for (const item of content) {
-    if (typeof item === "string" && item.length > 0) return item
-    if (isObject(item)) {
-      const t = item.type
-      if ((t === "input_text" || t === "output_text" || t === "text") && typeof item.text === "string") {
-        return item.text as string
-      }
-    }
-  }
-  return null
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
