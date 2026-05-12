@@ -629,12 +629,11 @@ export function Chat(props: ChatProps) {
     }),
   }))
 
-  // Esc-to-interrupt while streaming. Higher precedence than the global
-  // `focus.detach` esc (LIFO stack — Chat mounts after the global hook,
-  // so this binding sits on top). Gated on `streaming` so an idle ESC
-  // still falls through to the global handler and detaches to the
-  // sidebar; gated on `!dialog.stack.length` so DialogProvider's esc
-  // (close top dialog) isn't shadowed.
+  // Esc-to-interrupt while streaming. Gated on `streaming` so an idle
+  // ESC is a no-op (the global "back to sidebar" detach was removed
+  // because it pulled focus out from under the user mid-edit; use
+  // `ctrl+q` for an explicit detach). Gated on `!dialog.stack.length`
+  // so DialogProvider's esc (close top dialog) isn't shadowed.
   async function interruptStream(): Promise<void> {
     const taskId = props.taskId()
     const tabId = activeTabId()

@@ -344,7 +344,6 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
-    onFocusDetach: () => setFocusedPane("sidebar"),
     // Tab cycle is no-op while workspace is focused so the composer's
     // own tab handling (dialog field cycling, indent, etc.) wins.
     onFocusNext: () => {

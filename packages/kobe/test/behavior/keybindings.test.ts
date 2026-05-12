@@ -8,8 +8,8 @@
  *      on macOS — terminals do not propagate the Command modifier) opens
  *      the command palette.
  *   4. Pressing bare `q` does NOT open the quit-confirm dialog (after the
- *      bare-letter purge, quit moved to ctrl+q — focus.detach moved to esc
- *      so the chord could be reclaimed).
+ *      bare-letter purge, quit moved to ctrl+q so plain letters can be
+ *      typed into the chat composer without firing global verbs).
  *
  * Why these actions: they are the user-visible surface of the global keymap.
  * Other bindings (`tab`, `shift+tab`) have no visible effect at the level
