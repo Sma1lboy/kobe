@@ -104,6 +104,27 @@ export function nextChatTabSeq(tabs: readonly ChatTab[]): number {
 }
 
 /**
+ * Worktree directory slug for `task` — the basename of
+ * `task.worktreePath`. Animal name for tasks created after KOB-65, the
+ * task's ULID for older worktrees. Returns `""` for `kind: "main"`
+ * tasks (which point at the repo root, not a sub-worktree) and for
+ * tasks that haven't allocated a worktree yet (`backlog` state).
+ *
+ * Derived rather than stored: keeping it as a separate field on Task
+ * just duplicates state that's already in `worktreePath`. Read through
+ * this helper at every consumer (slug allocator, sidebar, diagnose).
+ */
+export function worktreeSlug(task: Pick<Task, "kind" | "worktreePath">): string {
+  if (task.kind === "main") return ""
+  if (!task.worktreePath) return ""
+  // Last path segment, robust to both POSIX and Windows separators.
+  // `path.basename` would do the same; inlined here to avoid a node
+  // import in this types-only module.
+  const match = task.worktreePath.match(/([^/\\]+)[/\\]*$/)
+  return match ? (match[1] ?? "") : ""
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of the {@link TaskIndex}.
  *
  * Field invariants:

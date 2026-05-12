@@ -47,6 +47,7 @@ import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
+import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
 import type {
   AIEngine,
   EngineCapabilities,
@@ -57,6 +58,7 @@ import type {
   SessionHandle,
   SpawnOpts,
 } from "../../src/types/engine.ts"
+import { worktreeSlug } from "../../src/types/task.ts"
 import type { VendorId } from "../../src/types/vendor.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -203,7 +205,10 @@ describe("Orchestrator.createTask", () => {
     fake.finish("fake-1")
     await orch._waitForPumpsIdle()
     const updated = store.get(task.id)!
-    expect(updated.worktreePath).toBe(worktreePathFor(repo, task.id))
+    // KOB-65: dir name is now an allocated animal slug, not the ULID.
+    const slug = worktreeSlug(updated)
+    expect(slug).not.toBe("")
+    expect(updated.worktreePath).toBe(worktreePathFor(repo, slug))
     expect(fs.existsSync(updated.worktreePath)).toBe(true)
     expect(fs.existsSync(path.join(updated.worktreePath, "README.md"))).toBe(true)
     expect(updated.branch.startsWith("kobe/")).toBe(true)
@@ -239,6 +244,27 @@ describe("Orchestrator.createTask", () => {
     const after = store.get(t.id)!
     expect(after.status).toBe("backlog")
     expect(after.worktreePath).toBe("")
+  })
+
+  test("concurrent first-prompt runTasks both reject when allocation fails", async () => {
+    // Regression for an ensureWorktree latch bug: when the in-flight
+    // allocator failed, the runner-up used to `.catch(() => {})` the
+    // rejection and return a task with `worktreePath: ""`, then runTask
+    // would proceed to spawn the engine with an empty cwd. Both callers
+    // must reject with the same surfaced error.
+    const { orch, store } = await buildOrchestrator()
+    const bogusRepo = path.join(tmpRoot, "no-such-repo-concurrent")
+    fs.mkdirSync(bogusRepo, { recursive: true })
+    const t = await orch.createTask({ repo: bogusRepo, title: "bad-concurrent", prompt: "" })
+    const [a, b] = await Promise.allSettled([orch.runTask(t.id, "go-a"), orch.runTask(t.id, "go-b")])
+    expect(a.status).toBe("rejected")
+    expect(b.status).toBe("rejected")
+    if (a.status === "rejected" && b.status === "rejected") {
+      expect(a.reason).toBeInstanceOf(Error)
+      expect(b.reason).toBeInstanceOf(Error)
+      expect((b.reason as Error).message).toBe((a.reason as Error).message)
+    }
+    expect(store.get(t.id)?.worktreePath).toBe("")
   })
 
   test("derives title from prompt when no explicit title is provided", async () => {
@@ -705,6 +731,55 @@ describe("Orchestrator.deleteTask", () => {
     expect(stopSpy).toHaveBeenCalled()
     expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(wt)).toBe(false)
+  })
+
+  test("frees the worktreeSlug so a fresh task can re-use the same name (KOB-65)", async () => {
+    const fake = new FakeAIEngine()
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "first", prompt: "" })
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "go")
+    await orch._waitForPumpsIdle()
+
+    const slug = worktreeSlug(orch.getTask(t.id)!)
+    expect(slug).not.toBe("")
+    const wt = orch.getTask(t.id)!.worktreePath
+    expect(fs.existsSync(wt)).toBe(true)
+
+    await orch.deleteTask(t.id)
+    expect(store.get(t.id)).toBeUndefined()
+    expect(fs.existsSync(wt)).toBe(false)
+
+    // Reconstruct the orchestrator's allocator view with a pool
+    // containing only the just-deleted slug. If delete cleaned up
+    // both the store record AND the worktree dir, the allocator's
+    // "occupied" set is empty for this slug and it gets picked
+    // verbatim. If either cleanup leaked, the allocator falls back
+    // to `<slug>-v2`, and this assertion fails.
+    const allocator = new SlugAllocator(
+      (r) =>
+        store
+          .list()
+          .filter((task) => task.repo === r && !task.archived)
+          .map((task) => worktreeSlug(task))
+          .filter((s) => s.length > 0),
+      { pool: [slug] },
+    )
+    const reused = await allocator.allocate(repo)
+    expect(reused).toBe(slug)
+  })
+
+  test("keeps pending slug allocations scoped per repo (KOB-65)", async () => {
+    const otherRepo = path.join(tmpRoot, "repo-other")
+    fs.mkdirSync(otherRepo, { recursive: true })
+    const init = spawnSync("bash", [REPO_INIT, otherRepo], { encoding: "utf8" })
+    expect(init.status).toBe(0)
+
+    const allocator = new SlugAllocator(() => [], { pool: ["panda"], random: () => 0 })
+    const [a, b] = await Promise.all([allocator.allocate(repo), allocator.allocate(otherRepo)])
+
+    expect(a).toBe("panda")
+    expect(b).toBe("panda")
   })
 
   test("force-removes a dirty worktree (the user confirmed)", async () => {

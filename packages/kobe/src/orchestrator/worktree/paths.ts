@@ -2,12 +2,13 @@
  * Canonical filesystem layout for kobe-managed worktrees.
  *
  * Per DESIGN.md §11.3 (resolved) the worktree root is per-repo and lives
- * adjacent to the source tree at `<repo>/.claude/worktrees/<task-id>/`.
- * Shared namespace with Claude Code's own agent-spawn worktrees — one
- * hidden dir, both tools' worktrees inside. Do NOT move this back to
- * `.kobe/worktrees/`; that proposal pre-dates Jackson's resolution and
- * keeps cropping up in stale comments / test fixtures. Search-and-replace
- * any survivors when you find them.
+ * adjacent to the source tree at `<repo>/.claude/worktrees/<slug>/`.
+ * `<slug>` is an animal-name slug (KOB-65) for tasks created after the
+ * switch, or the task's ULID for legacy worktrees. Shared namespace
+ * with Claude Code's own agent-spawn worktrees — one hidden dir, both
+ * tools' worktrees inside. Do NOT move this back to `.kobe/worktrees/`;
+ * that proposal pre-dates Jackson's resolution and keeps cropping up
+ * in stale comments / test fixtures.
  *
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
@@ -43,18 +44,43 @@ export function worktreeRootFor(repo: string): string {
 }
 
 /**
- * Absolute path of the worktree assigned to `taskId` in `repo`.
+ * Absolute path of the worktree directory keyed by `slug` in `repo`.
  *
- * Single source of truth — the orchestrator (Wave 2 Stream E) will
- * compute the path via this helper and hand it to
- * {@link import("./manager.ts").GitWorktreeManager.create}, so the two
- * modules can never disagree.
+ * `slug` is the workspace's directory basename — an animal-name slug
+ * allocated by {@link SlugAllocator} for tasks created after KOB-65,
+ * or the task's ULID for older tasks whose worktree was created back
+ * when "dir name == task id" was the invariant.
+ *
+ * Single source of truth: the orchestrator computes the path via this
+ * helper and hands it to {@link import("./manager.ts").GitWorktreeManager.create},
+ * so the two modules can never disagree on the layout.
  */
-export function worktreePathFor(repo: string, taskId: string): string {
-  if (!taskId || /[/\\\0]/.test(taskId)) {
-    throw new Error(`worktreePathFor: invalid taskId: ${JSON.stringify(taskId)}`)
+export function worktreePathFor(repo: string, slug: string): string {
+  if (!slug || /[/\\\0]/.test(slug)) {
+    throw new Error(`worktreePathFor: invalid slug: ${JSON.stringify(slug)}`)
   }
-  return path.join(worktreeRootFor(repo), taskId)
+  return path.join(worktreeRootFor(repo), slug)
+}
+
+/**
+ * Immediate child directory names under {@link worktreeRootFor}`(repo)`.
+ *
+ * Returns an empty array when the root doesn't exist yet (the very
+ * first task in a repo) or can't be read. Used by the slug allocator
+ * to discover on-disk-occupied slugs (so a stale dir from an aborted
+ * task still counts as taken) and by `diagnose` to reconcile the task
+ * index against disk state. Symlinks are not followed.
+ */
+export function listWorktreeDirNames(repo: string): string[] {
+  const root = worktreeRootFor(repo)
+  try {
+    return fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+  } catch {
+    return []
+  }
 }
 
 /**
