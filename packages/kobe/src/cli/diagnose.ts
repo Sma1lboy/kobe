@@ -17,11 +17,9 @@
  *     binary present but corrupt) cannot be allowed to abort the rest
  *     of the report. The whole point is "I have one button to push
  *     when something is wrong".
- *   - **No network.** `checkLatestVersion()` already caches + has a 3s
- *     timeout + returns null on failure, so it's safe; but we don't
- *     `force: true` (we use the same cache the TUI does), and we're
- *     comfortable printing "no version-check data yet" if the user has
- *     never launched the TUI.
+ *   - **Network is bounded.** `checkLatestVersion()` has a 3s timeout
+ *     and returns null on failure, so diagnose can reuse the same
+ *     best-effort npm check as the TUI without making the report fragile.
  *
  * Late dynamic-imported from the CLI dispatcher so the diagnose path
  * doesn't pay the cost of loading the Solid graph or opentui.

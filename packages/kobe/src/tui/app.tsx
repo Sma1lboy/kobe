@@ -136,10 +136,9 @@ function Shell(props: AppDeps) {
   // bridge to the focused tab so claude.ai sees the right worktree.
   const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
 
-  // Background npm-registry version check. Cached for 6h on disk, so
-  // typical cold boots return synchronously off the cache. The first
-  // launch (or once per cache window) hits the network with a 3s
-  // timeout — failures are silent, the chip just doesn't render.
+  // Background npm-registry version check. Runs on every TUI launch so
+  // freshly published versions show up in the topbar immediately. The
+  // request has a 3s timeout; failures are silent, the chip just doesn't render.
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   onMount(() => {
     void checkLatestVersion()

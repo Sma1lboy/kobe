@@ -71,7 +71,7 @@ export function TopBar(props: {
               if (info) UpdateDialog.show(dialog, info)
             }}
           >
-            ↑ v{props.updateInfo()?.latest} available
+            ↑ v{props.updateInfo()?.latest} available!
           </text>
         </Show>
         {/* Remote-control bridge chip (KOB-62) — visible only while

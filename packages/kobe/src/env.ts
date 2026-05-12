@@ -40,8 +40,8 @@ export function isDev(): boolean {
 
 /**
  * `KOBE_HOME_DIR` — overrides `os.homedir()` for everything kobe
- * persists (state file, version-check cache, task index). Tests
- * point this at a temp dir so they don't trample the real `~/.kobe/`.
+ * persists (state file, task index). Tests point this at a temp dir
+ * so they don't trample the real `~/.kobe/`.
  */
 export function homeDir(): string {
   return process.env.KOBE_HOME_DIR ?? homedir()

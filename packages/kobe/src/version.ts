@@ -13,11 +13,10 @@
  *     is much smaller than the full package metadata. Anonymous, no
  *     auth, generous rate limit.
  *
- *   - Result is cached in `~/.kobe/version-check.json` for 6h. We don't
- *     want to hit the registry on every TUI launch, and we definitely
- *     don't want a slow/offline npm to delay startup. Cache hit on
- *     subsequent runs returns immediately; cache miss fires the network
- *     request with a 3s timeout.
+ *   - The TUI checks the registry on every launch. We used to cache this
+ *     for 6h, but that made the topbar miss freshly published versions.
+ *     The request is still async and capped at 3s, so startup does not
+ *     wait for npm.
  *
  *   - All failure paths return `null`. Offline, network error, registry
  *     500, parse error — none of them should crash the TUI or surface
@@ -28,10 +27,8 @@
  *     user runs the install command themselves.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
 import pkg from "../package.json" with { type: "json" }
-import { isDev, kobeStateDir } from "./env.ts"
+import { isDev } from "./env.ts"
 
 /** Current build's version, read from package.json at compile time. */
 export const CURRENT_VERSION: string = pkg.version
@@ -66,9 +63,6 @@ export function recommendedGlobalInstallCommand(): string {
   return `npm install -g ${PACKAGE_NAME}@latest`
 }
 
-/** How long a cached "latest" lookup is considered fresh. */
-const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
-
 /** Network timeout for the registry call. */
 const FETCH_TIMEOUT_MS = 3_000
 
@@ -76,36 +70,6 @@ export type UpdateInfo = {
   current: string
   latest: string
   hasUpdate: boolean
-}
-
-type CacheShape = {
-  lastChecked: number
-  latest: string
-}
-
-function cachePath(): string {
-  return join(kobeStateDir(), "version-check.json")
-}
-
-async function readCache(): Promise<CacheShape | null> {
-  try {
-    const raw = await readFile(cachePath(), "utf8")
-    const parsed = JSON.parse(raw) as CacheShape
-    if (typeof parsed.lastChecked !== "number" || typeof parsed.latest !== "string") return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-async function writeCache(cache: CacheShape): Promise<void> {
-  try {
-    const path = cachePath()
-    await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, JSON.stringify(cache, null, 2), "utf8")
-  } catch {
-    /* cache write is best-effort — failure here just means we'll retry next launch */
-  }
 }
 
 async function fetchLatestFromRegistry(packageName: string): Promise<string | null> {
@@ -155,15 +119,13 @@ export function isNewerSemver(latest: string, current: string): boolean {
 }
 
 /**
- * Resolve the latest published version. Hits the cache first; falls
- * through to the npm registry when the cache is stale or absent.
+ * Resolve the latest published version from the npm registry.
  *
  * Returns null on any failure (offline, slow network, parse error) so
  * callers can treat "no info" and "no update" as the same UI state.
  *
- * @param opts.force — bypass the cache and always re-query the registry.
- *                     Useful for an explicit "check for updates" command
- *                     once we wire one up.
+ * @param opts.force — bypass dev-mode suppression. Useful for an explicit
+ *                     "check for updates" command once we wire one up.
  */
 export async function checkLatestVersion(opts: { force?: boolean } = {}): Promise<UpdateInfo | null> {
   // Dev runs (KOBE_DEV=1, set by `bun run dev`) suppress the check
@@ -173,22 +135,8 @@ export async function checkLatestVersion(opts: { force?: boolean } = {}): Promis
   // for updates" command still works in dev if we ever wire one up.
   if (isDev() && !opts.force) return null
 
-  const now = Date.now()
-
-  if (!opts.force) {
-    const cached = await readCache()
-    if (cached && now - cached.lastChecked < CACHE_TTL_MS) {
-      return {
-        current: CURRENT_VERSION,
-        latest: cached.latest,
-        hasUpdate: isNewerSemver(cached.latest, CURRENT_VERSION),
-      }
-    }
-  }
-
   const latest = await fetchLatestFromRegistry(PACKAGE_NAME)
   if (!latest) return null
-  await writeCache({ lastChecked: now, latest })
   return {
     current: CURRENT_VERSION,
     latest,
