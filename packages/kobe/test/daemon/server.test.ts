@@ -316,6 +316,65 @@ describe("daemon server", () => {
     }
   })
 
+  test("chat.history returns usage metrics derived from full history, not the page", async () => {
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      await client.request("hello", { clientId: "test", version: "test" })
+      const spawned = await client.request<{ taskId: string; task: { activeTabId: string } }>("task.spawn", {
+        repo,
+        title: "history-metrics",
+      })
+      const task = orch.getTask(spawned.taskId)
+      if (!task) throw new Error("missing task")
+      const sessionId = "fake-history-metrics"
+      await (
+        orch as unknown as {
+          store: { update: (id: string, patch: unknown) => Promise<void> }
+        }
+      ).store.update(spawned.taskId, {
+        tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
+      })
+      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      fakeEngine.setHistory(sessionId, [
+        { role: "user", content: "one", timestamp: "2026-05-10T00:00:00.000Z", sessionId },
+        {
+          role: "assistant",
+          content: "ok",
+          timestamp: "2026-05-10T00:00:02.000Z",
+          sessionId,
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+        { role: "user", content: "two", timestamp: "2026-05-10T00:00:10.000Z", sessionId },
+        {
+          role: "assistant",
+          content: "ok again",
+          timestamp: "2026-05-10T00:00:14.000Z",
+          sessionId,
+          usage: { input_tokens: 600, output_tokens: 200, cache_read_input_tokens: 100 },
+        },
+      ])
+
+      const page = await client.request<{
+        messages: Array<{ content: string }>
+        usageMetrics: { input_tokens: number; output_tokens: number; total_speed_tokens_per_second: number }
+      }>("chat.history", { taskId: spawned.taskId, limit: 1 })
+
+      expect(page.messages.map((m) => m.content)).toEqual(["ok again"])
+      expect(page.usageMetrics).toMatchObject({
+        input_tokens: 600,
+        output_tokens: 200,
+        total_speed_tokens_per_second: 158.33333333333334,
+      })
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("chat.send broadcasts the user prompt to all attached clients as user.inject", async () => {
     // Regression: the chat composer used to push the user row into a
     // local Solid signal before calling runTask, which meant other

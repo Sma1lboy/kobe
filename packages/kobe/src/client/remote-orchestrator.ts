@@ -2,6 +2,7 @@ import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
@@ -257,21 +258,30 @@ export class RemoteOrchestrator {
   }
 
   async readHistory(sessionId: string): Promise<Message[]> {
+    return (await this.readHistoryWithMetrics(sessionId)).messages
+  }
+
+  async readHistoryWithMetrics(
+    sessionId: string,
+  ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
     const task = this.tasksAcc().find(
       (t) => t.sessionId === sessionId || t.tabs.some((tab) => tab.sessionId === sessionId),
     )
-    if (!task) return []
+    if (!task) return { messages: [] }
     // Pass the requested sessionId through to the daemon so it returns
     // history for the specific tab the caller asked about, not the
     // task's currently-active tab. Without this, Chat's per-tab
     // hydration runs N times for the same active-tab transcript and
     // every tab ends up rendering identical content.
-    const res = await this.client.request<{ messages: Message[] }>("chat.history", {
+    const res = await this.client.request<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }>("chat.history", {
       taskId: task.id,
       sessionId,
       limit: 500,
     })
-    return res.messages
+    return {
+      messages: res.messages,
+      ...(res.usageMetrics ? { usageMetrics: res.usageMetrics } : {}),
+    }
   }
 
   async listSessions(taskId: string): Promise<SessionMeta[]> {

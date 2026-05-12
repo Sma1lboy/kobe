@@ -64,6 +64,7 @@
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { resolveDefaultModelId } from "../engine/claude-settings.ts"
+import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
@@ -1441,6 +1442,17 @@ export class Orchestrator {
       return await this.engine.readHistory(sessionId)
     } catch {
       return []
+    }
+  }
+
+  async readHistoryWithMetrics(
+    sessionId: string,
+  ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
+    const messages = await this.readHistory(sessionId)
+    const usageMetrics = deriveSessionUsageMetrics(messages)
+    return {
+      messages,
+      ...(usageMetrics ? { usageMetrics } : {}),
     }
   }
 

@@ -2,6 +2,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
+import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
@@ -14,7 +15,7 @@ import {
   serializeMessages,
   serializeTask,
 } from "./protocol.ts"
-import type { DaemonFrame } from "./protocol.ts"
+import type { DaemonFrame, SerializedHistoryPage } from "./protocol.ts"
 import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 
 export interface DaemonServerOptions {
@@ -381,9 +382,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const result = await readTaskHistory(orch, taskId, sessionId, limit, before)
         return {
           messages: serializeMessages(result.messages),
+          ...(result.usageMetrics ? { usageMetrics: result.usageMetrics } : {}),
           nextBefore: result.nextBefore,
           hasMore: result.hasMore,
-        }
+        } satisfies SerializedHistoryPage
       }
       case "chat.send": {
         const taskId = requireString(payload, "taskId")
@@ -554,6 +556,7 @@ function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
 
 interface TaskHistoryPage {
   messages: Message[]
+  usageMetrics?: SessionUsageMetrics
   /**
    * Token the client passes back as `before` to fetch the previous
    * page. `null` when this page already includes the oldest message
@@ -584,6 +587,7 @@ async function readTaskHistory(
     requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
   if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
   const messages = await orch.readHistory(sessionId)
+  const usageMetrics = deriveSessionUsageMetrics(messages)
   const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1
   const end = beforeIdx >= 0 ? beforeIdx : messages.length
   const start = Math.max(0, end - limit)
@@ -594,7 +598,7 @@ async function readTaskHistory(
   // no messages OR when this page already covers the start.
   const first = page[0]
   const nextBefore = hasMore && first ? `${first.timestamp}:${first.sessionId}` : null
-  return { messages: page, nextBefore, hasMore }
+  return { messages: page, ...(usageMetrics ? { usageMetrics } : {}), nextBefore, hasMore }
 }
 
 function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {

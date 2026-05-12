@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
+import { deriveSessionUsageMetrics } from "../../src/session/usage-metrics.ts"
 import {
   contextWindowTokensForModel,
-  deriveUsageMetricsFromHistory,
   formatContextUsageCompact,
   formatTotalSpeed,
   totalContextTokens,
@@ -23,6 +23,12 @@ describe("context-meter", () => {
   it("maps [1m] models to 1M window", () => {
     expect(contextWindowTokensForModel("claude-opus-4-7[1m]")).toBe(1_000_000)
     expect(contextWindowTokensForModel("claude-sonnet-4-6")).toBe(200_000)
+  })
+
+  it("parses common context-window suffixes", () => {
+    expect(contextWindowTokensForModel("claude-sonnet-4-6 (1M)")).toBe(1_000_000)
+    expect(contextWindowTokensForModel("claude-sonnet-4-6 500k context")).toBe(500_000)
+    expect(contextWindowTokensForModel("custom-model [1.5m]")).toBe(1_500_000)
   })
 
   it("formats compact label", () => {
@@ -70,7 +76,7 @@ describe("context-meter", () => {
       },
     ]
 
-    expect(deriveUsageMetricsFromHistory(past)).toEqual({
+    expect(deriveSessionUsageMetrics(past)).toEqual({
       input_tokens: 600,
       output_tokens: 200,
       cache_read_input_tokens: 100,
