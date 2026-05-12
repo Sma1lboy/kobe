@@ -18,9 +18,8 @@ export interface KobeCoreOptions {
   readonly engine?: AIEngine
   /**
    * Per-vendor engine override. When supplied, replaces the default
-   * production map (claude + codex). Mutually exclusive with
-   * {@link engine}; if both are passed, `engines` wins and `engine` is
-   * appended only for vendors `engines` didn't cover.
+   * production map (claude + codex). If both `engine` and `engines`
+   * are passed, `engines` takes full precedence and `engine` is ignored.
    */
   readonly engines?: EngineMap
   readonly startMcpBridge?: boolean

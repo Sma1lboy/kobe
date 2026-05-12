@@ -588,7 +588,7 @@ function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMod
 }
 
 function isVendorId(v: unknown): v is VendorId {
-  return v === "claude" || v === "codex"
+  return typeof v === "string" && v in ENGINE_REGISTRY
 }
 
 /**

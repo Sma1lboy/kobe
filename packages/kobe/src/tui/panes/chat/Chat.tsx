@@ -37,7 +37,7 @@
  *     to the new ones.
  */
 
-import { defaultCapabilities, modelLabelFor } from "@/engine/registry"
+import { getCapabilities, modelLabelFor } from "@/engine/registry"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
@@ -214,7 +214,7 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const modelId = task?.model ?? defaultCapabilities.defaultModelId()
+    const modelId = task?.model ?? getCapabilities(task?.vendor ?? "claude").defaultModelId()
     return formatContextUsageCompact(u, modelId)
   })
 

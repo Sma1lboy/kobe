@@ -63,6 +63,28 @@ async function tryReadMeta(file: string): Promise<RolloutHead | null> {
   try {
     let buf = ""
     let lineCount = 0
+    const processLine = (line: string): boolean => {
+      lineCount++
+      const parsed = safeParse(line)
+      if (parsed) {
+        if (parsed.type === "session_meta") {
+          const payload = parsed.payload
+          if (isObject(payload)) {
+            if (typeof payload.id === "string") sessionId = payload.id as string
+            if (typeof payload.cwd === "string") cwd = payload.cwd as string
+          }
+        } else if (parsed.type === "response_item" && isObject(parsed.payload)) {
+          const p = parsed.payload as Record<string, unknown>
+          if (p.type === "message") {
+            messageCount++
+            if (!firstUser && p.role === "user") {
+              firstUser = extractText(p.content)?.slice(0, PREVIEW_CHAR_CAP) ?? null
+            }
+          }
+        }
+      }
+      return lineCount >= PREVIEW_HEAD_LINES
+    }
     const reader = handle.createReadStream({ encoding: "utf8" })
     outer: for await (const chunk of reader) {
       buf += chunk as string
@@ -71,28 +93,10 @@ async function tryReadMeta(file: string): Promise<RolloutHead | null> {
         const line = buf.slice(0, nl)
         buf = buf.slice(nl + 1)
         nl = buf.indexOf("\n")
-        lineCount++
-        const parsed = safeParse(line)
-        if (parsed) {
-          if (parsed.type === "session_meta") {
-            const payload = parsed.payload
-            if (isObject(payload)) {
-              if (typeof payload.id === "string") sessionId = payload.id as string
-              if (typeof payload.cwd === "string") cwd = payload.cwd as string
-            }
-          } else if (parsed.type === "response_item" && isObject(parsed.payload)) {
-            const p = parsed.payload as Record<string, unknown>
-            if (p.type === "message") {
-              messageCount++
-              if (!firstUser && p.role === "user") {
-                firstUser = extractText(p.content)?.slice(0, PREVIEW_CHAR_CAP) ?? null
-              }
-            }
-          }
-        }
-        if (lineCount >= PREVIEW_HEAD_LINES) break outer
+        if (processLine(line)) break outer
       }
     }
+    if (lineCount < PREVIEW_HEAD_LINES && buf.trim()) processLine(buf)
   } finally {
     await handle.close().catch(() => {})
   }

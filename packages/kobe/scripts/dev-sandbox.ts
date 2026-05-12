@@ -32,6 +32,24 @@ const PID_PATH = join(ROOT, "home", ".kobe", "daemon.pid")
 
 const reset = process.argv.includes("--reset")
 
+function isAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function waitForExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!isAlive(pid)) return true
+    await sleep(50)
+  }
+  return !isAlive(pid)
+}
+
 async function main(): Promise<void> {
   if (!reset) {
     console.log("usage: bun run dev:sandbox:reset")
@@ -45,16 +63,11 @@ async function main(): Promise<void> {
     if (Number.isFinite(pid) && pid > 0) {
       try {
         process.kill(pid, "SIGTERM")
-        // Wait up to 3s for the daemon to exit. Polling kill 0 (signal
-        // 0) is the POSIX way to ask "is this pid alive?" without
-        // actually signalling it.
-        const deadline = Date.now() + 3000
-        while (Date.now() < deadline) {
-          try {
-            process.kill(pid, 0)
-            await sleep(50)
-          } catch {
-            break // process gone
+        if (!(await waitForExit(pid, 3000))) {
+          process.kill(pid, "SIGKILL")
+          if (!(await waitForExit(pid, 1000))) {
+            console.warn(`dev-sandbox: pid=${pid} is still alive; refusing to wipe ${ROOT}`)
+            return
           }
         }
       } catch (err) {

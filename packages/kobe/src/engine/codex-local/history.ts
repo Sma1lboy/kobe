@@ -89,7 +89,7 @@ export async function listRolloutFiles(deps: HistoryDeps = defaultDeps): Promise
 export async function findRolloutFile(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<string | undefined> {
   const all = await listRolloutFiles(deps)
   for (const p of all) {
-    if (p.includes(sessionId)) return p
+    if (path.basename(p).endsWith(`-${sessionId}.jsonl`)) return p
   }
   return undefined
 }

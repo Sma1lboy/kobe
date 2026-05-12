@@ -170,7 +170,9 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
         // Other errors (rate limit, transient network) are tolerated
         // — V8 only enforces the model-id contract.
       }
-      // Best-effort cleanup so we don't pile up rollouts during this test.
+      // Best-effort deleteHistory cleanup so repeated real-binary test runs
+      // don't pile up rollout files; cleanup failures are non-contractual and
+      // can be handled manually under ~/.codex/sessions if needed.
       try {
         await engine.deleteHistory(handle.sessionId)
       } catch {
@@ -234,7 +236,9 @@ d("CodexLocal — orchestrator end-to-end (V7)", () => {
         const task = await orch.createTask({ repo, title: "codex e2e", prompt: "" })
         // Don't pin a model — let codex use its config-resolved default
         // (whatever the running user's `~/.codex/config.toml` says).
-        // Force vendor directly via the store so routing kicks in.
+        // Force vendor directly via the store so this V7 test isolates
+        // routing. Production reaches this state through orchestrator.setModel,
+        // which derives vendor from the selected model id.
         await (orch as unknown as { store: { update: (id: string, patch: unknown) => Promise<void> } }).store.update(
           task.id,
           { vendor: "codex" },

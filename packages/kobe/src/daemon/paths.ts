@@ -41,10 +41,12 @@ export function shortHomeTag(homeDir: string): string {
  * path stays stable across kobed restarts.
  */
 export function fitSocketPath(naturalPath: string, homeDir: string, role: string, pidTag?: number): string {
-  if (naturalPath.length <= SOCKET_PATH_SAFETY_LIMIT) return naturalPath
+  if (Buffer.byteLength(naturalPath, "utf8") <= SOCKET_PATH_SAFETY_LIMIT) return naturalPath
   const tag = shortHomeTag(homeDir)
   const suffix = pidTag === undefined ? "" : `-${pidTag}`
-  return join(tmpdir(), `kobe-${tag}-${role}${suffix}.sock`)
+  const fallback = join(tmpdir(), `kobe-${tag}-${role}${suffix}.sock`)
+  if (Buffer.byteLength(fallback, "utf8") <= SOCKET_PATH_SAFETY_LIMIT) return fallback
+  throw new Error(`kobe socket path exceeds ${SOCKET_PATH_SAFETY_LIMIT} bytes even after fallback: ${fallback}`)
 }
 
 /**

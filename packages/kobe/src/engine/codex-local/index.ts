@@ -198,6 +198,7 @@ export class CodexLocal implements AIEngine {
           session.closed = true
           this.notify(session)
           this.registry.unregister(session.sessionId)
+          this.running.delete(session.sessionId)
         }
         if (!bound) {
           rejectHandle(new Error("codex exited without emitting a session id"))

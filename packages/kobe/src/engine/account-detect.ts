@@ -227,7 +227,11 @@ export async function detectCodexAccount(deps: DetectDeps = defaultDeps): Promis
     }
     const email = typeof payload.email === "string" ? payload.email : undefined
     // Plan info lives under the namespaced claim `https://api.openai.com/auth`.
-    const authClaim = payload["https://api.openai.com/auth"] as Record<string, unknown> | undefined
+    const authClaimRaw = payload["https://api.openai.com/auth"]
+    const authClaim =
+      typeof authClaimRaw === "object" && authClaimRaw !== null && !Array.isArray(authClaimRaw)
+        ? (authClaimRaw as Record<string, unknown>)
+        : undefined
     const plan = typeof authClaim?.chatgpt_plan_type === "string" ? authClaim.chatgpt_plan_type : undefined
     if (email) return { binary, account: { kind: "chatgpt", email, plan } }
     // id_token present but no email — surface so the user knows we

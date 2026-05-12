@@ -440,7 +440,9 @@ export class Orchestrator {
       fallback ??= deps.engine
     }
     if (!fallback) {
-      throw new Error("Orchestrator: at least one engine must be supplied via deps.engine or deps.engines")
+      throw new Error(
+        "Orchestrator: no usable engine found; both deps.engine and deps.engines were examined but contained no valid engines.",
+      )
     }
     this.engines = built
     this.fallbackEngine = fallback

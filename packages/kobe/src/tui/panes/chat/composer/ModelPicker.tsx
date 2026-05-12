@@ -47,10 +47,38 @@ function ModelPicker(props: ModelPickerProps) {
 
   useBindings(() => ({
     bindings: [
-      { key: "up", cmd: () => setCursor((c) => (c - 1 + choices().length) % choices().length) },
-      { key: "down", cmd: () => setCursor((c) => (c + 1) % choices().length) },
-      { key: "k", cmd: () => setCursor((c) => (c - 1 + choices().length) % choices().length) },
-      { key: "j", cmd: () => setCursor((c) => (c + 1) % choices().length) },
+      {
+        key: "up",
+        cmd: () => {
+          const n = choices().length
+          if (n === 0) return
+          setCursor((c) => (c - 1 + n) % n)
+        },
+      },
+      {
+        key: "down",
+        cmd: () => {
+          const n = choices().length
+          if (n === 0) return
+          setCursor((c) => (c + 1) % n)
+        },
+      },
+      {
+        key: "k",
+        cmd: () => {
+          const n = choices().length
+          if (n === 0) return
+          setCursor((c) => (c - 1 + n) % n)
+        },
+      },
+      {
+        key: "j",
+        cmd: () => {
+          const n = choices().length
+          if (n === 0) return
+          setCursor((c) => (c + 1) % n)
+        },
+      },
       { key: "return", cmd: commit },
     ],
   }))
