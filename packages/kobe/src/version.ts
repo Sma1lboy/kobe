@@ -55,8 +55,16 @@ export function repoSlug(): string | null {
   return `${m[1]}/${m[2]}`
 }
 
-/** Suggested install command shown in the update dialog. */
-export const INSTALL_COMMAND = `bun install -g ${PACKAGE_NAME}@latest`
+/** Remote update script URL. Kept on GitHub so install flow changes don't require a binary release. */
+export const UPDATE_SCRIPT_URL = "https://raw.githubusercontent.com/Sma1lboy/kobe/main/scripts/update.sh"
+
+/** Standard update command shown in the update dialog. */
+export const UPDATE_COMMAND = `curl -fsSL ${UPDATE_SCRIPT_URL} | sh`
+
+/** Portable manual fallback when the self-update helper is unavailable. */
+export function recommendedGlobalInstallCommand(): string {
+  return `npm install -g ${PACKAGE_NAME}@latest`
+}
 
 /** How long a cached "latest" lookup is considered fresh. */
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 hours
