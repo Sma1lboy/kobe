@@ -153,6 +153,11 @@ Full skill at [`.claude/skills/linear/SKILL.md`](./.claude/skills/linear/SKILL.m
 - **NEVER** include `Co-Authored-By: Claude` or any AI/Anthropic/Claude attribution. No "Generated with Claude Code" footers. (From the workspace-level `/Users/jacksonc/i/CLAUDE.md`.)
 - **NEVER** use `--no-verify`, `--no-gpg-sign`, or skip hooks. If a hook fails, fix the underlying issue.
 
+### Releases
+
+- When cutting a version, the release notes / CHANGELOG section may include a short thank-you line for human developers, contributors, testers, or users who helped shape the release.
+- Keep thanks product-facing and human-facing. Do not add AI, Anthropic, Claude, Codex, or tool-generated attribution, and do not add attribution footers to commits or tags.
+
 ### Deletion
 
 - **NEVER** delete files, branches, worktrees, or run `rm -rf` unless the user explicitly says "delete" or "remove" *in the same conversation turn*.
