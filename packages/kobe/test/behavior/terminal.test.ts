@@ -20,9 +20,10 @@
  *   1. The header `terminal — <basename>` is visible.
  *   2. After typing `tty; echo hello\n`, a real tty path and "hello"
  *      appear in the rendered scrollback.
- *   3. Long output follows the bottom of the PTY buffer instead of
+ *   3. Draft input preserves typed spaces before Enter.
+ *   4. Long output follows the bottom of the PTY buffer instead of
  *      leaving the pane parked at the top of scrollback.
- *   4. After typing `exit\n`, the shell process dies. The
+ *   5. After typing `exit\n`, the shell process dies. The
  *      pane is allowed to render either an empty body or the shell's
  *      farewell line. We assert that "kobe terminal host" (from the
  *      surrounding host shell) is still visible — the pane didn't take
@@ -91,6 +92,11 @@ test("Stream J — embedded shell echoes 'hello' and survives exit", async () =>
   expect(after).toContain("hello")
   expect(after).toContain("/dev/")
   expect(after).not.toContain("not a tty")
+
+  await kobe.typeText("echo a  b")
+  const draft = await kobe.waitFor((s) => s.includes("echo a  b"), 5_000)
+  expect(draft).toContain("echo a  b")
+  await kobe.sendKeys("\x15")
 
   await kobe.typeText('echo scroll-top-marker; for i in {1..80}; do echo "follow-$i"; done\r')
   const followed = await kobe.waitFor((s) => s.includes("follow-80"), 15_000)

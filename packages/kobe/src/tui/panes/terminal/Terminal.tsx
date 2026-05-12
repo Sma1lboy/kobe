@@ -145,21 +145,28 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Scroll offset: 0 = follow bottom; positive = N lines back into history.
   const [scrollOffset, setScrollOffset] = createSignal(0)
 
+  const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
+  const [bodyRows, setBodyRows] = createSignal(4)
+  const [bodyGeometry, setBodyGeometry] = createSignal<{ cols: number; rows: number } | null>(null)
+  const bodyGeometryReady = createMemo(() => bodyGeometry() !== null)
+
   /* --------- pty lifecycle ---------- */
 
   createEffect(
-    on([props.cwd, props.taskId], ([cwd, taskId]) => {
-      if (!cwd || !taskId) {
+    on([props.cwd, props.taskId, bodyGeometryReady], ([cwd, taskId, geometryReady]) => {
+      if (!cwd || !taskId || !geometryReady) {
         setPty(null)
         setSnapshot("")
         setCursor(null)
         setAcquireError(null)
         return
       }
+      const geometry = bodyGeometry()
+      if (!geometry) return
       const reg = registry()
       let handle: TaskPty
       try {
-        handle = reg.acquire(taskId, cwd)
+        handle = reg.acquire(taskId, cwd, geometry)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         setAcquireError(message)
@@ -226,8 +233,6 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Cursor-capable backends report y coordinates against this array.
   const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
 
-  const [bodyRows, setBodyRows] = createSignal(4)
-
   // Rows visible after applying scroll offset. offset 0 means
   // follow-bottom: render only the last body-height rows, not the
   // whole scrollback. Positive offset moves the viewport upward into
@@ -292,7 +297,6 @@ export function Terminal(props: TerminalProps): JSXElement {
    * `pty.resize`. The Bun PTY backend translates those into terminal
    * resize events.
    */
-  const [bodyRef, setBodyRef] = createSignal<BoxRenderable | null>(null)
   const renderer = useRenderer()
   // Reactive terminal dims — when the host window resizes, this changes
   // and re-fires effects that read the body's live `width/height`.
@@ -320,20 +324,31 @@ export function Terminal(props: TerminalProps): JSXElement {
   // is unchanged.
   let lastResize: { cols: number; rows: number } | null = null
 
-  // Push the rendered body's geometry to the backend.
+  // Measure the rendered body's geometry before spawning the PTY. This
+  // avoids booting shells at the default 80x24 and immediately resizing
+  // them, which makes zsh/starship-style prompts redraw into stray
+  // standalone prompt lines on startup.
   createEffect(() => {
-    const handle = pty()
     const ref = bodyRef()
     // Read dims + geomTick so this effect re-runs when the host
     // terminal resizes OR a splitter drag changes our body size.
     dims()
     geomTick()
-    if (!handle || !ref) return
+    if (!ref) return
     // Subtract the body's own paddingLeft/paddingRight (1+1) from the
     // usable width so the shell doesn't try to write into the padding.
     const cols = Math.max(20, ref.width - 2)
     const rows = Math.max(4, ref.height)
     setBodyRows(rows)
+    setBodyGeometry((cur) => (cur && cur.cols === cols && cur.rows === rows ? cur : { cols, rows }))
+  })
+
+  // Push geometry changes after startup to the backend.
+  createEffect(() => {
+    const handle = pty()
+    const geometry = bodyGeometry()
+    if (!handle || !geometry) return
+    const { cols, rows } = geometry
     if (lastResize && lastResize.cols === cols && lastResize.rows === rows) return
     lastResize = { cols, rows }
     try {
@@ -360,11 +375,10 @@ export function Terminal(props: TerminalProps): JSXElement {
     }
     // Make sure the host terminal actually draws something — some
     // emulators default to a hidden cursor inside alt-screen until a
-    // style is explicitly set. Block + blinking matches what a normal
-    // shell looks like, so the user sees the same affordance they'd
-    // see typing into bash directly.
+    // style is explicitly set. A blinking bar is less visually noisy
+    // than a permanent block inside the nested terminal pane.
     try {
-      renderer.setCursorStyle({ style: "block", blinking: true })
+      renderer.setCursorStyle({ style: "line", blinking: true })
     } catch {
       /* older opentui versions may not expose setCursorStyle; ignore */
     }
@@ -419,30 +433,30 @@ export function Terminal(props: TerminalProps): JSXElement {
         </box>
       </Show>
 
-      {/* Body */}
-      <Show
-        when={pty()}
-        fallback={
-          <box flexGrow={1} paddingLeft={2} paddingTop={1} flexDirection="column" gap={0}>
-            <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
-              <text fg={theme.error} wrapMode="word">
-                terminal unavailable —{" "}
-                {isShellMissing(acquireError() ?? "") ? "configured shell is not available" : "shell could not start"}
-              </text>
-              <text fg={theme.textMuted} wrapMode="word">
-                {acquireError()}
-              </text>
-            </Show>
-          </box>
-        }
+      <box
+        ref={(r: BoxRenderable) => {
+          setBodyRef(r)
+        }}
+        flexGrow={1}
+        paddingLeft={1}
+        paddingRight={1}
       >
-        <box
-          ref={(r: BoxRenderable) => {
-            setBodyRef(r)
-          }}
-          flexGrow={1}
-          paddingLeft={1}
-          paddingRight={1}
+        {/* Body */}
+        <Show
+          when={pty()}
+          fallback={
+            <box paddingLeft={1} paddingTop={1} flexDirection="column" gap={0}>
+              <Show when={acquireError()} fallback={<text fg={theme.textMuted}>(no task — press n to create)</text>}>
+                <text fg={theme.error} wrapMode="word">
+                  terminal unavailable —{" "}
+                  {isShellMissing(acquireError() ?? "") ? "configured shell is not available" : "shell could not start"}
+                </text>
+                <text fg={theme.textMuted} wrapMode="word">
+                  {acquireError()}
+                </text>
+              </Show>
+            </box>
+          }
         >
           {/* Single `<text>` element rendering the whole snapshot.
               Per-row chunks are flattened into one StyledText with
@@ -456,8 +470,8 @@ export function Terminal(props: TerminalProps): JSXElement {
           <text fg={theme.text} wrapMode="none">
             {styledSnapshot()}
           </text>
-        </box>
-      </Show>
+        </Show>
+      </box>
     </box>
   )
 }

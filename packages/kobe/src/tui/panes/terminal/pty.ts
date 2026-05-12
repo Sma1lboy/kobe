@@ -175,8 +175,11 @@ function isVisibleCell(cell: XtermCellLike): boolean {
   return !cell.isAttributeDefault() || !cell.isFgDefault() || !cell.isBgDefault()
 }
 
-function xtermLineToAnsi(line: { length: number; getCell(index: number): XtermCellLike | undefined }): string {
-  let last = -1
+function xtermLineToAnsi(
+  line: { length: number; getCell(index: number): XtermCellLike | undefined },
+  minLast = -1,
+): string {
+  let last = Math.min(line.length - 1, minLast)
   for (let x = 0; x < line.length; x++) {
     const cell = line.getCell(x)
     if (!cell || cell.getWidth() === 0) continue
@@ -327,9 +330,11 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     if (this._killed) return
     const active = this.term.buffer.active
     const rows: string[] = []
+    const cursorY = active.baseY + active.cursorY
     for (let y = 0; y < active.length; y++) {
       const line = active.getLine(y)
-      rows.push(line ? xtermLineToAnsi(line) : "")
+      const minLast = y === cursorY ? active.cursorX - 1 : -1
+      rows.push(line ? xtermLineToAnsi(line, minLast) : "")
     }
     this.buffer = rows.join("\n")
     this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY }
