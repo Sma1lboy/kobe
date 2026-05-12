@@ -20,15 +20,24 @@ import { type KobeOrchestrator, RemoteOrchestrator } from "../../client/remote-o
 import type { Task } from "../../types/task.ts"
 import type { UpdateInfo } from "../../version.ts"
 import { useTheme } from "../context/theme"
+import type { WorktreeOpener } from "../lib/worktree-opener"
 import { useDialog } from "../ui/dialog"
 import { CreatePRButton } from "./create-pr-button"
+import { OpenWorktreeButton } from "./open-worktree-button"
 import { RcBridgeDialog } from "./rc-bridge-dialog"
 import { UpdateDialog } from "./update-dialog"
 
 export function TopBar(props: {
   orchestrator: KobeOrchestrator
   activeTask: Accessor<Task | undefined>
+  /**
+   * Active chat tab id within the active task — threaded through so the
+   * RC bridge dialog (opened from the chip) can re-bind on Enable when
+   * the user has stopped+restarted from the same dialog.
+   */
+  activeChatTabId?: Accessor<string | null | undefined>
   updateInfo: Accessor<UpdateInfo | null>
+  worktreeOpener: Accessor<WorktreeOpener | null>
 }) {
   const { theme } = useTheme()
   const dialog = useDialog()
@@ -82,10 +91,13 @@ export function TopBar(props: {
             attributes={TextAttributes.BOLD}
             onMouseUp={() => {
               const orch = remoteOrch
-              if (orch) RcBridgeDialog.show(dialog, orch, rcBridge)
+              if (orch) RcBridgeDialog.show(dialog, orch, rcBridge, props.activeTask, props.activeChatTabId)
             }}
           >
-            ◉ {rcBridge().state === "running" ? (rcBridge().envId ?? "RC") : "RC connecting…"}
+            ◉{" "}
+            {rcBridge().state === "running"
+              ? (rcBridge().bound?.taskTitle ?? rcBridge().envId ?? "RC")
+              : "RC connecting…"}
           </text>
         </Show>
       </box>
@@ -108,7 +120,8 @@ export function TopBar(props: {
           </Show>
         </Show>
       </box>
-      <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} justifyContent="flex-end">
+      <box flexDirection="row" flexGrow={1} flexShrink={1} flexBasis={0} gap={2} justifyContent="flex-end">
+        <OpenWorktreeButton activeTask={props.activeTask} opener={props.worktreeOpener} />
         <CreatePRButton orchestrator={props.orchestrator} activeTask={props.activeTask} />
       </box>
     </box>

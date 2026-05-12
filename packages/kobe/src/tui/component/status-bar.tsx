@@ -49,18 +49,11 @@ export function StatusBar() {
     }
   }
   // Pane-local hints come from KobeKeymap by scope; only rows with a
-  // non-pinned `hint` and a `scope` matching the focused pane and a
-  // workspace-detach exception (esc detach is global but we want it to
-  // surface only while workspace is focused — sidebar already IS sidebar,
-  // files/terminal use it more rarely). The condition is simple: `hint
-  // && !pin && (scope === focused || (id === "focus.detach" && focused
-  // === "workspace"))`.
+  // non-pinned `hint` and a `scope` matching the focused pane show up.
   const leftHints = () =>
     KobeKeymap.filter((b) => {
       if (!b.hint || b.hint.pin) return false
-      if (b.scope === focus.focused()) return true
-      if (b.id === "focus.detach" && focus.focused() === "workspace") return true
-      return false
+      return b.scope === focus.focused()
     })
   // Right column = anything pinned right; order preserved from KobeKeymap.
   const rightHints = KobeKeymap.filter((b) => b.hint?.pin === "right")

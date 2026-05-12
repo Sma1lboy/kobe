@@ -69,7 +69,6 @@ import { CliRenderEvents } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, createMemo, createSignal, onCleanup } from "solid-js"
 import { type Binding, useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 import { type CommandPaletteContext, useCommandPalette } from "./command-palette"
 
@@ -184,6 +183,13 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "n", label: "new" },
   },
   {
+    id: "task.openEditor",
+    scope: "global",
+    keys: ["ctrl+o"],
+    category: "Global",
+    description: "Open active task worktree in editor",
+  },
+  {
     id: "settings.open",
     scope: "global",
     keys: ["ctrl+,"],
@@ -281,18 +287,11 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // chip in place of the regular `app.quit` hint via `useCtrlCArmed()`.
   },
   {
-    id: "focus.detach",
-    scope: "global",
-    keys: ["esc"],
-    category: "Navigation",
-    description: "Back to sidebar. In chat while streaming, interrupts the turn instead. Closes top dialog if any.",
-    hint: { keys: "esc", label: "back to sidebar" },
-  },
-  {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on
-    // focused + streaming + no dialog). Surfaces in the help dialog so
-    // the user finds it; status-bar hint stays on `focus.detach` since
-    // ESC still detaches while idle.
+    // focused + streaming + no dialog). ESC no longer "detaches" focus
+    // back to the sidebar — that pulled focus out from under the user
+    // mid-edit. Use `ctrl+q` (`focus.sidebar`) for the explicit detach;
+    // ESC in chat is reserved for interrupting the current turn.
     id: "chat.interrupt",
     scope: "workspace",
     keys: [],
@@ -620,8 +619,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Dialogs (DialogProvider, DialogConfirm, etc.) own their own escape
     // binding higher on the binding stack. We list this here for the
-    // help dialog only. The actual handler in `useKobeKeybindings` does
-    // double duty: pop top dialog if any, otherwise focus.detach.
+    // help dialog only — there's no global ESC handler anymore: ESC is
+    // owned by DialogProvider (when a dialog is open) and Chat.tsx (when
+    // chat is focused + streaming). Idle ESC is a no-op.
     id: "dialog.cancel",
     scope: "global",
     keys: [],
@@ -697,12 +697,6 @@ export type KobeKeybindingsOpts = {
    * which is correct in the production binary. Tests can pass a spy.
    */
   onQuit?: () => void
-  /**
-   * Called when the user presses esc with no dialog open — "detach back
-   * to sidebar". Wired by app.tsx to `setFocusedPane("sidebar")`. No-op
-   * default keeps the binding harmless when the focus model isn't wired.
-   */
-  onFocusDetach?: () => void
 }
 
 /**
@@ -711,13 +705,13 @@ export type KobeKeybindingsOpts = {
  * `DialogProvider` and `CommandPaletteProvider`.
  *
  * All chord strings come from `KobeKeymap` via `bindByIds` — no chord
- * is hardcoded here. The escape key is a special case (one chord, two
- * actions: pop dialog or detach), so it's registered inline rather than
- * via the table.
+ * is hardcoded here. ESC is intentionally NOT registered globally:
+ * DialogProvider owns it while a dialog is open, and Chat.tsx owns it
+ * while a turn is streaming. Idle ESC is a no-op so the chat composer
+ * doesn't lose focus mid-edit.
  */
 export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
   const palette: CommandPaletteContext = useCommandPalette()
-  const dialog: DialogContext = useDialog()
   const renderer = useRenderer()
 
   // process.exit() bypasses every opentui exit hook (`beforeExit`, signal
@@ -743,7 +737,6 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
     })
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
-  const onFocusDetach = opts.onFocusDetach ?? (() => {})
 
   // Auto-copy on selection finish.
   //
@@ -826,21 +819,6 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
         // existing "ctrl+c closes dialog" behavior, unchanged.
         "app.copy_or_quit": () => handleCtrlC(),
       }),
-      // esc has two responsibilities (close top dialog OR detach focus).
-      // It's not a clean id→handler row, so it's registered inline.
-      // DialogProvider owns escape while a dialog is open via a higher-
-      // priority binding group, so the dialog.pop branch is a fallback;
-      // with no dialog open we fall through to onFocusDetach.
-      {
-        key: "escape",
-        cmd: () => {
-          if (dialog.stack.length > 0) {
-            dialog.pop()
-          } else {
-            onFocusDetach()
-          }
-        },
-      },
     ]
   })
 

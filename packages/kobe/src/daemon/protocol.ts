@@ -1,3 +1,4 @@
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type { Message, OrchestratorEvent } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 
@@ -36,6 +37,7 @@ export type DaemonRequestName =
   | "chat.sessions"
   | "chat.session.open"
   | "chat.interrupt"
+  | "chat.steer"
   | "chat.input.pending"
   | "chat.input.respond"
   | "pr.request"
@@ -80,6 +82,13 @@ export interface SerializedTask {
   readonly model?: string
   readonly createdAt: string
   readonly updatedAt: string
+}
+
+export interface SerializedHistoryPage {
+  readonly messages: Message[]
+  readonly usageMetrics?: SessionUsageMetrics
+  readonly nextBefore: string | null
+  readonly hasMore: boolean
 }
 
 export function serializeTask(task: Task): SerializedTask {

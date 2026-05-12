@@ -57,6 +57,7 @@ import { useTaskActions } from "./lib/use-task-actions"
 import { useTestSideChannel } from "./lib/use-test-side-channel"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { useWorkspaceTabs } from "./lib/use-workspace-tabs"
+import { detectWorktreeOpener, openWorktree } from "./lib/worktree-opener"
 import { Chat } from "./panes/chat/Chat"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
@@ -129,25 +130,12 @@ function Shell(props: AppDeps) {
   const planUsageAcc = props.orchestrator.planUsageSignal()
   const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
 
-  // Remote-control bridge (KOB-62) — daemon-only feature; in-process
-  // mode (KOBE_TEST_ENGINE / KOBE_NO_DAEMON) returns the permanently-off
-  // stub from `Orchestrator.rcBridgeSignal()`. Register the share
-  // command in the palette only when we're attached to a real daemon
-  // so the entry doesn't appear in tests / when there's nothing to start.
-  const palette = useCommandPalette()
+  // Remote-control bridge (KOB-62) — accessor declared up here so
+  // anyone above-the-fold (TopBar) can read it. The palette command
+  // that opens the dialog is registered further down in Shell, after
+  // `activeTask` / `activeChatTabIdAcc` exist — the dialog binds the
+  // bridge to the focused tab so claude.ai sees the right worktree.
   const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
-  onMount(() => {
-    if (!(props.orchestrator instanceof RemoteOrchestrator)) return
-    const orch = props.orchestrator
-    const unregister = palette.addCommand({
-      name: "rcBridge.share",
-      title: "Share to claude.ai (remote-control)",
-      desc: "Register this machine as an environment claude.ai can spawn sessions onto.",
-      slashName: "share",
-      run: () => RcBridgeDialog.show(dialog, orch, rcBridgeAcc),
-    })
-    onCleanup(unregister)
-  })
 
   // Background npm-registry version check. Cached for 6h on disk, so
   // typical cold boots return synchronously off the cache. The first
@@ -169,6 +157,16 @@ function Shell(props: AppDeps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)
   })
+  const worktreeOpener = createMemo(() => detectWorktreeOpener())
+  function openActiveTaskInEditor(): void {
+    const task = activeTask()
+    const opener = worktreeOpener()
+    if (!task?.worktreePath || !opener) return
+    if (!openWorktree(task.worktreePath, opener)) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] failed to open worktree:", task.worktreePath)
+    }
+  }
 
   // Accessor for the chat pane that yields a prompt only when it
   // matches the currently active task. This keeps the chat from
@@ -349,6 +347,34 @@ function Shell(props: AppDeps) {
     return parts.join("  •  ")
   })
 
+  // Register the remote-control share command in the palette. Daemon-only —
+  // the in-process Orchestrator stub returns "off" forever, so even if a
+  // test somehow invoked the command it would be a no-op. The dialog
+  // binds to whichever task + chat tab is focused at the moment of
+  // invocation; switching focus later doesn't reassign a running bridge.
+  const palette = useCommandPalette()
+  onMount(() => {
+    if (!(props.orchestrator instanceof RemoteOrchestrator)) return
+    const orch = props.orchestrator
+    const unregister = palette.addCommand({
+      name: "rcBridge.share",
+      title: "Share to claude.ai (remote-control)",
+      desc: "Bind this task's worktree to a claude.ai environment so you can resume the conversation from another device.",
+      slashName: "share",
+      run: () => RcBridgeDialog.show(dialog, orch, rcBridgeAcc, activeTask, activeChatTabIdAcc),
+    })
+    onCleanup(unregister)
+  })
+  onMount(() => {
+    const unregister = palette.addCommand({
+      name: "task.openEditor",
+      title: "Open task in editor",
+      desc: "Open the active task worktree in Cursor, VS Code, or the detected system editor.",
+      run: openActiveTaskInEditor,
+    })
+    onCleanup(unregister)
+  })
+
   // Auto-select on first task availability. Prefer the persisted task
   // from the previous run when it still exists; otherwise fall back to
   // tasks[0]. The `persistedSelectedId` reference is consumed exactly
@@ -384,7 +410,6 @@ function Shell(props: AppDeps) {
 
   useKobeKeybindings({
     onShowHelp: () => HelpDialog.show(dialog),
-    onFocusDetach: () => setFocusedPane("sidebar"),
     // Tab cycle is no-op while workspace is focused so the composer's
     // own tab handling (dialog field cycling, indent, etc.) wins.
     onFocusNext: () => {
@@ -426,6 +451,7 @@ function Shell(props: AppDeps) {
     orchestrator: props.orchestrator,
     renderer,
     activeTask,
+    openActiveTaskInEditor,
   })
 
   // Per-ChatTab completion notifications.
@@ -475,7 +501,13 @@ function Shell(props: AppDeps) {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <TopBar orchestrator={props.orchestrator} activeTask={activeTask} updateInfo={updateInfo} />
+      <TopBar
+        orchestrator={props.orchestrator}
+        activeTask={activeTask}
+        activeChatTabId={activeChatTabIdAcc}
+        updateInfo={updateInfo}
+        worktreeOpener={worktreeOpener}
+      />
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
             focus it. The right edge is a separate <ResizableEdge /> that

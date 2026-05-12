@@ -1,8 +1,9 @@
-import type { ChildProcessByStdio } from "node:child_process"
 import { EventEmitter } from "node:events"
 import { Readable } from "node:stream"
 import { describe, expect, it } from "vitest"
-import { type RcBridgeStatus, createRcBridge } from "../../src/daemon/rc-bridge.ts"
+import { type RcBridgeOptions, type RcBridgeStatus, createRcBridge } from "../../src/daemon/rc-bridge.ts"
+
+type Spawner = NonNullable<RcBridgeOptions["spawner"]>
 
 /**
  * Fake `claude remote-control` child process. Mimics just enough of
@@ -32,25 +33,26 @@ function makeFakeBridge(opts: {
     binaryPathResolver: async () => "/fake/claude",
     readyTimeoutMs: opts.readyTimeoutMs ?? 500,
     stopGraceMs: opts.stopGraceMs,
-    spawner: () => {
-      const ee = new EventEmitter() as FakeChild
-      ee.stdout = new Readable({ read() {} })
-      ee.stderr = new Readable({ read() {} })
-      ee.pid = 12345
-      ee.kill = (sig?: NodeJS.Signals | number) => {
-        setImmediate(() => ee.emit("exit", sig === "SIGKILL" ? 137 : 0, sig ?? null))
-        return true
+    spawner: ((): Spawner => {
+      return () => {
+        const ee = new EventEmitter() as FakeChild
+        ee.stdout = new Readable({ read() {} })
+        ee.stderr = new Readable({ read() {} })
+        ee.pid = 12345
+        ee.kill = (sig?: NodeJS.Signals | number) => {
+          setImmediate(() => ee.emit("exit", sig === "SIGKILL" ? 137 : 0, sig ?? null))
+          return true
+        }
+        child = ee
+        // Defer the test's stdout pushes one tick so RcBridge has
+        // finished attaching its `on("data", ...)` listener.
+        setImmediate(() => opts.onReady(ee))
+        // FakeChild is a structural subset of ChildProcessByStdio that
+        // covers everything RcBridge actually touches; the cast is
+        // unavoidable without a real subprocess in tests.
+        return ee as unknown as ReturnType<Spawner>
       }
-      child = ee
-      // Defer the test's stdout pushes one tick so RcBridge has
-      // finished attaching its `on("data", ...)` listener.
-      setImmediate(() => opts.onReady(ee))
-      // FakeChild only implements the surface RcBridge actually uses
-      // (stdout / stderr / pid / kill / EventEmitter). Cast through
-      // unknown so the strict ChildProcessByStdio shape doesn't force
-      // the test to stub stdin / killed / connected / etc.
-      return ee as unknown as ChildProcessByStdio<null, Readable, Readable>
-    },
+    })(),
   })
   return { bridge, child: () => child }
 }
@@ -106,6 +108,33 @@ describe("rc-bridge", () => {
     expect(bridge.status().state).toBe("running")
     const stopped = await bridge.stop()
     expect(stopped.state).toBe("off")
+  })
+
+  it("forwards bound-tab metadata onto every status snapshot", async () => {
+    const { bridge } = makeFakeBridge({
+      onReady: (c) => {
+        c.stdout.push("Environment ID: env_BOUND\n")
+      },
+    })
+    const ready = await bridge.start({
+      cwd: "/tmp/fake/worktree",
+      bound: {
+        taskId: "task_01",
+        tabId: "tab_01",
+        sessionId: "01HZ-session-uuid",
+        taskTitle: "fix the spinner",
+      },
+    })
+    expect(ready.bound).toEqual({
+      taskId: "task_01",
+      tabId: "tab_01",
+      sessionId: "01HZ-session-uuid",
+      taskTitle: "fix the spinner",
+    })
+    // The dialog uses status.bound to render `/resume <sid>`; assert the
+    // post-ready snapshot carries it through (the `update({...snapshot, ...})`
+    // in onStdout must not drop bound).
+    expect(bridge.status().bound?.sessionId).toBe("01HZ-session-uuid")
   })
 
   it("rejects with a timeout error when the child never prints the env id", async () => {

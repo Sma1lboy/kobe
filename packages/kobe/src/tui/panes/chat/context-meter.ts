@@ -1,4 +1,6 @@
+import { type SessionUsageMetrics, totalContextTokens } from "../../../session/usage-metrics.ts"
 import { resolveDefaultModelId } from "./composer/claude-settings.ts"
+export { totalContextTokens } from "../../../session/usage-metrics.ts"
 /**
  * Workspace header "context used" meter — turns the engine's terminal
  * `usage` frame + the active model id into a short string (e.g. `12% · 24k/200k`).
@@ -9,39 +11,37 @@ import { resolveDefaultModelId } from "./composer/claude-settings.ts"
  */
 import { MODEL_CHOICES } from "./composer/models.ts"
 
-export type UsageSnapshot = {
-  readonly input_tokens: number
-  readonly output_tokens: number
-  readonly cache_read_input_tokens?: number
-  readonly cache_creation_input_tokens?: number
-}
+export type UsageSnapshot = SessionUsageMetrics
 
-/**
- * Sum the tokens that occupy the model's context window on the next turn.
- *
- * The window holds the *prompt* sent to the model, which is the sum of
- * uncached input, cache-creation input, and cache-read input. `output_tokens`
- * is what the model just generated — billable, but not yet "in context"
- * for the meter; folding it in inflates the displayed usage past 100% on
- * heavy turns. This mirrors the canonical Claude Code formula
- * (`refs/claude-code/src/utils/context.ts` `calculateContextPercentages`).
- */
-export function totalContextTokens(u: UsageSnapshot): number {
-  return u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
-}
-
-const LONG_CTX = 1_000_000
 const STD_CTX = 200_000
+
+function parseContextWindowSize(modelIdentifier: string): number | null {
+  const delimitedMatch = /(?:\(|\[)\s*(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])\s*(?:\)|\])/i.exec(modelIdentifier)
+  if (delimitedMatch?.[1] && delimitedMatch[2]) {
+    const parsed = Number.parseFloat(delimitedMatch[1].replace(/[,_]/g, ""))
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed * (delimitedMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
+    }
+  }
+
+  const contextMatch = /\b(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])(?:\s*(?:token\s*)?context)?\b/i.exec(modelIdentifier)
+  if (!contextMatch?.[1] || !contextMatch[2]) return null
+
+  const parsed = Number.parseFloat(contextMatch[1].replace(/[,_]/g, ""))
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+
+  return Math.round(parsed * (contextMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
+}
 
 /**
  * Resolve max context tokens for a Claude model id. `[1m]` suffix implies 1M window.
  */
 export function contextWindowTokensForModel(modelId: string | undefined): number {
   const id = modelId ?? resolveDefaultModelId()
-  if (id.includes("[1m]")) return LONG_CTX
+  const parsedWindow = parseContextWindowSize(id)
+  if (parsedWindow !== null) return parsedWindow
   const inPicker = MODEL_CHOICES.some((m) => m.id === id)
   if (inPicker) return STD_CTX
-  if (id.includes("1m") || id.includes("[1M]")) return LONG_CTX
   return STD_CTX
 }
 
@@ -55,6 +55,12 @@ function formatTokShort(n: number): string {
   return String(n)
 }
 
+export function formatTotalSpeed(tokensPerSecond: number | undefined): string | null {
+  if (typeof tokensPerSecond !== "number" || !Number.isFinite(tokensPerSecond)) return null
+  if (tokensPerSecond >= 1000) return `${(tokensPerSecond / 1000).toFixed(1)}k t/s`
+  return `${tokensPerSecond.toFixed(1)} t/s`
+}
+
 /**
  * Compact label for the WORKSPACE pane header. Returns `null` when totals are zero.
  */
@@ -63,5 +69,6 @@ export function formatContextUsageCompact(u: UsageSnapshot, modelId: string | un
   const total = totalContextTokens(u)
   if (total <= 0 || window <= 0) return null
   const pct = Math.min(100, Math.max(0, Math.round((total / window) * 100)))
-  return `${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`
+  const speed = formatTotalSpeed(u.total_speed_tokens_per_second)
+  return [`${pct}% · ${formatTokShort(total)}/${formatTokShort(window)}`, speed].filter(Boolean).join(" · ")
 }

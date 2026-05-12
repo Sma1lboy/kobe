@@ -16,12 +16,14 @@
  * desired behavior for now (no recursion guard yet).
  */
 
-import { writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
+import { mkdir, writeFile } from "node:fs/promises"
+import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import type { Orchestrator } from "../core.ts"
 import { type BridgeServer, startBridgeServer } from "./server.ts"
+
+const UNIX_SOCKET_PATH_LIMIT = 103
 
 export interface StartBridgeOpts {
   readonly homeDir?: string
@@ -33,13 +35,24 @@ export interface BridgeHandles {
   close(): Promise<void>
 }
 
+export function bridgeSocketPathForHome(home: string, pid = process.pid): string {
+  const runDir = join(home, ".kobe", "run")
+  const preferred = join(runDir, `bridge-${pid}.sock`)
+  const macTempSocket = process.platform === "darwin" && preferred.startsWith(tmpdir())
+  if (preferred.length <= UNIX_SOCKET_PATH_LIMIT && !macTempSocket) return preferred
+
+  const shortTmp = process.platform === "darwin" ? "/tmp" : tmpdir()
+  return join(shortTmp, `kobe-bridge-${pid}.sock`)
+}
+
 export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}): Promise<BridgeHandles> {
   const home = opts.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const runDir = join(home, ".kobe", "run")
-  const socketPath = join(runDir, `bridge-${process.pid}.sock`)
+  const socketPath = bridgeSocketPathForHome(home)
   const mcpConfigPath = join(runDir, `mcp-${process.pid}.json`)
 
   const server: BridgeServer = await startBridgeServer(orch, socketPath)
+  await mkdir(runDir, { recursive: true })
 
   // The mcp-bridge subcommand only exists in the `kobe` CLI entry
   // (src/cli/index.ts → dist/cli/index.js), not in `kobed`. Resolve

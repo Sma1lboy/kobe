@@ -2,6 +2,8 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
+import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
@@ -13,7 +15,7 @@ import {
   serializeMessages,
   serializeTask,
 } from "./protocol.ts"
-import type { DaemonFrame } from "./protocol.ts"
+import type { DaemonFrame, SerializedHistoryPage } from "./protocol.ts"
 import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 
 export interface DaemonServerOptions {
@@ -349,6 +351,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
         return {}
       }
+      case "chat.steer": {
+        await orch.steerTask(
+          requireString(payload, "taskId"),
+          requireString(payload, "text"),
+          optionalString(payload, "tabId"),
+        )
+        return {}
+      }
       case "chat.input.pending": {
         return { pending: orch.peekPendingInput(requireString(payload, "taskId")) }
       }
@@ -372,9 +382,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const result = await readTaskHistory(orch, taskId, sessionId, limit, before)
         return {
           messages: serializeMessages(result.messages),
+          ...(result.usageMetrics ? { usageMetrics: result.usageMetrics } : {}),
           nextBefore: result.nextBefore,
           hasMore: result.hasMore,
-        }
+        } satisfies SerializedHistoryPage
       }
       case "chat.send": {
         const taskId = requireString(payload, "taskId")
@@ -405,14 +416,36 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       }
       case "rcBridge.start": {
-        // Default cwd to the daemon's own working directory — the
-        // workspace root the user launched kobed from. Callers may
-        // override (e.g. settings dialog wants to surface a per-repo
-        // bridge in a future iteration), but the daemon must validate
-        // the path is non-empty.
-        const cwd = optionalString(payload, "cwd") ?? process.cwd()
+        // Per-tab bridge: callers pass `taskId` so the bridge spawns
+        // with `cwd = task.worktreePath` and surfaces the tab's session
+        // id in the dialog (so the user can `/resume <sid>` in
+        // claude.ai to continue THIS conversation rather than start a
+        // fresh one). When `taskId` is omitted (legacy callers, palette
+        // command with no active task), we fall back to the git
+        // toplevel of the daemon's process cwd — claude.ai still gets
+        // a usable environment but bound to no specific session.
+        const taskId = optionalString(payload, "taskId")
+        const tabId = optionalString(payload, "tabId")
+        let cwd: string
+        let bound: { taskId: string; tabId: string; sessionId?: string | null; taskTitle?: string } | undefined
+        if (taskId) {
+          const task = orch.getTask(taskId)
+          if (!task) throw new Error(`rcBridge.start: unknown taskId ${taskId}`)
+          const resolvedTabId = tabId ?? task.activeTabId
+          const tab = task.tabs.find((t) => t.id === resolvedTabId)
+          if (!tab) throw new Error(`rcBridge.start: unknown tabId ${resolvedTabId} on task ${taskId}`)
+          cwd = task.worktreePath
+          bound = {
+            taskId: task.id,
+            tabId: tab.id,
+            sessionId: tab.sessionId,
+            taskTitle: task.title,
+          }
+        } else {
+          cwd = optionalString(payload, "cwd") ?? resolveRepoRoot(process.cwd())
+        }
         if (!cwd) throw new Error("rcBridge.start requires a non-empty cwd")
-        const status = await rcBridge.start({ cwd })
+        const status = await rcBridge.start({ cwd, bound })
         return { status }
       }
       case "rcBridge.stop": {
@@ -523,6 +556,7 @@ function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
 
 interface TaskHistoryPage {
   messages: Message[]
+  usageMetrics?: SessionUsageMetrics
   /**
    * Token the client passes back as `before` to fetch the previous
    * page. `null` when this page already includes the oldest message
@@ -553,6 +587,7 @@ async function readTaskHistory(
     requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
   if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
   const messages = await orch.readHistory(sessionId)
+  const usageMetrics = deriveSessionUsageMetrics(messages)
   const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1
   const end = beforeIdx >= 0 ? beforeIdx : messages.length
   const start = Math.max(0, end - limit)
@@ -563,7 +598,7 @@ async function readTaskHistory(
   // no messages OR when this page already covers the start.
   const first = page[0]
   const nextBefore = hasMore && first ? `${first.timestamp}:${first.sessionId}` : null
-  return { messages: page, nextBefore, hasMore }
+  return { messages: page, ...(usageMetrics ? { usageMetrics } : {}), nextBefore, hasMore }
 }
 
 function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {

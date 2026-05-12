@@ -13,6 +13,7 @@
  */
 
 import * as fs from "node:fs"
+import * as os from "node:os"
 
 /* --------------------------------------------------------------------- */
 /*  Public types                                                          */
@@ -22,17 +23,44 @@ import * as fs from "node:fs"
 export type NewTaskInput = { repo: string; baseRef: string }
 
 /**
- * Three field states for repo selection:
- *   - "repoPicker" (default, primary path) — picker is focused, the
- *     custom-path input below is dim and inert. Arrow keys navigate
- *     the list; enter commits the highlighted repo and advances to
- *     baseRef.
- *   - "repoCustom" — the user explicitly tabbed into the input to
- *     type a path that isn't in the picker. Last-priority surface.
+ * Three field states for the dialog:
+ *   - "repo" — the unified repo input. Free-text editable; the
+ *     dropdown below it swaps between saved-repo and subdirectory
+ *     browse based on the input shape (see `pickerModeFor`).
  *   - "baseRef" — branch field.
- * Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
+ *   - "confirm" — the bottom-right Create button. The dialog only
+ *     submits when this field is activated (Enter / click), so the
+ *     repo + branch fields are pure selection surfaces.
+ * Tab cycles repo → baseRef → confirm → repo.
  */
-export type Field = "repoPicker" | "repoCustom" | "baseRef"
+export type Field = "repo" | "baseRef" | "confirm"
+
+/**
+ * Which list the unified picker should render under the repo input.
+ *   - "saved" — substring-filtered against the curated saved-repo
+ *     list (cwd + /add-repo entries). Default when the input is empty
+ *     or doesn't look like a path.
+ *   - "browse" — directory drill-down. Engaged when the input looks
+ *     like a path (`/...` or `~/...`) AND doesn't exactly match a
+ *     saved repo — exact-match keeps "saved" so the cwd default doesn't
+ *     jarringly render as a parent-dir browse on dialog open.
+ */
+export type PickerMode = "saved" | "browse"
+
+/**
+ * Decide which list the unified picker should render for the current
+ * input. `repoOptions` is the assembled saved-repo list (already
+ * deduped by `computeRepoOptions`) — pass it so we can short-circuit
+ * to "saved" when the typed value is an exact match (e.g. the
+ * cwd-prefilled state on dialog open).
+ */
+export function pickerModeFor(value: string, repoOptions: readonly string[]): PickerMode {
+  const trimmed = value.trim()
+  if (repoOptions.includes(trimmed)) return "saved"
+  if (trimmed.startsWith("~")) return "browse"
+  if (trimmed.includes("/")) return "browse"
+  return "saved"
+}
 
 /** Default base ref when the user leaves the field blank. */
 export const DEFAULT_BASE_REF = "main"
@@ -68,11 +96,12 @@ export function stripNewlines(v: string): string {
 }
 
 /**
- * Advance the field-cycle state. Order is repoPicker → repoCustom →
- * baseRef → repoPicker.
+ * Advance the field-cycle state. Tab walks repo → baseRef → confirm → repo.
  */
 export function nextField(field: Field): Field {
-  return field === "repoPicker" ? "repoCustom" : field === "repoCustom" ? "baseRef" : "repoPicker"
+  if (field === "repo") return "baseRef"
+  if (field === "baseRef") return "confirm"
+  return "repo"
 }
 
 /**
@@ -94,11 +123,8 @@ export function computeRepoOptions(defaultRepo: string, savedRepos: readonly str
 }
 
 /**
- * Case-insensitive substring filter for the repo picker. When the
- * picker (not the custom-path input) has focus, the filter is
- * bypassed so the user can browse the full list with arrow keys
- * regardless of whatever they typed earlier. Caller decides whether
- * to apply the filter by checking field === "repoCustom".
+ * Case-insensitive substring filter for the repo picker. Empty query
+ * returns the full list verbatim.
  */
 export function filterRepos(all: readonly string[], query: string): readonly string[] {
   const q = query.trim().toLowerCase()
@@ -184,6 +210,33 @@ export function validateRepoPath(repo: string): string | null {
 }
 
 /**
+ * Read the current branch of the given repo (whatever HEAD points at).
+ * Returns null when the path isn't a repo, HEAD is detached, or git
+ * errors out. The dialog uses this to prefill the baseRef field with
+ * the repo's actual current branch instead of a hardcoded "main", so
+ * a worktree forked from a feature branch defaults to that feature
+ * branch rather than silently jumping to main.
+ */
+export function getCurrentBranch(repo: string): string | null {
+  if (!repo) return null
+  try {
+    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
+    const out = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: repo,
+      encoding: "utf-8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    if (out.status !== 0) return null
+    const name = (out.stdout as string).trim()
+    if (!name || name === "HEAD") return null
+    return name
+  } catch {
+    return null
+  }
+}
+
+/**
  * List local branches in the given repo, sorted with the default
  * branch first when present. Synchronous — repo enumeration is a
  * one-shot call driven by the dialog's repo-field changes, so paying
@@ -215,6 +268,113 @@ export function listLocalBranches(repo: string): string[] {
   } catch {
     return []
   }
+}
+
+/* --------------------------------------------------------------------- */
+/*  Directory drill-down for the custom-path input                        */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Expand a leading `~` to the user's home directory. Supports `~` alone
+ * and `~/...`-prefixed paths only (no `~user/` lookups — rare; not
+ * worth the parsing complexity here). The fs / git helpers don't expand
+ * `~` themselves, so callers must resolve before validating or
+ * spawning git.
+ */
+export function expandHome(p: string): string {
+  if (p === "~") return os.homedir()
+  if (p.startsWith("~/")) return os.homedir() + p.slice(1)
+  return p
+}
+
+export type PathSplit = { base: string; filter: string }
+
+/**
+ * Split a partially-typed path into:
+ *   - `base`: the directory we should readdir for suggestions (always
+ *     ends with `/`, or is empty if the input has no directory portion
+ *     yet).
+ *   - `filter`: the partial leaf the user is currently typing (used as
+ *     a case-insensitive prefix match against the directory listing).
+ *
+ *   `/Users/`           → { base: "/Users/", filter: "" }
+ *   `/Users/me/proj`    → { base: "/Users/me/", filter: "proj" }
+ *   `~/p`               → { base: "<home>/", filter: "p" }
+ *   `~`                 → { base: "<home>/", filter: "" }
+ *   `relative/path`     → { base: "relative/", filter: "path" }
+ *   `foo`               → { base: "", filter: "foo" }
+ *
+ * `~`-relative inputs are expanded so the base is a real filesystem
+ * path that readdir can use; preserving the `~/` prefix in the
+ * rendered input is the caller's job — see `joinDrill`.
+ */
+export function splitPathForDirSuggest(value: string): PathSplit {
+  if (!value) return { base: "", filter: "" }
+  // Treat bare `~` as `~/` so we list the home directory.
+  const normalized = value === "~" ? "~/" : value
+  const expanded = expandHome(normalized)
+  if (expanded.endsWith("/")) return { base: expanded, filter: "" }
+  const lastSlash = expanded.lastIndexOf("/")
+  if (lastSlash === -1) return { base: "", filter: expanded }
+  return { base: expanded.slice(0, lastSlash + 1), filter: expanded.slice(lastSlash + 1) }
+}
+
+/**
+ * Synchronously list direct subdirectories of `base`. Returns [] on any
+ * fs error (path doesn't exist, permission denied, etc.) so the picker
+ * silently degrades to free-text typing. Sorted alphabetically — the
+ * filter (`filterSubdirs`) decides what survives.
+ *
+ * Hidden entries (leading `.`) are kept; `filterSubdirs` is responsible
+ * for hiding them unless the user explicitly types a `.`.
+ */
+export function listSubdirs(base: string): readonly string[] {
+  if (!base) return []
+  try {
+    const entries = fs.readdirSync(base, { withFileTypes: true })
+    const out: string[] = []
+    for (const e of entries) {
+      if (e.isDirectory()) out.push(e.name)
+    }
+    return out.sort((a, b) => a.localeCompare(b))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Filter the subdirectory list for the picker. Two rules:
+ *
+ *   1. Case-insensitive **prefix** match (not substring) — typing
+ *      `proj` finds `projects/` but not `my-projects/`. Prefix matches
+ *      what users expect from shell tab-completion and keeps the list
+ *      tight as the user types deeper.
+ *   2. Entries starting with `.` are hidden unless the filter itself
+ *      starts with `.` — same convention as `ls`.
+ */
+export function filterSubdirs(all: readonly string[], filter: string): readonly string[] {
+  const f = filter.toLowerCase()
+  const showHidden = f.startsWith(".")
+  const visible = showHidden ? all : all.filter((n) => !n.startsWith("."))
+  if (!f) return visible
+  return visible.filter((n) => n.toLowerCase().startsWith(f))
+}
+
+/**
+ * Compose the new input value when the user drills into a highlighted
+ * subdirectory suggestion. The `~/` prefix is preserved if the user
+ * typed one (so the display stays readable) — `baseExpanded` is the
+ * fs-real path readdir used, and we rewrap it in `~/` form when
+ * applicable.
+ */
+export function joinDrill(typedValue: string, baseExpanded: string, name: string): string {
+  const out = `${baseExpanded + name}/`
+  if (typedValue.startsWith("~")) {
+    const home = os.homedir()
+    if (out === `${home}/`) return "~/"
+    if (out.startsWith(`${home}/`)) return `~${out.slice(home.length)}`
+  }
+  return out
 }
 
 /**

@@ -2,6 +2,7 @@ import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
@@ -197,8 +198,21 @@ export class RemoteOrchestrator {
     return this.rcBridgeAcc
   }
 
-  async startRcBridge(opts: { cwd?: string } = {}): Promise<RcBridgeStatus> {
-    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", { cwd: opts.cwd })
+  /**
+   * Start the remote-control bridge. When `taskId` is supplied the
+   * daemon binds the bridge to that task's worktree (and to the
+   * specific tab when `tabId` is also given) so the dialog can show
+   * a `/resume <sid>` hint. Without `taskId` the daemon falls back
+   * to its own process cwd's git toplevel — useful for kobed
+   * installations that aren't task-anchored, but the dialog won't
+   * surface a session-resume hint.
+   */
+  async startRcBridge(opts: { taskId?: string; tabId?: string; cwd?: string } = {}): Promise<RcBridgeStatus> {
+    const res = await this.client.request<{ status: RcBridgeStatus }>("rcBridge.start", {
+      taskId: opts.taskId,
+      tabId: opts.tabId,
+      cwd: opts.cwd,
+    })
     return res.status
   }
 
@@ -242,6 +256,11 @@ export class RemoteOrchestrator {
 
   async interruptTask(taskId: string, tabId?: string): Promise<void> {
     await this.client.request("chat.interrupt", { taskId, tabId })
+  }
+
+  async steerTask(taskId: string, text: string, tabId?: string): Promise<void> {
+    await this.client.request("chat.steer", { taskId, text, tabId })
+    this.markRunState(taskId, tabId ?? this.getTask(taskId)?.activeTabId, "running")
   }
 
   async setArchived(taskId: string, archived?: boolean): Promise<void> {
@@ -291,21 +310,30 @@ export class RemoteOrchestrator {
   }
 
   async readHistory(sessionId: string): Promise<Message[]> {
+    return (await this.readHistoryWithMetrics(sessionId)).messages
+  }
+
+  async readHistoryWithMetrics(
+    sessionId: string,
+  ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
     const task = this.tasksAcc().find(
       (t) => t.sessionId === sessionId || t.tabs.some((tab) => tab.sessionId === sessionId),
     )
-    if (!task) return []
+    if (!task) return { messages: [] }
     // Pass the requested sessionId through to the daemon so it returns
     // history for the specific tab the caller asked about, not the
     // task's currently-active tab. Without this, Chat's per-tab
     // hydration runs N times for the same active-tab transcript and
     // every tab ends up rendering identical content.
-    const res = await this.client.request<{ messages: Message[] }>("chat.history", {
+    const res = await this.client.request<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }>("chat.history", {
       taskId: task.id,
       sessionId,
       limit: 500,
     })
-    return res.messages
+    return {
+      messages: res.messages,
+      ...(res.usageMetrics ? { usageMetrics: res.usageMetrics } : {}),
+    }
   }
 
   async listSessions(taskId: string): Promise<SessionMeta[]> {

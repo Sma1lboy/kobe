@@ -233,10 +233,10 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       if (tab.sessionId) {
         const sid = tab.sessionId
         orchestrator
-          .readHistory(sid)
-          .then((past) => {
+          .readHistoryWithMetrics(sid)
+          .then(({ messages, usageMetrics }) => {
             if (opts.taskId() !== taskId) return
-            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, past))
+            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, messages, usageMetrics))
             // Pending input rows must land AFTER history hydration —
             // `setMessagesFromHistory` replaces `messages` wholesale, so
             // a synthesized approval / question row dispatched before

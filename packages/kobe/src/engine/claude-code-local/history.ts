@@ -34,7 +34,8 @@
  * sometimes a content-block array. Renderers narrow per-block.
  */
 
-import { readFile, readdir, unlink } from "node:fs/promises"
+import { randomUUID } from "node:crypto"
+import { appendFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
@@ -228,4 +229,125 @@ function extractUsage(v: unknown): Message["usage"] {
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
+/**
+ * Append (or merge into) the session JSONL a synthetic user record so
+ * an interrupted `claude -p` turn isn't lost to the model on the next
+ * `--resume`.
+ *
+ * Background — `claude -p` writes records to disk only at well-defined
+ * turn boundaries; if we SIGTERM/SIGKILL the subprocess before it
+ * reaches one (which is exactly what a steer or ESC interrupt does),
+ * the user message it was processing is never persisted. The next
+ * `--resume <sid>` then reads a JSONL that's missing the abandoned
+ * prompt, so the model is blind to whatever the user had been saying.
+ * The fix is to rescue the prompt into the JSONL ourselves on stop.
+ *
+ * Merge-vs-append rule: scan backwards for the most recent
+ * conversational (user/assistant) record. If it's a user record (an
+ * earlier kill that already rescued a prompt, with no assistant reply
+ * since), concatenate this prompt into its content rather than
+ * appending a second consecutive user record — back-to-back user
+ * turns are not a shape the model API accepts after a `--resume`.
+ * If it's an assistant record (or the file is empty), append a
+ * fresh user record.
+ *
+ * File-not-exists is tolerated: claude may have died before its very
+ * first record landed; we create the parent directory and write the
+ * record as the first line. Any other I/O error surfaces to the
+ * caller (engine.stop logs + swallows so the steer flow doesn't
+ * hard-fail on a permissions hiccup).
+ *
+ * Schema — minimum keys needed for {@link readHistory}'s parser AND
+ * for claude's own `--resume` reader to recognise it:
+ *
+ *     { type: "user", message: { role: "user", content: <text> },
+ *       uuid, parentUuid, sessionId, cwd, timestamp,
+ *       isSidechain: false, userType: "external", version: "1.0.0" }
+ *
+ * `parentUuid` chains the record to the prior turn so claude's resume
+ * walker doesn't see it as an orphan. `uuid` is a fresh v4.
+ */
+export async function appendInterruptedUserPrompt(
+  sessionId: string,
+  cwd: string,
+  prompt: string,
+  deps: HistoryDeps = defaultDeps,
+): Promise<void> {
+  if (!prompt || prompt.trim().length === 0) return
+
+  const projectDir = path.join(deps.projectsDir(), encodeCwd(cwd))
+  const filePath = path.join(projectDir, `${sessionId}.jsonl`)
+
+  let lines: string[] = []
+  try {
+    const raw = await readFile(filePath, "utf8")
+    lines = raw.split("\n").filter((l) => l.length > 0)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+    await mkdir(projectDir, { recursive: true })
+  }
+
+  // Scan backwards for the most recent user/assistant record. Skip
+  // non-conversational records (tool results, summaries, etc.) so the
+  // merge check looks at semantic turns, not file-tail noise.
+  let lastConvIdx = -1
+  let lastConvRecord: Record<string, unknown> | null = null
+  let lastConvRole: "user" | "assistant" | null = null
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(lines[i] as string)
+    } catch {
+      continue
+    }
+    if (!isObject(parsed)) continue
+    const inner = isObject(parsed.message) ? (parsed.message as Record<string, unknown>) : parsed
+    const role = inner.role
+    if (role === "user" || role === "assistant") {
+      lastConvIdx = i
+      lastConvRecord = parsed
+      lastConvRole = role
+      break
+    }
+  }
+
+  const now = new Date().toISOString()
+
+  if (lastConvRole === "user" && lastConvRecord && lastConvIdx >= 0) {
+    const inner = isObject(lastConvRecord.message)
+      ? (lastConvRecord.message as Record<string, unknown>)
+      : lastConvRecord
+    const existing = typeof inner.content === "string" ? inner.content : ""
+    // Idempotency / race-safety: claude may have flushed the user
+    // record just before our SIGTERM landed (or a prior rescue call
+    // already merged this same prompt). Skip if the last user record
+    // already ends with our prompt — re-injecting would double up
+    // the message in the model's context.
+    if (existing === prompt || existing.endsWith(`\n\n${prompt}`)) return
+    // Merge into the prior rescued-user record. Concatenating with a
+    // blank-line separator keeps each prompt readable as its own
+    // paragraph; the model sees them as a single user turn.
+    inner.content = existing.length > 0 ? `${existing}\n\n${prompt}` : prompt
+    lastConvRecord.timestamp = now
+    lines[lastConvIdx] = JSON.stringify(lastConvRecord)
+    await writeFile(filePath, `${lines.join("\n")}\n`)
+    return
+  }
+
+  const parentUuid = lastConvRecord && typeof lastConvRecord.uuid === "string" ? (lastConvRecord.uuid as string) : null
+  const record = {
+    type: "user",
+    message: { role: "user", content: prompt },
+    uuid: randomUUID(),
+    parentUuid,
+    sessionId,
+    cwd,
+    timestamp: now,
+    isSidechain: false,
+    userType: "external",
+    version: "1.0.0",
+  }
+  await appendFile(filePath, `${JSON.stringify(record)}\n`)
 }
