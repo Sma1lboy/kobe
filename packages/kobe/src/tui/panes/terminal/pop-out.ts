@@ -52,12 +52,8 @@ export type PopOutResult = { ok: true } | { ok: false; reason: string }
  * a non-WSL container).
  */
 export function popOutToExternalTerminal(attachTarget: string): PopOutResult {
-  // Default is opt-IN now: the in-window modal terminal (click the pane,
-  // double-Esc to exit) is the primary "native typing" path. External
-  // pop-out is for users who want a persistent separate window — set
-  // `KOBE_TERMINAL_POPOUT=1` to re-enable.
-  if (process.env.KOBE_TERMINAL_POPOUT !== "1") {
-    return { ok: false, reason: "external pop-out is opt-in; set KOBE_TERMINAL_POPOUT=1" }
+  if (process.env.KOBE_TERMINAL_NO_POPOUT === "1") {
+    return { ok: false, reason: "disabled via KOBE_TERMINAL_NO_POPOUT=1" }
   }
   if (popped.has(attachTarget)) return { ok: true }
   if (!isWsl()) {

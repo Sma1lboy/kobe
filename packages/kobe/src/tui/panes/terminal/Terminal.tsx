@@ -63,7 +63,6 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
-import { enterModalTerminal } from "./modal"
 import { popOutToExternalTerminal } from "./pop-out"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
@@ -421,53 +420,12 @@ export function Terminal(props: TerminalProps): JSXElement {
     }
   })
 
-  /* --------- click to enter modal terminal ----------
-   *
-   * Clicking the terminal pane suspends opentui entirely and spawns a
-   * real `tmux attach` taking over the host terminal. Inside, typing
-   * is at native latency — zero JS in the keystroke path. The user
-   * double-taps Esc (300 ms window) to detach and return to kobe.
-   * See `./modal.ts` for the full UX rationale.
-   *
-   * `inModal` guards against double-trigger if the user clicks while
-   * the modal is starting/exiting. Without it, a fast double-click
-   * could spawn two `tmux attach` children racing for the tty.
-   */
-  const [inModal, setInModal] = createSignal(false)
-  const enterModal = (): void => {
-    if (inModal()) return
-    const handle = pty()
-    const target = handle?.externalAttachTarget
-    if (!target) return
-    setInModal(true)
-    setFocusedLocal(true)
-    enterModalTerminal({
-      tmuxBin: process.env.KOBE_TMUX_BIN ?? "tmux",
-      sessionName: target,
-      onSuspend: () => {
-        try {
-          renderer.suspend()
-        } catch {
-          /* older opentui may lack suspend; fall through to spawn anyway */
-        }
-      },
-      onResume: () => {
-        try {
-          renderer.resume()
-        } catch {
-          /* same */
-        }
-        setInModal(false)
-      },
-    })
-  }
-
   return (
     <box
       flexDirection="column"
       flexGrow={1}
       borderColor={focused() ? theme.focusAccent : theme.border}
-      onMouseUp={enterModal}
+      onMouseUp={() => setFocusedLocal(true)}
     >
       {/* Scroll affordance — only rendered when the user has scrolled
           back into history. Replaces what used to be a permanent
