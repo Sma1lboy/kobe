@@ -1,12 +1,6 @@
-import type { Message } from "../types/engine.ts"
+import type { EngineUsageSnapshot, Message } from "../types/engine.ts"
 
-export type SessionUsageMetrics = {
-  readonly input_tokens: number
-  readonly output_tokens: number
-  readonly cache_read_input_tokens?: number
-  readonly cache_creation_input_tokens?: number
-  readonly total_speed_tokens_per_second?: number
-}
+export type SessionUsageMetrics = EngineUsageSnapshot
 
 type SpeedInterval = {
   startMs: number

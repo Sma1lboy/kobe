@@ -3,7 +3,7 @@
  * layers (orchestrator, TUI) consult for codex-specific knowledge.
  */
 
-import type { EngineCapabilities } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity } from "@/types/engine"
 import { CODEX_MODELS, codexContextWindowFor } from "./models"
 import { resolveCodexDefaultModelId } from "./settings"
 
@@ -13,4 +13,12 @@ export const codexCapabilities: EngineCapabilities = {
   models: CODEX_MODELS,
   defaultModelId: resolveCodexDefaultModelId,
   contextWindowFor: codexContextWindowFor,
+}
+
+export const codexIdentity: EngineIdentity = {
+  vendorId: "codex",
+  productName: "Codex",
+  shortName: "Codex",
+  assistantName: "Codex",
+  inputPlaceholder: "Ask Codex…",
 }

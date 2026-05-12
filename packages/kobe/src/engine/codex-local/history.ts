@@ -27,7 +27,7 @@
 import { readFile, readdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
-import type { Message } from "@/types/engine"
+import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { normalizeCodexContent } from "./normalize"
 
 export interface HistoryDeps {
@@ -95,15 +95,24 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
 }
 
 export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {
+  return (await readHistoryWithMetrics(sessionId, deps)).messages as Message[]
+}
+
+export async function readHistoryWithMetrics(
+  sessionId: string,
+  deps: HistoryDeps = defaultDeps,
+): Promise<EngineHistory> {
   const file = await findRolloutFile(sessionId, deps)
-  if (!file) return []
+  if (!file) return { messages: [] }
   let raw: string
   try {
     raw = await deps.readFile(file)
   } catch {
-    return []
+    return { messages: [] }
   }
-  return sortByTimestamp(parseJsonl(raw, sessionId))
+  const messages = sortByTimestamp(parseJsonl(raw, sessionId))
+  const usageMetrics = deriveCodexUsageMetrics(raw)
+  return { messages, ...(usageMetrics ? { usageMetrics } : {}) }
 }
 
 export async function deleteHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<void> {
@@ -163,6 +172,105 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     out.push({ role, blocks, timestamp: ts, sessionId })
   }
   return out
+}
+
+export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | undefined {
+  let latestUsage: EngineUsageSnapshot | undefined
+  let latestUsageTimestampMs: number | null = null
+  let lastUserTimestampMs: number | null = null
+  let inputTokens = 0
+  let outputTokens = 0
+  const intervals: Array<{ startMs: number; endMs: number }> = []
+
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    if (!isObject(parsed)) continue
+
+    const timestampMs = typeof parsed.timestamp === "string" ? parseTimestampMs(parsed.timestamp) : null
+    if (parsed.type === "response_item") {
+      const payload = isObject(parsed.payload) ? (parsed.payload as Record<string, unknown>) : undefined
+      if (payload?.type === "message" && payload.role === "user" && timestampMs !== null) {
+        const blocks = normalizeCodexContent(payload.content)
+        if (!isEnvironmentContextEnvelope(blocks)) lastUserTimestampMs = timestampMs
+      }
+      continue
+    }
+
+    if (parsed.type !== "turn.completed") continue
+    const usage = isObject(parsed.usage) ? (parsed.usage as Record<string, unknown>) : undefined
+    if (!usage) continue
+    const snapshot = codexUsageToSnapshot(usage)
+    if (!snapshot) continue
+
+    if (timestampMs !== null && (latestUsageTimestampMs === null || timestampMs > latestUsageTimestampMs)) {
+      latestUsageTimestampMs = timestampMs
+      latestUsage = snapshot
+    } else if (latestUsage === undefined) {
+      latestUsage = snapshot
+    }
+
+    inputTokens += snapshot.input_tokens
+    outputTokens += snapshot.output_tokens
+    if (timestampMs !== null && lastUserTimestampMs !== null && timestampMs > lastUserTimestampMs) {
+      intervals.push({ startMs: lastUserTimestampMs, endMs: timestampMs })
+    }
+  }
+
+  if (!latestUsage) return undefined
+  const durationMs = mergedDurationMs(intervals)
+  if (durationMs <= 0) return latestUsage
+  return {
+    ...latestUsage,
+    total_speed_tokens_per_second: (inputTokens + outputTokens) / (durationMs / 1000),
+  }
+}
+
+function codexUsageToSnapshot(usage: Record<string, unknown>): EngineUsageSnapshot | undefined {
+  const input = numberOr(usage.input_tokens, 0)
+  const output = numberOr(usage.output_tokens, 0) + numberOr(usage.reasoning_output_tokens, 0)
+  const cacheRead = typeof usage.cached_input_tokens === "number" ? usage.cached_input_tokens : undefined
+  if (input <= 0 && output <= 0 && cacheRead === undefined) return undefined
+  return {
+    input_tokens: input,
+    output_tokens: output,
+    ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
+  }
+}
+
+function parseTimestampMs(value: string): number | null {
+  const ms = new Date(value).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
+
+function mergedDurationMs(intervals: readonly { startMs: number; endMs: number }[]): number {
+  if (intervals.length === 0) return 0
+  const sorted = [...intervals].sort((a, b) => a.startMs - b.startMs)
+  let total = 0
+  let current = sorted[0]
+  if (!current) return 0
+  for (let i = 1; i < sorted.length; i++) {
+    const next = sorted[i]
+    if (!next) continue
+    if (next.startMs <= current.endMs) {
+      current = { startMs: current.startMs, endMs: Math.max(current.endMs, next.endMs) }
+    } else {
+      total += current.endMs - current.startMs
+      current = next
+    }
+  }
+  total += current.endMs - current.startMs
+  return total
+}
+
+function numberOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
 }
 
 /**

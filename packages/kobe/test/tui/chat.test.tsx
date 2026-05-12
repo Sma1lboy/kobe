@@ -241,7 +241,13 @@ describe("setMessagesFromHistory", () => {
       },
       { role: "user", blocks: [{ type: "text", text: "after" }], timestamp: "2026-05-09T00:00:06Z", sessionId: "s" },
     ]
-    const s = setMessagesFromHistory(createInitialState(), past)
+    const s = setMessagesFromHistory(createInitialState(), past, {
+      input_tokens: 6,
+      output_tokens: 259,
+      cache_creation_input_tokens: 2169,
+      cache_read_input_tokens: 66900,
+      total_speed_tokens_per_second: 89,
+    })
     expect(s.lastUsage).toEqual({
       input_tokens: 6,
       output_tokens: 259,
@@ -499,6 +505,7 @@ describe("applyEvent — usage / done / error", () => {
         output_tokens: 500,
         cache_read_input_tokens: 2000,
         cache_creation_input_tokens: 100,
+        total_speed_tokens_per_second: 300,
       },
       "2026-05-09T00:00:05.000Z",
     )

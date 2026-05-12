@@ -13,19 +13,21 @@
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import { withTotalSpeedForTurn } from "@/session/usage-metrics"
 import type {
   AIEngine,
   EngineCapabilities,
   EngineEvent,
-  Message,
+  EngineHistory,
+  EngineIdentity,
   SessionHandle,
   SessionMeta,
   SpawnOpts,
 } from "@/types/engine"
 import { type ProcessHandle, SessionRegistry } from "../claude-code-local/registry"
 import { findCodexBinary } from "./binary"
-import { codexCapabilities } from "./capabilities"
-import { deleteHistory as deleteHistoryImpl, readHistory as readHistoryImpl } from "./history"
+import { codexCapabilities, codexIdentity } from "./capabilities"
+import { deleteHistory as deleteHistoryImpl, readHistoryWithMetrics as readHistoryImpl } from "./history"
 import { listSessionsForCwd } from "./sessions"
 import { type SpawnedCodex, spawnCodexProcess } from "./spawn"
 import { parseStreamJson, readLines } from "./stream"
@@ -42,9 +44,11 @@ interface RunningSession {
   readonly queue: EngineEvent[]
   waiters: Array<() => void>
   closed: boolean
+  readonly spawnedAtIso: string
 }
 
 export class CodexLocal implements AIEngine {
+  readonly identity: EngineIdentity = codexIdentity
   readonly capabilities: EngineCapabilities = codexCapabilities
   private readonly registry = new SessionRegistry()
   private readonly running = new Map<string, RunningSession>()
@@ -88,7 +92,7 @@ export class CodexLocal implements AIEngine {
     }
   }
 
-  async readHistory(sessionId: string): Promise<Message[]> {
+  async readHistory(sessionId: string): Promise<EngineHistory> {
     return readHistoryImpl(sessionId)
   }
 
@@ -151,6 +155,7 @@ export class CodexLocal implements AIEngine {
         queue,
         waiters: [],
         closed: false,
+        spawnedAtIso: new Date().toISOString(),
       }
       this.running.set(sessionId, session)
       this.registry.register({
@@ -183,7 +188,8 @@ export class CodexLocal implements AIEngine {
       })
       try {
         for await (const ev of events) {
-          queue.push(ev)
+          const enriched = enrichUsageEvent(ev, session?.spawnedAtIso)
+          queue.push(enriched)
           if (session) this.notify(session)
         }
       } catch (err) {
@@ -231,4 +237,9 @@ function drainStream(stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNu
   const s = stream as NodeJS.ReadableStream
   s.on("data", () => {})
   s.on("error", () => {})
+}
+
+function enrichUsageEvent(ev: EngineEvent, startedAtIso: string | undefined): EngineEvent {
+  if (ev.type !== "usage") return ev
+  return { type: "usage", ...withTotalSpeedForTurn(ev, startedAtIso, new Date().toISOString()) }
 }

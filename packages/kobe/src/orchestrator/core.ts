@@ -64,13 +64,14 @@
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
-import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
   AskQuestionPayload,
   EngineEvent,
+  EngineHistory,
   Message,
   OrchestratorEvent,
   QuestionOption,
@@ -1537,7 +1538,7 @@ export class Orchestrator {
    */
   async readHistory(sessionId: string): Promise<Message[]> {
     try {
-      return await this.engineForSessionId(sessionId).readHistory(sessionId)
+      return [...(await this.engineForSessionId(sessionId).readHistory(sessionId)).messages]
     } catch {
       return []
     }
@@ -1546,8 +1547,14 @@ export class Orchestrator {
   async readHistoryWithMetrics(
     sessionId: string,
   ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
-    const messages = await this.readHistory(sessionId)
-    const usageMetrics = deriveSessionUsageMetrics(messages)
+    let history: EngineHistory
+    try {
+      history = await this.engineForSessionId(sessionId).readHistory(sessionId)
+    } catch {
+      return { messages: [] }
+    }
+    const messages = [...history.messages]
+    const usageMetrics = history.usageMetrics
     return {
       messages,
       ...(usageMetrics ? { usageMetrics } : {}),

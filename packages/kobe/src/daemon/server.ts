@@ -2,7 +2,7 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
-import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task } from "../types/task.ts"
@@ -586,8 +586,7 @@ async function readTaskHistory(
   const sessionId =
     requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
   if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
-  const messages = await orch.readHistory(sessionId)
-  const usageMetrics = deriveSessionUsageMetrics(messages)
+  const { messages, usageMetrics } = await orch.readHistoryWithMetrics(sessionId)
   const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1
   const end = beforeIdx >= 0 ? beforeIdx : messages.length
   const start = Math.max(0, end - limit)

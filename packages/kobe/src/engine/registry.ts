@@ -23,10 +23,10 @@
  * remains the kobe-preferred default until the codex adapter lands.
  */
 
-import type { AIEngine, EngineCapabilities, ModelChoice } from "@/types/engine"
+import type { AIEngine, EngineCapabilities, EngineIdentity, ModelChoice } from "@/types/engine"
 import type { VendorId } from "@/types/vendor"
-import { claudeCapabilities } from "./claude-code-local/capabilities"
-import { codexCapabilities } from "./codex-local/capabilities"
+import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities"
+import { codexCapabilities, codexIdentity } from "./codex-local/capabilities"
 
 /**
  * Runtime engine map — vendor → live `AIEngine` instance.
@@ -44,16 +44,27 @@ import { codexCapabilities } from "./codex-local/capabilities"
 export type EngineMap = Readonly<Partial<Record<VendorId, AIEngine>>>
 
 type Registry = Partial<Record<VendorId, EngineCapabilities>>
+type IdentityRegistry = Partial<Record<VendorId, EngineIdentity>>
 
 export const ENGINE_REGISTRY: Registry = {
   claude: claudeCapabilities,
   codex: codexCapabilities,
 }
 
+export const ENGINE_IDENTITIES: IdentityRegistry = {
+  claude: claudeIdentity,
+  codex: codexIdentity,
+}
+
 export const defaultCapabilities: EngineCapabilities = claudeCapabilities
+export const defaultIdentity: EngineIdentity = claudeIdentity
 
 export function getCapabilities(vendor: VendorId): EngineCapabilities {
   return ENGINE_REGISTRY[vendor] ?? defaultCapabilities
+}
+
+export function getIdentity(vendor: VendorId): EngineIdentity {
+  return ENGINE_IDENTITIES[vendor] ?? defaultIdentity
 }
 
 /**

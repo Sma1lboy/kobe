@@ -71,6 +71,21 @@ export interface EngineCapabilities {
 }
 
 /**
+ * Product identity surfaced by the engine adapter.
+ *
+ * This is UI-facing but still engine-owned: the chat composer should
+ * ask the active engine how it wants to be named ("Claude Code",
+ * "Codex", etc.) instead of hard-coding vendor strings in TUI code.
+ */
+export interface EngineIdentity {
+  readonly vendorId: VendorId
+  readonly productName: string
+  readonly shortName: string
+  readonly assistantName: string
+  readonly inputPlaceholder: string
+}
+
+/**
  * Opaque handle to a live engine session. The orchestrator treats this
  * as a black box; only the engine impl knows what's inside (PID, JSONL
  * path, remote run id, etc.).
@@ -168,6 +183,19 @@ export interface Message {
   }
 }
 
+export type EngineUsageSnapshot = {
+  readonly input_tokens: number
+  readonly output_tokens: number
+  readonly cache_read_input_tokens?: number
+  readonly cache_creation_input_tokens?: number
+  readonly total_speed_tokens_per_second?: number
+}
+
+export interface EngineHistory {
+  readonly messages: readonly Message[]
+  readonly usageMetrics?: EngineUsageSnapshot
+}
+
 /**
  * Lightweight session summary for the resume-picker UI.
  *
@@ -223,6 +251,7 @@ export type EngineEvent =
       readonly output_tokens: number
       readonly cache_read_input_tokens?: number
       readonly cache_creation_input_tokens?: number
+      readonly total_speed_tokens_per_second?: number
     }
   /** Session is finished cleanly. No more events will follow. */
   | { readonly type: "done" }
@@ -418,6 +447,12 @@ export type OrchestratorEvent =
  */
 export interface AIEngine {
   /**
+   * UI-facing engine identity. Neutral layers consume this for product
+   * names and placeholder copy; vendor adapters own the strings.
+   */
+  readonly identity: EngineIdentity
+
+  /**
    * Vendor capabilities — model catalog, default-model resolution,
    * context-window math. The orchestrator and TUI must consult this
    * instead of importing vendor-specific helpers (see
@@ -465,7 +500,7 @@ export interface AIEngine {
    * live, in which case it returns the snapshot up to "now" (no
    * coordination with the live stream — caller dedupes if needed).
    */
-  readHistory(sessionId: string): Promise<Message[]>
+  readHistory(sessionId: string): Promise<EngineHistory>
 
   /**
    * List every session ever persisted for `cwd`, newest first.

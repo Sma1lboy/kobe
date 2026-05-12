@@ -180,6 +180,16 @@ Never use `width={N}` / `height={N}` to express "this pane should be this big pr
 
 If you find yourself reaching for a magic constant: pause, and verify a flex prop wouldn't do the same thing.
 
+### Engine-owned UI data
+
+The engine adapter is the source of truth for **agent/product identity, capabilities, history, and telemetry**. As kobe supports more than one engine, neutral layers must not hard-code Claude/Codex-specific strings or derive vendor-specific metrics themselves.
+
+- Product/name copy comes from `AIEngine.identity` / the engine registry (`productName`, `shortName`, `assistantName`, `inputPlaceholder`). Example: the chat composer says `Ask ${engine.shortName}` via engine-owned data, not a literal `"Ask Claude…"`.
+- Model catalogs and context-window math come from `EngineCapabilities`, keyed by the task's vendor when available. Do not infer a task's vendor solely from a model id unless the task has no vendor.
+- Persisted history is returned as an engine-owned `EngineHistory` (`messages` + `usageMetrics`). Claude Code may derive this from `~/.claude/projects/*.jsonl`; Codex may derive it from `~/.codex/sessions/**/rollout-*.jsonl`; callers should not know either format.
+- Token usage, context usage, and speed are engine-normalized data. The TUI may format `usageMetrics` for display, but it should not parse vendor transcript files or reconstruct speed from chat timestamps.
+- If a new pane needs engine-specific data, extend the engine contract first. Do not thread ad hoc vendor checks through TUI or orchestrator code.
+
 ### Diagrams in `docs/`: use Mermaid
 
 When a `docs/` markdown file needs a diagram (entity relationships, state machines, lifecycles, sequence flows), use **Mermaid** in a ` ```mermaid ` fence rather than ASCII art.

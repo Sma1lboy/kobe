@@ -36,11 +36,7 @@
  * No Solid / opentui imports — pure data, vitest-friendly under Node.
  */
 
-import {
-  type SessionUsageMetrics,
-  deriveSessionUsageMetrics,
-  withTotalSpeedForTurn,
-} from "../../../session/usage-metrics.ts"
+import type { SessionUsageMetrics } from "../../../session/usage-metrics.ts"
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
 
 /* --------------------------------------------------------------------- */
@@ -334,11 +330,8 @@ export function setMessagesFromHistory(
     appendRowsFromMessage(rows, toolIndexById, m)
   }
 
-  // Rehydrate the context meter from the latest persisted usage record,
-  // so the workspace header shows last-turn usage on tab open instead of
-  // sitting blank until the user sends a new prompt. Claude Code stores
-  // `usage` on each assistant record's `message.usage` block.
-  const latestUsage = usageMetrics ?? deriveSessionUsageMetrics(past)
+  // Rehydrate the context meter from engine-owned persisted usage.
+  const latestUsage = usageMetrics
 
   // Apply the cap on the hydration path too — don't load 5000
   // historical rows just to drop 4000 immediately on the next delta.
@@ -490,16 +483,13 @@ export function applyEvent(
     case "usage":
       return {
         ...state,
-        lastUsage: withTotalSpeedForTurn(
-          {
-            input_tokens: ev.input_tokens,
-            output_tokens: ev.output_tokens,
-            cache_read_input_tokens: ev.cache_read_input_tokens,
-            cache_creation_input_tokens: ev.cache_creation_input_tokens,
-          },
-          state.activeTurnStartedAt,
-          nowIso,
-        ),
+        lastUsage: {
+          input_tokens: ev.input_tokens,
+          output_tokens: ev.output_tokens,
+          cache_read_input_tokens: ev.cache_read_input_tokens,
+          cache_creation_input_tokens: ev.cache_creation_input_tokens,
+          total_speed_tokens_per_second: ev.total_speed_tokens_per_second,
+        },
       }
     case "done":
       return { ...state, isStreaming: false, activeTurnStartedAt: undefined }

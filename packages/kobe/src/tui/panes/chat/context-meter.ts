@@ -10,12 +10,13 @@ export { totalContextTokens } from "../../../session/usage-metrics.ts"
  * registering its capabilities — no edits here.
  */
 
-import { capabilitiesForModelId } from "@/engine/registry"
+import { capabilitiesForModelId, getCapabilities } from "@/engine/registry"
+import type { VendorId } from "@/types/vendor"
 
 export type UsageSnapshot = SessionUsageMetrics
 
-export function contextWindowTokensForModel(modelId: string | undefined): number {
-  const caps = capabilitiesForModelId(modelId)
+export function contextWindowTokensForModel(modelId: string | undefined, vendor?: VendorId): number {
+  const caps = vendor ? getCapabilities(vendor) : capabilitiesForModelId(modelId)
   const id = modelId ?? caps.defaultModelId()
   return caps.contextWindowFor(id)
 }
@@ -39,8 +40,12 @@ export function formatTotalSpeed(tokensPerSecond: number | undefined): string | 
 /**
  * Compact label for the WORKSPACE pane header. Returns `null` when totals are zero.
  */
-export function formatContextUsageCompact(u: UsageSnapshot, modelId: string | undefined): string | null {
-  const caps = capabilitiesForModelId(modelId)
+export function formatContextUsageCompact(
+  u: UsageSnapshot,
+  modelId: string | undefined,
+  vendor?: VendorId,
+): string | null {
+  const caps = vendor ? getCapabilities(vendor) : capabilitiesForModelId(modelId)
   const id = modelId ?? caps.defaultModelId()
   const window = caps.contextWindowFor(id)
   const total = totalContextTokens(u)

@@ -82,7 +82,7 @@ describe("FakeAIEngine", () => {
         sessionId: "preset",
       },
     ])
-    const msgs = await engine.readHistory("preset")
+    const { messages: msgs } = await engine.readHistory("preset")
     expect(msgs).toHaveLength(2)
     expect(msgs[0]?.blocks).toEqual([{ type: "text", text: "ping" }])
   })

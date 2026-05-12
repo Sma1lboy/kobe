@@ -112,8 +112,9 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
     // Codex writes rollouts async; give it a beat.
     await sleep(500)
     const history = await engine.readHistory(v1SessionId as string)
-    expect(history.length).toBeGreaterThanOrEqual(2)
-    const roles = new Set(history.map((m) => m.role))
+    const messages = history.messages
+    expect(messages.length).toBeGreaterThanOrEqual(2)
+    const roles = new Set(messages.map((m) => m.role))
     expect(roles.has("user")).toBe(true)
     expect(roles.has("assistant")).toBe(true)
     const sessions = await engine.listSessions("/tmp")
@@ -129,7 +130,7 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
     await engine.deleteHistory(v1SessionId as string)
     const after = await findRolloutFile(v1SessionId as string)
     expect(after).toBeUndefined()
-    expect(await engine.readHistory(v1SessionId as string)).toEqual([])
+    expect(await engine.readHistory(v1SessionId as string)).toEqual({ messages: [] })
     // Idempotent
     await engine.deleteHistory(v1SessionId as string)
   })

@@ -6,7 +6,7 @@
  * for the contract.
  */
 
-import type { EngineCapabilities } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity } from "@/types/engine"
 import { CLAUDE_MODELS, claudeContextWindowFor } from "./models"
 import { resolveClaudeDefaultModelId } from "./settings"
 
@@ -16,4 +16,12 @@ export const claudeCapabilities: EngineCapabilities = {
   models: CLAUDE_MODELS,
   defaultModelId: resolveClaudeDefaultModelId,
   contextWindowFor: claudeContextWindowFor,
+}
+
+export const claudeIdentity: EngineIdentity = {
+  vendorId: "claude",
+  productName: "Claude Code",
+  shortName: "Claude",
+  assistantName: "Claude",
+  inputPlaceholder: "Ask Claude…",
 }

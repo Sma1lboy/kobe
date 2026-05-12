@@ -22,11 +22,15 @@
  */
 
 import { claudeCapabilities } from "@/engine/claude-code-local/capabilities"
+import { claudeIdentity } from "@/engine/claude-code-local/capabilities"
+import { deriveSessionUsageMetrics } from "@/session/usage-metrics"
 import type {
   AIEngine,
   ContentBlock,
   EngineCapabilities,
   EngineEvent,
+  EngineHistory,
+  EngineIdentity,
   Message,
   SessionHandle,
   SessionMeta,
@@ -49,6 +53,7 @@ type ScriptedQueue = {
 
 export class FakeAIEngine implements AIEngine {
   /** Fake impersonates claude — borrow its capabilities for tests. */
+  readonly identity: EngineIdentity = claudeIdentity
   readonly capabilities: EngineCapabilities = claudeCapabilities
   private nextId = 1
   private queues = new Map<string, ScriptedQueue>()
@@ -131,8 +136,10 @@ export class FakeAIEngine implements AIEngine {
     }
   }
 
-  async readHistory(sessionId: string): Promise<Message[]> {
-    return this.historyBySession.get(sessionId) ?? []
+  async readHistory(sessionId: string): Promise<EngineHistory> {
+    const messages = this.historyBySession.get(sessionId) ?? []
+    const usageMetrics = deriveSessionUsageMetrics(messages)
+    return { messages, ...(usageMetrics ? { usageMetrics } : {}) }
   }
 
   async deleteHistory(sessionId: string): Promise<void> {

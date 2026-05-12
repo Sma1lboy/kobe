@@ -13,6 +13,8 @@ import type {
   ContentBlock,
   EngineCapabilities,
   EngineEvent,
+  EngineHistory,
+  EngineIdentity,
   Message,
   SessionHandle,
   SessionMeta,
@@ -98,11 +100,23 @@ describe("Message", () => {
 })
 
 describe("AIEngine", () => {
-  it("exposes capabilities + the seven documented methods", () => {
+  it("exposes identity, capabilities, and the documented methods", () => {
     type Methods = keyof AIEngine
     expectTypeOf<Methods>().toEqualTypeOf<
-      "capabilities" | "spawn" | "resume" | "stream" | "readHistory" | "deleteHistory" | "listSessions" | "stop"
+      | "identity"
+      | "capabilities"
+      | "spawn"
+      | "resume"
+      | "stream"
+      | "readHistory"
+      | "deleteHistory"
+      | "listSessions"
+      | "stop"
     >()
+  })
+
+  it("identity is an EngineIdentity descriptor", () => {
+    expectTypeOf<AIEngine["identity"]>().toEqualTypeOf<EngineIdentity>()
   })
 
   it("capabilities is an EngineCapabilities descriptor", () => {
@@ -123,9 +137,9 @@ describe("AIEngine", () => {
     expectTypeOf<AIEngine["stream"]>().returns.toEqualTypeOf<AsyncIterable<EngineEvent>>()
   })
 
-  it("readHistory returns Promise<Message[]>", () => {
+  it("readHistory returns Promise<EngineHistory>", () => {
     expectTypeOf<AIEngine["readHistory"]>().parameters.toEqualTypeOf<[string]>()
-    expectTypeOf<AIEngine["readHistory"]>().returns.toEqualTypeOf<Promise<Message[]>>()
+    expectTypeOf<AIEngine["readHistory"]>().returns.toEqualTypeOf<Promise<EngineHistory>>()
   })
 
   it("stop returns Promise<void>", () => {
@@ -137,6 +151,13 @@ describe("AIEngine", () => {
     // Smoke check: a minimal in-memory impl satisfies the interface.
     // If this fails to compile, Stream A's port is broken.
     class Impl implements AIEngine {
+      readonly identity: EngineIdentity = {
+        vendorId: "claude",
+        productName: "Stub",
+        shortName: "Stub",
+        assistantName: "Stub",
+        inputPlaceholder: "Ask Stub...",
+      }
       readonly capabilities: EngineCapabilities = {
         vendorId: "claude",
         label: "Stub",
@@ -155,8 +176,8 @@ describe("AIEngine", () => {
           yield { type: "done" } as const
         })()
       }
-      async readHistory(_sessionId: string): Promise<Message[]> {
-        return []
+      async readHistory(_sessionId: string): Promise<EngineHistory> {
+        return { messages: [] }
       }
       async deleteHistory(_sessionId: string): Promise<void> {}
       async listSessions(_cwd: string): Promise<SessionMeta[]> {

@@ -37,7 +37,7 @@
  *     to the new ones.
  */
 
-import { getCapabilities, modelLabelFor } from "@/engine/registry"
+import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
@@ -214,8 +214,9 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const modelId = task?.model ?? getCapabilities(task?.vendor ?? "claude").defaultModelId()
-    return formatContextUsageCompact(u, modelId)
+    const vendor = task?.vendor ?? "claude"
+    const modelId = task?.model ?? getCapabilities(vendor).defaultModelId()
+    return formatContextUsageCompact(u, modelId, vendor)
   })
 
   createEffect(
@@ -320,6 +321,11 @@ export function Chat(props: ChatProps) {
     return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
   })
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
+  const inputPlaceholder = createMemo(() => {
+    const id = props.taskId()
+    const vendor = id ? (tasksAcc().find((t) => t.id === id)?.vendor ?? "claude") : "claude"
+    return getIdentity(vendor).inputPlaceholder
+  })
 
   async function chooseModel(): Promise<void> {
     const id = props.taskId()
@@ -891,6 +897,7 @@ export function Chat(props: ChatProps) {
           permissionMode={permissionMode}
           onCyclePermissionMode={cyclePermissionMode}
           modelLabel={modelLabel}
+          inputPlaceholder={inputPlaceholder}
           onChooseModel={() => void chooseModel()}
           worktreePath={worktreePath}
           queue={() => activeState().queue}
