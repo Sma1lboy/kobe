@@ -119,6 +119,15 @@ export interface TaskPtyLike {
   readonly cwd: string
   /** Has `kill()` been called or has the underlying process exited? */
   readonly killed: boolean
+  /**
+   * If the backend exposes the shell as an attachable external session
+   * (tmux), this is the session name a separately-spawned terminal can
+   * pass to `tmux attach -t <name>`. Undefined for backends without a
+   * shareable handle (mocks, in-process PTYs). The terminal pane uses
+   * this to "pop out" the live shell into a real terminal window when
+   * the user wants native-emulator typing latency.
+   */
+  readonly externalAttachTarget?: string
 
   /** Forward keystrokes to the shell. */
   write(data: string): void
@@ -389,6 +398,12 @@ class TmuxControlClient {
 export class TmuxTaskPty implements TaskPtyLike {
   readonly taskId: string
   readonly cwd: string
+  /**
+   * Exposed as the `tmux attach -t <name>` target so a separately-
+   * spawned terminal can attach to the same shell — see
+   * `./pop-out.ts`. Mirrors {@link TaskPtyLike.externalAttachTarget}.
+   */
+  readonly externalAttachTarget: string
   private readonly tmuxBin: string
   private readonly sessionName: string
   private readonly listeners = new Set<DataListener>()
@@ -431,6 +446,7 @@ export class TmuxTaskPty implements TaskPtyLike {
     this.rows = opts.rows ?? DEFAULT_ROWS
     this.tmuxBin = opts.tmuxBin ?? defaultTmuxBin()
     this.sessionName = sessionNameFor(opts.taskId)
+    this.externalAttachTarget = this.sessionName
 
     assertTmuxAvailable(this.tmuxBin)
 

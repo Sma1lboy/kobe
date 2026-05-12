@@ -63,6 +63,7 @@ import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useTerminalBindings } from "./keys"
+import { popOutToExternalTerminal } from "./pop-out"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
 import { parseAnsiSnapshot } from "./sgr"
@@ -218,6 +219,23 @@ export function Terminal(props: TerminalProps): JSXElement {
   onCleanup(() => {
     setPty(null)
   })
+
+  /* --------- auto pop-out to a real terminal ---------- */
+  // Embedded panes pay Solid + opentui's render cost on every keystroke
+  // (~10-20 ms) which is perceptibly slower than a native terminal. The
+  // tmux backend persists the shell as an attachable session, so we can
+  // spawn an external terminal (Windows Terminal on WSL today) that
+  // attaches to the SAME tmux session. The user types in the real
+  // window at native latency; the kobe pane keeps mirroring it.
+  // Idempotent per session name — see `./pop-out.ts`.
+  createEffect(
+    on(pty, (handle) => {
+      if (!handle) return
+      const target = handle.externalAttachTarget
+      if (!target) return
+      popOutToExternalTerminal(target)
+    }),
+  )
 
   /* --------- bindings ---------- */
 
