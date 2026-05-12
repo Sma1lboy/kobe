@@ -76,8 +76,19 @@ export class SessionRegistry {
     this.handles.set(handle.sessionId, handle)
   }
 
-  /** Remove a session record. Idempotent. */
-  unregister(sessionId: string): void {
+  /**
+   * Remove a session record. Idempotent.
+   *
+   * When `proc` is provided, only remove the record if it still points
+   * at that exact child. This lets an old turn finish cleanup after a
+   * fast resume without unregistering the new subprocess that reused
+   * the same session id.
+   */
+  unregister(sessionId: string, proc?: ChildProcess): void {
+    if (proc) {
+      const existing = this.handles.get(sessionId)
+      if (existing && existing.proc !== proc) return
+    }
     this.handles.delete(sessionId)
   }
 

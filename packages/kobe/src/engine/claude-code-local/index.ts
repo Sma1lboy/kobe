@@ -318,7 +318,7 @@ export class ClaudeCodeLocal implements AIEngine {
           // without colliding. Without this the process registry kept a
           // dead handle for every completed turn, and the second user
           // message in a session blew up with `duplicate sessionId`.
-          this.registry.unregister(session.sessionId)
+          this.registry.unregister(session.sessionId, spawned.proc)
         }
         // If we never bound (no system.init ever arrived), reject the
         // spawn promise so callers don't hang forever.

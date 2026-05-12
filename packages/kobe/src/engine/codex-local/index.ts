@@ -240,6 +240,9 @@ export class CodexLocal implements AIEngine {
           const enriched = enrichUsageEvent(ev, session?.spawnedAtIso)
           queue.push(enriched)
           if (session) this.notify(session)
+          if ((enriched.type === "done" || enriched.type === "error") && session) {
+            this.registry.unregister(session.sessionId, spawned.proc)
+          }
         }
       } catch (err) {
         const ev: EngineEvent = {
@@ -265,8 +268,10 @@ export class CodexLocal implements AIEngine {
           }
           session.closed = true
           this.notify(session)
-          this.registry.unregister(session.sessionId)
-          this.running.delete(session.sessionId)
+          this.registry.unregister(session.sessionId, spawned.proc)
+          if (this.running.get(session.sessionId) === session) {
+            this.running.delete(session.sessionId)
+          }
         }
         if (!bound) {
           rejectHandle(new Error("codex exited without emitting a session id"))
