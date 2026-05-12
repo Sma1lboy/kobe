@@ -178,6 +178,22 @@ describe("Orchestrator.createTask", () => {
     expect(after.worktreePath).toBe("")
   })
 
+  test("concurrent first-prompt runTasks both reject when allocation fails", async () => {
+    // Regression for an ensureWorktree latch bug: when the in-flight
+    // allocator failed, the runner-up used to `.catch(() => {})` the
+    // rejection and return a task with `worktreePath: ""`, then runTask
+    // would proceed to spawn the engine with an empty cwd. Both callers
+    // must reject with the same surfaced error.
+    const { orch, store } = await buildOrchestrator()
+    const bogusRepo = path.join(tmpRoot, "no-such-repo-concurrent")
+    fs.mkdirSync(bogusRepo, { recursive: true })
+    const t = await orch.createTask({ repo: bogusRepo, title: "bad-concurrent", prompt: "" })
+    const [a, b] = await Promise.allSettled([orch.runTask(t.id, "go-a"), orch.runTask(t.id, "go-b")])
+    expect(a.status).toBe("rejected")
+    expect(b.status).toBe("rejected")
+    expect(store.get(t.id)?.worktreePath).toBe("")
+  })
+
   test("derives title from prompt when no explicit title is provided", async () => {
     const { orch } = await buildOrchestrator()
     const task = await orch.createTask({ repo, prompt: "fix the login redirect bug" })

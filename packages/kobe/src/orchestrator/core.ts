@@ -742,9 +742,15 @@ export class Orchestrator {
     // Without this latch, both callers would each pick a distinct slug
     // and each fire `git worktree add` against the same temp branch —
     // git rejects the second one with "branch already in use".
+    //
+    // If the in-flight allocation throws, propagate the same error to
+    // the runner-up rather than swallowing it. Otherwise the runner-up
+    // returns a task with `worktreePath: ""` and runTask spawns the
+    // engine with an empty cwd — a confusing downstream failure that
+    // hides the real error the first caller already surfaced.
     const inflight = this.ensureWorktreeLatches.get(task.id)
     if (inflight) {
-      await inflight.catch(() => {})
+      await inflight
       return this.requireTask(task.id)
     }
     const latch = this.doEnsureWorktree(task)
