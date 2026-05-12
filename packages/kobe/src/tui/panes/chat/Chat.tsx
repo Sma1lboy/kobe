@@ -849,12 +849,7 @@ export function Chat(props: ChatProps) {
           draft={draft()}
           onDraftChange={setDraft}
           isStreaming={activeState().isStreaming}
-          hasTask={
-            props.taskId() !== undefined &&
-            !isArchived() &&
-            !isCanceled() &&
-            !pendingApproval()
-          }
+          hasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingApproval()}
           noTaskMessage={
             isArchived()
               ? "(archived — unarchive to resume)"

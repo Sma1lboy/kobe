@@ -61,8 +61,8 @@ import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { Terminal } from "./panes/terminal"
-import { DialogConfirm } from "./ui/dialog-confirm"
 import { DialogProvider, useDialog } from "./ui/dialog"
+import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
 
