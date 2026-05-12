@@ -43,7 +43,7 @@
 
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
@@ -58,10 +58,14 @@ export interface TaskIndexStoreOptions {
  * auto-assigned. `archived` defaults to false. `tabs` / `activeTabId`
  * are synthesised from the optional `sessionId` when omitted.
  */
-export type TaskCreateInput = Omit<Task, "id" | "createdAt" | "updatedAt" | "archived" | "tabs" | "activeTabId"> & {
+export type TaskCreateInput = Omit<
+  Task,
+  "id" | "createdAt" | "updatedAt" | "archived" | "tabs" | "activeTabId" | "worktreeSlug"
+> & {
   readonly archived?: boolean
   readonly tabs?: readonly ChatTab[]
   readonly activeTabId?: string
+  readonly worktreeSlug?: string
 }
 
 /** Empty manifest used as the recovery / first-run default. */
@@ -258,6 +262,7 @@ export class TaskIndexStore {
     const firstSession = tabs[0]?.sessionId ?? null
     const task: Task = {
       archived: false,
+      worktreeSlug: "",
       ...rest,
       sessionId: firstSession,
       tabs,
@@ -526,12 +531,23 @@ function coerceTask(value: unknown): Task | null {
   const activeTab = finalTabs.find((t) => t.id === finalActive) ?? finalTabs[0]
   const aliasSessionId = activeTab?.sessionId ?? legacySessionId
 
+  // KOB-65: `worktreeSlug` is the basename of `worktreePath`. New
+  // records (post-KOB-65) write it explicitly. Older records lack the
+  // field and we recover it by `basename(worktreePath)` — which is the
+  // task's ULID for pre-KOB-65 worktrees and "" for tasks that never
+  // allocated a worktree. `kind: "main"` tasks intentionally store ""
+  // because their worktreePath is the repo root, not a sub-dir.
+  const kindMain = v.kind === "main"
+  const persistedSlug = typeof v.worktreeSlug === "string" ? v.worktreeSlug : null
+  const derivedSlug = !kindMain && v.worktreePath ? basename(v.worktreePath) : ""
+  const worktreeSlug = persistedSlug ?? derivedSlug
   return {
     id: toTaskId(v.id),
     title: v.title,
     repo: v.repo,
     branch: v.branch,
     worktreePath: v.worktreePath,
+    worktreeSlug,
     sessionId: aliasSessionId,
     tabs: finalTabs,
     activeTabId: finalActive,

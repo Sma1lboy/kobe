@@ -37,6 +37,7 @@ describe("Task", () => {
     expectTypeOf<Task["repo"]>().toEqualTypeOf<string>()
     expectTypeOf<Task["branch"]>().toEqualTypeOf<string>()
     expectTypeOf<Task["worktreePath"]>().toEqualTypeOf<string>()
+    expectTypeOf<Task["worktreeSlug"]>().toEqualTypeOf<string>()
     expectTypeOf<Task["sessionId"]>().toEqualTypeOf<string | null>()
     expectTypeOf<Task["status"]>().toEqualTypeOf<TaskStatus>()
     expectTypeOf<Task["createdAt"]>().toEqualTypeOf<string>()
@@ -50,6 +51,7 @@ describe("Task", () => {
       repo: "/r",
       branch: "kobe/x",
       worktreePath: "/r/.claude/wt/x",
+      worktreeSlug: "x",
       sessionId: null,
       tabs: [{ id: "tab1", sessionId: null, seq: 1, createdAt: "2026-05-08T00:00:00Z" }],
       activeTabId: "tab1",

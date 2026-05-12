@@ -108,6 +108,19 @@ export interface Task {
   readonly branch: string
   readonly worktreePath: string
   /**
+   * Directory slug under `<repo>/.claude/worktrees/`. The basename of
+   * `worktreePath`. Allocated from the animal-name pool at worktree-
+   * create time (KOB-65); recyclable once the task is archived. Older
+   * tasks predating KOB-65 used the ULID id as their dir name and
+   * carry that ULID here at load time, so the on-disk path is always
+   * `path.join(worktreeRootFor(repo), worktreeSlug)`.
+   *
+   * Empty string for tasks that haven't allocated a worktree yet
+   * (lazy-created tasks in `backlog`), and for `kind: "main"` tasks
+   * (which point at the repo root, not a sub-worktree).
+   */
+  readonly worktreeSlug: string
+  /**
    * Discriminator: KOB-15 introduces a "main" task per saved repo —
    * a persistent, pinned task bound to the repo's root checkout (no
    * `git worktree add`). Regular tasks (the original shape) carry

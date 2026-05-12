@@ -193,11 +193,11 @@ describe("GitWorktreeManager.remove", () => {
 })
 
 describe("createForTask helper", () => {
-  test("computes the canonical path from taskId", async () => {
+  test("computes the canonical path from slug", async () => {
     const mgr = new GitWorktreeManager()
-    const info = await mgr.createForTask({ repo, taskId: "01HABC", branch: "kobe/01HABC" })
-    expect(info.path).toBe(worktreePathFor(repo, "01HABC"))
-    expect(info.branch).toBe("kobe/01HABC")
+    const info = await mgr.createForTask({ repo, slug: "panda", branch: "kobe/panda" })
+    expect(info.path).toBe(worktreePathFor(repo, "panda"))
+    expect(info.branch).toBe("kobe/panda")
   })
 
   test("creates the new branch rooted at the explicit baseRef", async () => {
@@ -227,7 +227,7 @@ describe("createForTask helper", () => {
     const mgr = new GitWorktreeManager()
     const info = await mgr.createForTask({
       repo,
-      taskId: "from-side",
+      slug: "from-side",
       branch: "kobe/from-side",
       baseRef: "side-base",
     })

@@ -45,6 +45,7 @@ import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
+import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -135,7 +136,10 @@ describe("Orchestrator.createTask", () => {
     fake.finish("fake-1")
     await orch._waitForPumpsIdle()
     const updated = store.get(task.id)!
-    expect(updated.worktreePath).toBe(worktreePathFor(repo, task.id))
+    // KOB-65: dir name is now an allocated animal slug, not the ULID.
+    // Verify the path joins repo + worktreeSlug and the slug landed.
+    expect(updated.worktreeSlug).not.toBe("")
+    expect(updated.worktreePath).toBe(worktreePathFor(repo, updated.worktreeSlug))
     expect(fs.existsSync(updated.worktreePath)).toBe(true)
     expect(fs.existsSync(path.join(updated.worktreePath, "README.md"))).toBe(true)
     expect(updated.branch.startsWith("kobe/")).toBe(true)
@@ -607,6 +611,41 @@ describe("Orchestrator.deleteTask", () => {
     expect(stopSpy).toHaveBeenCalled()
     expect(store.get(t.id)).toBeUndefined()
     expect(fs.existsSync(wt)).toBe(false)
+  })
+
+  test("frees the worktreeSlug so a fresh task can re-use the same name (KOB-65)", async () => {
+    const fake = new FakeAIEngine()
+    const { orch, store } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "first", prompt: "" })
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "go")
+    await orch._waitForPumpsIdle()
+
+    const slug = orch.getTask(t.id)!.worktreeSlug
+    expect(slug).not.toBe("")
+    const wt = orch.getTask(t.id)!.worktreePath
+    expect(fs.existsSync(wt)).toBe(true)
+
+    await orch.deleteTask(t.id)
+    expect(store.get(t.id)).toBeUndefined()
+    expect(fs.existsSync(wt)).toBe(false)
+
+    // Reconstruct the orchestrator's allocator view with a pool
+    // containing only the just-deleted slug. If delete cleaned up
+    // both the store record AND the worktree dir, the allocator's
+    // "occupied" set is empty for this slug and it gets picked
+    // verbatim. If either cleanup leaked, the allocator falls back
+    // to `<slug>-v2`, and this assertion fails.
+    const allocator = new SlugAllocator(
+      (r) =>
+        store
+          .list()
+          .filter((task) => task.repo === r && !task.archived && task.worktreeSlug.length > 0)
+          .map((task) => task.worktreeSlug),
+      { pool: [slug] },
+    )
+    const reused = await allocator.allocate(repo)
+    expect(reused).toBe(slug)
   })
 
   test("force-removes a dirty worktree (the user confirmed)", async () => {

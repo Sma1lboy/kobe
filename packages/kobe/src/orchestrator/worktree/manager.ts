@@ -118,6 +118,11 @@ export class GitWorktreeManager implements WorktreeManager {
    * the caller doesn't have to (and so two callers can't disagree on
    * the layout).
    *
+   * `slug` is the directory basename — allocated by the orchestrator's
+   * {@link SlugAllocator}. Post-KOB-65 this is an animal name (e.g.
+   * `panda`) or version-suffixed (`panda-v2`); pre-KOB-65 it was the
+   * task's ULID. The manager doesn't care which — it just joins.
+   *
    * `baseRef` (optional): forwarded to {@link create} so the new branch
    * can be rooted at an explicit ref instead of the repo's current HEAD.
    * The new-task dialog passes this through when the user chose a
@@ -125,11 +130,11 @@ export class GitWorktreeManager implements WorktreeManager {
    */
   async createForTask(args: {
     repo: string
-    taskId: string
+    slug: string
     branch: string
     baseRef?: string
   }): Promise<WorktreeInfo> {
-    const target = worktreePathFor(args.repo, args.taskId)
+    const target = worktreePathFor(args.repo, args.slug)
     return this.create(args.repo, args.branch, target, args.baseRef)
   }
 

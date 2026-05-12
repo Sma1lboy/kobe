@@ -33,7 +33,7 @@ import { join } from "node:path"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
 import { kobeStateDir } from "../env.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
-import { worktreeRootFor } from "../orchestrator/worktree/paths.ts"
+import { listWorktreeDirNames, worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 import type { Task, TaskStatus } from "../types/task.ts"
 import { CURRENT_VERSION, checkLatestVersion } from "../version.ts"
 
@@ -219,26 +219,6 @@ function dirSize(root: string): number | null {
 }
 
 /**
- * List immediate child directory names under `root` that look like
- * task ULIDs. We intentionally don't check the ULID format (a manual
- * test rename shouldn't make us miss it); we just report every
- * directory entry. Returns empty array if `root` doesn't exist.
- */
-function listWorktreeDirs(root: string): string[] {
-  try {
-    return readdirSync(root).filter((n) => {
-      try {
-        return statSync(join(root, n)).isDirectory()
-      } catch {
-        return false
-      }
-    })
-  } catch {
-    return []
-  }
-}
-
-/**
  * Tail the last N lines of a file. Returns an empty array if the file
  * doesn't exist or can't be read. Used by the recent-errors section
  * once any rolling error log exists; today nothing in the tree writes
@@ -372,8 +352,7 @@ export async function buildDiagnoseReport(): Promise<string> {
     const onDiskByRepo = new Map<string, readonly string[]>()
     for (const repo of repos) {
       try {
-        const root = worktreeRootFor(repo)
-        onDiskByRepo.set(repo, listWorktreeDirs(root))
+        onDiskByRepo.set(repo, listWorktreeDirNames(repo))
       } catch (err) {
         // Bad repo path (e.g. relative) — skip but keep going.
         lines.push(formatKv("scan-error:", `${repo}: ${(err as Error).message}`))

@@ -95,6 +95,7 @@ import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
+import { SlugAllocator } from "./worktree/slug-allocator.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {
@@ -373,6 +374,24 @@ export class Orchestrator {
    * map is missing the entry.
    */
   private readonly pendingWorktreeOpts = new Map<TaskId, { branch?: string; baseRef?: string }>()
+  /**
+   * Animal-name allocator for worktree directories (KOB-65). Seeded with
+   * the store's snapshot at construction; queries the store live on
+   * every `allocate()` so newly-created tasks count as occupied even
+   * across worktree creations that haven't yet persisted.
+   */
+  private readonly slugAllocator: SlugAllocator
+  /**
+   * Per-task in-flight `ensureWorktree` promises. Two concurrent
+   * `runTask` calls on the same not-yet-allocated task must coalesce
+   * onto one worktree creation — otherwise both pick distinct slugs
+   * and both call `git worktree add` with the same temp branch name,
+   * which git rejects with "branch already in use". The first caller
+   * installs the entry; subsequent callers await it and re-read the
+   * task from the store. Cleared once the allocation resolves
+   * (success or failure).
+   */
+  private readonly ensureWorktreeLatches = new Map<TaskId, Promise<Task>>()
 
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
@@ -393,6 +412,14 @@ export class Orchestrator {
     this.store = deps.store
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
+    // Per-repo scoping: the same animal can be live in two different
+    // repos simultaneously without aliasing.
+    this.slugAllocator = new SlugAllocator((repo) =>
+      this.store
+        .list()
+        .filter((t) => t.repo === repo && !t.archived && t.worktreeSlug.length > 0)
+        .map((t) => t.worktreeSlug),
+    )
     // Seed the signal with the current store snapshot so synchronous
     // readers (the Sidebar's `createMemo`) see the right initial
     // shape on the very first paint.
@@ -707,18 +734,42 @@ export class Orchestrator {
    */
   private async ensureWorktree(task: Task): Promise<Task> {
     if (task.worktreePath) return task
+    // Coalesce concurrent first-prompt callers onto one allocation.
+    // The runner-up awaits the in-flight latch, then re-reads the task
+    // from the store so it sees the now-populated branch/worktreePath/
+    // worktreeSlug. Without this latch, both callers would each pick
+    // a distinct slug and each fire `git worktree add` against the
+    // same temp branch — git rejects the second one with "branch
+    // already in use".
+    const inflight = this.ensureWorktreeLatches.get(task.id)
+    if (inflight) {
+      await inflight.catch(() => {})
+      return this.requireTask(task.id)
+    }
+    const latch = this.doEnsureWorktree(task)
+    this.ensureWorktreeLatches.set(task.id, latch)
+    try {
+      return await latch
+    } finally {
+      this.ensureWorktreeLatches.delete(task.id)
+    }
+  }
+
+  private async doEnsureWorktree(task: Task): Promise<Task> {
     const opts = this.pendingWorktreeOpts.get(task.id)
     const branch = opts?.branch ?? `kobe/tmp-${task.id.slice(-8).toLowerCase()}`
     const baseRef = opts?.baseRef
+    const slug = await this.slugAllocator.allocate(task.repo)
     let info: Awaited<ReturnType<typeof this.worktrees.createForTask>>
     try {
       info = await this.worktrees.createForTask({
         repo: task.repo,
-        taskId: task.id,
+        slug,
         branch,
         baseRef,
       })
     } catch (err) {
+      this.slugAllocator.cancel(slug)
       // The raw `git worktree add` error is dense ("git worktree add
       // -b kobe/tmp-... <path> <baseRef> (cwd=<repo>) exited with
       // code 128: fatal: invalid reference: <baseRef>"). Boil it
@@ -729,10 +780,13 @@ export class Orchestrator {
       throw new Error(summarizeWorktreeError(message, task.repo, baseRef ?? null), { cause: err })
     }
     this.pendingWorktreeOpts.delete(task.id)
-    return await this.store.update(task.id, {
+    const updated = await this.store.update(task.id, {
       branch: info.branch,
       worktreePath: info.path,
+      worktreeSlug: slug,
     })
+    this.slugAllocator.commit(slug)
+    return updated
   }
 
   /**
