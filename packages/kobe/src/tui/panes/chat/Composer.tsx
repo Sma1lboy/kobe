@@ -81,6 +81,7 @@ import {
   findMentionContext,
   getWorktreeFiles,
 } from "./composer/mention"
+import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
  * Slash entry with an optional `source` discriminator. Defined as an
@@ -216,23 +217,6 @@ export interface ComposerProps {
  * claude-code's `PromptInputQueuedCommands` overflow shape.
  */
 const QUEUE_VISIBLE_CAP = 4
-
-/**
- * Resolve the placeholder text given the current state. Pure — no
- * Solid signals — so it can be unit-tested in isolation if we ever
- * want to. For now the behavior test asserts the streaming variant
- * is visible after submit.
- */
-function resolvePlaceholder(opts: {
-  isStreaming: boolean
-  hasTask: boolean
-  noTaskMessage?: string
-  inputPlaceholder?: string
-}): string {
-  if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
-  if (opts.isStreaming) return "(streaming — enter to queue, ctrl+enter to steer)"
-  return opts.inputPlaceholder ?? "Ask Claude…"
-}
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
@@ -1014,7 +998,8 @@ export function Composer(props: ComposerProps) {
   // render in the same row, same color, so the layout doesn't jump.
   const footerHint = () => pasteHint() ?? streamingNotice()
   const modelLabel = () => props.modelLabel?.() ?? ""
-  const permissionModeLabel = () => props.permissionModeLabel?.() ?? (props.permissionMode?.() === "plan" ? "plan mode" : "default")
+  const permissionModeLabel = () =>
+    props.permissionModeLabel?.() ?? (props.permissionMode?.() === "plan" ? "plan mode" : "default")
 
   // Mode indicator: short label + tone based on the active permission mode.
   // Plain text labels — no emoji glyphs (the previous 📋/⏵/⚠ set looked
