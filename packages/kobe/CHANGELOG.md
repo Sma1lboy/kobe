@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-05-12
+
+### Fixed
+
+- **Self-update no longer prints npm peer-dependency warnings for Solid** — kobe now declares the `solid-js@1.9.12` version required by `@opentui/solid@0.2.4`, so `kobe update` / the topbar updater can install the latest npm package without the noisy `ERESOLVE overriding peer dependency` warning (KOB-80).
+
 ## [0.5.17] - 2026-05-12
 
 ### Changed
