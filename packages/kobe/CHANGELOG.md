@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-05-12
+
 ### Added
 
 - **Active task worktrees can open directly in an editor** — the top bar now shows a dynamic `[Open] VS Code/Cursor/...` chip and `ctrl+o` opens the active task worktree via the first detected editor (`KOBE_OPEN_EDITOR`, VS Code, Cursor, Windsurf, Zed, or the platform opener).
