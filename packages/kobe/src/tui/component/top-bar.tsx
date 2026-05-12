@@ -85,7 +85,7 @@ export function TopBar(props: {
               if (orch) RcBridgeDialog.show(dialog, orch, rcBridge)
             }}
           >
-            ◉ {rcBridge().state === "running" ? rcBridge().envId ?? "RC" : "RC connecting…"}
+            ◉ {rcBridge().state === "running" ? (rcBridge().envId ?? "RC") : "RC connecting…"}
           </text>
         </Show>
       </box>

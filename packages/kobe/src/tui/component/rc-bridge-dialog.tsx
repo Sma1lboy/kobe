@@ -86,8 +86,8 @@ export function RcBridgeDialog(props: RcBridgeDialogProps) {
       </box>
 
       <text fg={theme.textMuted} wrapMode="word">
-        Registers this machine as an environment claude.ai can spawn sessions onto. Sessions run locally under the
-        kobed cwd, with your worktree's files. Cloud-side sessions are independent of kobe tabs — they appear in your
+        Registers this machine as an environment claude.ai can spawn sessions onto. Sessions run locally under the kobed
+        cwd, with your worktree's files. Cloud-side sessions are independent of kobe tabs — they appear in your
         claude.ai history, not here.
       </text>
 

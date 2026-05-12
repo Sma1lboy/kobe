@@ -6,7 +6,6 @@ import type { Message, OrchestratorEvent, UserInputResponse } from "../types/eng
 import type { Task } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
-import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 import {
   DAEMON_PROTOCOL_VERSION,
   frameToLine,
@@ -15,6 +14,7 @@ import {
   serializeTask,
 } from "./protocol.ts"
 import type { DaemonFrame } from "./protocol.ts"
+import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
 
 export interface DaemonServerOptions {
   readonly socketPath?: string

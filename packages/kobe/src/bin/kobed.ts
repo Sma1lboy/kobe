@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { unlink } from "node:fs/promises"
-import { KobeDaemonClient } from "../client/index.ts"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
+import { KobeDaemonClient } from "../client/index.ts"
 import { createKobeCore } from "../core/index.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile, startDaemonServer } from "../daemon/server.ts"
