@@ -36,6 +36,7 @@ import {
   listLocalBranches,
   listSubdirs,
   nextField,
+  pickerModeFor,
   resolveBaseRef,
   splitPathForDirSuggest,
   stripNewlines,
@@ -56,10 +57,42 @@ describe("stripNewlines", () => {
 })
 
 describe("nextField — tab cycling", () => {
-  test("cycles repoPicker → repoCustom → baseRef → repoPicker", () => {
-    expect(nextField("repoPicker")).toBe("repoCustom")
-    expect(nextField("repoCustom")).toBe("baseRef")
-    expect(nextField("baseRef")).toBe("repoPicker")
+  test("toggles repo ↔ baseRef", () => {
+    expect(nextField("repo")).toBe("baseRef")
+    expect(nextField("baseRef")).toBe("repo")
+  })
+})
+
+describe("pickerModeFor — saved vs browse decision", () => {
+  const SAVED = ["/Users/me/projects/kobe", "/Users/me/projects/widget"]
+
+  test("empty input → saved", () => {
+    expect(pickerModeFor("", SAVED)).toBe("saved")
+    expect(pickerModeFor("   ", SAVED)).toBe("saved")
+  })
+
+  test("non-path substring → saved (filter mode)", () => {
+    expect(pickerModeFor("kobe", SAVED)).toBe("saved")
+    expect(pickerModeFor("widget", SAVED)).toBe("saved")
+  })
+
+  test("path-shaped input → browse", () => {
+    expect(pickerModeFor("/Users/", SAVED)).toBe("browse")
+    expect(pickerModeFor("/Users/me/proj", SAVED)).toBe("browse")
+    expect(pickerModeFor("~/", SAVED)).toBe("browse")
+    expect(pickerModeFor("~/projects", SAVED)).toBe("browse")
+  })
+
+  test("exact match against a saved repo → saved (so the cwd-prefilled state stays in saved mode)", () => {
+    expect(pickerModeFor("/Users/me/projects/kobe", SAVED)).toBe("saved")
+    expect(pickerModeFor("  /Users/me/projects/kobe  ", SAVED)).toBe("saved")
+  })
+
+  test("backspacing past an exact match flips back to browse", () => {
+    // After `/Users/me/projects/kob` (one char short of saved), the
+    // user is mid-edit — they want directory suggestions, not the
+    // curated list filtered to nothing.
+    expect(pickerModeFor("/Users/me/projects/kob", SAVED)).toBe("browse")
   })
 })
 

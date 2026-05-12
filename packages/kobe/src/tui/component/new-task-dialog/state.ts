@@ -23,17 +23,41 @@ import * as os from "node:os"
 export type NewTaskInput = { repo: string; baseRef: string }
 
 /**
- * Three field states for repo selection:
- *   - "repoPicker" (default, primary path) — picker is focused, the
- *     custom-path input below is dim and inert. Arrow keys navigate
- *     the list; enter commits the highlighted repo and advances to
- *     baseRef.
- *   - "repoCustom" — the user explicitly tabbed into the input to
- *     type a path that isn't in the picker. Last-priority surface.
+ * Two field states for the dialog:
+ *   - "repo" — the unified repo input. Free-text editable; the
+ *     dropdown below it swaps between saved-repo and subdirectory
+ *     browse based on the input shape (see `pickerModeFor`).
  *   - "baseRef" — branch field.
- * Tab cycles repoPicker → repoCustom → baseRef → repoPicker.
+ * Tab cycles repo ↔ baseRef.
  */
-export type Field = "repoPicker" | "repoCustom" | "baseRef"
+export type Field = "repo" | "baseRef"
+
+/**
+ * Which list the unified picker should render under the repo input.
+ *   - "saved" — substring-filtered against the curated saved-repo
+ *     list (cwd + /add-repo entries). Default when the input is empty
+ *     or doesn't look like a path.
+ *   - "browse" — directory drill-down. Engaged when the input looks
+ *     like a path (`/...` or `~/...`) AND doesn't exactly match a
+ *     saved repo — exact-match keeps "saved" so the cwd default doesn't
+ *     jarringly render as a parent-dir browse on dialog open.
+ */
+export type PickerMode = "saved" | "browse"
+
+/**
+ * Decide which list the unified picker should render for the current
+ * input. `repoOptions` is the assembled saved-repo list (already
+ * deduped by `computeRepoOptions`) — pass it so we can short-circuit
+ * to "saved" when the typed value is an exact match (e.g. the
+ * cwd-prefilled state on dialog open).
+ */
+export function pickerModeFor(value: string, repoOptions: readonly string[]): PickerMode {
+  const trimmed = value.trim()
+  if (repoOptions.includes(trimmed)) return "saved"
+  if (trimmed.startsWith("~")) return "browse"
+  if (trimmed.includes("/")) return "browse"
+  return "saved"
+}
 
 /** Default base ref when the user leaves the field blank. */
 export const DEFAULT_BASE_REF = "main"
@@ -69,11 +93,10 @@ export function stripNewlines(v: string): string {
 }
 
 /**
- * Advance the field-cycle state. Order is repoPicker → repoCustom →
- * baseRef → repoPicker.
+ * Advance the field-cycle state. Tab toggles repo ↔ baseRef.
  */
 export function nextField(field: Field): Field {
-  return field === "repoPicker" ? "repoCustom" : field === "repoCustom" ? "baseRef" : "repoPicker"
+  return field === "repo" ? "baseRef" : "repo"
 }
 
 /**
@@ -95,11 +118,8 @@ export function computeRepoOptions(defaultRepo: string, savedRepos: readonly str
 }
 
 /**
- * Case-insensitive substring filter for the repo picker. When the
- * picker (not the custom-path input) has focus, the filter is
- * bypassed so the user can browse the full list with arrow keys
- * regardless of whatever they typed earlier. Caller decides whether
- * to apply the filter by checking field === "repoCustom".
+ * Case-insensitive substring filter for the repo picker. Empty query
+ * returns the full list verbatim.
  */
 export function filterRepos(all: readonly string[], query: string): readonly string[] {
   const q = query.trim().toLowerCase()
