@@ -226,15 +226,25 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Cursor-capable backends report y coordinates against this array.
   const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
 
-  // Rows visible after applying scroll offset. We slice off the
-  // bottom `scrollOffset` rows so scrolling back reveals older
-  // content; offset 0 means "show everything = follow live".
+  const [bodyRows, setBodyRows] = createSignal(4)
+
+  // Rows visible after applying scroll offset. offset 0 means
+  // follow-bottom: render only the last body-height rows, not the
+  // whole scrollback. Positive offset moves the viewport upward into
+  // history.
+  const visibleRange = createMemo(() => {
+    const all = parsedRows()
+    const height = Math.max(1, bodyRows())
+    const offset = Math.max(0, scrollOffset())
+    const end = Math.max(0, all.length - offset)
+    const start = Math.max(0, end - height)
+    return { start, end }
+  })
+
   const visibleRows = createMemo(() => {
     const all = parsedRows()
-    const offset = Math.max(0, scrollOffset())
-    if (offset === 0) return all
-    const cut = Math.max(0, all.length - offset)
-    return all.slice(0, cut)
+    const range = visibleRange()
+    return all.slice(range.start, range.end)
   })
 
   // Flatten every visible row into ONE `StyledText` separated by
@@ -250,7 +260,15 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Cursor is only meaningful when we're following the bottom of the
   // buffer; once the user scrolls back, the cursor's reported (x,y)
   // refers to the *live* viewport, not what's currently rendered.
-  const showCursor = createMemo(() => focused() && scrollOffset() === 0 && cursor() !== null)
+  const visibleCursor = createMemo(() => {
+    const c = cursor()
+    if (!c || scrollOffset() !== 0) return null
+    const range = visibleRange()
+    if (c.y < range.start || c.y >= range.end) return null
+    return { x: c.x, y: c.y - range.start }
+  })
+
+  const showCursor = createMemo(() => focused() && visibleCursor() !== null)
 
   /* --------- native cursor positioning ----------
    *
@@ -315,6 +333,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     // usable width so the shell doesn't try to write into the padding.
     const cols = Math.max(20, ref.width - 2)
     const rows = Math.max(4, ref.height)
+    setBodyRows(rows)
     if (lastResize && lastResize.cols === cols && lastResize.rows === rows) return
     lastResize = { cols, rows }
     try {
@@ -333,7 +352,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     dims()
     geomTick()
     if (!ref) return
-    const c = cursor()
+    const c = visibleCursor()
     if (!showCursor() || !c) {
       // Hide the cursor by parking it off-screen with visible=false.
       renderer.setCursorPosition(0, 0, false)
