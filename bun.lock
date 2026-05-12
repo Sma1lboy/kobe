@@ -25,11 +25,13 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.2.2",
+      "version": "0.5.7",
       "bin": {
-        "kobe": "dist/index.js",
+        "kobe": "dist/cli/index.js",
+        "kobed": "dist/bin/kobed.js",
       },
       "dependencies": {
+        "@ansi-tools/parser": "^1.0.15",
         "@opentui/core": "0.2.4",
         "@opentui/solid": "0.2.4",
         "solid-js": "1.9.10",
@@ -46,6 +48,8 @@
   },
   "packages": {
     "@ampproject/remapping": ["@ampproject/remapping@2.3.0", "", { "dependencies": { "@jridgewell/gen-mapping": "^0.3.5", "@jridgewell/trace-mapping": "^0.3.24" } }, "sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw=="],
+
+    "@ansi-tools/parser": ["@ansi-tools/parser@1.0.15", "", {}, "sha512-Y+PIdkMVu8I27z344G65nni8c7TlPtVv/7Kw/ncS6lbpJKBRT00bTtyAlPL/aVjkCrLoYlUwsgvoGJ/iWhH52w=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 

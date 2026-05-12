@@ -149,7 +149,33 @@ export interface TaskPtyLike {
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
-const DEFAULT_POLL_MS = 80
+/**
+ * Heartbeat poll interval. Used purely as a fallback when the
+ * control-mode subscription isn't delivering events (old tmux, killed
+ * client). Under normal operation, `%output` events drive captures via
+ * `TmuxControlClient` — this heartbeat is just safety. 1.5 s is enough
+ * to notice a dead control client without burning CPU on idle
+ * subprocess spawns.
+ */
+const DEFAULT_POLL_MS = 1500
+/**
+ * Settle window after the last `%output` event. Kept short so typing
+ * feels live: every keystroke turns into a `%output` from the shell's
+ * echo, and waiting too long here is exactly the "I type 'a' and
+ * nothing happens for 50 ms" symptom. fancy prompts (p10k, starship)
+ * still repaint in multiple passes, but their per-pass writes land
+ * within 5-10 ms, so a 16 ms window batches them while staying
+ * imperceptible to typing.
+ */
+const CAPTURE_DEBOUNCE_MS = 16
+/**
+ * Maximum delay we'll postpone a capture even if events keep coming.
+ * Caps the worst-case latency during streaming output (`tail -f`,
+ * `yes`, ANSI-art tools) to one capture per `CAPTURE_MAX_DELAY_MS`
+ * window. 120 ms = ~8 captures/sec under flood — plenty for the eye
+ * and keeps the CPU cost bounded.
+ */
+const CAPTURE_MAX_DELAY_MS = 120
 const SESSION_NAME_PREFIX = "kobe-task-"
 
 function defaultShell(): string {
@@ -211,9 +237,154 @@ function tmuxSync(tmuxBin: string, args: string[]): string {
 }
 
 /**
+ * Subscribes to a tmux session's control-mode event stream.
+ *
+ * `tmux -CC attach-session -t <name>` spawns a tmux client that, instead
+ * of rendering a TTY, reads commands on stdin and writes notification
+ * lines on stdout — including `%output %<pane-id> <data>` whenever a
+ * pane produces output. We don't issue any commands; we just listen for
+ * `%output` and use it as a "the shell wrote something — go capture
+ * the pane now" wake-up signal.
+ *
+ * Why this exists, vs. just polling capture-pane every 80 ms:
+ *   - Polling can land mid-prompt-repaint. fancy prompts (p10k, pure,
+ *     starship) write the prompt, jump up a row to draw a powerline
+ *     decoration, jump back. If we capture between those jumps,
+ *     `cursor_y` reports the in-progress position one row above the
+ *     final prompt. The Terminal pane then renders the cursor one row
+ *     above the visible `$` chip and content from the two repaint
+ *     phases overlaps. We can't make polling avoid that window.
+ *   - Control mode is push-based. Combined with a small debounce
+ *     window in the caller (TmuxTaskPty), capture-pane only fires
+ *     after the shell has stopped writing for ~50 ms — i.e. after
+ *     all repaint phases are done. The pane is then in a stable state
+ *     and (snapshot, cursor) are consistent.
+ *
+ * The control client is best-effort: if it dies or never connects
+ * (tmux version too old, session deleted externally), TmuxTaskPty
+ * still runs its slow heartbeat poll so the pane never goes mute.
+ */
+class TmuxControlClient {
+  private readonly proc: ReturnType<typeof spawn>
+  private readonly outputListeners = new Set<() => void>()
+  private buffer = ""
+  private _killed = false
+
+  constructor(tmuxBin: string, sessionName: string) {
+    this.proc = spawn(tmuxBin, ["-CC", "attach-session", "-t", sessionName], {
+      // stdin is BOTH how tmux knows we're attached AND our keystroke
+      // write channel: `sendKeys` writes `send-keys -t <pane> -H <hex>`
+      // lines through it so the typed-char path doesn't fork a tmux
+      // client per keystroke.
+      stdio: ["pipe", "pipe", "ignore"],
+    })
+    this.proc.stdout?.setEncoding("utf8")
+    this.proc.stdout?.on("data", (chunk: string) => this.onChunk(chunk))
+    // Without this listener, an EPIPE on stdin (tmux client died)
+    // bubbles up as an unhandled `error` and crashes the host process.
+    this.proc.stdin?.on("error", () => this.markDead())
+    this.proc.on("error", () => this.markDead())
+    this.proc.on("exit", () => this.markDead())
+    // Don't keep the host alive solely on this subprocess.
+    this.proc.unref?.()
+  }
+
+  get killed(): boolean {
+    return this._killed
+  }
+
+  /**
+   * Forward raw bytes to a tmux pane through the already-attached
+   * control client's stdin — the fast path for typed characters.
+   *
+   * The previous implementation forked `tmux send-keys ...` per write,
+   * burning ~5-10 ms per keystroke on fork + exec + IPC + wait. Going
+   * through the existing stdin pipe drops the cost to a single
+   * `Writable.write` (microseconds); tmux processes the command
+   * in-server and dispatches it synchronously. Visible difference is
+   * "smooth typing / arrow keys" vs "perceptibly laggy."
+   *
+   * Returns `false` if the client is dead so the caller can fall back
+   * to the spawn path rather than silently dropping the keystroke.
+   *
+   * We do NOT read the command's `%begin`/`%end` response: `send-keys`
+   * produces no payload, and `onChunk` already ignores those lines.
+   */
+  sendKeys(paneTarget: string, bytes: Buffer): boolean {
+    if (this._killed) return false
+    const stdin = this.proc.stdin
+    if (!stdin || stdin.destroyed) return false
+    // 256 hex bytes per line keeps each tmux command under 1 KB and
+    // well under any practical argv limit. Multi-byte UTF-8 is fine
+    // — we emit raw bytes, not characters.
+    const CHUNK = 256
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length))
+      const hex: string[] = []
+      for (const b of slice) hex.push(b.toString(16).padStart(2, "0"))
+      const cmd = `send-keys -t ${paneTarget} -H ${hex.join(" ")}\n`
+      try {
+        stdin.write(cmd)
+      } catch {
+        this.markDead()
+        return false
+      }
+    }
+    return true
+  }
+
+  onOutput(cb: () => void): () => void {
+    this.outputListeners.add(cb)
+    return () => {
+      this.outputListeners.delete(cb)
+    }
+  }
+
+  private onChunk(chunk: string): void {
+    if (this._killed) return
+    this.buffer += chunk
+    while (true) {
+      const nl = this.buffer.indexOf("\n")
+      if (nl === -1) break
+      const line = this.buffer.slice(0, nl)
+      this.buffer = this.buffer.slice(nl + 1)
+      // The only notification we care about is `%output %<pane-id>
+      // <hex-or-raw>`. We don't decode the data — its existence is the
+      // signal. tmux also emits %begin/%end/%session-changed/%exit
+      // etc.; ignore all of those.
+      if (line.startsWith("%output ")) {
+        for (const cb of this.outputListeners) {
+          try {
+            cb()
+          } catch {
+            /* one listener must not break the others */
+          }
+        }
+      }
+    }
+  }
+
+  kill(): void {
+    if (this._killed) return
+    this.markDead()
+    try {
+      this.proc.kill("SIGTERM")
+    } catch {
+      /* best effort */
+    }
+  }
+
+  private markDead(): void {
+    this._killed = true
+    this.outputListeners.clear()
+  }
+}
+
+/**
  * Concrete tmux-backed PTY. One tmux session per instance, named after
  * the task id. The session is created on construction; `kill()` closes
- * it. Output is observed via a polling loop on `capture-pane`.
+ * it. Output is observed via a `TmuxControlClient` (push) backed by a
+ * slow heartbeat poll (fallback if the control client dies).
  */
 export class TmuxTaskPty implements TaskPtyLike {
   readonly taskId: string
@@ -222,11 +393,28 @@ export class TmuxTaskPty implements TaskPtyLike {
   private readonly sessionName: string
   private readonly listeners = new Set<DataListener>()
   private pollTimer: ReturnType<typeof setInterval> | null = null
+  /**
+   * Control-mode subscription. Constructed alongside the tmux session
+   * in the constructor; killed in `markDead()` so a session teardown
+   * doesn't leave a zombie `tmux -CC` client.
+   */
+  private controlClient: TmuxControlClient | null = null
   private lastSnapshot = ""
   private lastCursor: CursorPos | null = null
   private _killed = false
   private cols: number
   private rows: number
+  /**
+   * Timestamp of the most recent `write()` call. The `%output` debounce
+   * uses this to tell apart two cases:
+   *   - "user just typed" → next `%output` is the echo of that keystroke,
+   *     capture immediately so the character shows up with no delay
+   *   - "command is producing output" → fancy prompts (p10k, starship)
+   *     repaint in multiple passes, so debounce for stability
+   * Without this distinction, every keystroke would wait the full
+   * debounce window, surfacing as typing lag.
+   */
+  private justWroteAt = 0
   /**
    * Serialized write queue. Each write spawns a tmux process; if we
    * fired them concurrently they could land out of order in the pty
@@ -323,19 +511,26 @@ export class TmuxTaskPty implements TaskPtyLike {
     }
     this.resize(this.cols, this.rows)
 
-    // Begin polling for output.
-    const pollMs = opts.pollIntervalMs ?? DEFAULT_POLL_MS
-    this.pollTimer = setInterval(() => {
+    // Control-mode push subscription — wakes us when tmux processes
+    // new pane output. Each `%output` notification kicks the debounce
+    // timer; once we've gone `CAPTURE_DEBOUNCE_MS` with no further
+    // events, we capture. fancy prompts that repaint in multiple
+    // passes (p10k, starship) batch into one capture this way, so the
+    // (snapshot, cursor) pair we render is always a stable end-state.
+    this.controlClient = new TmuxControlClient(this.tmuxBin, this.sessionName)
+    const debounceMs = CAPTURE_DEBOUNCE_MS
+    const maxDelayMs = CAPTURE_MAX_DELAY_MS
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let firstEventAt = 0
+    const captureNow = () => {
       if (this._killed) return
+      debounceTimer = null
+      firstEventAt = 0
       try {
         const { snapshot, cursor } = this.captureWithCursorRaw()
         const snapChanged = snapshot !== this.lastSnapshot
         const cursorChanged =
           (cursor?.x ?? null) !== (this.lastCursor?.x ?? null) || (cursor?.y ?? null) !== (this.lastCursor?.y ?? null)
-        // Always update both — listeners receive the latest atomic pair
-        // even when only the cursor moved (e.g. arrow-key nav inside an
-        // unchanged line, or zsh's RPROMPT redraw landing the cursor at
-        // a different column on the same content).
         this.lastSnapshot = snapshot
         this.lastCursor = cursor
         if (snapChanged || cursorChanged) {
@@ -343,18 +538,51 @@ export class TmuxTaskPty implements TaskPtyLike {
             try {
               cb(snapshot, cursor)
             } catch {
-              // never let one listener kill the rest
+              /* one listener must not break the others */
             }
           }
         }
       } catch {
-        // Capture can fail if the session was killed externally; fall
-        // through and stop polling.
         this.markDead()
       }
+    }
+    const scheduleCapture = () => {
+      if (this._killed) return
+      const now = Date.now()
+      if (firstEventAt === 0) firstEventAt = now
+      const elapsed = now - firstEventAt
+      // Typing echo bypass: if the user just pressed a key, the
+      // `%output` we're handling is almost certainly the shell
+      // echoing that character. Render immediately so typing feels
+      // live. The 50 ms window is well above any plausible round-trip
+      // (write → tmux → shell → tmux → %output) but well below the
+      // delay needed for fancy-prompt repaint batches to settle, so
+      // we keep both behaviours.
+      const isEcho = now - this.justWroteAt < 50
+      const wait = isEcho ? 0 : Math.min(debounceMs, Math.max(0, maxDelayMs - elapsed))
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(captureNow, wait)
+    }
+    this.controlClient.onOutput(scheduleCapture)
+
+    // Fallback heartbeat — runs slow on purpose. If the control
+    // client dies (host's tmux version too old to honor -CC, manual
+    // session kill, etc.) the heartbeat ensures the pane keeps
+    // updating. When events are flowing through control mode, the
+    // heartbeat tick is a no-op (snapshot/cursor unchanged → no fire).
+    const pollMs = opts.pollIntervalMs ?? DEFAULT_POLL_MS
+    this.pollTimer = setInterval(() => {
+      if (this._killed) return
+      captureNow()
     }, pollMs)
-    // Don't keep the event loop alive on the poll timer alone.
     this.pollTimer.unref?.()
+
+    // Prime the listener pipe immediately so `Terminal.tsx` doesn't
+    // render an empty body for the first tick. The control client
+    // won't fire `%output` until the shell prints something; without
+    // this initial capture, an idle freshly-spawned shell shows a
+    // blank pane until the first keystroke.
+    captureNow()
   }
 
   get killed(): boolean {
@@ -384,17 +612,28 @@ export class TmuxTaskPty implements TaskPtyLike {
     if (this._killed) return
     if (data.length === 0) return
 
+    // Note "user typed something" so the next `%output` (the echo)
+    // bypasses the debounce window — see scheduleCapture in the
+    // constructor.
+    this.justWroteAt = Date.now()
+
     // Snapshot the data NOW so the closure below doesn't see a
     // mutated value across queue ticks.
     const bytes = Buffer.from(data, "utf8")
 
-    // Append to the serialized queue. Each chunk waits for the prior
-    // tmux spawn to exit before launching its own. The queue captures
-    // ordering across both intra-call chunks AND back-to-back
-    // `write()` invocations.
+    // Fast path: write through the control client's stdin pipe (no
+    // fork). tmux's command pipeline is strictly FIFO so order is
+    // preserved across back-to-back keystrokes without us paying ~10 ms
+    // per keystroke on fork+IPC. This is the difference between
+    // "smooth typing" and "perceptibly laggy."
+    if (this.controlClient && !this.controlClient.killed) {
+      if (this.controlClient.sendKeys(this.sessionName, bytes)) return
+    }
+
+    // Fallback: serialized spawn queue. Kicks in when the control
+    // client is dead (old tmux, manually killed) or never came up.
+    // Same ordering guarantees: each chunk awaits the prior spawn.
     this.writeQueue = this.writeQueue.then(() => this.sendBytesSerialized(bytes))
-    // Swallow rejections so a transient send-keys failure doesn't
-    // poison the queue forever.
     this.writeQueue = this.writeQueue.catch(() => {})
   }
 
@@ -509,6 +748,14 @@ export class TmuxTaskPty implements TaskPtyLike {
     try {
       out = tmuxSync(this.tmuxBin, [
         "capture-pane",
+        // -e keeps the SGR (color/attr) escapes in the output. tmux
+        // has already applied every cursor-motion / erase-line code
+        // to its internal grid, so the output is "plain text + SGR
+        // only" — exactly what the SGR parser in `./sgr.ts` expects.
+        // The Terminal pane needs colors back; stripping ANSI was the
+        // root cause of "the prompt rendered black-on-black for users
+        // with oh-my-zsh."
+        "-e",
         "-p",
         "-t",
         this.sessionName,
@@ -549,12 +796,16 @@ export class TmuxTaskPty implements TaskPtyLike {
     }
   }
 
-  /** Internal: tear down listeners + timer; do not touch tmux. */
+  /** Internal: tear down listeners + timer + control client; do not touch tmux. */
   private markDead(): void {
     this._killed = true
     if (this.pollTimer) {
       clearInterval(this.pollTimer)
       this.pollTimer = null
+    }
+    if (this.controlClient) {
+      this.controlClient.kill()
+      this.controlClient = null
     }
     this.listeners.clear()
   }
