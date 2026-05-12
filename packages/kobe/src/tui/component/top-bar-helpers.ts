@@ -8,5 +8,5 @@ export function formatSessionIdLabel(sessionId: string | null | undefined): stri
 export function activeTaskSessionId(task: Task | undefined, activeChatTabId: string | null | undefined): string | null {
   if (!task) return null
   const tabId = activeChatTabId ?? task.activeTabId
-  return task.tabs.find((tab) => tab.id === tabId)?.sessionId ?? task.sessionId ?? null
+  return task.tabs.find((tab) => tab.id === tabId)?.sessionId ?? null
 }

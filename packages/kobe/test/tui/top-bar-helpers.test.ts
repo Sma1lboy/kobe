@@ -46,7 +46,7 @@ describe("activeTaskSessionId", () => {
     expect(activeTaskSessionId(taskWithTabs("tab-a"), null)).toBe("session-a-1234567890")
   })
 
-  test("falls back to the legacy task session id when the tab has not been found", () => {
-    expect(activeTaskSessionId(taskWithTabs("missing"), "missing")).toBe("legacy-session")
+  test("does not fall back to the legacy task session id when the active tab is missing", () => {
+    expect(activeTaskSessionId(taskWithTabs("missing"), "missing")).toBeNull()
   })
 })

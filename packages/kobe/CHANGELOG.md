@@ -20,6 +20,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Topbar session ids now come from the active engine session** — the branch header no longer falls back to the deprecated task-level `sessionId`, and Codex sessions bind to the persisted rollout id from `session_meta` so the displayed `sid` is the id that history and resume actually use.
 - **Plan-mode switching is visible again for Claude Code and Codex** — the composer footer now always shows the active engine-owned mode label (`default` / `full access` / `plan mode`) as a clickable control, with shift+tab still cycling the same mode.
 
 ## [0.5.16] - 2026-05-12
