@@ -253,7 +253,16 @@ export class TaskIndexStore {
       activeTabId = activeIn && tabsIn.some((t) => t.id === activeIn) ? activeIn : (tabsIn[0]?.id ?? "")
     } else {
       const tabId = ulid()
-      tabs = [{ id: tabId, sessionId: sessionId ?? null, seq: 1, createdAt: now }]
+      tabs = [
+        {
+          id: tabId,
+          sessionId: sessionId ?? null,
+          seq: 1,
+          createdAt: now,
+          ...(rest.model ? { model: rest.model } : {}),
+          vendor: rest.vendor ?? DEFAULT_TASK_VENDOR,
+        },
+      ]
       activeTabId = tabId
     }
     const firstSession = tabs[0]?.sessionId ?? null
@@ -501,6 +510,8 @@ function coerceTask(value: unknown): Task | null {
         seq,
         createdAt: tt.createdAt,
         ...(typeof tt.title === "string" ? { title: tt.title } : {}),
+        ...(typeof tt.model === "string" ? { model: tt.model } : {}),
+        ...(isVendorId(tt.vendor) ? { vendor: tt.vendor } : {}),
       }
       tabs.push(tab)
     }

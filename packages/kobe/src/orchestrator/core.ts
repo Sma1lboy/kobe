@@ -506,6 +506,57 @@ export class Orchestrator {
     return this.engineForVendor(task.vendor)
   }
 
+  private vendorForTab(task: Task, tab: ChatTab): VendorId {
+    return tab.vendor ?? task.vendor ?? "claude"
+  }
+
+  private modelForTab(task: Task, tab: ChatTab, engine: AIEngine): string {
+    return tab.model ?? task.model ?? engine.capabilities.defaultModelId()
+  }
+
+  private engineForTab(task: Task, tab: ChatTab): AIEngine {
+    return this.engineForVendor(this.vendorForTab(task, tab))
+  }
+
+  private async engineForTabRun(task: Task, tab: ChatTab): Promise<AIEngine> {
+    if (!tab.sessionId || tab.vendor) return this.engineForTab(task, tab)
+    const resolved = await this.findEngineWithHistory(tab.sessionId, this.vendorForTab(task, tab))
+    if (resolved.vendor && resolved.vendor !== tab.vendor) {
+      await this.updateTab(task.id, tab.id, { vendor: resolved.vendor })
+    }
+    return resolved.engine
+  }
+
+  private async findEngineWithHistory(
+    sessionId: string,
+    preferredVendor?: VendorId,
+  ): Promise<{ engine: AIEngine; vendor?: VendorId; history?: EngineHistory }> {
+    const candidates: Array<[VendorId | undefined, AIEngine]> = []
+    if (preferredVendor) candidates.push([preferredVendor, this.engineForVendor(preferredVendor)])
+    for (const [vendor, engine] of Object.entries(this.engines) as Array<[VendorId, AIEngine | undefined]>) {
+      if (!engine || vendor === preferredVendor) continue
+      candidates.push([vendor, engine])
+    }
+    if (candidates.length === 0) candidates.push([undefined, this.fallbackEngine])
+
+    let fallback = candidates[0] ?? [undefined, this.fallbackEngine]
+    let fallbackHistory: EngineHistory | undefined
+    for (const [vendor, engine] of candidates) {
+      try {
+        const history = await engine.readHistory(sessionId)
+        if (!fallbackHistory) {
+          fallback = [vendor, engine]
+          fallbackHistory = history
+        }
+        if (history.messages.length > 0 || history.usageMetrics) return { engine, vendor, history }
+      } catch {
+        // Try the next registered engine; a missing/corrupt transcript
+        // in one adapter should not hide a session owned by another.
+      }
+    }
+    return { engine: fallback[1], vendor: fallback[0], history: fallbackHistory }
+  }
+
   /** Engine for a task id; defensive against a stale id (returns fallback). */
   private engineForTaskId(taskId: TaskId): AIEngine {
     const task = this.store.get(taskId)
@@ -520,10 +571,10 @@ export class Orchestrator {
    */
   private engineForSessionId(sessionId: string): AIEngine {
     for (const task of this.store.list()) {
-      if (task.sessionId === sessionId) return this.engineForTask(task)
       for (const tab of task.tabs) {
-        if (tab.sessionId === sessionId) return this.engineForTask(task)
+        if (tab.sessionId === sessionId) return this.engineForTab(task, tab)
       }
+      if (task.sessionId === sessionId) return this.engineForTask(task)
     }
     return this.fallbackEngine
   }
@@ -1023,12 +1074,13 @@ export class Orchestrator {
       this.dispatchEvent(task.id, targetTab.id, { type: "user.inject", text: prompt })
     }
 
-    // Model resolution: per-task pin → vendor's default-model resolver
-    // (e.g. claude-code reads `~/.claude/settings.json` `model` key) →
-    // vendor's hardcoded fallback. The engine's capabilities surface is
-    // the single seam — adding a vendor doesn't touch this line.
-    const engine = this.engineForTask(task)
-    const modelToUse = task.model ?? engine.capabilities.defaultModelId()
+    // Model resolution is tab-scoped: one task/worktree can host a
+    // Claude tab and a Codex tab side-by-side. Legacy task-level
+    // model/vendor fields remain fallback data for old manifests.
+    const engine = targetTab.sessionId
+      ? await this.engineForTabRun(task, targetTab)
+      : this.engineForTab(task, targetTab)
+    const modelToUse = this.modelForTab(task, targetTab, engine)
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
@@ -1349,21 +1401,20 @@ export class Orchestrator {
   }
 
   /**
-   * Set the per-task model. Persisted to the manifest and forwarded as
-   * `claude --model <id>` on the next spawn/resume. Pass `undefined`
-   * to clear (falls back to claude-code's default model). Like
-   * permission mode, the change takes effect on the NEXT user turn —
-   * an in-flight session keeps the model it was spawned with.
+   * Set the active chat tab's model. Persisted to the tab and forwarded
+   * to that tab's engine on the next spawn/resume. Other tabs on the
+   * same task keep their own engine/model pins.
    */
   async setModel(id: TaskId | string, model: string | undefined): Promise<void> {
     const task = this.requireTask(id)
+    const tab = this.resolveTab(task)
     // Derive the vendor from the picked model so a codex pick routes
     // the next runTask through the codex engine. When `model` is
     // cleared (undefined), the vendor stays put — clearing means "use
     // this vendor's default model," not "switch back to claude."
-    const vendor = model ? capabilitiesForModelId(model).vendorId : task.vendor
-    if (task.model === model && task.vendor === vendor) return
-    await this.store.update(task.id, { model, vendor })
+    const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
+    if (tab.model === model && this.vendorForTab(task, tab) === vendor) return
+    await this.updateTab(task.id, tab.id, { model, vendor })
   }
 
   /**
@@ -1537,22 +1588,15 @@ export class Orchestrator {
    * "render nothing for past."
    */
   async readHistory(sessionId: string): Promise<Message[]> {
-    try {
-      return [...(await this.engineForSessionId(sessionId).readHistory(sessionId)).messages]
-    } catch {
-      return []
-    }
+    return (await this.readHistoryWithMetrics(sessionId)).messages
   }
 
   async readHistoryWithMetrics(
     sessionId: string,
   ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
-    let history: EngineHistory
-    try {
-      history = await this.engineForSessionId(sessionId).readHistory(sessionId)
-    } catch {
-      return { messages: [] }
-    }
+    const preferred = this.engineForSessionId(sessionId)
+    const { history } = await this.findEngineWithHistory(sessionId, preferred.capabilities.vendorId)
+    if (!history) return { messages: [] }
     const messages = [...history.messages]
     const usageMetrics = history.usageMetrics
     return {
@@ -1575,8 +1619,9 @@ export class Orchestrator {
   async listSessions(id: TaskId | string): Promise<SessionMeta[]> {
     const task = this.requireTask(id)
     if (!task.worktreePath) return []
+    const tab = this.resolveTab(task)
     try {
-      return await this.engineForTask(task).listSessions(task.worktreePath)
+      return await this.engineForTab(task, tab).listSessions(task.worktreePath)
     } catch {
       return []
     }
@@ -1601,6 +1646,7 @@ export class Orchestrator {
    */
   async openSessionInTab(id: TaskId | string, sessionId: string, opts: { title?: string } = {}): Promise<string> {
     const task = this.requireTask(id)
+    const active = this.resolveTab(task)
     const existing = task.tabs.find((t) => t.sessionId === sessionId)
     if (existing) {
       await this.setActiveTab(task.id, existing.id)
@@ -1611,6 +1657,8 @@ export class Orchestrator {
       sessionId,
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
+      model: active.model ?? task.model,
+      vendor: this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
     await this.store.update(task.id, { tabs: [...task.tabs, tab], activeTabId: tab.id })
@@ -1662,11 +1710,14 @@ export class Orchestrator {
    */
   async createTab(id: TaskId | string, opts: { title?: string } = {}): Promise<ChatTab> {
     const task = this.requireTask(id)
+    const active = this.resolveTab(task)
     const tab: ChatTab = {
       id: ulid(),
       sessionId: null,
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
+      model: active.model ?? task.model,
+      vendor: this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
     const tabs = [...task.tabs, tab]

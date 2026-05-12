@@ -75,6 +75,14 @@ export interface ChatTab {
   readonly sessionId: string | null
   readonly title?: string
   /**
+   * Optional per-tab engine pin. When omitted, the tab inherits the
+   * parent task's legacy `model` / `vendor` fields. New writes should
+   * set these on the active tab so one task can host independent
+   * Claude/Codex conversations without history reads crossing engines.
+   */
+  readonly model?: string
+  readonly vendor?: VendorId
+  /**
    * Per-task display ordinal. Assigned at creation as
    * `max(existing tabs' seq) + 1`, never recomputed. The default tab
    * label is `chat ${seq}` — using the array index would renumber
@@ -176,6 +184,10 @@ export interface Task {
    */
   readonly permissionMode?: PermissionMode
   /**
+   * Legacy task-level model id. Used as a fallback for tabs written
+   * before model/vendor became tab-scoped. New UI writes should update
+   * the active {@link ChatTab.model} instead.
+   *
    * Model id passed to the engine's CLI on every spawn/resume (e.g.
    * `claude --model <id>` for claude, `codex -m <id>` for codex).
    * Optional: undefined falls through to the active vendor's default
@@ -189,6 +201,10 @@ export interface Task {
    */
   readonly model?: string
   /**
+   * Legacy task-level engine vendor. Used as a fallback for tabs
+   * written before model/vendor became tab-scoped. New UI writes
+   * should update the active {@link ChatTab.vendor} instead.
+   *
    * Engine vendor this task runs against. Determines which adapter the
    * orchestrator routes spawn/resume through. Optional on disk for
    * back-compat — records written before the field existed normalize

@@ -214,8 +214,9 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const vendor = task?.vendor ?? "claude"
-    const modelId = task?.model ?? getCapabilities(vendor).defaultModelId()
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    const vendor = tab?.vendor ?? task?.vendor ?? "claude"
+    const modelId = tab?.model ?? task?.model ?? getCapabilities(vendor).defaultModelId()
     return formatContextUsageCompact(u, modelId, vendor)
   })
 
@@ -310,7 +311,9 @@ export function Chat(props: ChatProps) {
   const modelId = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return tasksAcc().find((t) => t.id === id)?.model
+    const task = tasksAcc().find((t) => t.id === id)
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    return tab?.model ?? task?.model
   })
   // Per-task worktree path — feeds the composer's `@`-mention file
   // picker (scoped to the active task's repo checkout, mirrors the
@@ -323,7 +326,9 @@ export function Chat(props: ChatProps) {
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
   const inputPlaceholder = createMemo(() => {
     const id = props.taskId()
-    const vendor = id ? (tasksAcc().find((t) => t.id === id)?.vendor ?? "claude") : "claude"
+    const task = id ? tasksAcc().find((t) => t.id === id) : undefined
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    const vendor = tab?.vendor ?? task?.vendor ?? "claude"
     return getIdentity(vendor).inputPlaceholder
   })
 
