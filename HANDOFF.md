@@ -134,6 +134,33 @@ Second pass via `/improve-codebase-architecture` — Ousterhout depth lens (Modu
 
 ## Open follow-ups (in rough priority order)
 
+### Single-daemon + single-TUI mode (KOB-49 follow-up, recorded 2026-05-11)
+
+`dev:sandbox` proved the isolated-home pattern. Jackson wants the same lifecycle (start with the TUI, die with the TUI) available for production users — for "I just want to use kobe for one session, no background daemon left behind" cases.
+
+**Decision pending — A vs B:**
+
+| Option | Home | Trade-off |
+|---|---|---|
+| A. ephemeral isolated home | random `$TMPDIR/kobe-ephemeral-<pid>` | Safe, no race with prod daemon. But the task history dies with the TUI — basically dev:sandbox with a friendlier flag name. |
+| B. ephemeral daemon, **prod home** | `~/.kobe` (shared) | Real tasks preserved. But same-machine prod daemon + ephemeral daemon both writing `tasks.json` race — must detect prod daemon at startup and either **attach** (don't fork a second one) or **refuse**. |
+
+My recommendation: **B with attach-if-prod-exists**. Flag-name candidates: `--ephemeral`, `--single`, `--exclusive`. Behaviour spec:
+
+- `kobe --ephemeral` at launch:
+  1. Probe `defaultDaemonSocketPath()` — if a daemon is reachable there, just attach as a normal client. The flag becomes a no-op when a long-lived prod daemon already owns the home.
+  2. Otherwise, spawn a kobed child, set up an exit hook that calls `daemon.stop` on TUI shutdown (Ctrl+C, `q`, crash via `process.on('exit')`).
+  3. Pidfile + socket path stay at `~/.kobe/...` so a subsequent `kobed status` finds the right daemon.
+
+- Edge cases to lock down before shipping:
+  - **TUI crash before stop dispatches** — orphans a daemon. Add a heartbeat: if no client has been attached for >N seconds, daemon self-terminates.
+  - **User kills TUI, then re-launches with `--ephemeral` while daemon is still tearing down** — collide on socket path. Reuse the kobed restart logic (poll old pid until exit, ignore EADDRINUSE during the gap).
+  - **`--ephemeral` + `--home <dir>`** — flag combines cleanly; `KOBE_HOME_DIR` is already orthogonal.
+
+Recorded; not started. Jackson called the shape but said "later."
+
+### Other open
+
 0. **Architecture review (above).** Jackson is thinking. Don't start without his pick. **Two passes now exist** — original AI-friendliness pass (rows 1–5) and depth-lens pass (D1–D4). Pick from either or both.
 1. **Permission-prompt MCP bridge.** [Unreleased] settled for opcode-style `bypassPermissions` as kobe's `default`. Real fix is the MCP-server route described above. Tracked separately. ~2-3 day estimate.
 2. **Behavior tests are local-only.** They need tmux + node-pty terminal sizing that CI can't easily provide. CI runs typecheck + unit + build only. Some tests on this machine fail due to local environment quirks (terminal resize timing, tmux extended-keys in test environment). Re-running on Jackson's machine generally passes.

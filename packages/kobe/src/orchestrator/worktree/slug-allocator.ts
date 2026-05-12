@@ -11,9 +11,9 @@
  *   1. Build the "occupied" set: every slug currently held by a
  *      non-archived task in the store, PLUS every directory name
  *      already present on disk under `<repo>/.claude/worktrees/`,
- *      PLUS any slugs picked by an earlier `allocate()` call that
- *      haven't yet been committed (race window between picking and
- *      persisting to the store).
+ *      PLUS any slugs picked for the same repo by an earlier
+ *      `allocate()` call that haven't yet been committed (race window
+ *      between picking and persisting to the store).
  *   2. Filter {@link ANIMAL_NAMES} to candidates not in `occupied`.
  *   3. Pick one randomly. If the candidate set is empty (pool
  *      exhausted by ~410 simultaneous active worktrees in one repo —
@@ -24,7 +24,7 @@
  *   - `allocate()` is async-serialized via a chain promise so two
  *     concurrent calls cannot pick the same slug. Inside the chain we
  *     refresh the occupied set on every iteration so the second caller
- *     sees the first caller's pick (via the pending set).
+ *     sees the first caller's pick (via the per-repo pending set).
  *   - Callers commit / cancel the pick via {@link commit} /
  *     {@link cancel}. Commit clears the pending entry; cancel does
  *     the same (the difference is purely intent — both free the slot).
@@ -63,11 +63,13 @@ export class SlugAllocator {
   private readonly random: () => number
   private readonly pool: readonly string[]
   /**
-   * Slugs picked but not yet committed. Added on allocate(), removed
-   * on commit/cancel. Treated as occupied for the next allocate() so a
-   * back-to-back race can't return the same name twice.
+   * Slugs picked but not yet committed, scoped by repo. Added on
+   * allocate(), removed on commit/cancel. Treated as occupied for the
+   * next allocate() in the same repo so a back-to-back race can't
+   * return the same name twice, while different repos can still share
+   * the same short slug.
    */
-  private readonly pending = new Set<string>()
+  private readonly pendingByRepo = new Map<string, Set<string>>()
   /** Serialise allocate() calls — see class-level concurrency note. */
   private chain: Promise<void> = Promise.resolve()
 
@@ -106,8 +108,8 @@ export class SlugAllocator {
   }
 
   /** Caller successfully persisted `slug`; release its pending slot. */
-  commit(slug: string): void {
-    this.pending.delete(slug)
+  commit(repo: string, slug: string): void {
+    this.deletePending(repo, slug)
   }
 
   /**
@@ -115,8 +117,8 @@ export class SlugAllocator {
    * Symmetric with commit; both free the slot so the next allocate can
    * reuse the name.
    */
-  cancel(slug: string): void {
-    this.pending.delete(slug)
+  cancel(repo: string, slug: string): void {
+    this.deletePending(repo, slug)
   }
 
   // --- internals ---
@@ -126,7 +128,7 @@ export class SlugAllocator {
     const candidates = this.pool.filter((n) => !occupied.has(n))
     if (candidates.length > 0) {
       const pick = candidates[Math.floor(this.random() * candidates.length)]!
-      this.pending.add(pick)
+      this.addPending(repo, pick)
       return pick
     }
     // Pool exhausted within this repo. Pick any base and version-suffix
@@ -136,14 +138,14 @@ export class SlugAllocator {
     for (let v = 2; ; v++) {
       const candidate = `${base}-v${v}`
       if (!occupied.has(candidate)) {
-        this.pending.add(candidate)
+        this.addPending(repo, candidate)
         return candidate
       }
     }
   }
 
   private occupiedSlugs(repo: string): Set<string> {
-    const set = new Set<string>(this.pending)
+    const set = new Set<string>(this.pendingByRepo.get(repo) ?? [])
     for (const slug of this.activeSlugs(repo)) {
       if (slug) set.add(slug)
     }
@@ -151,5 +153,21 @@ export class SlugAllocator {
       set.add(dir)
     }
     return set
+  }
+
+  private addPending(repo: string, slug: string): void {
+    let pending = this.pendingByRepo.get(repo)
+    if (!pending) {
+      pending = new Set<string>()
+      this.pendingByRepo.set(repo, pending)
+    }
+    pending.add(slug)
+  }
+
+  private deletePending(repo: string, slug: string): void {
+    const pending = this.pendingByRepo.get(repo)
+    if (!pending) return
+    pending.delete(slug)
+    if (pending.size === 0) this.pendingByRepo.delete(repo)
   }
 }

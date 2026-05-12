@@ -76,6 +76,7 @@ import {
 } from "./edit-diff"
 import type { ChatRow } from "./store"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "./tool-banners"
+import { classifyTool, lookupToolMeta } from "./tool-registry"
 
 /**
  * Claude Code's `BLACK_CIRCLE` figure. Source:
@@ -131,8 +132,6 @@ export interface MessageListProps {
    * the "answered" version.
    */
   hideRowIndex?: number | null
-  /** Optional banner-state error message. Renders below the list. */
-  error: string | null
   /**
    * Click handler for the Approve/Reject buttons rendered on `approval`
    * rows. The chat shell wraps `Orchestrator.respondToInput` here so
@@ -361,25 +360,20 @@ function ToolRow(props: {
   const r = () => props.row
   const prefixGlyph = () => (r().done ? BLACK_CIRCLE : "✻")
   const prefixColor = () => (r().done ? theme.success : theme.warning)
-  // Edit/Write/MultiEdit get a custom inline-diff renderer (lifted from
-  // refs/claude-code/src/components/FileEditToolUpdatedMessage.tsx +
-  // MultiEditToolUseMessage.tsx). For these, the chip-style
-  // `(arg-preview)` would be a jumbled JSON blob and the `⎿ File
-  // created…` result line is redundant noise — the diff IS the preview.
-  const isDiffTool = () => r().name === "Edit" || r().name === "Write"
-  const isMultiEdit = () => r().name === "MultiEdit"
-  // Bash/Read/Grep/Glob are "purpose-built banner" tools. Each one paints
-  // its own custom banner line (no JSON-ish chip), and Bash also paints
-  // a stdout/stderr block under it. They all share the property that the
-  // generic `(arg-preview)` isn't useful and either replaces or augments
-  // the default `⎿ <output>` preview line.
-  const isBash = () => r().name === "Bash"
-  const isReadGrepGlob = () => r().name === "Read" || r().name === "Grep" || r().name === "Glob"
+  // Render strategy comes from the per-vendor tool registry. The
+  // string-literal name comparisons that used to live here moved to
+  // `tool-registry.ts` so that adding a Codex tool only edits one place.
+  const meta = () => lookupToolMeta(r().name)
+  const isDiffTool = () => meta().body === "edit-diff"
+  const isMultiEdit = () => meta().body === "multi-edit-diff"
+  const isBash = () => meta().banner === "bash"
+  const isReadGrepGlob = () => meta().banner === "read-grep-glob"
   /** Tools whose banner replaces the generic `tool(arg-preview)` chip. */
-  const usesCustomBanner = () => isDiffTool() || isMultiEdit() || isBash() || isReadGrepGlob()
+  const usesCustomBanner = () => meta().banner !== "default" || meta().body !== "default"
   /** Tools whose body renders inline so the generic preview/expanded
    *  blocks below should be suppressed. */
-  const usesCustomBody = () => isDiffTool() || isMultiEdit() || isBash()
+  const usesCustomBody = () =>
+    meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -1321,15 +1315,6 @@ export function MessageList(props: MessageListProps) {
           )
         }}
       </For>
-
-      <Show when={props.error}>
-        <box paddingTop={1} flexDirection="row" gap={1}>
-          <text fg={theme.error} attributes={TextAttributes.BOLD}>
-            {REFERENCE_MARK}
-          </text>
-          <text fg={theme.error}>error: {props.error}</text>
-        </box>
-      </Show>
     </box>
   )
 }
@@ -1403,13 +1388,9 @@ export function groupRenderItems(
   return items
 }
 
-export function classifyTool(name: string): keyof ToolCounts {
-  if (name === "Grep") return "search"
-  if (name === "Read" || name === "NotebookRead") return "read"
-  if (name === "Glob" || name === "LS") return "list"
-  if (name === "Bash" || name === "BashOutput" || name === "KillShell") return "bash"
-  return "other"
-}
+// Re-exported for older callers / tests that import classifyTool from
+// MessageList. New code should import directly from `./tool-registry`.
+export { classifyTool }
 
 /**
  * "Searched for 5 patterns, read 3 files, ran 10 bash commands" —

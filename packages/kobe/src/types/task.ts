@@ -34,6 +34,14 @@ export type TaskId = string & { readonly [TaskIdBrand]: never }
 export const toTaskId = (id: string): TaskId => id as TaskId
 
 /**
+ * Default engine vendor for tasks that don't carry an explicit one
+ * (created before the field existed, or just never had a non-claude
+ * model picked). Centralised so a future "make codex the default"
+ * decision is a single-line change.
+ */
+export const DEFAULT_TASK_VENDOR: VendorId = "claude"
+
+/**
  * Lifecycle states for a task.
  *
  * Transitions (from DESIGN.md §5.3, made explicit here):
@@ -55,6 +63,8 @@ export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "can
  */
 export type { PermissionMode } from "./engine.ts"
 import type { PermissionMode } from "./engine.ts"
+export type { VendorId } from "./vendor.ts"
+import type { VendorId } from "./vendor.ts"
 
 /**
  * One chat tab within a task. Each tab is a fully independent Claude
@@ -64,6 +74,14 @@ export interface ChatTab {
   readonly id: string
   readonly sessionId: string | null
   readonly title?: string
+  /**
+   * Optional per-tab engine pin. When omitted, the tab inherits the
+   * parent task's legacy `model` / `vendor` fields. New writes should
+   * set these on the active tab so one task can host independent
+   * Claude/Codex conversations without history reads crossing engines.
+   */
+  readonly model?: string
+  readonly vendor?: VendorId
   /**
    * Per-task display ordinal. Assigned at creation as
    * `max(existing tabs' seq) + 1`, never recomputed. The default tab
@@ -187,13 +205,39 @@ export interface Task {
    */
   readonly permissionMode?: PermissionMode
   /**
-   * Model id passed to `claude --model <id>` on every spawn/resume.
-   * Optional: undefined falls through to the CLI's default model.
-   * Picked from a fixed set in the composer's model picker; full
-   * Anthropic model ids are stored verbatim so the persisted choice
-   * survives kobe restarts and matches what claude-code itself uses.
+   * Legacy task-level model id. Used as a fallback for tabs written
+   * before model/vendor became tab-scoped. New UI writes should update
+   * the active {@link ChatTab.model} instead.
+   *
+   * Model id passed to the engine's CLI on every spawn/resume (e.g.
+   * `claude --model <id>` for claude, `codex -m <id>` for codex).
+   * Optional: undefined falls through to the active vendor's default
+   * (resolved via {@link EngineCapabilities.defaultModelId}).
+   *
+   * Vendor of the model is tracked separately in {@link vendor} — the
+   * model id alone could in principle be ambiguous if two vendors ever
+   * publish the same id, and an explicit field lets the orchestrator
+   * route to the right engine without scanning every capability catalog
+   * on each runTask.
    */
   readonly model?: string
+  /**
+   * Legacy task-level engine vendor. Used as a fallback for tabs
+   * written before model/vendor became tab-scoped. New UI writes
+   * should update the active {@link ChatTab.vendor} instead.
+   *
+   * Engine vendor this task runs against. Determines which adapter the
+   * orchestrator routes spawn/resume through. Optional on disk for
+   * back-compat — records written before the field existed normalize
+   * to {@link DEFAULT_TASK_VENDOR} (currently `"claude"`) at load time.
+   *
+   * Set automatically when the user picks a model from a different
+   * vendor in the composer's model picker; the orchestrator infers it
+   * from the picked model's catalog entry. No standalone UI to change
+   * vendor without changing model — switching engine without picking a
+   * new model isn't meaningful.
+   */
+  readonly vendor?: VendorId
   readonly createdAt: string
   readonly updatedAt: string
 }

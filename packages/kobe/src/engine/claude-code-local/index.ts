@@ -38,8 +38,19 @@
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "@/types/engine"
+import { deriveSessionUsageMetrics, withTotalSpeedForTurn } from "@/session/usage-metrics"
+import type {
+  AIEngine,
+  EngineCapabilities,
+  EngineEvent,
+  EngineHistory,
+  EngineIdentity,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "@/types/engine"
 import { findClaudeBinary } from "./binary"
+import { claudeCapabilities, claudeIdentity } from "./capabilities"
 import {
   appendInterruptedUserPrompt,
   deleteHistory as deleteHistoryImpl,
@@ -76,9 +87,12 @@ interface RunningSession {
   completedNaturally: boolean
   /** The prompt this session is processing — used by stop() to rescue an interrupted turn. */
   readonly prompt: string
+  readonly spawnedAtIso: string
 }
 
 export class ClaudeCodeLocal implements AIEngine {
+  readonly identity: EngineIdentity = claudeIdentity
+  readonly capabilities: EngineCapabilities = claudeCapabilities
   private readonly registry = new SessionRegistry()
   private readonly running = new Map<string, RunningSession>()
   private readonly binaryPathResolver: () => Promise<string>
@@ -128,8 +142,10 @@ export class ClaudeCodeLocal implements AIEngine {
     }
   }
 
-  async readHistory(sessionId: string): Promise<Message[]> {
-    return readHistoryImpl(sessionId)
+  async readHistory(sessionId: string): Promise<EngineHistory> {
+    const messages = await readHistoryImpl(sessionId)
+    const usageMetrics = deriveSessionUsageMetrics(messages)
+    return { messages, ...(usageMetrics ? { usageMetrics } : {}) }
   }
 
   async deleteHistory(sessionId: string): Promise<void> {
@@ -227,6 +243,7 @@ export class ClaudeCodeLocal implements AIEngine {
         closed: false,
         completedNaturally: false,
         prompt: args.prompt,
+        spawnedAtIso: new Date().toISOString(),
       }
       this.running.set(sessionId, session)
       this.registry.register({
@@ -271,7 +288,8 @@ export class ClaudeCodeLocal implements AIEngine {
       })
       try {
         for await (const ev of events) {
-          queue.push(ev)
+          const enriched = enrichUsageEvent(ev, session?.spawnedAtIso)
+          queue.push(enriched)
           if (ev.type === "done" && session) {
             // The turn finished on its own — claude -p has fully
             // committed the user message to the session JSONL.
@@ -343,4 +361,9 @@ function drainStream(stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNu
   const s = stream as NodeJS.ReadableStream
   s.on("data", () => {})
   s.on("error", () => {})
+}
+
+function enrichUsageEvent(ev: EngineEvent, startedAtIso: string | undefined): EngineEvent {
+  if (ev.type !== "usage") return ev
+  return { type: "usage", ...withTotalSpeedForTurn(ev, startedAtIso, new Date().toISOString()) }
 }

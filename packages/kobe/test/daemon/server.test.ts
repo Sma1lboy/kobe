@@ -287,10 +287,10 @@ describe("daemon server", () => {
       ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
-      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       const messages = Array.from({ length: 5 }, (_, i) => ({
         role: "user" as const,
-        content: `m${i}`,
+        blocks: [{ type: "text" as const, text: `m${i}` }],
         timestamp: `2026-05-10T00:00:0${i}.000Z`,
         sessionId,
       }))
@@ -308,7 +308,7 @@ describe("daemon server", () => {
         nextBefore: string | null
         hasMore: boolean
       }>("chat.history", { taskId: spawned.taskId, limit: 2, before: page1.nextBefore })
-      expect(page2.messages.map((m) => m.content)).toEqual(["m1", "m2"])
+      expect(page2.messages.map((m) => m.blocks[0]?.text)).toEqual(["m1", "m2"])
       expect(page2.hasMore).toBe(true)
     } finally {
       client.close()
@@ -338,20 +338,20 @@ describe("daemon server", () => {
       ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
-      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       fakeEngine.setHistory(sessionId, [
-        { role: "user", content: "one", timestamp: "2026-05-10T00:00:00.000Z", sessionId },
+        { role: "user", blocks: [{ type: "text", text: "one" }], timestamp: "2026-05-10T00:00:00.000Z", sessionId },
         {
           role: "assistant",
-          content: "ok",
+          blocks: [{ type: "text", text: "ok" }],
           timestamp: "2026-05-10T00:00:02.000Z",
           sessionId,
           usage: { input_tokens: 100, output_tokens: 50 },
         },
-        { role: "user", content: "two", timestamp: "2026-05-10T00:00:10.000Z", sessionId },
+        { role: "user", blocks: [{ type: "text", text: "two" }], timestamp: "2026-05-10T00:00:10.000Z", sessionId },
         {
           role: "assistant",
-          content: "ok again",
+          blocks: [{ type: "text", text: "ok again" }],
           timestamp: "2026-05-10T00:00:14.000Z",
           sessionId,
           usage: { input_tokens: 600, output_tokens: 200, cache_read_input_tokens: 100 },
@@ -359,11 +359,11 @@ describe("daemon server", () => {
       ])
 
       const page = await client.request<{
-        messages: Array<{ content: string }>
+        messages: Array<{ blocks: Array<{ type: string; text?: string }> }>
         usageMetrics: { input_tokens: number; output_tokens: number; total_speed_tokens_per_second: number }
       }>("chat.history", { taskId: spawned.taskId, limit: 1 })
 
-      expect(page.messages.map((m) => m.content)).toEqual(["ok again"])
+      expect(page.messages.map((m) => m.blocks[0]?.text)).toEqual(["ok again"])
       expect(page.usageMetrics).toMatchObject({
         input_tokens: 600,
         output_tokens: 200,
@@ -451,26 +451,38 @@ describe("daemon server", () => {
               : t,
         ),
       })
-      const fakeEngine = (orch as unknown as { engine: FakeAIEngine }).engine
+      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       fakeEngine.setHistory(sidA, [
-        { role: "user", content: "from A", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidA },
+        {
+          role: "user",
+          blocks: [{ type: "text", text: "from A" }],
+          timestamp: "2026-05-10T00:00:00.000Z",
+          sessionId: sidA,
+        },
       ])
       fakeEngine.setHistory(sidB, [
-        { role: "user", content: "from B", timestamp: "2026-05-10T00:00:00.000Z", sessionId: sidB },
+        {
+          role: "user",
+          blocks: [{ type: "text", text: "from B" }],
+          timestamp: "2026-05-10T00:00:00.000Z",
+          sessionId: sidB,
+        },
       ])
+      type HistoryMsg = { blocks: Array<{ type: "text"; text: string }> }
+      const firstText = (m: HistoryMsg) => m.blocks[0]?.text
       // Active tab is A; ask for B's transcript by passing sidB.
-      const pageB = await client.request<{ messages: Array<{ content: string }> }>("chat.history", {
+      const pageB = await client.request<{ messages: HistoryMsg[] }>("chat.history", {
         taskId: spawned.taskId,
         sessionId: sidB,
         limit: 50,
       })
-      expect(pageB.messages.map((m) => m.content)).toEqual(["from B"])
+      expect(pageB.messages.map(firstText)).toEqual(["from B"])
       // Sanity: omitting sessionId still resolves the active tab.
-      const pageActive = await client.request<{ messages: Array<{ content: string }> }>("chat.history", {
+      const pageActive = await client.request<{ messages: HistoryMsg[] }>("chat.history", {
         taskId: spawned.taskId,
         limit: 50,
       })
-      expect(pageActive.messages.map((m) => m.content)).toEqual(["from A"])
+      expect(pageActive.messages.map(firstText)).toEqual(["from A"])
     } finally {
       client.close()
       await server.close()

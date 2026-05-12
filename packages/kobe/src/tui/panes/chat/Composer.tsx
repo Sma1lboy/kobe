@@ -149,6 +149,8 @@ export interface ComposerProps {
    * `claude-code` when omitted.
    */
   modelLabel?: Accessor<string>
+  /** Engine-owned chat input placeholder, e.g. "Ask Claude…" or "Ask Codex…". */
+  inputPlaceholder?: Accessor<string>
   /**
    * Reactive slash-command list (typically `useCommandSlashes()`). When
    * supplied AND the buffer starts with `/`, the composer renders a
@@ -218,10 +220,15 @@ const QUEUE_VISIBLE_CAP = 4
  * want to. For now the behavior test asserts the streaming variant
  * is visible after submit.
  */
-function resolvePlaceholder(opts: { isStreaming: boolean; hasTask: boolean; noTaskMessage?: string }): string {
+function resolvePlaceholder(opts: {
+  isStreaming: boolean
+  hasTask: boolean
+  noTaskMessage?: string
+  inputPlaceholder?: string
+}): string {
   if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
   if (opts.isStreaming) return "(streaming — enter to queue, ctrl+enter to steer)"
-  return "Ask Claude…"
+  return opts.inputPlaceholder ?? "Ask Claude…"
 }
 
 export function Composer(props: ComposerProps) {
@@ -1285,6 +1292,7 @@ export function Composer(props: ComposerProps) {
                     isStreaming: props.isStreaming,
                     hasTask: props.hasTask,
                     noTaskMessage: props.noTaskMessage,
+                    inputPlaceholder: props.inputPlaceholder?.(),
                   })}
                   placeholderColor={theme.textMuted}
                   textColor={theme.text}

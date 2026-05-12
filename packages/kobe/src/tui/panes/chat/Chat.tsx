@@ -37,7 +37,8 @@
  *     to the new ones.
  */
 
-import type { ScrollBoxRenderable } from "@opentui/core"
+import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
@@ -52,7 +53,6 @@ import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
-import { modelLabelFor, resolveDefaultModelId } from "./composer/models"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import {
@@ -214,8 +214,10 @@ export function Chat(props: ChatProps) {
     const u = st?.lastUsage
     if (!u) return null
     const task = props.orchestrator.getTask(tid)
-    const modelId = task?.model ?? resolveDefaultModelId()
-    return formatContextUsageCompact(u, modelId)
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    const vendor = tab?.vendor ?? task?.vendor ?? "claude"
+    const modelId = tab?.model ?? task?.model ?? getCapabilities(vendor).defaultModelId()
+    return formatContextUsageCompact(u, modelId, vendor)
   })
 
   createEffect(
@@ -309,7 +311,9 @@ export function Chat(props: ChatProps) {
   const modelId = createMemo(() => {
     const id = props.taskId()
     if (!id) return undefined
-    return tasksAcc().find((t) => t.id === id)?.model
+    const task = tasksAcc().find((t) => t.id === id)
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    return tab?.model ?? task?.model
   })
   // Per-task worktree path — feeds the composer's `@`-mention file
   // picker (scoped to the active task's repo checkout, mirrors the
@@ -320,13 +324,21 @@ export function Chat(props: ChatProps) {
     return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
   })
   const modelLabel = createMemo(() => modelLabelFor(modelId()))
+  const inputPlaceholder = createMemo(() => {
+    const id = props.taskId()
+    const task = id ? tasksAcc().find((t) => t.id === id) : undefined
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    const vendor = tab?.vendor ?? task?.vendor ?? "claude"
+    return getIdentity(vendor).inputPlaceholder
+  })
 
   async function chooseModel(): Promise<void> {
     const id = props.taskId()
     if (!id) return
+    const tabId = activeTabId() ?? undefined
     const result = await ModelPicker.show(dialog, modelId())
     if (result === undefined) return
-    await props.orchestrator.setModel(id, result).catch((err: unknown) => {
+    await props.orchestrator.setModel(id, result, tabId).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setModel failed:", err)
     })
@@ -822,7 +834,6 @@ export function Chat(props: ChatProps) {
               expandedFoldStartIndex={expandedFoldStartIndex()}
               onToggleFold={toggleFold}
               showEmptyPlaceholder={!showThinking()}
-              error={activeState().error}
               onApprove={(requestId, approve) => {
                 const taskId = props.taskId()
                 if (!taskId) return
@@ -861,6 +872,33 @@ export function Chat(props: ChatProps) {
         <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
       </Show>
 
+      {/* Current-turn error banner. Keep it outside the transcript
+          scrollbox and above the composer so it reads as status, not
+          as text inside the input control. The full error is also kept
+          as a system row in history. */}
+      <Show when={activeState().error}>
+        {(err) => (
+          <box
+            flexDirection="row"
+            gap={1}
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={theme.backgroundElement}
+            flexShrink={0}
+          >
+            <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+              !
+            </text>
+            <text fg={theme.warning} wrapMode="none">
+              error
+            </text>
+            <text fg={theme.textMuted} wrapMode="none">
+              {err()}
+            </text>
+          </box>
+        )}
+      </Show>
+
       {/* Composer — hidden entirely while a question picker is up so
           the user's full attention is on picking (or typing into the
           inline "Other" input). Reappears as soon as the picker
@@ -891,6 +929,7 @@ export function Chat(props: ChatProps) {
           permissionMode={permissionMode}
           onCyclePermissionMode={cyclePermissionMode}
           modelLabel={modelLabel}
+          inputPlaceholder={inputPlaceholder}
           onChooseModel={() => void chooseModel()}
           worktreePath={worktreePath}
           queue={() => activeState().queue}

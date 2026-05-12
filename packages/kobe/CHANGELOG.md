@@ -18,6 +18,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **Worktree directories now use short animal-name slugs** — KOB-65 replaces the 26-character ULID directory names (`<repo>/.claude/worktrees/01KRD9TZAZRDXHRYA23AT2A77R/`) with a Conductor-style pool of ~410 animal names allocated per repo (`<repo>/.claude/worktrees/panda/`), with `-v2`/`-v3` suffixes when a slug is recycled after archive. Branch names and PR titles remain the source of truth for "what this work is"; the slug is just "where it lives on disk", and now fits comfortably in a terminal prompt. Existing ULID-named worktrees keep their dirs and are not migrated; only new tasks get animal slugs.
 
+## [0.5.16] - 2026-05-12
+
+### Fixed
+
+- **Multi-model chat tabs now surface live engine failures correctly** — the stream pump resolves the engine from the concrete chat tab instead of the legacy task-level vendor, so Claude rate-limit errors and other terminal failures leave the waiting state immediately without requiring a TUI restart.
+- **Engine API errors now become failed turns instead of successful completions** — Claude Code `result` records with `is_error` / `api_error_status` are normalized to terminal engine errors even when the raw `subtype` is `success`.
+- **Model changes target the selected chat tab** — the model picker sends the tab id through the remote daemon path so switching a tab to Codex or Claude updates that tab's composer placeholder and routing without depending on daemon-side active-tab timing.
+- **Chat errors render as a separate status banner above the composer** — current-turn errors now use a light element-surface banner outside the transcript and input field, while the transcript still keeps the system error row for history.
+
 ## [0.5.15] - 2026-05-12
 
 ### Added

@@ -1,0 +1,185 @@
+/**
+ * Line-delimited JSON parser for `codex exec --json`.
+ *
+ * Codex's stream-json shape (observed in CLI v0.130):
+ *
+ *   { type: "thread.started", thread_id: "<UUID>" }
+ *       — emitted once at the start of a session. We capture `thread_id`
+ *         as the kobe-side session id and resolve the spawn deferred.
+ *         No EngineEvent emitted.
+ *
+ *   { type: "turn.started" }
+ *       — informational; no EngineEvent.
+ *
+ *   { type: "item.started", item: { id, type, ...payload } }
+ *   { type: "item.completed", item: { id, type, ...payload } }
+ *       — item.type === "agent_message"      → assistant.delta (whole
+ *         message text in `.text`; codex doesn't stream deltas)
+ *       — item.type === "command_execution"  → tool.start (on .started)
+ *                                              tool.result (on .completed)
+ *       — other item types (reasoning, file_edit, …) → for now treated
+ *         the same way as command_execution: a tool.start / tool.result
+ *         pair so the chat surface lights up. The renderer's tool
+ *         strategy registry can specialise later.
+ *
+ *   { type: "turn.completed", usage: { input_tokens, cached_input_tokens,
+ *                                       output_tokens, reasoning_output_tokens } }
+ *       — emit `usage` (mapping `cached_input_tokens` →
+ *         `cache_read_input_tokens` for kobe's neutral shape; lumping
+ *         `reasoning_output_tokens` into `output_tokens` because kobe's
+ *         UsageSnapshot has no reasoning bucket today). Then emit `done`
+ *         and stop consuming.
+ *
+ * Bad lines collapse to an `error` event; the iterator continues.
+ */
+
+import type { EngineEvent } from "@/types/engine"
+
+export type LineSource = AsyncIterable<string>
+
+export interface ParseStreamJsonOpts {
+  /**
+   * Called exactly once when we observe `thread.started`. CodexLocal
+   * uses this to resolve the deferred returned from `spawn()`.
+   */
+  readonly onSessionId?: (sessionId: string) => void
+}
+
+export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonOpts = {}): AsyncIterable<EngineEvent> {
+  let sessionIdEmitted = false
+  const toolNameById = new Map<string, string>()
+  const startedByItemId = new Set<string>()
+
+  for await (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (!line) continue
+
+    let msg: unknown
+    try {
+      msg = JSON.parse(line)
+    } catch (err) {
+      yield { type: "error", message: `codex stream-json parse failed: ${stringifyErr(err)}` }
+      continue
+    }
+
+    if (!isObject(msg)) continue
+    const type = typeof msg.type === "string" ? (msg.type as string) : undefined
+    if (!type) continue
+
+    if (type === "thread.started") {
+      const sid = typeof msg.thread_id === "string" ? (msg.thread_id as string) : undefined
+      if (sid && !sessionIdEmitted) {
+        sessionIdEmitted = true
+        opts.onSessionId?.(sid)
+      }
+      continue
+    }
+
+    if (type === "turn.started") continue
+
+    if (type === "item.started" || type === "item.completed") {
+      const item = isObject(msg.item) ? (msg.item as Record<string, unknown>) : undefined
+      if (!item) continue
+      const itemId = typeof item.id === "string" ? (item.id as string) : undefined
+      const itemType = typeof item.type === "string" ? (item.type as string) : "tool"
+
+      if (itemType === "agent_message") {
+        // Whole-message: emit once on item.completed (only contains text
+        // at that point). Skip on item.started — codex starts items
+        // for agent_message with an empty/incomplete shape.
+        if (type !== "item.completed") continue
+        const text = typeof item.text === "string" ? (item.text as string) : ""
+        if (text) yield { type: "assistant.delta", text }
+        continue
+      }
+
+      // Anything else maps to a tool banner pair. The renderer's
+      // tool-name strategy registry decides how to render each name.
+      if (itemId) {
+        toolNameById.set(itemId, itemType)
+      }
+
+      if (type === "item.started") {
+        if (itemId) startedByItemId.add(itemId)
+        const input = stripIdAndType(item)
+        yield { type: "tool.start", name: itemType, input }
+        continue
+      }
+
+      // item.completed for non-message items.
+      // If we never saw the matching started (codex skips it for some
+      // fast items), synthesize a tool.start first so the renderer
+      // doesn't see an orphan tool.result with no banner.
+      if (itemId && !startedByItemId.has(itemId)) {
+        const input = stripIdAndType(item)
+        yield { type: "tool.start", name: itemType, input }
+      }
+      if (itemId) startedByItemId.delete(itemId)
+      const output = stripIdAndType(item)
+      yield { type: "tool.result", name: itemType, output }
+      continue
+    }
+
+    if (type === "turn.completed") {
+      const usage = isObject(msg.usage) ? (msg.usage as Record<string, unknown>) : undefined
+      if (usage) {
+        const inTok = numberOr(usage.input_tokens, 0)
+        const outTok = numberOr(usage.output_tokens, 0) + numberOr(usage.reasoning_output_tokens, 0)
+        const cacheRead =
+          typeof usage.cached_input_tokens === "number" ? (usage.cached_input_tokens as number) : undefined
+        yield {
+          type: "usage",
+          input_tokens: inTok,
+          output_tokens: outTok,
+          ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
+        }
+      }
+      yield { type: "done" }
+      return
+    }
+
+    if (type === "error") {
+      const message = typeof msg.message === "string" ? (msg.message as string) : "codex emitted an error"
+      yield { type: "error", message }
+      return
+    }
+  }
+}
+
+export async function* readLines(stream: AsyncIterable<unknown>): AsyncIterable<string> {
+  let buf = ""
+  for await (const chunk of stream) {
+    const text = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk)
+    buf += text
+    let nl = buf.indexOf("\n")
+    while (nl !== -1) {
+      yield buf.slice(0, nl)
+      buf = buf.slice(nl + 1)
+      nl = buf.indexOf("\n")
+    }
+  }
+  if (buf.length > 0) yield buf
+}
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
+function numberOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
+/** Strip the housekeeping fields so the tool input/output payload is the meaningful slice. */
+function stripIdAndType(item: Record<string, unknown>): Record<string, unknown> {
+  const { id: _id, type: _type, ...rest } = item
+  return rest
+}
+
+function stringifyErr(err: unknown): string {
+  if (err instanceof Error) return err.message
+  try {
+    return JSON.stringify(err)
+  } catch {
+    return String(err)
+  }
+}

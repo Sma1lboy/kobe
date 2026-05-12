@@ -21,7 +21,28 @@
  *     pulls. If a test needs paced delivery, add `delayMs` later.
  */
 
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "./_engine-types"
+import { claudeCapabilities } from "@/engine/claude-code-local/capabilities"
+import { claudeIdentity } from "@/engine/claude-code-local/capabilities"
+import { deriveSessionUsageMetrics } from "@/session/usage-metrics"
+import type {
+  AIEngine,
+  ContentBlock,
+  EngineCapabilities,
+  EngineEvent,
+  EngineHistory,
+  EngineIdentity,
+  Message,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "./_engine-types"
+
+function firstUserText(blocks: readonly ContentBlock[]): string | null {
+  for (const b of blocks) {
+    if (b.type === "text") return b.text
+  }
+  return null
+}
 
 type ScriptedQueue = {
   events: EngineEvent[]
@@ -31,6 +52,9 @@ type ScriptedQueue = {
 }
 
 export class FakeAIEngine implements AIEngine {
+  /** Fake impersonates claude — borrow its capabilities for tests. */
+  readonly identity: EngineIdentity = claudeIdentity
+  readonly capabilities: EngineCapabilities = claudeCapabilities
   private nextId = 1
   private queues = new Map<string, ScriptedQueue>()
   private historyBySession = new Map<string, Message[]>()
@@ -112,8 +136,10 @@ export class FakeAIEngine implements AIEngine {
     }
   }
 
-  async readHistory(sessionId: string): Promise<Message[]> {
-    return this.historyBySession.get(sessionId) ?? []
+  async readHistory(sessionId: string): Promise<EngineHistory> {
+    const messages = this.historyBySession.get(sessionId) ?? []
+    const usageMetrics = deriveSessionUsageMetrics(messages)
+    return { messages, ...(usageMetrics ? { usageMetrics } : {}) }
   }
 
   async deleteHistory(sessionId: string): Promise<void> {
@@ -130,7 +156,7 @@ export class FakeAIEngine implements AIEngine {
     const out: SessionMeta[] = []
     for (const [sessionId, msgs] of this.historyBySession) {
       const firstUser = msgs.find((m) => m.role === "user")
-      const preview = firstUser && typeof firstUser.content === "string" ? firstUser.content : null
+      const preview = firstUser ? firstUserText(firstUser.blocks) : null
       out.push({
         sessionId,
         mtimeMs: 0,

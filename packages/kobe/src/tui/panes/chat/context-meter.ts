@@ -1,48 +1,24 @@
 import { type SessionUsageMetrics, totalContextTokens } from "../../../session/usage-metrics.ts"
-import { resolveDefaultModelId } from "./composer/claude-settings.ts"
 export { totalContextTokens } from "../../../session/usage-metrics.ts"
 /**
  * Workspace header "context used" meter — turns the engine's terminal
- * `usage` frame + the active model id into a short string (e.g. `12% · 24k/200k`).
+ * `usage` frame + the active model id into a short string (e.g.
+ * `12% · 24k/200k`).
  *
- * Context window sizes follow the same `[1m]` long-context convention as
- * {@link MODEL_CHOICES}; unknown model ids fall back to 200k so the meter
- * still renders.
+ * Vendor-agnostic: max-context lookup goes through
+ * {@link capabilitiesForModelId}, so adding a new vendor only requires
+ * registering its capabilities — no edits here.
  */
-import { MODEL_CHOICES } from "./composer/models.ts"
+
+import { capabilitiesForModelId, getCapabilities } from "@/engine/registry"
+import type { VendorId } from "@/types/vendor"
 
 export type UsageSnapshot = SessionUsageMetrics
 
-const STD_CTX = 200_000
-
-function parseContextWindowSize(modelIdentifier: string): number | null {
-  const delimitedMatch = /(?:\(|\[)\s*(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])\s*(?:\)|\])/i.exec(modelIdentifier)
-  if (delimitedMatch?.[1] && delimitedMatch[2]) {
-    const parsed = Number.parseFloat(delimitedMatch[1].replace(/[,_]/g, ""))
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.round(parsed * (delimitedMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
-    }
-  }
-
-  const contextMatch = /\b(\d+(?:[,_]\d+)*(?:\.\d+)?)\s*([km])(?:\s*(?:token\s*)?context)?\b/i.exec(modelIdentifier)
-  if (!contextMatch?.[1] || !contextMatch[2]) return null
-
-  const parsed = Number.parseFloat(contextMatch[1].replace(/[,_]/g, ""))
-  if (!Number.isFinite(parsed) || parsed <= 0) return null
-
-  return Math.round(parsed * (contextMatch[2].toLowerCase() === "m" ? 1_000_000 : 1000))
-}
-
-/**
- * Resolve max context tokens for a Claude model id. `[1m]` suffix implies 1M window.
- */
-export function contextWindowTokensForModel(modelId: string | undefined): number {
-  const id = modelId ?? resolveDefaultModelId()
-  const parsedWindow = parseContextWindowSize(id)
-  if (parsedWindow !== null) return parsedWindow
-  const inPicker = MODEL_CHOICES.some((m) => m.id === id)
-  if (inPicker) return STD_CTX
-  return STD_CTX
+export function contextWindowTokensForModel(modelId: string | undefined, vendor?: VendorId): number {
+  const caps = vendor ? getCapabilities(vendor) : capabilitiesForModelId(modelId)
+  const id = modelId ?? caps.defaultModelId()
+  return caps.contextWindowFor(id)
 }
 
 function formatTokShort(n: number): string {
@@ -64,8 +40,14 @@ export function formatTotalSpeed(tokensPerSecond: number | undefined): string | 
 /**
  * Compact label for the WORKSPACE pane header. Returns `null` when totals are zero.
  */
-export function formatContextUsageCompact(u: UsageSnapshot, modelId: string | undefined): string | null {
-  const window = contextWindowTokensForModel(modelId)
+export function formatContextUsageCompact(
+  u: UsageSnapshot,
+  modelId: string | undefined,
+  vendor?: VendorId,
+): string | null {
+  const caps = vendor ? getCapabilities(vendor) : capabilitiesForModelId(modelId)
+  const id = modelId ?? caps.defaultModelId()
+  const window = caps.contextWindowFor(id)
   const total = totalContextTokens(u)
   if (total <= 0 || window <= 0) return null
   const pct = Math.min(100, Math.max(0, Math.round((total / window) * 100)))

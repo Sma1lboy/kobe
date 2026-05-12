@@ -29,6 +29,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
+import { claudeCapabilities, claudeIdentity } from "../../src/engine/claude-code-local/capabilities.ts"
+import { codexCapabilities, codexIdentity } from "../../src/engine/codex-local/capabilities.ts"
 import {
   CONCURRENCY_CAP,
   CannotDeleteMainTaskError,
@@ -46,8 +48,18 @@ import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
-import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle, SpawnOpts } from "../../src/types/engine.ts"
+import type {
+  AIEngine,
+  EngineCapabilities,
+  EngineEvent,
+  EngineHistory,
+  EngineIdentity,
+  OrchestratorEvent,
+  SessionHandle,
+  SpawnOpts,
+} from "../../src/types/engine.ts"
 import { worktreeSlug } from "../../src/types/task.ts"
+import type { VendorId } from "../../src/types/vendor.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
 const REPO_INIT = path.resolve(__dirname, "../behavior/fixtures/repo-init.sh")
@@ -67,6 +79,62 @@ async function buildOrchestrator(engine?: AIEngine): Promise<{
   const eng = engine ?? new FakeAIEngine()
   const orch = new Orchestrator({ engine: eng, store, worktrees })
   return { orch, store, engine: eng }
+}
+
+class HistoryEngine implements AIEngine {
+  readonly identity: EngineIdentity
+  readonly capabilities: EngineCapabilities
+  readonly spawns: Array<{ cwd: string; prompt: string; model?: string }> = []
+  readonly streamCalls: string[] = []
+  private readonly scripts = new Map<string, readonly EngineEvent[]>()
+  private next = 1
+
+  constructor(private readonly vendor: VendorId) {
+    this.identity = vendor === "codex" ? codexIdentity : claudeIdentity
+    this.capabilities = vendor === "codex" ? codexCapabilities : claudeCapabilities
+  }
+
+  async spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
+    this.spawns.push({ cwd, prompt, model: opts?.model })
+    return { sessionId: `${this.vendor}-${this.next++}`, cwd }
+  }
+
+  script(sessionId: string, events: readonly EngineEvent[]): void {
+    this.scripts.set(sessionId, events)
+  }
+
+  async resume(sessionId: string, _prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
+    return { sessionId, cwd: opts?.cwd ?? "/" }
+  }
+
+  stream(h: SessionHandle): AsyncIterable<EngineEvent> {
+    this.streamCalls.push(h.sessionId)
+    const events = this.scripts.get(h.sessionId) ?? ([{ type: "done" }] as const)
+    return (async function* () {
+      for (const ev of events) yield ev
+    })()
+  }
+
+  async readHistory(sessionId: string): Promise<EngineHistory> {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          blocks: [{ type: "text", text: `${this.vendor} history for ${sessionId}` }],
+          timestamp: "2026-05-12T00:00:00.000Z",
+          sessionId,
+        },
+      ],
+    }
+  }
+
+  async deleteHistory(_sessionId: string): Promise<void> {}
+
+  async listSessions(_cwd: string) {
+    return []
+  }
+
+  async stop(_h: SessionHandle): Promise<void> {}
 }
 
 beforeEach(() => {
@@ -310,6 +378,36 @@ describe("Orchestrator.runTask", () => {
     await orch.runTask(t.id, "go")
     await orch._waitForPumpsIdle()
 
+    expect(store.get(t.id)?.status).toBe("error")
+  })
+
+  test("pump consumes the stream from the chat tab's engine, not the legacy task vendor", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const codex = new HistoryEngine("codex")
+    const orch = new Orchestrator({
+      engines: { claude, codex },
+      store,
+      worktrees: new GitWorktreeManager(),
+    })
+    const t = await orch.createTask({ repo, title: "mixed vendor", prompt: "" })
+    const firstTab = t.tabs[0]!
+    await store.update(t.id, {
+      vendor: "codex",
+      tabs: [{ ...firstTab, vendor: "claude" }],
+    })
+    claude.script("claude-1", [{ type: "error", message: "rate limited" }])
+    codex.script("claude-1", [])
+    const seen: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => seen.push(ev), firstTab.id)
+
+    await orch.runTask(t.id, "go", firstTab.id)
+    await orch._waitForPumpsIdle()
+
+    expect(claude.streamCalls).toEqual(["claude-1"])
+    expect(codex.streamCalls).toEqual([])
+    expect(seen.at(-1)).toEqual({ type: "error", message: "rate limited" })
     expect(store.get(t.id)?.status).toBe("error")
   })
 
@@ -671,6 +769,19 @@ describe("Orchestrator.deleteTask", () => {
     expect(reused).toBe(slug)
   })
 
+  test("keeps pending slug allocations scoped per repo (KOB-65)", async () => {
+    const otherRepo = path.join(tmpRoot, "repo-other")
+    fs.mkdirSync(otherRepo, { recursive: true })
+    const init = spawnSync("bash", [REPO_INIT, otherRepo], { encoding: "utf8" })
+    expect(init.status).toBe(0)
+
+    const allocator = new SlugAllocator(() => [], { pool: ["panda"], random: () => 0 })
+    const [a, b] = await Promise.all([allocator.allocate(repo), allocator.allocate(otherRepo)])
+
+    expect(a).toBe("panda")
+    expect(b).toBe("panda")
+  })
+
   test("force-removes a dirty worktree (the user confirmed)", async () => {
     const fake = new FakeAIEngine()
     const { orch, store } = await buildOrchestrator(fake)
@@ -700,6 +811,8 @@ describe("Orchestrator.deleteTask", () => {
     // half-stuck child process. deleteTask must still archive and
     // not bubble up the engine-side failure to the UI.
     const stub: AIEngine = {
+      identity: claudeIdentity,
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         return { sessionId: "sess-1", cwd } satisfies SessionHandle
       },
@@ -717,7 +830,7 @@ describe("Orchestrator.deleteTask", () => {
         }
       },
       async readHistory() {
-        return []
+        return { messages: [] }
       },
       async deleteHistory() {},
       async listSessions() {
@@ -886,6 +999,8 @@ describe("Orchestrator.runTask on a main task", () => {
   test("skips ensureWorktree — engine spawns with cwd = repo root, no kobe/tmp-* branch on disk", async () => {
     const calls: { cwd: string }[] = []
     const stub: AIEngine = {
+      identity: claudeIdentity,
+      capabilities: claudeCapabilities,
       async spawn(cwd) {
         calls.push({ cwd })
         return { sessionId: "sess-main", cwd } satisfies SessionHandle
@@ -902,7 +1017,7 @@ describe("Orchestrator.runTask on a main task", () => {
         }
       },
       async readHistory() {
-        return []
+        return { messages: [] }
       },
       async deleteHistory() {},
       async listSessions() {
@@ -1216,6 +1331,8 @@ describe("Orchestrator engine call shape", () => {
   test("spawn() receives the task's worktreePath as cwd", async () => {
     const calls: { cwd: string; prompt: string }[] = []
     const stub: AIEngine = {
+      identity: claudeIdentity,
+      capabilities: claudeCapabilities,
       async spawn(cwd, prompt) {
         calls.push({ cwd, prompt })
         return { sessionId: "sess-1", cwd } satisfies SessionHandle
@@ -1232,7 +1349,7 @@ describe("Orchestrator engine call shape", () => {
         }
       },
       async readHistory() {
-        return []
+        return { messages: [] }
       },
       async deleteHistory() {},
       async listSessions() {
@@ -1249,6 +1366,44 @@ describe("Orchestrator engine call shape", () => {
     // worktreePath was lazily allocated during runTask; refetch.
     expect(calls[0]?.cwd).toBe(orch.getTask(t.id)?.worktreePath)
     expect(calls[0]?.prompt).toBe("first")
+  })
+
+  test("model/vendor selection can target a chat tab explicitly", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const codex = new HistoryEngine("codex")
+    const orch = new Orchestrator({
+      engines: { claude, codex },
+      store,
+      worktrees: new GitWorktreeManager(),
+    })
+
+    const task = await orch.createTask({ repo, title: "mixed engines", prompt: "" })
+    await orch.runTask(task.id, "first tab")
+    await orch._waitForPumpsIdle()
+    const firstTab = orch.getTask(task.id)?.tabs[0]
+    expect(firstTab?.sessionId).toBe("claude-1")
+
+    const secondTab = await orch.createTab(task.id)
+    await orch.setModel(task.id, "gpt-5.4-mini", secondTab.id)
+    await orch.setActiveTab(task.id, secondTab.id)
+    await orch.runTask(task.id, "second tab")
+    await orch._waitForPumpsIdle()
+
+    const updated = orch.getTask(task.id)
+    const tab1 = updated?.tabs.find((t) => t.id === firstTab?.id)
+    const tab2 = updated?.tabs.find((t) => t.id === secondTab.id)
+    expect(tab1?.vendor).toBe("claude")
+    expect(tab2?.vendor).toBe("codex")
+    expect(tab2?.model).toBe("gpt-5.4-mini")
+    expect(claude.spawns[0]?.model).toBe(claudeCapabilities.defaultModelId())
+    expect(codex.spawns[0]?.model).toBe("gpt-5.4-mini")
+
+    const firstHistory = await orch.readHistoryWithMetrics(tab1?.sessionId ?? "")
+    const secondHistory = await orch.readHistoryWithMetrics(tab2?.sessionId ?? "")
+    expect(firstHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "claude history for claude-1" }])
+    expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
   })
 })
 

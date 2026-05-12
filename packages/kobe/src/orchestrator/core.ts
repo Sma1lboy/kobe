@@ -63,14 +63,15 @@
 
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
-import { resolveDefaultModelId } from "../engine/claude-settings.ts"
-import { type SessionUsageMetrics, deriveSessionUsageMetrics } from "../session/usage-metrics.ts"
+import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
+import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
   AskQuestionEntry,
   AskQuestionPayload,
   EngineEvent,
+  EngineHistory,
   Message,
   OrchestratorEvent,
   QuestionOption,
@@ -82,10 +83,12 @@ import type {
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import {
   type ChatTab,
+  DEFAULT_TASK_VENDOR,
   type PermissionMode,
   type Task,
   type TaskId,
   type TaskStatus,
+  type VendorId,
   nextChatTabSeq,
   worktreeSlug,
 } from "../types/task.ts"
@@ -100,7 +103,21 @@ import { SlugAllocator } from "./worktree/slug-allocator.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {
-  readonly engine: AIEngine
+  /**
+   * Single engine (back-compat). When provided, the orchestrator
+   * registers it under its declared `capabilities.vendorId` and uses
+   * it as the fallback for any task whose vendor isn't separately
+   * registered. Tests that don't care about routing keep using this.
+   */
+  readonly engine?: AIEngine
+  /**
+   * Vendor → engine map. When provided, takes precedence over
+   * {@link engine}. Used by production bootstrap so codex/claude tasks
+   * route to their own adapters. At least one of `engine` / `engines`
+   * must be supplied — empty `engines` + no `engine` is rejected at
+   * construction time.
+   */
+  readonly engines?: EngineMap
   readonly store: TaskIndexStore
   readonly worktrees: GitWorktreeManager
   /**
@@ -306,7 +323,19 @@ export function summarizeWorktreeError(raw: string, repo: string, baseRef: strin
  * surface; they don't reach past it.
  */
 export class Orchestrator {
-  private readonly engine: AIEngine
+  /**
+   * Vendor → engine map. Populated by the constructor from
+   * `deps.engines` (preferred) or `deps.engine` (back-compat).
+   * Resolved per task via {@link engineFor}.
+   */
+  private readonly engines: Partial<Record<VendorId, AIEngine>>
+  /**
+   * Fallback engine used when a task's vendor isn't registered (a task
+   * from a newer kobe build, or unknown vendor in hand-edited JSON).
+   * Set to the first engine the constructor saw — that's claude in
+   * every production path today.
+   */
+  private readonly fallbackEngine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly metadataSuggester: MetadataSuggester
@@ -409,7 +438,35 @@ export class Orchestrator {
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
 
   constructor(deps: OrchestratorDeps) {
-    this.engine = deps.engine
+    // Build the per-vendor engine map. Two input shapes:
+    //   - `engines: EngineMap` — preferred; explicit per-vendor.
+    //   - `engine: AIEngine` — back-compat single-engine path; we slot
+    //     it under its declared vendor and treat it as the fallback.
+    // Either way we record one engine as the "fallback" for tasks whose
+    // vendor isn't registered (would otherwise throw mid-runTask on an
+    // unknown task.vendor — defensive against hand-edited JSON or kobe
+    // downgrade scenarios).
+    const built: Partial<Record<VendorId, AIEngine>> = {}
+    let fallback: AIEngine | undefined
+    if (deps.engines) {
+      for (const [vendor, eng] of Object.entries(deps.engines) as Array<[VendorId, AIEngine | undefined]>) {
+        if (!eng) continue
+        built[vendor] = eng
+        fallback ??= eng
+      }
+    }
+    if (deps.engine) {
+      const v = deps.engine.capabilities.vendorId
+      built[v] ??= deps.engine
+      fallback ??= deps.engine
+    }
+    if (!fallback) {
+      throw new Error(
+        "Orchestrator: no usable engine found; both deps.engine and deps.engines were examined but contained no valid engines.",
+      )
+    }
+    this.engines = built
+    this.fallbackEngine = fallback
     this.store = deps.store
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
@@ -454,12 +511,109 @@ export class Orchestrator {
     // — it returns a result and the orchestrator does the post-run
     // bookkeeping in `runPumpAndCleanup`.
     this.sessionPump = new SessionPump({
-      engine: this.engine,
+      engineFor: (taskId, tabId) => this.engineForTaskTabId(taskId as TaskId, tabId),
       broker: this.pendingInputBroker,
       dispatch: (taskId, tabId, ev) => this.dispatchEvent(taskId as TaskId, tabId, ev),
       nextRequestId: () => `req-${++this.requestIdCounter}`,
       onPendingInputChange: () => this.bumpRunState(),
     })
+  }
+
+  /**
+   * Resolve the engine for a given vendor. Falls back to
+   * {@link fallbackEngine} when the vendor isn't registered (defensive
+   * against `Task.vendor` values that came from a newer kobe build or
+   * hand-edited JSON).
+   */
+  private engineForVendor(vendor: VendorId | undefined): AIEngine {
+    const v = vendor ?? DEFAULT_TASK_VENDOR
+    return this.engines[v] ?? this.fallbackEngine
+  }
+
+  /** Engine for a given task — single dispatch site for vendor routing. */
+  private engineForTask(task: Task): AIEngine {
+    return this.engineForVendor(task.vendor)
+  }
+
+  private vendorForTab(task: Task, tab: ChatTab): VendorId {
+    return tab.vendor ?? task.vendor ?? "claude"
+  }
+
+  private modelForTab(task: Task, tab: ChatTab, engine: AIEngine): string {
+    return tab.model ?? task.model ?? engine.capabilities.defaultModelId()
+  }
+
+  private engineForTab(task: Task, tab: ChatTab): AIEngine {
+    return this.engineForVendor(this.vendorForTab(task, tab))
+  }
+
+  private async engineForTabRun(task: Task, tab: ChatTab): Promise<AIEngine> {
+    if (!tab.sessionId || tab.vendor) return this.engineForTab(task, tab)
+    const resolved = await this.findEngineWithHistory(tab.sessionId, this.vendorForTab(task, tab))
+    if (resolved.vendor && resolved.vendor !== tab.vendor) {
+      await this.updateTab(task.id, tab.id, { vendor: resolved.vendor })
+    }
+    return resolved.engine
+  }
+
+  private async findEngineWithHistory(
+    sessionId: string,
+    preferredVendor?: VendorId,
+  ): Promise<{ engine: AIEngine; vendor?: VendorId; history?: EngineHistory }> {
+    const candidates: Array<[VendorId | undefined, AIEngine]> = []
+    if (preferredVendor) candidates.push([preferredVendor, this.engineForVendor(preferredVendor)])
+    for (const [vendor, engine] of Object.entries(this.engines) as Array<[VendorId, AIEngine | undefined]>) {
+      if (!engine || vendor === preferredVendor) continue
+      candidates.push([vendor, engine])
+    }
+    if (candidates.length === 0) candidates.push([undefined, this.fallbackEngine])
+
+    let fallback = candidates[0] ?? [undefined, this.fallbackEngine]
+    let fallbackHistory: EngineHistory | undefined
+    for (const [vendor, engine] of candidates) {
+      try {
+        const history = await engine.readHistory(sessionId)
+        if (!fallbackHistory) {
+          fallback = [vendor, engine]
+          fallbackHistory = history
+        }
+        if (history.messages.length > 0 || history.usageMetrics) return { engine, vendor, history }
+      } catch {
+        // Try the next registered engine; a missing/corrupt transcript
+        // in one adapter should not hide a session owned by another.
+      }
+    }
+    return { engine: fallback[1], vendor: fallback[0], history: fallbackHistory }
+  }
+
+  /** Engine for a task id; defensive against a stale id (returns fallback). */
+  private engineForTaskId(taskId: TaskId): AIEngine {
+    const task = this.store.get(taskId)
+    return task ? this.engineForTask(task) : this.fallbackEngine
+  }
+
+  /** Engine for a concrete task tab; used by the live stream pump. */
+  private engineForTaskTabId(taskId: TaskId, tabId: string): AIEngine {
+    const task = this.store.get(taskId)
+    if (!task) return this.fallbackEngine
+    const tab = task.tabs.find((t) => t.id === tabId)
+    return tab ? this.engineForTab(task, tab) : this.engineForTask(task)
+  }
+
+  /**
+   * Engine for a free-floating session id. Scans tasks to find which
+   * one owns the session; used by code paths (e.g. `readHistory`)
+   * that don't carry a task context. Falls back when no task matches —
+   * e.g. raw sessions opened by `claude --resume` outside kobe.
+   */
+  private engineForSessionId(sessionId: string): AIEngine {
+    for (const task of this.store.list()) {
+      for (const tab of task.tabs) {
+        if (tab.sessionId === sessionId) return this.engineForTab(task, tab)
+      }
+      if (task.sessionId === sessionId) return this.engineForTask(task)
+    }
+    return this.fallbackEngine
   }
 
   /**
@@ -776,7 +930,7 @@ export class Orchestrator {
         baseRef,
       })
     } catch (err) {
-      this.slugAllocator.cancel(slug)
+      this.slugAllocator.cancel(task.repo, slug)
       // The raw `git worktree add` error is dense ("git worktree add
       // -b kobe/tmp-... <path> <baseRef> (cwd=<repo>) exited with
       // code 128: fatal: invalid reference: <baseRef>"). Boil it
@@ -786,13 +940,18 @@ export class Orchestrator {
       const message = err instanceof Error ? err.message : String(err)
       throw new Error(summarizeWorktreeError(message, task.repo, baseRef ?? null), { cause: err })
     }
-    this.pendingWorktreeOpts.delete(task.id)
-    const updated = await this.store.update(task.id, {
-      branch: info.branch,
-      worktreePath: info.path,
-    })
-    this.slugAllocator.commit(slug)
-    return updated
+    try {
+      this.pendingWorktreeOpts.delete(task.id)
+      const updated = await this.store.update(task.id, {
+        branch: info.branch,
+        worktreePath: info.path,
+      })
+      this.slugAllocator.commit(task.repo, slug)
+      return updated
+    } catch (err) {
+      this.slugAllocator.cancel(task.repo, slug)
+      throw err
+    }
   }
 
   /**
@@ -988,17 +1147,17 @@ export class Orchestrator {
       this.dispatchEvent(task.id, targetTab.id, { type: "user.inject", text: prompt })
     }
 
-    // Model resolution: per-task pin → claude-code's
-    // `~/.claude/settings.json` `model` key → kobe's hardcoded
-    // FALLBACK_DEFAULT_MODEL_ID (opus 4.7 [1m]). Mirrors claude-code's
-    // own getUserSpecifiedModelSetting() ordering. Doing the resolve
-    // here (rather than passing `task.model` raw) means kobe's UI
-    // label and the engine spawn agree on the same default.
-    const modelToUse = task.model ?? resolveDefaultModelId()
+    // Model resolution is tab-scoped: one task/worktree can host a
+    // Claude tab and a Codex tab side-by-side. Legacy task-level
+    // model/vendor fields remain fallback data for old manifests.
+    const engine = targetTab.sessionId
+      ? await this.engineForTabRun(task, targetTab)
+      : this.engineForTab(task, targetTab)
+    const modelToUse = this.modelForTab(task, targetTab, engine)
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
-      handle = await this.engine.resume(targetTab.sessionId, promptToSend, {
+      handle = await engine.resume(targetTab.sessionId, promptToSend, {
         cwd: task.worktreePath,
         // Defensive duplicate: keep the env var alongside the typed
         // field for one release in case any external consumer (test
@@ -1020,7 +1179,7 @@ export class Orchestrator {
       })
       this.firstSpawnLatches.set(key, latch)
       try {
-        handle = await this.engine.spawn(task.worktreePath, promptToSend, {
+        handle = await engine.spawn(task.worktreePath, promptToSend, {
           permissionMode: task.permissionMode,
           model: modelToUse,
         })
@@ -1212,7 +1371,7 @@ export class Orchestrator {
       text: "(turn interrupted — sending new prompt)",
     })
     try {
-      await this.engine.stop(handle)
+      await this.engineForTask(task).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -1315,16 +1474,20 @@ export class Orchestrator {
   }
 
   /**
-   * Set the per-task model. Persisted to the manifest and forwarded as
-   * `claude --model <id>` on the next spawn/resume. Pass `undefined`
-   * to clear (falls back to claude-code's default model). Like
-   * permission mode, the change takes effect on the NEXT user turn —
-   * an in-flight session keeps the model it was spawned with.
+   * Set a chat tab's model. Persisted to the tab and forwarded
+   * to that tab's engine on the next spawn/resume. Other tabs on the
+   * same task keep their own engine/model pins.
    */
-  async setModel(id: TaskId | string, model: string | undefined): Promise<void> {
+  async setModel(id: TaskId | string, model: string | undefined, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
-    if (task.model === model) return
-    await this.store.update(task.id, { model })
+    const tab = this.resolveTab(task, tabId)
+    // Derive the vendor from the picked model so a codex pick routes
+    // the next runTask through the codex engine. When `model` is
+    // cleared (undefined), the vendor stays put — clearing means "use
+    // this vendor's default model," not "switch back to claude."
+    const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
+    if (tab.model === model && this.vendorForTab(task, tab) === vendor) return
+    await this.updateTab(task.id, tab.id, { model, vendor })
   }
 
   /**
@@ -1470,7 +1633,7 @@ export class Orchestrator {
 
     if (task.sessionId) {
       try {
-        await this.engine.deleteHistory(task.sessionId)
+        await this.engineForTask(task).deleteHistory(task.sessionId)
       } catch (err) {
         // Best-effort: stale FS state (file already gone, permission
         // issue) shouldn't block the index drop.
@@ -1498,18 +1661,17 @@ export class Orchestrator {
    * "render nothing for past."
    */
   async readHistory(sessionId: string): Promise<Message[]> {
-    try {
-      return await this.engine.readHistory(sessionId)
-    } catch {
-      return []
-    }
+    return (await this.readHistoryWithMetrics(sessionId)).messages
   }
 
   async readHistoryWithMetrics(
     sessionId: string,
   ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
-    const messages = await this.readHistory(sessionId)
-    const usageMetrics = deriveSessionUsageMetrics(messages)
+    const preferred = this.engineForSessionId(sessionId)
+    const { history } = await this.findEngineWithHistory(sessionId, preferred.capabilities.vendorId)
+    if (!history) return { messages: [] }
+    const messages = [...history.messages]
+    const usageMetrics = history.usageMetrics
     return {
       messages,
       ...(usageMetrics ? { usageMetrics } : {}),
@@ -1530,8 +1692,9 @@ export class Orchestrator {
   async listSessions(id: TaskId | string): Promise<SessionMeta[]> {
     const task = this.requireTask(id)
     if (!task.worktreePath) return []
+    const tab = this.resolveTab(task)
     try {
-      return await this.engine.listSessions(task.worktreePath)
+      return await this.engineForTab(task, tab).listSessions(task.worktreePath)
     } catch {
       return []
     }
@@ -1556,6 +1719,7 @@ export class Orchestrator {
    */
   async openSessionInTab(id: TaskId | string, sessionId: string, opts: { title?: string } = {}): Promise<string> {
     const task = this.requireTask(id)
+    const active = this.resolveTab(task)
     const existing = task.tabs.find((t) => t.sessionId === sessionId)
     if (existing) {
       await this.setActiveTab(task.id, existing.id)
@@ -1566,6 +1730,8 @@ export class Orchestrator {
       sessionId,
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
+      model: active.model ?? task.model,
+      vendor: this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
     await this.store.update(task.id, { tabs: [...task.tabs, tab], activeTabId: tab.id })
@@ -1617,11 +1783,14 @@ export class Orchestrator {
    */
   async createTab(id: TaskId | string, opts: { title?: string } = {}): Promise<ChatTab> {
     const task = this.requireTask(id)
+    const active = this.resolveTab(task)
     const tab: ChatTab = {
       id: ulid(),
       sessionId: null,
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
+      model: active.model ?? task.model,
+      vendor: this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
     const tabs = [...task.tabs, tab]
@@ -1759,7 +1928,7 @@ export class Orchestrator {
     const handle = this.handles.get(key)
     if (!handle) return
     try {
-      await this.engine.stop(handle)
+      await this.engineForTaskId(taskId).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -1774,11 +1943,12 @@ export class Orchestrator {
   private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
     const prefix = `${taskId}:`
     const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
+    const engine = this.engineForTaskId(taskId)
     for (const key of keys) {
       const handle = this.handles.get(key)
       if (!handle) continue
       try {
-        await this.engine.stop(handle)
+        await engine.stop(handle)
       } catch {
         // Best-effort; the lifecycle method that called us will surface
         // task-level state regardless.

@@ -58,18 +58,18 @@ describe("context-meter", () => {
 
   it("derives latest context usage and session-average total speed from history", () => {
     const past: Message[] = [
-      { role: "user", content: "one", timestamp: "2026-05-09T00:00:00.000Z", sessionId: "s" },
+      { role: "user", blocks: [{ type: "text", text: "one" }], timestamp: "2026-05-09T00:00:00.000Z", sessionId: "s" },
       {
         role: "assistant",
-        content: "ok",
+        blocks: [{ type: "text", text: "ok" }],
         timestamp: "2026-05-09T00:00:02.000Z",
         sessionId: "s",
         usage: { input_tokens: 100, output_tokens: 50 },
       },
-      { role: "user", content: "two", timestamp: "2026-05-09T00:00:10.000Z", sessionId: "s" },
+      { role: "user", blocks: [{ type: "text", text: "two" }], timestamp: "2026-05-09T00:00:10.000Z", sessionId: "s" },
       {
         role: "assistant",
-        content: "ok again",
+        blocks: [{ type: "text", text: "ok again" }],
         timestamp: "2026-05-09T00:00:14.000Z",
         sessionId: "s",
         usage: { input_tokens: 600, output_tokens: 200, cache_read_input_tokens: 100 },

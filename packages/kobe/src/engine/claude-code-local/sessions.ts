@@ -30,6 +30,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { SessionMeta } from "@/types/engine"
 import { encodeCwd } from "./history"
+import { normalizeClaudeContent } from "./normalize"
 
 /** Optional FS injection for tests. Mirrors `HistoryDeps` from history.ts. */
 export interface SessionsDeps {
@@ -137,20 +138,16 @@ export function extractFirstUserMessage(lines: readonly string[]): string | null
 
 /**
  * Coerce a Claude Code `content` field into a single preview string.
- * On-disk shape is either a string or an array of content blocks
- * (`{ type: "text", text: "..." }`, `{ type: "tool_use", ... }`, etc).
- * Tool / non-text blocks are skipped — the picker preview is meant to
- * read like the user's actual prompt, not a trace.
+ * Routes the vendor shape through {@link normalizeClaudeContent} and
+ * keeps only neutral `text` blocks — the picker preview is meant to
+ * read like the user's actual prompt, not a trace, so tool calls /
+ * thinking are dropped.
  */
 function stringifyContent(content: unknown): string {
-  if (typeof content === "string") return content.trim()
-  if (!Array.isArray(content)) return ""
+  const blocks = normalizeClaudeContent(content)
   const parts: string[] = []
-  for (const block of content) {
-    if (!isObject(block)) continue
-    if (block.type === "text" && typeof block.text === "string") {
-      parts.push(block.text)
-    }
+  for (const b of blocks) {
+    if (b.type === "text") parts.push(b.text)
   }
   return parts.join(" ").trim()
 }

@@ -287,8 +287,8 @@ export class RemoteOrchestrator {
     await this.client.request("task.permissionMode", { taskId, mode })
   }
 
-  async setModel(taskId: string, model: string | undefined): Promise<void> {
-    await this.client.request("task.model", { taskId, model })
+  async setModel(taskId: string, model: string | undefined, tabId?: string): Promise<void> {
+    await this.client.request("task.model", { taskId, model, tabId })
   }
 
   async createTab(taskId: string, opts: { title?: string } = {}): Promise<ChatTab> {

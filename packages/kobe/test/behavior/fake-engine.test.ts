@@ -69,12 +69,22 @@ describe("FakeAIEngine", () => {
   test("readHistory returns pre-seeded messages", async () => {
     const engine = new FakeAIEngine()
     engine.setHistory("preset", [
-      { role: "user", content: "ping", timestamp: "2026-05-08T00:00:00Z", sessionId: "preset" },
-      { role: "assistant", content: "pong", timestamp: "2026-05-08T00:00:01Z", sessionId: "preset" },
+      {
+        role: "user",
+        blocks: [{ type: "text", text: "ping" }],
+        timestamp: "2026-05-08T00:00:00Z",
+        sessionId: "preset",
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", text: "pong" }],
+        timestamp: "2026-05-08T00:00:01Z",
+        sessionId: "preset",
+      },
     ])
-    const msgs = await engine.readHistory("preset")
+    const { messages: msgs } = await engine.readHistory("preset")
     expect(msgs).toHaveLength(2)
-    expect(msgs[0]?.content).toBe("ping")
+    expect(msgs[0]?.blocks).toEqual([{ type: "text", text: "ping" }])
   })
 
   test("unknown sessions yield nothing once finished", async () => {

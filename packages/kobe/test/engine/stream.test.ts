@@ -140,6 +140,34 @@ describe("parseStreamJson", () => {
     ])
   })
 
+  it("treats Claude API errors with subtype success as terminal errors", async () => {
+    const events = await collect(
+      parseStreamJson(
+        linesFrom([
+          JSON.stringify({
+            type: "assistant",
+            message: { content: [{ type: "text", text: "You've hit your limit" }] },
+            error: "rate_limit",
+          }),
+          JSON.stringify({
+            type: "result",
+            subtype: "success",
+            is_error: true,
+            api_error_status: 429,
+            result: "You've hit your limit",
+            usage: { input_tokens: 0, output_tokens: 0 },
+          }),
+        ]),
+      ),
+    )
+
+    expect(events).toEqual([
+      { type: "assistant.delta", text: "You've hit your limit" },
+      { type: "usage", input_tokens: 0, output_tokens: 0 },
+      { type: "error", message: "claude API error 429: You've hit your limit" },
+    ])
+  })
+
   it("emits error (not done) when result.subtype signals failure", async () => {
     const events = await collect(
       parseStreamJson(linesFrom([JSON.stringify({ type: "result", subtype: "error_max_turns" })])),

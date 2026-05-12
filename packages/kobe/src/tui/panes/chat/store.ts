@@ -36,11 +36,7 @@
  * No Solid / opentui imports — pure data, vitest-friendly under Node.
  */
 
-import {
-  type SessionUsageMetrics,
-  deriveSessionUsageMetrics,
-  withTotalSpeedForTurn,
-} from "../../../session/usage-metrics.ts"
+import type { SessionUsageMetrics } from "../../../session/usage-metrics.ts"
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
 
 /* --------------------------------------------------------------------- */
@@ -334,11 +330,8 @@ export function setMessagesFromHistory(
     appendRowsFromMessage(rows, toolIndexById, m)
   }
 
-  // Rehydrate the context meter from the latest persisted usage record,
-  // so the workspace header shows last-turn usage on tab open instead of
-  // sitting blank until the user sends a new prompt. Claude Code stores
-  // `usage` on each assistant record's `message.usage` block.
-  const latestUsage = usageMetrics ?? deriveSessionUsageMetrics(past)
+  // Rehydrate the context meter from engine-owned persisted usage.
+  const latestUsage = usageMetrics
 
   // Apply the cap on the hydration path too — don't load 5000
   // historical rows just to drop 4000 immediately on the next delta.
@@ -490,16 +483,13 @@ export function applyEvent(
     case "usage":
       return {
         ...state,
-        lastUsage: withTotalSpeedForTurn(
-          {
-            input_tokens: ev.input_tokens,
-            output_tokens: ev.output_tokens,
-            cache_read_input_tokens: ev.cache_read_input_tokens,
-            cache_creation_input_tokens: ev.cache_creation_input_tokens,
-          },
-          state.activeTurnStartedAt,
-          nowIso,
-        ),
+        lastUsage: {
+          input_tokens: ev.input_tokens,
+          output_tokens: ev.output_tokens,
+          cache_read_input_tokens: ev.cache_read_input_tokens,
+          cache_creation_input_tokens: ev.cache_creation_input_tokens,
+          total_speed_tokens_per_second: ev.total_speed_tokens_per_second,
+        },
       }
     case "done":
       return { ...state, isStreaming: false, activeTurnStartedAt: undefined }
@@ -645,24 +635,18 @@ export function reset(): ChatState {
 /* --------------------------------------------------------------------- */
 
 /**
- * Walk one historical Message's content and append the appropriate
- * ChatRows to `rows`. Tool_use creates a new tool row (recorded in
- * `toolIndexById`); tool_result patches the matching row in place.
- * Text blocks become role-typed text rows. Bare strings (the legacy
- * `content: "..."` shape) become a single text row.
+ * Walk one historical Message's neutral block list and append the
+ * appropriate ChatRows to `rows`. `tool_call` creates a new tool row
+ * (recorded in `toolIndexById`); `tool_result` patches the matching
+ * row in place. `text` blocks become role-typed text rows; consecutive
+ * texts buffer into one row so multi-text messages render as a single
+ * paragraph.
+ *
+ * `thinking` blocks are intentionally dropped — kobe's live stream
+ * parser drops them too, so hydration matches what the user saw live.
  */
 function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, number>, m: Message): void {
   const ts = m.timestamp
-
-  // Legacy / simple shape: content is a bare string.
-  if (typeof m.content === "string") {
-    if (m.content.length === 0) return
-    const row = textRow(m.role, m.content, ts)
-    if (row) rows.push(row)
-    return
-  }
-
-  if (!Array.isArray(m.content)) return
 
   // Buffer consecutive text blocks so a multi-`text` message renders as
   // one chat row, but flush before each tool block so the document
@@ -676,26 +660,19 @@ function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, numbe
     textBuf = ""
   }
 
-  for (const block of m.content) {
-    if (typeof block === "string") {
-      textBuf += block
-      continue
-    }
-    if (!block || typeof block !== "object") continue
-    const b = block as Record<string, unknown>
-
-    if (b.type === "text" && typeof b.text === "string") {
-      textBuf += b.text
+  for (const block of m.blocks) {
+    if (block.type === "text") {
+      textBuf += block.text
       continue
     }
 
-    if (b.type === "tool_use") {
+    if (block.type === "tool_call") {
       flushText()
-      const id = typeof b.id === "string" ? b.id : undefined
+      const id = block.callId.length > 0 ? block.callId : undefined
       const row: ChatRow = {
         kind: "tool",
-        name: typeof b.name === "string" ? b.name : "",
-        input: b.input,
+        name: block.name,
+        input: block.input,
         done: false,
         ts,
         toolUseId: id,
@@ -706,27 +683,25 @@ function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, numbe
       continue
     }
 
-    if (b.type === "tool_result") {
+    if (block.type === "tool_result") {
       flushText()
-      const id = typeof b.tool_use_id === "string" ? b.tool_use_id : undefined
+      const id = block.callId.length > 0 ? block.callId : undefined
       const idx = id !== undefined ? toolIndexById.get(id) : undefined
-      const output = b.content
+      const output = block.output
       if (idx !== undefined) {
         const target = rows[idx]
         if (target && target.kind === "tool") {
           rows[idx] = { ...target, done: true, output }
         }
       } else {
-        // Orphan tool_result (no matching tool_use seen). Render as a
+        // Orphan tool_result (no matching tool_call seen). Render as a
         // standalone result row so the user can still see what came
         // back; matches the live `applyEvent` fallback for the same
         // case.
         rows.push({ kind: "tool", name: "", input: undefined, output, done: true, ts })
       }
     }
-    // Other block types (thinking, image, redacted_thinking, …) are
-    // intentionally dropped: kobe doesn't render them yet, and the
-    // live stream parser drops them too, so hydration matches.
+    // `thinking` (and any future block type) intentionally dropped.
   }
 
   flushText()

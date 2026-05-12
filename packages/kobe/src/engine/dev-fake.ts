@@ -18,7 +18,17 @@
  */
 
 import { FakeAIEngine } from "../../test/behavior/fake-engine.ts"
-import type { AIEngine, EngineEvent, Message, SessionHandle, SessionMeta, SpawnOpts } from "../types/engine.ts"
+import type {
+  AIEngine,
+  EngineCapabilities,
+  EngineEvent,
+  EngineHistory,
+  EngineIdentity,
+  SessionHandle,
+  SessionMeta,
+  SpawnOpts,
+} from "../types/engine.ts"
+import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 
 export interface DevAIEngineOpts {
   /** Delay between successive scripted events. Defaults to 30ms. */
@@ -26,6 +36,9 @@ export interface DevAIEngineOpts {
 }
 
 export class DevAIEngine implements AIEngine {
+  /** Dev fake impersonates claude — borrow its capabilities. */
+  readonly identity: EngineIdentity = claudeIdentity
+  readonly capabilities: EngineCapabilities = claudeCapabilities
   private readonly inner = new FakeAIEngine()
   private readonly tickMs: number
 
@@ -49,7 +62,7 @@ export class DevAIEngine implements AIEngine {
     return this.inner.stream(handle)
   }
 
-  async readHistory(sessionId: string): Promise<Message[]> {
+  async readHistory(sessionId: string): Promise<EngineHistory> {
     return this.inner.readHistory(sessionId)
   }
 

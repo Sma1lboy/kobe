@@ -10,6 +10,81 @@
  * needs must surface through {@link AIEngine} or {@link EngineEvent}.
  */
 
+import type { ContentBlock } from "./content"
+import type { VendorId } from "./vendor"
+export type { ContentBlock } from "./content"
+
+/**
+ * One model entry surfaced by a vendor adapter.
+ *
+ * `id` is what the adapter forwards to its CLI / API verbatim (e.g.
+ * `claude --model <id>`, `codex -m <id>`). `label`/`hint` are the
+ * presentation strings the composer's model picker renders.
+ *
+ * Lives in this file (not under `tui/`) because the model catalog is
+ * vendor-owned — each adapter exports its own `readonly ModelChoice[]`
+ * through {@link EngineCapabilities.models}. Putting the type next to
+ * `AIEngine` keeps the seam in one place; the TUI just consumes it.
+ */
+export type ModelChoice = {
+  /** Which engine adapter owns this model. */
+  readonly vendor: VendorId
+  /** Vendor-specific model id passed to the adapter. */
+  readonly id: string
+  /** Short label shown in the composer footer + picker. */
+  readonly label: string
+  /** Optional one-liner shown next to the label in the picker. */
+  readonly hint?: string
+}
+
+/**
+ * Vendor-supplied capability surface — the single way kobe's
+ * orchestrator and TUI ask "what does this engine know / offer?"
+ *
+ * Every piece of vendor-specific knowledge (model catalog, where the
+ * vendor's settings file lives, what counts as the context window for
+ * a given model id, how to format the model label) lives on this
+ * object. Callers that need any of that go through
+ * {@link AIEngine.capabilities} or the engine registry; no module
+ * outside the adapter should hard-code `~/.claude/...`, `[1m]` suffix
+ * parsing, or model-id literals.
+ *
+ * This object is intentionally static-ish — function members are
+ * pure (no IO beyond cached settings reads) so callers can invoke them
+ * freely from render code.
+ */
+export interface EngineCapabilities {
+  readonly vendorId: VendorId
+  /** Human-readable vendor name shown in UI ("Claude Code", "Codex"). */
+  readonly label: string
+  /** Catalog of models this vendor offers in the composer picker. */
+  readonly models: readonly ModelChoice[]
+  /**
+   * Resolve the current default model id for this vendor. Implementations
+   * read the vendor's settings file (e.g. `~/.claude/settings.json` for
+   * claude-code, `~/.codex/config.toml` for codex) and fall back to a
+   * hardcoded constant when unset.
+   */
+  defaultModelId(): string
+  /** Max context tokens for a given vendor model id. */
+  contextWindowFor(modelId: string): number
+}
+
+/**
+ * Product identity surfaced by the engine adapter.
+ *
+ * This is UI-facing but still engine-owned: the chat composer should
+ * ask the active engine how it wants to be named ("Claude Code",
+ * "Codex", etc.) instead of hard-coding vendor strings in TUI code.
+ */
+export interface EngineIdentity {
+  readonly vendorId: VendorId
+  readonly productName: string
+  readonly shortName: string
+  readonly assistantName: string
+  readonly inputPlaceholder: string
+}
+
 /**
  * Opaque handle to a live engine session. The orchestrator treats this
  * as a black box; only the engine impl knows what's inside (PID, JSONL
@@ -80,16 +155,17 @@ export interface SpawnOpts {
 /**
  * One historical message read off disk via {@link AIEngine.readHistory}.
  *
- * Kept deliberately small. Tool calls and rich blocks live in `content`
- * as a free-form unknown — kobe's renderers narrow per block type. We
- * don't enumerate Claude Code's full content-block taxonomy here because
- * (a) it changes, and (b) Phase 2 remote backends won't share it.
+ * `blocks` is a vendor-neutral discriminated union — engine adapters
+ * normalize their native shape (Claude Code's content-block array) into
+ * {@link ContentBlock} before surfacing. See `types/content.ts` for the
+ * taxonomy and `engine/claude-code-local/normalize.ts` for the Claude
+ * mapping. Renderers downstream consume `blocks` (not raw vendor JSON).
  *
  * `timestamp` is ISO-8601 to match Claude Code's JSONL on-disk format.
  */
 export interface Message {
   readonly role: "user" | "assistant" | "system"
-  readonly content: unknown
+  readonly blocks: readonly ContentBlock[]
   readonly timestamp: string
   readonly sessionId: string
   /**
@@ -105,6 +181,19 @@ export interface Message {
     readonly cache_read_input_tokens?: number
     readonly cache_creation_input_tokens?: number
   }
+}
+
+export type EngineUsageSnapshot = {
+  readonly input_tokens: number
+  readonly output_tokens: number
+  readonly cache_read_input_tokens?: number
+  readonly cache_creation_input_tokens?: number
+  readonly total_speed_tokens_per_second?: number
+}
+
+export interface EngineHistory {
+  readonly messages: readonly Message[]
+  readonly usageMetrics?: EngineUsageSnapshot
 }
 
 /**
@@ -162,6 +251,7 @@ export type EngineEvent =
       readonly output_tokens: number
       readonly cache_read_input_tokens?: number
       readonly cache_creation_input_tokens?: number
+      readonly total_speed_tokens_per_second?: number
     }
   /** Session is finished cleanly. No more events will follow. */
   | { readonly type: "done" }
@@ -357,6 +447,22 @@ export type OrchestratorEvent =
  */
 export interface AIEngine {
   /**
+   * UI-facing engine identity. Neutral layers consume this for product
+   * names and placeholder copy; vendor adapters own the strings.
+   */
+  readonly identity: EngineIdentity
+
+  /**
+   * Vendor capabilities — model catalog, default-model resolution,
+   * context-window math. The orchestrator and TUI must consult this
+   * instead of importing vendor-specific helpers (see
+   * {@link EngineCapabilities}). The field is intentionally a readonly
+   * property, not a method, so consumers can pull it once and treat it
+   * as a stable descriptor for the lifetime of the engine instance.
+   */
+  readonly capabilities: EngineCapabilities
+
+  /**
    * Start a fresh session in `cwd` with the given prompt.
    *
    * Guarantees: returns once the session is registered (i.e. session id
@@ -394,7 +500,7 @@ export interface AIEngine {
    * live, in which case it returns the snapshot up to "now" (no
    * coordination with the live stream — caller dedupes if needed).
    */
-  readHistory(sessionId: string): Promise<Message[]>
+  readHistory(sessionId: string): Promise<EngineHistory>
 
   /**
    * List every session ever persisted for `cwd`, newest first.
