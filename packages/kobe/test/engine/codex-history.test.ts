@@ -2,11 +2,11 @@
  * Unit tests for the codex-local history parser.
  *
  * Why this layer matters: the live `codex exec --json` stream never
- * yields codex's `<environment_context>` envelope — that synthetic
- * "first user message" only appears in the on-disk rollout JSONL.
- * Without filtering, reloading a task's history shows it as a leading
- * user chat row containing the cwd / shell / timezone / sandbox
- * payload, which isn't what the user typed.
+ * yields codex's synthetic `<environment_context>` or AGENTS.md
+ * instructions rows — those only appear in the on-disk rollout JSONL.
+ * Without filtering, reloading a task's history shows hidden context
+ * and repo instructions as user chat rows, which isn't what the user
+ * typed.
  */
 
 import { parseJsonl } from "@/engine/codex-local/history"
@@ -43,6 +43,29 @@ describe("codex history parser", () => {
         type: "response_item",
         timestamp: "2026-05-11T18:00:00Z",
         payload: { type: "message", role: "user", content: [{ type: "input_text", text: envelope }] },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:01Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "actual question" }] },
+      }),
+    ].join("\n")
+    const out = parseJsonl(raw, SID)
+    expect(out).toHaveLength(1)
+    expect(out[0]?.blocks).toEqual([{ type: "text", text: "actual question" }])
+  })
+
+  it("drops the leading AGENTS.md instructions user row", () => {
+    // Codex persists repository instructions as a synthetic user row
+    // before the real conversation. Reloading a chat tab must not show
+    // those instructions as if the user typed them.
+    const instructions =
+      "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>\n# Project rules\n\nRead docs first.\n</INSTRUCTIONS>"
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: instructions }] },
       }),
       JSON.stringify({
         type: "response_item",
