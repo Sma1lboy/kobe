@@ -33,6 +33,7 @@ import {
   filterRepos,
   filterSubdirs,
   joinDrill,
+  getCurrentBranch,
   listLocalBranches,
   listSubdirs,
   nextField,
@@ -57,9 +58,10 @@ describe("stripNewlines", () => {
 })
 
 describe("nextField — tab cycling", () => {
-  test("toggles repo ↔ baseRef", () => {
+  test("walks repo → baseRef → confirm → repo", () => {
     expect(nextField("repo")).toBe("baseRef")
-    expect(nextField("baseRef")).toBe("repo")
+    expect(nextField("baseRef")).toBe("confirm")
+    expect(nextField("confirm")).toBe("repo")
   })
 })
 
@@ -246,6 +248,13 @@ describe("listLocalBranches — fault-tolerance", () => {
   test("returns [] for an empty / missing repo path (no throw)", () => {
     expect(listLocalBranches("")).toEqual([])
     expect(listLocalBranches("/this/path/definitely/does/not/exist")).toEqual([])
+  })
+})
+
+describe("getCurrentBranch — fault-tolerance", () => {
+  test("returns null for an empty / missing repo path (no throw)", () => {
+    expect(getCurrentBranch("")).toBeNull()
+    expect(getCurrentBranch("/this/path/definitely/does/not/exist")).toBeNull()
   })
 })
 

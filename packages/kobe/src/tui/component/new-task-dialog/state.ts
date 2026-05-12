@@ -23,14 +23,17 @@ import * as os from "node:os"
 export type NewTaskInput = { repo: string; baseRef: string }
 
 /**
- * Two field states for the dialog:
+ * Three field states for the dialog:
  *   - "repo" — the unified repo input. Free-text editable; the
  *     dropdown below it swaps between saved-repo and subdirectory
  *     browse based on the input shape (see `pickerModeFor`).
  *   - "baseRef" — branch field.
- * Tab cycles repo ↔ baseRef.
+ *   - "confirm" — the bottom-right Create button. The dialog only
+ *     submits when this field is activated (Enter / click), so the
+ *     repo + branch fields are pure selection surfaces.
+ * Tab cycles repo → baseRef → confirm → repo.
  */
-export type Field = "repo" | "baseRef"
+export type Field = "repo" | "baseRef" | "confirm"
 
 /**
  * Which list the unified picker should render under the repo input.
@@ -93,10 +96,12 @@ export function stripNewlines(v: string): string {
 }
 
 /**
- * Advance the field-cycle state. Tab toggles repo ↔ baseRef.
+ * Advance the field-cycle state. Tab walks repo → baseRef → confirm → repo.
  */
 export function nextField(field: Field): Field {
-  return field === "repo" ? "baseRef" : "repo"
+  if (field === "repo") return "baseRef"
+  if (field === "baseRef") return "confirm"
+  return "repo"
 }
 
 /**
@@ -202,6 +207,33 @@ export function validateRepoPath(repo: string): string | null {
     return `not a git repository: ${trimmed}`
   }
   return null
+}
+
+/**
+ * Read the current branch of the given repo (whatever HEAD points at).
+ * Returns null when the path isn't a repo, HEAD is detached, or git
+ * errors out. The dialog uses this to prefill the baseRef field with
+ * the repo's actual current branch instead of a hardcoded "main", so
+ * a worktree forked from a feature branch defaults to that feature
+ * branch rather than silently jumping to main.
+ */
+export function getCurrentBranch(repo: string): string | null {
+  if (!repo) return null
+  try {
+    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
+    const out = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: repo,
+      encoding: "utf-8",
+      timeout: 2000,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    if (out.status !== 0) return null
+    const name = (out.stdout as string).trim()
+    if (!name || name === "HEAD") return null
+    return name
+  } catch {
+    return null
+  }
 }
 
 /**

@@ -41,6 +41,7 @@ import {
   filterBranches,
   filterRepos,
   filterSubdirs,
+  getCurrentBranch,
   joinDrill,
   listLocalBranches,
   listSubdirs,
@@ -75,7 +76,16 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   // it on first submit (see PLACEHOLDER_TASK_TITLE in core.ts).
   const [field, setField] = createSignal<Field>("repo")
   const [repo, setRepo] = createSignal(props.defaultRepo)
-  const [baseRef, setBaseRef] = createSignal(DEFAULT_BASE_REF)
+  // Initial baseRef tracks the cwd's current branch (e.g. a worktree
+  // forked from a feature branch should default to that branch, not
+  // hardcoded "main"). Falls back to DEFAULT_BASE_REF when the path
+  // isn't a repo or HEAD is detached.
+  const [baseRef, setBaseRef] = createSignal(getCurrentBranch(expandHome(props.defaultRepo.trim())) ?? DEFAULT_BASE_REF)
+  // True once the user has typed into the baseRef input. We stop
+  // auto-syncing from the repo's current branch after that so a manual
+  // override isn't overwritten when the user goes back to tweak the
+  // repo path.
+  const [baseRefTouched, setBaseRefTouched] = createSignal(false)
 
   // Curated list: cwd + /add-repo entries, deduped. Used in saved
   // mode; substring-filtered against the typed input.
@@ -123,6 +133,16 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     void branchFiltered()
     setBranchCursor(0)
   })
+  // Auto-sync baseRef to the repo's current branch when the user picks
+  // a different repo. Skipped once the user has manually edited the
+  // branch field — the override wins.
+  createEffect(() => {
+    const r = expandHome(repo().trim())
+    if (!r) return
+    if (baseRefTouched()) return
+    const current = getCurrentBranch(r)
+    if (current) setBaseRef(current)
+  })
   createEffect(() => {
     void activeList()
     setRepoCursor(0)
@@ -157,23 +177,23 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     dialog.clear()
   }
 
-  // Enter on the repo field. Behavior depends on the current mode:
+  // Enter on the repo field. Pure selection — never commits. Commit
+  // lives on the confirm button at the bottom.
   //   - browse + filter non-empty (mid-completion): drill into the
   //     highlight (replace input with `base + name + "/"`).
-  //   - browse + filter empty + path is a valid repo: commit.
-  //   - browse + filter empty + invalid: drill if there's something
-  //     to drill into, else commit (validation will surface).
-  //   - saved + highlighted entry exists: replace input with the
-  //     full path of the highlight, then commit.
-  //   - saved + nothing highlighted: commit whatever is typed.
+  //   - browse + filter empty + something to drill into + path not yet
+  //     a valid repo: drill another level.
+  //   - browse + filter empty + path is a valid repo: advance to
+  //     baseRef so the user can pick a branch.
+  //   - saved + highlighted entry exists: pick the highlight into the
+  //     input and advance to baseRef.
+  //   - empty / nothing highlighted: advance to baseRef.
   function onRepoSubmit() {
     if (!repo().trim() && mode() === "saved") {
-      // Defensive: an empty input technically matches every saved
-      // entry; cursor 0 holds cwd. Treat enter as "select cwd".
       const picked = activeList()[0]
       if (picked) {
         setRepo(picked)
-        commit()
+        setField("baseRef")
         return
       }
     }
@@ -182,8 +202,6 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       const picked = list[repoCursor()]
       const split = subdirSplit()
       if (picked) {
-        // Drill while mid-completion (filter non-empty), or when the
-        // path doesn't yet validate as a repo.
         if (split.filter) {
           setRepo(joinDrill(repo(), split.base, picked))
           return
@@ -194,17 +212,16 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           return
         }
       }
-      commit()
+      setField("baseRef")
       return
     }
-    // Saved mode: prefer the highlighted row over the typed value.
     const picked = activeList()[repoCursor()]
     if (picked) {
       setRepo(picked)
-      commit()
+      setField("baseRef")
       return
     }
-    commit()
+    setField("baseRef")
   }
 
   function selectRepoAtMouse(absoluteIndex: number): void {
@@ -220,8 +237,8 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       setRepoCursor(absoluteIndex)
       return
     }
-    // Saved mode: click = pick + commit (same as the prior dialog's
-    // mouse behavior). Advance to baseRef on the way.
+    // Saved mode: click = pick + advance to baseRef (no commit; the
+    // user confirms from the Create button).
     setRepo(picked)
     setRepoCursor(absoluteIndex)
     setField("baseRef")
@@ -263,6 +280,21 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           if (list.length === 0) return
           setBranchCursor(clampCursor(branchCursor() + 1, list.length))
         },
+      },
+    ],
+  }))
+
+  // Enter on the Create button = commit. Lives in its own useBindings
+  // call with a config-level `enabled` so the binding is OUT of the
+  // dispatch stack while field !== "confirm" — otherwise the dispatcher
+  // calls preventDefault() after firing the no-op cmd and swallows the
+  // Enter before the focused repo/baseRef input's onSubmit can see it.
+  useBindings(() => ({
+    enabled: field() === "confirm",
+    bindings: [
+      {
+        key: "return",
+        cmd: () => commit(),
       },
     ],
   }))
@@ -342,13 +374,18 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           value={baseRef()}
           placeholder={DEFAULT_BASE_REF}
           focused={field() === "baseRef"}
-          onInput={(v: string) => setBaseRef(stripNewlines(v))}
+          onInput={(v: string) => {
+            setBaseRefTouched(true)
+            setBaseRef(stripNewlines(v))
+          }}
           onSubmit={() => {
             // Prefer the highlighted branch in the picker over the
             // typed text. Free-text only kicks in when nothing matches
             // (typed a tag / commit SHA the local branch list doesn't know).
+            // Pure selection — advance to the Create button, don't commit.
             setBaseRef(resolveBaseRef(baseRef(), branchFiltered(), branchCursor()))
-            commit()
+            setBaseRefTouched(true)
+            setField("confirm")
           }}
         />
       </box>
@@ -398,8 +435,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                   wrapMode="none"
                   onMouseUp={() => {
                     setBaseRef(name)
+                    setBaseRefTouched(true)
                     setBranchCursor(absoluteIndex())
-                    commit()
+                    setField("confirm")
                   }}
                 >
                   {isCursor() ? "▸ " : "  "}
@@ -415,8 +453,18 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </Show>
         </box>
       </Show>
-      <box paddingBottom={1}>
+      {/* Bottom row: hint text on the left, Create button on the
+          right. The button is the only path that commits — every
+          keyboard / mouse interaction above is pure selection. */}
+      <box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
         <text fg={theme.textMuted}>↑↓ pick · enter select · tab next field · esc cancel</text>
+        <text
+          fg={field() === "confirm" ? theme.primary : theme.text}
+          attributes={field() === "confirm" ? TextAttributes.BOLD : undefined}
+          onMouseUp={() => commit()}
+        >
+          {field() === "confirm" ? "▸ [ Create ]" : "  [ Create ]"}
+        </text>
       </box>
     </box>
   )
