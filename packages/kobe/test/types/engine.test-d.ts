@@ -162,6 +162,10 @@ describe("AIEngine", () => {
         vendorId: "claude",
         label: "Stub",
         models: [],
+        permissionModes: [
+          { id: "default", label: "default" },
+          { id: "plan", label: "plan mode" },
+        ],
         defaultModelId: () => "stub",
         contextWindowFor: () => 200_000,
       }

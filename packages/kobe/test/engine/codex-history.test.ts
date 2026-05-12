@@ -55,6 +55,35 @@ describe("codex history parser", () => {
     expect(out[0]?.blocks).toEqual([{ type: "text", text: "actual question" }])
   })
 
+  it("drops AGENTS.md instruction envelopes persisted as synthetic user rows", () => {
+    const instructions = [
+      "# AGENTS.md instructions for /tmp/repo",
+      "",
+      "<INSTRUCTIONS>",
+      "# kobe",
+      "",
+      "Read the docs before coding.",
+      "</INSTRUCTIONS>",
+    ].join("\n")
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: instructions }] },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:01Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "actual question" }] },
+      }),
+    ].join("\n")
+
+    const out = parseJsonl(raw, SID)
+
+    expect(out).toHaveLength(1)
+    expect(out[0]?.blocks).toEqual([{ type: "text", text: "actual question" }])
+  })
+
   it("does NOT drop a user message that merely starts with <environment_context>", () => {
     // Conservative — only the exact envelope (no other text) is
     // filtered. A user pasting an envelope-shaped snippet survives.

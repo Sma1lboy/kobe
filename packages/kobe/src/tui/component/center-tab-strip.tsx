@@ -15,6 +15,7 @@ import { type ChatRunState, chatRunStateKey } from "../../orchestrator/core.ts"
 import type { ChatTab } from "../../types/task.ts"
 import { type NotificationKind, notificationKey } from "../context/notifications"
 import { useTheme } from "../context/theme"
+import { chatTabMarkerKind } from "./center-tab-strip-parts"
 
 export function CenterTabStrip(props: {
   isChatActive: Accessor<boolean>
@@ -52,7 +53,7 @@ export function CenterTabStrip(props: {
    * Per-chat-tab unread marker keyed by `${taskId}:${tabId}` (compose via
    * {@link notificationKey}). A non-undefined value means the user
    * hasn't viewed this tab since its last completion / approval event;
-   * the chip paints a small filled circle after the label. `done`
+   * the chip paints a small filled circle before the label. `done`
    * resolves to success-coloured, `needs_input` to warning-coloured —
    * matches the toast's colour vocabulary.
    */
@@ -120,26 +121,8 @@ export function CenterTabStrip(props: {
               if (!taskId) return undefined
               return props.chatRunState().get(chatRunStateKey(taskId, tab.id))
             }
-            const dotGlyph = () => {
-              const s = runState()
-              return s === "running" || s === "awaiting_input" ? "●" : ""
-            }
-            // The dot's color is the run-state signal — never the
-            // chip's selection color. Earlier we tinted it
-            // `selectedListItemText` when the chip was primary so it
-            // matched the chip text, but that swallowed the live
-            // green/yellow signal exactly when Jackson was looking at
-            // the active tab and most needed to see whether it was
-            // running. The status dot's job overrides the chip's
-            // emphasis; green/yellow stay legible on the primary
-            // background.
-            const dotColor = () => {
-              const s = runState()
-              if (s === "awaiting_input") return theme.warning
-              if (s === "running") return theme.success
-              return theme.textMuted
-            }
-            // Unread badge — paints AFTER the label. Suppressed when
+            // Unread badge — shares the leading status-dot slot.
+            // Suppressed when
             // this tab is the active chip (the user is already looking
             // at it, so seeing a "you haven't read this" marker is
             // noise). Colour mirrors the toast kind: warning for an
@@ -150,8 +133,27 @@ export function CenterTabStrip(props: {
               if (!taskId) return undefined
               return props.unread().get(notificationKey(taskId, tab.id))
             }
-            const showUnread = () => !isPrimary() && unreadKind() !== undefined
-            const unreadColor = () => (unreadKind() === "needs_input" ? theme.warning : theme.success)
+            const markerKind = () =>
+              chatTabMarkerKind({
+                runState: runState(),
+                unreadKind: unreadKind(),
+                isPrimary: isPrimary(),
+              })
+            // The marker's color is the status signal — never the
+            // chip's selection color. Earlier we tinted live dots
+            // `selectedListItemText` when the chip was primary so they
+            // matched the chip text, but that swallowed the live
+            // green/yellow signal exactly when Jackson was looking at
+            // the active tab and most needed to see whether it was
+            // running. The status dot's job overrides the chip's
+            // emphasis; green/yellow stay legible on the primary
+            // background.
+            const markerColor = () => {
+              const kind = markerKind()
+              if (kind === "awaiting_input" || kind === "unread_needs_input") return theme.warning
+              if (kind === "running" || kind === "unread_done") return theme.success
+              return theme.textMuted
+            }
             return (
               <box
                 flexDirection="row"
@@ -164,9 +166,9 @@ export function CenterTabStrip(props: {
                   props.onSelectChatTab(tab.id)
                 }}
               >
-                <Show when={dotGlyph().length > 0}>
-                  <text fg={dotColor()} wrapMode="none">
-                    {dotGlyph()}
+                <Show when={markerKind() !== null}>
+                  <text fg={markerColor()} wrapMode="none">
+                    ●
                   </text>
                 </Show>
                 {/* No leading ordinal — chat tabs cycle via ctrl+[/]
@@ -179,11 +181,6 @@ export function CenterTabStrip(props: {
                 >
                   {chatTabLabel(tab)}
                 </text>
-                <Show when={showUnread()}>
-                  <text fg={unreadColor()} wrapMode="none">
-                    ●
-                  </text>
-                </Show>
               </box>
             )
           }}

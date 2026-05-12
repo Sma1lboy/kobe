@@ -197,6 +197,8 @@ test("G3a — thinking indicator visible after submit, hidden after done", async
   // Capture and assert the thinking indicator is visible.
   const thinkingScreen = await kobe.waitFor((s) => s.includes("thinking"), 10_000)
   expect(thinkingScreen).toContain("thinking")
+  expect(thinkingScreen).not.toContain("(streaming")
+  expect(thinkingScreen).toContain("enter queue")
 
   // Now script some events to let the turn finish.
   const events: EngineEvent[] = [{ type: "assistant.delta", text: "all good" }, { type: "done" }]

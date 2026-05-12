@@ -73,6 +73,7 @@ import type {
   EngineEvent,
   EngineHistory,
   Message,
+  ModelEffortLevel,
   OrchestratorEvent,
   QuestionOption,
   SessionHandle,
@@ -541,6 +542,10 @@ export class Orchestrator {
 
   private modelForTab(task: Task, tab: ChatTab, engine: AIEngine): string {
     return tab.model ?? task.model ?? engine.capabilities.defaultModelId()
+  }
+
+  private modelEffortForTab(task: Task, tab: ChatTab): ModelEffortLevel | undefined {
+    return tab.modelEffort ?? task.modelEffort
   }
 
   private engineForTab(task: Task, tab: ChatTab): AIEngine {
@@ -1154,6 +1159,7 @@ export class Orchestrator {
       ? await this.engineForTabRun(task, targetTab)
       : this.engineForTab(task, targetTab)
     const modelToUse = this.modelForTab(task, targetTab, engine)
+    const modelEffortToUse = this.modelEffortForTab(task, targetTab)
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
@@ -1166,6 +1172,7 @@ export class Orchestrator {
         env: { KOBE_RESUME_CWD: task.worktreePath },
         permissionMode: task.permissionMode,
         model: modelToUse,
+        modelEffort: modelEffortToUse,
       })
     } else {
       // Claim the first-spawn latch so any sibling runTask racing us
@@ -1182,6 +1189,7 @@ export class Orchestrator {
         handle = await engine.spawn(task.worktreePath, promptToSend, {
           permissionMode: task.permissionMode,
           model: modelToUse,
+          modelEffort: modelEffortToUse,
         })
         // Persist the freshly-allocated session id back onto the tab so
         // a future kobe restart can resume.
@@ -1478,7 +1486,12 @@ export class Orchestrator {
    * to that tab's engine on the next spawn/resume. Other tabs on the
    * same task keep their own engine/model pins.
    */
-  async setModel(id: TaskId | string, model: string | undefined, tabId?: string): Promise<void> {
+  async setModel(
+    id: TaskId | string,
+    model: string | undefined,
+    tabId?: string,
+    modelEffort?: ModelEffortLevel,
+  ): Promise<void> {
     const task = this.requireTask(id)
     const tab = this.resolveTab(task, tabId)
     // Derive the vendor from the picked model so a codex pick routes
@@ -1486,8 +1499,8 @@ export class Orchestrator {
     // cleared (undefined), the vendor stays put — clearing means "use
     // this vendor's default model," not "switch back to claude."
     const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
-    if (tab.model === model && this.vendorForTab(task, tab) === vendor) return
-    await this.updateTab(task.id, tab.id, { model, vendor })
+    if (tab.model === model && tab.modelEffort === modelEffort && this.vendorForTab(task, tab) === vendor) return
+    await this.updateTab(task.id, tab.id, { model, modelEffort, vendor })
   }
 
   /**

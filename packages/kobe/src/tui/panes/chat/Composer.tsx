@@ -73,6 +73,7 @@ import { clipboardImageSupported } from "./composer/clipboard-image"
 import { getHistory, pushHistory } from "./composer/history"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { composerKeyBindings } from "./composer/keybindings"
+import { isPermissionModeCycleKey } from "./composer/keys"
 import {
   type MentionContext,
   type MentionMatch,
@@ -80,6 +81,7 @@ import {
   findMentionContext,
   getWorktreeFiles,
 } from "./composer/mention"
+import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
  * Slash entry with an optional `source` discriminator. Defined as an
@@ -169,6 +171,8 @@ export interface ComposerProps {
    * "📋 plan" / etc.) and shift+tab cycles via {@link onCyclePermissionMode}.
    */
   permissionMode?: Accessor<PermissionMode | undefined>
+  /** Engine-owned label for the active permission mode. */
+  permissionModeLabel?: Accessor<string>
   /**
    * Called when the user presses shift+tab in the composer. The parent
    * computes the next mode and persists it; we just emit the request.
@@ -213,23 +217,6 @@ export interface ComposerProps {
  * claude-code's `PromptInputQueuedCommands` overflow shape.
  */
 const QUEUE_VISIBLE_CAP = 4
-
-/**
- * Resolve the placeholder text given the current state. Pure — no
- * Solid signals — so it can be unit-tested in isolation if we ever
- * want to. For now the behavior test asserts the streaming variant
- * is visible after submit.
- */
-function resolvePlaceholder(opts: {
-  isStreaming: boolean
-  hasTask: boolean
-  noTaskMessage?: string
-  inputPlaceholder?: string
-}): string {
-  if (!opts.hasTask) return opts.noTaskMessage ?? "(no task — press n to create)"
-  if (opts.isStreaming) return "(streaming — enter to queue, ctrl+enter to steer)"
-  return opts.inputPlaceholder ?? "Ask Claude…"
-}
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
@@ -789,7 +776,7 @@ export function Composer(props: ComposerProps) {
     // shift+tab cycles the per-task permission mode. Highest priority
     // because we want it consistent regardless of dropdown state.
     // Falls through silently when the parent doesn't supply a cycler.
-    if (key.name === "tab" && key.shift) {
+    if (isPermissionModeCycleKey(key)) {
       if (props.onCyclePermissionMode) {
         props.onCyclePermissionMode()
         key.preventDefault()
@@ -1011,22 +998,19 @@ export function Composer(props: ComposerProps) {
   // render in the same row, same color, so the layout doesn't jump.
   const footerHint = () => pasteHint() ?? streamingNotice()
   const modelLabel = () => props.modelLabel?.() ?? ""
+  const permissionModeLabel = () =>
+    props.permissionModeLabel?.() ?? (props.permissionMode?.() === "plan" ? "plan mode" : "default")
 
   // Mode indicator: short label + tone based on the active permission mode.
-  // Default/undefined → null badge so the footer doesn't render the pill
-  // at all (matches claude-code's `hasActiveMode = !isDefaultMode(mode)`
-  // gate in PromptInputFooterLeftSide.tsx — they only surface the mode
-  // when something non-default is active). Plain text labels — no emoji
-  // glyphs (the previous 📋/⏵/⚠ set looked out of place against the rest
-  // of kobe's monochrome chrome). The rail color picks up the same tone
-  // so the composer's outer chrome turns a different color for non-default
-  // modes; plan mode in particular needs to be unmistakable so the user
-  // doesn't accidentally submit a destructive prompt while the agent is
-  // planning.
+  // Plain text labels — no emoji glyphs (the previous 📋/⏵/⚠ set looked
+  // out of place against the rest of kobe's monochrome chrome). The rail
+  // color picks up the same tone for non-default modes; plan mode in
+  // particular needs to be unmistakable so the user doesn't accidentally
+  // submit a destructive prompt while the agent is planning.
   type ModeTone = "muted" | "accent" | "warning" | "primary"
   const modeBadge = createMemo<{ label: string; tone: ModeTone } | null>(() => {
     const mode = props.permissionMode?.()
-    return mode === "plan" ? { label: "plan mode", tone: "primary" } : null
+    return mode === "plan" ? { label: permissionModeLabel(), tone: "primary" } : null
   })
   const toneColor = (tone: ModeTone) => {
     switch (tone) {
@@ -1307,7 +1291,7 @@ export function Composer(props: ComposerProps) {
               </Show>
             </box>
           </box>
-          {/* Inline footer: action hint left, model right. Renders only
+          {/* Inline footer: action hint left, mode/model right. Renders only
               when a task is selected so the no-task fallback row has the
               composer area to itself. */}
           <Show when={props.hasTask}>
@@ -1316,13 +1300,12 @@ export function Composer(props: ComposerProps) {
                 {footerHint()}
               </text>
               <box flexDirection="row" gap={2} flexShrink={0}>
-                <Show when={modeBadge()}>
-                  {(badge) => (
-                    <text fg={toneColor(badge().tone)} wrapMode="none">
-                      {badge().label}
-                    </text>
-                  )}
-                </Show>
+                <box flexDirection="row" flexShrink={0} onMouseUp={() => props.onCyclePermissionMode?.()}>
+                  <text fg={modeBadge() ? toneColor("primary") : theme.textMuted} wrapMode="none">
+                    {permissionModeLabel()}
+                    {props.onCyclePermissionMode ? " ▾" : ""}
+                  </text>
+                </box>
                 {/* Model label — clickable when the parent supplies
                     `onChooseModel`; renders with a `▾` caret to advertise
                     the picker. Inert (no caret, no click) otherwise. */}

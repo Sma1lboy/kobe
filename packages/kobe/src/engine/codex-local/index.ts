@@ -129,6 +129,7 @@ export class CodexLocal implements AIEngine {
       cwd: args.cwd,
       prompt: args.prompt,
       model: args.opts?.model,
+      modelEffort: args.opts?.modelEffort,
       permissionMode: args.opts?.permissionMode,
       env: args.opts?.env,
       resumeSessionId: args.resumeSessionId,
@@ -144,9 +145,25 @@ export class CodexLocal implements AIEngine {
     const queue: EngineEvent[] = []
     let session: RunningSession | undefined
     let bound = false
+    let stderrTail = ""
 
     const bind = (sessionId: string) => {
-      if (bound) return
+      if (bound) {
+        // On resume we sync-bind with the caller-supplied sid before
+        // codex emits anything. If codex later announces a *different*
+        // sid (e.g. forked-to-new-rollout), the handle the caller is
+        // already holding points at the wrong session. Surface that
+        // loudly so the user sees the divergence instead of silently
+        // talking to the wrong rollout.
+        if (session && session.sessionId !== sessionId) {
+          queue.push({
+            type: "error",
+            message: `codex resumed to a different session id (got ${sessionId}, expected ${session.sessionId})`,
+          })
+          this.notify(session)
+        }
+        return
+      }
       bound = true
       session = {
         sessionId,
@@ -182,6 +199,38 @@ export class CodexLocal implements AIEngine {
       }
     }
 
+    // Capture a rolling tail of stderr so that fatal exits (bad
+    // resume-sid, missing binary perms, sandbox refusal) can surface a
+    // useful message instead of just "exit code 1".
+    captureStderrTail(spawned.stderr, (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP)
+    })
+
+    // Materialize exit info as a promise so the parser's finally block
+    // can synchronously inspect the exit code *before* closing the
+    // session. Without this, the parser's for-await loop ends as soon
+    // as stdout EOFs and races ahead of the 'exit' event — the consumer
+    // observes session.closed with an empty queue and returns before
+    // the error event has been pushed.
+    const exitInfo: { code: number | null; signal: NodeJS.Signals | null; seen: boolean } = {
+      code: null,
+      signal: null,
+      seen: false,
+    }
+    const exitObserved = new Promise<void>((resolve) => {
+      spawned.proc.once("exit", (code, signal) => {
+        exitInfo.code = code
+        exitInfo.signal = signal
+        exitInfo.seen = true
+        if (!bound) {
+          rejectHandle(
+            new Error(formatExitMsg("codex exited before session id was captured", code, signal, stderrTail)),
+          )
+        }
+        resolve()
+      })
+    })
+
     void (async () => {
       const events = parseStreamJson(readLines(spawned.stdout), {
         onSessionId: (sid) => bind(sid),
@@ -200,7 +249,20 @@ export class CodexLocal implements AIEngine {
         queue.push(ev)
         if (session) this.notify(session)
       } finally {
+        // Wait briefly for the 'exit' event so we can fold a non-zero
+        // exit into the stream as an error event. Timeout cap keeps us
+        // from hanging if the process never emits exit (shouldn't
+        // happen for child_process, but be defensive).
+        await Promise.race([exitObserved, new Promise<void>((r) => setTimeout(r, 500))])
         if (session) {
+          const code = exitInfo.code
+          const lastEv = queue[queue.length - 1]
+          if (exitInfo.seen && typeof code === "number" && code !== 0 && lastEv?.type !== "error") {
+            queue.push({
+              type: "error",
+              message: formatExitMsg("codex exited", code, exitInfo.signal, stderrTail),
+            })
+          }
           session.closed = true
           this.notify(session)
           this.registry.unregister(session.sessionId)
@@ -212,15 +274,8 @@ export class CodexLocal implements AIEngine {
       }
     })()
 
-    drainStream(spawned.stderr)
-
     spawned.proc.once("error", (err) => {
       if (!bound) rejectHandle(err)
-    })
-    spawned.proc.once("exit", () => {
-      if (!bound) {
-        rejectHandle(new Error("codex exited before session id was captured"))
-      }
     })
 
     return handlePromise
@@ -233,10 +288,26 @@ export class CodexLocal implements AIEngine {
   }
 }
 
-function drainStream(stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNullStreams["stderr"]["on"] }): void {
+const STDERR_TAIL_CAP = 4 * 1024
+
+function captureStderrTail(
+  stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNullStreams["stderr"]["on"] },
+  onChunk: (text: string) => void,
+): void {
   const s = stream as NodeJS.ReadableStream
-  s.on("data", () => {})
+  s.on("data", (chunk: Buffer | string) => {
+    onChunk(typeof chunk === "string" ? chunk : chunk.toString("utf8"))
+  })
   s.on("error", () => {})
+}
+
+function formatExitMsg(prefix: string, code: number | null, signal: NodeJS.Signals | null, stderrTail: string): string {
+  const parts: string[] = [prefix]
+  if (typeof code === "number") parts.push(`(code=${code}${signal ? `, signal=${signal}` : ""})`)
+  else if (signal) parts.push(`(signal=${signal})`)
+  const detail = stderrTail.trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" | ")
+  if (detail) parts.push(`: ${detail}`)
+  return parts.join(" ").replace(/ : /, ": ")
 }
 
 function enrichUsageEvent(ev: EngineEvent, startedAtIso: string | undefined): EngineEvent {

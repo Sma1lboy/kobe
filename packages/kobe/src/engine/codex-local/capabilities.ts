@@ -11,6 +11,10 @@ export const codexCapabilities: EngineCapabilities = {
   vendorId: "codex",
   label: "Codex",
   models: CODEX_MODELS,
+  permissionModes: [
+    { id: "default", label: "full access" },
+    { id: "plan", label: "plan mode" },
+  ],
   defaultModelId: resolveCodexDefaultModelId,
   contextWindowFor: codexContextWindowFor,
 }

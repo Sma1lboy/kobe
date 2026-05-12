@@ -45,6 +45,7 @@ kobe is built by deliberately copying ideas (and sometimes code) from reference 
 | `opcode` | fresh clone of [`winfunc/opcode`](https://github.com/winfunc/opcode) | **How to spawn + stream Claude Code as a subprocess.** kobe's `packages/kobe/src/engine/claude-code-local/` was algorithmically ported from opcode's `src-tauri/src/commands/claude.rs` (subprocess spawn + stream-json parser + JSONL reader + binary discovery). When extending the engine, port from opcode first. |
 | `claude-code` | fresh clone of [`tanbiralam/claude-code`](https://github.com/tanbiralam/claude-code) (leaked Anthropic source, March 2026) | **Match Claude Code's exact stream rendering style.** Has `src/ink/` (the Ink-based TUI components, layout, events). When implementing how the stream output looks (assistant text formatting, tool call display, thinking dots, code blocks, citations), mirror Claude Code's choices so kobe feels like Claude Code, not a third-party shell. |
 | `ccstatusline` | fresh clone of [`sirmalloc/ccstatusline`](https://github.com/sirmalloc/ccstatusline) | **Status/context/speed derivation reference.** Reads Claude Code's `transcript_path` JSONL and status JSON to derive token totals, context-window usage, compaction hints, and input/output/total token speed. Use it before changing kobe's context meter, plan/status chips, or any transcript-derived usage metric. |
+| `codex` | fresh clone of [`openai/codex`](https://github.com/openai/codex) | **Official Codex CLI / engine behavior reference.** Use before changing `packages/kobe/src/engine/codex-local/`: spawn flags, `exec --json` event shapes, resume/session semantics, app-server protocol, auth behavior, sandbox/approval options, model reasoning controls, and transcript/session storage. |
 | `codexui` | fresh clone of [`friuns2/codexui`](https://github.com/friuns2/codexui) | **How to drive the `codex` CLI / app-server from another process.** Browser bridge for `codex app-server` (richer RPC than the `codex exec --json` path kobe's `engine/codex-local/` uses today). Consult when extending codex support — auth/login flows, app-server features the exec path can't reach, or matching their normalization choices. |
 
 ### Setup before developing
@@ -55,6 +56,7 @@ ln -s /Users/jacksonc/i/agent-deck agent-deck   # if you have it locally
 git clone --depth 1 https://github.com/winfunc/opcode.git
 git clone --depth 1 https://github.com/tanbiralam/claude-code.git
 git clone --depth 1 https://github.com/sirmalloc/ccstatusline.git
+git clone --depth 1 https://github.com/openai/codex.git
 git clone --depth 1 https://github.com/friuns2/codexui.git
 # `conductor` is image-only — read docs/DESIGN.md §1 for the layout
 ```
@@ -68,6 +70,7 @@ git clone --depth 1 https://github.com/friuns2/codexui.git
 - "How do I spawn / parse / resume a Claude Code session?" → `opcode/src-tauri/src/commands/claude.rs`.
 - "How does Claude Code render <X>?" (where X = stream content, tool call display, prompt formatting, etc.) → `claude-code/src/ink/`.
 - "How should status/context/speed be derived from Claude Code data?" → `ccstatusline/src/ccstatusline.ts`, `ccstatusline/src/utils/jsonl-metrics.ts`, and `ccstatusline/src/utils/context-window.ts`. Important pattern: speed is not a field Claude Code hands over; it is derived by reading the conversation JSONL (`transcript_path`), pairing user/assistant timestamps, and dividing token usage by active request duration.
+- "How should kobe match official Codex CLI behavior?" → `codex/` first. Treat this as authoritative for `codex exec --json`, `codex app-server`, auth/session storage, sandbox/approval modes, model reasoning options, and event schemas.
 - "How do I drive `codex` from another process / normalize its events / handle auth?" → `codexui/src/server/` + `codexui/src/api/`. Their bridge speaks `codex app-server` RPC, not `codex exec --json`; port ideas, not architecture.
 
 If a ref disagrees with kobe's existing implementation, kobe wins (we already chose) — but read the ref before deciding to deviate further.

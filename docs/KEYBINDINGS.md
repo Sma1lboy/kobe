@@ -61,6 +61,34 @@ site — they should agree.
 | `tab`            | pane cycle vs textarea focus actions    | `useKobeKeybindings` no-ops `tab` when workspace has focus so the composer's own tab handling (slash completion, indent) wins.                                                      |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
 
+## tmux passthrough
+
+kobe already enables opentui's kitty / CSI-u keyboard protocol with `useKittyKeyboard: {}`. That lets supporting terminals send
+full modifier information for richer chords like `shift+enter`, `ctrl+enter`, `ctrl+pageup`, and ctrl-modified punctuation or
+digits. tmux must be told to preserve those extended key sequences instead of translating them back to legacy bytes.
+
+Recommended tmux config:
+
+```tmux
+# tmux >= 3.2
+set -g extended-keys on
+set -as terminal-features ',xterm*:extkeys'
+set -as terminal-features ',tmux*:extkeys'
+```
+
+Outer-terminal requirements still apply:
+
+- iTerm2: enable profile-level "Report keys using CSI u" / CSI-u key reporting. Even then, iTerm2 has a known ctrl+1 / ctrl+9 /
+  ctrl+0 quirk, so kobe does not rely on ctrl+digit for core navigation.
+- Kitty, foot, Ghostty, and recent Terminal.app builds generally answer the keyboard-protocol enable sequence without extra kobe
+  config, but local keybindings in the terminal app can still intercept a chord before tmux sees it.
+- macOS launchers and terminal application shortcuts can swallow Option/Cmd chords globally. No tmux setting can pass through a
+  shortcut that never reached tmux.
+
+The invariant for kobe-owned shortcuts remains: primary navigation must work without this setup. `ctrl+hjkl` pane focus is kept as
+the direct pane chord because ctrl+letter maps to stable C0 bytes that tmux can pass in legacy mode. Extended-key passthrough is for
+the shortcuts where the terminal protocol is the only way to distinguish intent, not a dependency for basic operation.
+
 ## Adding a new binding — checklist
 
 1. Decide the flavour (global/modifier vs pane-scoped/letter).
