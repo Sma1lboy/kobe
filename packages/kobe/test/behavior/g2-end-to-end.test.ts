@@ -182,32 +182,10 @@ test("G2 — create task, send prompt, see assistant delta in chat", async () =>
   const helloEvents: EngineEvent[] = [{ type: "assistant.delta", text: "hello from kobe" }, { type: "done" }]
   await scriptEngine(port, "/script", { sessionId: "fake-1", events: helloEvents })
 
-  // ---- open new-task dialog and fill it in ----------------------
-  // Wave 3 G dropped the explicit `title` field. The dialog now
-  // collects (prompt, repo). The first field is `first prompt`.
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-
-  // First field (prompt) is focused on dialog open. Type the prompt
-  // — the orchestrator will derive a sidebar title from it.
+  // ---- create task, then send the first prompt -------------------
+  await kobe.createTask(repo)
+  await new Promise((r) => setTimeout(r, 250))
   await kobe.typeText("demo task ping")
-
-  // Tab to switch to repo field. We override the default repo
-  // (process.cwd() = the kobe checkout) with our fixture repo path.
-  await kobe.sendKeys("\t")
-
-  // The repo field is pre-filled with process.cwd(); we need to
-  // clear it. Send backspaces, then type our fixture path. The
-  // input renderable's max value depth makes more-than-enough
-  // backspaces safe.
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f") // DEL — InputRenderable maps to deleteCharBackward
-  }
-  await kobe.typeText(repo)
-
-  // Submit (Enter on the repo field commits the dialog AND auto-
-  // sends the prompt to the freshly-created task — Wave 3 G
-  // pendingPrompt flow).
   await kobe.sendKeys("\r")
 
   // ---- sidebar updates with the new task ------------------------

@@ -75,7 +75,7 @@ test("new-task dialog rejects a non-git directory with a friendly message", asyn
   await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
 
   // ---- open new-task dialog -----------------------------------
-  await kobe.sendKeys("n")
+  await kobe.openNewTaskDialog()
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
   await new Promise((r) => setTimeout(r, 250))
 
@@ -88,7 +88,10 @@ test("new-task dialog rejects a non-git directory with a friendly message", asyn
   }
   await kobe.typeText(notARepo)
 
-  // Submit. Validator should refuse and show the inline message.
+  // Commit from the Create button. Enter on the repo field is a
+  // picker action; validation runs only when the dialog commits.
+  await kobe.sendKeys("\t")
+  await kobe.sendKeys("\t")
   await kobe.sendKeys("\r")
 
   // ---- assertions ---------------------------------------------

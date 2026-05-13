@@ -176,6 +176,25 @@ export class MetadataSuggester {
   }
 }
 
+/**
+ * Deterministic adapter for test/dev paths that must not shell out to
+ * the user's real `claude` binary. Keeps the metadata seam explicit:
+ * callers still exercise the "suggestion absent" fallback behaviour.
+ */
+export class NullMetadataSuggester extends MetadataSuggester {
+  override async suggestBranchSlug(_prompt: string): Promise<string | null> {
+    return null
+  }
+
+  override async suggestWorktreeSlug(_prompt: string): Promise<string | null> {
+    return null
+  }
+
+  override async suggestTitle(_prompt: string): Promise<string | null> {
+    return null
+  }
+}
+
 /* ----------------------------------------------------------------- */
 /*  Instruction builders                                              */
 /* ----------------------------------------------------------------- */

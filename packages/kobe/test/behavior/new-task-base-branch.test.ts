@@ -162,54 +162,13 @@ test("new-task dialog roots the task's branch at the chosen base ref", async () 
   })
   await scriptEngine(port, "/finish", { sessionId: "fake-1" })
 
-  // ---- open new-task dialog -----------------------------------
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  // The "from branch" label confirms the third field exists; if
-  // someone removes it, this assertion catches the regression in
-  // a single line.
-  await kobe.waitFor((s) => s.includes("from branch"), 5_000)
-  // Extra settle so the prompt input has its focused listener
-  // attached before we start typing — without this, the very first
-  // character can race with the input's stdin attach.
-  await new Promise((r) => setTimeout(r, 250))
-  // Belt-and-suspenders: clear any spurious keystrokes that may have
-  // landed in the prompt before focus settled (e.g. the `n` that
-  // triggered the dialog itself can leak through if the chat
-  // composer's input was the previously-focused renderable). The
-  // prompt input starts empty by design, so backspaces are no-ops
-  // when the field is genuinely empty.
-  for (let i = 0; i < 4; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-
-  // ---- fill in fields -----------------------------------------
-  // Field 1: prompt.
+  // ---- create a task from the non-HEAD base ref ----------------
+  // New Task now collects only repo + baseRef. The first prompt is
+  // typed into the composer after the task exists.
   const TITLE = "based-on-release"
-  await kobe.typeText(TITLE)
-
-  // Field 2: repo (replace the cwd default with our fixture).
-  await kobe.sendKeys("\t")
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
-
-  // Field 3: from branch. Tab from repo to baseRef. The default
-  // value is `main` — clear it and type the release-base ref.
-  await kobe.sendKeys("\t")
-  // Settle so the focus transfer reconciles before we send the
-  // backspaces (Solid's `focused` prop changes are reflected in the
-  // next render; without this beat the keys may race and land in
-  // the previous input).
+  await kobe.createTask(repo, "release-base")
   await new Promise((r) => setTimeout(r, 250))
-  for (let i = 0; i < 32; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText("release-base")
-
-  // Submit. Enter on the baseRef field commits unconditionally
-  // (when prompt + repo are filled).
+  await kobe.typeText(TITLE)
   await kobe.sendKeys("\r")
 
   // Sidebar reflects the new task.

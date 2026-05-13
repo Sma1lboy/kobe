@@ -85,6 +85,10 @@ export interface SpawnKobeOpts {
 export interface KobeHandle {
   /** Send raw bytes to the kobe stdin. Useful for control codes. */
   sendKeys(seq: string): Promise<void>
+  /** Open the New Task dialog through the current product keybinding contract. */
+  openNewTaskDialog(): Promise<void>
+  /** Open New Task, replace repo/baseRef fields, and activate the Create button. */
+  createTask(repo: string, baseRef?: string): Promise<void>
   /** Higher-level: send a string of text + (optional) trailing key. */
   typeText(s: string): Promise<void>
   /** Plain-text snapshot of the visible screen (ANSI stripped, normalized). */
@@ -208,6 +212,46 @@ export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
     async sendKeys(seq) {
       if (closed) throw new Error("kobe pty is closed")
       term.write(seq)
+      await sleep(settleMs)
+    },
+    async openNewTaskDialog() {
+      if (closed) throw new Error("kobe pty is closed")
+      // Product contract: bare `n` opens New Task only while Sidebar
+      // owns focus. Most chat-flow tests leave focus in Workspace, so
+      // first send ctrl+q (Workspace -> Sidebar), then the sidebar's
+      // `n` binding. ctrl+q is a no-op when Sidebar is already focused.
+      term.write("\x11")
+      await sleep(settleMs)
+      term.write("n")
+      await sleep(settleMs)
+    },
+    async createTask(repo, baseRef = "main") {
+      if (closed) throw new Error("kobe pty is closed")
+      await handle.openNewTaskDialog()
+      const deadline = Date.now() + DEFAULT_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        if (normalizeScreen(buffer).includes("New task")) break
+        await sleep(50)
+      }
+      // Repo is the first focused field. Replace the cwd-prefilled
+      // value, tab to baseRef, replace it too, then tab to confirm.
+      //
+      // Do not rely on the dialog's repo -> baseRef auto-sync here:
+      // behavior fixtures often launch kobe from the package checkout
+      // on a feature branch while the temp repo only has `main`.
+      for (let i = 0; i < 240; i++) term.write("\x7f")
+      await sleep(settleMs)
+      term.write(repo)
+      await sleep(settleMs)
+      term.write("\t")
+      await sleep(settleMs)
+      for (let i = 0; i < 120; i++) term.write("\x7f")
+      await sleep(settleMs)
+      term.write(baseRef)
+      await sleep(settleMs)
+      term.write("\t")
+      await sleep(settleMs)
+      term.write("\r")
       await sleep(settleMs)
     },
     async typeText(s) {
