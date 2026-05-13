@@ -1101,8 +1101,13 @@ export function Composer(props: ComposerProps) {
   // keeps only the mode + model badges.
   const streamingNotice = () => {
     if (!props.hasTask) return ""
+    // bash mode dominates the footer regardless of streaming so the
+    // user can SEE they're in bash mode while a turn is in flight —
+    // otherwise the "enter queue · ctrl+enter steer" hint masked the
+    // mode signal and the user couldn't tell they were about to queue
+    // a shell command vs a regular prompt.
+    if (bashMode()) return props.isStreaming ? "bash mode · enter to queue" : "bash mode · enter to run"
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
-    if (bashMode()) return "bash mode · enter to run"
     return ""
   }
   // Footer hint slot: paste-related feedback (e.g. "no image on
@@ -1365,19 +1370,41 @@ export function Composer(props: ComposerProps) {
             </box>
           </Show>
           <box flexDirection="row" gap={1} alignItems="flex-start">
-            {/* Prompt glyph — three modes:
-                streaming → `…` (theme.accent)
-                bash      → `!` (theme.warning, claude-code parity)
-                idle      → `>` (theme.primary)
-                Streaming dominates because you can't submit anything
-                while it's true; bash beats idle when the user has typed
-                `!` as the first char. */}
-            <text
-              fg={props.isStreaming ? theme.accent : bashMode() ? theme.warning : theme.primary}
-              attributes={bashMode() ? TextAttributes.BOLD : undefined}
+            {/* Prompt glyph — four states:
+                idle               → `>` (theme.primary)
+                idle + bash        → `!` (theme.warning, BOLD)
+                streaming          → `…` (theme.accent)
+                streaming + bash   → `…!` (accent dots + warning `!`)
+                bash mode must remain visible while streaming or the
+                user can't tell whether their next Enter queues a
+                prompt or a !cmd. Earlier the streaming `…` glyph
+                masked the bash indicator entirely. Two adjacent
+                glyphs costs one extra cell and resolves the
+                ambiguity unambiguously. */}
+            <Show
+              when={bashMode() && !props.isStreaming}
+              fallback={
+                <Show
+                  when={bashMode() && props.isStreaming}
+                  fallback={
+                    <text fg={props.isStreaming ? theme.accent : theme.primary}>
+                      {props.isStreaming ? "…" : ">"}
+                    </text>
+                  }
+                >
+                  <box flexDirection="row">
+                    <text fg={theme.accent}>…</text>
+                    <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+                      !
+                    </text>
+                  </box>
+                </Show>
+              }
             >
-              {props.isStreaming ? "…" : bashMode() ? "!" : ">"}
-            </text>
+              <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+                !
+              </text>
+            </Show>
             <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
               <Show
                 when={props.hasTask}
