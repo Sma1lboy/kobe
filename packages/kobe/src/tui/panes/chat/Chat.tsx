@@ -53,8 +53,8 @@ import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-sl
 import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
+import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
 import {
-  type ChatRow,
   type ChatState,
   type QueuedPrompt,
   createInitialState,
@@ -267,44 +267,10 @@ export function Chat(props: ChatProps) {
   const isCanceled = () => taskStatus() === "canceled"
   const isArchived = () => activeTask()?.archived === true
 
-  // Look up the tail of the active tab for an unresolved user-input
-  // row. Scans from the end (the picker is always near the bottom) and
-  // stops at the first user/assistant row — anything newer than the
-  // picker means the conversation moved on (i.e. the picker was
-  // already resolved). Returned shape is the row itself so callers
-  // can read the requestId / questions list for routing.
-  function findPending(): Extract<ChatRow, { kind: "approval" | "question" }> | null {
-    const msgs = activeState().messages
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (!m) continue
-      if (m.kind === "approval") return m.status === "pending" ? m : null
-      if (m.kind === "question") return m.answers === null ? m : null
-      if (m.kind === "user" || m.kind === "assistant" || m.kind === "bash") return null
-    }
-    return null
-  }
-
-  // Pending approval lock — the subprocess was killed on tool.start
-  // and the only valid next action is Approve/Reject. Free-text would
-  // resume the session ahead of the picker's answer and the model
-  // would see "[user said something else]" instead of "[plan
-  // approved]". Approval stays locked.
-  const pendingApproval = createMemo(() => {
-    const p = findPending()
-    return p?.kind === "approval" ? p : null
-  })
-  // Pending question — picker is up but the user can still type a
-  // free-text answer via the composer (per the AskUserQuestion tool's
-  // "always allow custom text" contract). Composer-submit reroutes
-  // to respondToInput; see handleComposerSubmit.
-  const pendingQuestion = createMemo(() => {
-    const p = findPending()
-    return p?.kind === "question" ? p : null
-  })
-  // Backwards-compat alias for legacy call sites that just want "any
-  // pending input"; new code should prefer the split memos.
-  const hasPendingInput = createMemo(() => pendingApproval() !== null || pendingQuestion() !== null)
+  const pendingInput = createMemo(() => pendingInputPaneState(activeState()))
+  const pendingApproval = createMemo(() => pendingInput().approval)
+  const pendingQuestion = createMemo(() => pendingInput().question)
+  const hasPendingInput = createMemo(() => pendingInput().blocksPromptDispatch)
 
   // True while a `QuestionRow`'s inline "Other" input is open and
   // wants keystrokes. Driven from MessageList → QuestionRow via the
@@ -879,12 +845,8 @@ export function Chat(props: ChatProps) {
     if (q) {
       const taskId = props.taskId()
       if (!taskId) return
-      const answers: Record<string, string> = {}
-      for (const entry of q.questions) {
-        answers[entry.question] = trimmed
-      }
       props.orchestrator
-        .respondToInput(taskId, q.requestId, { kind: "ask_question", answers })
+        .respondToInput(taskId, q.requestId, answerQuestionWithFreeText(q, trimmed))
         .catch((err: unknown) => {
           patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
         })
@@ -935,18 +897,18 @@ export function Chat(props: ChatProps) {
       loadingStartedAt={turnStartedAt()}
       currentTurnChars={currentTurnChars()}
       error={activeState().error}
-      showComposer={!pendingQuestion()}
+      showComposer={pendingInput().showsComposer}
       draft={draft()}
       onDraftChange={setDraft}
       isStreaming={activeState().isStreaming}
-      composerHasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingApproval()}
+      composerHasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingInput().locksComposer}
       noTaskMessage={
         isArchived()
           ? "(archived — unarchive to resume)"
           : isCanceled()
             ? "(task canceled — pick another or press ctrl+n to create)"
-            : pendingApproval()
-              ? "(answer the prompt above to continue)"
+            : pendingInput().composerDisabledMessage
+              ? pendingInput().composerDisabledMessage
               : undefined
       }
       onSubmit={handleComposerSubmit}
@@ -957,7 +919,7 @@ export function Chat(props: ChatProps) {
       permissionModeLabel={permissionModeText}
       onCyclePermissionMode={cyclePermissionMode}
       modelLabel={modelLabel}
-      inputPlaceholder={inputPlaceholder}
+      inputPlaceholder={() => pendingInput().composerPlaceholder ?? inputPlaceholder()}
       onChooseModel={() => void chooseModel()}
       worktreePath={worktreePath}
       queue={() => activeState().queue}
