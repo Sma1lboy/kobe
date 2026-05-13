@@ -641,7 +641,11 @@ export class Orchestrator {
     // cleared (undefined), the vendor stays put — clearing means "use
     // this vendor's default model," not "switch back to claude."
     const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
-    if (tab.model === model && tab.modelEffort === modelEffort && this.vendorForTab(task, tab) === vendor) return
+    const currentVendor = this.vendorForTab(task, tab)
+    if (tab.sessionId && vendor !== currentVendor) {
+      throw new Error("setModel: cannot switch engine for a started chat tab; create a new chat tab")
+    }
+    if (tab.model === model && tab.modelEffort === modelEffort && currentVendor === vendor) return
     await this.updateTab(task.id, tab.id, { model, modelEffort, vendor })
   }
 

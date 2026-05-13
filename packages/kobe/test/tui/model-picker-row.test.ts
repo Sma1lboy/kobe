@@ -57,6 +57,29 @@ describe("model picker option helpers", () => {
     ])
   })
 
+  test("marks cross-engine models disabled when a chat tab is engine-locked", () => {
+    const models = modelPickerModelOptions(
+      [
+        {
+          vendor: "claude",
+          id: "claude-opus-4-7",
+          label: "Opus 4.7",
+        },
+        {
+          vendor: "codex",
+          id: "gpt-5.5",
+          label: "GPT-5.5",
+        },
+      ],
+      { lockedVendor: "claude" },
+    )
+
+    expect(models).toEqual([
+      expect.objectContaining({ id: "claude-opus-4-7", disabled: false, disabledReason: undefined }),
+      expect.objectContaining({ id: "gpt-5.5", disabled: true, disabledReason: "new chat required" }),
+    ])
+  })
+
   test("composer model label includes the selected effort", () => {
     expect(modelLabelFor("gpt-5.5", "xhigh")).toBe("GPT-5.5 · xhigh")
     expect(modelLabelFor("claude-opus-4-7", "max")).toBe("Opus 4.7 · max")

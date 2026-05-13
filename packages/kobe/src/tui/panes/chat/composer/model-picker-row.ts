@@ -1,10 +1,13 @@
 import type { ModelChoice, ModelEffortLevel } from "@/types/engine"
+import type { VendorId } from "@/types/vendor"
 
 export type ModelPickerModelOption = {
   readonly vendor: ModelChoice["vendor"]
   readonly id: string
   readonly label: string
   readonly hint?: string
+  readonly disabled?: boolean
+  readonly disabledReason?: string
   readonly choices: readonly ModelChoice[]
 }
 
@@ -15,7 +18,10 @@ export type ModelPickerEffortOption = {
   readonly hint?: string
 }
 
-export function modelPickerModelOptions(choices: readonly ModelChoice[]): readonly ModelPickerModelOption[] {
+export function modelPickerModelOptions(
+  choices: readonly ModelChoice[],
+  opts: { lockedVendor?: VendorId } = {},
+): readonly ModelPickerModelOption[] {
   const byKey = new Map<string, ModelChoice[]>()
   for (const choice of choices) {
     const key = `${choice.vendor}:${choice.id}`
@@ -34,6 +40,9 @@ export function modelPickerModelOptions(choices: readonly ModelChoice[]): readon
       id: base.id,
       label: stripEffortSuffix(base.label, base.effort),
       hint: base.hint,
+      disabled: opts.lockedVendor !== undefined && base.vendor !== opts.lockedVendor,
+      disabledReason:
+        opts.lockedVendor !== undefined && base.vendor !== opts.lockedVendor ? "new chat required" : undefined,
       choices: bucket,
     }
   })
