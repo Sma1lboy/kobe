@@ -443,16 +443,22 @@ function Shell(props: AppDeps) {
   // through to the orchestrator" lives in `./lib/use-task-actions.ts`.
   // See that hook for the new-task / rename-task / rename-chat-tab /
   // delete-task flows.
-  const { openNewTaskFlow, confirmRenameTask, confirmRenameChatTab, confirmDeleteTask, confirmLocalMergeTask } =
-    useTaskActions({
-      orchestrator: props.orchestrator,
-      dialog,
-      kv,
-      selectedId,
-      setSelectedId,
-      setFocusedPane,
-      savedRepos,
-    })
+  const {
+    openNewTaskFlow,
+    quickForkActiveTask,
+    confirmRenameTask,
+    confirmRenameChatTab,
+    confirmDeleteTask,
+    confirmLocalMergeTask,
+  } = useTaskActions({
+    orchestrator: props.orchestrator,
+    dialog,
+    kv,
+    selectedId,
+    setSelectedId,
+    setFocusedPane,
+    savedRepos,
+  })
 
   // Centralised keymap registration. All six top-level useBindings
   // call sites used to live inline here; they were consolidated into
@@ -650,6 +656,9 @@ function Shell(props: AppDeps) {
                   void confirmRenameChatTab(tabId)
                 }}
                 onOpenFilePath={openFileInCenter}
+                onQuickForkRequest={() => {
+                  void quickForkActiveTask()
+                }}
               />
             </Show>
           </box>

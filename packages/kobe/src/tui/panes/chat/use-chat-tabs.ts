@@ -24,6 +24,7 @@ export function useChatTabs(opts: {
   readonly patchActiveState: PatchState
   readonly abortBashForTab: (tabId: string) => void
   readonly onRenameTabRequest?: (tabId: string) => void
+  readonly onQuickForkRequest?: () => void
 }) {
   function resetExpansion(): void {
     opts.setExpandedToolIndex(null)
@@ -92,6 +93,9 @@ export function useChatTabs(opts: {
         const taskId = opts.taskId()
         if (!taskId) return
         ResumeDialog.show(opts.dialog, opts.orchestrator, taskId)
+      },
+      "chat.fork.new": () => {
+        opts.onQuickForkRequest?.()
       },
     }),
   }))

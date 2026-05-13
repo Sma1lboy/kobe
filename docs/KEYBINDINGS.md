@@ -129,6 +129,33 @@ explanation findable in this file"; if a section sprawls, the underlying design 
 
 ## Decision log
 
+### Quick-fork chord (KOB-74) — why `ctrl+f`, not `ctrl+shift+t`
+
+KOB-74 asked for `ctrl+shift+t` ("new tab" in browsers, restoring a closed tab; semantic
+match for forking into a new task). The keymap layer normalizes terminal-delivered keys
+and **drops the `shift+` modifier on letter keys** (see `lib/keymap-dispatch.ts` —
+`if (evt.shift && name && name.length > 1) mods.push("shift")`). Terminals deliver
+shift+letter as uppercase, not as a modifier event, so `ctrl+shift+t` and `ctrl+t` produce
+identical match candidates. `ctrl+t` is already `chat.tab.new` (open a sibling chat tab in
+the same task), so registering quick-fork on `ctrl+shift+t` would either collide silently
+or steal the existing chord — neither is acceptable.
+
+Candidate chords considered (workspace-scoped, modifier-prefixed, free in the keymap):
+
+- `ctrl+f` — "fork." ctrl+letter has stable C0 byte mappings (`0x06`) in every terminal,
+  no CSI-u / kitty-keyboard / iTerm quirks. The composer's textarea would normally read
+  `ctrl+f` as emacs-style forward-char, but our `useBindings` listener fires first and
+  calls `preventDefault()` so the textarea never sees it.
+- `alt+t` — keeps the "t" semantics. Option+letter on macOS produces a special character
+  (Option+T → †) at the OS level, which the keymap layer surfaces as `alt+t` via
+  `evt.option`. Reliable in most setups, but Option+digit is a known macOS-launcher hazard
+  (Raycast/Karabiner) and Option+letter sometimes follows; ctrl+letter sidesteps it.
+- `ctrl+b` — "branch." Free, but less mnemonic for "fork a task" vs "create a branch."
+
+Landed on `ctrl+f`. The chord is workspace-scoped (only fires when chat owns focus) so it
+doesn't shadow the global focus-numeric set. Decision: KOB-74. See `context/keybindings.ts`
+→ `chat.fork.new` for the registration.
+
 ### Pane focus chord — why `ctrl+hjkl`, not `ctrl+1..4`
 
 We iterated through three candidates before landing on `ctrl+hjkl`. Recording the journey here so the next agent (or Jackson) doesn't

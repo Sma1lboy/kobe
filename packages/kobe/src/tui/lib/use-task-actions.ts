@@ -9,6 +9,12 @@
  *   - `openNewTaskFlow()` — opens NewTaskDialog, calls
  *     `orchestrator.createTask`, persists the last-repo, focuses the
  *     workspace pane.
+ *   - `quickForkActiveTask()` — KOB-74. From a focused chat tab, opens
+ *     QuickForkDialog seeded with the active task's repo/branch/model,
+ *     then creates a child task and dispatches the prompt as its first
+ *     turn. Inheritance: repo from source.repo, baseRef from
+ *     source.branch (or HEAD for `kind: "main"`), model + vendor +
+ *     permissionMode from the source's active tab.
  *   - `confirmRenameTask(taskId)` — opens RenameTaskDialog, calls
  *     `orchestrator.setTitle`.
  *   - `confirmRenameChatTab(tabId)` — opens RenameTaskDialog for the
@@ -28,6 +34,8 @@ import type { Accessor } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator.ts"
 import { removeSavedRepo } from "../../state/repos.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
+import { getCurrentBranch } from "../component/new-task-dialog/state"
+import { QuickForkDialog } from "../component/quick-fork-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import type { PaneId } from "../context/focus"
 import type { KVContext } from "../context/kv"
@@ -48,6 +56,7 @@ export type TaskActionsDeps = {
 
 export type TaskActions = {
   openNewTaskFlow: () => Promise<void>
+  quickForkActiveTask: () => Promise<void>
   confirmRenameTask: (taskId: string) => Promise<void>
   confirmRenameChatTab: (tabId: string) => Promise<void>
   confirmDeleteTask: (taskId: string) => Promise<void>
@@ -98,6 +107,95 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       // and the chat pane may not be subscribed (no task selected).
       // eslint-disable-next-line no-console
       console.error("[kobe] createTask failed:", err)
+    }
+  }
+
+  /**
+   * KOB-74 — quick-fork the currently selected task. Opens a compact
+   * picker dialog seeded with the source task's repo, branch, model,
+   * and effort. The dialog lets the user override the model + effort
+   * inline before typing the first prompt; on submit, creates a child
+   * task that inherits repo + branch (always) and the picked model +
+   * effort (potentially different from the source), then dispatches
+   * the prompt as the first turn.
+   *
+   * Inheritance map (defaults — user may override via dialog picker):
+   *   - repo        = source.repo (always inherited, no override)
+   *   - baseRef     = source.branch when non-empty (regular tasks);
+   *                   `getCurrentBranch(source.worktreePath || source.repo)`
+   *                   when blank (`kind: "main"` rows) — falls back to
+   *                   "main" if HEAD is detached. Always inherited.
+   *   - model       = active tab's model (or source.model legacy
+   *                   fallback). Default cursor position in dialog;
+   *                   user may pick a different model.
+   *   - effort      = active tab's modelEffort (or source.modelEffort).
+   *                   Default cursor in effort list when applicable.
+   *   - permission  = source.permissionMode (preserves plan-mode etc.).
+   *                   Always inherited.
+   *
+   * The new task's first prompt is dispatched immediately via runTask
+   * — not parked on the composer's pending-prompt accessor — because
+   * the source task may still be streaming and we want the fork to
+   * start in parallel without waiting for a composer hydrate.
+   *
+   * No-ops when no task is selected. Errors are surfaced to stderr.
+   */
+  async function quickForkActiveTask(): Promise<void> {
+    const sourceId = selectedId()
+    if (!sourceId) return
+    const source = orchestrator.getTask(sourceId)
+    if (!source) return
+    const activeTab = source.tabs.find((t) => t.id === source.activeTabId) ?? source.tabs[0]
+    const inheritedModel = activeTab?.model ?? source.model
+    const inheritedEffort = activeTab?.modelEffort ?? source.modelEffort
+    const inheritedPermission = source.permissionMode
+    // `kind: "main"` rows have `branch === ""` (the live branch is
+    // resolved at display time, not stored). Read HEAD directly from
+    // the worktreePath (which equals the repo root for main rows) so
+    // the fork starts at the same commit the user is actively on.
+    const baseRef =
+      source.branch && source.branch.length > 0
+        ? source.branch
+        : (getCurrentBranch(source.worktreePath || source.repo) ?? "main")
+    const result = await QuickForkDialog.show(dialog, {
+      repo: source.repo,
+      baseRef,
+      modelId: inheritedModel,
+      effort: inheritedEffort,
+    })
+    if (result === undefined) return
+    try {
+      const created = await orchestrator.createTask({
+        repo: source.repo,
+        baseRef,
+        prompt: result.prompt,
+      })
+      // Apply chosen model+effort/permission to the new task's default
+      // tab before dispatching the run so the engine spawn uses the
+      // intended config from the very first invocation. setModel routes
+      // the new task to the right vendor based on the model id.
+      const newTabId = created.activeTabId
+      await orchestrator.setModel(created.id, result.modelId, newTabId, result.effort).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[kobe] quick-fork setModel failed:", err)
+      })
+      if (inheritedPermission !== undefined) {
+        await orchestrator.setPermissionMode(created.id, inheritedPermission).catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error("[kobe] quick-fork setPermissionMode failed:", err)
+        })
+      }
+      // Focus the new task so the user lands on its chat tab while the
+      // first turn is starting up — same UX as openNewTaskFlow.
+      setSelectedId(created.id)
+      setFocusedPane("workspace")
+      // Dispatch the first prompt. runTask handles the lazy worktree
+      // allocation; the new task switches from `backlog` → `in_progress`
+      // and the user starts seeing assistant deltas immediately.
+      await orchestrator.runTask(created.id, result.prompt, newTabId)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] quickForkActiveTask failed:", err)
     }
   }
 
@@ -235,6 +333,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
 
   return {
     openNewTaskFlow,
+    quickForkActiveTask,
     confirmRenameTask,
     confirmRenameChatTab,
     confirmDeleteTask,
