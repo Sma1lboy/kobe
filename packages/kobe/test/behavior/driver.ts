@@ -229,9 +229,16 @@ export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
       if (closed) throw new Error("kobe pty is closed")
       await handle.openNewTaskDialog()
       const deadline = Date.now() + DEFAULT_TIMEOUT_MS
+      let found = false
       while (Date.now() < deadline) {
-        if (normalizeScreen(buffer).includes("New task")) break
+        if (normalizeScreen(buffer).includes("New task")) {
+          found = true
+          break
+        }
         await sleep(50)
+      }
+      if (!found) {
+        throw new Error(`openNewTaskDialog did not show the "New task" dialog within ${DEFAULT_TIMEOUT_MS}ms`)
       }
       // Repo is the first focused field. Replace the cwd-prefilled
       // value, tab to baseRef, replace it too, then tab to confirm.

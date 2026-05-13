@@ -131,7 +131,6 @@ function tabKey(taskId: string, tabId: string): string {
  */
 export class Orchestrator {
   private readonly engineRouter: EngineRouter
-  private readonly fallbackEngine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly metadataSuggester: MetadataSuggester
@@ -143,28 +142,6 @@ export class Orchestrator {
    * just its handle, leaving sibling tabs alive.
    */
   private readonly handles = new Map<string, SessionHandle>()
-  /**
-   * Per-tab first-spawn coalescing latch. Keyed by `${taskId}:${tabId}`.
-   *
-   * When a chat tab has no `sessionId` yet, two concurrent {@link runTask}
-   * calls would each enter the spawn branch, each fire `engine.spawn`,
-   * each allocate a fresh JSONL session — and only the *last* updateTab
-   * survives on the tab, leaving the other sessions orphaned on disk
-   * and breaking conversation continuity (the model sees the chat
-   * fragmented across N single-prompt sessions instead of one chained
-   * conversation). The race fires for real when a fast typist hits
-   * Enter twice before the first spawn's `user.inject` event has
-   * round-tripped through the daemon's event bus and flipped the
-   * chat's `isStreaming` signal — the queue path can't intercept
-   * because, as far as the chat reducer can see, no turn is in flight.
-   *
-   * The latch closes that window at the orchestrator boundary: the
-   * first runTask claims the slot, awaits its spawn + updateTab, then
-   * resolves the promise. Concurrent runTask callers see the latch,
-   * await it, then re-read the tab — which now has the established
-   * sessionId — and proceed as a normal resume.
-   */
-  private readonly firstSpawnLatches = new Map<string, Promise<void>>()
   /**
    * Event-bus subscribers keyed by `${taskId}:${tabId}`. Subscribers
    * stay attached when the user switches tabs in the UI — the switch is
@@ -216,7 +193,6 @@ export class Orchestrator {
       store: deps.store,
       onTabVendorResolved: (taskId, tabId, vendor) => this.updateTab(taskId, tabId, { vendor }),
     })
-    this.fallbackEngine = this.engineRouter.fallback()
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
     this.worktreeCoordinator = new TaskWorktreeCoordinator({

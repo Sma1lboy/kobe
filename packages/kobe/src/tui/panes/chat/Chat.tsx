@@ -56,6 +56,7 @@ import { formatContextUsageCompact } from "./context-meter"
 import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
 import {
   type ChatState,
+  QUEUE_SOFT_CAP,
   type QueuedPrompt,
   createInitialState,
   dequeueFirst,
@@ -625,7 +626,7 @@ export function Chat(props: ChatProps) {
       // Queue path. Refuse silently when the soft cap is hit; the
       // composer's footer hint surfaces the cap to the user.
       if (queueIsFull(activeState())) {
-        patchActiveState((s) => pushSystemError(s, `queue is full (max ${activeState().queue.length})`))
+        patchActiveState((s) => pushSystemError(s, `queue is full (max ${QUEUE_SOFT_CAP})`))
         return
       }
       setDraft("")

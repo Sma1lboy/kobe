@@ -29,7 +29,7 @@ function stringifyForTokenEstimate(value: unknown): string {
   if (value === undefined || value === null) return ""
   if (typeof value === "string") return value
   try {
-    return JSON.stringify(value)
+    return JSON.stringify(value) ?? String(value)
   } catch {
     return String(value)
   }
@@ -38,7 +38,7 @@ function stringifyForTokenEstimate(value: unknown): string {
 export function stringifyErr(err: unknown): string {
   if (err instanceof Error) return err.message
   try {
-    return JSON.stringify(err)
+    return JSON.stringify(err) ?? String(err)
   } catch {
     return String(err)
   }

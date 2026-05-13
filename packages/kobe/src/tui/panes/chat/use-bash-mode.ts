@@ -3,6 +3,7 @@ import { runBashCommand } from "./bash-mode"
 import { stringifyErr } from "./chat-utils"
 import {
   type ChatState,
+  QUEUE_SOFT_CAP,
   drainPendingBashContext,
   enqueueBashCommand,
   formatBashContextPrefix,
@@ -39,7 +40,7 @@ export function useBashMode(opts: {
     if (opts.activeState().isStreaming) {
       if (!opts.activeTabId()) return
       if (queueIsFull(opts.activeState())) {
-        opts.patchActiveState((s) => pushSystemError(s, `queue is full (max ${opts.activeState().queue.length})`))
+        opts.patchActiveState((s) => pushSystemError(s, `queue is full (max ${QUEUE_SOFT_CAP})`))
         return
       }
       opts.patchActiveState((s) => enqueueBashCommand(s, command))
