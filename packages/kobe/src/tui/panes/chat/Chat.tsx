@@ -470,8 +470,17 @@ export function Chat(props: ChatProps) {
         // long unbroken assistant ramble.
         const dispatched = head as { id: string; text: string; ts: string } | null
         if (!dispatched) return
+        // Drain pending !bash context HERE (at dispatch time), not at
+        // enqueue time. A bash command that runs WHILE a prompt sits
+        // in the queue should attach its context to that prompt (the
+        // model sees the bash output immediately preceding the user's
+        // intent), not drift to the prompt after. Mirrors claude-code's
+        // conversation semantics where bash messages join history at
+        // the moment they execute.
+        const bashPrefix = drainBashContextPrefix()
+        const finalText = bashPrefix.length > 0 ? bashPrefix + dispatched.text : dispatched.text
         try {
-          await props.orchestrator.runTask(taskId, dispatched.text, tabId)
+          await props.orchestrator.runTask(taskId, finalText, tabId)
         } catch (err) {
           patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
         }
@@ -495,6 +504,16 @@ export function Chat(props: ChatProps) {
   // processes were killed when the runtime exited the closure.
   const bashAbortsByTab = new Map<string, AbortController>()
 
+  // On Chat unmount, abort every in-flight bash. Without this, a Chat
+  // that gets swapped out (file preview opening, app exit) leaves
+  // child processes running up to their 30-min timeout, each one
+  // writing into a ChatState that's already been GC'd by
+  // useChatSession's teardown.
+  onCleanup(() => {
+    for (const ac of bashAbortsByTab.values()) ac.abort()
+    bashAbortsByTab.clear()
+  })
+
   /**
    * Fire-and-forget entry for the composer's `!cmd` submit. The composer
    * has already stripped the `!`; we own pushing the bash row, streaming
@@ -511,7 +530,7 @@ export function Chat(props: ChatProps) {
     if (!taskId || !tabId) return
     const cwd = worktreePath()
     if (!cwd) {
-      patchActiveState((s) => pushSystemError(s, "bash: task has no worktree yet"))
+      patchStateForTab(tabId, (s) => pushSystemError(s, "bash: task has no worktree yet"))
       return
     }
     // One bash at a time per tab — abort the prior run if still active.
@@ -521,7 +540,15 @@ export function Chat(props: ChatProps) {
     bashAbortsByTab.set(tabId, ac)
 
     const id = `bash-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-    patchActiveState((s) => pushBashRow(s, { id, command }))
+    // CRITICAL: every patch below uses `patchStateForTab(tabId, …)`, not
+    // `patchActiveState`. The bash runs asynchronously; if the user
+    // switches tabs mid-run, `activeTabId()` no longer points at this
+    // bash's tab, so a `patchActiveState` call would (a) silently miss
+    // the row on the new active tab (id mismatch) and (b) attach the
+    // completed `pendingBashContext` to the wrong tab's next prompt.
+    // The `tabId` captured at the top of this function is the source
+    // of truth for the duration of the run.
+    patchStateForTab(tabId, (s) => pushBashRow(s, { id, command }))
 
     // Accumulate output locally so we don't have to fish the final
     // stdout/stderr back out of the reducer state at completion time
@@ -534,21 +561,23 @@ export function Chat(props: ChatProps) {
         cwd,
         onStdout: (chunk) => {
           stdoutAcc += chunk
-          patchActiveState((s) => patchBashRow(s, id, { stdoutAppend: chunk }))
+          patchStateForTab(tabId, (s) => patchBashRow(s, id, { stdoutAppend: chunk }))
         },
         onStderr: (chunk) => {
           stderrAcc += chunk
-          patchActiveState((s) => patchBashRow(s, id, { stderrAppend: chunk }))
+          patchStateForTab(tabId, (s) => patchBashRow(s, id, { stderrAppend: chunk }))
         },
         signal: ac.signal,
       })
-      patchActiveState((s) => patchBashRow(s, id, { done: true, exitCode: result.exitCode, signal: result.signal }))
+      patchStateForTab(tabId, (s) =>
+        patchBashRow(s, id, { done: true, exitCode: result.exitCode, signal: result.signal }),
+      )
       // Skip pending-context stash on a user-initiated abort — Esc /
       // Ctrl-C cancelled the run, the model shouldn't see a half-baked
       // output as context. Timeouts still stash (exitCode === -1,
       // signal === null) so the model can reason about the failure.
       if (!ac.signal.aborted) {
-        patchActiveState((s) =>
+        patchStateForTab(tabId, (s) =>
           pushPendingBashContext(s, {
             command,
             stdout: stdoutAcc,
@@ -558,8 +587,8 @@ export function Chat(props: ChatProps) {
         )
       }
     } catch (err) {
-      patchActiveState((s) => patchBashRow(s, id, { done: true, exitCode: -1, signal: null }))
-      patchActiveState((s) => pushSystemError(s, `bash failed: ${stringifyErr(err)}`))
+      patchStateForTab(tabId, (s) => patchBashRow(s, id, { done: true, exitCode: -1, signal: null }))
+      patchStateForTab(tabId, (s) => pushSystemError(s, `bash failed: ${stringifyErr(err)}`))
     } finally {
       if (bashAbortsByTab.get(tabId) === ac) bashAbortsByTab.delete(tabId)
     }
@@ -628,11 +657,14 @@ export function Chat(props: ChatProps) {
 
     const streaming = activeState().isStreaming
 
-    // Drain any pending `!bash` interactions into an XML prefix. The
-    // prefix is concatenated with `text` before dispatch on every path
-    // (steer / queue / idle) so the model sees the bash context no
-    // matter how the user submitted. Empty when nothing pending.
-    const bashPrefix = drainBashContextPrefix()
+    // Drain `!bash` context here for the IMMEDIATE-dispatch paths (idle
+    // and steer). Queue path defers the drain to the queue-drain
+    // microtask above so bash commands that complete WHILE the prompt
+    // sits in the queue still attach to that prompt, not the one after
+    // — matches claude-code's "bash messages join conversation history
+    // at the moment they execute" semantics.
+    const immediate = !streaming || mode === "steer"
+    const bashPrefix = immediate ? drainBashContextPrefix() : ""
     const dispatched = bashPrefix.length > 0 ? bashPrefix + text : text
 
     if (streaming && mode === "steer") {
@@ -673,7 +705,11 @@ export function Chat(props: ChatProps) {
         return
       }
       setDraft("")
-      patchActiveState((s) => enqueuePrompt(s, dispatched))
+      // Stash the user's RAW text; the queue-drain microtask folds in
+      // whatever bash context is pending at dispatch time. Storing
+      // `dispatched` (with prefix) would freeze stale context onto the
+      // queued prompt.
+      patchActiveState((s) => enqueuePrompt(s, text))
       return
     }
 
@@ -732,6 +768,11 @@ export function Chat(props: ChatProps) {
     const tabId = activeTabId()
     if (!taskId || !tabId) return
     if (tabs().length <= 1) return
+    // Abort any in-flight bash for this tab BEFORE the orchestrator
+    // tears it down. Otherwise the subprocess keeps running up to the
+    // 30-minute timeout, writing into an orphaned ChatState that's
+    // about to be GC'd by syncTabSubs.
+    bashAbortsByTab.get(tabId)?.abort()
     try {
       const nextActive = await props.orchestrator.closeTab(taskId, tabId)
       // The controller's syncTabSubs drops the orphan tab's state +

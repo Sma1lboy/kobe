@@ -82,20 +82,27 @@ export async function runBashCommand(opts: RunBashCommandOpts): Promise<RunBashC
       return
     }
 
+    // Declared up front (with later assignment) so `finish` can safely
+    // `clearTimeout` even if it's called before the timeout is wired —
+    // e.g. a synchronous `error` event under a mocked child. The
+    // runtime-visible TDZ window otherwise depended on Node emitting
+    // events asynchronously, which is load-bearing in a fragile way.
+    // biome-ignore lint/style/useConst: reassigned at line 152 after listener wiring; biome doesn't see the second write across this distance.
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+
     let settled = false
     const finish = (result: RunBashCommandResult): void => {
       if (settled) return
       settled = true
-      clearTimeout(timeoutHandle)
+      if (timeoutHandle) clearTimeout(timeoutHandle)
       opts.signal.removeEventListener("abort", onAbort)
       resolve(result)
     }
 
-    // Stream stdout/stderr as UTF-8 text. The Buffer→string conversion
-    // is async-safe (each `data` callback gets a complete chunk that
-    // arrived in one read), but cross-chunk UTF-8 sequences would
-    // mojibake on the boundary. Matches upstream's pragmatic choice;
-    // CJK-heavy output may show a `�` at chunk seams.
+    // Node's Readable.setEncoding('utf8') buffers partial multi-byte
+    // sequences across chunks via a StringDecoder — chunk seams do
+    // NOT corrupt CJK / emoji. (The earlier draft of this comment
+    // claimed otherwise; the StringDecoder docs are the source.)
     child.stdout?.setEncoding("utf8")
     child.stderr?.setEncoding("utf8")
     child.stdout?.on("data", (chunk: string) => {
@@ -143,7 +150,7 @@ export async function runBashCommand(opts: RunBashCommandOpts): Promise<RunBashC
     }
 
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
-    const timeoutHandle = setTimeout(() => {
+    timeoutHandle = setTimeout(() => {
       if (settled) return
       opts.onStderr(`(kobe: command timed out after ${Math.round(timeoutMs / 1000)}s)\n`)
       try {
@@ -151,6 +158,18 @@ export async function runBashCommand(opts: RunBashCommandOpts): Promise<RunBashC
       } catch {
         /* exit handler will fire */
       }
+      // Escalate to SIGKILL if SIGTERM is ignored — same 500ms grace
+      // the abort path uses. Without this a child that traps SIGTERM
+      // (or a shell wrapper that doesn't propagate it) runs forever
+      // even though the timeout already "fired".
+      setTimeout(() => {
+        if (settled) return
+        try {
+          child.kill("SIGKILL")
+        } catch {
+          /* exit handler will fire */
+        }
+      }, 500).unref()
     }, timeoutMs)
     timeoutHandle.unref()
   })

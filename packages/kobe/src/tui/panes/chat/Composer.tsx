@@ -1045,7 +1045,7 @@ export function Composer(props: ComposerProps) {
   const streamingNotice = () => {
     if (!props.hasTask) return ""
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
-    if (bashMode()) return "bash mode · enter to run · esc to cancel"
+    if (bashMode()) return "bash mode · enter to run"
     return ""
   }
   // Footer hint slot: paste-related feedback (e.g. "no image on
