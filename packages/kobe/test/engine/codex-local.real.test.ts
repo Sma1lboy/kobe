@@ -276,7 +276,10 @@ d("CodexLocal — orchestrator end-to-end (V7)", () => {
         // a terminal "error" here as long as the routing reached codex.
         // Happy-path users see a done + a PONG reply.
         if (terminal?.type === "done") {
-          const reply = events.find((e) => e.type === "assistant.delta")?.text ?? ""
+          const reply = events
+            .filter((e): e is Extract<OrchestratorEvent, { type: "assistant.delta" }> => e.type === "assistant.delta")
+            .map((e) => e.text)
+            .join("")
           expect(reply).toMatch(/pong/i)
         }
       } finally {
