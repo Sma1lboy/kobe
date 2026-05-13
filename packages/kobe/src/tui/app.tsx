@@ -24,7 +24,11 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
-import { connectOrStartDaemon, connectOrStartOwnedDaemon } from "../client/daemon-process.ts"
+import {
+  connectOrStartDaemon,
+  connectOrStartOwnedDaemon,
+  ensureOwnedDaemonReachable,
+} from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -753,14 +757,15 @@ export async function startApp(): Promise<void> {
     }
   } else {
     const daemonMode = process.env.KOBE_DAEMON_MODE === "shared" ? "shared" : "single"
-    const client =
-      daemonMode === "shared"
-        ? await connectOrStartDaemon()
-        : await connectOrStartOwnedDaemon().then((owned) => {
-            stopOwnedDaemon = owned.stop
-            return owned.client
-          })
-    orchestrator = new RemoteOrchestrator(client)
+    if (daemonMode === "shared") {
+      orchestrator = new RemoteOrchestrator(await connectOrStartDaemon())
+    } else {
+      const owned = await connectOrStartOwnedDaemon()
+      stopOwnedDaemon = owned.stop
+      orchestrator = new RemoteOrchestrator(owned.client, {
+        ensureReachable: () => ensureOwnedDaemonReachable(owned.socketPath, owned.pidPath),
+      })
+    }
     await orchestrator.init()
   }
   // KOB-15: seed a pinned "main" task per saved repo. Idempotent:

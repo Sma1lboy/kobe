@@ -72,6 +72,35 @@ export async function connectOrStartOwnedDaemon(): Promise<OwnedDaemonClient> {
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   const socketPath = fitSocketPath(join(homeDir, ".kobe", `daemon-${process.pid}.sock`), homeDir, "daemon", process.pid)
   const pidPath = join(homeDir, ".kobe", `daemon-${process.pid}.pid`)
+  await ensureOwnedDaemonReachable(socketPath, pidPath)
+
+  const client = new KobeDaemonClient(socketPath)
+  await client.connect()
+  return {
+    client,
+    socketPath,
+    pidPath,
+    stop: async () => {
+      try {
+        await client.request("daemon.stop")
+      } catch {
+        /* daemon may already be gone */
+      } finally {
+        client.close()
+      }
+    },
+  }
+}
+
+/**
+ * Start an owned daemon on a caller-chosen socket/pid path.
+ *
+ * Used both for initial single-daemon boot and for the disconnect
+ * modal's Restart path. The important detail: reconnect must reuse the
+ * existing client's socket path (`daemon-<tui pid>.sock`), not the
+ * shared production daemon socket.
+ */
+export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: string): Promise<void> {
   await unlink(socketPath).catch(() => {})
 
   const { entry, runWithBun } = resolveKobedEntry()
@@ -96,22 +125,7 @@ export async function connectOrStartOwnedDaemon(): Promise<OwnedDaemonClient> {
   const deadline = Date.now() + 5000
   while (Date.now() < deadline) {
     if (await testCanConnect(socketPath)) {
-      const client = new KobeDaemonClient(socketPath)
-      await client.connect()
-      return {
-        client,
-        socketPath,
-        pidPath,
-        stop: async () => {
-          try {
-            await client.request("daemon.stop")
-          } catch {
-            /* daemon may already be gone */
-          } finally {
-            client.close()
-          }
-        },
-      }
+      return
     }
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
   }
