@@ -32,6 +32,7 @@ import {
   createInitialState,
   dequeueFirst,
   drainPendingBashContext,
+  enqueueBashCommand,
   enqueuePrompt,
   formatBashContextPrefix,
   patchBashRow,
@@ -71,9 +72,11 @@ describe("queue reducers", () => {
 
     const s1 = enqueuePrompt(s0, "queued one", FIXED_TS)
     expect(s1.queue).toHaveLength(1)
-    expect(s1.queue[0]?.text).toBe("queued one")
-    expect(s1.queue[0]?.ts).toBe(FIXED_TS)
-    expect(s1.queue[0]?.id).toMatch(/^q-/)
+    const head = s1.queue[0]
+    if (head?.kind !== "prompt") throw new Error("type narrowing")
+    expect(head.text).toBe("queued one")
+    expect(head.ts).toBe(FIXED_TS)
+    expect(head.id).toMatch(/^q-/)
     // pushUser side effects intact
     expect(s1.messages).toEqual(s0.messages)
     expect(s1.isStreaming).toBe(true)
@@ -111,13 +114,18 @@ describe("queue reducers", () => {
     s = enqueuePrompt(s, "b", FIXED_TS)
     s = enqueuePrompt(s, "c", FIXED_TS)
 
+    const promptText = (q: { kind: "prompt"; text: string } | { kind: "bash"; command: string }) =>
+      q.kind === "prompt" ? q.text : `!${q.command}`
+
     const [s1, h1] = dequeueFirst(s)
-    expect(h1?.text).toBe("a")
-    expect(s1.queue.map((q) => q.text)).toEqual(["b", "c"])
+    if (h1?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h1.text).toBe("a")
+    expect(s1.queue.map(promptText)).toEqual(["b", "c"])
 
     const [s2, h2] = dequeueFirst(s1)
-    expect(h2?.text).toBe("b")
-    expect(s2.queue.map((q) => q.text)).toEqual(["c"])
+    if (h2?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h2.text).toBe("b")
+    expect(s2.queue.map(promptText)).toEqual(["c"])
   })
 
   test("removeFromQueue drops the matching entry, leaves siblings intact", () => {
@@ -128,7 +136,7 @@ describe("queue reducers", () => {
     const targetId = s.queue[1]?.id
     expect(targetId).toBeDefined()
     const next = removeFromQueue(s, targetId as string)
-    expect(next.queue.map((q) => q.text)).toEqual(["a", "c"])
+    expect(next.queue.map((q) => (q.kind === "prompt" ? q.text : `!${q.command}`))).toEqual(["a", "c"])
   })
 
   test("removeFromQueue with an unknown id is a no-op (identity preserved)", () => {
@@ -162,6 +170,52 @@ describe("queue reducers", () => {
     const next = applyEvent(s, { type: "done" }, FIXED_TS)
     expect(next.isStreaming).toBe(false)
     expect(next.queue).toEqual(s.queue) // queue intact — drain happens at the chat-shell layer
+  })
+})
+
+describe("bash mode queue reducers (KOB-83 mid-stream parity)", () => {
+  // claude-code's handlePromptSubmit enqueues bash commands with
+  // mode='bash' when a turn is mid-flight; kobe mirrors that with
+  // a discriminated `QueuedPrompt` union so the drain microtask can
+  // fork on `kind`. These tests pin that contract.
+
+  test("enqueueBashCommand appends a bash entry with kind=bash + command", () => {
+    const s = enqueueBashCommand(createInitialState(), "ls -la", FIXED_TS)
+    expect(s.queue).toHaveLength(1)
+    const head = s.queue[0]
+    if (head?.kind !== "bash") throw new Error("type narrowing")
+    expect(head.command).toBe("ls -la")
+    expect(head.kind).toBe("bash")
+    expect(head.ts).toBe(FIXED_TS)
+    expect(head.id).toMatch(/^q-/)
+  })
+
+  test("enqueueBashCommand and enqueuePrompt share FIFO order", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "explain", FIXED_TS)
+    s = enqueueBashCommand(s, "ls", FIXED_TS)
+    s = enqueuePrompt(s, "and after", FIXED_TS)
+    expect(s.queue.map((q) => q.kind)).toEqual(["prompt", "bash", "prompt"])
+  })
+
+  test("enqueueBashCommand honors QUEUE_SOFT_CAP", () => {
+    let s = createInitialState()
+    for (let i = 0; i < QUEUE_SOFT_CAP; i++) s = enqueueBashCommand(s, `cmd${i}`, FIXED_TS)
+    expect(queueIsFull(s)).toBe(true)
+    const refused = enqueueBashCommand(s, "overflow", FIXED_TS)
+    expect(refused).toBe(s)
+  })
+
+  test("dequeueFirst on a mixed-kind queue pops bash and prompt items in order", () => {
+    let s = createInitialState()
+    s = enqueueBashCommand(s, "ls", FIXED_TS)
+    s = enqueuePrompt(s, "explain", FIXED_TS)
+    const [s1, h1] = dequeueFirst(s)
+    if (h1?.kind !== "bash") throw new Error("type narrowing")
+    expect(h1.command).toBe("ls")
+    const [, h2] = dequeueFirst(s1)
+    if (h2?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h2.text).toBe("explain")
   })
 })
 
@@ -228,9 +282,7 @@ describe("bash mode reducers (KOB-83)", () => {
   })
 
   test("formatBashContextPrefix wraps each interaction in <bash-*> XML tags", () => {
-    const prefix = formatBashContextPrefix([
-      { command: "echo hi", stdout: "hi\n", stderr: "", exitCode: 0 },
-    ])
+    const prefix = formatBashContextPrefix([{ command: "echo hi", stdout: "hi\n", stderr: "", exitCode: 0 }])
     expect(prefix).toContain("<bash-input>echo hi</bash-input>")
     expect(prefix).toContain("<bash-stdout>hi\n</bash-stdout>")
     expect(prefix).not.toContain("<bash-stderr>")
@@ -239,18 +291,14 @@ describe("bash mode reducers (KOB-83)", () => {
   })
 
   test("formatBashContextPrefix omits empty stderr/stdout sections", () => {
-    const prefix = formatBashContextPrefix([
-      { command: "true", stdout: "", stderr: "", exitCode: 0 },
-    ])
+    const prefix = formatBashContextPrefix([{ command: "true", stdout: "", stderr: "", exitCode: 0 }])
     expect(prefix).toContain("<bash-input>true</bash-input>")
     expect(prefix).not.toContain("<bash-stdout>")
     expect(prefix).not.toContain("<bash-stderr>")
   })
 
   test("formatBashContextPrefix escapes XML metacharacters in command + output", () => {
-    const prefix = formatBashContextPrefix([
-      { command: "echo '<x>&amp;'", stdout: "</tag>", stderr: "", exitCode: 0 },
-    ])
+    const prefix = formatBashContextPrefix([{ command: "echo '<x>&amp;'", stdout: "</tag>", stderr: "", exitCode: 0 }])
     expect(prefix).toContain("&lt;x&gt;")
     expect(prefix).toContain("&amp;amp;")
     expect(prefix).toContain("&lt;/tag&gt;")
@@ -264,9 +312,7 @@ describe("bash mode reducers (KOB-83)", () => {
     // The prefix lands in the engine's JSONL via the next prompt; on
     // history hydration kobe's noise-tag filter must hide it from the
     // chat UI, matching upstream claude-code's behavior.
-    const prefix = formatBashContextPrefix([
-      { command: "ls", stdout: "foo\nbar", stderr: "", exitCode: 0 },
-    ])
+    const prefix = formatBashContextPrefix([{ command: "ls", stdout: "foo\nbar", stderr: "", exitCode: 0 }])
     const masquerading = `${prefix}what just happened?`
     expect(cleanChatText(masquerading)).toBe("what just happened?")
   })

@@ -59,9 +59,11 @@ import { formatContextUsageCompact } from "./context-meter"
 import {
   type ChatRow,
   type ChatState,
+  type QueuedPrompt,
   createInitialState,
   dequeueFirst,
   drainPendingBashContext,
+  enqueueBashCommand,
   enqueuePrompt,
   formatBashContextPrefix,
   patchBashRow,
@@ -456,20 +458,42 @@ export function Chat(props: ChatProps) {
       if (cur.isStreaming || cur.queue.length === 0) return
       dispatching = true
       try {
-        let head: { id: string; text: string; ts: string } | null = null
+        let head: QueuedPrompt | null = null
         patchActiveState((s) => {
           const [next, popped] = dequeueFirst(s)
           head = popped
           return next
         })
+        // The `as` cast is load-bearing: TS doesn't trust that the
+        // patchActiveState callback ran synchronously, so it narrows
+        // `head` to `null` (its initialization value) and the kind
+        // check below collapses to `never`. The original (pre-bash)
+        // code carried the same cast for the same reason.
+        const dispatched = head as QueuedPrompt | null
+        if (!dispatched) return
+        // Route by kind. Bash items run locally via runBashLocally
+        // (which awaits the subprocess) — serial with whatever else
+        // is queued. Prompt items run the engine turn with bash
+        // context prepended. Mirrors claude-code's drain in
+        // `executeUserInput`: each queued command goes through
+        // `processUserInput`, which forks on `mode === 'bash'` vs
+        // prompt without breaking the queue's FIFO semantics.
+        if (dispatched.kind === "bash") {
+          // Awaiting here keeps the queue serial — the effect re-runs
+          // on the next reactive tick and drains the next item only
+          // after this bash exits. A long-running command (`!sleep 60`)
+          // blocks subsequent prompts until it finishes or the user
+          // Escs the abort.
+          await runBashLocally(dispatched.command)
+          return
+        }
         // The user row appears via the orchestrator's user.inject
         // event fired at the start of runTask. Pushing it locally
         // here used to be the source of truth, but that bypassed
         // the daemon's broadcast so other attached TUIs never saw
         // the user message — leaving their chat looking like one
         // long unbroken assistant ramble.
-        const dispatched = head as { id: string; text: string; ts: string } | null
-        if (!dispatched) return
+        //
         // Drain pending !bash context HERE (at dispatch time), not at
         // enqueue time. A bash command that runs WHILE a prompt sits
         // in the queue should attach its context to that prompt (the
@@ -519,8 +543,26 @@ export function Chat(props: ChatProps) {
    * has already stripped the `!`; we own pushing the bash row, streaming
    * output into it, and stashing the completed interaction so the next
    * regular prompt can fold it into the model context as XML.
+   *
+   * Streaming-state routing mirrors claude-code's `handlePromptSubmit`
+   * (`refs/claude-code/src/utils/handlePromptSubmit.ts:313-350`): an
+   * engine turn in flight → enqueue and wait. The queue-drain microtask
+   * runs the bash command serially with whatever else is queued so
+   * shell output doesn't race the engine writing into the same worktree
+   * (e.g. claude editing a file while user `!cat`s it would otherwise
+   * see partial state). Idle path runs immediately, same as before.
    */
   function handleBashCommand(command: string): void {
+    if (activeState().isStreaming) {
+      const tabId = activeTabId()
+      if (!tabId) return
+      if (queueIsFull(activeState())) {
+        patchActiveState((s) => pushSystemError(s, `queue is full (max ${activeState().queue.length})`))
+        return
+      }
+      patchActiveState((s) => enqueueBashCommand(s, command))
+      return
+    }
     void runBashLocally(command)
   }
 
@@ -744,6 +786,14 @@ export function Chat(props: ChatProps) {
     const entry = activeState().queue.find((q) => q.id === id)
     if (!entry) return
     patchActiveState((s) => removeFromQueue(s, id))
+    if (entry.kind === "bash") {
+      // Bash items in the queue can't "steer" — there's no engine turn
+      // to interrupt for a local shell call. Promote to immediate
+      // execution instead; aborts whatever bash is currently in-flight
+      // for the tab (matches the abort-prior rule in runBashLocally).
+      void runBashLocally(entry.command)
+      return
+    }
     void send(entry.text, "steer")
   }
 

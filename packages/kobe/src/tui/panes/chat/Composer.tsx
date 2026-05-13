@@ -190,12 +190,22 @@ export interface ComposerProps {
    */
   worktreePath?: Accessor<string | undefined>
   /**
-   * Mid-stream queued prompts (FIFO, head fires next). Rendered as a
+   * Mid-stream queued items (FIFO, head fires next). Rendered as a
    * muted list inside the composer rail, immediately above the textarea
    * row, so the queue shares the same bordered block as the input it
    * will feed. Empty list = nothing renders.
+   *
+   * Discriminated by `kind`: prompt items show plain text, bash items
+   * (Claude-Code `!cmd` parity, queued during streaming) render with a
+   * leading `!` in theme.warning so the user can tell at a glance which
+   * are queued shell commands vs queued model prompts.
    */
-  queue?: Accessor<readonly { readonly id: string; readonly text: string }[]>
+  queue?: Accessor<
+    readonly (
+      | { readonly id: string; readonly kind: "prompt"; readonly text: string }
+      | { readonly id: string; readonly kind: "bash"; readonly command: string }
+    )[]
+  >
   /** Drop a queued prompt by id (cancel button). */
   onCancelQueued?: (id: string) => void
   /**
@@ -1317,8 +1327,13 @@ export function Composer(props: ComposerProps) {
                     <text fg={theme.textMuted} wrapMode="none">
                       queued{idx() === 0 ? " (next)" : ""}:
                     </text>
+                    <Show when={entry.kind === "bash"}>
+                      <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+                        !
+                      </text>
+                    </Show>
                     <box flexGrow={1}>
-                      <text fg={theme.text}>{entry.text}</text>
+                      <text fg={theme.text}>{entry.kind === "bash" ? entry.command : entry.text}</text>
                     </box>
                     <text
                       fg={theme.primary}

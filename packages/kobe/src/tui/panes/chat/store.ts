@@ -188,7 +188,21 @@ export function cleanChatText(text: string): string {
  * live alongside `messages` in {@link ChatState} and are drained by
  * the chat shell when streaming flips false.
  */
-export type QueuedPrompt = { readonly id: string; readonly text: string; readonly ts: string }
+/**
+ * Queued user-initiated work pending dispatch when streaming ends.
+ * Discriminated by `kind` so the chat shell can route the head item
+ * to the right consumer (prompt → engine, bash → local subprocess) —
+ * matches claude-code's queue-by-mode behavior in
+ * `refs/claude-code/src/utils/handlePromptSubmit.ts:336` where a mid-
+ * stream `!cmd` enqueues with `mode: 'bash'` and the drain runs
+ * `processBashCommand` instead of `processTextPrompt`. The two shapes
+ * carry different payload fields (`text` vs `command`) because
+ * conflating them under a single `text` slot lost the type discriminator
+ * downstream — the drain needed an explicit kind to fork on.
+ */
+export type QueuedPrompt =
+  | { readonly id: string; readonly kind: "prompt"; readonly text: string; readonly ts: string }
+  | { readonly id: string; readonly kind: "bash"; readonly command: string; readonly ts: string }
 
 /** One chronological row in the chat. The renderer maps these to JSX. */
 export type ChatRow =
@@ -414,7 +428,28 @@ export function enqueuePrompt(state: ChatState, prompt: string, nowIso: string =
   const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
   return {
     ...state,
-    queue: [...state.queue, { id, text: prompt, ts: nowIso }],
+    queue: [...state.queue, { id, kind: "prompt", text: prompt, ts: nowIso }],
+  }
+}
+
+/**
+ * Append a `!shell` command to the queue. Same FIFO + cap rules as
+ * {@link enqueuePrompt}. Used by the bash submit path when the engine
+ * is already streaming — the command waits until the current turn
+ * finishes, then the queue-drain microtask runs it locally (no model
+ * query). Mirrors claude-code's `enqueue({ mode: 'bash', ... })` in
+ * `refs/claude-code/src/utils/handlePromptSubmit.ts`.
+ */
+export function enqueueBashCommand(
+  state: ChatState,
+  command: string,
+  nowIso: string = new Date().toISOString(),
+): ChatState {
+  if (state.queue.length >= QUEUE_SOFT_CAP) return state
+  const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
+  return {
+    ...state,
+    queue: [...state.queue, { id, kind: "bash", command, ts: nowIso }],
   }
 }
 
