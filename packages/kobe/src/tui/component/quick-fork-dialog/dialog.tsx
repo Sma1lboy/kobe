@@ -45,12 +45,12 @@ import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
-import { useDialog } from "../../ui/dialog"
 import {
   type ModelPickerModelOption,
   modelPickerEffortOptions,
   modelPickerModelOptions,
 } from "../../panes/chat/composer/model-picker-row"
+import { useDialog } from "../../ui/dialog"
 import { stripNewlines } from "../new-task-dialog"
 
 export type QuickForkSubmit = {
@@ -350,38 +350,38 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
             </box>
             <text fg={theme.accent}>▸ effort</text>
             <box flexDirection="column" paddingLeft={2}>
-            <For each={effortOptions()}>
-              {(choice, i) => {
-                const active = () => i() === effortCursor()
-                return (
-                  <box
-                    flexDirection="row"
-                    gap={2}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={active() ? theme.primary : undefined}
-                    onMouseUp={() => {
-                      setEffortCursor(i())
-                    }}
-                  >
-                    <text
-                      fg={active() ? theme.selectedListItemText : theme.text}
-                      attributes={active() ? TextAttributes.BOLD : undefined}
-                      wrapMode="none"
+              <For each={effortOptions()}>
+                {(choice, i) => {
+                  const active = () => i() === effortCursor()
+                  return (
+                    <box
+                      flexDirection="row"
+                      gap={2}
+                      paddingLeft={1}
+                      paddingRight={1}
+                      backgroundColor={active() ? theme.primary : undefined}
+                      onMouseUp={() => {
+                        setEffortCursor(i())
+                      }}
                     >
-                      {active() ? "▸ " : "  "}
-                      {choice.label}
-                    </text>
-                    {choice.hint ? (
-                      <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                        {choice.hint}
+                      <text
+                        fg={active() ? theme.selectedListItemText : theme.text}
+                        attributes={active() ? TextAttributes.BOLD : undefined}
+                        wrapMode="none"
+                      >
+                        {active() ? "▸ " : "  "}
+                        {choice.label}
                       </text>
-                    ) : null}
-                  </box>
-                )
-              }}
-            </For>
-          </box>
+                      {choice.hint ? (
+                        <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                          {choice.hint}
+                        </text>
+                      ) : null}
+                    </box>
+                  )
+                }}
+              </For>
+            </box>
           </box>
         </Show>
       </box>
