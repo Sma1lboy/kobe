@@ -439,7 +439,16 @@ export function Chat(props: ChatProps) {
    * session id — engine logs "claude session ended:
    * error_during_execution" for each loser.
    */
-  let dispatching = false
+  // Reactive lock so the effect re-fires when a bash drain finishes.
+  // The earlier plain-variable lock worked for the prompt-only path
+  // because `runTask` flipped `isStreaming` true→false via user.inject
+  // / done events, and each toggle re-triggered the effect to drain
+  // the next item. Bash items don't touch `isStreaming`, so without a
+  // tracked lock the effect doesn't see `dispatching` flip back to
+  // false after `await runBashLocally`, and any items behind a bash
+  // entry in the queue would sit there until the user manually pokes
+  // some other reactive state (KOB-83 queue-chain regression).
+  const [dispatching, setDispatching] = createSignal(false)
   createEffect(() => {
     const taskId = props.taskId()
     const tabId = activeTabId()
@@ -448,15 +457,15 @@ export function Chat(props: ChatProps) {
     if (state.isStreaming) return
     if (state.queue.length === 0) return
     if (hasPendingInput()) return
-    if (dispatching) return
+    if (dispatching()) return
     // Dequeue inside a microtask so the createEffect's reactive read
     // graph is settled before we mutate state. Without the defer, the
     // patch races the effect's tracking and we can miss the next tick.
     queueMicrotask(async () => {
-      if (dispatching) return
+      if (dispatching()) return
       const cur = activeState()
       if (cur.isStreaming || cur.queue.length === 0) return
-      dispatching = true
+      setDispatching(true)
       try {
         let head: QueuedPrompt | null = null
         patchActiveState((s) => {
@@ -509,7 +518,7 @@ export function Chat(props: ChatProps) {
           patchActiveState((s) => pushSystemError(s, `queued runTask failed: ${stringifyErr(err)}`))
         }
       } finally {
-        dispatching = false
+        setDispatching(false)
       }
     })
   })
@@ -718,8 +727,8 @@ export function Chat(props: ChatProps) {
       // concurrent runTasks fighting for the same session id. Bail if
       // another dispatch already owns the lock; the user can re-click
       // rather than queue another race.
-      if (dispatching) return
-      dispatching = true
+      if (dispatching()) return
+      setDispatching(true)
       try {
         // steerTask owns the interrupt + run-with-merged-prompt
         // sequence atomically on the orchestrator side. Critically,
@@ -734,7 +743,7 @@ export function Chat(props: ChatProps) {
           patchActiveState((s) => pushSystemError(s, `steer failed: ${stringifyErr(err)}`))
         }
       } finally {
-        dispatching = false
+        setDispatching(false)
       }
       return
     }

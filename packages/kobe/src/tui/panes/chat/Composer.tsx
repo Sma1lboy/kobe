@@ -1387,9 +1387,7 @@ export function Composer(props: ComposerProps) {
                 <Show
                   when={bashMode() && props.isStreaming}
                   fallback={
-                    <text fg={props.isStreaming ? theme.accent : theme.primary}>
-                      {props.isStreaming ? "…" : ">"}
-                    </text>
+                    <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
                   }
                 >
                   <box flexDirection="row">
