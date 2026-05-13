@@ -113,6 +113,39 @@ function ensureSpawnHelperExecutable(): void {
   }
 }
 
+/**
+ * Track every pty we spawn so a synchronous process.on("exit") hook
+ * can SIGKILL them on abrupt termination — Ctrl-C, parent SIGKILL,
+ * panic. Without this, a crashed perf-stress run leaves the kobe TUI
+ * inside its pty reparented to init; we found a 30-hour orphan in
+ * dev. Mirrors the cleanup in `test/behavior/driver.ts`.
+ */
+const liveTerms = new Set<pty.IPty>()
+let processExitHooksInstalled = false
+
+function ensurePtyProcessExitHooks(): void {
+  if (processExitHooksInstalled) return
+  processExitHooksInstalled = true
+  const killAll = (): void => {
+    for (const t of liveTerms) {
+      try {
+        t.kill("SIGKILL")
+      } catch {
+        /* already dead */
+      }
+    }
+    liveTerms.clear()
+  }
+  process.on("exit", killAll)
+  const forward = (sig: NodeJS.Signals) => () => {
+    killAll()
+    process.kill(process.pid, sig)
+  }
+  process.once("SIGINT", forward("SIGINT"))
+  process.once("SIGTERM", forward("SIGTERM"))
+  process.once("SIGHUP", forward("SIGHUP"))
+}
+
 function stripAnsi(input: string): string {
   let out = ""
   let i = 0
@@ -190,6 +223,7 @@ function normalizeScreen(raw: string): string {
 
 async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
   ensureSpawnHelperExecutable()
+  ensurePtyProcessExitHooks()
   const cwd = opts.cwd ?? REPO_ROOT
   const cols = opts.cols ?? DEFAULT_COLS
   const rows = opts.rows ?? DEFAULT_ROWS
@@ -209,6 +243,7 @@ async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
     ...(opts.env ?? {}),
   }
   const term = pty.spawn(command, args, { name: "xterm-256color", cols, rows, cwd, env })
+  liveTerms.add(term)
   let buffer = ""
   let closed = false
   term.onData((chunk) => {
@@ -217,6 +252,7 @@ async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
   })
   term.onExit(() => {
     closed = true
+    liveTerms.delete(term)
   })
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
   return {

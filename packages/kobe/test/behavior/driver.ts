@@ -66,6 +66,47 @@ const DEFAULT_TIMEOUT_MS = 5_000
 /** Grace period between SIGTERM and SIGKILL during teardown. */
 const EXIT_GRACE_MS = 750
 
+/**
+ * Every pty we've ever spawned, regardless of whether the test called
+ * `exit()`. The vitest worker normally exits cleanly and our async
+ * teardown runs, but on Ctrl-C, an assertion that throws past the
+ * finally, or a CI hard-timeout SIGKILL'ing the worker, those exit
+ * paths never fire and the pty's spawn-helper gets reparented to init
+ * — we found a 30+ hour orphan in dev. This set + the synchronous
+ * `process.on("exit")` hook below guarantee a best-effort SIGKILL
+ * even on abrupt termination. SIGKILL because `exit` handlers only
+ * permit synchronous work; we cannot wait on graceful shutdown.
+ */
+const liveTerms = new Set<pty.IPty>()
+let processExitHooksInstalled = false
+
+function ensurePtyProcessExitHooks(): void {
+  if (processExitHooksInstalled) return
+  processExitHooksInstalled = true
+  const killAll = (): void => {
+    for (const t of liveTerms) {
+      try {
+        t.kill("SIGKILL")
+      } catch {
+        // already dead or never started
+      }
+    }
+    liveTerms.clear()
+  }
+  process.on("exit", killAll)
+  // Forwarding signals: kill children, then let Node take the default
+  // exit (we re-emit the signal to ourselves with the handler removed
+  // so the original signal disposition wins — `process.exit(N)` would
+  // mask which signal actually killed us, which matters for CI.)
+  const forward = (sig: NodeJS.Signals) => () => {
+    killAll()
+    process.kill(process.pid, sig)
+  }
+  process.once("SIGINT", forward("SIGINT"))
+  process.once("SIGTERM", forward("SIGTERM"))
+  process.once("SIGHUP", forward("SIGHUP"))
+}
+
 export interface SpawnKobeOpts {
   /** Working directory for the spawned kobe process. Defaults to repo root. */
   cwd?: string
@@ -147,6 +188,7 @@ function defaultCommand(cwd: string): { command: string; args: string[] } {
 
 export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
   ensureSpawnHelperExecutable()
+  ensurePtyProcessExitHooks()
 
   const cwd = opts.cwd ?? PACKAGE_ROOT
   const cols = opts.cols ?? DEFAULT_COLS
@@ -181,6 +223,7 @@ export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
     cwd,
     env,
   })
+  liveTerms.add(term)
 
   let buffer = ""
   let closed = false
@@ -197,6 +240,7 @@ export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
   term.onExit(({ exitCode: code }) => {
     closed = true
     exitCode = code ?? null
+    liveTerms.delete(term)
   })
 
   /** Wait for `ms` milliseconds. */
