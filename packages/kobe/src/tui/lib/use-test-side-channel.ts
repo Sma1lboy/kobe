@@ -9,6 +9,8 @@
  *   - `__kobeTestRequestPR()` — render the PR-instructions prompt
  *     against the active task's worktree, then call
  *     `orchestrator.requestPR`.
+ *   - `__kobeTestRequestLocalMerge()` — render the local-merge prompt
+ *     against the active task, then call `orchestrator.requestLocalMerge`.
  *   - `__kobeTestRespondToInput(response)` — picks the latest pending
  *     request on the active task and dispatches the user's
  *     ApprovePlanResponse / AskQuestionResponse synthetically.
@@ -56,6 +58,20 @@ export function useTestSideChannel(deps: {
       await orchestrator.requestPR(task.id)
       return { taskId: task.id, prompt: rendered }
     }
+  ;(
+    globalThis as { __kobeTestRequestLocalMerge?: () => Promise<{ taskId: string; prompt: string }> }
+  ).__kobeTestRequestLocalMerge = async () => {
+    const task = activeTask()
+    if (!task || !task.worktreePath || task.status === "canceled" || task.kind === "main") {
+      throw new Error("no usable active task for local merge (no worktree, no regular task, or canceled)")
+    }
+    const { DEFAULT_LOCAL_MERGE_INSTRUCTIONS_TEMPLATE, gatherLocalMergeState, renderLocalMergeInstructions } =
+      await import("../../orchestrator/local-merge/index.ts")
+    const state = await gatherLocalMergeState(task)
+    const rendered = renderLocalMergeInstructions(DEFAULT_LOCAL_MERGE_INSTRUCTIONS_TEMPLATE, state)
+    await orchestrator.requestLocalMerge(task.id)
+    return { taskId: task.id, prompt: rendered }
+  }
 
   // Side-channel respond trigger for the user-input pause behavior
   // tests (ExitPlanMode + AskUserQuestion). The chat row's

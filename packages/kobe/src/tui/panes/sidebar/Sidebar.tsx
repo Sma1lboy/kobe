@@ -36,6 +36,7 @@
  * Cursor / nav: a Solid signal `cursorIndex` indexes the *flat*
  * navigable task list within the active view. View switches reset the
  * cursor to 0. `enter` selects, `d` deletes, `a` toggles archive,
+ * `M` starts local merge,
  * `[`/`]` switches view, `g g` jumps to top, `G` jumps to bottom.
  *
  * Reactivity: every prop is an `Accessor`. We never `.map()` arrays in
@@ -68,6 +69,8 @@ export type SidebarProps = {
    * and Archives views.
    */
   onArchiveRequest?: (taskId: string) => void
+  /** Local merge callback. Pressing Shift+M asks the parent to start the merge flow. */
+  onLocalMergeRequest?: (taskId: string) => void
   /**
    * Rename callback. Pressing `r` on the cursor task emits this with
    * the task id; the parent (app.tsx) opens an input dialog defaulted
@@ -222,6 +225,7 @@ export function Sidebar(props: SidebarProps) {
     onSelect: (id) => props.onSelect(id),
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
+    onLocalMergeRequest: (id) => props.onLocalMergeRequest?.(id),
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),

@@ -387,6 +387,19 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.requestPR(requireString(payload, "taskId"))
         return {}
       }
+      case "merge.local.request": {
+        await orch.requestLocalMerge(requireString(payload, "taskId"))
+        const task = orch.getTask(requireString(payload, "taskId"))
+        if (task) {
+          broadcastTaskUpdated(orch, clients, task.id)
+          broadcast(clients, {
+            type: "event",
+            name: "engine.status",
+            payload: { taskId: task.id, tabId: task.activeTabId, status: "running" },
+          })
+        }
+        return {}
+      }
       case "chat.history": {
         const taskId = requireString(payload, "taskId")
         const sessionId = optionalString(payload, "sessionId")
