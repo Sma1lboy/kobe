@@ -141,21 +141,9 @@ async function fillNewTaskDialog(
   kobe: KobeHandle,
   prompt: string,
   repo: string,
-  openWith: "n" | "ctrl+n" = "n",
+  _openWith: "n" | "ctrl+n" = "n",
 ): Promise<void> {
-  if (openWith === "n") {
-    await kobe.sendKeys("\x0e")
-  } else {
-    await kobe.sendKeys("\x0e")
-  }
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  // Repo path is the first (active) field, prefilled with cwd. Clear
-  // before typing so the test repo replaces.
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
-  await kobe.sendKeys("\r")
+  await kobe.createTask(repo)
   // Composer auto-focuses post-create; type the prompt + send.
   await new Promise((r) => setTimeout(r, 250))
   await kobe.typeText(prompt)
@@ -335,7 +323,7 @@ test("approval — AskUserQuestion renders the question + options + locks compos
   // against opentui's text-wrap quirk.
   await new Promise((r) => setTimeout(r, 500))
   const screen = await kobe.capture()
-  const collapsed = screen.replace(/\s+/g, "")
+  const collapsed = screen.replace(/\s+/g, "").toLowerCase()
   expect(collapsed).not.toContain("answertheprompt")
   // Soft hint copy from Chat.tsx — see the pendingQuestion <Show> block.
   expect(collapsed).toContain("typeyourownanswer")

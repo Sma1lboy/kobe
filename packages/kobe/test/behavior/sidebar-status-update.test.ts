@@ -168,54 +168,26 @@ test("sidebar keeps a task under its repo header across a backlog → done trans
   await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
   await waitForFakeServer(port)
 
-  // ---- create a task via the new-task dialog --------------------
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  // Settle so the dialog's prompt input has its focused listener
-  // attached before we start typing. The first character can
-  // otherwise race with the input's stdin attach.
-  await new Promise((r) => setTimeout(r, 250))
-  // Defensive clear in case a stray byte lands on the prompt during
-  // the dialog mount race. Backspaces on an empty field are no-ops.
-  for (let i = 0; i < 4; i++) {
-    await kobe.sendKeys("\x7f")
-  }
+  // ---- pre-script the engine: drive the first runTask straight to `done` ----
+  const doneEvents: EngineEvent[] = [{ type: "done" }]
+  await scriptEngine(port, "/script", { sessionId: "fake-1", events: doneEvents })
 
+  // ---- create a task via the new-task dialog --------------------
   const TITLE = "status-transition"
-  await kobe.typeText(TITLE)
-  await kobe.sendKeys("\t")
+  await kobe.createTask(repo)
   await new Promise((r) => setTimeout(r, 250))
-  // Clear the default repo input.
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
+  await kobe.typeText(TITLE)
   await kobe.sendKeys("\r")
 
-  // ---- assert the task is visible in the sidebar (initial state) ----
-  // Wave 4.5 dropped repo grouping. The sidebar shows a flat list under
-  // the active "Working session" tab. We anchor on the backlog-status
-  // badge `○` followed by the task title — that combination only
-  // appears once the row has rendered (the title alone might match the
-  // dialog field while the dialog is still open).
-  await kobe.waitFor((s) => bufferContains(s, /○\s*\S*status-transition/), 15_000)
+  // ---- assert the task is visible in the sidebar -----------------
+  // New Task now creates a placeholder task first, then derives the
+  // sidebar title from the first composer submit. The stable contract
+  // is that the row wakes up with the derived title once runTask starts;
+  // the placeholder frame is intentionally transient.
+  await kobe.waitFor((s) => s.includes("Working session") && s.includes("status-transition"), 15_000)
   const initialScreen = await kobe.capture()
   expect(initialScreen).toContain("Working session")
   expect(initialScreen).toContain("status-transition")
-
-  // ---- pre-script the engine: drive the next runTask straight to `done` ----
-  const doneEvents: EngineEvent[] = [{ type: "done" }]
-  await scriptEngine(port, "/script", { sessionId: "fake-1", events: doneEvents })
-  await scriptEngine(port, "/finish", { sessionId: "fake-1" })
-
-  // ---- send a chat prompt to start the engine ------------------
-  // The chat input is auto-focused once the new-task flow auto-selects
-  // the freshly-created task. Pressing enter triggers `runTask`, the
-  // pump attaches, sees the pre-scripted `done`, store.update flips the
-  // status to `done`, and the orchestrator's tasksSignal must wake the
-  // sidebar.
-  await kobe.typeText("go")
-  await kobe.sendKeys("\r")
 
   // ---- assert the badge flipped after the transition ----
   // The orchestrator's pump sees the scripted `done` event, calls

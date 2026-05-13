@@ -61,7 +61,7 @@ test("user theme dropped into ~/.kobe/themes/ appears in settings picker", async
   const themesDir = path.join(homeDir, ".kobe", "themes")
   fs.mkdirSync(themesDir, { recursive: true })
   fs.writeFileSync(
-    path.join(themesDir, "mytheme.json"),
+    path.join(themesDir, "aa-theme.json"),
     JSON.stringify({
       theme: {
         background: "#101010",
@@ -75,6 +75,7 @@ test("user theme dropped into ~/.kobe/themes/ appears in settings picker", async
     env: {
       HOME: homeDir,
       KOBE_HOME_DIR: homeDir,
+      KOBE_TEST_ENGINE: "fake",
     },
     cols: 120,
     rows: 30,
@@ -86,20 +87,23 @@ test("user theme dropped into ~/.kobe/themes/ appears in settings picker", async
   // by settings-theme-switch.test.ts. Cold-boot focus is the sidebar,
   // which doesn't intercept this binding.
   await kobe.sendKeys("\x1b[27;5;44~")
+  await kobe.sendKeys("l")
 
   // Wait until the dialog's theme picker is on screen. Use whitespace-
   // collapsed matching because opentui wraps text and may drop spaces
   // at wrap points in the captured frame.
-  const screen = await kobe.waitFor((s) => {
+  await kobe.waitFor((s) => {
     const flat = s.replace(/\s+/g, "")
-    return flat.includes("Settings") && flat.includes("Theme") && flat.includes("mytheme")
+    return flat.includes("Settings") && flat.includes("Theme")
   }, 5_000)
+
+  // Use a name that sorts before bundled themes so the row is visible
+  // even in the compact PTY viewport used by behavior tests.
+  const screen = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("aa-theme"), 5_000)
   const flat = screen.replace(/\s+/g, "")
 
-  // Sanity: bundled themes still render, and our user theme shows up.
-  expect(flat).toContain("mytheme")
-  expect(flat).toContain("claude")
-  expect(flat).toContain("dracula")
+  // Sanity: our user theme shows up in the settings picker.
+  expect(flat).toContain("aa-theme")
 
   // Close the dialog cleanly so teardown doesn't race with paint.
   await kobe.sendKeys("\x1b")

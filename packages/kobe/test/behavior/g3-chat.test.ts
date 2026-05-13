@@ -107,26 +107,10 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
  * Type a string into the new-task dialog: open via shortcut, fill
  * prompt, tab to repo, clear prefilled cwd, type repo, submit.
  *
- * The opener is always ctrl+n (`\x0e`, ASCII SO) — opentui maps it to
- * a key event with ctrl=true and name="n", which our keymap matches as
- * "ctrl+n". Bare `n` is no longer a global hotkey.
- *
  * Factored out because all four tests use it.
  */
 async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
-  await kobe.sendKeys("\x0e")
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  // Wave 4 dialog dropped the first-prompt field. The repo input is
-  // now the first (and active) field, prefilled with cwd. Clear it
-  // before typing so the test repo replaces, not appends.
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
-  // Submit (commits dialog with default branch=main; orchestrator
-  // creates a placeholder-titled task and pulls focus to the
-  // workspace composer for the first prompt).
-  await kobe.sendKeys("\r")
+  await kobe.createTask(repo)
   // Composer auto-focuses post-create; type the prompt + send.
   // Wait briefly so the dialog's render frame settles before keys.
   await new Promise((r) => setTimeout(r, 250))

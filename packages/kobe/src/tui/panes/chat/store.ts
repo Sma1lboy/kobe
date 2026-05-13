@@ -38,8 +38,19 @@
 
 import type { SessionUsageMetrics } from "../../../session/usage-metrics.ts"
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
+import type { PendingBashContext } from "./bash-state.ts"
 import type { QueuedPrompt } from "./queue.ts"
+import { capMessages } from "./scrollback.ts"
 
+export { SCROLLBACK_CAP } from "./scrollback.ts"
+export {
+  drainPendingBashContext,
+  formatBashContextPrefix,
+  patchBashRow,
+  pushBashRow,
+  pushPendingBashContext,
+} from "./bash-state.ts"
+export type { PendingBashContext } from "./bash-state.ts"
 export {
   QUEUE_SOFT_CAP,
   clearQueue,
@@ -50,99 +61,6 @@ export {
   removeFromQueue,
   updateQueueItem,
 } from "./queue.ts"
-
-/* --------------------------------------------------------------------- */
-/*  Bounded scrollback                                                    */
-/* --------------------------------------------------------------------- */
-
-/**
- * Maximum number of {@link ChatRow}s retained per chat tab. When a
- * mutation would push `messages.length` above this cap, the oldest
- * rows are dropped from the front and a single coalescing sentinel
- * `system` row is left at index 0 so the user knows scrollback was
- * truncated.
- *
- * **Why 1000.** The perf baseline (`docs/perf/baseline.md`,
- * "Streaming 1000 assistant.delta events") measured RSS growth of
- * ~168 MB across a 1000-event burst that all coalesce into one row
- * — i.e. the row count cap is not what bounded *that* run; the
- * underlying string is. But a real session that produces 1000
- * distinct rows (alternating user/assistant + tools) sits in the
- * same RSS ballpark, and 1000 rows is well past the point where
- * scrollback ceases to be useful (Claude Code's own scroll buffer
- * is similar). Halve later if the memory profile shifts.
- *
- * Not user-tunable yet — see PLAN.md for the eventual settings hook.
- */
-export const SCROLLBACK_CAP = 1000
-
-/** Plain-ASCII sentinel marker. Pattern is grepped to coalesce. */
-const SENTINEL_PREFIX = "(scrollback truncated — "
-const SENTINEL_SUFFIX = " rows dropped)"
-
-/** Build a sentinel row body for `n` dropped rows. */
-function sentinelText(n: number): string {
-  return `${SENTINEL_PREFIX}${n}${SENTINEL_SUFFIX}`
-}
-
-/**
- * Parse the dropped-count from a sentinel row's text. Returns `null`
- * if the text doesn't match the sentinel shape — used to detect
- * "is this row a previously-emitted sentinel we should coalesce
- * into?" without piggy-backing extra fields on `ChatRow`.
- */
-function parseSentinelCount(text: string): number | null {
-  if (!text.startsWith(SENTINEL_PREFIX) || !text.endsWith(SENTINEL_SUFFIX)) return null
-  const middle = text.slice(SENTINEL_PREFIX.length, text.length - SENTINEL_SUFFIX.length)
-  const n = Number.parseInt(middle, 10)
-  return Number.isFinite(n) && n >= 0 && String(n) === middle ? n : null
-}
-
-/**
- * Return `messages` capped to {@link SCROLLBACK_CAP} rows. If already
- * within cap, the same array is returned (identity-stable for downstream
- * reactivity). When truncation runs:
- *
- *   - Oldest content rows are dropped from the front.
- *   - A single `system` sentinel row is placed at index 0 indicating
- *     how many rows were dropped in total.
- *   - If a sentinel was already at index 0, its count is bumped — we
- *     never end up with two sentinels stacked.
- *
- * The caller is responsible for not invoking this mid-coalesce of a
- * live row; in practice every mutation path here appends to (or
- * patches) the tail, and the live in-flight assistant row is the
- * last element. Front-truncation never touches the tail, so the live
- * row is preserved by construction.
- *
- * Pure: builds a new array only when truncation is needed.
- */
-function capMessages(messages: readonly ChatRow[], nowIso: string): readonly ChatRow[] {
-  if (messages.length <= SCROLLBACK_CAP) return messages
-
-  const head = messages[0]
-  const existingDropped = head && head.kind === "system" ? parseSentinelCount(head.text) : null
-
-  // Slice from `start` to the end keeps the most-recent rows. When
-  // there's no existing sentinel we reserve one slot for the new one
-  // (cap = sentinel + (cap-1) content rows). When there IS one, we
-  // also reserve one slot — and skip the old sentinel itself, so
-  // dropped-count reflects only content rows lost over time.
-  const reserveSentinel = 1
-  const start = messages.length - (SCROLLBACK_CAP - reserveSentinel)
-  const tail = messages.slice(Math.max(start, existingDropped !== null ? 1 : 0))
-
-  // How many content rows did we actually drop in this call?
-  // - With no prior sentinel: `start` content rows dropped.
-  // - With a prior sentinel: rows from index 1..start dropped, i.e.
-  //   `start - 1` content rows (we never re-count the sentinel itself).
-  const droppedThisCall = existingDropped !== null ? Math.max(0, start - 1) : Math.max(0, start)
-  const totalDropped = (existingDropped ?? 0) + droppedThisCall
-
-  const sentinelTs = existingDropped !== null && head ? head.ts : nowIso
-  const sentinel: ChatRow = { kind: "system", text: sentinelText(totalDropped), ts: sentinelTs }
-  return [sentinel, ...tail]
-}
 
 /* --------------------------------------------------------------------- */
 /*  Noise filtering — Claude Code internal wrapper tags                   */
@@ -314,14 +232,6 @@ export interface ChatState {
   readonly pendingBashContext?: readonly PendingBashContext[]
 }
 
-/** One completed bash interaction waiting to be folded into the next prompt. */
-export interface PendingBashContext {
-  readonly command: string
-  readonly stdout: string
-  readonly stderr: string
-  readonly exitCode: number | null
-}
-
 /** Build the initial state. Used at mount and on task switch. */
 export function createInitialState(): ChatState {
   return {
@@ -389,136 +299,6 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
     activeTurnStartedAt: nowIso,
     messages: capMessages([...state.messages, { kind: "user", text: prompt, ts: nowIso }], nowIso),
   }
-}
-
-/* --------------------------------------------------------------------- */
-/*  Bash mode — !shell command rows + pending context                     */
-/* --------------------------------------------------------------------- */
-
-/**
- * Append a fresh `bash` row for an in-flight `!shell` command. The row
- * starts with empty stdout/stderr and `done: false`; subsequent
- * {@link patchBashRow} calls stream output into it as the child process
- * emits data. `id` is a caller-generated stable token (used to patch
- * the row by reference without a name-based fallback like
- * {@link applyEvent}'s tool-result path).
- */
-export function pushBashRow(
-  state: ChatState,
-  args: { id: string; command: string },
-  nowIso: string = new Date().toISOString(),
-): ChatState {
-  return {
-    ...state,
-    messages: capMessages(
-      [
-        ...state.messages,
-        {
-          kind: "bash",
-          id: args.id,
-          command: args.command,
-          stdout: "",
-          stderr: "",
-          exitCode: null,
-          signal: null,
-          done: false,
-          ts: nowIso,
-        },
-      ],
-      nowIso,
-    ),
-  }
-}
-
-/**
- * Patch an in-flight bash row by id. Used to (a) append streamed bytes
- * to `stdout` / `stderr`, and (b) flip `done: true` with the final
- * `exitCode` / `signal` on process exit. No-op if the row isn't found
- * (e.g. truncated by the scrollback cap mid-stream).
- */
-export function patchBashRow(
-  state: ChatState,
-  id: string,
-  patch: {
-    stdoutAppend?: string
-    stderrAppend?: string
-    exitCode?: number | null
-    signal?: string | null
-    done?: boolean
-  },
-): ChatState {
-  const idx = findLastIndex(state.messages, (m) => m.kind === "bash" && m.id === id)
-  if (idx < 0) return state
-  const target = state.messages[idx] as Extract<ChatRow, { kind: "bash" }>
-  const next = state.messages.slice()
-  next[idx] = {
-    ...target,
-    stdout: patch.stdoutAppend ? target.stdout + patch.stdoutAppend : target.stdout,
-    stderr: patch.stderrAppend ? target.stderr + patch.stderrAppend : target.stderr,
-    exitCode: patch.exitCode !== undefined ? patch.exitCode : target.exitCode,
-    signal: patch.signal !== undefined ? patch.signal : target.signal,
-    done: patch.done !== undefined ? patch.done : target.done,
-  }
-  return { ...state, messages: next }
-}
-
-/**
- * Append a completed bash interaction to the pending-context FIFO. The
- * next regular (non-bash) submit drains this and prepends the entries
- * as XML to the prompt sent to the engine.
- */
-export function pushPendingBashContext(state: ChatState, ctx: PendingBashContext): ChatState {
-  const prev = state.pendingBashContext ?? []
-  return { ...state, pendingBashContext: [...prev, ctx] }
-}
-
-/**
- * Drain the pending bash-context FIFO. Returns the cleared state and
- * the drained entries so the caller can format them into a prompt
- * prefix. Empty input returns `[state, []]` without allocating.
- */
-export function drainPendingBashContext(state: ChatState): [ChatState, readonly PendingBashContext[]] {
-  const list = state.pendingBashContext ?? []
-  if (list.length === 0) return [state, []]
-  // Re-spread without the field rather than `delete`-on-copy — biome's
-  // `noDelete` flags the latter for the runtime hidden-class penalty
-  // even though copies pay it once.
-  const { pendingBashContext: _drop, ...rest } = state
-  void _drop
-  return [{ ...rest }, list]
-}
-
-/**
- * Format a list of completed bash interactions as the XML prefix
- * Claude-Code adds to the next regular user prompt. Matches upstream's
- * tags so the model parses the bytes the same way — kobe's chat UI
- * strips these via {@link cleanChatText} on history replay, so the
- * prefix is invisible in the transcript but visible to the model.
- *
- * Empty list → empty string (zero allocation).
- */
-export function formatBashContextPrefix(entries: readonly PendingBashContext[]): string {
-  if (entries.length === 0) return ""
-  const parts: string[] = []
-  for (const e of entries) {
-    parts.push(`<bash-input>${escapeXml(e.command)}</bash-input>`)
-    if (e.stdout.length > 0) parts.push(`<bash-stdout>${escapeXml(e.stdout)}</bash-stdout>`)
-    if (e.stderr.length > 0) parts.push(`<bash-stderr>${escapeXml(e.stderr)}</bash-stderr>`)
-  }
-  parts.push("") // trailing blank line separating context from the actual prompt
-  return parts.join("\n")
-}
-
-/** Escape the five XML metacharacters. Minimal — kobe never round-trips
- *  this through an XML parser; the model just sees the bytes. */
-function escapeXml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => {
-    if (c === "&") return "&amp;"
-    if (c === "<") return "&lt;"
-    if (c === ">") return "&gt;"
-    if (c === '"') return "&quot;"
-    return "&apos;"
-  })
 }
 
 /**

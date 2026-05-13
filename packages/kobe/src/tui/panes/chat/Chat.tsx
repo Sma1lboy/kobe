@@ -38,44 +38,37 @@
  */
 
 import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import type { ScrollBoxRenderable } from "@opentui/core"
+import { type Accessor, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
-import type { OrchestratorEvent, PermissionMode } from "../../../types/engine.ts"
-import type { ChatTab } from "../../../types/task.ts"
-import { ResumeDialog } from "../../component/resume-dialog"
-import { bindByIds } from "../../context/keybindings"
+import type { PermissionMode } from "../../../types/engine.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
-import { Composer, type ComposerSlashEntry } from "./Composer"
-import { Loading } from "./Loading"
-import { MessageList } from "./MessageList"
-import { runBashCommand } from "./bash-mode"
+import { ChatView } from "./ChatView"
+import type { ComposerSlashEntry } from "./Composer"
+import { estimateContextTokensFromRows, stringifyErr } from "./chat-utils"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
 import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
+import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
 import {
-  type ChatRow,
   type ChatState,
+  QUEUE_SOFT_CAP,
   type QueuedPrompt,
   createInitialState,
   dequeueFirst,
-  drainPendingBashContext,
-  enqueueBashCommand,
   enqueuePrompt,
-  formatBashContextPrefix,
-  patchBashRow,
-  pushBashRow,
-  pushPendingBashContext,
   pushSystemError,
   queueIsFull,
   removeFromQueue,
   updateQueueItem,
 } from "./store"
+import { useBashMode } from "./use-bash-mode"
 import { useChatSession } from "./use-chat-session"
+import { useChatTabs } from "./use-chat-tabs"
 
 export type ChatProps = {
   orchestrator: KobeOrchestrator
@@ -283,44 +276,10 @@ export function Chat(props: ChatProps) {
   const isCanceled = () => taskStatus() === "canceled"
   const isArchived = () => activeTask()?.archived === true
 
-  // Look up the tail of the active tab for an unresolved user-input
-  // row. Scans from the end (the picker is always near the bottom) and
-  // stops at the first user/assistant row — anything newer than the
-  // picker means the conversation moved on (i.e. the picker was
-  // already resolved). Returned shape is the row itself so callers
-  // can read the requestId / questions list for routing.
-  function findPending(): Extract<ChatRow, { kind: "approval" | "question" }> | null {
-    const msgs = activeState().messages
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (!m) continue
-      if (m.kind === "approval") return m.status === "pending" ? m : null
-      if (m.kind === "question") return m.answers === null ? m : null
-      if (m.kind === "user" || m.kind === "assistant" || m.kind === "bash") return null
-    }
-    return null
-  }
-
-  // Pending approval lock — the subprocess was killed on tool.start
-  // and the only valid next action is Approve/Reject. Free-text would
-  // resume the session ahead of the picker's answer and the model
-  // would see "[user said something else]" instead of "[plan
-  // approved]". Approval stays locked.
-  const pendingApproval = createMemo(() => {
-    const p = findPending()
-    return p?.kind === "approval" ? p : null
-  })
-  // Pending question — picker is up but the user can still type a
-  // free-text answer via the composer (per the AskUserQuestion tool's
-  // "always allow custom text" contract). Composer-submit reroutes
-  // to respondToInput; see handleComposerSubmit.
-  const pendingQuestion = createMemo(() => {
-    const p = findPending()
-    return p?.kind === "question" ? p : null
-  })
-  // Backwards-compat alias for legacy call sites that just want "any
-  // pending input"; new code should prefer the split memos.
-  const hasPendingInput = createMemo(() => pendingApproval() !== null || pendingQuestion() !== null)
+  const pendingInput = createMemo(() => pendingInputPaneState(activeState()))
+  const pendingApproval = createMemo(() => pendingInput().approval)
+  const pendingQuestion = createMemo(() => pendingInput().question)
+  const hasPendingInput = createMemo(() => pendingInput().blocksPromptDispatch)
 
   // True while a `QuestionRow`'s inline "Other" input is open and
   // wants keystrokes. Driven from MessageList → QuestionRow via the
@@ -376,6 +335,21 @@ export function Chat(props: ChatProps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)?.worktreePath ?? undefined
   })
+  const bashMode = useBashMode({
+    taskId: () => props.taskId(),
+    activeTabId,
+    activeState,
+    worktreePath,
+    patchActiveState,
+    patchStateForTab,
+  })
+  const {
+    abortTab: abortBashForTab,
+    drainBashContextPrefix,
+    handleBashCommand,
+    hasActiveBash,
+    runBashLocally,
+  } = bashMode
   const modelLabel = createMemo(() => modelLabelFor(modelId(), modelEffort()))
   const activeVendor = createMemo(() => {
     const id = props.taskId()
@@ -571,146 +545,6 @@ export function Chat(props: ChatProps) {
     })
   })
 
-  // Subscription teardown is owned by useChatSession's own onCleanup.
-
-  // ── Bash mode (KOB-83) ──────────────────────────────────────────────
-  //
-  // `!shell` runs locally in the TUI process (not via the orchestrator
-  // event bus, so multi-attach clients won't see the row in v1). Tracked
-  // per tab so each tab can have at most one in-flight bash command;
-  // re-submitting cancels the prior one. The map lives on this closure
-  // — not in module scope like statesByTab — because an AbortController
-  // is only meaningful while the original component is mounted; on
-  // remount we'd want fresh controllers anyway since the prior child
-  // processes were killed when the runtime exited the closure.
-  const bashAbortsByTab = new Map<string, AbortController>()
-
-  // On Chat unmount, abort every in-flight bash. Without this, a Chat
-  // that gets swapped out (file preview opening, app exit) leaves
-  // child processes running up to their 30-min timeout, each one
-  // writing into a ChatState that's already been GC'd by
-  // useChatSession's teardown.
-  onCleanup(() => {
-    for (const ac of bashAbortsByTab.values()) ac.abort()
-    bashAbortsByTab.clear()
-  })
-
-  /**
-   * Fire-and-forget entry for the composer's `!cmd` submit. The composer
-   * has already stripped the `!`; we own pushing the bash row, streaming
-   * output into it, and stashing the completed interaction so the next
-   * regular prompt can fold it into the model context as XML.
-   *
-   * Streaming-state routing mirrors claude-code's `handlePromptSubmit`
-   * (`refs/claude-code/src/utils/handlePromptSubmit.ts:313-350`): an
-   * engine turn in flight → enqueue and wait. The queue-drain microtask
-   * runs the bash command serially with whatever else is queued so
-   * shell output doesn't race the engine writing into the same worktree
-   * (e.g. claude editing a file while user `!cat`s it would otherwise
-   * see partial state). Idle path runs immediately, same as before.
-   */
-  function handleBashCommand(command: string): void {
-    if (activeState().isStreaming) {
-      const tabId = activeTabId()
-      if (!tabId) return
-      if (queueIsFull(activeState())) {
-        patchActiveState((s) => pushSystemError(s, `queue is full (max ${activeState().queue.length})`))
-        return
-      }
-      patchActiveState((s) => enqueueBashCommand(s, command))
-      return
-    }
-    void runBashLocally(command)
-  }
-
-  async function runBashLocally(command: string): Promise<void> {
-    const taskId = props.taskId()
-    const tabId = activeTabId()
-    if (!taskId || !tabId) return
-    const cwd = worktreePath()
-    if (!cwd) {
-      patchStateForTab(tabId, (s) => pushSystemError(s, "bash: task has no worktree yet"))
-      return
-    }
-    // One bash at a time per tab — abort the prior run if still active.
-    // Pragmatic v1: claude-code allows only one concurrent !cmd too.
-    bashAbortsByTab.get(tabId)?.abort()
-    const ac = new AbortController()
-    bashAbortsByTab.set(tabId, ac)
-
-    const id = `bash-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
-    // CRITICAL: every patch below uses `patchStateForTab(tabId, …)`, not
-    // `patchActiveState`. The bash runs asynchronously; if the user
-    // switches tabs mid-run, `activeTabId()` no longer points at this
-    // bash's tab, so a `patchActiveState` call would (a) silently miss
-    // the row on the new active tab (id mismatch) and (b) attach the
-    // completed `pendingBashContext` to the wrong tab's next prompt.
-    // The `tabId` captured at the top of this function is the source
-    // of truth for the duration of the run.
-    patchStateForTab(tabId, (s) => pushBashRow(s, { id, command }))
-
-    // Accumulate output locally so we don't have to fish the final
-    // stdout/stderr back out of the reducer state at completion time
-    // (racy — patch ordering vs. signal read).
-    let stdoutAcc = ""
-    let stderrAcc = ""
-    try {
-      const result = await runBashCommand({
-        command,
-        cwd,
-        onStdout: (chunk) => {
-          stdoutAcc += chunk
-          patchStateForTab(tabId, (s) => patchBashRow(s, id, { stdoutAppend: chunk }))
-        },
-        onStderr: (chunk) => {
-          stderrAcc += chunk
-          patchStateForTab(tabId, (s) => patchBashRow(s, id, { stderrAppend: chunk }))
-        },
-        signal: ac.signal,
-      })
-      patchStateForTab(tabId, (s) =>
-        patchBashRow(s, id, { done: true, exitCode: result.exitCode, signal: result.signal }),
-      )
-      // Skip pending-context stash on a user-initiated abort — Esc /
-      // Ctrl-C cancelled the run, the model shouldn't see a half-baked
-      // output as context. Timeouts still stash (exitCode === -1,
-      // signal === null) so the model can reason about the failure.
-      if (!ac.signal.aborted) {
-        patchStateForTab(tabId, (s) =>
-          pushPendingBashContext(s, {
-            command,
-            stdout: stdoutAcc,
-            stderr: stderrAcc,
-            exitCode: result.exitCode,
-          }),
-        )
-      }
-    } catch (err) {
-      patchStateForTab(tabId, (s) => patchBashRow(s, id, { done: true, exitCode: -1, signal: null }))
-      patchStateForTab(tabId, (s) => pushSystemError(s, `bash failed: ${stringifyErr(err)}`))
-    } finally {
-      if (bashAbortsByTab.get(tabId) === ac) bashAbortsByTab.delete(tabId)
-    }
-  }
-
-  /**
-   * Drain the active tab's pending bash context and format it as an
-   * XML prefix to fold into the next prompt. Returns the prefix string
-   * (empty when nothing pending) — `send()` prepends this to the text
-   * before handing off to runTask/steerTask/enqueuePrompt so all three
-   * paths give the model the same context.
-   */
-  function drainBashContextPrefix(): string {
-    const ctxs = activeState().pendingBashContext ?? []
-    if (ctxs.length === 0) return ""
-    const prefix = formatBashContextPrefix(ctxs)
-    patchActiveState((s) => {
-      const [next] = drainPendingBashContext(s)
-      return next
-    })
-    return prefix
-  }
-
   /**
    * Submit a prompt to the active tab.
    *
@@ -800,7 +634,7 @@ export function Chat(props: ChatProps) {
       // Queue path. Refuse silently when the soft cap is hit; the
       // composer's footer hint surfaces the cap to the user.
       if (queueIsFull(activeState())) {
-        patchActiveState((s) => pushSystemError(s, `queue is full (max ${activeState().queue.length})`))
+        patchActiveState((s) => pushSystemError(s, `queue is full (max ${QUEUE_SOFT_CAP})`))
         return
       }
       setDraft("")
@@ -871,106 +705,24 @@ export function Chat(props: ChatProps) {
     setDraft(entry.text)
   }
 
-  /** Create a new tab and switch focus to it. Wired from `ctrl+t`. */
-  async function newTab(): Promise<void> {
-    const taskId = props.taskId()
-    if (!taskId) return
-    try {
-      const tab = await props.orchestrator.createTab(taskId)
-      setActiveTabIdLocal(tab.id)
-      setExpandedToolIndex(null)
-      setExpandedFoldStartIndex(null)
-      void props.orchestrator.setActiveTab(taskId, tab.id)
-    } catch (err) {
-      patchActiveState((s) => pushSystemError(s, `createTab failed: ${stringifyErr(err)}`))
-    }
-  }
-
-  /** Close the active tab (refuses to close the last one). */
-  async function closeActiveTab(): Promise<void> {
-    const taskId = props.taskId()
-    const tabId = activeTabId()
-    if (!taskId || !tabId) return
-    if (tabs().length <= 1) return
-    // Abort any in-flight bash for this tab BEFORE the orchestrator
-    // tears it down. Otherwise the subprocess keeps running up to the
-    // 30-minute timeout, writing into an orphaned ChatState that's
-    // about to be GC'd by syncTabSubs.
-    bashAbortsByTab.get(tabId)?.abort()
-    try {
-      const nextActive = await props.orchestrator.closeTab(taskId, tabId)
-      // The controller's syncTabSubs drops the orphan tab's state +
-      // draft on the next reactive tick when `tasks` updates — no
-      // manual cleanup needed here.
-      if (nextActive) {
-        setActiveTabIdLocal(nextActive)
-        setExpandedToolIndex(null)
-        setExpandedFoldStartIndex(null)
-      }
-    } catch (err) {
-      patchActiveState((s) => pushSystemError(s, `closeTab failed: ${stringifyErr(err)}`))
-    }
-  }
-
-  /** Switch to the tab at the given 0-indexed position. Out-of-range = no-op. */
-  function selectTabByIndex(idx: number): void {
-    const t = tabs()[idx]
-    if (!t) return
-    setActiveTabIdLocal(t.id)
-    setExpandedToolIndex(null)
-    setExpandedFoldStartIndex(null)
-    const taskId = props.taskId()
-    if (taskId) void props.orchestrator.setActiveTab(taskId, t.id)
-  }
-
-  function cycleTab(delta: 1 | -1): void {
-    const list = tabs()
-    if (list.length <= 1) return
-    const cur = activeTabId()
-    const idx = cur ? list.findIndex((t) => t.id === cur) : 0
-    const next = (idx + delta + list.length) % list.length
-    selectTabByIndex(next)
-  }
-
   // Pane-scoped keybindings: only fire when the chat pane is focused.
   // No numeric pick — chat tabs cycle via ctrl+[/ctrl+] so ctrl+1..4
   // is uncontested as the global pane-focus chord (see
   // docs/KEYBINDINGS.md).
-  useBindings(() => ({
-    enabled: props.focused?.() === true,
-    bindings: bindByIds({
-      "chat.tab.new": () => void newTab(),
-      "chat.tab.close": () => void closeActiveTab(),
-      "chat.tab.cycle-next": () => cycleTab(1),
-      "chat.tab.cycle-prev": () => cycleTab(-1),
-      "chat.tab.rename": () => {
-        const id = activeTabId()
-        if (id) props.onRenameTabRequest?.(id)
-      },
-      "chat.session.resume": () => {
-        const tid = props.taskId()
-        if (!tid) return
-        ResumeDialog.show(dialog, props.orchestrator, tid)
-      },
-      "chat.fork.new": () => {
-        props.onQuickForkRequest?.()
-      },
-    }),
-  }))
-
-  // True while a `!bash` subprocess is in flight for the active tab.
-  // Derived from messages (the last bash row's `done` flag) rather
-  // than the AbortController map so Solid reruns dependent UI on the
-  // exact tick the row flips to `done: true`. Scans from the tail
-  // because in-flight bash rows are always recent.
-  const hasActiveBash = createMemo(() => {
-    const msgs = activeState().messages
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const m = msgs[i]
-      if (!m) continue
-      if (m.kind === "bash") return !m.done
-    }
-    return false
+  useChatTabs({
+    orchestrator: props.orchestrator,
+    dialog,
+    taskId: () => props.taskId(),
+    focused: props.focused,
+    tabs,
+    activeTabId,
+    setActiveTabIdLocal,
+    setExpandedToolIndex,
+    setExpandedFoldStartIndex,
+    patchActiveState,
+    abortBashForTab,
+    onRenameTabRequest: props.onRenameTabRequest,
+    onQuickForkRequest: props.onQuickForkRequest,
   })
 
   // Esc-to-interrupt while streaming OR while a `!bash` command is
@@ -987,7 +739,7 @@ export function Chat(props: ChatProps) {
     // The runBashLocally handler watches signal.aborted and skips the
     // pending-context stash, so the cancelled run doesn't leak into the
     // next prompt.
-    bashAbortsByTab.get(tabId)?.abort()
+    abortBashForTab(tabId)
     if (!activeState().isStreaming) return
     try {
       await props.orchestrator.interruptTask(taskId, tabId)
@@ -1103,12 +855,8 @@ export function Chat(props: ChatProps) {
     if (q) {
       const taskId = props.taskId()
       if (!taskId) return
-      const answers: Record<string, string> = {}
-      for (const entry of q.questions) {
-        answers[entry.question] = trimmed
-      }
       props.orchestrator
-        .respondToInput(taskId, q.requestId, { kind: "ask_question", answers })
+        .respondToInput(taskId, q.requestId, answerQuestionWithFreeText(q, trimmed))
         .catch((err: unknown) => {
           patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
         })
@@ -1124,192 +872,73 @@ export function Chat(props: ChatProps) {
   }
 
   return (
-    <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
-      {/* Tab bar lives in the workspace's CenterTabStrip — see app.tsx.
-          Chat tabs are rendered alongside open files there so we don't
-          double up tab UI. ctrl+t / ctrl+w / ctrl+1..9 / ctrl+tab keys
-          are still handled here. */}
-
-      {/* Empty state for "no task selected". */}
-      <Show when={!props.taskId()}>
-        <box flexGrow={1} alignItems="center" justifyContent="center">
-          <text fg={theme.textMuted}>Select a task or press n to create one.</text>
-        </box>
-      </Show>
-
-      {/* Message list. */}
-      <Show when={props.taskId()}>
-        <scrollbox
-          ref={(r: ScrollBoxRenderable) => {
-            scrollRef = r
-          }}
-          flexGrow={1}
-          stickyScroll={true}
-          stickyStart="bottom"
-          verticalScrollbarOptions={{
-            trackOptions: { backgroundColor: theme.background, foregroundColor: theme.borderActive },
-          }}
-        >
-          <box paddingRight={1} gap={0}>
-            <MessageList
-              messages={activeState().messages}
-              expandedToolIndex={expandedToolIndex()}
-              onToggleTool={toggleExpand}
-              expandedFoldStartIndex={expandedFoldStartIndex()}
-              onToggleFold={toggleFold}
-              showEmptyPlaceholder={!showThinking()}
-              onApprove={(requestId, approve) => {
-                const taskId = props.taskId()
-                if (!taskId) return
-                props.orchestrator
-                  .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
-                  .catch((err: unknown) => {
-                    patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-                  })
-              }}
-              onAnswer={(requestId, answers) => {
-                const taskId = props.taskId()
-                if (!taskId) return
-                props.orchestrator
-                  .respondToInput(taskId, requestId, { kind: "ask_question", answers })
-                  .catch((err: unknown) => {
-                    patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-                  })
-              }}
-              onClaimComposerFocus={setQuestionInlineFocus}
-              chatFocused={() => props.focused?.() ?? false}
-            />
-          </box>
-        </scrollbox>
-      </Show>
-
-      {/* Thinking spinner — pinned just above the composer, OUTSIDE the
-          scrolling transcript. Mirrors `refs/claude-code/src/screens/REPL.tsx`
-          (SpinnerWithVerb sits above the bottom prompt, not inside the
-          message list) so the spinner always reads as the live status
-          line regardless of where the user has scrolled. Keeping it
-          outside the scrollbox also avoids the ordering ambiguity that
-          showed up when Loading was the last child of an opentui flex
-          column alongside a reactive <For> — its position is now
-          deterministic by source order at this layer. */}
-      <Show when={showThinking() && props.taskId()}>
-        <Loading startedAt={turnStartedAt()} responseChars={currentTurnChars()} />
-      </Show>
-
-      {/* Current-turn error banner. Keep it outside the transcript
-          scrollbox and above the composer so it reads as status, not
-          as text inside the input control. The full error is also kept
-          as a system row in history. */}
-      <Show when={activeState().error}>
-        {(err) => (
-          <box
-            flexDirection="row"
-            gap={1}
-            paddingLeft={1}
-            paddingRight={1}
-            backgroundColor={theme.backgroundElement}
-            flexShrink={0}
-          >
-            <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-              !
-            </text>
-            <text fg={theme.warning} wrapMode="none">
-              error
-            </text>
-            <text fg={theme.textMuted} wrapMode="none">
-              {err()}
-            </text>
-          </box>
-        )}
-      </Show>
-
-      {/* Composer — hidden entirely while a question picker is up so
-          the user's full attention is on picking (or typing into the
-          inline "Other" input). Reappears as soon as the picker
-          resolves; the user can then type freely again. Approval
-          pickers (ExitPlanMode) keep the composer rendered but locked
-          since approval is binary and the user might still want
-          history / model context affordances visible. */}
-      <Show when={!pendingQuestion()}>
-        <Composer
-          draft={draft()}
-          onDraftChange={setDraft}
-          isStreaming={activeState().isStreaming}
-          hasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingApproval()}
-          noTaskMessage={
-            isArchived()
-              ? "(archived — unarchive to resume)"
-              : isCanceled()
-                ? "(task canceled — pick another or press ctrl+n to create)"
-                : pendingApproval()
-                  ? "(answer the prompt above to continue)"
-                  : undefined
-          }
-          onSubmit={handleComposerSubmit}
-          focused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
-          // Per-tab history scope — prompt history shouldn't bleed across tabs.
-          historyKey={activeTabId() ?? props.taskId()}
-          slashes={slashes}
-          permissionMode={permissionMode}
-          permissionModeLabel={permissionModeText}
-          onCyclePermissionMode={cyclePermissionMode}
-          modelLabel={modelLabel}
-          inputPlaceholder={inputPlaceholder}
-          onChooseModel={() => void chooseModel()}
-          worktreePath={worktreePath}
-          queue={() => activeState().queue}
-          onCancelQueued={cancelQueued}
-          onSendQueuedNow={sendQueuedNow}
-          onBashCommand={handleBashCommand}
-          onOpenFilePath={props.onOpenFilePath}
-          onEditQueued={editQueued}
-          editingQueueId={editingQueueId}
-        />
-      </Show>
-    </box>
+    <ChatView
+      theme={theme}
+      hasTaskId={props.taskId() !== undefined}
+      setScrollRef={(r) => {
+        scrollRef = r
+      }}
+      messages={activeState().messages}
+      expandedToolIndex={expandedToolIndex()}
+      onToggleTool={toggleExpand}
+      expandedFoldStartIndex={expandedFoldStartIndex()}
+      onToggleFold={toggleFold}
+      showThinking={showThinking()}
+      onApprove={(requestId, approve) => {
+        const taskId = props.taskId()
+        if (!taskId) return
+        props.orchestrator
+          .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
+          .catch((err: unknown) => {
+            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+          })
+      }}
+      onAnswer={(requestId, answers) => {
+        const taskId = props.taskId()
+        if (!taskId) return
+        props.orchestrator
+          .respondToInput(taskId, requestId, { kind: "ask_question", answers })
+          .catch((err: unknown) => {
+            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+          })
+      }}
+      onClaimComposerFocus={setQuestionInlineFocus}
+      chatFocused={() => props.focused?.() ?? false}
+      loadingStartedAt={turnStartedAt()}
+      currentTurnChars={currentTurnChars()}
+      error={activeState().error}
+      showComposer={pendingInput().showsComposer}
+      draft={draft()}
+      onDraftChange={setDraft}
+      isStreaming={activeState().isStreaming}
+      composerHasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingInput().locksComposer}
+      noTaskMessage={
+        isArchived()
+          ? "(archived — unarchive to resume)"
+          : isCanceled()
+            ? "(task canceled — pick another or press ctrl+n to create)"
+            : pendingInput().composerDisabledMessage
+              ? pendingInput().composerDisabledMessage
+              : undefined
+      }
+      onSubmit={handleComposerSubmit}
+      composerFocused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
+      historyKey={activeTabId() ?? props.taskId()}
+      slashes={slashes}
+      permissionMode={permissionMode}
+      permissionModeLabel={permissionModeText}
+      onCyclePermissionMode={cyclePermissionMode}
+      modelLabel={modelLabel}
+      inputPlaceholder={() => pendingInput().composerPlaceholder ?? inputPlaceholder()}
+      onChooseModel={() => void chooseModel()}
+      worktreePath={worktreePath}
+      queue={() => activeState().queue}
+      onCancelQueued={cancelQueued}
+      onSendQueuedNow={sendQueuedNow}
+      onBashCommand={handleBashCommand}
+      onOpenFilePath={props.onOpenFilePath}
+      onEditQueued={editQueued}
+      editingQueueId={editingQueueId}
+    />
   )
-}
-
-function estimateContextTokensFromRows(rows: readonly ChatRow[]): number {
-  let chars = 0
-  for (const row of rows) {
-    switch (row.kind) {
-      case "user":
-      case "assistant":
-      case "system":
-        chars += row.text.length
-        break
-      case "tool":
-        chars += row.name.length
-        chars += stringifyForTokenEstimate(row.input).length
-        chars += stringifyForTokenEstimate(row.output).length
-        break
-      case "approval":
-        chars += row.tool.length + row.plan.length
-        break
-      case "question":
-        chars += row.questions.reduce((total, q) => total + q.question.length, 0)
-        break
-    }
-  }
-  return Math.max(1, Math.round(chars / 4))
-}
-
-function stringifyForTokenEstimate(value: unknown): string {
-  if (value === undefined || value === null) return ""
-  if (typeof value === "string") return value
-  try {
-    return JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function stringifyErr(err: unknown): string {
-  if (err instanceof Error) return err.message
-  try {
-    return JSON.stringify(err)
-  } catch {
-    return String(err)
-  }
 }

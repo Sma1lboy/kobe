@@ -33,6 +33,7 @@ import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orch
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
+import { NullMetadataSuggester } from "../orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
@@ -442,16 +443,22 @@ function Shell(props: AppDeps) {
   // through to the orchestrator" lives in `./lib/use-task-actions.ts`.
   // See that hook for the new-task / rename-task / rename-chat-tab /
   // delete-task flows.
-  const { openNewTaskFlow, quickForkActiveTask, confirmRenameTask, confirmRenameChatTab, confirmDeleteTask } =
-    useTaskActions({
-      orchestrator: props.orchestrator,
-      dialog,
-      kv,
-      selectedId,
-      setSelectedId,
-      setFocusedPane,
-      savedRepos,
-    })
+  const {
+    openNewTaskFlow,
+    quickForkActiveTask,
+    confirmRenameTask,
+    confirmRenameChatTab,
+    confirmDeleteTask,
+    confirmLocalMergeTask,
+  } = useTaskActions({
+    orchestrator: props.orchestrator,
+    dialog,
+    kv,
+    selectedId,
+    setSelectedId,
+    setFocusedPane,
+    savedRepos,
+  })
 
   // Centralised keymap registration. All six top-level useBindings
   // call sites used to live inline here; they were consolidated into
@@ -560,6 +567,9 @@ function Shell(props: AppDeps) {
                 // eslint-disable-next-line no-console
                 console.error("[kobe] setArchived failed:", err)
               })
+            }}
+            onLocalMergeRequest={(id: string) => {
+              void confirmLocalMergeTask(id)
             }}
             onRenameRequest={(id: string) => {
               void confirmRenameTask(id)
@@ -757,7 +767,12 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const worktrees = new GitWorktreeManager()
-    orchestrator = new Orchestrator({ engines, store, worktrees })
+    orchestrator = new Orchestrator({
+      engines,
+      store,
+      worktrees,
+      ...(process.env.KOBE_TEST_ENGINE ? { metadataSuggester: new NullMetadataSuggester() } : {}),
+    })
     // Bridge: bind a Unix-socket RPC server + write an MCP config so
     // every claude subprocess kobe spawns gets the `kobe_*` tools.
     try {

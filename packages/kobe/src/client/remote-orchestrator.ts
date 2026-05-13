@@ -397,6 +397,10 @@ export class RemoteOrchestrator {
     await this.client.request("pr.request", { taskId })
   }
 
+  async requestLocalMerge(taskId: string): Promise<void> {
+    await this.client.request("merge.local.request", { taskId })
+  }
+
   /**
    * Ask the daemon to shut itself down. Used by the Settings → Dev
    * "Restart backend" button so the user can pick up daemon-side code

@@ -1,5 +1,6 @@
 /**
- * KV store — disk-backed JSON at `~/.config/kobe/state.json`.
+ * KV store — disk-backed JSON at `~/.config/kobe/state.json`, or
+ * `$KOBE_HOME_DIR/.config/kobe/state.json` in isolated test/dev homes.
  *
  * Surface mirrors opencode's `useKV` (`get`, `set`, `signal`). Reads are
  * synchronous: the file is small (a few keys) and we want hydration done
@@ -14,18 +15,18 @@
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname } from "node:path"
 import type { Setter } from "solid-js"
 import { createStore } from "solid-js/store"
+import { kvStatePath } from "../../env.ts"
 import { createSimpleContext } from "./helper"
 
-const STATE_PATH = join(homedir(), ".config", "kobe", "state.json")
 const WRITE_DEBOUNCE_MS = 250
 
 function loadInitial(): Record<string, unknown> {
+  const statePath = kvStatePath()
   try {
-    const text = readFileSync(STATE_PATH, "utf8")
+    const text = readFileSync(statePath, "utf8")
     const parsed = JSON.parse(text) as unknown
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       return parsed as Record<string, unknown>
@@ -47,11 +48,12 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
       if (writeTimer) clearTimeout(writeTimer)
       writeTimer = setTimeout(() => {
         writeTimer = null
+        const statePath = kvStatePath()
         try {
-          mkdirSync(dirname(STATE_PATH), { recursive: true })
-          const tmp = `${STATE_PATH}.tmp`
+          mkdirSync(dirname(statePath), { recursive: true })
+          const tmp = `${statePath}.tmp`
           writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8")
-          renameSync(tmp, STATE_PATH)
+          renameSync(tmp, statePath)
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error("[kobe] kv write failed:", err)
@@ -97,11 +99,12 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
           clearTimeout(writeTimer)
           writeTimer = null
         }
+        const statePath = kvStatePath()
         try {
-          mkdirSync(dirname(STATE_PATH), { recursive: true })
-          const tmp = `${STATE_PATH}.tmp`
+          mkdirSync(dirname(statePath), { recursive: true })
+          const tmp = `${statePath}.tmp`
           writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8")
-          renameSync(tmp, STATE_PATH)
+          renameSync(tmp, statePath)
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error("[kobe] kv clear write failed:", err)

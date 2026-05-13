@@ -98,17 +98,7 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
  * repo, submit, then send the first prompt through the focused composer.
  */
 async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
-  await kobe.sendKeys("n")
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
-  await kobe.sendKeys("\t")
-  await new Promise((r) => setTimeout(r, 100))
-  await kobe.sendKeys("\t")
-  await new Promise((r) => setTimeout(r, 100))
-  await kobe.sendKeys("\r")
+  await kobe.createTask(repo)
   await new Promise((r) => setTimeout(r, 250))
   await kobe.typeText(prompt)
   await kobe.sendKeys("\r")

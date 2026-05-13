@@ -11,10 +11,14 @@
  * shape: spawn → wait → assert → exit.
  */
 
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { type KobeHandle, spawnKobe } from "./driver"
 
 let kobe: KobeHandle | null = null
+let tmpRoot: string | null = null
 
 afterEach(async () => {
   // Defensive: even if the test threw, we never want a zombie pty.
@@ -22,10 +26,28 @@ afterEach(async () => {
     await kobe.exit()
   }
   kobe = null
+  if (tmpRoot && fs.existsSync(tmpRoot)) {
+    try {
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    } catch {
+      /* ignore */
+    }
+  }
+  tmpRoot = null
 })
 
 test("kobe boots and renders its title in the bordered box", async () => {
-  kobe = await spawnKobe()
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-example-"))
+  const homeDir = path.join(tmpRoot, "home")
+  fs.mkdirSync(homeDir, { recursive: true })
+
+  kobe = await spawnKobe({
+    env: {
+      HOME: homeDir,
+      KOBE_HOME_DIR: homeDir,
+      KOBE_TEST_ENGINE: "fake",
+    },
+  })
   // Intentionally minimal — phase-specific banner text changes every
   // wave. The harness's job is to prove the binary booted, painted,
   // and is reachable. "kobe" appears in the title bar of every phase.

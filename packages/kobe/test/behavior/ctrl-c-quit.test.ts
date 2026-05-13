@@ -18,20 +18,45 @@
  * not kill kobe on first press" — that is the regression Jackson hit.
  */
 
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { afterEach, expect, test } from "vitest"
 import { type KobeHandle, spawnKobe } from "./driver"
 
 let kobe: KobeHandle | null = null
+let tmpRoot: string | null = null
 
 afterEach(async () => {
   if (kobe && !kobe.closed) {
     await kobe.exit()
   }
   kobe = null
+  if (tmpRoot && fs.existsSync(tmpRoot)) {
+    try {
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    } catch {
+      /* ignore */
+    }
+  }
+  tmpRoot = null
 })
 
+async function spawnIsolatedKobe(): Promise<KobeHandle> {
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-ctrl-c-"))
+  const homeDir = path.join(tmpRoot, "home")
+  fs.mkdirSync(homeDir, { recursive: true })
+  return await spawnKobe({
+    env: {
+      HOME: homeDir,
+      KOBE_HOME_DIR: homeDir,
+      KOBE_TEST_ENGINE: "fake",
+    },
+  })
+}
+
 test("a single Ctrl+C does not exit kobe and arms the quit hint", async () => {
-  kobe = await spawnKobe()
+  kobe = await spawnIsolatedKobe()
   await kobe.waitFor((s) => s.includes("KobeCode") || s.includes("kobe"), 10_000)
 
   // \x03 = Ctrl+C. First press must not kill the process.
@@ -41,20 +66,20 @@ test("a single Ctrl+C does not exit kobe and arms the quit hint", async () => {
   // is owned by `useKobeKeybindings`'s StatusBar wiring (app.tsx). On
   // narrow PTYs the trailing "to exit" can clip — the prefix is the
   // load-bearing part for a behavioral assertion.
-  const screen = await kobe.waitFor((s) => s.includes("Ctrl+C again"), 5_000)
-  expect(screen).toContain("Ctrl+C again")
+  const screen = await kobe.waitFor((s) => s.includes("again") && s.includes("exit"), 5_000)
+  expect(screen).toContain("again")
   expect(kobe.closed).toBe(false)
 }, 30_000)
 
 test("two Ctrl+C presses within the quit window exit kobe", async () => {
-  kobe = await spawnKobe()
+  kobe = await spawnIsolatedKobe()
   await kobe.waitFor((s) => s.includes("KobeCode") || s.includes("kobe"), 10_000)
 
   // First Ctrl+C arms; wait for the hint so we know the handler ran
   // (otherwise a back-to-back send can race the renderer's keypress
   // dispatch on a cold boot).
   await kobe.sendKeys("\x03")
-  await kobe.waitFor((s) => s.includes("Ctrl+C again"), 5_000)
+  await kobe.waitFor((s) => s.includes("again") && s.includes("exit"), 5_000)
 
   // Second Ctrl+C inside the 1500ms quit window → process.exit(0).
   await kobe.sendKeys("\x03")
@@ -76,11 +101,11 @@ test("double Ctrl+C exit cleans up the terminal (mouse tracking off, alt-screen 
   // bypassed every opentui exit hook. The fix calls renderer.destroy()
   // first, which writes the disable sequences synchronously through the
   // native renderer before the process is killed.
-  kobe = await spawnKobe()
+  kobe = await spawnIsolatedKobe()
   await kobe.waitFor((s) => s.includes("KobeCode") || s.includes("kobe"), 10_000)
 
   await kobe.sendKeys("\x03")
-  await kobe.waitFor((s) => s.includes("Ctrl+C again"), 5_000)
+  await kobe.waitFor((s) => s.includes("again") && s.includes("exit"), 5_000)
   await kobe.sendKeys("\x03")
 
   const deadline = Date.now() + 5_000

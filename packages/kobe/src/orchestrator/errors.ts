@@ -34,6 +34,16 @@ export class PRPreconditionError extends Error {
   }
 }
 
+/**
+ * Thrown when `Orchestrator.requestLocalMerge` cannot start a merge prompt.
+ */
+export class LocalMergePreconditionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "LocalMergePreconditionError"
+  }
+}
+
 /** Thrown when a task id cannot be resolved. */
 export class TaskNotFoundError extends Error {
   constructor(taskId: string) {
