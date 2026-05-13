@@ -254,7 +254,7 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   /* --------- bindings ---------- */
 
-  // `alt+r` opens a confirm modal; user confirms → tear down the
+  // `ctrl+shift+r` opens a confirm modal; user confirms → tear down the
   // current PTY and acquire a fresh one with the same `cwd`. Lives
   // here (not in `keys.ts`) because the dialog context is component-
   // scoped via `useDialog()`. The async confirm needs the current
