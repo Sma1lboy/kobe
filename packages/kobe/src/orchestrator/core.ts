@@ -1744,6 +1744,7 @@ export class Orchestrator {
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
       model: active.model ?? task.model,
+      modelEffort: active.modelEffort ?? task.modelEffort,
       vendor: this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
@@ -1797,13 +1798,23 @@ export class Orchestrator {
   async createTab(id: TaskId | string, opts: { title?: string } = {}): Promise<ChatTab> {
     const task = this.requireTask(id)
     const active = this.resolveTab(task)
+    const {
+      id: _activeId,
+      sessionId: _activeSessionId,
+      title: _activeTitle,
+      seq: _activeSeq,
+      createdAt: _activeCreatedAt,
+      ...activeConfig
+    } = active
     const tab: ChatTab = {
+      ...activeConfig,
       id: ulid(),
       sessionId: null,
       seq: nextChatTabSeq(task.tabs),
       createdAt: new Date().toISOString(),
-      model: active.model ?? task.model,
-      vendor: this.vendorForTab(task, active),
+      model: activeConfig.model ?? task.model,
+      modelEffort: activeConfig.modelEffort ?? task.modelEffort,
+      vendor: activeConfig.vendor ?? this.vendorForTab(task, active),
       ...(opts.title ? { title: opts.title } : {}),
     }
     const tabs = [...task.tabs, tab]

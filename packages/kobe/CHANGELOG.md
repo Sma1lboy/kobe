@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **New chat tabs preserve active chat model settings** — `ctrl+t` now copies the active chat tab's model configuration before assigning the new tab id/session, so settings like GPT/Codex reasoning effort carry over instead of falling back to defaults (KOB-108).
 - **Codex reasoning rows render as “思考过程” instead of raw JSON** — app-server and exec-stream reasoning items now show a clean thinking-process row without exposing `reasoning({"summary":[],"content":[]})` payloads (KOB-102).
 - **Codex tool calls rehydrate after restart** — persisted `function_call` / `function_call_output` rows now reload as paired tool rows instead of disappearing from the chat transcript (KOB-105).
 - **Codex history hydration now covers non-message transcript items** — custom tool calls, visible reasoning summaries, and single-record web/search/local-shell tool items reload after restart instead of being silently dropped (KOB-106).

@@ -1407,6 +1407,27 @@ describe("Orchestrator engine call shape", () => {
     expect(firstHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "claude history for claude-1" }])
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
   })
+
+  test("new chat tabs inherit the active tab's model effort", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const orch = new Orchestrator({
+      engines: { claude: new HistoryEngine("claude"), codex: new HistoryEngine("codex") },
+      store,
+      worktrees: new GitWorktreeManager(),
+    })
+
+    const task = await orch.createTask({ repo, title: "tab effort", prompt: "" })
+    const firstTab = orch.getTask(task.id)?.tabs[0]
+    expect(firstTab).toBeDefined()
+    await orch.setModel(task.id, "gpt-5.5", firstTab!.id, "xhigh")
+
+    const secondTab = await orch.createTab(task.id)
+
+    expect(secondTab.model).toBe("gpt-5.5")
+    expect(secondTab.modelEffort).toBe("xhigh")
+    expect(secondTab.vendor).toBe("codex")
+  })
 })
 
 // ----------------------------------------------------------------------
