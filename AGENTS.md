@@ -1,15 +1,29 @@
 # kobe (codename, rename later)
 
-Goal: build a TUI that mimics Conductor's UX (multi-task AI orchestration), with Claude Code as the engine.
+## Project at a glance
+
+kobe is a local-first terminal UI for running many AI coding sessions at once. It takes Conductor's multi-task orchestration shape — task sidebar, workspace chat/files tabs, file tree, embedded terminal, status bar — and makes it terminal-native with git worktrees and local engine processes.
+
+The product unit is:
+
+```text
+Task = git worktree + engine session + branch
+```
+
+The TUI is the product. Engine adapters are execution backends. Claude Code is the original/default engine, and Codex support exists behind the same engine-owned contract. Neutral layers must ask the engine registry/adapter for product identity, model capabilities, history, telemetry, and mode labels instead of hard-coding vendor strings.
+
+This file is an operator manual for agents. Keep it stable: do not duplicate long release manifests here. For the exact current version and shipped feature list, read [`packages/kobe/package.json`](./packages/kobe/package.json) and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
 
 **Read in order before doing anything**:
-1. [`HANDOFF.md`](./HANDOFF.md) — the briefing from the very first session.
-2. [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy, architecture, tech stack lock-in.
-3. [`docs/PLAN.md`](./docs/PLAN.md) — Phase 0 → Phase 1 stream/wave plan.
-4. [`docs/HARNESS.md`](./docs/HARNESS.md) — agent self-test contract. **Load-bearing.**
-5. [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md) — pane-scope rules + boundary patterns. Read before adding/moving any chord.
+1. [`HANDOFF.md`](./HANDOFF.md) — freshest session handoff, current risks, open follow-ups.
+2. [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy, architecture decisions, tech stack lock-in.
+3. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — current source-tree map and ownership boundaries.
+4. [`docs/PLAN.md`](./docs/PLAN.md) — Phase 0 → Phase 1 stream/wave plan and gate history.
+5. [`docs/HARNESS.md`](./docs/HARNESS.md) — agent self-test contract. **Load-bearing.**
+6. [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md) — pane-scope rules + boundary patterns. Read before adding/moving any chord.
+7. [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) — current shipped behavior and release-note style.
 
-The architecture decisions are not obvious from the code (the code is mostly empty). The docs are the source of truth.
+The architecture decisions are not always obvious from the code. The docs above are the source of truth; if docs and implementation disagree, surface the mismatch before widening scope.
 
 ## Conventions
 
@@ -211,10 +225,10 @@ Canonical example: [`docs/design/tasks.md`](./docs/design/tasks.md) — `classDi
 ## Phase status
 
 - **Phase 0**: foundation. Streams 0.1 (bootstrap, solo), then Foundation Team (0.2 + 0.3 + 0.4) in parallel. **Closed.**
-- **Phase 1**: build the 5-pane Conductor-shaped TUI. Waves 1–4 per `docs/PLAN.md`. **Closed at gate G4 on 2026-05-09 — shipped as `@sma1lboy/kobe@0.1.0` on npm.** See [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) for the 0.1.0 feature manifest. Post-1.0 line continues there — current published version is **`0.5.0` (2026-05-10)**, which folds in the daemon multi-attach broadcast (KOB-36), richer assistant markdown (KOB-47), clipboard / cmd-key fixes (KOB-48), the `@`-mention file picker, image-paste prettify in the transcript, and a file-tree viewport that follows the cursor. `v0.4.0` introduced the context-usage meter in the WORKSPACE header. (Note: `0.2.x → 0.4.x → 0.5.0` because `0.3.0` was only documented, never tagged.)
+- **Phase 1**: build the 5-pane Conductor-shaped TUI. Waves 1–4 per `docs/PLAN.md`. **Closed at gate G4 on 2026-05-09 — shipped as `@sma1lboy/kobe@0.1.0` on npm.** The post-0.1 line is release-driven now; do not summarize the latest feature set here. Read [`packages/kobe/package.json`](./packages/kobe/package.json) for the package version and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) for the canonical shipped behavior.
 - **Phase 2**: dropped 2026-05-09. Originally a defensive hedge for "what if we ever swap engines." No real product driver — kobe's value is the UI, the local `claude` subprocess works, and Anthropic's API already covers shared/cloud sessions. Free up the design space; revisit only if a concrete engine-swap need surfaces.
 
-Update this section's status as gates G0–G4 close. See PLAN.md for the canonical state.
+Update this section only when a phase/gate changes. Do not update it for every patch release; changelog owns that.
 
 ### Closed follow-ups from 0.1.0
 

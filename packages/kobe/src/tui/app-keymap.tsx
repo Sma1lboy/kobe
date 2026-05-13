@@ -77,6 +77,8 @@ export type AppKeymapDeps = {
   orchestrator: KobeOrchestrator
   /** Renderer handle for the quit path — undefined under tests that don't mount opentui. */
   renderer: RendererHandle | undefined
+  /** Shell-owned quit path, including daemon cleanup in single-point mode. */
+  onQuit?: () => void
   /** Active task accessor — needed by the test-only ctrl+y PR hotkey. */
   activeTask: Accessor<Task | undefined>
   /** Open the active task's worktree in the detected editor. */
@@ -159,13 +161,16 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
       "app.quit": () => {
         DialogConfirm.show(dialog, "Quit kobe?", "Any in-progress tasks will be detached.", "stay").then((ok) => {
           if (ok === true) {
-            try {
-              deps.renderer?.destroy()
-            } catch (err) {
-              // eslint-disable-next-line no-console
-              console.error("kobe: renderer.destroy() failed during quit:", err)
+            if (deps.onQuit) deps.onQuit()
+            else {
+              try {
+                deps.renderer?.destroy()
+              } catch (err) {
+                // eslint-disable-next-line no-console
+                console.error("kobe: renderer.destroy() failed during quit:", err)
+              }
+              process.exit(0)
             }
-            process.exit(0)
           }
         })
       },

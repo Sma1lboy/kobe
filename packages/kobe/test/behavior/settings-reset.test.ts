@@ -131,11 +131,9 @@ test("settings → Dev → Reset wipes state.json and exits kobe", async () => {
     return flat.includes("Settings") && flat.includes("Theme")
   }, 5_000)
 
-  // Move sidebar cursor from General → Dev, then drill into body.
-  // SECTIONS = [{id:"general"},{id:"dev"}] in settings-dialog.tsx, so
-  // a single ↓ lands on Dev; ↩ enters body (cursor on the single
-  // Reset row).
-  await kobe.sendKeys("\x1b[B") // arrow down → Dev section in sidebar
+  // Move sidebar cursor from General → Accounts → Codex → Dev, then
+  // drill into body (cursor on the Reset row).
+  await kobe.sendKeys("\x1b[B\x1b[B\x1b[B") // arrow down → Dev section in sidebar
   await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("ResetUIstate"), 5_000)
   await kobe.sendKeys("\r") // enter → drill into Dev body
   await kobe.sendKeys("\r") // enter → trigger confirmReset → DialogConfirm appears

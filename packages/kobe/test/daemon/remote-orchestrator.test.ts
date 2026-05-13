@@ -53,6 +53,29 @@ async function buildOrchestrator(): Promise<Orchestrator> {
 }
 
 describe("RemoteOrchestrator", () => {
+  test("manualReconnect uses the injected reachability strategy", async () => {
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const remoteClient = new KobeDaemonClient(socketPath)
+    let remote: RemoteOrchestrator | null = null
+    let reconnectCalls = 0
+    try {
+      remote = new RemoteOrchestrator(remoteClient, {
+        ensureReachable: async () => {
+          reconnectCalls++
+        },
+      })
+      await remote.init()
+      await remote.manualReconnect()
+      expect(reconnectCalls).toBe(1)
+      expect(remote.connectionStateSignal()()).toBe("online")
+    } finally {
+      remote?.dispose()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
   test("hydrates peekPendingInput from chat.input.pending on attach", async () => {
     // Regression: peekPendingInput on RemoteOrchestrator was a stub
     // that returned []. A TUI joining a daemon with an in-flight

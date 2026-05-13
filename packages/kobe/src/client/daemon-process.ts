@@ -1,9 +1,18 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
+import { unlink } from "node:fs/promises"
+import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { defaultDaemonSocketPath } from "../daemon/paths.ts"
+import { defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
 import { KobeDaemonClient } from "./index.ts"
+
+export interface OwnedDaemonClient {
+  readonly client: KobeDaemonClient
+  readonly socketPath: string
+  readonly pidPath: string
+  stop: () => Promise<void>
+}
 
 /**
  * If the daemon socket already accepts connections, do nothing. Otherwise
@@ -49,6 +58,78 @@ export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
   const client = new KobeDaemonClient(socketPath)
   await client.connect()
   return client
+}
+
+/**
+ * Start a daemon owned by the current TUI process.
+ *
+ * Unlike {@link connectOrStartDaemon}, this never reuses the stable
+ * daemon socket. It gives each TUI its own socket/pid pair so branch/env
+ * changes are picked up immediately, and so closing the TUI can stop the
+ * exact daemon it started without disrupting any shared daemon elsewhere.
+ */
+export async function connectOrStartOwnedDaemon(): Promise<OwnedDaemonClient> {
+  const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
+  const socketPath = fitSocketPath(join(homeDir, ".kobe", `daemon-${process.pid}.sock`), homeDir, "daemon", process.pid)
+  const pidPath = join(homeDir, ".kobe", `daemon-${process.pid}.pid`)
+  await ensureOwnedDaemonReachable(socketPath, pidPath)
+
+  const client = new KobeDaemonClient(socketPath)
+  await client.connect()
+  return {
+    client,
+    socketPath,
+    pidPath,
+    stop: async () => {
+      try {
+        await client.request("daemon.stop")
+      } catch {
+        /* daemon may already be gone */
+      } finally {
+        client.close()
+      }
+    },
+  }
+}
+
+/**
+ * Start an owned daemon on a caller-chosen socket/pid path.
+ *
+ * Used both for initial single-daemon boot and for the disconnect
+ * modal's Restart path. The important detail: reconnect must reuse the
+ * existing client's socket path (`daemon-<tui pid>.sock`), not the
+ * shared production daemon socket.
+ */
+export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: string): Promise<void> {
+  await unlink(socketPath).catch(() => {})
+
+  const { entry, runWithBun } = resolveKobedEntry()
+  const env = {
+    ...process.env,
+    KOBE_DAEMON_SOCKET_PATH: socketPath,
+    KOBE_DAEMON_PID_PATH: pidPath,
+  }
+  const child = runWithBun
+    ? spawn(process.execPath, [entry, "start"], {
+        detached: true,
+        stdio: "ignore",
+        env,
+      })
+    : spawn(entry, ["start"], {
+        detached: true,
+        stdio: "ignore",
+        env,
+      })
+  child.unref()
+
+  const deadline = Date.now() + 5000
+  while (Date.now() < deadline) {
+    if (await testCanConnect(socketPath)) {
+      return
+    }
+    await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
+  }
+  throw new Error(`kobe: owned daemon did not start at ${socketPath}`)
 }
 
 async function testCanConnect(socketPath: string): Promise<boolean> {

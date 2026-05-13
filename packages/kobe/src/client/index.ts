@@ -76,7 +76,10 @@ export class KobeDaemonClient {
    * socket so the next connect path is clean.
    */
   forceDisconnect(): void {
-    this.socket?.destroy()
+    const socket = this.socket
+    if (!socket) return
+    this.socket = null
+    socket.destroy()
   }
 
   on(name: DaemonEventName | "*", handler: DaemonEventHandler): () => void {
@@ -141,7 +144,7 @@ export class KobeDaemonClient {
     // Guard against stale close events for an old socket after we've
     // already opened a new one (race between socket.destroy() and the
     // OS delivering the close event for the prior socket).
-    if (this.socket !== which && this.socket !== null) return
+    if (this.socket !== which) return
     this.socket = null
     for (const pending of this.pending.values()) pending.reject(new Error("daemon connection closed"))
     this.pending.clear()

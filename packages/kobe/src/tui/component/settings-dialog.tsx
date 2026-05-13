@@ -3,9 +3,9 @@
  * and a right pane (the active section's content).
  *
  * Sections (v1):
- *   - General — placeholder. Real settings land here as we accumulate
- *     things worth toggling (theme, model default, default permission
- *     mode, etc.).
+ *   - General — theme, focus, and notification preferences.
+ *   - Accounts — read-only local engine account detection.
+ *   - Codex  — Codex backend selection.
  *   - Dev    — affordances for development / debugging only. Currently
  *     hosts a "Reset UI state" button that wipes the KV store
  *     (`~/.config/kobe/state.json`) AND the task index
@@ -37,6 +37,7 @@ import {
   detectClaudeAccount,
   detectCodexAccount,
 } from "../../engine/account-detect"
+import { CODEX_BACKEND_KV_KEY, type CodexBackend } from "../../engine/codex-local/app-server"
 import { homeDir } from "../../env"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
@@ -50,11 +51,24 @@ const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
   info: "Info (cool blue)",
 }
 
-type SectionId = "general" | "accounts" | "dev"
+const CODEX_BACKENDS: readonly CodexBackend[] = ["app-server", "exec"]
+
+const CODEX_BACKEND_LABEL: Record<CodexBackend, string> = {
+  "app-server": "App server (default)",
+  exec: "exec --json",
+}
+
+const CODEX_BACKEND_DESCRIPTION: Record<CodexBackend, string> = {
+  "app-server": "Codex app-server JSON-RPC; keeps official thread/session state and token usage.",
+  exec: "Fallback path; starts codex exec --json for each turn and resumes the saved session id.",
+}
+
+type SectionId = "general" | "accounts" | "codex" | "dev"
 
 const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "accounts", label: "Accounts" },
+  { id: "codex", label: "Codex" },
   { id: "dev", label: "Dev" },
 ]
 
@@ -143,6 +157,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
   function bodyRowCount(): number {
     if (section() === "general") return themeNames().length + 1 + FOCUS_ACCENT_SLOTS.length + 2
+    if (section() === "codex") return CODEX_BACKENDS.length
     if (section() === "dev") return devRowCount()
     // Accounts is read-only — no row-level navigation. j/k inside the
     // body is a no-op there, and l/right is harmless because there's
@@ -192,6 +207,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
   function toggleSound(): void {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
+  }
+  function codexBackend(): CodexBackend {
+    const raw = props.kv.get(CODEX_BACKEND_KV_KEY, "app-server")
+    return raw === "exec" || raw === "app-server" ? raw : "app-server"
+  }
+  function setCodexBackend(next: CodexBackend): void {
+    props.kv.set(CODEX_BACKEND_KV_KEY, next)
+  }
+  function codexEnvOverride(): CodexBackend | null {
+    if (process.env.KOBE_CODEX_BACKEND === "exec") return "exec"
+    if (process.env.KOBE_CODEX_BACKEND === "app-server" || process.env.KOBE_CODEX_APP_SERVER === "1") {
+      return "app-server"
+    }
+    return null
   }
 
   function moveCursor(delta: number): void {
@@ -368,6 +397,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       //   - Sidebar level → body level on the same section.
       //   - Body level + General theme row → apply that theme.
       //   - Body level + General transparent row → toggle.
+      //   - Body level + Codex → select backend.
       //   - Body level + Dev → reset.
       {
         key: "return",
@@ -402,6 +432,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
             }
             const name = themeNames()[bodyRow()]
             if (name) themeCtx.set(name)
+            return
+          }
+          if (section() === "codex") {
+            const backend = CODEX_BACKENDS[bodyRow()]
+            if (backend) setCodexBackend(backend)
             return
           }
           if (section() === "dev") {
@@ -731,6 +766,61 @@ export function SettingsDialog(props: SettingsDialogProps) {
                     </box>
                   )}
                 </Show>
+              </box>
+            </box>
+          </Show>
+          <Show when={section() === "codex"}>
+            <box flexDirection="column" gap={1}>
+              <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                Codex backend
+              </text>
+              <text fg={theme.textMuted} wrapMode="word">
+                App server is the default path: kobe talks to `codex app-server` over JSON-RPC, so sessions and token
+                usage come from Codex directly. `exec --json` starts one Codex process per turn and resumes the saved
+                session id; keep it as a fallback.
+              </text>
+              <Show when={codexEnvOverride()}>
+                {(override) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`Environment override is active: ${override()}. Unset KOBE_CODEX_BACKEND / KOBE_CODEX_APP_SERVER before the saved setting is used.`}
+                  </text>
+                )}
+              </Show>
+              <text fg={theme.textMuted} wrapMode="word">
+                Changing this setting applies after Restart backend or the next kobe launch.
+              </text>
+              <box flexDirection="column" gap={0}>
+                <For each={CODEX_BACKENDS}>
+                  {(backend, i) => {
+                    const isCursor = () => level() === "body" && bodyRow() === i()
+                    const isSelected = () => codexBackend() === backend
+                    return (
+                      <box
+                        flexDirection="column"
+                        paddingLeft={1}
+                        paddingRight={1}
+                        backgroundColor={isCursor() ? theme.primary : undefined}
+                        onMouseUp={() => {
+                          setLevel("body")
+                          setBodyRow(i())
+                          setCodexBackend(backend)
+                        }}
+                      >
+                        <text
+                          fg={isCursor() ? theme.selectedListItemText : isSelected() ? theme.accent : theme.text}
+                          attributes={isCursor() || isSelected() ? TextAttributes.BOLD : undefined}
+                          wrapMode="none"
+                        >
+                          {isSelected() ? "● " : "  "}
+                          {CODEX_BACKEND_LABEL[backend]}
+                        </text>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="word">
+                          {CODEX_BACKEND_DESCRIPTION[backend]}
+                        </text>
+                      </box>
+                    )
+                  }}
+                </For>
               </box>
             </box>
           </Show>

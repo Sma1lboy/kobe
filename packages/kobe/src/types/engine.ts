@@ -74,7 +74,11 @@ export interface EngineCapabilities {
    * hardcoded constant when unset.
    */
   defaultModelId(): string
-  /** Max context tokens for a given vendor model id. */
+  /**
+   * Max context tokens for a given vendor model id, when the adapter can
+   * know it statically. Return 0 when the vendor only exposes the real
+   * window at runtime through usage telemetry.
+   */
   contextWindowFor(modelId: string): number
 }
 
@@ -203,6 +207,12 @@ export type EngineUsageSnapshot = {
   readonly output_tokens: number
   readonly cache_read_input_tokens?: number
   readonly cache_creation_input_tokens?: number
+  /** Engine-owned "tokens currently in context" value, when surfaced directly. */
+  readonly context_tokens?: number
+  /** True when `context_tokens` is kobe-estimated rather than engine-reported. */
+  readonly context_tokens_approximate?: boolean
+  /** Engine-owned model context window, when surfaced directly. */
+  readonly context_window_tokens?: number
   readonly total_speed_tokens_per_second?: number
 }
 
@@ -266,6 +276,9 @@ export type EngineEvent =
       readonly output_tokens: number
       readonly cache_read_input_tokens?: number
       readonly cache_creation_input_tokens?: number
+      readonly context_tokens?: number
+      readonly context_tokens_approximate?: boolean
+      readonly context_window_tokens?: number
       readonly total_speed_tokens_per_second?: number
     }
   /** Session is finished cleanly. No more events will follow. */

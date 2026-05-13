@@ -69,6 +69,8 @@ export function fitSocketPath(naturalPath: string, homeDir: string, role: string
  * path, defeating `KOBE_HOME_DIR=...` isolation.
  */
 export function defaultDaemonSocketPath(homeDir?: string): string {
+  const override = process.env.KOBE_DAEMON_SOCKET_PATH
+  if (override && override.length > 0) return override
   const explicit = homeDir ?? process.env.KOBE_HOME_DIR
   if (explicit && explicit.length > 0) {
     return fitSocketPath(join(explicit, ".kobe", "daemon.sock"), explicit, "daemon")
@@ -82,6 +84,8 @@ export function defaultDaemonSocketPath(homeDir?: string): string {
 }
 
 export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  const override = process.env.KOBE_DAEMON_PID_PATH
+  if (override && override.length > 0) return override
   return join(homeDir, ".kobe", "daemon.pid")
 }
 

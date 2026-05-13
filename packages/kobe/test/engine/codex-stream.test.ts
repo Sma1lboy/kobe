@@ -1,8 +1,9 @@
 import { parseStreamJson } from "@/engine/codex-local/stream"
+import type { EngineEvent } from "@/types/engine"
 import { describe, expect, it } from "vitest"
 
 async function collect(lines: readonly string[], onSessionId: (sessionId: string) => void = () => {}) {
-  const events = []
+  const events: EngineEvent[] = []
   for await (const ev of parseStreamJson(lineSource(lines), { onSessionId })) events.push(ev)
   return events
 }
@@ -56,5 +57,46 @@ describe("codex stream parser", () => {
     )
 
     expect(ids).toEqual(["rollout-id"])
+  })
+
+  it("normalizes codex cumulative usage without double-counting cached input or reasoning output", async () => {
+    const events = await collect([
+      JSON.stringify({
+        type: "turn.completed",
+        usage: {
+          input_tokens: 100,
+          cached_input_tokens: 30,
+          output_tokens: 11,
+          reasoning_output_tokens: 500,
+        },
+      }),
+    ])
+
+    expect(events[0]).toEqual({
+      type: "usage",
+      input_tokens: 70,
+      cache_read_input_tokens: 30,
+      output_tokens: 11,
+    })
+  })
+
+  it("threads fallback context-window metadata into usage events", async () => {
+    const events: EngineEvent[] = []
+    for await (const ev of parseStreamJson(
+      lineSource([
+        JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: 100, cached_input_tokens: 30, output_tokens: 11 },
+        }),
+      ]),
+      { contextWindowTokens: async () => 1_050_000 },
+    )) {
+      events.push(ev)
+    }
+
+    expect(events[0]).toMatchObject({
+      type: "usage",
+      context_window_tokens: 1_050_000,
+    })
   })
 })

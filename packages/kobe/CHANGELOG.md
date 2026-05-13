@@ -14,6 +14,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Disconnect recovery now restarts the right daemon in single-point mode** — the daemon-disconnected Restart action now brings back the per-TUI owned daemon socket instead of accidentally starting the shared background socket, and reconnect clears stale socket handles before rehydrating the task list (KOB-95).
+- **Filtered dev launches keep the TUI on the direct Bun path** — `bun --filter @sma1lboy/kobe dev` now starts the opentui entrypoint through `env ... bun ...`, avoiding the failed pseudo-terminal/wrapper launch paths that left the screen half-initialized with raw mouse escape sequences visible (KOB-95).
+- **Owned daemons now stay alive after TUI mount** — the single-point daemon is stopped from the renderer destroy / quit path instead of a `finally` after `render()`, because `@opentui/solid` returns after mounting; this fixes immediate `daemon client disposed` history-load failures on launch (KOB-95).
+- **Codex app-server transcript items no longer render as tool rows** — `userMessage` / `agentMessage` app-server items are now filtered as transcript bookkeeping instead of being shown as green `userMessage(...)` tool output in chat (KOB-95).
+- **Codex now defaults to the app-server backend** — Settings → Codex lets users switch back to the `exec --json` fallback, while `KOBE_CODEX_BACKEND=exec|app-server` and `KOBE_CODEX_APP_SERVER=1` remain explicit environment overrides; backend changes apply after Restart backend or the next launch (KOB-95).
+- **TUI launches in single-point daemon mode by default** — a normal TUI session now starts its own owned daemon on a per-process socket and stops that daemon when kobe quits, so branch/env changes are picked up immediately; set `KOBE_DAEMON_MODE=shared` to opt back into the long-lived shared daemon socket (KOB-94).
+- **Codex can run through an app-server backend** — kobe can drive Codex through stdio JSON-RPC so it consumes official `thread/tokenUsage/updated` context totals, with the older `exec --json` path retained as a fallback (KOB-93).
+- **Codex/GPT context telemetry no longer reports fake exact usage or speed** — Codex `exec --json` emits cumulative usage where cached input is already part of input tokens and drops the official `last.totalTokens` / `modelContextWindow` pair, so kobe now normalizes the usage shape, suppresses derived `t/s`, and uses OpenRouter model metadata as a best-effort context-window fallback while marking kobe-estimated context totals with `~` (KOB-84).
+
 ## [0.5.19] - 2026-05-12
 
 ### Fixed

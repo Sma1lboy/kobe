@@ -24,7 +24,11 @@ import { homedir } from "node:os"
 import { join } from "node:path"
 import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
+import {
+  connectOrStartDaemon,
+  connectOrStartOwnedDaemon,
+  ensureOwnedDaemonReachable,
+} from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -86,6 +90,7 @@ const DEFAULT_THEME = "claude"
 
 export type AppDeps = {
   orchestrator: KobeOrchestrator
+  onQuit?: () => Promise<void>
 }
 
 // PaneHeader / StatusBar / TopBar moved to `./component/*.tsx` — they
@@ -228,6 +233,22 @@ function Shell(props: AppDeps) {
   // before process.exit. Without this the parent shell sees mouse
   // escape sequences leaking past kobe's exit.
   const renderer = useRenderer()
+  let quitting = false
+  const quit = () => {
+    if (quitting) return
+    quitting = true
+    try {
+      renderer?.destroy()
+    } catch (err) {
+      console.error("kobe: renderer.destroy() failed during quit:", err)
+    }
+    const forceExit = setTimeout(() => process.exit(0), 1500)
+    forceExit.unref()
+    void (props.onQuit?.() ?? Promise.resolve()).finally(() => {
+      clearTimeout(forceExit)
+      process.exit(0)
+    })
+  }
   // Pane-bindings-active accessor: true only when (a) the pane is the
   // focused one AND (b) no dialog is open. The dialog gate prevents
   // sidebar/files/terminal bindings from firing while the user is
@@ -256,12 +277,7 @@ function Shell(props: AppDeps) {
     while (true) {
       const choice = await DialogConfirm.show(dialog, "daemon disconnected", message, "Quit", "Restart")
       if (choice !== true) {
-        try {
-          renderer?.destroy()
-        } catch {
-          /* swallow */
-        }
-        process.exit(0)
+        quit()
       }
       try {
         await orch.manualReconnect()
@@ -418,6 +434,7 @@ function Shell(props: AppDeps) {
       if (focusedPane() !== "workspace") focus.cycle(-1)
     },
     focusCycleEnabled: () => focusedPane() !== "workspace",
+    onQuit: quit,
   })
 
   // User-action handlers — every "verb that opens a dialog and calls
@@ -450,6 +467,7 @@ function Shell(props: AppDeps) {
     kv,
     orchestrator: props.orchestrator,
     renderer,
+    onQuit: quit,
     activeTask,
     openActiveTaskInEditor,
   })
@@ -721,6 +739,13 @@ export async function startApp(): Promise<void> {
   }
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   let orchestrator: KobeOrchestrator
+  let stopOwnedDaemon: (() => Promise<void>) | undefined
+  let ownedDaemonStopped = false
+  const stopOwnedDaemonOnce = async (): Promise<void> => {
+    if (ownedDaemonStopped) return
+    ownedDaemonStopped = true
+    await stopOwnedDaemon?.()
+  }
   if (process.env.KOBE_TEST_ENGINE || process.env.KOBE_NO_DAEMON === "1") {
     const engines = await buildEngines()
     const store = new TaskIndexStore({ homeDir })
@@ -737,8 +762,16 @@ export async function startApp(): Promise<void> {
       console.error("[kobe] bridge failed to start:", err)
     }
   } else {
-    const client = await connectOrStartDaemon()
-    orchestrator = new RemoteOrchestrator(client)
+    const daemonMode = process.env.KOBE_DAEMON_MODE === "shared" ? "shared" : "single"
+    if (daemonMode === "shared") {
+      orchestrator = new RemoteOrchestrator(await connectOrStartDaemon())
+    } else {
+      const owned = await connectOrStartOwnedDaemon()
+      stopOwnedDaemon = owned.stop
+      orchestrator = new RemoteOrchestrator(owned.client, {
+        ensureReachable: () => ensureOwnedDaemonReachable(owned.socketPath, owned.pidPath),
+      })
+    }
     await orchestrator.init()
   }
   // KOB-15: seed a pinned "main" task per saved repo. Idempotent:
@@ -782,9 +815,14 @@ export async function startApp(): Promise<void> {
   // those sequences to pass through. Non-supporting terminals fall back
   // to legacy mode silently — no regression, just fewer distinguishable
   // shortcuts.
-  await render(() => <App orchestrator={orchestrator} />, {
+  await render(() => <App orchestrator={orchestrator} onQuit={stopOwnedDaemonOnce} />, {
     backgroundColor: "transparent",
+    externalOutputMode: "passthrough",
     exitOnCtrlC: false,
+    onDestroy: () => {
+      void stopOwnedDaemonOnce().catch(() => {})
+    },
+    screenMode: "alternate-screen",
     useKittyKeyboard: {},
   })
   // Side-effect: silence the "no usage" lint warning if any.

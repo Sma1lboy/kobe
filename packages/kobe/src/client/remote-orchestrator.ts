@@ -32,6 +32,15 @@ export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
  */
 export type DaemonConnectionState = "online" | "disconnected"
 
+export interface RemoteOrchestratorOptions {
+  /**
+   * Bring the daemon back on the socket this client already points at.
+   * Shared mode uses the stable production socket; single/owned mode
+   * injects a restart function for its per-TUI socket.
+   */
+  readonly ensureReachable?: () => Promise<unknown>
+}
+
 export class RemoteOrchestrator {
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
@@ -43,6 +52,7 @@ export class RemoteOrchestrator {
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly rcBridgeAcc: Accessor<RcBridgeStatus>
   private readonly setRcBridge: (next: RcBridgeStatus) => void
+  private readonly ensureReachable: () => Promise<unknown>
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
@@ -60,7 +70,10 @@ export class RemoteOrchestrator {
    */
   private readonly pendingInputBroker: PendingInputBroker = new InMemoryPendingInputBroker()
 
-  constructor(private readonly client: KobeDaemonClient) {
+  constructor(
+    private readonly client: KobeDaemonClient,
+    options: RemoteOrchestratorOptions = {},
+  ) {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [runState, setRunState] = createSignal<ReadonlyMap<string, ChatRunState>>(new Map())
     const [planUsage, setPlanUsage] = createSignal<PlanUsage | null>(null)
@@ -76,6 +89,7 @@ export class RemoteOrchestrator {
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.rcBridgeAcc = rcBridge
     this.setRcBridge = (next) => setRcBridge(() => next)
+    this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
     // KOB-38: socket dropping flips us to `disconnected` and stops
     // there. The host TUI watches this signal, shows a modal, and the
@@ -162,7 +176,7 @@ export class RemoteOrchestrator {
     // reuse the client — otherwise `connect()` short-circuits on a
     // dead socket reference.
     this.client.forceDisconnect()
-    await ensureDaemonReachable()
+    await this.ensureReachable()
     for (const task of this.tasksAcc()) this.pendingInputBroker.clearForTask(task.id)
     await this.init()
     this.setConnectionState("online")

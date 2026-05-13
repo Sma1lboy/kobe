@@ -16,6 +16,7 @@ type SpeedInterval = {
  * on large assistant turns.
  */
 export function totalContextTokens(u: SessionUsageMetrics): number {
+  if (typeof u.context_tokens === "number" && Number.isFinite(u.context_tokens)) return Math.max(0, u.context_tokens)
   return u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0)
 }
 

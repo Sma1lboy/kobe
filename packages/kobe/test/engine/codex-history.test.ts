@@ -9,7 +9,7 @@
  * payload, which isn't what the user typed.
  */
 
-import { parseJsonl } from "@/engine/codex-local/history"
+import { deriveCodexUsageMetrics, parseJsonl } from "@/engine/codex-local/history"
 import { describe, expect, it } from "vitest"
 
 const SID = "test-session"
@@ -109,5 +109,46 @@ describe("codex history parser", () => {
     const out = parseJsonl(raw, SID)
     expect(out).toHaveLength(1)
     expect(out[0]?.role).toBe("assistant")
+  })
+
+  it("derives Codex usage without treating cumulative totals as per-turn speed", () => {
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "first" }] },
+      }),
+      JSON.stringify({
+        type: "turn.completed",
+        timestamp: "2026-05-11T18:00:10Z",
+        usage: {
+          input_tokens: 100,
+          cached_input_tokens: 30,
+          output_tokens: 11,
+          reasoning_output_tokens: 500,
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:01:00Z",
+        payload: { type: "message", role: "user", content: [{ type: "input_text", text: "second" }] },
+      }),
+      JSON.stringify({
+        type: "turn.completed",
+        timestamp: "2026-05-11T18:01:10Z",
+        usage: {
+          input_tokens: 140,
+          cached_input_tokens: 50,
+          output_tokens: 13,
+          reasoning_output_tokens: 700,
+        },
+      }),
+    ].join("\n")
+
+    expect(deriveCodexUsageMetrics(raw)).toEqual({
+      input_tokens: 90,
+      cache_read_input_tokens: 50,
+      output_tokens: 13,
+    })
   })
 })

@@ -41,7 +41,7 @@ describe("CodexLocal.resume — failure surfacing", () => {
 echo "session not found: ${SID_REQUESTED}" 1>&2
 exit 2
 `)
-    const engine = new CodexLocal({ binaryPathResolver: async () => binary })
+    const engine = new CodexLocal({ binaryPathResolver: async () => binary, backend: "exec" })
     const handle = await engine.resume(SID_REQUESTED, "hello", { cwd: "/tmp", permissionMode: "default" })
     expect(handle.sessionId).toBe(SID_REQUESTED)
 
@@ -58,7 +58,7 @@ printf '%s\\n' '{"type":"thread.started","thread_id":"${SID_EMITTED}"}'
 sleep 0.05
 exit 0
 `)
-    const engine = new CodexLocal({ binaryPathResolver: async () => binary })
+    const engine = new CodexLocal({ binaryPathResolver: async () => binary, backend: "exec" })
     const handle = await engine.resume(SID_REQUESTED, "hello", { cwd: "/tmp", permissionMode: "default" })
     expect(handle.sessionId).toBe(SID_REQUESTED)
 

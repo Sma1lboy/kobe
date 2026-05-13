@@ -226,7 +226,15 @@ export function Chat(props: ChatProps) {
     const tab = task?.tabs.find((t) => t.id === tabId)
     const vendor = tab?.vendor ?? task?.vendor ?? "claude"
     const modelId = tab?.model ?? task?.model ?? getCapabilities(vendor).defaultModelId()
-    return formatContextUsageCompact(u, modelId, vendor)
+    const displayUsage =
+      vendor === "codex" && u.context_window_tokens && !u.context_tokens
+        ? {
+            ...u,
+            context_tokens: estimateContextTokensFromRows(st.messages),
+            context_tokens_approximate: true,
+          }
+        : u
+    return formatContextUsageCompact(displayUsage, modelId, vendor)
   })
 
   createEffect(
@@ -1186,6 +1194,41 @@ export function Chat(props: ChatProps) {
       </Show>
     </box>
   )
+}
+
+function estimateContextTokensFromRows(rows: readonly ChatRow[]): number {
+  let chars = 0
+  for (const row of rows) {
+    switch (row.kind) {
+      case "user":
+      case "assistant":
+      case "system":
+        chars += row.text.length
+        break
+      case "tool":
+        chars += row.name.length
+        chars += stringifyForTokenEstimate(row.input).length
+        chars += stringifyForTokenEstimate(row.output).length
+        break
+      case "approval":
+        chars += row.tool.length + row.plan.length
+        break
+      case "question":
+        chars += row.questions.reduce((total, q) => total + q.question.length, 0)
+        break
+    }
+  }
+  return Math.max(1, Math.round(chars / 4))
+}
+
+function stringifyForTokenEstimate(value: unknown): string {
+  if (value === undefined || value === null) return ""
+  if (typeof value === "string") return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }
 
 function stringifyErr(err: unknown): string {

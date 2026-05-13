@@ -39,6 +39,40 @@ describe("context-meter", () => {
     expect(label).toBe("35% · 70k/200k")
   })
 
+  it("uses engine-owned context totals when provided", () => {
+    const label = formatContextUsageCompact(
+      {
+        input_tokens: 999_999,
+        output_tokens: 2000,
+        context_tokens: 90_000,
+        context_window_tokens: 272_000,
+      },
+      "gpt-5.5",
+      "codex",
+    )
+    expect(label).toBe("33% · 90k/272k")
+  })
+
+  it("marks estimated context totals with a tilde", () => {
+    const label = formatContextUsageCompact(
+      {
+        input_tokens: 999_999,
+        output_tokens: 2000,
+        context_tokens: 12_345,
+        context_tokens_approximate: true,
+        context_window_tokens: 1_050_000,
+      },
+      "gpt-5.5",
+      "codex",
+    )
+    expect(label).toBe("1% · ~12k/1.1M")
+  })
+
+  it("hides Codex context meter when exec telemetry lacks the official window", () => {
+    expect(formatContextUsageCompact({ input_tokens: 9_000_000, output_tokens: 10 }, "gpt-5.5", "codex")).toBeNull()
+    expect(contextWindowTokensForModel("gpt-5.5", "codex")).toBe(0)
+  })
+
   it("appends total speed when available", () => {
     const label = formatContextUsageCompact(
       {
