@@ -103,15 +103,19 @@ export function codexAppServerItemNotificationToEvents(method: string, params: u
   const itemType = typeof item?.type === "string" ? item.type : "tool"
   if (isNonToolTranscriptItem(itemType)) return []
   if (isReasoningItem(itemType)) {
-    return [
-      method === "item/started"
-        ? { type: "tool.start", name: "reasoning", input: undefined }
-        : { type: "tool.result", name: "reasoning", output: undefined },
-    ]
+    const text = reasoningTextFromItem(item ?? {})
+    return text.length > 0 ? [{ type: "reasoning.delta", text }] : []
   }
   const payload = stripItemHousekeeping(item ?? {})
   if (method === "item/started") return [{ type: "tool.start", name: itemType, input: payload }]
   return [{ type: "tool.result", name: itemType, output: payload }]
+}
+
+export function codexAppServerReasoningDeltaNotificationToEvent(method: string, params: unknown): EngineEvent | null {
+  if (method !== "item/reasoning/summaryTextDelta" && method !== "item/reasoning/textDelta") return null
+  const p = asObject(params)
+  const text = typeof p?.delta === "string" ? p.delta : ""
+  return text.length > 0 ? { type: "reasoning.delta", text } : null
 }
 
 class AppServerRpc {
@@ -286,6 +290,12 @@ class AppServerRpc {
       if (text) this.opts.onEvent({ type: "assistant.delta", text })
       return
     }
+    if (method === "item/reasoning/summaryTextDelta" || method === "item/reasoning/textDelta") {
+      const event = codexAppServerReasoningDeltaNotificationToEvent(method, params)
+      if (event) this.opts.onEvent(event)
+      return
+    }
+    if (method === "item/reasoning/summaryPartAdded") return
     if (method === "item/started" || method === "item/completed") {
       for (const event of codexAppServerItemNotificationToEvents(method, params)) this.opts.onEvent(event)
       return
@@ -389,6 +399,30 @@ function isNonToolTranscriptItem(itemType: string): boolean {
 
 function isReasoningItem(itemType: string): boolean {
   return itemType.toLowerCase().includes("reason")
+}
+
+function reasoningTextFromItem(item: Record<string, unknown>): string {
+  const content = textFromReasoningValue(item.content)
+  if (content.length > 0) return content
+  const text = typeof item.text === "string" ? item.text : ""
+  if (text.length > 0) return text
+  return textFromReasoningValue(item.summary)
+}
+
+function textFromReasoningValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  const parts: string[] = []
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      parts.push(entry)
+      continue
+    }
+    const object = asObject(entry)
+    const text = typeof object?.text === "string" ? object.text : ""
+    if (text.length > 0) parts.push(text)
+  }
+  return parts.join("")
 }
 
 function stringifyErr(err: unknown): string {

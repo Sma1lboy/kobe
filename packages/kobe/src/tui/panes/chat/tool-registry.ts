@@ -38,10 +38,8 @@ export type ToolBucket = "search" | "read" | "list" | "bash" | "other"
  *   - `bash` — multi-line banner showing `$ <command>` (see `BashBanner`).
  *   - `read-grep-glob` — banner shows the target / pattern (see
  *     `ReadGrepGlobBanner`).
- *   - `label-only` — render only the tool's display label, with no
- *     parenthesised input preview.
  */
-export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob" | "label-only"
+export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob"
 
 /**
  * Render strategy for a tool's body (what comes under the banner).
@@ -53,15 +51,13 @@ export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob" | "label-
  *   - `bash-output` — stdout/stderr block under the Bash banner.
  *   - `read-grep-glob` — banner already carries the summary; expanded
  *     view shows the raw output dump but no input block.
- *   - `hidden` — no generic input/output body.
  */
-export type ToolBodyStrategy = "default" | "edit-diff" | "multi-edit-diff" | "bash-output" | "read-grep-glob" | "hidden"
+export type ToolBodyStrategy = "default" | "edit-diff" | "multi-edit-diff" | "bash-output" | "read-grep-glob"
 
 export interface ToolMeta {
   readonly bucket: ToolBucket
   readonly banner: ToolBannerStrategy
   readonly body: ToolBodyStrategy
-  readonly displayName?: string
 }
 
 const DEFAULT_META: ToolMeta = {
@@ -82,7 +78,6 @@ const claudeRegistry: Readonly<Record<string, ToolMeta>> = {
   Grep: { bucket: "search", banner: "read-grep-glob", body: "read-grep-glob" },
   Glob: { bucket: "list", banner: "read-grep-glob", body: "read-grep-glob" },
   LS: { bucket: "list", banner: "default", body: "default" },
-  reasoning: { bucket: "other", banner: "label-only", body: "hidden", displayName: "思考过程" },
 }
 
 const registries: Readonly<Record<VendorId, Readonly<Record<string, ToolMeta>>>> = {

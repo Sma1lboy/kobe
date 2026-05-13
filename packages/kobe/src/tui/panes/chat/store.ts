@@ -208,6 +208,7 @@ export type QueuedPrompt =
 export type ChatRow =
   | { readonly kind: "user"; readonly text: string; readonly ts: string }
   | { readonly kind: "assistant"; readonly text: string; readonly ts: string }
+  | { readonly kind: "reasoning"; readonly text: string; readonly ts: string }
   | {
       readonly kind: "tool"
       readonly name: string
@@ -639,6 +640,23 @@ export function applyEvent(
   nowIso: string = new Date().toISOString(),
 ): ChatState {
   switch (ev.type) {
+    case "reasoning.delta": {
+      if (ev.text.length === 0) return state
+      const last = state.messages[state.messages.length - 1]
+      if (last && last.kind === "reasoning") {
+        const merged: ChatRow = { kind: "reasoning", text: last.text + ev.text, ts: last.ts }
+        return {
+          ...state,
+          isStreaming: true,
+          messages: [...state.messages.slice(0, -1), merged],
+        }
+      }
+      return {
+        ...state,
+        isStreaming: true,
+        messages: capMessages([...state.messages, { kind: "reasoning", text: ev.text, ts: nowIso }], nowIso),
+      }
+    }
     case "assistant.delta": {
       const last = state.messages[state.messages.length - 1]
       if (last && last.kind === "assistant") {

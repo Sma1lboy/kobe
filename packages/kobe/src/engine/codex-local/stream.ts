@@ -103,16 +103,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
       }
 
       if (isReasoningItem(itemType)) {
-        if (type === "item.started") {
-          if (itemId) startedByItemId.add(itemId)
-          yield { type: "tool.start", name: "reasoning", input: undefined }
-          continue
-        }
-        if (itemId && !startedByItemId.has(itemId)) {
-          yield { type: "tool.start", name: "reasoning", input: undefined }
-        }
-        if (itemId) startedByItemId.delete(itemId)
-        yield { type: "tool.result", name: "reasoning", output: undefined }
+        const text = reasoningTextFromItem(item)
+        if (text.length > 0) yield { type: "reasoning.delta", text }
         continue
       }
 
@@ -193,6 +185,30 @@ function codexSessionId(msg: Record<string, unknown>): string | undefined {
 
 function isReasoningItem(itemType: string): boolean {
   return itemType.toLowerCase().includes("reason")
+}
+
+function reasoningTextFromItem(item: Record<string, unknown>): string {
+  const content = textFromReasoningValue(item.content)
+  if (content.length > 0) return content
+  const text = typeof item.text === "string" ? item.text : ""
+  if (text.length > 0) return text
+  return textFromReasoningValue(item.summary)
+}
+
+function textFromReasoningValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  const parts: string[] = []
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      parts.push(entry)
+      continue
+    }
+    if (!isObject(entry)) continue
+    const text = typeof entry.text === "string" ? entry.text : ""
+    if (text.length > 0) parts.push(text)
+  }
+  return parts.join("")
 }
 
 /** Strip the housekeeping fields so the tool input/output payload is the meaningful slice. */

@@ -338,6 +338,25 @@ function AssistantRow(props: { text: string }) {
   )
 }
 
+function ReasoningRow(props: { text: string }) {
+  const { theme } = useTheme()
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      <box width={2} flexShrink={0}>
+        <text fg={theme.success} attributes={TextAttributes.BOLD}>
+          {BLACK_CIRCLE}
+        </text>
+      </box>
+      <box flexGrow={1} flexDirection="column">
+        <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
+          思考过程
+        </text>
+        <Markdown source={props.text} />
+      </box>
+    </box>
+  )
+}
+
 /**
  * Tool-call row.
  *
@@ -364,7 +383,6 @@ function ToolRow(props: {
   // string-literal name comparisons that used to live here moved to
   // `tool-registry.ts` so that adding a Codex tool only edits one place.
   const meta = () => lookupToolMeta(r().name)
-  const displayName = () => meta().displayName ?? r().name
   const isDiffTool = () => meta().body === "edit-diff"
   const isMultiEdit = () => meta().body === "multi-edit-diff"
   const isBash = () => meta().banner === "bash"
@@ -374,10 +392,7 @@ function ToolRow(props: {
   /** Tools whose body renders inline so the generic preview/expanded
    *  blocks below should be suppressed. */
   const usesCustomBody = () =>
-    meta().body === "edit-diff" ||
-    meta().body === "multi-edit-diff" ||
-    meta().body === "bash-output" ||
-    meta().body === "hidden"
+    meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -402,7 +417,7 @@ function ToolRow(props: {
                 when={isBash()}
                 fallback={
                   <text fg={theme.text}>
-                    <span style={{ attributes: TextAttributes.BOLD }}>{displayName()}</span>
+                    <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
                     <Show when={!usesCustomBanner()}>
                       <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
                     </Show>
@@ -1381,6 +1396,7 @@ export function MessageList(props: MessageListProps) {
           if (props.hideRowIndex != null && i === props.hideRowIndex) return null
           if (row.kind === "user") return <UserRow text={row.text} />
           if (row.kind === "assistant") return <AssistantRow text={row.text} />
+          if (row.kind === "reasoning") return <ReasoningRow text={row.text} />
           if (row.kind === "system") return <SystemRow text={row.text} />
           if (row.kind === "bash") return <BashRow row={row} />
           if (row.kind === "approval") {

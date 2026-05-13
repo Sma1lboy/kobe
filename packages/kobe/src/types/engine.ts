@@ -260,6 +260,8 @@ export interface SessionMeta {
 export type EngineEvent =
   /** Streaming chunk of assistant text. Concat in arrival order. */
   | { readonly type: "assistant.delta"; readonly text: string }
+  /** Streaming chunk of model reasoning / summary text. Empty chunks are ignored by the UI. */
+  | { readonly type: "reasoning.delta"; readonly text: string }
   /** A tool call has begun. `input` is the parsed tool args (engine-shaped). */
   | { readonly type: "tool.start"; readonly name: string; readonly input: unknown }
   /** A tool call completed. `output` is the parsed tool result. */

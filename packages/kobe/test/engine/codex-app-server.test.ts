@@ -1,6 +1,7 @@
 import {
   buildAppServerArgs,
   codexAppServerItemNotificationToEvents,
+  codexAppServerReasoningDeltaNotificationToEvent,
   codexAppServerUsageToSnapshot,
   resolveCodexBackend,
 } from "@/engine/codex-local/app-server"
@@ -77,7 +78,7 @@ describe("codex app-server backend helpers", () => {
     ).toEqual([])
   })
 
-  it("maps reasoning items to a private reasoning row without raw payload", () => {
+  it("does not render empty reasoning items", () => {
     expect(
       codexAppServerItemNotificationToEvents("item/completed", {
         item: {
@@ -87,13 +88,30 @@ describe("codex app-server backend helpers", () => {
           content: [],
         },
       }),
-    ).toEqual([
-      {
-        type: "tool.result",
-        name: "reasoning",
-        output: undefined,
-      },
-    ])
+    ).toEqual([])
+  })
+
+  it("maps reasoning content to streamable reasoning text", () => {
+    expect(
+      codexAppServerItemNotificationToEvents("item/completed", {
+        item: {
+          id: "item-reasoning",
+          type: "reasoning",
+          summary: ["checked repo shape"],
+          content: ["looked at daemon mode"],
+        },
+      }),
+    ).toEqual([{ type: "reasoning.delta", text: "looked at daemon mode" }])
+  })
+
+  it("maps reasoning delta notifications to streamable reasoning text", () => {
+    expect(
+      codexAppServerReasoningDeltaNotificationToEvent("item/reasoning/summaryTextDelta", {
+        itemId: "item-reasoning",
+        delta: "checking ",
+      }),
+    ).toEqual({ type: "reasoning.delta", text: "checking " })
+    expect(codexAppServerReasoningDeltaNotificationToEvent("item/reasoning/textDelta", { delta: "" })).toBeNull()
   })
 
   it("still maps real app-server tool items into tool events", () => {

@@ -24,13 +24,17 @@ import type {
 describe("EngineEvent", () => {
   it("is a discriminated union keyed on `type`", () => {
     type Tags = EngineEvent["type"]
-    expectTypeOf<Tags>().toEqualTypeOf<"assistant.delta" | "tool.start" | "tool.result" | "usage" | "done" | "error">()
+    expectTypeOf<Tags>().toEqualTypeOf<
+      "assistant.delta" | "reasoning.delta" | "tool.start" | "tool.result" | "usage" | "done" | "error"
+    >()
   })
 
   it("narrows correctly per discriminator", () => {
     const ev = null as unknown as EngineEvent
     if (ev.type === "assistant.delta") {
       expectTypeOf(ev).toEqualTypeOf<{ readonly type: "assistant.delta"; readonly text: string }>()
+    } else if (ev.type === "reasoning.delta") {
+      expectTypeOf(ev).toEqualTypeOf<{ readonly type: "reasoning.delta"; readonly text: string }>()
     } else if (ev.type === "tool.start") {
       expectTypeOf(ev.input).toEqualTypeOf<unknown>()
       expectTypeOf(ev.name).toEqualTypeOf<string>()

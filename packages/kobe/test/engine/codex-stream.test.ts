@@ -100,7 +100,7 @@ describe("codex stream parser", () => {
     })
   })
 
-  it("maps reasoning items to a private reasoning row without raw payload", async () => {
+  it("does not render empty reasoning items", async () => {
     const events = await collect([
       JSON.stringify({
         type: "item.started",
@@ -113,9 +113,18 @@ describe("codex stream parser", () => {
       JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2 } }),
     ])
 
-    expect(events.slice(0, 2)).toEqual([
-      { type: "tool.start", name: "reasoning", input: undefined },
-      { type: "tool.result", name: "reasoning", output: undefined },
+    expect(events).not.toContainEqual(expect.objectContaining({ name: "reasoning" }))
+  })
+
+  it("maps reasoning text to a streamable reasoning delta", async () => {
+    const events = await collect([
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "reason-1", type: "reasoning", text: "looked at the stream parser" },
+      }),
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2 } }),
     ])
+
+    expect(events[0]).toEqual({ type: "reasoning.delta", text: "looked at the stream parser" })
   })
 })
