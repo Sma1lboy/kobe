@@ -224,27 +224,40 @@ export function Terminal(props: TerminalProps): JSXElement {
       setPty(handle)
       // Reset scroll on task switch — every task gets its own viewport.
       setScrollOffset(0)
-
-      // Subscribe; the listener receives a full snapshot and an
-      // optional cursor.
-      const unsubscribe = handle.onData((snap, c) => {
-        setSnapshot(snap)
-        setCursor(c)
-      })
-      // If the pty already had a buffer, prime the renderer immediately
-      // so a freshly-mounted Terminal doesn't blink empty for one tick.
-      try {
-        const initial = handle.capture()
-        if (initial) setSnapshot(initial)
-        setCursor(handle.captureCursor())
-      } catch {
-        /* capture can fail on a freshly-spawned shell; ignore */
-      }
-      onCleanup(() => {
-        unsubscribe()
-      })
     }),
   )
+
+  // Subscribe to whichever PTY is currently active. Lives in its own
+  // effect (keyed on `pty()`) instead of inline with acquire so the
+  // subscription reattaches automatically when the active PTY changes
+  // for any reason — task switch, registry replacement on reset, or
+  // recovery after an externally-killed PTY. The original design only
+  // wired `onData` inside the acquire effect, which meant a `reset()`
+  // (same task, fresh PTY) left the new PTY without a listener —
+  // typed characters reached the shell but its echo never made it
+  // back to the snapshot signal, surfacing as "the terminal stopped
+  // accepting input."
+  createEffect(() => {
+    const handle = pty()
+    if (!handle || handle.killed) return
+    const unsubscribe = handle.onData((snap, c) => {
+      setSnapshot(snap)
+      setCursor(c)
+    })
+    // Prime the renderer with whatever the backend has cached so a
+    // freshly-mounted (or freshly-reset) pane doesn't blink empty
+    // for one tick.
+    try {
+      const initial = handle.capture()
+      if (initial) setSnapshot(initial)
+      setCursor(handle.captureCursor())
+    } catch {
+      /* capture can fail on a freshly-spawned shell; ignore */
+    }
+    onCleanup(() => {
+      unsubscribe()
+    })
+  })
 
   // Final teardown: drop the registry reference. Don't kill the PTY —
   // the orchestrator owns kill via release().
