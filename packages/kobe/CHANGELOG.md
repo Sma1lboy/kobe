@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **TUI launches in single-point daemon mode by default** — a normal TUI session now starts its own owned daemon on a per-process socket and stops that daemon when kobe quits, so branch/env changes are picked up immediately; set `KOBE_DAEMON_MODE=shared` to opt back into the long-lived shared daemon socket (KOB-94).
 - **Codex can run through an experimental app-server backend** — setting `KOBE_CODEX_BACKEND=app-server` (or `KOBE_CODEX_APP_SERVER=1`) drives Codex through stdio JSON-RPC so kobe can consume official `thread/tokenUsage/updated` context totals; the existing `exec --json` backend remains the default while this path is manually tested (KOB-93).
 - **Codex/GPT context telemetry no longer reports fake exact usage or speed** — Codex `exec --json` emits cumulative usage where cached input is already part of input tokens and drops the official `last.totalTokens` / `modelContextWindow` pair, so kobe now normalizes the usage shape, suppresses derived `t/s`, and uses OpenRouter model metadata as a best-effort context-window fallback while marking kobe-estimated context totals with `~` (KOB-84).
 

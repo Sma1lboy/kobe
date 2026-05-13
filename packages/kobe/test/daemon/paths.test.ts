@@ -16,22 +16,37 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {
   KOBE_HOME_DIR: process.env.KOBE_HOME_DIR,
+  KOBE_DAEMON_SOCKET_PATH: process.env.KOBE_DAEMON_SOCKET_PATH,
+  KOBE_DAEMON_PID_PATH: process.env.KOBE_DAEMON_PID_PATH,
   XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
 }
 
 beforeEach(() => {
   Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+  Reflect.deleteProperty(process.env, "KOBE_DAEMON_SOCKET_PATH")
+  Reflect.deleteProperty(process.env, "KOBE_DAEMON_PID_PATH")
   Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR")
 })
 
 afterEach(() => {
   if (PREV.KOBE_HOME_DIR === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = PREV.KOBE_HOME_DIR
+  if (PREV.KOBE_DAEMON_SOCKET_PATH === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_SOCKET_PATH")
+  else process.env.KOBE_DAEMON_SOCKET_PATH = PREV.KOBE_DAEMON_SOCKET_PATH
+  if (PREV.KOBE_DAEMON_PID_PATH === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_PID_PATH")
+  else process.env.KOBE_DAEMON_PID_PATH = PREV.KOBE_DAEMON_PID_PATH
   if (PREV.XDG_RUNTIME_DIR === undefined) Reflect.deleteProperty(process.env, "XDG_RUNTIME_DIR")
   else process.env.XDG_RUNTIME_DIR = PREV.XDG_RUNTIME_DIR
 })
 
 describe("defaultDaemonSocketPath", () => {
+  test("KOBE_DAEMON_SOCKET_PATH override wins over every derived path", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/from-env"
+    process.env.XDG_RUNTIME_DIR = "/run/user/1000"
+    process.env.KOBE_DAEMON_SOCKET_PATH = "/tmp/kobe-owned.sock"
+    expect(defaultDaemonSocketPath()).toBe("/tmp/kobe-owned.sock")
+  })
+
   test("caller-supplied homeDir argument wins over XDG_RUNTIME_DIR", () => {
     process.env.XDG_RUNTIME_DIR = "/run/user/1000"
     expect(defaultDaemonSocketPath("/tmp/sandbox-home")).toBe("/tmp/sandbox-home/.kobe/daemon.sock")
@@ -68,6 +83,12 @@ describe("defaultDaemonSocketPath", () => {
 })
 
 describe("defaultDaemonPidPath", () => {
+  test("KOBE_DAEMON_PID_PATH override wins over KOBE_HOME_DIR", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/from-env"
+    process.env.KOBE_DAEMON_PID_PATH = "/tmp/kobe-owned.pid"
+    expect(defaultDaemonPidPath()).toBe("/tmp/kobe-owned.pid")
+  })
+
   test("uses KOBE_HOME_DIR when set (XDG never relevant for pidfile)", () => {
     process.env.KOBE_HOME_DIR = "/tmp/from-env"
     expect(defaultDaemonPidPath()).toBe("/tmp/from-env/.kobe/daemon.pid")
