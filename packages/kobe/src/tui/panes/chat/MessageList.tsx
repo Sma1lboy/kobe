@@ -722,19 +722,21 @@ function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
   const r = () => props.row
   const stdoutView = (): BashOutputView => splitBashOutput(r().stdout, BASH_OUTPUT_COLLAPSED_CAP)
   const stderrView = (): BashOutputView => splitBashOutput(r().stderr, BASH_OUTPUT_COLLAPSED_CAP)
-  const statusText = (): string => {
+  // Successful exits suppress the status footer entirely — the
+  // command + its output is enough signal that it ran. We still
+  // surface non-success states (running, interrupted, non-zero exit,
+  // missing exit code) where the user benefits from knowing.
+  const statusText = (): string | null => {
     if (!r().done) return "running…"
     if (r().signal !== null) return `interrupted (${r().signal})`
     const code = r().exitCode
     if (code === null) return "(no exit code)"
-    if (code === 0) return "done"
+    if (code === 0) return null
     return `exit ${code}`
   }
   const statusColor = () => {
     if (!r().done) return theme.textMuted
     if (r().signal !== null) return theme.error
-    const code = r().exitCode
-    if (code === 0) return theme.success
     return theme.error
   }
   return (
@@ -781,11 +783,13 @@ function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
           </Show>
         </box>
       </Show>
-      <box paddingLeft={2}>
-        <text fg={statusColor()} attributes={TextAttributes.DIM}>
-          {statusText()}
-        </text>
-      </box>
+      <Show when={statusText() != null}>
+        <box paddingLeft={2}>
+          <text fg={statusColor()} attributes={TextAttributes.DIM}>
+            {statusText()}
+          </text>
+        </box>
+      </Show>
     </box>
   )
 }
