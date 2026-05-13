@@ -194,12 +194,22 @@ export interface ComposerProps {
    */
   worktreePath?: Accessor<string | undefined>
   /**
-   * Mid-stream queued prompts (FIFO, head fires next). Rendered as a
+   * Mid-stream queued items (FIFO, head fires next). Rendered as a
    * muted list inside the composer rail, immediately above the textarea
    * row, so the queue shares the same bordered block as the input it
    * will feed. Empty list = nothing renders.
+   *
+   * Discriminated by `kind`: prompt items show plain text, bash items
+   * (Claude-Code `!cmd` parity, queued during streaming) render with a
+   * leading `(bash)` label in theme.warning so the user can tell at a
+   * glance which are queued shell commands vs queued model prompts.
    */
-  queue?: Accessor<readonly { readonly id: string; readonly text: string }[]>
+  queue?: Accessor<
+    readonly (
+      | { readonly id: string; readonly kind: "prompt"; readonly text: string }
+      | { readonly id: string; readonly kind: "bash"; readonly command: string }
+    )[]
+  >
   /** Drop a queued prompt by id (cancel button). */
   onCancelQueued?: (id: string) => void
   /**
@@ -208,6 +218,16 @@ export interface ComposerProps {
    * and routes through the steer path.
    */
   onSendQueuedNow?: (id: string) => void
+
+  /**
+   * Submit a `!shell` command (Claude-Code-style bash mode). Fires on
+   * enter when the buffer starts with `!`; the composer strips the
+   * prefix before calling. Parent runs the command locally (not via
+   * the engine), streams output into a bash row, and stashes the
+   * interaction so the next regular submit prepends it as XML
+   * context. Omit to disable bash mode for this composer instance.
+   */
+  onBashCommand?: (command: string) => void
 }
 
 /**
@@ -264,6 +284,24 @@ export function Composer(props: ComposerProps) {
   // content change) don't refresh this; the dropdown stays open in
   // that edge case, dismissable with Esc — matches opcode's behavior.
   const [liveCursor, setLiveCursor] = createSignal(props.draft?.length ?? 0)
+
+  // Bash-mode state — mirrors claude-code's `isInputModeCharacter`
+  // pattern in `refs/claude-code/src/components/PromptInput/inputModes.ts`,
+  // where typing `!` on an empty buffer SWITCHES MODES instead of
+  // inserting the character. Modeling this as a signal (not a memo over
+  // `liveBuffer().startsWith("!")`) keeps the `!` out of the textarea —
+  // an earlier draft used the prefix-check approach and the user saw
+  // `!!` (prompt glyph `!` + buffer `!`). Now the buffer holds the
+  // command verbatim and the glyph carries the mode.
+  //
+  // Entry:  empty buffer + `!` keystroke → swallow, setBashMode(true).
+  // Exit:   backspace / esc on an empty buffer → setBashMode(false).
+  // Reset:  on submit (so the next prompt starts in prompt mode).
+  //
+  // Gated on `onBashCommand` being supplied — without a handler the
+  // mode toggle would be a lie.
+  const [bashMode, setBashMode] = createSignal(false)
+  const bashAvailable = (): boolean => props.onBashCommand != null
 
   // Slash dropdown state. Cursor indexes into `slashMatches()`; reset
   // to 0 whenever the match list changes (e.g. user typed another char
@@ -757,6 +795,44 @@ export function Composer(props: ComposerProps) {
    * `handleKeyPress` too).
    */
   function handleKeyDown(key: KeyEvent): void {
+    // Bash-mode entry — empty buffer + `!` keystroke flips us into bash
+    // mode and SWALLOWS the `!` so it doesn't end up in the textarea.
+    // Mirrors claude-code's `isInputModeCharacter` check. Modifier
+    // gate: ctrl/meta/super out (those are chord prefixes); shift
+    // stays in scope because most US layouts produce `!` via shift+1
+    // and ship the shift modifier in the keypress event. We key off
+    // `sequence === "!"` instead of `name === "!"` because some
+    // terminals name the key by base-code (e.g. "1") and only the
+    // sequence reflects the rendered character.
+    if (
+      bashAvailable() &&
+      !bashMode() &&
+      liveBuffer().length === 0 &&
+      key.sequence === "!" &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super
+    ) {
+      setBashMode(true)
+      key.preventDefault()
+      return
+    }
+    // Bash-mode exit — backspace or escape on an empty bash buffer
+    // pops us back into prompt mode. Empty-buffer gate matters: in
+    // bash mode with a half-typed command, backspace deletes a char
+    // (and escape falls through to the textarea / dropdown handlers).
+    if (
+      bashMode() &&
+      liveBuffer().length === 0 &&
+      (key.name === "backspace" || key.name === "escape") &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super
+    ) {
+      setBashMode(false)
+      key.preventDefault()
+      return
+    }
     // ctrl+enter — steer. Submits the current buffer with mode='steer'
     // so the chat shell asks the orchestrator to interrupt the
     // in-flight subprocess before running the new prompt. We intercept
@@ -932,6 +1008,29 @@ export function Composer(props: ComposerProps) {
     if (!ref) return
     const raw = ref.plainText
     const trimmed = raw.trim()
+    // Bash-mode short-circuit (Claude-Code `!cmd` parity). In bash mode
+    // the buffer holds the command verbatim — the `!` was swallowed
+    // at the keystroke that toggled the mode, not stored as a prefix.
+    // Push the `!`-prefixed form into history so up-arrow recall can
+    // distinguish bash entries from prompts later (and so a future
+    // history-replay can restore the bash-mode visual). Parent owns
+    // the actual shell exec via onBashCommand.
+    if (bashMode()) {
+      const command = trimmed
+      if (command.length === 0) return // bash mode with empty buffer — no-op
+      pushHistory(props.historyKey ?? "global", `!${command}`)
+      // Clear synchronously so the bash indicator drops before the
+      // command starts streaming. Parent's draft round-trip will also
+      // clear; this avoids a one-tick flicker.
+      ref.setText("")
+      setBuffer("")
+      setLiveBuffer("")
+      props.onDraftChange("")
+      setBashMode(false)
+      resetHistoryNav()
+      props.onBashCommand?.(command)
+      return
+    }
     // Slash short-circuit: if the dropdown is open and there's at
     // least one match, run the highlighted entry, clear the buffer,
     // and bypass the engine submit. Falls through if the user typed
@@ -989,6 +1088,12 @@ export function Composer(props: ComposerProps) {
   // keeps only the mode + model badges.
   const streamingNotice = () => {
     if (!props.hasTask) return ""
+    // bash mode dominates the footer regardless of streaming so the
+    // user can SEE they're in bash mode while a turn is in flight —
+    // otherwise the "enter queue · ctrl+enter steer" hint masked the
+    // mode signal and the user couldn't tell they were about to queue
+    // a shell command vs a regular prompt.
+    if (bashMode()) return props.isStreaming ? "bash mode · enter to queue" : "bash mode · enter to run"
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
     return ""
   }
@@ -1211,8 +1316,13 @@ export function Composer(props: ComposerProps) {
                     <text fg={theme.textMuted} wrapMode="none">
                       queued{idx() === 0 ? " (next)" : ""}:
                     </text>
+                    <Show when={entry.kind === "bash"}>
+                      <text fg={theme.warning} wrapMode="none">
+                        (bash)
+                      </text>
+                    </Show>
                     <box flexGrow={1}>
-                      <text fg={theme.text}>{entry.text}</text>
+                      <text fg={theme.text}>{entry.kind === "bash" ? entry.command : entry.text}</text>
                     </box>
                     <text
                       fg={theme.primary}
@@ -1244,7 +1354,39 @@ export function Composer(props: ComposerProps) {
             </box>
           </Show>
           <box flexDirection="row" gap={1} alignItems="flex-start">
-            <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
+            {/* Prompt glyph — four states:
+                idle               → `>` (theme.primary)
+                idle + bash        → `!` (theme.warning, BOLD)
+                streaming          → `…` (theme.accent)
+                streaming + bash   → `…!` (accent dots + warning `!`)
+                bash mode must remain visible while streaming or the
+                user can't tell whether their next Enter queues a
+                prompt or a !cmd. Earlier the streaming `…` glyph
+                masked the bash indicator entirely. Two adjacent
+                glyphs costs one extra cell and resolves the
+                ambiguity unambiguously. */}
+            <Show
+              when={bashMode() && !props.isStreaming}
+              fallback={
+                <Show
+                  when={bashMode() && props.isStreaming}
+                  fallback={
+                    <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
+                  }
+                >
+                  <box flexDirection="row">
+                    <text fg={theme.accent}>…</text>
+                    <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+                      !
+                    </text>
+                  </box>
+                </Show>
+              }
+            >
+              <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+                !
+              </text>
+            </Show>
             <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
               <Show
                 when={props.hasTask}

@@ -31,7 +31,13 @@ import {
   clearQueue,
   createInitialState,
   dequeueFirst,
+  drainPendingBashContext,
+  enqueueBashCommand,
   enqueuePrompt,
+  formatBashContextPrefix,
+  patchBashRow,
+  pushBashRow,
+  pushPendingBashContext,
   pushSystemError,
   pushUser,
   queueIsFull,
@@ -66,9 +72,11 @@ describe("queue reducers", () => {
 
     const s1 = enqueuePrompt(s0, "queued one", FIXED_TS)
     expect(s1.queue).toHaveLength(1)
-    expect(s1.queue[0]?.text).toBe("queued one")
-    expect(s1.queue[0]?.ts).toBe(FIXED_TS)
-    expect(s1.queue[0]?.id).toMatch(/^q-/)
+    const head = s1.queue[0]
+    if (head?.kind !== "prompt") throw new Error("type narrowing")
+    expect(head.text).toBe("queued one")
+    expect(head.ts).toBe(FIXED_TS)
+    expect(head.id).toMatch(/^q-/)
     // pushUser side effects intact
     expect(s1.messages).toEqual(s0.messages)
     expect(s1.isStreaming).toBe(true)
@@ -106,13 +114,18 @@ describe("queue reducers", () => {
     s = enqueuePrompt(s, "b", FIXED_TS)
     s = enqueuePrompt(s, "c", FIXED_TS)
 
+    const promptText = (q: { kind: "prompt"; text: string } | { kind: "bash"; command: string }) =>
+      q.kind === "prompt" ? q.text : `!${q.command}`
+
     const [s1, h1] = dequeueFirst(s)
-    expect(h1?.text).toBe("a")
-    expect(s1.queue.map((q) => q.text)).toEqual(["b", "c"])
+    if (h1?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h1.text).toBe("a")
+    expect(s1.queue.map(promptText)).toEqual(["b", "c"])
 
     const [s2, h2] = dequeueFirst(s1)
-    expect(h2?.text).toBe("b")
-    expect(s2.queue.map((q) => q.text)).toEqual(["c"])
+    if (h2?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h2.text).toBe("b")
+    expect(s2.queue.map(promptText)).toEqual(["c"])
   })
 
   test("removeFromQueue drops the matching entry, leaves siblings intact", () => {
@@ -123,7 +136,7 @@ describe("queue reducers", () => {
     const targetId = s.queue[1]?.id
     expect(targetId).toBeDefined()
     const next = removeFromQueue(s, targetId as string)
-    expect(next.queue.map((q) => q.text)).toEqual(["a", "c"])
+    expect(next.queue.map((q) => (q.kind === "prompt" ? q.text : `!${q.command}`))).toEqual(["a", "c"])
   })
 
   test("removeFromQueue with an unknown id is a no-op (identity preserved)", () => {
@@ -157,6 +170,151 @@ describe("queue reducers", () => {
     const next = applyEvent(s, { type: "done" }, FIXED_TS)
     expect(next.isStreaming).toBe(false)
     expect(next.queue).toEqual(s.queue) // queue intact — drain happens at the chat-shell layer
+  })
+})
+
+describe("bash mode queue reducers (KOB-83 mid-stream parity)", () => {
+  // claude-code's handlePromptSubmit enqueues bash commands with
+  // mode='bash' when a turn is mid-flight; kobe mirrors that with
+  // a discriminated `QueuedPrompt` union so the drain microtask can
+  // fork on `kind`. These tests pin that contract.
+
+  test("enqueueBashCommand appends a bash entry with kind=bash + command", () => {
+    const s = enqueueBashCommand(createInitialState(), "ls -la", FIXED_TS)
+    expect(s.queue).toHaveLength(1)
+    const head = s.queue[0]
+    if (head?.kind !== "bash") throw new Error("type narrowing")
+    expect(head.command).toBe("ls -la")
+    expect(head.kind).toBe("bash")
+    expect(head.ts).toBe(FIXED_TS)
+    expect(head.id).toMatch(/^q-/)
+  })
+
+  test("enqueueBashCommand and enqueuePrompt share FIFO order", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "explain", FIXED_TS)
+    s = enqueueBashCommand(s, "ls", FIXED_TS)
+    s = enqueuePrompt(s, "and after", FIXED_TS)
+    expect(s.queue.map((q) => q.kind)).toEqual(["prompt", "bash", "prompt"])
+  })
+
+  test("enqueueBashCommand honors QUEUE_SOFT_CAP", () => {
+    let s = createInitialState()
+    for (let i = 0; i < QUEUE_SOFT_CAP; i++) s = enqueueBashCommand(s, `cmd${i}`, FIXED_TS)
+    expect(queueIsFull(s)).toBe(true)
+    const refused = enqueueBashCommand(s, "overflow", FIXED_TS)
+    expect(refused).toBe(s)
+  })
+
+  test("dequeueFirst on a mixed-kind queue pops bash and prompt items in order", () => {
+    let s = createInitialState()
+    s = enqueueBashCommand(s, "ls", FIXED_TS)
+    s = enqueuePrompt(s, "explain", FIXED_TS)
+    const [s1, h1] = dequeueFirst(s)
+    if (h1?.kind !== "bash") throw new Error("type narrowing")
+    expect(h1.command).toBe("ls")
+    const [, h2] = dequeueFirst(s1)
+    if (h2?.kind !== "prompt") throw new Error("type narrowing")
+    expect(h2.text).toBe("explain")
+  })
+})
+
+describe("bash mode reducers (KOB-83)", () => {
+  test("pushBashRow appends a bash row with done=false and the given id", () => {
+    const s0 = createInitialState()
+    const s1 = pushBashRow(s0, { id: "bash-1", command: "ls" }, FIXED_TS)
+    expect(s1.messages).toHaveLength(1)
+    const row = s1.messages[0]
+    expect(row?.kind).toBe("bash")
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.id).toBe("bash-1")
+    expect(row.command).toBe("ls")
+    expect(row.stdout).toBe("")
+    expect(row.stderr).toBe("")
+    expect(row.done).toBe(false)
+    expect(row.exitCode).toBeNull()
+    expect(row.signal).toBeNull()
+  })
+
+  test("patchBashRow appends to stdout/stderr without replacing", () => {
+    let s = pushBashRow(createInitialState(), { id: "b1", command: "echo hi" }, FIXED_TS)
+    s = patchBashRow(s, "b1", { stdoutAppend: "hi" })
+    s = patchBashRow(s, "b1", { stdoutAppend: "\nworld" })
+    s = patchBashRow(s, "b1", { stderrAppend: "oh no" })
+    const row = s.messages[0]
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.stdout).toBe("hi\nworld")
+    expect(row.stderr).toBe("oh no")
+    expect(row.done).toBe(false)
+  })
+
+  test("patchBashRow flips done with exitCode/signal", () => {
+    let s = pushBashRow(createInitialState(), { id: "b1", command: "ls" }, FIXED_TS)
+    s = patchBashRow(s, "b1", { done: true, exitCode: 0, signal: null })
+    const row = s.messages[0]
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.done).toBe(true)
+    expect(row.exitCode).toBe(0)
+    expect(row.signal).toBeNull()
+  })
+
+  test("patchBashRow no-ops when id is unknown", () => {
+    const s = pushBashRow(createInitialState(), { id: "b1", command: "ls" }, FIXED_TS)
+    const next = patchBashRow(s, "b-other", { stdoutAppend: "ignored" })
+    expect(next).toBe(s)
+  })
+
+  test("pushPendingBashContext + drainPendingBashContext is a FIFO round-trip", () => {
+    let s: ChatState = createInitialState()
+    s = pushPendingBashContext(s, { command: "ls", stdout: "a\n", stderr: "", exitCode: 0 })
+    s = pushPendingBashContext(s, { command: "pwd", stdout: "/tmp\n", stderr: "", exitCode: 0 })
+    expect(s.pendingBashContext).toHaveLength(2)
+    const [next, drained] = drainPendingBashContext(s)
+    expect(drained.map((d) => d.command)).toEqual(["ls", "pwd"])
+    expect(next.pendingBashContext).toBeUndefined()
+  })
+
+  test("drainPendingBashContext on empty state returns the input identity-stable", () => {
+    const s = createInitialState()
+    const [next, drained] = drainPendingBashContext(s)
+    expect(next).toBe(s)
+    expect(drained).toEqual([])
+  })
+
+  test("formatBashContextPrefix wraps each interaction in <bash-*> XML tags", () => {
+    const prefix = formatBashContextPrefix([{ command: "echo hi", stdout: "hi\n", stderr: "", exitCode: 0 }])
+    expect(prefix).toContain("<bash-input>echo hi</bash-input>")
+    expect(prefix).toContain("<bash-stdout>hi\n</bash-stdout>")
+    expect(prefix).not.toContain("<bash-stderr>")
+    // Trailing blank line separating context from the prompt body.
+    expect(prefix.endsWith("\n")).toBe(true)
+  })
+
+  test("formatBashContextPrefix omits empty stderr/stdout sections", () => {
+    const prefix = formatBashContextPrefix([{ command: "true", stdout: "", stderr: "", exitCode: 0 }])
+    expect(prefix).toContain("<bash-input>true</bash-input>")
+    expect(prefix).not.toContain("<bash-stdout>")
+    expect(prefix).not.toContain("<bash-stderr>")
+  })
+
+  test("formatBashContextPrefix escapes XML metacharacters in command + output", () => {
+    const prefix = formatBashContextPrefix([{ command: "echo '<x>&amp;'", stdout: "</tag>", stderr: "", exitCode: 0 }])
+    expect(prefix).toContain("&lt;x&gt;")
+    expect(prefix).toContain("&amp;amp;")
+    expect(prefix).toContain("&lt;/tag&gt;")
+  })
+
+  test("formatBashContextPrefix on an empty list is the empty string", () => {
+    expect(formatBashContextPrefix([])).toBe("")
+  })
+
+  test("cleanChatText still strips <bash-input>/<bash-stdout>/<bash-stderr> on history replay", () => {
+    // The prefix lands in the engine's JSONL via the next prompt; on
+    // history hydration kobe's noise-tag filter must hide it from the
+    // chat UI, matching upstream claude-code's behavior.
+    const prefix = formatBashContextPrefix([{ command: "ls", stdout: "foo\nbar", stderr: "", exitCode: 0 }])
+    const masquerading = `${prefix}what just happened?`
+    expect(cleanChatText(masquerading)).toBe("what just happened?")
   })
 })
 
@@ -562,6 +720,34 @@ describe("applyEvent — user.inject", () => {
     s = applyEvent(s, { type: "user.inject", text: "Follow these steps to create a PR" }, FIXED_TS)
     expect(s.messages.map((r) => r.kind)).toEqual(["user", "assistant", "user"])
     expect((s.messages[2] as { text: string }).text).toContain("Follow these steps")
+    expect(s.isStreaming).toBe(true)
+  })
+
+  test("strips KOB-83 bash-context XML prefix so the user row shows only the human text", () => {
+    // The KOB-83 bash mode prepends <bash-input>/<bash-stdout> XML to
+    // the next prompt sent to runTask; orchestrator dispatches the
+    // FULL prefixed text as a user.inject event. Without the live-path
+    // strip the chat shows the raw XML alongside the actual prompt
+    // (see the screenshot in the KOB-83 PR review pass).
+    const prefixed =
+      "<bash-input>ls</bash-input>\n<bash-stdout>foo\nbar</bash-stdout>\n\nexplain what the listing shows"
+    const s = applyEvent(createInitialState(), { type: "user.inject", text: prefixed }, FIXED_TS)
+    expect(s.messages).toHaveLength(1)
+    const row = s.messages[0]
+    if (row?.kind !== "user") throw new Error("type narrowing")
+    expect(row.text).toBe("explain what the listing shows")
+    expect(s.isStreaming).toBe(true)
+  })
+
+  test("suppresses the user row entirely when only XML noise remains after stripping", () => {
+    // A bash interaction can fire mid-stream and produce a user.inject
+    // whose payload is just the XML wrapper (no trailing user text).
+    // Adding an empty user row would render as a bare `>` chip — the
+    // history-replay path already drops these via cleanChatText;
+    // mirror it here.
+    const xmlOnly = "<bash-input>pwd</bash-input>\n<bash-stdout>/tmp</bash-stdout>\n"
+    const s = applyEvent(createInitialState(), { type: "user.inject", text: xmlOnly }, FIXED_TS)
+    expect(s.messages).toEqual([])
     expect(s.isStreaming).toBe(true)
   })
 })
