@@ -31,15 +31,6 @@
  *     channel the `claude` CLI exposes). See `image-paste.ts` for the
  *     why-it-must-be-`@path` lecture.
  *
- * What this does NOT own (deferred):
- *
- *   - Mention completion (`@filename`).
- *   - Slash commands inside the composer.
- *   - Drag-drop file paste (no Tauri equivalent in pure TTY).
- *   - Linux / Windows clipboard image readers (stubs return null).
- *   - Auto-GC of `~/.kobe/pasted-images/`.
- *   - Cross-session history persistence (in-memory only for v1).
- *
  * Architectural notes:
  *
  *   - The textarea is the source of truth for the buffer. We expose
@@ -48,35 +39,25 @@
  *     toggles last tool" behavior). We also pull the parent's draft
  *     into the textarea on mount and when it diverges (e.g. parent
  *     clears it after submit).
- *   - History navigation only fires when the cursor is at the
- *     buffer's first line (going up) or last line (going down). In
- *     between, up/down move the caret like a normal multi-line editor.
- *     The opentui defaults already handle that — we just preventDefault
- *     in the cases where we want history to win.
- *   - Submit clears the textarea synchronously. The parent's
- *     `onSubmit` will then call back with `setDraft("")`, which our
- *     reactive sync turns into a no-op (already cleared).
- *
  * Props contract: extends the original {@link ComposerProps} from the
  * Wave 4 split — every new prop is optional so {@link Chat.tsx} keeps
  * working without changes.
  */
 
-import { type KeyEvent, type PasteEvent, TextAttributes, type TextareaRenderable } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
+import type { KeyEvent, PasteEvent, TextareaRenderable } from "@opentui/core"
+import { type Accessor, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
-import { EmptyBorder, SplitBorder } from "../../component/border"
 import type { SlashEntry } from "../../context/command-palette"
 import { useFocus } from "../../context/focus"
 import { useTheme } from "../../context/theme"
-import { ComposerPathChips } from "./ComposerPathChips"
-import { ComposerQueue } from "./ComposerQueue"
+import { type ComposerModeTone, ComposerView } from "./ComposerView"
 import { clipboardImageSupported } from "./composer/clipboard-image"
 import { isCursorAtFirstLine, isCursorAtLastLine } from "./composer/cursor"
+import { makeDropdownWindow } from "./composer/dropdown-window"
 import { getHistory, pushHistory } from "./composer/history"
+import { PromptHistoryNavigator } from "./composer/history-nav"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { deleteImageTokenBackward, deleteImageTokenForward } from "./composer/image-token-delete"
-import { composerKeyBindings } from "./composer/keybindings"
 import { isPermissionModeCycleKey } from "./composer/keys"
 import {
   type MentionContext,
@@ -86,7 +67,6 @@ import {
   getWorktreeFiles,
 } from "./composer/mention"
 import { findPreviewablePathRefs } from "./composer/path-preview"
-import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
  * Slash entry with an optional `source` discriminator. Defined as an
@@ -100,12 +80,6 @@ import { resolvePlaceholder } from "./composer/placeholder"
 export type ComposerSlashEntry = SlashEntry & {
   readonly source?: "builtin" | "user"
 }
-
-/** Maximum visible lines before the textarea scrolls internally. */
-const COMPOSER_MAX_LINES = 8
-
-/** Minimum height — ensures the empty textarea is always visible. */
-const COMPOSER_MIN_LINES = 1
 
 export interface ComposerProps {
   /** Current draft text. Controlled by the parent for clear-on-submit. */
@@ -269,16 +243,11 @@ export function Composer(props: ComposerProps) {
   // (c) directly calling `setText`/`focus`/`submit` from handlers.
   let textareaRef: TextareaRenderable | undefined
 
-  // History navigation cursor. -1 means "live" (showing the user's
-  // current in-progress draft). 0..N-1 indexes into entries; N means
-  // "newest" (also live, but represented separately so we can walk
-  // back without losing the draft). We snapshot the live draft when
-  // entering history so a stray "down" off the end restores it.
-  //
-  // Stored as plain locals (not signals) because they don't drive any
-  // render output — only effect logic.
-  let historyIndex: number | null = null
-  let liveDraftSnapshot = ""
+  const historyNav = new PromptHistoryNavigator(
+    () => getHistory(props.historyKey ?? "global"),
+    () => textareaRef?.plainText ?? "",
+    setBuffer,
+  )
 
   // Per-composer image-paste registry. Owns disk writes for pasted
   // PNGs and the `[Image #N]` ↔ `@/abs/path` mapping. Cleared on
@@ -371,30 +340,10 @@ export function Composer(props: ComposerProps) {
     else ref.blur()
   })
 
-  // Slash dropdown windowing — claude-code's autocomplete shows ~8 rows
-  // and scrolls the window so the cursor stays visible. Without this,
-  // typing `/` with 70+ commands paints the whole list and overflows
-  // a small terminal. We compute the window centered on the cursor,
-  // clamped to the list bounds. Indicator counts (`↑ N more` / `↓ N more`)
-  // render outside the window when truncated.
+  // Claude Code-style dropdown windowing: keep roughly eight rows
+  // visible and scroll the window around the cursor.
   const SLASH_MAX_VISIBLE = 8
-  type SlashWindow = {
-    readonly items: readonly ComposerSlashEntry[]
-    readonly start: number
-    readonly total: number
-  }
-  const slashWindow = createMemo<SlashWindow>(() => {
-    const matches = slashMatches()
-    const total = matches.length
-    if (total <= SLASH_MAX_VISIBLE) {
-      return { items: matches, start: 0, total }
-    }
-    const cursor = slashCursor()
-    const half = Math.floor(SLASH_MAX_VISIBLE / 2)
-    let start = Math.max(0, cursor - half)
-    if (start + SLASH_MAX_VISIBLE > total) start = total - SLASH_MAX_VISIBLE
-    return { items: matches.slice(start, start + SLASH_MAX_VISIBLE), start, total }
-  })
+  const slashWindow = createMemo(() => makeDropdownWindow(slashMatches(), slashCursor(), SLASH_MAX_VISIBLE))
 
   // ----- @-mention dropdown state -----
   //
@@ -467,21 +416,7 @@ export function Composer(props: ComposerProps) {
     setMentionCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
   })
 
-  type MentionWindow = {
-    readonly items: readonly MentionMatch[]
-    readonly start: number
-    readonly total: number
-  }
-  const mentionWindow = createMemo<MentionWindow>(() => {
-    const matches = mentionMatches()
-    const total = matches.length
-    if (total <= MENTION_MAX_VISIBLE) return { items: matches, start: 0, total }
-    const cursor = mentionCursor()
-    const half = Math.floor(MENTION_MAX_VISIBLE / 2)
-    let start = Math.max(0, cursor - half)
-    if (start + MENTION_MAX_VISIBLE > total) start = total - MENTION_MAX_VISIBLE
-    return { items: matches.slice(start, start + MENTION_MAX_VISIBLE), start, total }
-  })
+  const mentionWindow = createMemo(() => makeDropdownWindow(mentionMatches(), mentionCursor(), MENTION_MAX_VISIBLE))
 
   const previewablePathRefs = createMemo(() => {
     if (!props.onOpenFilePath) return []
@@ -512,15 +447,6 @@ export function Composer(props: ComposerProps) {
   }
 
   /**
-   * Read the latest entries for the active history key. Re-read each
-   * time we navigate so concurrent submits (which append) are
-   * reflected. Reads are cheap — the store returns a fresh array slice.
-   */
-  function entries(): readonly string[] {
-    return getHistory(props.historyKey ?? "global")
-  }
-
-  /**
    * Update the textarea's text imperatively. We use `setText` (clean
    * slate, clears undo) for history recall — we don't want the user
    * to ctrl-z and find themselves looking at an old recalled prompt
@@ -536,61 +462,6 @@ export function Composer(props: ComposerProps) {
     // immediately after a recall. Without this, the caret stays at
     // wherever it was before — usually 0 — which feels wrong.
     ref.cursorOffset = text.length
-  }
-
-  /**
-   * Recall an older entry: bumps `historyIndex` toward the past. If
-   * already at the oldest entry, no-op. On first call (historyIndex
-   * is null), snapshot the live draft so a later "off the end" walk
-   * forward can restore it.
-   */
-  function historyPrev(): boolean {
-    const list = entries()
-    if (list.length === 0) return false
-    if (historyIndex === null) {
-      // Snapshot what the user has typed so we can restore it.
-      liveDraftSnapshot = textareaRef?.plainText ?? ""
-      historyIndex = list.length - 1
-    } else if (historyIndex > 0) {
-      historyIndex -= 1
-    } else {
-      // At the oldest — nothing to do.
-      return true
-    }
-    const recalled = list[historyIndex]
-    if (recalled !== undefined) setBuffer(recalled)
-    return true
-  }
-
-  /**
-   * Walk forward in history toward the live draft. If we step past
-   * the newest entry, restore the snapshotted draft and mark history
-   * as "off" again.
-   */
-  function historyNext(): boolean {
-    const list = entries()
-    if (list.length === 0 || historyIndex === null) return false
-    if (historyIndex < list.length - 1) {
-      historyIndex += 1
-      const recalled = list[historyIndex]
-      if (recalled !== undefined) setBuffer(recalled)
-    } else {
-      // Stepped past the newest entry — back to live draft.
-      historyIndex = null
-      setBuffer(liveDraftSnapshot)
-      liveDraftSnapshot = ""
-    }
-    return true
-  }
-
-  /**
-   * Reset history nav state. Called on submit (so the next `up`
-   * starts from the just-pushed entry) and on task switch (when
-   * the historyKey changes underneath us).
-   */
-  function resetHistoryNav(): void {
-    historyIndex = null
-    liveDraftSnapshot = ""
   }
 
   // Sync parent's `draft` onto the textarea when it diverges. The
@@ -621,7 +492,7 @@ export function Composer(props: ComposerProps) {
     on(
       () => props.historyKey,
       () => {
-        resetHistoryNav()
+        historyNav.reset()
         // Drop pasted-image entries on task switch — the user's next
         // paste starts at `[Image #1]` again under the new task's
         // history. Files on disk persist; we only forget the in-memory
@@ -711,10 +582,7 @@ export function Composer(props: ComposerProps) {
     // entry, it's a new draft. This matches readline / Claude Code
     // behavior. We don't restore the snapshot; the user's edit IS
     // the new live state.
-    if (historyIndex !== null) {
-      historyIndex = null
-      liveDraftSnapshot = ""
-    }
+    if (historyNav.isActive()) historyNav.reset()
     // Drop any "no image on clipboard" hint as soon as the user
     // starts typing — they've moved on, the message would just
     // squat in the footer otherwise.
@@ -923,13 +791,13 @@ export function Composer(props: ComposerProps) {
     if (key.ctrl || key.meta || key.super) return
 
     if (key.name === "up" && !key.shift) {
-      if (isCursorAtFirstLine(textareaRef) && historyPrev()) {
+      if (isCursorAtFirstLine(textareaRef) && historyNav.prev()) {
         key.preventDefault()
       }
       return
     }
     if (key.name === "down" && !key.shift) {
-      if (isCursorAtLastLine(textareaRef) && historyNext()) {
+      if (isCursorAtLastLine(textareaRef) && historyNav.next()) {
         key.preventDefault()
       }
       return
@@ -967,7 +835,7 @@ export function Composer(props: ComposerProps) {
       setLiveBuffer("")
       props.onDraftChange("")
       setBashMode(false)
-      resetHistoryNav()
+      historyNav.reset()
       props.onBashCommand?.(command)
       return
     }
@@ -982,7 +850,7 @@ export function Composer(props: ComposerProps) {
         setBuffer("")
         setLiveBuffer("")
         props.onDraftChange("")
-        resetHistoryNav()
+        historyNav.reset()
         entry.onSelect()
         return
       }
@@ -1002,7 +870,7 @@ export function Composer(props: ComposerProps) {
     }
     if (hasImages) imageRegistry.clear()
     setPasteHint(null)
-    resetHistoryNav()
+    historyNav.reset()
     props.onSubmit(expandedTrimmed, mode)
   }
 
@@ -1052,12 +920,11 @@ export function Composer(props: ComposerProps) {
   // color picks up the same tone for non-default modes; plan mode in
   // particular needs to be unmistakable so the user doesn't accidentally
   // submit a destructive prompt while the agent is planning.
-  type ModeTone = "muted" | "accent" | "warning" | "primary"
-  const modeBadge = createMemo<{ label: string; tone: ModeTone } | null>(() => {
+  const modeBadge = createMemo<{ label: string; tone: ComposerModeTone } | null>(() => {
     const mode = props.permissionMode?.()
     return mode === "plan" ? { label: permissionModeLabel(), tone: "primary" } : null
   })
-  const toneColor = (tone: ModeTone) => {
+  const toneColor = (tone: ComposerModeTone) => {
     switch (tone) {
       case "accent":
         return theme.accent
@@ -1080,310 +947,49 @@ export function Composer(props: ComposerProps) {
     return theme.border
   }
 
+  function handleTextareaMount(r: TextareaRenderable): void {
+    textareaRef = r
+    if (props.draft) r.setText(props.draft)
+    r.onPaste = handlePaste
+    if (props.focused?.()) r.focus()
+  }
+
   return (
-    <box flexShrink={0} flexDirection="column" paddingTop={1}>
-      {/* Slash dropdown — rendered above the composer when the buffer
-          starts with `/` and there's at least one match. Windowed to
-          SLASH_MAX_VISIBLE entries so a 70+ command list doesn't blow
-          past the chat area; the window scrolls to keep the cursor
-          visible. `↑ N more` / `↓ N more` indicators surface the
-          truncation. Tab completes the highlighted entry into the
-          buffer (claude-code parity). */}
-      {/* Mention dropdown — rendered above the composer when the cursor
-          is inside an `@`-mention span. Mutually exclusive with the
-          slash dropdown (mentionOpen() suppresses itself when slashOpen()
-          is true). Mirrors the slash-dropdown visual grammar: same
-          chrome, same row glyph, same `↑ N more` / `↓ N more` windowing.
-          The right-column hint reuses `theme.textMuted` and shows the
-          path relative to the worktree root — matches opcode's
-          FilePicker layout (`FloatingPromptInput.tsx` § FilePicker list
-          rows) without re-implementing the directory-tree affordance
-          (we only do flat substring matching, no `cd` navigation). */}
-      <Show when={mentionOpen()}>
-        <box
-          flexDirection="column"
-          flexShrink={0}
-          backgroundColor={theme.backgroundElement}
-          paddingLeft={2}
-          paddingRight={2}
-          paddingTop={1}
-          paddingBottom={1}
-          border={["left"]}
-          borderColor={railColor()}
-          customBorderChars={SplitBorder.customBorderChars}
-        >
-          <Show when={mentionWindow().start > 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↑ {mentionWindow().start} more
-            </text>
-          </Show>
-          <For each={mentionWindow().items}>
-            {(match, i) => {
-              const absoluteIndex = () => mentionWindow().start + i()
-              const active = () => absoluteIndex() === mentionCursor()
-              // Split `displayPath` (already de-prefixed of `packages/`
-              // for monorepo readability) into filename + directory
-              // hint. The full `match.path` is still what gets inserted
-              // on selection — display shortening doesn't change the
-              // engine-visible reference.
-              const filename = () => {
-                const idx = match.displayPath.lastIndexOf("/")
-                return idx >= 0 ? match.displayPath.slice(idx + 1) : match.displayPath
-              }
-              const directory = () => {
-                const idx = match.displayPath.lastIndexOf("/")
-                return idx >= 0 ? match.displayPath.slice(0, idx) : ""
-              }
-              return (
-                <box flexDirection="row" gap={2}>
-                  <text
-                    fg={active() ? theme.primary : theme.text}
-                    attributes={active() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
-                    {active() ? "▸ " : "  "}
-                    {filename()}
-                  </text>
-                  <Show when={directory().length > 0}>
-                    <text fg={theme.textMuted} wrapMode="none">
-                      {directory()}
-                    </text>
-                  </Show>
-                </box>
-              )
-            }}
-          </For>
-          <Show when={mentionWindow().start + mentionWindow().items.length < mentionWindow().total}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↓ {mentionWindow().total - mentionWindow().start - mentionWindow().items.length} more
-            </text>
-          </Show>
-        </box>
-      </Show>
-      <Show when={slashOpen() && slashMatches().length > 0}>
-        <box
-          flexDirection="column"
-          flexShrink={0}
-          backgroundColor={theme.backgroundElement}
-          paddingLeft={2}
-          paddingRight={2}
-          paddingTop={1}
-          paddingBottom={1}
-          border={["left"]}
-          borderColor={railColor()}
-          customBorderChars={SplitBorder.customBorderChars}
-        >
-          <Show when={slashWindow().start > 0}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↑ {slashWindow().start} more
-            </text>
-          </Show>
-          <For each={slashWindow().items}>
-            {(entry, i) => {
-              const absoluteIndex = () => slashWindow().start + i()
-              const active = () => absoluteIndex() === slashCursor()
-              return (
-                <box flexDirection="row" gap={2}>
-                  <text
-                    fg={active() ? theme.primary : theme.text}
-                    attributes={active() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
-                    {active() ? "▸ " : "  "}
-                    {entry.display}
-                  </text>
-                  {/* User-defined entries (project or global
-                      `.claude/{commands,skills}/`) render with a muted
-                      `user` tag so they're distinguishable from the
-                      bundled claude-code surface. Built-ins are the
-                      default — leaving them unmarked keeps the dropdown
-                      visually quiet for the common case. Tag uses the
-                      same `theme.textMuted` token as the description
-                      hint so it sits in the same visual register
-                      without competing with the active-row glyph. */}
-                  <Show when={entry.source === "user"}>
-                    <text fg={theme.textMuted} wrapMode="none">
-                      user
-                    </text>
-                  </Show>
-                  <Show when={entry.description}>
-                    <text fg={theme.textMuted} wrapMode="none">
-                      {entry.description}
-                    </text>
-                  </Show>
-                </box>
-              )
-            }}
-          </For>
-          <Show when={slashWindow().start + slashWindow().items.length < slashWindow().total}>
-            <text fg={theme.textMuted} wrapMode="none">
-              ↓ {slashWindow().total - slashWindow().start - slashWindow().items.length} more
-            </text>
-          </Show>
-        </box>
-      </Show>
-      <box
-        border={["left"]}
-        borderColor={railColor()}
-        customBorderChars={{
-          ...SplitBorder.customBorderChars,
-          bottomLeft: "╹",
-        }}
-      >
-        <box
-          paddingLeft={2}
-          paddingRight={2}
-          paddingTop={1}
-          paddingBottom={0}
-          flexDirection="column"
-          flexGrow={1}
-          backgroundColor={theme.backgroundElement}
-        >
-          <ComposerQueue
-            queue={props.queue?.() ?? []}
-            editingQueueId={props.editingQueueId}
-            onEditQueued={props.onEditQueued}
-            onSendQueuedNow={props.onSendQueuedNow}
-            onCancelQueued={props.onCancelQueued}
-          />
-          <ComposerPathChips
-            hasTask={props.hasTask}
-            refs={previewablePathRefs()}
-            onOpenFilePath={props.onOpenFilePath}
-          />
-          <box flexDirection="row" gap={1} alignItems="flex-start">
-            {/* Prompt glyph — four states:
-                idle               → `>` (theme.primary)
-                idle + bash        → `!` (theme.warning, BOLD)
-                streaming          → `…` (theme.accent)
-                streaming + bash   → `…!` (accent dots + warning `!`)
-                bash mode must remain visible while streaming or the
-                user can't tell whether their next Enter queues a
-                prompt or a !cmd. Earlier the streaming `…` glyph
-                masked the bash indicator entirely. Two adjacent
-                glyphs costs one extra cell and resolves the
-                ambiguity unambiguously. */}
-            <Show
-              when={bashMode() && !props.isStreaming}
-              fallback={
-                <Show
-                  when={bashMode() && props.isStreaming}
-                  fallback={
-                    <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
-                  }
-                >
-                  <box flexDirection="row">
-                    <text fg={theme.accent}>…</text>
-                    <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-                      !
-                    </text>
-                  </box>
-                </Show>
-              }
-            >
-              <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-                !
-              </text>
-            </Show>
-            <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
-              <Show
-                when={props.hasTask}
-                fallback={<text fg={theme.textMuted}>{props.noTaskMessage ?? "(no task — press n to create)"}</text>}
-              >
-                <textarea
-                  ref={(r: TextareaRenderable) => {
-                    textareaRef = r
-                    // Seed the buffer if the parent already has a draft
-                    // (uncommon, but harmless). `setText` on the empty
-                    // string is also fine — it's a no-op when content
-                    // matches.
-                    if (props.draft) r.setText(props.draft)
-                    // Wire bracketed-paste interception. The setter
-                    // routes paste events through `handlePaste` BEFORE
-                    // opentui's default text-insertion runs; calling
-                    // `event.preventDefault()` in the image branch
-                    // suppresses the default. Text pastes don't
-                    // preventDefault, so they fall through unchanged.
-                    r.onPaste = handlePaste
-                    // Only grab keyboard focus when the workspace pane
-                    // owns focus. On cold boot the sidebar is the
-                    // default focused pane (see FocusProvider) — stealing
-                    // focus here would desync the StatusBar label from
-                    // who actually receives keystrokes.
-                    if (props.focused?.()) r.focus()
-                  }}
-                  placeholder={resolvePlaceholder({
-                    isStreaming: props.isStreaming,
-                    hasTask: props.hasTask,
-                    noTaskMessage: props.noTaskMessage,
-                    inputPlaceholder: props.inputPlaceholder?.(),
-                  })}
-                  placeholderColor={theme.textMuted}
-                  textColor={theme.text}
-                  backgroundColor={theme.backgroundElement}
-                  focusedBackgroundColor={theme.backgroundElement}
-                  wrapMode="word"
-                  keyBindings={composerKeyBindings}
-                  onContentChange={handleContentChange}
-                  onKeyDown={handleKeyDown}
-                  onSubmit={() => handleSubmit("auto")}
-                />
-              </Show>
-            </box>
-          </box>
-          {/* Inline footer: action hint left, mode/model right. Renders only
-              when a task is selected so the no-task fallback row has the
-              composer area to itself. */}
-          <Show when={props.hasTask}>
-            <box flexDirection="row" justifyContent="space-between" paddingTop={1} flexShrink={0}>
-              <text fg={props.isStreaming ? theme.accent : theme.textMuted} wrapMode="none">
-                {footerHint()}
-              </text>
-              <box flexDirection="row" gap={2} flexShrink={0}>
-                <box flexDirection="row" flexShrink={0} onMouseUp={() => props.onCyclePermissionMode?.()}>
-                  <text fg={modeBadge() ? toneColor("primary") : theme.textMuted} wrapMode="none">
-                    {permissionModeLabel()}
-                    {props.onCyclePermissionMode ? " ▾" : ""}
-                  </text>
-                </box>
-                {/* Model label — clickable when the parent supplies
-                    `onChooseModel`; renders with a `▾` caret to advertise
-                    the picker. Inert (no caret, no click) otherwise. */}
-                <box flexDirection="row" flexShrink={0} onMouseUp={() => props.onChooseModel?.()}>
-                  <text fg={theme.textMuted} wrapMode="none">
-                    {modelLabel()}
-                    {props.onChooseModel ? " ▾" : ""}
-                  </text>
-                </box>
-              </box>
-            </box>
-          </Show>
-        </box>
-      </box>
-      {/* One-row tail under the rail to terminate the accent stroke
-          cleanly with the same backgroundElement fill — opencode does
-          this with a `▀` half-block bottom border so the element panel
-          ends without a hard edge. EmptyBorder swaps in a space when
-          the theme's element bg is fully transparent. */}
-      <box
-        height={1}
-        border={["left"]}
-        borderColor={railColor()}
-        customBorderChars={{
-          ...EmptyBorder,
-          vertical: theme.backgroundElement.a !== 0 ? "╹" : " ",
-        }}
-      >
-        <box
-          height={1}
-          border={["bottom"]}
-          borderColor={theme.backgroundElement}
-          customBorderChars={{
-            ...EmptyBorder,
-            horizontal: theme.backgroundElement.a !== 0 ? "▀" : " ",
-          }}
-        />
-      </box>
-    </box>
+    <ComposerView
+      theme={theme}
+      hasTask={props.hasTask}
+      noTaskMessage={props.noTaskMessage}
+      isStreaming={props.isStreaming}
+      draft={props.draft}
+      inputPlaceholder={props.inputPlaceholder?.()}
+      bashMode={bashMode()}
+      railColor={railColor}
+      footerHint={footerHint()}
+      modelLabel={modelLabel()}
+      permissionModeLabel={permissionModeLabel()}
+      modeBadge={modeBadge()}
+      toneColor={toneColor}
+      mentionOpen={mentionOpen()}
+      mentionWindow={mentionWindow()}
+      mentionCursor={mentionCursor()}
+      slashOpen={slashOpen()}
+      slashMatchesLength={slashMatches().length}
+      slashWindow={slashWindow()}
+      slashCursor={slashCursor()}
+      queue={props.queue?.() ?? []}
+      editingQueueId={props.editingQueueId}
+      onEditQueued={props.onEditQueued}
+      onSendQueuedNow={props.onSendQueuedNow}
+      onCancelQueued={props.onCancelQueued}
+      pathRefs={previewablePathRefs()}
+      onOpenFilePath={props.onOpenFilePath}
+      onCyclePermissionMode={props.onCyclePermissionMode}
+      onChooseModel={props.onChooseModel}
+      onTextareaMount={handleTextareaMount}
+      onPaste={handlePaste}
+      onContentChange={handleContentChange}
+      onKeyDown={handleKeyDown}
+      onSubmit={() => handleSubmit("auto")}
+    />
   )
 }
