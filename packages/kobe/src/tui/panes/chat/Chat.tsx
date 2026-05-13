@@ -350,13 +350,21 @@ export function Chat(props: ChatProps) {
     hasActiveBash,
     runBashLocally,
   } = bashMode
-  const modelLabel = createMemo(() => modelLabelFor(modelId(), modelEffort()))
   const activeVendor = createMemo(() => {
     const id = props.taskId()
     const task = id ? tasksAcc().find((t) => t.id === id) : undefined
     const tab = task?.tabs.find((t) => t.id === activeTabId())
     return tab?.vendor ?? task?.vendor ?? "claude"
   })
+  const activeTabHasSession = createMemo(() => {
+    const id = props.taskId()
+    const task = id ? tasksAcc().find((t) => t.id === id) : undefined
+    const tab = task?.tabs.find((t) => t.id === activeTabId())
+    return !!tab?.sessionId
+  })
+  const modelLabel = createMemo(() =>
+    modelLabelFor(modelId() ?? getCapabilities(activeVendor()).defaultModelId(), modelEffort()),
+  )
   const permissionModeText = createMemo(() => permissionModeLabel(getCapabilities(activeVendor()), permissionMode()))
   const inputPlaceholder = createMemo(() => {
     return getIdentity(activeVendor()).inputPlaceholder
@@ -366,7 +374,8 @@ export function Chat(props: ChatProps) {
     const id = props.taskId()
     if (!id) return
     const tabId = activeTabId() ?? undefined
-    const result = await ModelPicker.show(dialog, modelId(), modelEffort())
+    const lockedVendor = activeTabHasSession() ? activeVendor() : undefined
+    const result = await ModelPicker.show(dialog, modelId(), modelEffort(), activeVendor(), lockedVendor)
     if (result === undefined) return
     await props.orchestrator.setModel(id, result.id, tabId, result.effort).catch((err: unknown) => {
       // eslint-disable-next-line no-console

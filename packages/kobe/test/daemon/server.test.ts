@@ -49,11 +49,11 @@ afterEach(() => {
   fs.rmSync(tmpRoot, { recursive: true, force: true })
 })
 
-async function buildOrchestrator(): Promise<Orchestrator> {
+async function buildOrchestrator(engine = new FakeAIEngine()): Promise<Orchestrator> {
   const store = new TaskIndexStore({ homeDir })
   await store.load()
   return new Orchestrator({
-    engine: new FakeAIEngine(),
+    engine,
     store,
     worktrees: new GitWorktreeManager(),
     metadataSuggester: new NoopMetadataSuggester(),
@@ -285,7 +285,8 @@ describe("daemon server", () => {
     // never included a token, leaving clients with no way to compute
     // the next page. Now chat.history echoes `nextBefore` (constructed
     // from the oldest message in the page) and `hasMore`.
-    const orch = await buildOrchestrator()
+    const fakeEngine = new FakeAIEngine()
+    const orch = await buildOrchestrator(fakeEngine)
     const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
     const client = new KobeDaemonClient(socketPath)
     try {
@@ -307,7 +308,6 @@ describe("daemon server", () => {
       ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
-      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       const messages = Array.from({ length: 5 }, (_, i) => ({
         role: "user" as const,
         blocks: [{ type: "text" as const, text: `m${i}` }],
@@ -338,7 +338,8 @@ describe("daemon server", () => {
   })
 
   test("chat.history returns usage metrics derived from full history, not the page", async () => {
-    const orch = await buildOrchestrator()
+    const fakeEngine = new FakeAIEngine()
+    const orch = await buildOrchestrator(fakeEngine)
     const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
     const client = new KobeDaemonClient(socketPath)
     try {
@@ -358,7 +359,6 @@ describe("daemon server", () => {
       ).store.update(spawned.taskId, {
         tabs: task.tabs.map((t) => (t.id === task.activeTabId ? { ...t, sessionId } : t)),
       })
-      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       fakeEngine.setHistory(sessionId, [
         { role: "user", blocks: [{ type: "text", text: "one" }], timestamp: "2026-05-10T00:00:00.000Z", sessionId },
         {
@@ -444,7 +444,8 @@ describe("daemon server", () => {
     // call returned the active tab's transcript, every tab rendered
     // the same content. Fix: protocol takes an optional sessionId;
     // server honours it before falling back to the active tab.
-    const orch = await buildOrchestrator()
+    const fakeEngine = new FakeAIEngine()
+    const orch = await buildOrchestrator(fakeEngine)
     const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
     const client = new KobeDaemonClient(socketPath)
     try {
@@ -471,7 +472,6 @@ describe("daemon server", () => {
               : t,
         ),
       })
-      const fakeEngine = (orch as unknown as { fallbackEngine: FakeAIEngine }).fallbackEngine
       fakeEngine.setHistory(sidA, [
         {
           role: "user",

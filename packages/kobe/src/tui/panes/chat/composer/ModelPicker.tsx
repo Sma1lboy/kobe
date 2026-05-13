@@ -7,8 +7,9 @@
  * when the user dismisses with esc.
  */
 
-import { allModels, defaultCapabilities } from "@/engine/registry"
+import { allModels, getCapabilities } from "@/engine/registry"
 import type { ModelChoice } from "@/types/engine"
+import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../../context/theme"
@@ -21,6 +22,8 @@ export type ModelPickerResult = Pick<ModelChoice, "id" | "effort"> | undefined
 export type ModelPickerProps = {
   current: string | undefined
   currentEffort?: string | undefined
+  currentVendor?: VendorId | undefined
+  lockedVendor?: VendorId | undefined
   onPick: (choice: Pick<ModelChoice, "id" | "effort">) => void
   onCancel: () => void
 }
@@ -31,7 +34,7 @@ function ModelPicker(props: ModelPickerProps) {
 
   // Memoised so adding vendors later (codex) doesn't recompute on every
   // key event. The list is stable for the dialog's lifetime.
-  const models = createMemo(() => modelPickerModelOptions(allModels()))
+  const models = createMemo(() => modelPickerModelOptions(allModels(), { lockedVendor: props.lockedVendor }))
   const [selectedModel, setSelectedModel] = createSignal<ModelPickerModelOption | undefined>()
   const effortChoices = createMemo(() => {
     const model = selectedModel()
@@ -42,9 +45,10 @@ function ModelPicker(props: ModelPickerProps) {
   // re-confirms the existing choice without changing it. When unpinned,
   // seed on the active vendor's resolved default so the picker reflects
   // what the user is actually running.
-  const seed = props.current ?? defaultCapabilities.defaultModelId()
+  const seedVendor = props.currentVendor ?? props.lockedVendor ?? "claude"
+  const seed = props.current ?? getCapabilities(seedVendor).defaultModelId()
   const initial = models().findIndex((m) => m.id === seed)
-  const [cursor, setCursor] = createSignal(initial >= 0 ? initial : 0)
+  const [cursor, setCursor] = createSignal(nextEnabledIndex(models(), initial >= 0 ? initial : 0, 1))
   const [effortCursor, setEffortCursor] = createSignal(0)
   const inEffortStep = () => selectedModel() !== undefined
 
@@ -61,6 +65,7 @@ function ModelPicker(props: ModelPickerProps) {
     }
     const model = models()[cursor()]
     if (!model) return
+    if (model.disabled) return
     const efforts = modelPickerEffortOptions(model)
     if (efforts.length <= 1 && efforts[0]?.effort === undefined) {
       props.onPick({ id: model.id, effort: undefined })
@@ -92,7 +97,7 @@ function ModelPicker(props: ModelPickerProps) {
           const n = inEffortStep() ? effortChoices().length : models().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c - 1 + n) % n)
-          else setCursor((c) => (c - 1 + n) % n)
+          else setCursor((c) => nextEnabledIndex(models(), c - 1, -1))
         },
       },
       {
@@ -101,7 +106,7 @@ function ModelPicker(props: ModelPickerProps) {
           const n = inEffortStep() ? effortChoices().length : models().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c + 1) % n)
-          else setCursor((c) => (c + 1) % n)
+          else setCursor((c) => nextEnabledIndex(models(), c + 1, 1))
         },
       },
       {
@@ -110,7 +115,7 @@ function ModelPicker(props: ModelPickerProps) {
           const n = inEffortStep() ? effortChoices().length : models().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c - 1 + n) % n)
-          else setCursor((c) => (c - 1 + n) % n)
+          else setCursor((c) => nextEnabledIndex(models(), c - 1, -1))
         },
       },
       {
@@ -119,7 +124,7 @@ function ModelPicker(props: ModelPickerProps) {
           const n = inEffortStep() ? effortChoices().length : models().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c + 1) % n)
-          else setCursor((c) => (c + 1) % n)
+          else setCursor((c) => nextEnabledIndex(models(), c + 1, 1))
         },
       },
       { key: "left", cmd: backToModels },
@@ -187,6 +192,7 @@ function ModelPicker(props: ModelPickerProps) {
           <For each={models()}>
             {(model, i) => {
               const active = () => i() === cursor()
+              const disabled = () => model.disabled === true
               const hasEfforts = () => modelPickerEffortOptions(model).some((choice) => choice.effort !== undefined)
               return (
                 <box
@@ -194,8 +200,9 @@ function ModelPicker(props: ModelPickerProps) {
                   gap={2}
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={active() ? theme.primary : undefined}
+                  backgroundColor={active() && !disabled() ? theme.primary : undefined}
                   onMouseUp={() => {
+                    if (disabled()) return
                     const efforts = modelPickerEffortOptions(model)
                     if (efforts.length <= 1 && efforts[0]?.effort === undefined) {
                       props.onPick({ id: model.id, effort: undefined })
@@ -208,23 +215,29 @@ function ModelPicker(props: ModelPickerProps) {
                   }}
                 >
                   <text
-                    fg={active() ? theme.selectedListItemText : theme.text}
-                    attributes={active() ? TextAttributes.BOLD : undefined}
+                    fg={
+                      active() && !disabled() ? theme.selectedListItemText : disabled() ? theme.textMuted : theme.text
+                    }
+                    attributes={active() && !disabled() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
                   >
                     {active() ? "▸ " : "  "}
                     {model.label}
                   </text>
-                  <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                  <text fg={active() && !disabled() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                     {model.vendor}
                   </text>
-                  {hasEfforts() ? (
+                  {disabled() && model.disabledReason ? (
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {model.disabledReason}
+                    </text>
+                  ) : hasEfforts() ? (
                     <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                       effort…
                     </text>
                   ) : null}
                   {model.hint ? (
-                    <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                    <text fg={active() && !disabled() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                       {model.hint}
                     </text>
                   ) : null}
@@ -247,6 +260,8 @@ ModelPicker.show = (
   dialog: DialogContext,
   current: string | undefined,
   currentEffort?: string | undefined,
+  currentVendor?: VendorId | undefined,
+  lockedVendor?: VendorId | undefined,
 ): Promise<ModelPickerResult> => {
   return new Promise<ModelPickerResult>((resolve) => {
     dialog.replace(
@@ -254,6 +269,8 @@ ModelPicker.show = (
         <ModelPicker
           current={current}
           currentEffort={currentEffort}
+          currentVendor={currentVendor}
+          lockedVendor={lockedVendor}
           onPick={(choice) => resolve(choice)}
           onCancel={() => resolve(undefined)}
         />
@@ -264,3 +281,13 @@ ModelPicker.show = (
 }
 
 export { ModelPicker }
+
+function nextEnabledIndex(models: readonly ModelPickerModelOption[], start: number, step: 1 | -1): number {
+  if (models.length === 0) return 0
+  const normalized = ((start % models.length) + models.length) % models.length
+  for (let offset = 0; offset < models.length; offset++) {
+    const idx = (((normalized + offset * step) % models.length) + models.length) % models.length
+    if (!models[idx]?.disabled) return idx
+  }
+  return normalized
+}

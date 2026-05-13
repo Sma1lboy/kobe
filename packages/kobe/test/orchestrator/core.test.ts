@@ -1523,6 +1523,31 @@ describe("Orchestrator engine call shape", () => {
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
   })
 
+  test("started chat tabs cannot switch to another engine", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const orch = new Orchestrator({
+      engines: { claude: new HistoryEngine("claude"), codex: new HistoryEngine("codex") },
+      store,
+      worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
+    })
+
+    const task = await orch.createTask({ repo, title: "locked engine", prompt: "" })
+    await orch.runTask(task.id, "first tab")
+    await orch._waitForPumpsIdle()
+    const tab = orch.getTask(task.id)?.tabs[0]
+    expect(tab?.sessionId).toBe("claude-1")
+
+    await expect(orch.setModel(task.id, "gpt-5.5", tab?.id, "xhigh")).rejects.toThrow(
+      "cannot switch engine for a started chat tab",
+    )
+
+    const updated = orch.getTask(task.id)?.tabs[0]
+    expect(updated?.vendor).toBe("claude")
+    expect(updated?.model).toBeUndefined()
+  })
+
   test("metadata naming suggestions use the selected tab engine and model", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
