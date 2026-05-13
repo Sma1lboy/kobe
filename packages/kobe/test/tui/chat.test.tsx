@@ -44,6 +44,7 @@ import {
   removeFromQueue,
   reset,
   setMessagesFromHistory,
+  updateQueueItem,
 } from "../../src/tui/panes/chat/store.ts"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "../../src/tui/panes/chat/tool-banners.ts"
 import type { EngineEvent, Message } from "../../src/types/engine.ts"
@@ -143,6 +144,34 @@ describe("queue reducers", () => {
     let s = createInitialState()
     s = enqueuePrompt(s, "a", FIXED_TS)
     const next = removeFromQueue(s, "q-does-not-exist")
+    expect(next).toBe(s)
+  })
+
+  test("updateQueueItem rewrites text in place, keeping id, ts, and position", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    s = enqueuePrompt(s, "b", FIXED_TS)
+    s = enqueuePrompt(s, "c", FIXED_TS)
+    const target = s.queue[1]
+    expect(target).toBeDefined()
+    const next = updateQueueItem(s, target?.id as string, "B-edited")
+    expect(next.queue.map((q) => (q.kind === "prompt" ? q.text : `!${q.command}`))).toEqual(["a", "B-edited", "c"])
+    expect(next.queue[1]?.id).toBe(target?.id)
+    expect(next.queue[1]?.ts).toBe(target?.ts)
+  })
+
+  test("updateQueueItem with an unknown id is a no-op (identity preserved)", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    const next = updateQueueItem(s, "q-does-not-exist", "whatever")
+    expect(next).toBe(s)
+  })
+
+  test("updateQueueItem with the same text is a no-op (identity preserved)", () => {
+    let s = createInitialState()
+    s = enqueuePrompt(s, "a", FIXED_TS)
+    const id = s.queue[0]?.id as string
+    const next = updateQueueItem(s, id, "a")
     expect(next).toBe(s)
   })
 

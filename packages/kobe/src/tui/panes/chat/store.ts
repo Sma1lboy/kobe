@@ -472,6 +472,27 @@ export function dequeueFirst(state: ChatState): [ChatState, QueuedPrompt | null]
   return [{ ...state, queue: rest }, head]
 }
 
+/**
+ * Replace the text of a queued PROMPT by id, keeping its position and
+ * id. Bash queue entries are intentionally not editable in place —
+ * `!cmd` flows through a separate submit path and re-enqueues as a
+ * fresh entry. No-op (identity-preserving) when the id is unknown,
+ * targets a bash entry, or the text matches the existing value.
+ */
+export function updateQueueItem(state: ChatState, id: string, text: string): ChatState {
+  if (state.queue.length === 0) return state
+  let changed = false
+  const next = state.queue.map((q) => {
+    if (q.id === id && q.kind === "prompt" && q.text !== text) {
+      changed = true
+      return { ...q, text }
+    }
+    return q
+  })
+  if (!changed) return state
+  return { ...state, queue: next }
+}
+
 /** Remove a queued prompt by id (the cancel-button path). */
 export function removeFromQueue(state: ChatState, id: string): ChatState {
   if (state.queue.length === 0) return state
