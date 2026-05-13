@@ -59,14 +59,7 @@ import { PromptHistoryNavigator } from "./composer/history-nav"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { deleteImageTokenBackward, deleteImageTokenForward } from "./composer/image-token-delete"
 import { isPermissionModeCycleKey } from "./composer/keys"
-import {
-  type MentionContext,
-  type MentionMatch,
-  filterMentionMatches,
-  findMentionContext,
-  getWorktreeFiles,
-} from "./composer/mention"
-import { findPreviewablePathRefs } from "./composer/path-preview"
+import { createMentionController } from "./composer/mention-controller"
 
 /**
  * Slash entry with an optional `source` discriminator. Defined as an
@@ -345,106 +338,17 @@ export function Composer(props: ComposerProps) {
   const SLASH_MAX_VISIBLE = 8
   const slashWindow = createMemo(() => makeDropdownWindow(slashMatches(), slashCursor(), SLASH_MAX_VISIBLE))
 
-  // ----- @-mention dropdown state -----
-  //
-  // Mirrors the slash-dropdown pattern above, with three differences:
-  //
-  //   1. Active region is detected from `(liveBuffer, liveCursor)` via
-  //      `findMentionContext` — anywhere in the buffer, not just at the
-  //      start. The `@` must follow whitespace or be at buffer start so
-  //      `email@host` doesn't trigger.
-  //   2. File list comes from disk (cached, gitignore-respecting) via
-  //      `getWorktreeFiles`. Refetched on worktree path change.
-  //   3. The user can dismiss with Esc — closing the dropdown clears
-  //      `mentionDismissedAt` to the current `atPos` so the next
-  //      keystroke doesn't immediately re-open it. Re-opens only when
-  //      the user types a fresh `@` after whitespace.
-  const [mentionFiles, setMentionFiles] = createSignal<readonly string[]>([])
-  const [mentionCursor, setMentionCursor] = createSignal(0)
-  // Buffer offset of an `@` the user explicitly dismissed via Esc.
-  // While the active mention context still resolves to this anchor,
-  // we suppress the dropdown. Cleared once the cursor leaves the
-  // mention region (or another `@` is typed).
-  const [mentionDismissedAt, setMentionDismissedAt] = createSignal<number | null>(null)
-
-  // Refetch the worktree file list when the active task's worktree
-  // changes. We don't await — the dropdown opens immediately with
-  // whatever's cached (empty on first open per worktree), and reactive
-  // setMentionFiles() flips matches in once the list arrives.
-  createEffect(
-    on(
-      () => props.worktreePath?.(),
-      (wt) => {
-        if (!wt) {
-          setMentionFiles([])
-          return
-        }
-        getWorktreeFiles(wt)
-          .then(setMentionFiles)
-          .catch(() => setMentionFiles([]))
-      },
-    ),
-  )
-
-  const mentionContext = createMemo<MentionContext | null>(() => {
-    if (!props.worktreePath?.()) return null
-    return findMentionContext(liveBuffer(), liveCursor())
+  const mention = createMentionController({
+    worktreePath: () => props.worktreePath?.(),
+    liveBuffer,
+    liveCursor,
+    slashOpen,
+    textarea: () => textareaRef,
   })
-  // Clear the Esc-dismissed anchor when the cursor leaves its span.
-  createEffect(() => {
-    const ctx = mentionContext()
-    const dismissed = mentionDismissedAt()
-    if (dismissed === null) return
-    if (!ctx || ctx.atPos !== dismissed) setMentionDismissedAt(null)
-  })
-  const MENTION_MAX_VISIBLE = 8
-  const mentionMatches = createMemo<readonly MentionMatch[]>(() => {
-    const ctx = mentionContext()
-    if (!ctx) return []
-    if (mentionDismissedAt() === ctx.atPos) return []
-    return filterMentionMatches(mentionFiles(), ctx.query, MENTION_MAX_VISIBLE * 4)
-  })
-  // Slash dropdown wins when both could open — a buffer starting with
-  // `/` shouldn't surface a file picker because the user is plainly
-  // running a command. Otherwise mention takes precedence over the
-  // ambient input.
-  const mentionOpen = createMemo(() => !slashOpen() && mentionMatches().length > 0)
-
-  // Keep cursor in bounds when the mention match list changes.
-  createEffect(() => {
-    const len = mentionMatches().length
-    setMentionCursor((cur) => (len === 0 ? 0 : Math.min(cur, len - 1)))
-  })
-
-  const mentionWindow = createMemo(() => makeDropdownWindow(mentionMatches(), mentionCursor(), MENTION_MAX_VISIBLE))
-
   const previewablePathRefs = createMemo(() => {
     if (!props.onOpenFilePath) return []
-    return findPreviewablePathRefs(liveBuffer(), mentionFiles())
+    return mention.pathRefs()
   })
-
-  /**
-   * Replace the active mention span (`@<query>`) with `@<relPath> `.
-   * Uses `setSelection` + `insertText` so the operation participates in
-   * undo. Cursor lands one past the trailing space, ready for more
-   * typing — matches opcode (`handleFileSelect`) and the image-paste
-   * `[Image #N]` placeholder convention.
-   */
-  function insertMentionSelection(path: string): void {
-    const ref = textareaRef
-    const ctx = mentionContext()
-    if (!ref || !ctx) return
-    const cursor = ref.cursorOffset
-    ref.setSelection(ctx.atPos, cursor)
-    ref.deleteSelection()
-    const inserted = `@${path} `
-    ref.insertText(inserted)
-    setMentionDismissedAt(null)
-    setMentionCursor(0)
-    // The textarea's content-change callback will refresh liveBuffer /
-    // liveCursor; mentionContext will then resolve to null (no `@` at
-    // the new cursor) and the dropdown will close on its own.
-  }
 
   /**
    * Update the textarea's text imperatively. We use `setText` (clean
@@ -708,42 +612,7 @@ export function Composer(props: ComposerProps) {
         return
       }
     }
-    // Mention-dropdown nav. Priority sits above history (so up/down
-    // walk the file list instead of recalling prompts) and above the
-    // slash dropdown (mutually exclusive — `mentionOpen` is false when
-    // `slashOpen` is true, so the check order is cosmetic). Tab and
-    // Enter both insert the highlighted file path; Esc dismisses the
-    // dropdown until the cursor leaves the `@` region (matches
-    // opcode's `handleFilePickerClose` semantics without re-focusing
-    // mid-buffer).
-    if (mentionOpen()) {
-      if (key.name === "up" && !key.shift && !key.ctrl && !key.meta && !key.super) {
-        const len = mentionMatches().length
-        setMentionCursor((cur) => (cur - 1 + len) % len)
-        key.preventDefault()
-        return
-      }
-      if (key.name === "down" && !key.shift && !key.ctrl && !key.meta && !key.super) {
-        const len = mentionMatches().length
-        setMentionCursor((cur) => (cur + 1) % len)
-        key.preventDefault()
-        return
-      }
-      if ((key.name === "return" || key.name === "tab") && !key.shift && !key.ctrl) {
-        const match = mentionMatches()[mentionCursor()]
-        if (match) {
-          insertMentionSelection(match.path)
-          key.preventDefault()
-          return
-        }
-      }
-      if (key.name === "escape") {
-        const ctx = mentionContext()
-        if (ctx) setMentionDismissedAt(ctx.atPos)
-        key.preventDefault()
-        return
-      }
-    }
+    if (mention.handleKeyDown(key)) return
 
     // Slash-dropdown nav has higher priority than history nav. When
     // the dropdown is open, up/down move the highlighted command, tab
@@ -969,9 +838,9 @@ export function Composer(props: ComposerProps) {
       permissionModeLabel={permissionModeLabel()}
       modeBadge={modeBadge()}
       toneColor={toneColor}
-      mentionOpen={mentionOpen()}
-      mentionWindow={mentionWindow()}
-      mentionCursor={mentionCursor()}
+      mentionOpen={mention.open()}
+      mentionWindow={mention.window()}
+      mentionCursor={mention.cursor()}
       slashOpen={slashOpen()}
       slashMatchesLength={slashMatches().length}
       slashWindow={slashWindow()}
