@@ -20,8 +20,9 @@
  *
  * What we assert:
  *   1. On the All tab, expected committed + untracked files appear,
- *      and the gitignored file does not.
- *   2. Pressing `2` switches to the Changes tab and only the modified
+ *      and the gitignored file does not. Directories are collapsed by
+ *      default, so nested files appear after expanding the directory.
+ *   2. Pressing `]` switches to the Changes tab and only the modified
  *      and untracked files show, prefixed with M / ?.
  *   3. Pressing `enter` on a row writes the selected path to the
  *      output file we read back to verify `onOpenFile` fired.
@@ -97,12 +98,16 @@ test("filetree H — All tab lists committed + untracked files, hides gitignored
   // because it's a committed file every run includes.
   const allScreen = await kobe.waitFor((s) => s.includes("README.md"), 10_000)
 
-  // Files we expect on the All tab:
+  // Files we expect on the All tab. `src/` is a collapsed tree row at
+  // first, so expand it before asserting nested children.
   expect(allScreen).toContain("README.md")
-  expect(allScreen).toContain("src/index.ts")
-  expect(allScreen).toContain("src/util.ts")
+  expect(allScreen).toContain("src/")
   expect(allScreen).toContain(".gitignore")
   expect(allScreen).toContain("new-file.txt")
+  await kobe.sendKeys("\r")
+  const expanded = await kobe.waitFor((s) => s.includes("index.ts") && s.includes("util.ts"), 10_000)
+  expect(expanded).toContain("index.ts")
+  expect(expanded).toContain("util.ts")
 
   // Files / strings we expect NOT to see:
   expect(allScreen).not.toContain("secret.log")
@@ -114,7 +119,7 @@ test("filetree H — All tab lists committed + untracked files, hides gitignored
 // (b) Changes tab — only the modified + untracked files, with prefix.
 // ---------------------------------------------------------------------
 
-test("filetree H — pressing 2 shows Changes tab with only modified files", async () => {
+test("filetree H — pressing ] shows Changes tab with only modified files", async () => {
   const fixture = buildFixture()
   tmpRoot = fixture.tmpRoot
 
@@ -132,8 +137,9 @@ test("filetree H — pressing 2 shows Changes tab with only modified files", asy
   // Wait for All tab to populate first so we know the pane is alive.
   await kobe.waitFor((s) => s.includes("README.md"), 10_000)
 
-  // Switch to Changes tab.
-  await kobe.sendKeys("2")
+  // Switch to Changes tab. FileTree tabs now use the same bracket-pair
+  // pattern as other tab strips.
+  await kobe.sendKeys("]")
 
   // The PTY's screen buffer is cumulative — every frame the renderer
   // paints is appended, ANSI cursor jumps and all. After we strip
@@ -150,10 +156,10 @@ test("filetree H — pressing 2 shows Changes tab with only modified files", asy
   // bare paths with no prefix glyph, so a positive match on these
   // patterns proves the tab swap landed AND the parser fed the right
   // status codes through.
-  const changesScreen = await kobe.waitFor((s) => /M\s+src\/index\.ts/.test(s) && /\?\s+new-file\.txt/.test(s), 10_000)
+  const changesScreen = await kobe.waitFor((s) => /M\s+src\/index\.ts/.test(s) && /\?\s*new-file\.txt/.test(s), 10_000)
 
   expect(changesScreen).toMatch(/M\s+src\/index\.ts/)
-  expect(changesScreen).toMatch(/\?\s+new-file\.txt/)
+  expect(changesScreen).toMatch(/\?\s*new-file\.txt/)
 
   // The Changes tab must NOT introduce any bare-no-prefix row for a
   // committed-only file. We assert that within the most recent frame
@@ -189,8 +195,9 @@ test("filetree H — enter on a row fires onOpenFile with the relative path", as
   await kobe.waitFor((s) => s.includes("kobe filetree host"), 10_000)
   await kobe.waitFor((s) => s.includes("README.md"), 10_000)
 
-  // The cursor starts on the first row. Press enter — the host
-  // should append the row's path to the output file.
+  // The cursor starts on the first row (`src/`, a directory). Move to a
+  // file row before pressing enter so the host writes an opened path.
+  await kobe.sendKeys("\x1b[B")
   await kobe.sendKeys("\r")
 
   // Poll the output file until something appears. We allow up to

@@ -94,6 +94,7 @@ test("settings → Dev → Reset wipes state.json and exits kobe", async () => {
     env: {
       HOME: homeDir,
       KOBE_HOME_DIR: homeDir,
+      KOBE_TEST_ENGINE: "fake",
     },
     cols: 120,
     rows: 30,

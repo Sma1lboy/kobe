@@ -66,7 +66,6 @@ test("new-task dialog rejects a non-git directory with a friendly message", asyn
   kobe = await spawnKobe({
     env: {
       KOBE_TEST_ENGINE: "fake",
-      KOBE_TEST_FAKE_PORT: "0",
       KOBE_HOME_DIR: homeDir,
     },
     cols: 120,
