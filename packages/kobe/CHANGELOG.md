@@ -14,6 +14,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.21] - 2026-05-13
+
+### Added
+
+- **Chat composer now has a shell-command mode** — type `!` at the start of the composer to switch into bash command mode, run local shell commands from chat, and keep command output in the conversation flow (KOB-83).
+- **Terminal pane can reset the running shell with F5** — press F5 in the terminal pane to restart the embedded shell without restarting the whole TUI.
+
+### Fixed
+
+- **MCP bridge processes now exit when their parent disappears** — orphaned bridge subprocesses self-terminate instead of lingering after the owning kobe process exits (KOB-98).
+
 ## [0.5.20] - 2026-05-13
 
 ### Fixed
