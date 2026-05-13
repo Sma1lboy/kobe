@@ -703,6 +703,94 @@ function ReadGrepGlobBanner(props: { row: Extract<ChatRow, { kind: "tool" }> }) 
 }
 
 /**
+ * `!shell` (bash mode) row — user-initiated shell command, rendered as
+ * `! <command>` banner + indented stdout/stderr block + completion chip
+ * (exit code or "interrupted"). Distinct from the model-initiated
+ * `BashBanner` / `BashOutputBlock` pair (which use a `$` chip in
+ * theme.accent) so the user can tell at a glance which side ran the
+ * command. Color mirrors Claude Code's `bashBorder` semantic via
+ * theme.warning since kobe doesn't have a dedicated bash color.
+ *
+ * Streaming: stdout/stderr live as separate strings on the row and are
+ * concatenated as the child process emits chunks. `splitBashOutput`
+ * caps the collapsed view at {@link BASH_OUTPUT_COLLAPSED_CAP} lines
+ * each so a `find /` doesn't dominate the scroll. The `done: false`
+ * variant shows a "running…" hint instead of the exit chip.
+ */
+function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
+  const { theme } = useTheme()
+  const r = () => props.row
+  const stdoutView = (): BashOutputView => splitBashOutput(r().stdout, BASH_OUTPUT_COLLAPSED_CAP)
+  const stderrView = (): BashOutputView => splitBashOutput(r().stderr, BASH_OUTPUT_COLLAPSED_CAP)
+  const statusText = (): string => {
+    if (!r().done) return "running…"
+    if (r().signal !== null) return `interrupted (${r().signal})`
+    const code = r().exitCode
+    if (code === null) return "(no exit code)"
+    if (code === 0) return "done"
+    return `exit ${code}`
+  }
+  const statusColor = () => {
+    if (!r().done) return theme.textMuted
+    if (r().signal !== null) return theme.error
+    const code = r().exitCode
+    if (code === 0) return theme.success
+    return theme.error
+  }
+  return (
+    <box paddingTop={1} flexDirection="column">
+      <box flexDirection="row" gap={1}>
+        <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+          !
+        </text>
+        <box flexGrow={1}>
+          <text fg={theme.text} wrapMode="none">
+            {r().command || "(empty command)"}
+          </text>
+        </box>
+      </box>
+      <Show when={stdoutView().totalLines > 0}>
+        <box paddingLeft={2} flexDirection="column">
+          <For each={stdoutView().visible}>
+            {(line) => (
+              <text fg={theme.textMuted} wrapMode="none">
+                {line || " "}
+              </text>
+            )}
+          </For>
+          <Show when={stdoutView().hidden > 0}>
+            <text fg={theme.textMuted}>
+              {`  … ${stdoutView().hidden} more ${stdoutView().hidden === 1 ? "line" : "lines"}`}
+            </text>
+          </Show>
+        </box>
+      </Show>
+      <Show when={stderrView().totalLines > 0}>
+        <box paddingLeft={2} flexDirection="column">
+          <For each={stderrView().visible}>
+            {(line) => (
+              <text fg={theme.error} wrapMode="none">
+                {line || " "}
+              </text>
+            )}
+          </For>
+          <Show when={stderrView().hidden > 0}>
+            <text fg={theme.error}>
+              {`  … ${stderrView().hidden} more ${stderrView().hidden === 1 ? "line" : "lines"}`}
+            </text>
+          </Show>
+        </box>
+      </Show>
+      <box paddingLeft={2}>
+        <text fg={statusColor()} attributes={TextAttributes.DIM}>
+          {statusText()}
+        </text>
+      </box>
+    </box>
+  )
+}
+
+/**
  * System / error row.
  *
  * Mirrors Claude Code's `SystemTextMessage` "away_summary" / API-error
@@ -1291,6 +1379,7 @@ export function MessageList(props: MessageListProps) {
           if (row.kind === "user") return <UserRow text={row.text} />
           if (row.kind === "assistant") return <AssistantRow text={row.text} />
           if (row.kind === "system") return <SystemRow text={row.text} />
+          if (row.kind === "bash") return <BashRow row={row} />
           if (row.kind === "approval") {
             return <ApprovalRow row={row} onApprove={(approve) => props.onApprove?.(row.requestId, approve)} />
           }

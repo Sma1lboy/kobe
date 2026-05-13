@@ -204,6 +204,16 @@ export interface ComposerProps {
    * and routes through the steer path.
    */
   onSendQueuedNow?: (id: string) => void
+
+  /**
+   * Submit a `!shell` command (Claude-Code-style bash mode). Fires on
+   * enter when the buffer starts with `!`; the composer strips the
+   * prefix before calling. Parent runs the command locally (not via
+   * the engine), streams output into a bash row, and stashes the
+   * interaction so the next regular submit prepends it as XML
+   * context. Omit to disable bash mode for this composer instance.
+   */
+  onBashCommand?: (command: string) => void
 }
 
 /**
@@ -277,6 +287,17 @@ export function Composer(props: ComposerProps) {
   // content change) don't refresh this; the dropdown stays open in
   // that edge case, dismissable with Esc — matches opcode's behavior.
   const [liveCursor, setLiveCursor] = createSignal(props.draft?.length ?? 0)
+
+  // Bash-mode detection — mirrors claude-code's `getModeFromInput` in
+  // `refs/claude-code/src/components/PromptInput/inputModes.ts`. We
+  // peek at the live buffer (not props.draft) so the visual updates on
+  // every keystroke without waiting for the parent's clear-on-submit
+  // roundtrip. Gated on `onBashCommand` being supplied — without a
+  // handler the visual swap would be a lie. The `! ` two-char check is
+  // a usability concession: a buffer of just `!` (no command yet) still
+  // counts as bash mode so the user sees the indicator engage as soon
+  // as they type the prefix, matching upstream.
+  const bashMode = createMemo(() => props.onBashCommand != null && liveBuffer().startsWith("!"))
 
   // Slash dropdown state. Cursor indexes into `slashMatches()`; reset
   // to 0 whenever the match list changes (e.g. user typed another char
@@ -945,6 +966,27 @@ export function Composer(props: ComposerProps) {
     if (!ref) return
     const raw = ref.plainText
     const trimmed = raw.trim()
+    // Bash-mode short-circuit (Claude-Code `!cmd` parity). The buffer
+    // starts with `!` AND the parent supplied `onBashCommand` → strip
+    // the prefix, hand the command to the parent for local shell
+    // execution, and bypass the engine entirely. Push the raw text
+    // (including the `!`) into prompt history so up-arrow recall
+    // restores the bash mode visual on recall.
+    if (bashMode() && trimmed.length > 1) {
+      const command = trimmed.slice(1).trim()
+      if (command.length === 0) return // bare `!` with no command — no-op
+      pushHistory(props.historyKey ?? "global", trimmed)
+      // Clear the textarea synchronously so the indicator turns off
+      // before the command starts streaming. Parent will also clear
+      // via the draft round-trip, but this avoids a one-tick flicker.
+      ref.setText("")
+      setBuffer("")
+      setLiveBuffer("")
+      props.onDraftChange("")
+      resetHistoryNav()
+      props.onBashCommand?.(command)
+      return
+    }
     // Slash short-circuit: if the dropdown is open and there's at
     // least one match, run the highlighted entry, clear the buffer,
     // and bypass the engine submit. Falls through if the user typed
@@ -1003,6 +1045,7 @@ export function Composer(props: ComposerProps) {
   const streamingNotice = () => {
     if (!props.hasTask) return ""
     if (props.isStreaming) return "enter queue · ctrl+enter steer"
+    if (bashMode()) return "bash mode · enter to run · esc to cancel"
     return ""
   }
   // Footer hint slot: paste-related feedback (e.g. "no image on
@@ -1260,7 +1303,19 @@ export function Composer(props: ComposerProps) {
             </box>
           </Show>
           <box flexDirection="row" gap={1} alignItems="flex-start">
-            <text fg={props.isStreaming ? theme.accent : theme.primary}>{props.isStreaming ? "…" : ">"}</text>
+            {/* Prompt glyph — three modes:
+                streaming → `…` (theme.accent)
+                bash      → `!` (theme.warning, claude-code parity)
+                idle      → `>` (theme.primary)
+                Streaming dominates because you can't submit anything
+                while it's true; bash beats idle when the user has typed
+                `!` as the first char. */}
+            <text
+              fg={props.isStreaming ? theme.accent : bashMode() ? theme.warning : theme.primary}
+              attributes={bashMode() ? TextAttributes.BOLD : undefined}
+            >
+              {props.isStreaming ? "…" : bashMode() ? "!" : ">"}
+            </text>
             <box flexGrow={1} flexShrink={1} maxHeight={COMPOSER_MAX_LINES} minHeight={COMPOSER_MIN_LINES}>
               <Show
                 when={props.hasTask}

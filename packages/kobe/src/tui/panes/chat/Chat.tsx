@@ -51,6 +51,7 @@ import { useDialog } from "../../ui/dialog"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
+import { runBashCommand } from "./bash-mode"
 import { ModelPicker } from "./composer/ModelPicker"
 import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
 import { loadUserSlashes } from "./composer/user-slashes"
@@ -60,7 +61,12 @@ import {
   type ChatState,
   createInitialState,
   dequeueFirst,
+  drainPendingBashContext,
   enqueuePrompt,
+  formatBashContextPrefix,
+  patchBashRow,
+  pushBashRow,
+  pushPendingBashContext,
   pushSystemError,
   queueIsFull,
   removeFromQueue,
@@ -250,7 +256,7 @@ export function Chat(props: ChatProps) {
       if (!m) continue
       if (m.kind === "approval") return m.status === "pending" ? m : null
       if (m.kind === "question") return m.answers === null ? m : null
-      if (m.kind === "user" || m.kind === "assistant") return null
+      if (m.kind === "user" || m.kind === "assistant" || m.kind === "bash") return null
     }
     return null
   }
@@ -477,6 +483,106 @@ export function Chat(props: ChatProps) {
 
   // Subscription teardown is owned by useChatSession's own onCleanup.
 
+  // ── Bash mode (KOB-83) ──────────────────────────────────────────────
+  //
+  // `!shell` runs locally in the TUI process (not via the orchestrator
+  // event bus, so multi-attach clients won't see the row in v1). Tracked
+  // per tab so each tab can have at most one in-flight bash command;
+  // re-submitting cancels the prior one. The map lives on this closure
+  // — not in module scope like statesByTab — because an AbortController
+  // is only meaningful while the original component is mounted; on
+  // remount we'd want fresh controllers anyway since the prior child
+  // processes were killed when the runtime exited the closure.
+  const bashAbortsByTab = new Map<string, AbortController>()
+
+  /**
+   * Fire-and-forget entry for the composer's `!cmd` submit. The composer
+   * has already stripped the `!`; we own pushing the bash row, streaming
+   * output into it, and stashing the completed interaction so the next
+   * regular prompt can fold it into the model context as XML.
+   */
+  function handleBashCommand(command: string): void {
+    void runBashLocally(command)
+  }
+
+  async function runBashLocally(command: string): Promise<void> {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    if (!taskId || !tabId) return
+    const cwd = worktreePath()
+    if (!cwd) {
+      patchActiveState((s) => pushSystemError(s, "bash: task has no worktree yet"))
+      return
+    }
+    // One bash at a time per tab — abort the prior run if still active.
+    // Pragmatic v1: claude-code allows only one concurrent !cmd too.
+    bashAbortsByTab.get(tabId)?.abort()
+    const ac = new AbortController()
+    bashAbortsByTab.set(tabId, ac)
+
+    const id = `bash-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
+    patchActiveState((s) => pushBashRow(s, { id, command }))
+
+    // Accumulate output locally so we don't have to fish the final
+    // stdout/stderr back out of the reducer state at completion time
+    // (racy — patch ordering vs. signal read).
+    let stdoutAcc = ""
+    let stderrAcc = ""
+    try {
+      const result = await runBashCommand({
+        command,
+        cwd,
+        onStdout: (chunk) => {
+          stdoutAcc += chunk
+          patchActiveState((s) => patchBashRow(s, id, { stdoutAppend: chunk }))
+        },
+        onStderr: (chunk) => {
+          stderrAcc += chunk
+          patchActiveState((s) => patchBashRow(s, id, { stderrAppend: chunk }))
+        },
+        signal: ac.signal,
+      })
+      patchActiveState((s) => patchBashRow(s, id, { done: true, exitCode: result.exitCode, signal: result.signal }))
+      // Skip pending-context stash on a user-initiated abort — Esc /
+      // Ctrl-C cancelled the run, the model shouldn't see a half-baked
+      // output as context. Timeouts still stash (exitCode === -1,
+      // signal === null) so the model can reason about the failure.
+      if (!ac.signal.aborted) {
+        patchActiveState((s) =>
+          pushPendingBashContext(s, {
+            command,
+            stdout: stdoutAcc,
+            stderr: stderrAcc,
+            exitCode: result.exitCode,
+          }),
+        )
+      }
+    } catch (err) {
+      patchActiveState((s) => patchBashRow(s, id, { done: true, exitCode: -1, signal: null }))
+      patchActiveState((s) => pushSystemError(s, `bash failed: ${stringifyErr(err)}`))
+    } finally {
+      if (bashAbortsByTab.get(tabId) === ac) bashAbortsByTab.delete(tabId)
+    }
+  }
+
+  /**
+   * Drain the active tab's pending bash context and format it as an
+   * XML prefix to fold into the next prompt. Returns the prefix string
+   * (empty when nothing pending) — `send()` prepends this to the text
+   * before handing off to runTask/steerTask/enqueuePrompt so all three
+   * paths give the model the same context.
+   */
+  function drainBashContextPrefix(): string {
+    const ctxs = activeState().pendingBashContext ?? []
+    if (ctxs.length === 0) return ""
+    const prefix = formatBashContextPrefix(ctxs)
+    patchActiveState((s) => {
+      const [next] = drainPendingBashContext(s)
+      return next
+    })
+    return prefix
+  }
+
   /**
    * Submit a prompt to the active tab.
    *
@@ -522,6 +628,13 @@ export function Chat(props: ChatProps) {
 
     const streaming = activeState().isStreaming
 
+    // Drain any pending `!bash` interactions into an XML prefix. The
+    // prefix is concatenated with `text` before dispatch on every path
+    // (steer / queue / idle) so the model sees the bash context no
+    // matter how the user submitted. Empty when nothing pending.
+    const bashPrefix = drainBashContextPrefix()
+    const dispatched = bashPrefix.length > 0 ? bashPrefix + text : text
+
     if (streaming && mode === "steer") {
       setDraft("")
       // Claim the dispatch lock BEFORE awaiting steer. Without this,
@@ -542,7 +655,7 @@ export function Chat(props: ChatProps) {
         // its own, so a naive interrupt+resume would drop the
         // abandoned prompt entirely.
         try {
-          await props.orchestrator.steerTask(taskId, text, tabId)
+          await props.orchestrator.steerTask(taskId, dispatched, tabId)
         } catch (err) {
           patchActiveState((s) => pushSystemError(s, `steer failed: ${stringifyErr(err)}`))
         }
@@ -560,7 +673,7 @@ export function Chat(props: ChatProps) {
         return
       }
       setDraft("")
-      patchActiveState((s) => enqueuePrompt(s, text))
+      patchActiveState((s) => enqueuePrompt(s, dispatched))
       return
     }
 
@@ -568,7 +681,7 @@ export function Chat(props: ChatProps) {
     // user row lands via the event bus (no local pushUser).
     setDraft("")
     try {
-      await props.orchestrator.runTask(taskId, text, tabId)
+      await props.orchestrator.runTask(taskId, dispatched, tabId)
     } catch (err) {
       patchActiveState((s) => pushSystemError(s, `runTask failed: ${stringifyErr(err)}`))
     }
@@ -677,15 +790,36 @@ export function Chat(props: ChatProps) {
     }),
   }))
 
-  // Esc-to-interrupt while streaming. Gated on `streaming` so an idle
-  // ESC is a no-op (the global "back to sidebar" detach was removed
-  // because it pulled focus out from under the user mid-edit; use
-  // `ctrl+q` for an explicit detach). Gated on `!dialog.stack.length`
-  // so DialogProvider's esc (close top dialog) isn't shadowed.
+  // True while a `!bash` subprocess is in flight for the active tab.
+  // Derived from messages (the last bash row's `done` flag) rather
+  // than the AbortController map so Solid reruns dependent UI on the
+  // exact tick the row flips to `done: true`. Scans from the tail
+  // because in-flight bash rows are always recent.
+  const hasActiveBash = createMemo(() => {
+    const msgs = activeState().messages
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]
+      if (!m) continue
+      if (m.kind === "bash") return !m.done
+    }
+    return false
+  })
+
+  // Esc-to-interrupt while streaming OR while a `!bash` command is
+  // running. Gated on at least one of those being true so an idle ESC
+  // is a no-op (the global "back to sidebar" detach was removed because
+  // it pulled focus out from under the user mid-edit; use `ctrl+q` for
+  // an explicit detach). Gated on `!dialog.stack.length` so
+  // DialogProvider's esc (close top dialog) isn't shadowed.
   async function interruptStream(): Promise<void> {
     const taskId = props.taskId()
     const tabId = activeTabId()
     if (!taskId || !tabId) return
+    // Abort any in-flight bash for this tab first — local, synchronous.
+    // The runBashLocally handler watches signal.aborted and skips the
+    // pending-context stash, so the cancelled run doesn't leak into the
+    // next prompt.
+    bashAbortsByTab.get(tabId)?.abort()
     if (!activeState().isStreaming) return
     try {
       await props.orchestrator.interruptTask(taskId, tabId)
@@ -694,7 +828,7 @@ export function Chat(props: ChatProps) {
     }
   }
   useBindings(() => ({
-    enabled: props.focused?.() === true && activeState().isStreaming && dialog.stack.length === 0,
+    enabled: props.focused?.() === true && (activeState().isStreaming || hasActiveBash()) && dialog.stack.length === 0,
     bindings: [{ key: "escape", cmd: () => void interruptStream() }],
   }))
 
@@ -935,6 +1069,7 @@ export function Chat(props: ChatProps) {
           queue={() => activeState().queue}
           onCancelQueued={cancelQueued}
           onSendQueuedNow={sendQueuedNow}
+          onBashCommand={handleBashCommand}
         />
       </Show>
     </box>

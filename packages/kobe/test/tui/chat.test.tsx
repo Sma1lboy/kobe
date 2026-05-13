@@ -31,7 +31,12 @@ import {
   clearQueue,
   createInitialState,
   dequeueFirst,
+  drainPendingBashContext,
   enqueuePrompt,
+  formatBashContextPrefix,
+  patchBashRow,
+  pushBashRow,
+  pushPendingBashContext,
   pushSystemError,
   pushUser,
   queueIsFull,
@@ -157,6 +162,113 @@ describe("queue reducers", () => {
     const next = applyEvent(s, { type: "done" }, FIXED_TS)
     expect(next.isStreaming).toBe(false)
     expect(next.queue).toEqual(s.queue) // queue intact — drain happens at the chat-shell layer
+  })
+})
+
+describe("bash mode reducers (KOB-83)", () => {
+  test("pushBashRow appends a bash row with done=false and the given id", () => {
+    const s0 = createInitialState()
+    const s1 = pushBashRow(s0, { id: "bash-1", command: "ls" }, FIXED_TS)
+    expect(s1.messages).toHaveLength(1)
+    const row = s1.messages[0]
+    expect(row?.kind).toBe("bash")
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.id).toBe("bash-1")
+    expect(row.command).toBe("ls")
+    expect(row.stdout).toBe("")
+    expect(row.stderr).toBe("")
+    expect(row.done).toBe(false)
+    expect(row.exitCode).toBeNull()
+    expect(row.signal).toBeNull()
+  })
+
+  test("patchBashRow appends to stdout/stderr without replacing", () => {
+    let s = pushBashRow(createInitialState(), { id: "b1", command: "echo hi" }, FIXED_TS)
+    s = patchBashRow(s, "b1", { stdoutAppend: "hi" })
+    s = patchBashRow(s, "b1", { stdoutAppend: "\nworld" })
+    s = patchBashRow(s, "b1", { stderrAppend: "oh no" })
+    const row = s.messages[0]
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.stdout).toBe("hi\nworld")
+    expect(row.stderr).toBe("oh no")
+    expect(row.done).toBe(false)
+  })
+
+  test("patchBashRow flips done with exitCode/signal", () => {
+    let s = pushBashRow(createInitialState(), { id: "b1", command: "ls" }, FIXED_TS)
+    s = patchBashRow(s, "b1", { done: true, exitCode: 0, signal: null })
+    const row = s.messages[0]
+    if (row?.kind !== "bash") throw new Error("type narrowing")
+    expect(row.done).toBe(true)
+    expect(row.exitCode).toBe(0)
+    expect(row.signal).toBeNull()
+  })
+
+  test("patchBashRow no-ops when id is unknown", () => {
+    const s = pushBashRow(createInitialState(), { id: "b1", command: "ls" }, FIXED_TS)
+    const next = patchBashRow(s, "b-other", { stdoutAppend: "ignored" })
+    expect(next).toBe(s)
+  })
+
+  test("pushPendingBashContext + drainPendingBashContext is a FIFO round-trip", () => {
+    let s: ChatState = createInitialState()
+    s = pushPendingBashContext(s, { command: "ls", stdout: "a\n", stderr: "", exitCode: 0 })
+    s = pushPendingBashContext(s, { command: "pwd", stdout: "/tmp\n", stderr: "", exitCode: 0 })
+    expect(s.pendingBashContext).toHaveLength(2)
+    const [next, drained] = drainPendingBashContext(s)
+    expect(drained.map((d) => d.command)).toEqual(["ls", "pwd"])
+    expect(next.pendingBashContext).toBeUndefined()
+  })
+
+  test("drainPendingBashContext on empty state returns the input identity-stable", () => {
+    const s = createInitialState()
+    const [next, drained] = drainPendingBashContext(s)
+    expect(next).toBe(s)
+    expect(drained).toEqual([])
+  })
+
+  test("formatBashContextPrefix wraps each interaction in <bash-*> XML tags", () => {
+    const prefix = formatBashContextPrefix([
+      { command: "echo hi", stdout: "hi\n", stderr: "", exitCode: 0 },
+    ])
+    expect(prefix).toContain("<bash-input>echo hi</bash-input>")
+    expect(prefix).toContain("<bash-stdout>hi\n</bash-stdout>")
+    expect(prefix).not.toContain("<bash-stderr>")
+    // Trailing blank line separating context from the prompt body.
+    expect(prefix.endsWith("\n")).toBe(true)
+  })
+
+  test("formatBashContextPrefix omits empty stderr/stdout sections", () => {
+    const prefix = formatBashContextPrefix([
+      { command: "true", stdout: "", stderr: "", exitCode: 0 },
+    ])
+    expect(prefix).toContain("<bash-input>true</bash-input>")
+    expect(prefix).not.toContain("<bash-stdout>")
+    expect(prefix).not.toContain("<bash-stderr>")
+  })
+
+  test("formatBashContextPrefix escapes XML metacharacters in command + output", () => {
+    const prefix = formatBashContextPrefix([
+      { command: "echo '<x>&amp;'", stdout: "</tag>", stderr: "", exitCode: 0 },
+    ])
+    expect(prefix).toContain("&lt;x&gt;")
+    expect(prefix).toContain("&amp;amp;")
+    expect(prefix).toContain("&lt;/tag&gt;")
+  })
+
+  test("formatBashContextPrefix on an empty list is the empty string", () => {
+    expect(formatBashContextPrefix([])).toBe("")
+  })
+
+  test("cleanChatText still strips <bash-input>/<bash-stdout>/<bash-stderr> on history replay", () => {
+    // The prefix lands in the engine's JSONL via the next prompt; on
+    // history hydration kobe's noise-tag filter must hide it from the
+    // chat UI, matching upstream claude-code's behavior.
+    const prefix = formatBashContextPrefix([
+      { command: "ls", stdout: "foo\nbar", stderr: "", exitCode: 0 },
+    ])
+    const masquerading = `${prefix}what just happened?`
+    expect(cleanChatText(masquerading)).toBe("what just happened?")
   })
 })
 

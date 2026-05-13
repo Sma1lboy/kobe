@@ -245,6 +245,34 @@ export type ChatRow =
       readonly answers: Readonly<Record<string, string>> | null
       readonly ts: string
     }
+  /**
+   * User-initiated `!shell` command (Claude-Code-style bash mode). Runs
+   * locally in the TUI process — not via the engine subprocess — and
+   * streams stdout/stderr into the row as it executes. On completion the
+   * interaction is appended to {@link ChatState.pendingBashContext} so the
+   * next regular prompt prepends `<bash-input>` / `<bash-stdout>` /
+   * `<bash-stderr>` XML to give the model the context.
+   *
+   * Local-only by design (v1): not broadcast over the orchestrator event
+   * bus, so other TUIs attached to the same daemon don't see the row.
+   * Persistence: the bash row itself doesn't survive a kobe restart
+   * (lives in module-scoped ChatState), but its XML context lands in
+   * claude-code's JSONL via the subsequent regular prompt, so the model
+   * retains visibility across a restart.
+   */
+  | {
+      readonly kind: "bash"
+      readonly id: string
+      readonly command: string
+      readonly stdout: string
+      readonly stderr: string
+      /** `null` while running. Set on exit (or to a sentinel like -1 on signal). */
+      readonly exitCode: number | null
+      /** `null` unless the process exited via signal (e.g. "SIGINT" on Ctrl-C). */
+      readonly signal: string | null
+      readonly done: boolean
+      readonly ts: string
+    }
 
 export interface ChatState {
   /** All messages in chronological order. Render in array order. */
@@ -275,6 +303,23 @@ export interface ChatState {
    * a daemon restart or full TUI quit still drops the queue.
    */
   readonly queue: readonly QueuedPrompt[]
+  /**
+   * Completed `!shell` interactions waiting to be injected into the
+   * next regular user prompt as `<bash-input>` / `<bash-stdout>` /
+   * `<bash-stderr>` XML. FIFO; drained on the next non-bash submit.
+   * Cleared on `/clear` and tab close. Like {@link queue}, not
+   * persisted — but the resulting XML-prefixed prompt IS persisted by
+   * the engine, so the model retains the context across restarts.
+   */
+  readonly pendingBashContext?: readonly PendingBashContext[]
+}
+
+/** One completed bash interaction waiting to be folded into the next prompt. */
+export interface PendingBashContext {
+  readonly command: string
+  readonly stdout: string
+  readonly stderr: string
+  readonly exitCode: number | null
 }
 
 /** Build the initial state. Used at mount and on task switch. */
@@ -402,6 +447,136 @@ export function removeFromQueue(state: ChatState, id: string): ChatState {
 export function clearQueue(state: ChatState): ChatState {
   if (state.queue.length === 0) return state
   return { ...state, queue: [] }
+}
+
+/* --------------------------------------------------------------------- */
+/*  Bash mode — !shell command rows + pending context                     */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Append a fresh `bash` row for an in-flight `!shell` command. The row
+ * starts with empty stdout/stderr and `done: false`; subsequent
+ * {@link patchBashRow} calls stream output into it as the child process
+ * emits data. `id` is a caller-generated stable token (used to patch
+ * the row by reference without a name-based fallback like
+ * {@link applyEvent}'s tool-result path).
+ */
+export function pushBashRow(
+  state: ChatState,
+  args: { id: string; command: string },
+  nowIso: string = new Date().toISOString(),
+): ChatState {
+  return {
+    ...state,
+    messages: capMessages(
+      [
+        ...state.messages,
+        {
+          kind: "bash",
+          id: args.id,
+          command: args.command,
+          stdout: "",
+          stderr: "",
+          exitCode: null,
+          signal: null,
+          done: false,
+          ts: nowIso,
+        },
+      ],
+      nowIso,
+    ),
+  }
+}
+
+/**
+ * Patch an in-flight bash row by id. Used to (a) append streamed bytes
+ * to `stdout` / `stderr`, and (b) flip `done: true` with the final
+ * `exitCode` / `signal` on process exit. No-op if the row isn't found
+ * (e.g. truncated by the scrollback cap mid-stream).
+ */
+export function patchBashRow(
+  state: ChatState,
+  id: string,
+  patch: {
+    stdoutAppend?: string
+    stderrAppend?: string
+    exitCode?: number | null
+    signal?: string | null
+    done?: boolean
+  },
+): ChatState {
+  const idx = findLastIndex(state.messages, (m) => m.kind === "bash" && m.id === id)
+  if (idx < 0) return state
+  const target = state.messages[idx] as Extract<ChatRow, { kind: "bash" }>
+  const next = state.messages.slice()
+  next[idx] = {
+    ...target,
+    stdout: patch.stdoutAppend ? target.stdout + patch.stdoutAppend : target.stdout,
+    stderr: patch.stderrAppend ? target.stderr + patch.stderrAppend : target.stderr,
+    exitCode: patch.exitCode !== undefined ? patch.exitCode : target.exitCode,
+    signal: patch.signal !== undefined ? patch.signal : target.signal,
+    done: patch.done !== undefined ? patch.done : target.done,
+  }
+  return { ...state, messages: next }
+}
+
+/**
+ * Append a completed bash interaction to the pending-context FIFO. The
+ * next regular (non-bash) submit drains this and prepends the entries
+ * as XML to the prompt sent to the engine.
+ */
+export function pushPendingBashContext(state: ChatState, ctx: PendingBashContext): ChatState {
+  const prev = state.pendingBashContext ?? []
+  return { ...state, pendingBashContext: [...prev, ctx] }
+}
+
+/**
+ * Drain the pending bash-context FIFO. Returns the cleared state and
+ * the drained entries so the caller can format them into a prompt
+ * prefix. Empty input returns `[state, []]` without allocating.
+ */
+export function drainPendingBashContext(state: ChatState): [ChatState, readonly PendingBashContext[]] {
+  const list = state.pendingBashContext ?? []
+  if (list.length === 0) return [state, []]
+  // Re-spread without the field rather than `delete`-on-copy — biome's
+  // `noDelete` flags the latter for the runtime hidden-class penalty
+  // even though copies pay it once.
+  const { pendingBashContext: _drop, ...rest } = state
+  void _drop
+  return [{ ...rest }, list]
+}
+
+/**
+ * Format a list of completed bash interactions as the XML prefix
+ * Claude-Code adds to the next regular user prompt. Matches upstream's
+ * tags so the model parses the bytes the same way — kobe's chat UI
+ * strips these via {@link cleanChatText} on history replay, so the
+ * prefix is invisible in the transcript but visible to the model.
+ *
+ * Empty list → empty string (zero allocation).
+ */
+export function formatBashContextPrefix(entries: readonly PendingBashContext[]): string {
+  if (entries.length === 0) return ""
+  const parts: string[] = []
+  for (const e of entries) {
+    parts.push(`<bash-input>${escapeXml(e.command)}</bash-input>`)
+    if (e.stdout.length > 0) parts.push(`<bash-stdout>${escapeXml(e.stdout)}</bash-stdout>`)
+    if (e.stderr.length > 0) parts.push(`<bash-stderr>${escapeXml(e.stderr)}</bash-stderr>`)
+  }
+  parts.push("") // trailing blank line separating context from the actual prompt
+  return parts.join("\n")
+}
+
+/** Escape the five XML metacharacters. Minimal — kobe never round-trips
+ *  this through an XML parser; the model just sees the bytes. */
+function escapeXml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    if (c === "&") return "&amp;"
+    if (c === "<") return "&lt;"
+    if (c === ">") return "&gt;"
+    if (c === '"') return "&quot;"
+    return "&apos;"
+  })
 }
 
 /**
