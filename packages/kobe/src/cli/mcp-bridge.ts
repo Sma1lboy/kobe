@@ -101,7 +101,7 @@ class SocketClient {
   private readonly pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   private connected: Promise<void>
 
-  constructor(path: string) {
+  constructor(path: string, onClose?: () => void) {
     this.socket = connect(path)
     this.connected = new Promise<void>((resolve, reject) => {
       this.socket.once("connect", resolve)
@@ -113,6 +113,7 @@ class SocketClient {
         pending.reject(new Error("kobe bridge socket closed"))
       }
       this.pending.clear()
+      onClose?.()
     })
   }
 
@@ -261,6 +262,32 @@ export async function runMcpBridgeSubcommand(argv: readonly string[]): Promise<v
     process.stderr.write("mcp-bridge: --socket=<path> is required\n")
     process.exit(2)
   }
-  const client = new SocketClient(socketPath)
+
+  // Self-terminate when orphaned. claude spawns us as an MCP child;
+  // when claude is SIGKILLed by the orchestrator's session-stop path,
+  // our stdin pipe doesn't always EOF us (Bun runtime quirk), so we
+  // can survive indefinitely as a PPID=1 zombie. Without this watchdog,
+  // every spawn → kill cycle leaks one mcp-bridge — we observed 55
+  // accumulated over a few hours of dev iteration.
+  let exiting = false
+  const exitOnce = (code = 0) => {
+    if (exiting) return
+    exiting = true
+    process.exit(code)
+  }
+  const initialPpid = process.ppid
+  const ppidWatcher = setInterval(() => {
+    const current = process.ppid
+    if (current !== initialPpid || current === 1) exitOnce()
+  }, 1000)
+  ppidWatcher.unref?.()
+
+  process.stdin.once("end", () => exitOnce())
+  process.stdin.once("close", () => exitOnce())
+  process.once("SIGTERM", () => exitOnce())
+  process.once("SIGINT", () => exitOnce())
+
+  const client = new SocketClient(socketPath, () => exitOnce())
   await runMcpStdioLoop(client)
+  exitOnce()
 }

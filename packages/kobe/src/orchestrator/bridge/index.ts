@@ -16,7 +16,7 @@
  * desired behavior for now (no recursion guard yet).
  */
 
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -85,6 +85,7 @@ export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}
     mcpConfigPath,
     async close() {
       await server.close()
+      await unlink(mcpConfigPath).catch(() => {})
     },
   }
 }
