@@ -2,6 +2,7 @@ import type { AIEngine, OrchestratorEvent, SessionHandle } from "../types/engine
 import type { ChatTab, ModelEffortLevel, Task, TaskId } from "../types/task"
 import { CONCURRENCY_CAP, ConcurrencyCapError, IllegalTransitionError } from "./errors"
 import type { TaskIndexStore } from "./index/store"
+import type { MetadataSuggestionContext } from "./metadata-suggester"
 import type { TaskWorktreeCoordinator } from "./task-worktree"
 import { deriveTitleFromPrompt } from "./title"
 
@@ -28,6 +29,12 @@ export class TaskRunner {
       readonly modelEffortForTab: (task: Task, tab: ChatTab) => ModelEffortLevel | undefined
       readonly updateTab: (taskId: TaskId, tabId: string, patch: Partial<ChatTab>) => Promise<void>
       readonly runPumpAndCleanup: (taskId: TaskId, tabId: string, handle: SessionHandle) => Promise<void>
+      readonly recordTitleSuggestionInput: (
+        task: Task,
+        tab: ChatTab,
+        prompt: string | undefined,
+        context: MetadataSuggestionContext,
+      ) => void
       readonly bumpRunState: () => void
     },
   ) {}
@@ -48,11 +55,6 @@ export class TaskRunner {
         text: `worktree: ${currentTask.worktreePath} (branch ${currentTask.branch})`,
       })
     }
-    if (isFirstAllocation && prompt) {
-      const renameTabId = this.deps.resolveTab(currentTask, tabId).id
-      void this.deps.worktrees.maybeRenameTempBranch(currentTask.id, renameTabId, prompt)
-    }
-
     let targetTab = this.deps.resolveTab(currentTask, tabId)
     const key = tabKey(currentTask.id, targetTab.id)
     if (!targetTab.sessionId) {
@@ -81,6 +83,17 @@ export class TaskRunner {
       : this.deps.engineForTab(currentTask, targetTab)
     const modelToUse = this.deps.modelForTab(currentTask, targetTab, engine)
     const modelEffortToUse = this.deps.modelEffortForTab(currentTask, targetTab)
+    const metadataContext: MetadataSuggestionContext = {
+      engine,
+      cwd: currentTask.worktreePath || currentTask.repo,
+      model: modelToUse,
+      ...(modelEffortToUse ? { modelEffort: modelEffortToUse } : {}),
+      ...(currentTask.permissionMode ? { permissionMode: currentTask.permissionMode } : {}),
+    }
+
+    if (isFirstAllocation && prompt) {
+      void this.deps.worktrees.maybeRenameTempBranch(currentTask.id, targetTab.id, prompt, metadataContext)
+    }
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
@@ -108,9 +121,6 @@ export class TaskRunner {
           const derived = deriveTitleFromPrompt(prompt)
           if (derived) await this.deps.store.update(currentTask.id, { title: derived })
         }
-        if (prompt && prompt.trim().length > 0) {
-          void this.deps.worktrees.maybeUpgradeTitle(currentTask.id, prompt)
-        }
       } finally {
         releaseLatch()
         this.firstSpawnLatches.delete(key)
@@ -124,7 +134,8 @@ export class TaskRunner {
       await this.deps.store.update(currentTask.id, { status: "in_progress" })
     }
 
-    const pump = this.deps.runPumpAndCleanup(currentTask.id, targetTab.id, handle)
+    this.deps.recordTitleSuggestionInput(currentTask, targetTab, prompt, metadataContext)
+    const pump = Promise.resolve().then(() => this.deps.runPumpAndCleanup(currentTask.id, targetTab.id, handle))
     this.deps.pumps.set(key, pump)
     pump.catch((err) => {
       this.deps.dispatchEvent(currentTask.id, targetTab.id, {

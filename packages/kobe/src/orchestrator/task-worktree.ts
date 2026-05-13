@@ -3,7 +3,7 @@ import type { OrchestratorEvent } from "../types/engine"
 import type { Task, TaskId } from "../types/task"
 import { worktreeSlug } from "../types/task"
 import type { TaskIndexStore } from "./index/store"
-import type { MetadataSuggester } from "./metadata-suggester"
+import type { MetadataSuggester, MetadataSuggestionContext } from "./metadata-suggester"
 import { deriveTitleFromPrompt } from "./title"
 import type { GitWorktreeManager } from "./worktree/manager"
 import { SlugAllocator } from "./worktree/slug-allocator"
@@ -156,7 +156,12 @@ export class TaskWorktreeCoordinator {
     }
   }
 
-  async maybeRenameTempBranch(taskId: TaskId, tabId: string, prompt: string | undefined): Promise<void> {
+  async maybeRenameTempBranch(
+    taskId: TaskId,
+    tabId: string,
+    prompt: string | undefined,
+    context: MetadataSuggestionContext,
+  ): Promise<void> {
     if (!prompt || prompt.trim().length === 0) return
     const task = this.deps.store.get(taskId)
     if (!task || !task.worktreePath) return
@@ -167,7 +172,7 @@ export class TaskWorktreeCoordinator {
       text: "branch: choosing a name...",
     })
 
-    const slug = await this.deps.metadataSuggester.suggestBranchSlug(prompt)
+    const slug = await this.deps.metadataSuggester.suggestBranchSlug(prompt, context)
     if (!slug) return
 
     const fresh = this.deps.store.get(taskId)
@@ -189,7 +194,7 @@ export class TaskWorktreeCoordinator {
     }
   }
 
-  async maybeUpgradeTitle(taskId: TaskId, prompt: string): Promise<void> {
+  async maybeUpgradeTitle(taskId: TaskId, prompt: string, context: MetadataSuggestionContext): Promise<void> {
     if (!prompt || prompt.trim().length === 0) return
     const task = this.deps.store.get(taskId)
     if (!task) return
@@ -197,7 +202,7 @@ export class TaskWorktreeCoordinator {
     if (!derived) return
     if (task.title !== derived) return
 
-    const suggested = await this.deps.metadataSuggester.suggestTitle(prompt)
+    const suggested = await this.deps.metadataSuggester.suggestTitle(prompt, context)
     if (!suggested) return
     if (suggested === derived) return
 
