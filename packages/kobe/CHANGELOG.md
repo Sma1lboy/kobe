@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - **Task metadata naming now follows the selected chat-tab engine** — branch/title suggestions route through the active tab's `AIEngine` with its selected model and reasoning effort instead of always shelling out to Claude (KOB-111).
+- **Task title suggestions wait for enough chat context** — new tasks keep the first user prompt as the cheap fallback title, then after three completed user turns ask the selected engine for a feature-style task name without overwriting manual renames (KOB-113).
 
 ## [0.5.22] - 2026-05-13
 

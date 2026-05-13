@@ -143,6 +143,7 @@ export const CONCURRENCY_CAP = 20
  * collide.
  */
 export const PLACEHOLDER_TASK_TITLE = "(new task)"
+const TITLE_SUGGESTION_MIN_USER_TURNS = 3
 
 /** Thrown when a state-machine transition is illegal. */
 export class IllegalTransitionError extends Error {
@@ -336,6 +337,12 @@ export class Orchestrator {
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly metadataSuggester: MetadataSuggester
+  private readonly taskTitleCandidates = new Map<TaskId, { fallbackTitle: string }>()
+  private readonly titleSuggestionUserPrompts = new Map<string, string[]>()
+  private readonly titleSuggestionContexts = new Map<string, MetadataSuggestionContext>()
+  private readonly titleSuggestionAttempted = new Set<TaskId>()
+  private readonly titleSuggestionInFlight = new Set<TaskId>()
+  private readonly pendingTitleTurnKeys = new Set<string>()
   /**
    * Engine session handles keyed by `${taskId}:${tabId}`. Each chat tab
    * within a task owns an independent session; closing a tab tears down
@@ -1006,38 +1013,67 @@ export class Orchestrator {
     }
   }
 
+  private recordTitleSuggestionInput(
+    task: Task,
+    tab: ChatTab,
+    prompt: string | undefined,
+    context: MetadataSuggestionContext,
+  ): void {
+    const trimmed = prompt?.trim()
+    if (!trimmed) return
+    const key = tabKey(task.id, tab.id)
+    const prompts = this.titleSuggestionUserPrompts.get(key) ?? []
+    prompts.push(trimmed)
+    this.titleSuggestionUserPrompts.set(key, prompts)
+    this.titleSuggestionContexts.set(key, context)
+    this.pendingTitleTurnKeys.add(key)
+
+    if (this.taskTitleCandidates.has(task.id)) return
+    if (tab.sessionId) return
+    const fallbackTitle = deriveTitleFromPrompt(trimmed)
+    if (!fallbackTitle) return
+    if (task.title === PLACEHOLDER_TASK_TITLE || task.title === fallbackTitle) {
+      this.taskTitleCandidates.set(task.id, { fallbackTitle })
+    }
+  }
+
+  private clearTitleSuggestionTab(taskId: TaskId, tabId: string): void {
+    const key = tabKey(taskId, tabId)
+    this.titleSuggestionUserPrompts.delete(key)
+    this.titleSuggestionContexts.delete(key)
+    this.pendingTitleTurnKeys.delete(key)
+  }
+
   /**
-   * Replace the auto-derived sidebar title with an engine-suggested one
-   * via a one-shot selected-engine call. Runs in the background — failures
-   * are swallowed.
-   *
-   * Skips the upgrade when the title isn't the truncate-derived form
-   * of `prompt`: that means either an explicit title from createTask
-   * or a manual rename via `r`, both of which we treat as load-bearing
-   * user intent. Re-reads the task after the suggestion lands and
-   * skips again if the title shifted while we were waiting (the user
-   * renamed it mid-flight).
+   * Promote the first-prompt fallback title into a feature-style task
+   * name only after the conversation has accumulated enough user
+   * turns. Manual renames are protected by checking the current title
+   * against the original fallback both before and after the engine
+   * suggestion.
    */
-  private async maybeUpgradeTitle(taskId: TaskId, prompt: string, context: MetadataSuggestionContext): Promise<void> {
-    if (!prompt || prompt.trim().length === 0) return
+  private async maybeUpgradeTitleAfterEnoughTurns(taskId: TaskId, tabId: string): Promise<void> {
+    if (this.titleSuggestionAttempted.has(taskId) || this.titleSuggestionInFlight.has(taskId)) return
+    const key = tabKey(taskId, tabId)
+    const prompts = this.titleSuggestionUserPrompts.get(key) ?? []
+    if (prompts.length < TITLE_SUGGESTION_MIN_USER_TURNS) return
+    const candidate = this.taskTitleCandidates.get(taskId)
+    const context = this.titleSuggestionContexts.get(key)
     const task = this.store.get(taskId)
-    if (!task) return
-    const derived = deriveTitleFromPrompt(prompt)
-    if (!derived) return
-    // Only upgrade titles we ourselves wrote from this prompt. An
-    // explicit createTask({title}) or sidebar `r` rename will land
-    // here with task.title !== derived, and we leave it alone.
-    if (task.title !== derived) return
+    if (!candidate || !context || !task) return
+    if (task.title !== candidate.fallbackTitle) return
 
-    const suggested = await this.metadataSuggester.suggestTitle(prompt, context)
-    if (!suggested) return
-    if (suggested === derived) return
-
-    const fresh = this.store.get(taskId)
-    if (!fresh) return
-    if (fresh.title !== derived) return // user renamed while we waited
-
-    await this.store.update(taskId, { title: suggested })
+    this.titleSuggestionAttempted.add(taskId)
+    this.titleSuggestionInFlight.add(taskId)
+    try {
+      const suggested = await this.metadataSuggester.suggestTitle(buildFeatureTitlePrompt(prompts), context)
+      if (!suggested || suggested === candidate.fallbackTitle) return
+      const fresh = this.store.get(taskId)
+      if (!fresh) return
+      if (fresh.title !== candidate.fallbackTitle) return
+      await this.store.update(taskId, { title: suggested })
+    } finally {
+      this.titleSuggestionInFlight.delete(taskId)
+    }
   }
 
   /**
@@ -1207,13 +1243,6 @@ export class Orchestrator {
           const derived = deriveTitleFromPrompt(prompt)
           if (derived) await this.store.update(task.id, { title: derived })
         }
-        // Background: ask the selected engine for a tighter sidebar title to replace
-        // the truncate-derived one. Fire-and-forget; the rename method
-        // bails out if the user manually rewrote the title in the
-        // meantime, so this never stomps an explicit choice.
-        if (prompt && prompt.trim().length > 0) {
-          void this.maybeUpgradeTitle(task.id, prompt, metadataContext)
-        }
       } finally {
         releaseLatch()
         this.firstSpawnLatches.delete(key)
@@ -1228,7 +1257,8 @@ export class Orchestrator {
 
     // Spin the pump. Captures `key` so the closure references the
     // right tab even if the user spawns more concurrently.
-    const pump = this.runPumpAndCleanup(task.id, targetTab.id, handle)
+    this.recordTitleSuggestionInput(task, targetTab, prompt, metadataContext)
+    const pump = Promise.resolve().then(() => this.runPumpAndCleanup(task.id, targetTab.id, handle))
     this.pumps.set(key, pump)
     // Don't await — the caller wants to return as soon as the engine
     // is started, not when it finishes. The pump runs to completion in
@@ -1545,6 +1575,8 @@ export class Orchestrator {
     }
     if (task.title === trimmed) return
     await this.store.update(task.id, { title: trimmed })
+    this.taskTitleCandidates.delete(task.id)
+    this.titleSuggestionAttempted.add(task.id)
   }
 
   /**
@@ -1665,6 +1697,16 @@ export class Orchestrator {
     // Drop any pending-input entries still attributed to this task —
     // a delete mid-pause used to leak them into the broker forever.
     this.pendingInputBroker.clearForTask(task.id)
+    this.taskTitleCandidates.delete(task.id)
+    this.titleSuggestionAttempted.delete(task.id)
+    this.titleSuggestionInFlight.delete(task.id)
+    for (const key of this.titleSuggestionUserPrompts.keys()) {
+      if (key.startsWith(`${task.id}:`)) {
+        this.titleSuggestionUserPrompts.delete(key)
+        this.titleSuggestionContexts.delete(key)
+        this.pendingTitleTurnKeys.delete(key)
+      }
+    }
 
     await this.store.remove(task.id)
   }
@@ -1848,6 +1890,7 @@ export class Orchestrator {
     }
     await this.stopTab(task.id as TaskId, tabId)
     await this.updateTab(task.id as TaskId, tabId, { sessionId: null })
+    this.clearTitleSuggestionTab(task.id as TaskId, tabId)
     this.dispatchEvent(task.id as TaskId, tabId, { type: "chat.tab.cleared" })
   }
 
@@ -1874,6 +1917,7 @@ export class Orchestrator {
     // and clobber the pruned `tabs` array. stopTab is a no-op when
     // there's no live handle.
     await this.stopTab(task.id, tabId)
+    this.clearTitleSuggestionTab(task.id, tabId)
 
     const remaining = task.tabs.filter((t) => t.id !== tabId)
     let nextActive = task.activeTabId
@@ -2058,6 +2102,9 @@ export class Orchestrator {
     if (terminalEvent && !killedForInput) {
       this.dispatchEvent(taskId, tabId, terminalEvent)
     }
+    if (terminalEvent?.type === "done" && !killedForInput && this.pendingTitleTurnKeys.delete(key)) {
+      await this.maybeUpgradeTitleAfterEnoughTurns(taskId, tabId)
+    }
     // killedForInput case: leave status as in_progress — the user is
     // about to answer and we'll resume via respondToInput → runTask.
   }
@@ -2086,6 +2133,14 @@ export function deriveTitleFromPrompt(prompt: string): string {
   if (collapsed.length === 0) return ""
   if (collapsed.length <= TITLE_CHAR_CAP) return collapsed
   return `${collapsed.slice(0, TITLE_CHAR_CAP)}…`
+}
+
+function buildFeatureTitlePrompt(prompts: readonly string[]): string {
+  const lines = prompts.slice(0, TITLE_SUGGESTION_MIN_USER_TURNS).map((prompt, i) => {
+    const collapsed = prompt.replace(/\s+/g, " ").trim()
+    return `${i + 1}. ${collapsed}`
+  })
+  return ["Conversation user messages:", ...lines].join("\n")
 }
 
 /**

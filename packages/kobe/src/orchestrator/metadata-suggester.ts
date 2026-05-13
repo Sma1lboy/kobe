@@ -198,16 +198,17 @@ function buildWorktreeInstruction(prompt: string): string {
 
 function buildTitleInstruction(prompt: string): string {
   return [
-    "Generate a short sidebar title for this user task.",
+    "Generate a short feature-style task name from this conversation.",
     "Rules:",
     `- ≤ ${MAX_TITLE_LEN} characters, single line.`,
-    "- Sentence case, no trailing period.",
-    `- Capture the essential action (e.g. "Fix login redirect", "Add CSV export to settings").`,
+    "- Sentence case, no trailing period, no ticket prefix.",
+    "- Name the durable feature or fix, not the latest chat message.",
+    `- Prefer noun/action phrases like "Codex title routing" or "Queued prompt editing".`,
     `- Reply with ONLY the title, no quotes, no explanation, no leading "Title:".`,
     "",
-    `User task: ${prompt}`,
+    prompt,
     "",
-    "Title:",
+    "Feature name:",
   ].join("\n")
 }
 

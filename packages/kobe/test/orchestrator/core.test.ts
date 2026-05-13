@@ -1226,18 +1226,16 @@ describe("Orchestrator.setTitle", () => {
 })
 
 // ----------------------------------------------------------------------
-// maybeUpgradeTitle — background selected-engine upgrade of the
-// truncate-derived title on first run. Mirrors the branch-rename flow
-// but for the sidebar label. The contract under test:
-//   1. truncate-derived title gets replaced by the suggester's output
-//   2. an explicit createTask({title}) is treated as load-bearing user
-//      intent and is NEVER overwritten
+// Deferred task-title upgrade — keep the first-prompt fallback until
+// enough chat context exists, then ask the selected engine for a
+// feature-style title. Manual titles remain load-bearing user intent.
 // ----------------------------------------------------------------------
 
 async function buildOrchestratorWithSuggester(suggested: string | null): Promise<{
   orch: Orchestrator
   store: TaskIndexStore
   fake: FakeAIEngine
+  titlePrompts: string[]
 }> {
   const store = new TaskIndexStore({ homeDir })
   await store.load()
@@ -1246,49 +1244,75 @@ async function buildOrchestratorWithSuggester(suggested: string | null): Promise
   // Override the per-method probe so the test never reaches a real engine.
   // We don't stub resolveBinary directly because it's private; replacing
   // the public method is enough — the orchestrator only calls these.
-  ;(suggester as unknown as { suggestTitle: (p: string) => Promise<string | null> }).suggestTitle = async () =>
-    suggested
+  const titlePrompts: string[] = []
+  ;(suggester as unknown as { suggestTitle: (p: string) => Promise<string | null> }).suggestTitle = async (p) => {
+    titlePrompts.push(p)
+    return suggested
+  }
   ;(suggester as unknown as { suggestBranchSlug: (p: string) => Promise<string | null> }).suggestBranchSlug =
     async () => null
   const fake = new FakeAIEngine()
   const orch = new Orchestrator({ engine: fake, store, worktrees, metadataSuggester: suggester })
-  return { orch, store, fake }
+  return { orch, store, fake, titlePrompts }
 }
 
 describe("Orchestrator.maybeUpgradeTitle", () => {
-  test("replaces the truncate-derived title with the engine suggestion on first run", async () => {
-    const { orch, store, fake } = await buildOrchestratorWithSuggester("Fix login redirect")
+  test("keeps the fallback title for the first two turns", async () => {
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Login redirect feature")
     fake.script("fake-1", [{ type: "done" }])
-    const t = await orch.createTask({ repo, prompt: "fix login redirect please" })
-    // createTask path: title comes from deriveTitleFromPrompt.
-    expect(store.get(t.id)?.title).toBe("fix login redirect please")
-    await orch.runTask(t.id, "fix login redirect please")
+    const t = await orch.createTask({ repo, prompt: "fix login redirect" })
+    expect(store.get(t.id)?.title).toBe("fix login redirect")
+    await orch.runTask(t.id, "fix login redirect")
     await orch._waitForPumpsIdle()
-    // The upgrade is fire-and-forget after engine.spawn resolves; flush
-    // microtasks so the chained store.update settles before we assert.
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "make it work after callback")
+    await orch._waitForPumpsIdle()
     await new Promise((r) => setImmediate(r))
-    expect(store.get(t.id)?.title).toBe("Fix login redirect")
+    expect(titlePrompts).toEqual([])
+    expect(store.get(t.id)?.title).toBe("fix login redirect")
+  })
+
+  test("replaces the fallback title with a feature-style suggestion after three turns", async () => {
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Login redirect feature")
+    const t = await orch.createTask({ repo, prompt: "fix login redirect" })
+    for (const prompt of ["fix login redirect", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
+    await new Promise((r) => setImmediate(r))
+    expect(store.get(t.id)?.title).toBe("Login redirect feature")
+    expect(titlePrompts).toHaveLength(1)
+    expect(titlePrompts[0]).toContain("Conversation user messages:")
+    expect(titlePrompts[0]).toContain("1. fix login redirect")
+    expect(titlePrompts[0]).toContain("2. make it work after callback")
+    expect(titlePrompts[0]).toContain("3. add regression coverage")
   })
 
   test("does not overwrite an explicit createTask title", async () => {
-    const { orch, store, fake } = await buildOrchestratorWithSuggester("Suggested label")
-    fake.script("fake-1", [{ type: "done" }])
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Suggested label")
     const t = await orch.createTask({ repo, title: "manual title", prompt: "fix login redirect please" })
     expect(store.get(t.id)?.title).toBe("manual title")
-    await orch.runTask(t.id, "fix login redirect please")
-    await orch._waitForPumpsIdle()
+    for (const prompt of ["fix login redirect please", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
     await new Promise((r) => setImmediate(r))
     // The suggester returned a value but the title is user-set — guard
     // holds, no rewrite.
     expect(store.get(t.id)?.title).toBe("manual title")
+    expect(titlePrompts).toEqual([])
   })
 
   test("leaves the title untouched when the suggester returns null", async () => {
     const { orch, store, fake } = await buildOrchestratorWithSuggester(null)
-    fake.script("fake-1", [{ type: "done" }])
     const t = await orch.createTask({ repo, prompt: "fix login redirect please" })
-    await orch.runTask(t.id, "fix login redirect please")
-    await orch._waitForPumpsIdle()
+    for (const prompt of ["fix login redirect please", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
     await new Promise((r) => setImmediate(r))
     expect(store.get(t.id)?.title).toBe("fix login redirect please")
   })
@@ -1478,8 +1502,10 @@ describe("Orchestrator engine call shape", () => {
     expect(tab).toBeDefined()
     await orch.setModel(task.id, "gpt-5.5", tab!.id, "xhigh")
 
-    await orch.runTask(task.id, "fix metadata naming")
-    await orch._waitForPumpsIdle()
+    for (const prompt of ["fix metadata naming", "preserve selected model", "add regression coverage"]) {
+      await orch.runTask(task.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
     await new Promise((r) => setImmediate(r))
     expect(suggester.calls.map((c) => c.kind).sort()).toEqual(["branch", "title"])
 
@@ -1495,7 +1521,7 @@ describe("Orchestrator engine call shape", () => {
         }),
         expect.objectContaining({
           kind: "title",
-          prompt: "fix metadata naming",
+          prompt: expect.stringContaining("Conversation user messages:"),
           vendor: "codex",
           model: "gpt-5.5",
           modelEffort: "xhigh",

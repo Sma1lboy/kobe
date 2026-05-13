@@ -68,8 +68,8 @@ describe("MetadataSuggester", () => {
     expect(title).toBe("Fix Metadata Naming")
     expect(engine.spawns).toHaveLength(1)
     expect(engine.spawns[0]?.cwd).toBe("/tmp/worktree")
-    expect(engine.spawns[0]?.prompt).toContain("Generate a short sidebar title")
-    expect(engine.spawns[0]?.prompt).toContain("User task: fix metadata naming")
+    expect(engine.spawns[0]?.prompt).toContain("Generate a short feature-style task name")
+    expect(engine.spawns[0]?.prompt).toContain("fix metadata naming")
     expect(engine.spawns[0]?.opts).toMatchObject({
       model: "gpt-5.5",
       modelEffort: "xhigh",
