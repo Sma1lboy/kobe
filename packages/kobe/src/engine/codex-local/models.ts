@@ -58,14 +58,13 @@ export const CODEX_MODELS: readonly ModelChoice[] = [
  */
 export const CODEX_FALLBACK_DEFAULT_MODEL_ID = "gpt-5.4-mini"
 
-const DEFAULT_CTX = 400_000
-
 /**
- * Max context tokens for a Codex model id. Codex's published context
- * windows aren't surfaced in the CLI today, so we conservatively
- * report 400k for the default family and let the meter render
- * meaningful percentages. Tune per-id as we observe real limits.
+ * Codex's effective context window is runtime data, not a model-id
+ * constant. Official Codex exposes it through app-server
+ * `ThreadTokenUsage.modelContextWindow`; the `codex exec --json`
+ * compatibility stream drops that field. Returning 0 makes the UI hide
+ * the context meter instead of rendering a guessed denominator.
  */
 export function codexContextWindowFor(_modelId: string): number {
-  return DEFAULT_CTX
+  return 0
 }

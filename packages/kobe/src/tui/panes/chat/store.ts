@@ -488,6 +488,8 @@ export function applyEvent(
           output_tokens: ev.output_tokens,
           cache_read_input_tokens: ev.cache_read_input_tokens,
           cache_creation_input_tokens: ev.cache_creation_input_tokens,
+          context_tokens: ev.context_tokens,
+          context_window_tokens: ev.context_window_tokens,
           total_speed_tokens_per_second: ev.total_speed_tokens_per_second,
         },
       }

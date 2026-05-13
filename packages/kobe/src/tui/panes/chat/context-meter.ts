@@ -47,7 +47,7 @@ export function formatContextUsageCompact(
 ): string | null {
   const caps = vendor ? getCapabilities(vendor) : capabilitiesForModelId(modelId)
   const id = modelId ?? caps.defaultModelId()
-  const window = caps.contextWindowFor(id)
+  const window = u.context_window_tokens ?? caps.contextWindowFor(id)
   const total = totalContextTokens(u)
   if (total <= 0 || window <= 0) return null
   const pct = Math.min(100, Math.max(0, Math.round((total / window) * 100)))
