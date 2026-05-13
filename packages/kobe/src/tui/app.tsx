@@ -644,6 +644,7 @@ function Shell(props: AppDeps) {
                 onRenameTabRequest={(tabId: string) => {
                   void confirmRenameChatTab(tabId)
                 }}
+                onOpenFilePath={openFileInCenter}
               />
             </Show>
           </box>

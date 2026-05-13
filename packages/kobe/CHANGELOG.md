@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - **Daemon launch mode has first-class CLI flags** — run `kobe --daemon` to launch the TUI against the shared long-lived daemon, or `kobe --single` to spell the default per-TUI owned daemon explicitly, while `KOBE_DAEMON_MODE=shared` stays supported for scripts (KOB-103).
+- **Composer file paths can open preview tabs** — when the chat input contains an existing worktree-relative file path, the composer renders a clickable `open` chip that swaps the workspace into the existing file preview tab (KOB-104).
 
 ### Fixed
 

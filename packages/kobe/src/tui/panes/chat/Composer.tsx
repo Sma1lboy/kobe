@@ -81,6 +81,7 @@ import {
   findMentionContext,
   getWorktreeFiles,
 } from "./composer/mention"
+import { findPreviewablePathRefs, formatPreviewPathLabel } from "./composer/path-preview"
 import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
@@ -228,6 +229,12 @@ export interface ComposerProps {
    * context. Omit to disable bash mode for this composer instance.
    */
   onBashCommand?: (command: string) => void
+  /**
+   * Open a worktree-relative file path in the workspace preview tab.
+   * Composer renders detected paths from the textarea buffer as
+   * clickable chips when this is supplied.
+   */
+  onOpenFilePath?: (relPath: string) => void
 }
 
 /**
@@ -462,6 +469,11 @@ export function Composer(props: ComposerProps) {
     let start = Math.max(0, cursor - half)
     if (start + MENTION_MAX_VISIBLE > total) start = total - MENTION_MAX_VISIBLE
     return { items: matches.slice(start, start + MENTION_MAX_VISIBLE), start, total }
+  })
+
+  const previewablePathRefs = createMemo(() => {
+    if (!props.onOpenFilePath) return []
+    return findPreviewablePathRefs(liveBuffer(), mentionFiles())
   })
 
   /**
@@ -1351,6 +1363,30 @@ export function Composer(props: ComposerProps) {
                   </text>
                 </box>
               </Show>
+            </box>
+          </Show>
+          <Show when={props.hasTask && previewablePathRefs().length > 0}>
+            <box flexDirection="row" gap={1} alignItems="center" paddingBottom={1}>
+              <text fg={theme.textMuted} wrapMode="none">
+                open
+              </text>
+              <For each={previewablePathRefs()}>
+                {(ref) => (
+                  <box
+                    flexDirection="row"
+                    flexShrink={1}
+                    maxWidth={36}
+                    backgroundColor={theme.backgroundPanel}
+                    paddingLeft={1}
+                    paddingRight={1}
+                    onMouseUp={() => props.onOpenFilePath?.(ref.path)}
+                  >
+                    <text fg={theme.primary} attributes={TextAttributes.UNDERLINE} wrapMode="none">
+                      {formatPreviewPathLabel(ref.path, 34)}
+                    </text>
+                  </box>
+                )}
+              </For>
             </box>
           </Show>
           <box flexDirection="row" gap={1} alignItems="flex-start">

@@ -119,6 +119,12 @@ export type ChatProps = {
    * Chat stays stateless of the dialog.
    */
   onRenameTabRequest?: (tabId: string) => void
+  /**
+   * Open a worktree-relative path from the composer in the workspace
+   * file preview tab. The parent owns center-tab state, so Chat only
+   * forwards the request.
+   */
+  onOpenFilePath?: (relPath: string) => void
 }
 
 export function Chat(props: ChatProps) {
@@ -1190,6 +1196,7 @@ export function Chat(props: ChatProps) {
           onCancelQueued={cancelQueued}
           onSendQueuedNow={sendQueuedNow}
           onBashCommand={handleBashCommand}
+          onOpenFilePath={props.onOpenFilePath}
         />
       </Show>
     </box>
