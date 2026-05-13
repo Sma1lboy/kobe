@@ -556,7 +556,7 @@ describe("setMessagesFromHistory", () => {
     expect(s.messages[0]).toMatchObject({ kind: "tool", done: true, output: "stranded" })
   })
 
-  test("drops thinking blocks silently", () => {
+  test("hydrates thinking blocks as reasoning rows", () => {
     const past: Message[] = [
       {
         role: "assistant",
@@ -569,8 +569,10 @@ describe("setMessagesFromHistory", () => {
       },
     ]
     const s = setMessagesFromHistory(createInitialState(), past)
-    expect(s.messages).toHaveLength(1)
-    expect(s.messages[0]).toEqual({ kind: "assistant", text: "answer", ts: FIXED_TS })
+    expect(s.messages).toEqual([
+      { kind: "reasoning", text: "internal reasoning", ts: FIXED_TS },
+      { kind: "assistant", text: "answer", ts: FIXED_TS },
+    ])
   })
 })
 

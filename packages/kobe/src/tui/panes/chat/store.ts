@@ -369,7 +369,8 @@ export const QUEUE_SOFT_CAP = 50
  *     `tool_use_id`) to `done: true` + `output`; emits NO row of
  *     its own (the tool result lives on the tool row, not as a
  *     standalone user row)
- *   - `thinking` and other unrecognised blocks → dropped
+ *   - `thinking` block → reasoning row
+ *   - other unrecognised blocks → dropped
  *
  * Messages whose content is purely tool blocks produce no text row
  * (so we don't litter the chat with empty `⏺`/`>` rows for assistant
@@ -891,8 +892,9 @@ export function reset(): ChatState {
  * texts buffer into one row so multi-text messages render as a single
  * paragraph.
  *
- * `thinking` blocks are intentionally dropped — kobe's live stream
- * parser drops them too, so hydration matches what the user saw live.
+ * `thinking` blocks become the same reasoning rows produced by live
+ * `reasoning.delta` events, so restart hydration matches the visible
+ * stream.
  */
 function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, number>, m: Message): void {
   const ts = m.timestamp
@@ -949,8 +951,15 @@ function appendRowsFromMessage(rows: ChatRow[], toolIndexById: Map<string, numbe
         // case.
         rows.push({ kind: "tool", name: "", input: undefined, output, done: true, ts })
       }
+      continue
     }
-    // `thinking` (and any future block type) intentionally dropped.
+
+    if (block.type === "thinking") {
+      flushText()
+      if (block.text.length > 0) rows.push({ kind: "reasoning", text: block.text, ts })
+    }
+    // Any future block type is intentionally dropped until the renderer
+    // has a concrete row shape for it.
   }
 
   flushText()

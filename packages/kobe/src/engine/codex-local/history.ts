@@ -157,44 +157,92 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     const payload = isObject(parsed.payload) ? (parsed.payload as Record<string, unknown>) : undefined
     if (!payload) continue
     const ts = typeof parsed.timestamp === "string" ? (parsed.timestamp as string) : new Date().toISOString()
-    if (payload.type === "function_call") {
-      const msg = normalizeCodexToolCall(payload, ts, sessionId)
-      if (msg) out.push(msg)
-      continue
-    }
-    if (payload.type === "function_call_output") {
-      const msg = normalizeCodexToolResult(payload, ts, sessionId)
-      if (msg) out.push(msg)
-      continue
-    }
-    if (payload.type !== "message") continue
+    const msg = normalizeCodexResponseItem(payload, ts, sessionId)
+    if (msg) out.push(msg)
+  }
+  return out
+}
+
+function normalizeCodexResponseItem(
+  payload: Record<string, unknown>,
+  timestamp: string,
+  sessionId: string,
+): Message | undefined {
+  if (payload.type === "message") {
     const role = payload.role
-    if (role !== "user" && role !== "assistant" && role !== "system") continue
+    if (role !== "user" && role !== "assistant" && role !== "system") return undefined
     const blocks = normalizeCodexContent(payload.content)
     // Drop Codex's synthetic user rows. Codex persists both repository
     // instructions and the environment envelope in rollout JSONL as
     // role=user messages, but the live `codex exec --json` stream does
     // not replay them. Reloading history should therefore hide them so
     // the visible transcript matches what the user actually typed.
-    if (role === "user" && isSyntheticCodexUserRow(blocks)) continue
-    out.push({ role, blocks, timestamp: ts, sessionId })
+    if (role === "user" && isSyntheticCodexUserRow(blocks)) return undefined
+    return { role, blocks, timestamp, sessionId }
   }
-  return out
+
+  if (payload.type === "reasoning") return normalizeCodexReasoning(payload, timestamp, sessionId)
+
+  if (payload.type === "function_call") {
+    return normalizeCodexToolCall(payload, timestamp, sessionId, {
+      name: stringOr(payload.name, "function_call"),
+      input: parseMaybeJson(payload.arguments),
+    })
+  }
+  if (payload.type === "custom_tool_call") {
+    return normalizeCodexToolCall(payload, timestamp, sessionId, {
+      name: stringOr(payload.name, "custom_tool_call"),
+      input: parseMaybeJson(payload.input),
+    })
+  }
+  if (payload.type === "tool_search_call") {
+    return normalizeCodexToolCall(payload, timestamp, sessionId, {
+      name: "tool_search_call",
+      input: stripPayload(payload, ["type", "call_id", "status"]),
+    })
+  }
+
+  if (payload.type === "function_call_output" || payload.type === "custom_tool_call_output") {
+    return normalizeCodexToolResult(payload, timestamp, sessionId, parseMaybeJson(payload.output))
+  }
+  if (payload.type === "tool_search_output") {
+    return normalizeCodexToolResult(payload, timestamp, sessionId, stripPayload(payload, ["type", "call_id"]))
+  }
+
+  if (
+    payload.type === "web_search_call" ||
+    payload.type === "image_generation_call" ||
+    payload.type === "local_shell_call"
+  ) {
+    return normalizeSingleRecordTool(payload, timestamp, sessionId)
+  }
+
+  return undefined
+}
+
+function normalizeCodexReasoning(
+  payload: Record<string, unknown>,
+  timestamp: string,
+  sessionId: string,
+): Message | undefined {
+  const text = reasoningTextFromItem(payload)
+  if (text.length === 0) return undefined
+  return { role: "assistant", blocks: [{ type: "thinking", text }], timestamp, sessionId }
 }
 
 function normalizeCodexToolCall(
   payload: Record<string, unknown>,
   timestamp: string,
   sessionId: string,
+  args: { readonly name: string; readonly input: unknown },
 ): Message | undefined {
   const callId = typeof payload.call_id === "string" ? payload.call_id : undefined
   if (!callId) return undefined
-  const name = typeof payload.name === "string" && payload.name.length > 0 ? payload.name : "function_call"
   const block: ContentBlock = {
     type: "tool_call",
     callId,
-    name,
-    input: parseMaybeJson(payload.arguments),
+    name: args.name,
+    input: args.input,
   }
   return { role: "assistant", blocks: [block], timestamp, sessionId }
 }
@@ -203,16 +251,75 @@ function normalizeCodexToolResult(
   payload: Record<string, unknown>,
   timestamp: string,
   sessionId: string,
+  output: unknown,
 ): Message | undefined {
   const callId = typeof payload.call_id === "string" ? payload.call_id : undefined
   if (!callId) return undefined
   const block: ContentBlock = {
     type: "tool_result",
     callId,
-    output: parseMaybeJson(payload.output),
+    output,
     isError: false,
   }
   return { role: "user", blocks: [block], timestamp, sessionId }
+}
+
+function normalizeSingleRecordTool(
+  payload: Record<string, unknown>,
+  timestamp: string,
+  sessionId: string,
+): Message | undefined {
+  const type = typeof payload.type === "string" ? payload.type : "tool"
+  const callId =
+    typeof payload.call_id === "string" && payload.call_id.length > 0 ? payload.call_id : `${type}:${timestamp}`
+  const name = stringOr(payload.name, type)
+  const input = stripPayload(payload, ["type", "call_id", "status"])
+  const output = stripPayload(payload, ["type", "call_id"])
+  return {
+    role: "assistant",
+    timestamp,
+    sessionId,
+    blocks: [
+      { type: "tool_call", callId, name, input },
+      { type: "tool_result", callId, output, isError: false },
+    ],
+  }
+}
+
+function reasoningTextFromItem(item: Record<string, unknown>): string {
+  const content = textFromReasoningValue(item.content)
+  if (content.length > 0) return content
+  const text = typeof item.text === "string" ? item.text : ""
+  if (text.length > 0) return text
+  return textFromReasoningValue(item.summary)
+}
+
+function textFromReasoningValue(value: unknown): string {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) return ""
+  const parts: string[] = []
+  for (const entry of value) {
+    if (typeof entry === "string") {
+      parts.push(entry)
+      continue
+    }
+    if (!isObject(entry)) continue
+    const text = typeof entry.text === "string" ? entry.text : ""
+    if (text.length > 0) parts.push(text)
+  }
+  return parts.join("")
+}
+
+function stripPayload(payload: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(payload)) {
+    if (!keys.includes(key)) out[key] = value
+  }
+  return out
+}
+
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback
 }
 
 function parseMaybeJson(value: unknown): unknown {

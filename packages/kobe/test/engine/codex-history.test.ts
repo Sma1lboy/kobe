@@ -88,6 +88,132 @@ describe("codex history parser", () => {
     ])
   })
 
+  it("hydrates persisted custom_tool_call rows as paired tool blocks", () => {
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: {
+          type: "custom_tool_call",
+          status: "completed",
+          call_id: "call_apply",
+          name: "apply_patch",
+          input: "*** Begin Patch\n*** End Patch\n",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:01Z",
+        payload: {
+          type: "custom_tool_call_output",
+          call_id: "call_apply",
+          output: '{"output":"Success\\n","metadata":{"exit_code":0}}',
+        },
+      }),
+    ].join("\n")
+
+    const out = parseJsonl(raw, SID)
+
+    expect(out).toEqual([
+      {
+        role: "assistant",
+        timestamp: "2026-05-11T18:00:00Z",
+        sessionId: SID,
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "call_apply",
+            name: "apply_patch",
+            input: "*** Begin Patch\n*** End Patch\n",
+          },
+        ],
+      },
+      {
+        role: "user",
+        timestamp: "2026-05-11T18:00:01Z",
+        sessionId: SID,
+        blocks: [
+          {
+            type: "tool_result",
+            callId: "call_apply",
+            output: { output: "Success\n", metadata: { exit_code: 0 } },
+            isError: false,
+          },
+        ],
+      },
+    ])
+  })
+
+  it("hydrates non-empty reasoning rows and drops empty encrypted-only rows", () => {
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: { type: "reasoning", summary: [], content: null, encrypted_content: "gAAAA" },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:01Z",
+        payload: {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "checked history " }],
+          content: [{ type: "reasoning_text", text: "mapped tools" }],
+          encrypted_content: null,
+        },
+      }),
+    ].join("\n")
+
+    const out = parseJsonl(raw, SID)
+
+    expect(out).toEqual([
+      {
+        role: "assistant",
+        timestamp: "2026-05-11T18:00:01Z",
+        sessionId: SID,
+        blocks: [{ type: "thinking", text: "mapped tools" }],
+      },
+    ])
+  })
+
+  it("hydrates single-record visible tool items instead of dropping them", () => {
+    const raw = JSON.stringify({
+      type: "response_item",
+      timestamp: "2026-05-11T18:00:00Z",
+      payload: {
+        type: "web_search_call",
+        status: "completed",
+        action: { type: "search", query: "Codex ResponseItem" },
+      },
+    })
+
+    const out = parseJsonl(raw, SID)
+
+    expect(out).toEqual([
+      {
+        role: "assistant",
+        timestamp: "2026-05-11T18:00:00Z",
+        sessionId: SID,
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "web_search_call:2026-05-11T18:00:00Z",
+            name: "web_search_call",
+            input: { action: { type: "search", query: "Codex ResponseItem" } },
+          },
+          {
+            type: "tool_result",
+            callId: "web_search_call:2026-05-11T18:00:00Z",
+            output: {
+              status: "completed",
+              action: { type: "search", query: "Codex ResponseItem" },
+            },
+            isError: false,
+          },
+        ],
+      },
+    ])
+  })
+
   it("drops the leading <environment_context> envelope user row", () => {
     // Real shape captured from `~/.codex/sessions/.../rollout-*.jsonl`:
     // codex injects this as the first user message of every session.
