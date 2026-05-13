@@ -28,6 +28,7 @@
  *   others down.
  */
 import { resolve } from "node:path"
+import { parseCliArgs } from "./daemon-mode.ts"
 
 /**
  * `kobe add [path]` — append a repo path to the saved-repos list shown
@@ -68,7 +69,15 @@ async function main(): Promise<void> {
   // Subcommand routing. process.argv = [bun, script, ...args].
   // Each branch dynamically imports its module so adding a new
   // subcommand never grows the TUI startup graph.
-  const [, , subcommand, ...rest] = process.argv
+  const [, , ...rawArgs] = process.argv
+  let parsed: ReturnType<typeof parseCliArgs>
+  try {
+    parsed = parseCliArgs(rawArgs)
+  } catch (err) {
+    console.error(`kobe: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(2)
+  }
+  const [subcommand, ...rest] = parsed.args
   if (subcommand === "add") {
     await runAddSubcommand(rest[0])
     return
@@ -98,7 +107,7 @@ async function main(): Promise<void> {
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid
   // at startup.
   const { startTui } = await import("../tui/index.tsx")
-  await startTui()
+  await startTui({ daemonMode: parsed.daemonMode })
 }
 
 main().catch((err) => {

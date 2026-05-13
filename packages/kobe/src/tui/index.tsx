@@ -25,6 +25,7 @@
 
 import { TextAttributes } from "@opentui/core"
 import { Show } from "solid-js"
+import type { TuiDaemonMode } from "../daemon/mode.ts"
 import { startApp } from "./app"
 import { HelpDialog } from "./component/help-dialog"
 import { Sidebar } from "./component/sidebar"
@@ -120,11 +121,11 @@ function App() {
   )
 }
 
-export async function startTui(): Promise<void> {
+export async function startTui(options: { daemonMode?: TuiDaemonMode } = {}): Promise<void> {
   // Stream E: delegate to the new App that wires Orchestrator + panes.
   // The Banner/Shell pair above is kept for the historical commit log
   // but is no longer mounted.
   void Banner
   void App
-  await startApp()
+  await startApp(options)
 }

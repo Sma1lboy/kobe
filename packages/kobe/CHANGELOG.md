@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Daemon launch mode has first-class CLI flags** — run `kobe --daemon` to launch the TUI against the shared long-lived daemon, or `kobe --single` to spell the default per-TUI owned daemon explicitly, while `KOBE_DAEMON_MODE=shared` stays supported for scripts (KOB-103).
+
 ### Fixed
 
 - **Codex reasoning rows render as “思考过程” instead of raw JSON** — app-server and exec-stream reasoning items now show a clean thinking-process row without exposing `reasoning({"summary":[],"content":[]})` payloads (KOB-102).

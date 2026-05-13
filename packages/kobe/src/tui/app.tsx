@@ -30,6 +30,7 @@ import {
   ensureOwnedDaemonReachable,
 } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
+import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
@@ -728,7 +729,7 @@ function App(props: AppDeps) {
  * Mount the G2 app. Builds the orchestrator stack, then renders
  * `<App />`. Replaces `tui/index.tsx`'s previous banner mount.
  */
-export async function startApp(): Promise<void> {
+export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Promise<void> {
   // Register user-installed themes (`~/.kobe/themes/*.json`) BEFORE the
   // ThemeProvider mounts. ThemeProvider's `init` reads the active theme
   // out of the registry; if the user persisted a theme that lives in a
@@ -762,7 +763,7 @@ export async function startApp(): Promise<void> {
       console.error("[kobe] bridge failed to start:", err)
     }
   } else {
-    const daemonMode = process.env.KOBE_DAEMON_MODE === "shared" ? "shared" : "single"
+    const daemonMode = resolveDaemonMode(options.daemonMode)
     if (daemonMode === "shared") {
       orchestrator = new RemoteOrchestrator(await connectOrStartDaemon())
     } else {
