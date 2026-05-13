@@ -102,6 +102,13 @@ export function codexAppServerItemNotificationToEvents(method: string, params: u
   const item = asObject(p?.item)
   const itemType = typeof item?.type === "string" ? item.type : "tool"
   if (isNonToolTranscriptItem(itemType)) return []
+  if (isReasoningItem(itemType)) {
+    return [
+      method === "item/started"
+        ? { type: "tool.start", name: "reasoning", input: undefined }
+        : { type: "tool.result", name: "reasoning", output: undefined },
+    ]
+  }
   const payload = stripItemHousekeeping(item ?? {})
   if (method === "item/started") return [{ type: "tool.start", name: itemType, input: payload }]
   return [{ type: "tool.result", name: itemType, output: payload }]
@@ -378,6 +385,10 @@ function isNonToolTranscriptItem(itemType: string): boolean {
     itemType === "userMessage" ||
     itemType === "user_message"
   )
+}
+
+function isReasoningItem(itemType: string): boolean {
+  return itemType.toLowerCase().includes("reason")
 }
 
 function stringifyErr(err: unknown): string {

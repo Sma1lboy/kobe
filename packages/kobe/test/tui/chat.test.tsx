@@ -46,6 +46,7 @@ import {
   setMessagesFromHistory,
 } from "../../src/tui/panes/chat/store.ts"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "../../src/tui/panes/chat/tool-banners.ts"
+import { lookupToolMeta } from "../../src/tui/panes/chat/tool-registry.ts"
 import type { EngineEvent, Message } from "../../src/types/engine.ts"
 
 const FIXED_TS = "2026-05-09T00:00:00.000Z"
@@ -649,6 +650,17 @@ describe("applyEvent — tool.start / tool.result", () => {
     expect(s.messages).toHaveLength(2)
     expect(s.messages[0]).toMatchObject({ done: false, input: 1 })
     expect(s.messages[1]).toMatchObject({ done: true, input: 2, output: "for-2" })
+  })
+
+  test("codex reasoning tool rows render with the 思考过程 label and no raw body", () => {
+    const meta = lookupToolMeta("reasoning")
+    expect(meta).toMatchObject({ displayName: "思考过程", banner: "label-only", body: "hidden" })
+
+    let s = applyEvent(createInitialState(), { type: "tool.start", name: "reasoning", input: undefined }, FIXED_TS)
+    s = applyEvent(s, { type: "tool.result", name: "reasoning", output: undefined }, FIXED_TS)
+    expect(s.messages).toEqual([
+      { kind: "tool", name: "reasoning", input: undefined, output: undefined, done: true, ts: FIXED_TS },
+    ])
   })
 })
 

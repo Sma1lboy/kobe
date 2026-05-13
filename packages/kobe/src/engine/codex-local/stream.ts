@@ -102,6 +102,20 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
         continue
       }
 
+      if (isReasoningItem(itemType)) {
+        if (type === "item.started") {
+          if (itemId) startedByItemId.add(itemId)
+          yield { type: "tool.start", name: "reasoning", input: undefined }
+          continue
+        }
+        if (itemId && !startedByItemId.has(itemId)) {
+          yield { type: "tool.start", name: "reasoning", input: undefined }
+        }
+        if (itemId) startedByItemId.delete(itemId)
+        yield { type: "tool.result", name: "reasoning", output: undefined }
+        continue
+      }
+
       // Anything else maps to a tool banner pair. The renderer's
       // tool-name strategy registry decides how to render each name.
       if (itemId) {
@@ -175,6 +189,10 @@ function codexSessionId(msg: Record<string, unknown>): string | undefined {
   }
   const id = msg.thread_id
   return typeof id === "string" && id.length > 0 ? id : undefined
+}
+
+function isReasoningItem(itemType: string): boolean {
+  return itemType.toLowerCase().includes("reason")
 }
 
 /** Strip the housekeeping fields so the tool input/output payload is the meaningful slice. */

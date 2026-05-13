@@ -99,4 +99,23 @@ describe("codex stream parser", () => {
       context_window_tokens: 1_050_000,
     })
   })
+
+  it("maps reasoning items to a private reasoning row without raw payload", async () => {
+    const events = await collect([
+      JSON.stringify({
+        type: "item.started",
+        item: { id: "reason-1", type: "reasoning", summary: [], content: [] },
+      }),
+      JSON.stringify({
+        type: "item.completed",
+        item: { id: "reason-1", type: "reasoning", summary: [], content: [] },
+      }),
+      JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2 } }),
+    ])
+
+    expect(events.slice(0, 2)).toEqual([
+      { type: "tool.start", name: "reasoning", input: undefined },
+      { type: "tool.result", name: "reasoning", output: undefined },
+    ])
+  })
 })

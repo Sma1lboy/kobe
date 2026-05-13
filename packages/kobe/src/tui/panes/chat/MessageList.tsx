@@ -364,6 +364,7 @@ function ToolRow(props: {
   // string-literal name comparisons that used to live here moved to
   // `tool-registry.ts` so that adding a Codex tool only edits one place.
   const meta = () => lookupToolMeta(r().name)
+  const displayName = () => meta().displayName ?? r().name
   const isDiffTool = () => meta().body === "edit-diff"
   const isMultiEdit = () => meta().body === "multi-edit-diff"
   const isBash = () => meta().banner === "bash"
@@ -373,7 +374,10 @@ function ToolRow(props: {
   /** Tools whose body renders inline so the generic preview/expanded
    *  blocks below should be suppressed. */
   const usesCustomBody = () =>
-    meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
+    meta().body === "edit-diff" ||
+    meta().body === "multi-edit-diff" ||
+    meta().body === "bash-output" ||
+    meta().body === "hidden"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -398,7 +402,7 @@ function ToolRow(props: {
                 when={isBash()}
                 fallback={
                   <text fg={theme.text}>
-                    <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
+                    <span style={{ attributes: TextAttributes.BOLD }}>{displayName()}</span>
                     <Show when={!usesCustomBanner()}>
                       <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
                     </Show>

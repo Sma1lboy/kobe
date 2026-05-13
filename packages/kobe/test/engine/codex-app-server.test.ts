@@ -77,6 +77,25 @@ describe("codex app-server backend helpers", () => {
     ).toEqual([])
   })
 
+  it("maps reasoning items to a private reasoning row without raw payload", () => {
+    expect(
+      codexAppServerItemNotificationToEvents("item/completed", {
+        item: {
+          id: "item-reasoning",
+          type: "reasoning",
+          summary: [],
+          content: [],
+        },
+      }),
+    ).toEqual([
+      {
+        type: "tool.result",
+        name: "reasoning",
+        output: undefined,
+      },
+    ])
+  })
+
   it("still maps real app-server tool items into tool events", () => {
     expect(
       codexAppServerItemNotificationToEvents("item/completed", {
