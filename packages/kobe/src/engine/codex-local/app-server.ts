@@ -1,10 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { spawn } from "node:child_process"
+import { readFileSync } from "node:fs"
 import type { Readable } from "node:stream"
+import { kvStatePath } from "@/env"
 import type { EngineEvent, ModelEffortLevel } from "@/types/engine"
 import type { SpawnedCodex } from "./spawn"
 
 export type CodexBackend = "exec" | "app-server"
+export const CODEX_BACKEND_KV_KEY = "codex.backend"
 
 export interface SpawnCodexAppServerTurnOpts {
   readonly binaryPath: string
@@ -24,9 +27,25 @@ export interface SpawnedCodexAppServer extends SpawnedCodex {
   readonly closed: Promise<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>
 }
 
-export function resolveCodexBackend(env: NodeJS.ProcessEnv = process.env): CodexBackend {
+export function resolveCodexBackend(
+  env: NodeJS.ProcessEnv = process.env,
+  readPreference: () => CodexBackend | undefined = readCodexBackendPreference,
+): CodexBackend {
+  if (env.KOBE_CODEX_BACKEND === "exec") return "exec"
   if (env.KOBE_CODEX_BACKEND === "app-server" || env.KOBE_CODEX_APP_SERVER === "1") return "app-server"
-  return "exec"
+  return readPreference() ?? "app-server"
+}
+
+export function readCodexBackendPreference(): CodexBackend | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(kvStatePath(), "utf8")) as unknown
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined
+    const raw = (parsed as Record<string, unknown>)[CODEX_BACKEND_KV_KEY]
+    if (raw === "exec" || raw === "app-server") return raw
+  } catch {
+    /* missing or malformed state: default below */
+  }
+  return undefined
 }
 
 export function spawnCodexAppServerTurn(opts: SpawnCodexAppServerTurnOpts): SpawnedCodexAppServer {
@@ -75,6 +94,17 @@ export function codexAppServerUsageToSnapshot(params: unknown): EngineEvent | nu
     ...(totalTokens > 0 ? { context_tokens: totalTokens } : {}),
     ...(contextWindow > 0 ? { context_window_tokens: contextWindow } : {}),
   }
+}
+
+export function codexAppServerItemNotificationToEvents(method: string, params: unknown): EngineEvent[] {
+  if (method !== "item/started" && method !== "item/completed") return []
+  const p = asObject(params)
+  const item = asObject(p?.item)
+  const itemType = typeof item?.type === "string" ? item.type : "tool"
+  if (isNonToolTranscriptItem(itemType)) return []
+  const payload = stripItemHousekeeping(item ?? {})
+  if (method === "item/started") return [{ type: "tool.start", name: itemType, input: payload }]
+  return [{ type: "tool.result", name: itemType, output: payload }]
 }
 
 class AppServerRpc {
@@ -250,13 +280,7 @@ class AppServerRpc {
       return
     }
     if (method === "item/started" || method === "item/completed") {
-      const p = asObject(params)
-      const item = asObject(p?.item)
-      const itemType = typeof item?.type === "string" ? item.type : "tool"
-      if (itemType === "agentMessage" || itemType === "agent_message") return
-      const payload = stripItemHousekeeping(item ?? {})
-      if (method === "item/started") this.opts.onEvent({ type: "tool.start", name: itemType, input: payload })
-      else this.opts.onEvent({ type: "tool.result", name: itemType, output: payload })
+      for (const event of codexAppServerItemNotificationToEvents(method, params)) this.opts.onEvent(event)
       return
     }
     if (method === "turn/completed") {
@@ -345,6 +369,15 @@ function numberOr(v: unknown, fallback: number): number {
 function stripItemHousekeeping(item: Record<string, unknown>): Record<string, unknown> {
   const { id: _id, type: _type, ...rest } = item
   return rest
+}
+
+function isNonToolTranscriptItem(itemType: string): boolean {
+  return (
+    itemType === "agentMessage" ||
+    itemType === "agent_message" ||
+    itemType === "userMessage" ||
+    itemType === "user_message"
+  )
 }
 
 function stringifyErr(err: unknown): string {

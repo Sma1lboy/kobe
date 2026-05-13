@@ -60,7 +60,10 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
     expect(types).toContain("assistant.delta")
     expect(types).toContain("usage")
     expect(types[types.length - 1]).toBe("done")
-    const reply = events.find((e) => e.type === "assistant.delta")?.text ?? ""
+    const reply = events
+      .filter((e): e is Extract<EngineEvent, { type: "assistant.delta" }> => e.type === "assistant.delta")
+      .map((e) => e.text)
+      .join("")
     expect(reply).toMatch(/pong/i)
   })
 
@@ -81,7 +84,10 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
       if (ev.type === "done" || ev.type === "error") break
     }
     expect(events.find((e) => e.type === "done")).toBeDefined()
-    const reply = events.find((e) => e.type === "assistant.delta")?.text ?? ""
+    const reply = events
+      .filter((e): e is Extract<EngineEvent, { type: "assistant.delta" }> => e.type === "assistant.delta")
+      .map((e) => e.text)
+      .join("")
     expect(reply).toMatch(/pong/i)
   })
 
