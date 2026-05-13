@@ -4,8 +4,8 @@ import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
-import type { Message, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
-import type { Task } from "../types/task.ts"
+import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
+import type { Task, VendorId } from "../types/task.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
 import {
@@ -208,12 +208,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return { tasks: orch.listTasks().map(serializeTask) }
       case "task.spawn": {
         const repo = requireString(payload, "repo")
+        const modelEffort = optionalModelEffort(payload, "modelEffort")
+        const vendor = optionalVendor(payload, "vendor")
         const task = await orch.createTask({
           repo,
           prompt: optionalString(payload, "prompt"),
           title: optionalString(payload, "title"),
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
+          model: optionalString(payload, "model"),
+          modelEffort,
+          vendor,
         })
         // Subscribe EVERY attached client to the new task's tabs, not
         // just the spawning client. Otherwise other TUIs see task.created
@@ -263,19 +268,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "task.model": {
         const taskId = requireString(payload, "taskId")
-        const modelEffort = optionalString(payload, "modelEffort")
-        if (
-          modelEffort !== undefined &&
-          modelEffort !== "none" &&
-          modelEffort !== "minimal" &&
-          modelEffort !== "low" &&
-          modelEffort !== "medium" &&
-          modelEffort !== "high" &&
-          modelEffort !== "xhigh" &&
-          modelEffort !== "max"
-        ) {
-          throw new Error("modelEffort must be a supported effort level")
-        }
+        const modelEffort = optionalModelEffort(payload, "modelEffort")
         await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"), modelEffort)
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
@@ -658,6 +651,31 @@ function optionalString(payload: Record<string, unknown>, key: string): string |
   const value = payload[key]
   if (value === undefined || value === null || value === "") return undefined
   if (typeof value !== "string") throw new Error(`${key} must be a string`)
+  return value
+}
+
+function optionalModelEffort(payload: Record<string, unknown>, key: string): ModelEffortLevel | undefined {
+  const value = optionalString(payload, key)
+  if (
+    value !== undefined &&
+    value !== "none" &&
+    value !== "minimal" &&
+    value !== "low" &&
+    value !== "medium" &&
+    value !== "high" &&
+    value !== "xhigh" &&
+    value !== "max"
+  ) {
+    throw new Error(`${key} must be a supported effort level`)
+  }
+  return value
+}
+
+function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
+  const value = optionalString(payload, key)
+  if (value !== undefined && value !== "claude" && value !== "codex") {
+    throw new Error(`${key} must be a supported vendor`)
+  }
   return value
 }
 

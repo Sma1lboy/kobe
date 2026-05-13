@@ -13,7 +13,7 @@ import type {
 } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
-import type { ChatTab, Task } from "../types/task.ts"
+import type { ChatTab, Task, VendorId } from "../types/task.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
@@ -256,6 +256,9 @@ export class RemoteOrchestrator {
     title?: string
     branch?: string
     baseRef?: string
+    model?: string
+    modelEffort?: ModelEffortLevel
+    vendor?: VendorId
   }): Promise<Task> {
     const res = await this.client.request<{ task: Task }>("task.spawn", input)
     return res.task

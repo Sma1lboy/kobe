@@ -107,6 +107,12 @@ export interface CreateTaskInput {
   readonly branch?: string
   /** Optional base ref for the new lazy worktree branch. */
   readonly baseRef?: string
+  /** Optional initial model id for the task's first chat tab. */
+  readonly model?: string
+  /** Optional initial model effort for the task's first chat tab. */
+  readonly modelEffort?: ModelEffortLevel
+  /** Optional initial engine vendor for the task's first chat tab. */
+  readonly vendor?: VendorId
 }
 
 /** Subscription teardown for {@link Orchestrator.subscribeEvents}. */
@@ -455,6 +461,9 @@ export class Orchestrator {
       sessionId: null,
       status: "backlog",
       archived: false,
+      model: input.model,
+      modelEffort: input.modelEffort,
+      vendor: input.vendor,
     })
     // Branch is allocated lazily so the auto-name's ulid suffix uses
     // the real task id (computing it before `store.create` would slug

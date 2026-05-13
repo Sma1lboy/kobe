@@ -281,6 +281,32 @@ describe("Orchestrator.createTask", () => {
     expect(store.get(task.id)?.branch).toBe("feature/explicit")
   })
 
+  test("seeds the first chat tab with inherited model config", async () => {
+    const { orch } = await buildOrchestrator()
+    const task = await orch.createTask({
+      repo,
+      title: "inherits model",
+      model: "gpt-5.5",
+      modelEffort: "xhigh",
+      vendor: "codex",
+    })
+
+    const tab = task.tabs[0]
+    expect(tab?.model).toBe("gpt-5.5")
+    expect(tab?.modelEffort).toBe("xhigh")
+    expect(tab?.vendor).toBe("codex")
+  })
+
+  test("keeps default model behavior when no inherited config is provided", async () => {
+    const { orch } = await buildOrchestrator()
+    const task = await orch.createTask({ repo, title: "default model", prompt: "" })
+
+    const tab = task.tabs[0]
+    expect(tab?.model).toBeUndefined()
+    expect(tab?.modelEffort).toBeUndefined()
+    expect(tab?.vendor).toBe("claude")
+  })
+
   test("runTask surfaces worktree creation failures without crashing", async () => {
     const { orch, store } = await buildOrchestrator()
     // Pass a non-repo path so git rejects the worktree creation.

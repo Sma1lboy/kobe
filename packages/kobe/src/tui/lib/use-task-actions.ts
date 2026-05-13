@@ -41,6 +41,7 @@ import type { PaneId } from "../context/focus"
 import type { KVContext } from "../context/kv"
 import type { DialogContext } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+import { initialChatModelConfig } from "./task-model-config.ts"
 
 export type TaskActionsDeps = {
   orchestrator: KobeOrchestrator
@@ -92,6 +93,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       const created = await orchestrator.createTask({
         repo: result.repo,
         baseRef: result.baseRef,
+        ...initialChatModelConfig(orchestrator.getTask(selectedId() ?? ""), kv),
       })
       kv.set("lastNewTaskRepo", result.repo)
       setSelectedId(created.id)

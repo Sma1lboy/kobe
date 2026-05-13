@@ -24,6 +24,14 @@ cat <<'EOF'
 {"type":"assistant","message":{"content":[{"type":"text","text":"hello from fake claude"}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu_a","name":"Read","input":{"path":"/etc/hosts"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tu_a","content":"127.0.0.1 localhost"}]}}
+EOF
+
+# Give ClaudeCodeLocal's per-turn speed derivation a non-zero duration.
+# Without this, very fast hosts can emit the result in the same millisecond
+# as spawn(), and the usage event correctly omits speed as non-computable.
+sleep 0.01
+
+cat <<'EOF'
 {"type":"result","subtype":"success","usage":{"input_tokens":7,"output_tokens":11},"total_cost_usd":0.0001}
 EOF
 
