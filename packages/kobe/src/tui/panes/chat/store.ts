@@ -679,15 +679,33 @@ export function applyEvent(
           nowIso,
         ),
       }
-    case "user.inject":
+    case "user.inject": {
+      // Strip claude-code wrapper tags (e.g. `<bash-input>` from the
+      // KOB-83 bash-mode prefix, `<command-name>` from a slash command,
+      // `<system-reminder>` from harness injections) so the user row
+      // shows only the human-meaningful text. The history-replay path
+      // (`appendRowsFromMessage` → `cleanChatText`) already does this;
+      // mirror it on the live event path so a freshly-dispatched
+      // user.inject doesn't render the raw XML before the next mount.
+      const cleaned = cleanChatText(ev.text)
+      // Drop the row entirely when stripping leaves nothing — bash mode
+      // can fire the bash-context prefix WITHOUT any trailing user text
+      // (e.g. follow-up `!cmd` while a prompt is queued). Adding an
+      // empty user row would render a bare `>` chip with nothing next
+      // to it, matching the same suppression `cleanChatText` applies
+      // during history hydration.
+      if (cleaned.length === 0) {
+        return { ...state, isStreaming: true, error: null, lastUsage: undefined, activeTurnStartedAt: nowIso }
+      }
       return {
         ...state,
         isStreaming: true,
         error: null,
         lastUsage: undefined,
         activeTurnStartedAt: nowIso,
-        messages: capMessages([...state.messages, { kind: "user", text: ev.text, ts: nowIso }], nowIso),
+        messages: capMessages([...state.messages, { kind: "user", text: cleaned, ts: nowIso }], nowIso),
       }
+    }
     case "system.info":
       // Dim status note from the orchestrator (worktree allocated,
       // branch renamed, etc). Renders as a `system` row in muted

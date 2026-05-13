@@ -676,6 +676,34 @@ describe("applyEvent — user.inject", () => {
     expect((s.messages[2] as { text: string }).text).toContain("Follow these steps")
     expect(s.isStreaming).toBe(true)
   })
+
+  test("strips KOB-83 bash-context XML prefix so the user row shows only the human text", () => {
+    // The KOB-83 bash mode prepends <bash-input>/<bash-stdout> XML to
+    // the next prompt sent to runTask; orchestrator dispatches the
+    // FULL prefixed text as a user.inject event. Without the live-path
+    // strip the chat shows the raw XML alongside the actual prompt
+    // (see the screenshot in the KOB-83 PR review pass).
+    const prefixed =
+      "<bash-input>ls</bash-input>\n<bash-stdout>foo\nbar</bash-stdout>\n\nexplain what the listing shows"
+    const s = applyEvent(createInitialState(), { type: "user.inject", text: prefixed }, FIXED_TS)
+    expect(s.messages).toHaveLength(1)
+    const row = s.messages[0]
+    if (row?.kind !== "user") throw new Error("type narrowing")
+    expect(row.text).toBe("explain what the listing shows")
+    expect(s.isStreaming).toBe(true)
+  })
+
+  test("suppresses the user row entirely when only XML noise remains after stripping", () => {
+    // A bash interaction can fire mid-stream and produce a user.inject
+    // whose payload is just the XML wrapper (no trailing user text).
+    // Adding an empty user row would render as a bare `>` chip — the
+    // history-replay path already drops these via cleanChatText;
+    // mirror it here.
+    const xmlOnly = "<bash-input>pwd</bash-input>\n<bash-stdout>/tmp</bash-stdout>\n"
+    const s = applyEvent(createInitialState(), { type: "user.inject", text: xmlOnly }, FIXED_TS)
+    expect(s.messages).toEqual([])
+    expect(s.isStreaming).toBe(true)
+  })
 })
 
 describe("applyEvent — purity", () => {
