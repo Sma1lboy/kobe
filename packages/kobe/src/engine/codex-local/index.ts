@@ -24,6 +24,12 @@ import type {
   SpawnOpts,
 } from "@/types/engine"
 import { type ProcessHandle, SessionRegistry } from "../claude-code-local/registry"
+import {
+  type CodexBackend,
+  type SpawnedCodexAppServer,
+  resolveCodexBackend,
+  spawnCodexAppServerTurn,
+} from "./app-server"
 import { findCodexBinary } from "./binary"
 import { codexCapabilities, codexIdentity } from "./capabilities"
 import { deleteHistory as deleteHistoryImpl, readHistoryWithMetrics as readHistoryImpl } from "./history"
@@ -35,12 +41,13 @@ import { parseStreamJson, readLines } from "./stream"
 export interface CodexLocalOpts {
   readonly binaryPathResolver?: () => Promise<string>
   readonly stopGraceMs?: number
+  readonly backend?: CodexBackend
 }
 
 interface RunningSession {
   readonly sessionId: string
   readonly cwd: string
-  readonly spawned: SpawnedCodex
+  readonly spawned: SpawnedCodex | SpawnedCodexAppServer
   readonly queue: EngineEvent[]
   waiters: Array<() => void>
   closed: boolean
@@ -54,10 +61,12 @@ export class CodexLocal implements AIEngine {
   private readonly running = new Map<string, RunningSession>()
   private readonly binaryPathResolver: () => Promise<string>
   private readonly stopGraceMs: number
+  private readonly backend: CodexBackend
 
   constructor(opts: CodexLocalOpts = {}) {
     this.binaryPathResolver = opts.binaryPathResolver ?? findCodexBinary
     this.stopGraceMs = opts.stopGraceMs ?? 5_000
+    this.backend = opts.backend ?? resolveCodexBackend()
   }
 
   async spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
@@ -118,6 +127,115 @@ export class CodexLocal implements AIEngine {
   // --- internals -----------------------------------------------------
 
   private async start(args: {
+    cwd: string
+    prompt: string
+    opts?: SpawnOpts
+    resumeSessionId?: string
+  }): Promise<SessionHandle> {
+    if (this.backend === "app-server") return this.startAppServer(args)
+    return this.startExec(args)
+  }
+
+  private async startAppServer(args: {
+    cwd: string
+    prompt: string
+    opts?: SpawnOpts
+    resumeSessionId?: string
+  }): Promise<SessionHandle> {
+    const binaryPath = await this.binaryPathResolver()
+    const queue: EngineEvent[] = []
+    let session: RunningSession | undefined
+    let bound = false
+    let terminalSeen = false
+    let stderrTail = ""
+    let resolveHandle: (h: SessionHandle) => void = () => {}
+    let rejectHandle: (e: unknown) => void = () => {}
+    const handlePromise = new Promise<SessionHandle>((res, rej) => {
+      resolveHandle = res
+      rejectHandle = rej
+    })
+
+    const bind = (sessionId: string) => {
+      if (bound) return
+      bound = true
+      session = {
+        sessionId,
+        cwd: args.cwd,
+        spawned,
+        queue,
+        waiters: [],
+        closed: false,
+        spawnedAtIso: new Date().toISOString(),
+      }
+      this.running.set(sessionId, session)
+      this.registry.register({
+        sessionId,
+        cwd: args.cwd,
+        proc: spawned.proc,
+        startedAt: Date.now(),
+        prompt: args.prompt,
+      } satisfies ProcessHandle)
+      resolveHandle({ sessionId, cwd: args.cwd })
+    }
+
+    const emit = (ev: EngineEvent) => {
+      if (ev.type === "done" || ev.type === "error") terminalSeen = true
+      queue.push(ev)
+      if (session) {
+        this.notify(session)
+        if (ev.type === "done" || ev.type === "error") {
+          this.registry.unregister(session.sessionId, spawned.proc)
+        }
+      }
+    }
+
+    const spawned = spawnCodexAppServerTurn({
+      binaryPath,
+      cwd: args.cwd,
+      prompt: args.prompt,
+      model: args.opts?.model,
+      modelEffort: args.opts?.modelEffort,
+      permissionMode: args.opts?.permissionMode,
+      env: args.opts?.env,
+      resumeSessionId: args.resumeSessionId,
+      onSessionId: bind,
+      onEvent: emit,
+    })
+
+    captureStderrTail(spawned.stderr, (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP)
+    })
+
+    void spawned.ready.catch((err) => {
+      if (!bound) rejectHandle(err)
+    })
+
+    void spawned.closed.then(({ code, signal }) => {
+      if (session) {
+        if (!terminalSeen && typeof code === "number" && code !== 0) {
+          queue.push({
+            type: "error",
+            message: formatExitMsg("codex app-server exited", code, signal, stderrTail),
+          })
+        }
+        session.closed = true
+        this.notify(session)
+        this.registry.unregister(session.sessionId, spawned.proc)
+        if (this.running.get(session.sessionId) === session) {
+          this.running.delete(session.sessionId)
+        }
+      }
+      if (!bound) {
+        rejectHandle(
+          new Error(formatExitMsg("codex app-server exited before session id was captured", code, signal, stderrTail)),
+        )
+      }
+    })
+
+    return handlePromise
+  }
+
+  private async startExec(args: {
     cwd: string
     prompt: string
     opts?: SpawnOpts
