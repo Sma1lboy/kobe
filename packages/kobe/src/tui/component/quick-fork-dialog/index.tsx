@@ -1,44 +1,53 @@
 /**
  * Quick-fork dialog entry point.
  *
- * Public API mirrors the other dialogs in this folder:
+ * Public API:
  *
- *   const prompt = await QuickForkDialog.show(dialog, { repo, baseRef, modelLabel })
- *   if (prompt === undefined) return  // user pressed esc
- *   // ...orchestrator.createTask + runTask
+ *   const result = await QuickForkDialog.show(dialog, {
+ *     repo, baseRef, modelId, effort,
+ *   })
+ *   if (!result) return  // user pressed esc
+ *   // result = { prompt, modelId, effort } — modelId / effort may differ
+ *   //   from the input if the user picked a different one in the dialog
  *
- * Defined as a thin promise wrapper around `dialog.replace` so the
- * caller can await the user's input alongside the rest of the
- * quick-fork action flow (use-task-actions.ts → quickForkActiveTask).
+ * The caller seeds the inherited repo/branch/model/effort; the dialog
+ * lets the user override the model + effort before submitting the
+ * first prompt.
  */
 
+import type { ModelEffortLevel } from "@/types/engine"
 import type { DialogContext } from "../../ui/dialog"
-import { QuickForkDialogView } from "./dialog"
+import { QuickForkDialogView, type QuickForkSubmit } from "./dialog"
 
 export type QuickForkInput = {
   repo: string
   baseRef: string
-  modelLabel: string
+  modelId: string | undefined
+  effort: ModelEffortLevel | undefined
 }
 
-function show(dialog: DialogContext, input: QuickForkInput): Promise<string | undefined> {
-  return new Promise<string | undefined>((resolve) => {
+export type QuickForkResult = QuickForkSubmit
+
+function show(dialog: DialogContext, input: QuickForkInput): Promise<QuickForkResult | undefined> {
+  return new Promise<QuickForkResult | undefined>((resolve) => {
     dialog.replace(
       () => (
         <QuickForkDialogView
           repo={input.repo}
           baseRef={input.baseRef}
-          modelLabel={input.modelLabel}
-          onSubmit={(prompt) => resolve(prompt)}
+          modelId={input.modelId}
+          effort={input.effort}
+          onSubmit={(result) => resolve(result)}
           onCancel={() => resolve(undefined)}
         />
       ),
       () => resolve(undefined),
     )
-    // medium (80 cols) matches NewTaskDialog so the inherited repo path
-    // has room to breathe on wide terminals. The card sizes to content
-    // height so the dialog stays compact for the short field list.
-    dialog.setSize("medium")
+    // Larger dialog than the original prompt-only card — model list
+    // takes 7-8 rows, effort up to 5, plus summary + prompt + footer.
+    // `large` gives enough vertical room without becoming a fullscreen
+    // takeover on tall terminals.
+    dialog.setSize("large")
   })
 }
 

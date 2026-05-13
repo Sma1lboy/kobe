@@ -29,7 +29,6 @@
 
 import type { Accessor } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator.ts"
-import { modelLabelFor } from "../../engine/registry.ts"
 import { removeSavedRepo } from "../../state/repos.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { getCurrentBranch } from "../component/new-task-dialog/state"
@@ -109,21 +108,26 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
 
   /**
    * KOB-74 — quick-fork the currently selected task. Opens a compact
-   * prompt dialog seeded with the source task's repo, branch, and
-   * model; on submit, creates a child task that inherits those
-   * properties and dispatches the prompt as the first turn so the user
-   * lands in a running conversation without retyping anything.
+   * picker dialog seeded with the source task's repo, branch, model,
+   * and effort. The dialog lets the user override the model + effort
+   * inline before typing the first prompt; on submit, creates a child
+   * task that inherits repo + branch (always) and the picked model +
+   * effort (potentially different from the source), then dispatches
+   * the prompt as the first turn.
    *
-   * Inheritance map:
-   *   - repo        = source.repo
+   * Inheritance map (defaults — user may override via dialog picker):
+   *   - repo        = source.repo (always inherited, no override)
    *   - baseRef     = source.branch when non-empty (regular tasks);
    *                   `getCurrentBranch(source.worktreePath || source.repo)`
    *                   when blank (`kind: "main"` rows) — falls back to
-   *                   "main" if HEAD is detached. This becomes the new
-   *                   `git worktree add -b <new> <path> <baseRef>` base.
-   *   - model       = active tab's model (or source.model legacy fallback)
-   *   - vendor      = active tab's vendor (or source.vendor)
-   *   - permission  = source.permissionMode (preserves plan-mode etc.)
+   *                   "main" if HEAD is detached. Always inherited.
+   *   - model       = active tab's model (or source.model legacy
+   *                   fallback). Default cursor position in dialog;
+   *                   user may pick a different model.
+   *   - effort      = active tab's modelEffort (or source.modelEffort).
+   *                   Default cursor in effort list when applicable.
+   *   - permission  = source.permissionMode (preserves plan-mode etc.).
+   *                   Always inherited.
    *
    * The new task's first prompt is dispatched immediately via runTask
    * — not parked on the composer's pending-prompt accessor — because
@@ -139,7 +143,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     if (!source) return
     const activeTab = source.tabs.find((t) => t.id === source.activeTabId) ?? source.tabs[0]
     const inheritedModel = activeTab?.model ?? source.model
-    const inheritedVendor = activeTab?.vendor ?? source.vendor
+    const inheritedEffort = activeTab?.modelEffort ?? source.modelEffort
     const inheritedPermission = source.permissionMode
     // `kind: "main"` rows have `branch === ""` (the live branch is
     // resolved at display time, not stored). Read HEAD directly from
@@ -149,29 +153,28 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       source.branch && source.branch.length > 0
         ? source.branch
         : (getCurrentBranch(source.worktreePath || source.repo) ?? "main")
-    const modelLabel = modelLabelFor(inheritedModel)
-    const prompt = await QuickForkDialog.show(dialog, {
+    const result = await QuickForkDialog.show(dialog, {
       repo: source.repo,
       baseRef,
-      modelLabel,
+      modelId: inheritedModel,
+      effort: inheritedEffort,
     })
-    if (prompt === undefined) return
+    if (result === undefined) return
     try {
       const created = await orchestrator.createTask({
         repo: source.repo,
         baseRef,
-        prompt,
+        prompt: result.prompt,
       })
-      // Apply inherited model/permission to the new task's default
+      // Apply chosen model+effort/permission to the new task's default
       // tab before dispatching the run so the engine spawn uses the
-      // intended model from the very first invocation.
+      // intended config from the very first invocation. setModel routes
+      // the new task to the right vendor based on the model id.
       const newTabId = created.activeTabId
-      if (inheritedModel) {
-        await orchestrator.setModel(created.id, inheritedModel, newTabId).catch((err: unknown) => {
-          // eslint-disable-next-line no-console
-          console.error("[kobe] quick-fork setModel failed:", err)
-        })
-      }
+      await orchestrator.setModel(created.id, result.modelId, newTabId, result.effort).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[kobe] quick-fork setModel failed:", err)
+      })
       if (inheritedPermission !== undefined) {
         await orchestrator.setPermissionMode(created.id, inheritedPermission).catch((err: unknown) => {
           // eslint-disable-next-line no-console
@@ -185,11 +188,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       // Dispatch the first prompt. runTask handles the lazy worktree
       // allocation; the new task switches from `backlog` → `in_progress`
       // and the user starts seeing assistant deltas immediately.
-      await orchestrator.runTask(created.id, prompt, newTabId)
-      // Quiet the lint for the inherited vendor — it's read for
-      // documentation here but the orchestrator infers it from the
-      // model id via `setModel`'s vendor-routing.
-      void inheritedVendor
+      await orchestrator.runTask(created.id, result.prompt, newTabId)
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[kobe] quickForkActiveTask failed:", err)
