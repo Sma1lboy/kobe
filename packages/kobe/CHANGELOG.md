@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
-- **Codex/GPT context telemetry no longer guesses usage or speed** — Codex `exec --json` emits cumulative usage where cached input is already part of input tokens and drops the official `modelContextWindow`, so kobe now normalizes the usage shape, suppresses derived `t/s`, and hides the WORKSPACE context meter until an engine path provides Codex's real `last.totalTokens` / `modelContextWindow` pair (KOB-84).
+- **Codex/GPT context telemetry no longer reports fake exact usage or speed** — Codex `exec --json` emits cumulative usage where cached input is already part of input tokens and drops the official `last.totalTokens` / `modelContextWindow` pair, so kobe now normalizes the usage shape, suppresses derived `t/s`, and uses OpenRouter model metadata as a best-effort context-window fallback while marking kobe-estimated context totals with `~` (KOB-84).
 
 ## [0.5.19] - 2026-05-12
 

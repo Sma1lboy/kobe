@@ -209,6 +209,8 @@ export type EngineUsageSnapshot = {
   readonly cache_creation_input_tokens?: number
   /** Engine-owned "tokens currently in context" value, when surfaced directly. */
   readonly context_tokens?: number
+  /** True when `context_tokens` is kobe-estimated rather than engine-reported. */
+  readonly context_tokens_approximate?: boolean
   /** Engine-owned model context window, when surfaced directly. */
   readonly context_window_tokens?: number
   readonly total_speed_tokens_per_second?: number
@@ -275,6 +277,7 @@ export type EngineEvent =
       readonly cache_read_input_tokens?: number
       readonly cache_creation_input_tokens?: number
       readonly context_tokens?: number
+      readonly context_tokens_approximate?: boolean
       readonly context_window_tokens?: number
       readonly total_speed_tokens_per_second?: number
     }

@@ -46,6 +46,12 @@ export interface ParseStreamJsonOpts {
    * CodexLocal uses this to resolve the deferred returned from `spawn()`.
    */
   readonly onSessionId?: (sessionId: string) => void
+  /**
+   * Best-effort context-window fallback. The exec JSON stream drops
+   * Codex app-server's `modelContextWindow`, so CodexLocal may fill it
+   * from OpenRouter model metadata.
+   */
+  readonly contextWindowTokens?: () => Promise<number | undefined>
 }
 
 export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonOpts = {}): AsyncIterable<EngineEvent> {
@@ -126,7 +132,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
     if (type === "turn.completed") {
       const usage = isObject(msg.usage) ? (msg.usage as Record<string, unknown>) : undefined
       if (usage) {
-        const snapshot = codexUsageToSnapshot(usage)
+        const contextWindowTokens = await opts.contextWindowTokens?.()
+        const snapshot = codexUsageToSnapshot(usage, { contextWindowTokens })
         if (snapshot) yield { type: "usage", ...snapshot }
       }
       yield { type: "done" }

@@ -489,6 +489,7 @@ export function applyEvent(
           cache_read_input_tokens: ev.cache_read_input_tokens,
           cache_creation_input_tokens: ev.cache_creation_input_tokens,
           context_tokens: ev.context_tokens,
+          context_tokens_approximate: ev.context_tokens_approximate,
           context_window_tokens: ev.context_window_tokens,
           total_speed_tokens_per_second: ev.total_speed_tokens_per_second,
         },

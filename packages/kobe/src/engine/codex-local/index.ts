@@ -27,6 +27,7 @@ import { type ProcessHandle, SessionRegistry } from "../claude-code-local/regist
 import { findCodexBinary } from "./binary"
 import { codexCapabilities, codexIdentity } from "./capabilities"
 import { deleteHistory as deleteHistoryImpl, readHistoryWithMetrics as readHistoryImpl } from "./history"
+import { resolveOpenRouterContextWindow } from "./openrouter"
 import { listSessionsForCwd } from "./sessions"
 import { type SpawnedCodex, spawnCodexProcess } from "./spawn"
 import { parseStreamJson, readLines } from "./stream"
@@ -123,6 +124,7 @@ export class CodexLocal implements AIEngine {
     resumeSessionId?: string
   }): Promise<SessionHandle> {
     const binaryPath = await this.binaryPathResolver()
+    const modelId = args.opts?.model ?? codexCapabilities.defaultModelId()
     const spawned = spawnCodexProcess({
       binaryPath,
       cwd: args.cwd,
@@ -145,6 +147,7 @@ export class CodexLocal implements AIEngine {
     let session: RunningSession | undefined
     let bound = false
     let stderrTail = ""
+    const contextWindowPromise = resolveOpenRouterContextWindow(modelId)
 
     const bind = (sessionId: string) => {
       if (bound) {
@@ -233,6 +236,7 @@ export class CodexLocal implements AIEngine {
     void (async () => {
       const events = parseStreamJson(readLines(spawned.stdout), {
         onSessionId: (sid) => bind(sid),
+        contextWindowTokens: () => contextWindowPromise,
       })
       try {
         for await (const ev of events) {
