@@ -42,7 +42,7 @@ import {
   deriveTitleFromPrompt,
 } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
-import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
+import { MetadataSuggester, type MetadataSuggestionContext } from "../../src/orchestrator/metadata-suggester.ts"
 import { detectUserInputFromEngineEvent, renderUserInputResponsePrompt } from "../../src/orchestrator/user-input.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
@@ -76,7 +76,7 @@ async function buildOrchestrator(engine?: AIEngine): Promise<{
   await store.load()
   const worktrees = new GitWorktreeManager()
   const eng = engine ?? new FakeAIEngine()
-  const orch = new Orchestrator({ engine: eng, store, worktrees })
+  const orch = new Orchestrator({ engine: eng, store, worktrees, metadataSuggester: new NoopMetadataSuggester() })
   return { orch, store, engine: eng }
 }
 
@@ -134,6 +134,57 @@ class HistoryEngine implements AIEngine {
   }
 
   async stop(_h: SessionHandle): Promise<void> {}
+}
+
+class RecordingMetadataSuggester extends MetadataSuggester {
+  readonly calls: Array<{
+    kind: "branch" | "title" | "worktree"
+    prompt: string
+    vendor: VendorId
+    model?: string
+    modelEffort?: string
+    cwd: string
+  }> = []
+
+  override async suggestBranchSlug(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    this.record("branch", prompt, context)
+    return null
+  }
+
+  override async suggestTitle(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    this.record("title", prompt, context)
+    return null
+  }
+
+  override async suggestWorktreeSlug(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    this.record("worktree", prompt, context)
+    return null
+  }
+
+  private record(kind: "branch" | "title" | "worktree", prompt: string, context: MetadataSuggestionContext): void {
+    this.calls.push({
+      kind,
+      prompt,
+      vendor: context.engine.capabilities.vendorId,
+      ...(context.model ? { model: context.model } : {}),
+      ...(context.modelEffort ? { modelEffort: context.modelEffort } : {}),
+      cwd: context.cwd,
+    })
+  }
+}
+
+class NoopMetadataSuggester extends MetadataSuggester {
+  override async suggestBranchSlug(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestTitle(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestWorktreeSlug(): Promise<string | null> {
+    return null
+  }
 }
 
 beforeEach(() => {
@@ -389,6 +440,7 @@ describe("Orchestrator.runTask", () => {
       engines: { claude, codex },
       store,
       worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
     })
     const t = await orch.createTask({ repo, title: "mixed vendor", prompt: "" })
     const firstTab = t.tabs[0]!
@@ -1174,69 +1226,93 @@ describe("Orchestrator.setTitle", () => {
 })
 
 // ----------------------------------------------------------------------
-// maybeUpgradeTitle — background `claude -p` upgrade of the
-// truncate-derived title on first run. Mirrors the branch-rename flow
-// but for the sidebar label. The contract under test:
-//   1. truncate-derived title gets replaced by the suggester's output
-//   2. an explicit createTask({title}) is treated as load-bearing user
-//      intent and is NEVER overwritten
+// Deferred task-title upgrade — keep the first-prompt fallback until
+// enough chat context exists, then ask the selected engine for a
+// feature-style title. Manual titles remain load-bearing user intent.
 // ----------------------------------------------------------------------
 
 async function buildOrchestratorWithSuggester(suggested: string | null): Promise<{
   orch: Orchestrator
   store: TaskIndexStore
   fake: FakeAIEngine
+  titlePrompts: string[]
 }> {
   const store = new TaskIndexStore({ homeDir })
   await store.load()
   const worktrees = new GitWorktreeManager()
   const suggester = new MetadataSuggester()
-  // Override the per-method probe so the test never reaches `claude -p`.
+  // Override the per-method probe so the test never reaches a real engine.
   // We don't stub resolveBinary directly because it's private; replacing
   // the public method is enough — the orchestrator only calls these.
-  ;(suggester as unknown as { suggestTitle: (p: string) => Promise<string | null> }).suggestTitle = async () =>
-    suggested
+  const titlePrompts: string[] = []
+  ;(suggester as unknown as { suggestTitle: (p: string) => Promise<string | null> }).suggestTitle = async (p) => {
+    titlePrompts.push(p)
+    return suggested
+  }
   ;(suggester as unknown as { suggestBranchSlug: (p: string) => Promise<string | null> }).suggestBranchSlug =
     async () => null
   const fake = new FakeAIEngine()
   const orch = new Orchestrator({ engine: fake, store, worktrees, metadataSuggester: suggester })
-  return { orch, store, fake }
+  return { orch, store, fake, titlePrompts }
 }
 
 describe("Orchestrator.maybeUpgradeTitle", () => {
-  test("replaces the truncate-derived title with the claude suggestion on first run", async () => {
-    const { orch, store, fake } = await buildOrchestratorWithSuggester("Fix login redirect")
+  test("keeps the fallback title for the first two turns", async () => {
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Login redirect feature")
     fake.script("fake-1", [{ type: "done" }])
-    const t = await orch.createTask({ repo, prompt: "fix login redirect please" })
-    // createTask path: title comes from deriveTitleFromPrompt.
-    expect(store.get(t.id)?.title).toBe("fix login redirect please")
-    await orch.runTask(t.id, "fix login redirect please")
+    const t = await orch.createTask({ repo, prompt: "fix login redirect" })
+    expect(store.get(t.id)?.title).toBe("fix login redirect")
+    await orch.runTask(t.id, "fix login redirect")
     await orch._waitForPumpsIdle()
-    // The upgrade is fire-and-forget after engine.spawn resolves; flush
-    // microtasks so the chained store.update settles before we assert.
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "make it work after callback")
+    await orch._waitForPumpsIdle()
     await new Promise((r) => setImmediate(r))
-    expect(store.get(t.id)?.title).toBe("Fix login redirect")
+    expect(titlePrompts).toEqual([])
+    expect(store.get(t.id)?.title).toBe("fix login redirect")
+  })
+
+  test("replaces the fallback title with a feature-style suggestion after three turns", async () => {
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Login redirect feature")
+    const t = await orch.createTask({ repo, prompt: "fix login redirect" })
+    for (const prompt of ["fix login redirect", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
+    await new Promise((r) => setImmediate(r))
+    expect(store.get(t.id)?.title).toBe("Login redirect feature")
+    expect(titlePrompts).toHaveLength(1)
+    expect(titlePrompts[0]).toContain("Conversation user messages:")
+    expect(titlePrompts[0]).toContain("1. fix login redirect")
+    expect(titlePrompts[0]).toContain("2. make it work after callback")
+    expect(titlePrompts[0]).toContain("3. add regression coverage")
   })
 
   test("does not overwrite an explicit createTask title", async () => {
-    const { orch, store, fake } = await buildOrchestratorWithSuggester("Suggested label")
-    fake.script("fake-1", [{ type: "done" }])
+    const { orch, store, fake, titlePrompts } = await buildOrchestratorWithSuggester("Suggested label")
     const t = await orch.createTask({ repo, title: "manual title", prompt: "fix login redirect please" })
     expect(store.get(t.id)?.title).toBe("manual title")
-    await orch.runTask(t.id, "fix login redirect please")
-    await orch._waitForPumpsIdle()
+    for (const prompt of ["fix login redirect please", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
     await new Promise((r) => setImmediate(r))
     // The suggester returned a value but the title is user-set — guard
     // holds, no rewrite.
     expect(store.get(t.id)?.title).toBe("manual title")
+    expect(titlePrompts).toEqual([])
   })
 
   test("leaves the title untouched when the suggester returns null", async () => {
     const { orch, store, fake } = await buildOrchestratorWithSuggester(null)
-    fake.script("fake-1", [{ type: "done" }])
     const t = await orch.createTask({ repo, prompt: "fix login redirect please" })
-    await orch.runTask(t.id, "fix login redirect please")
-    await orch._waitForPumpsIdle()
+    for (const prompt of ["fix login redirect please", "make it work after callback", "add regression coverage"]) {
+      fake.script("fake-1", [{ type: "done" }])
+      await orch.runTask(t.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
     await new Promise((r) => setImmediate(r))
     expect(store.get(t.id)?.title).toBe("fix login redirect please")
   })
@@ -1376,6 +1452,7 @@ describe("Orchestrator engine call shape", () => {
       engines: { claude, codex },
       store,
       worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
     })
 
     const task = await orch.createTask({ repo, title: "mixed engines", prompt: "" })
@@ -1407,6 +1484,55 @@ describe("Orchestrator engine call shape", () => {
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
   })
 
+  test("metadata naming suggestions use the selected tab engine and model", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const codex = new HistoryEngine("codex")
+    const suggester = new RecordingMetadataSuggester()
+    const orch = new Orchestrator({
+      engines: { claude, codex },
+      store,
+      worktrees: new GitWorktreeManager(),
+      metadataSuggester: suggester,
+    })
+
+    const task = await orch.createTask({ repo, prompt: "" })
+    const tab = orch.getTask(task.id)?.tabs[0]
+    expect(tab).toBeDefined()
+    await orch.setModel(task.id, "gpt-5.5", tab!.id, "xhigh")
+
+    for (const prompt of ["fix metadata naming", "preserve selected model", "add regression coverage"]) {
+      await orch.runTask(task.id, prompt)
+      await orch._waitForPumpsIdle()
+    }
+    await new Promise((r) => setImmediate(r))
+    expect(suggester.calls.map((c) => c.kind).sort()).toEqual(["branch", "title"])
+
+    expect(suggester.calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "branch",
+          prompt: "fix metadata naming",
+          vendor: "codex",
+          model: "gpt-5.5",
+          modelEffort: "xhigh",
+          cwd: orch.getTask(task.id)?.worktreePath,
+        }),
+        expect.objectContaining({
+          kind: "title",
+          prompt: expect.stringContaining("Conversation user messages:"),
+          vendor: "codex",
+          model: "gpt-5.5",
+          modelEffort: "xhigh",
+          cwd: orch.getTask(task.id)?.worktreePath,
+        }),
+      ]),
+    )
+    expect(claude.spawns).toHaveLength(0)
+    expect(codex.spawns[0]).toMatchObject({ prompt: "fix metadata naming", model: "gpt-5.5", modelEffort: "xhigh" })
+  })
+
   test("new chat tabs inherit the active tab's model effort", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
@@ -1414,6 +1540,7 @@ describe("Orchestrator engine call shape", () => {
       engines: { claude: new HistoryEngine("claude"), codex: new HistoryEngine("codex") },
       store,
       worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
     })
 
     const task = await orch.createTask({ repo, title: "tab effort", prompt: "" })
