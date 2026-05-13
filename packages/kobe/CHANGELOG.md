@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-05-13
+
 ### Fixed
 
 - **Disconnect recovery now restarts the right daemon in single-point mode** — the daemon-disconnected Restart action now brings back the per-TUI owned daemon socket instead of accidentally starting the shared background socket, and reconnect clears stale socket handles before rehydrating the task list (KOB-95).
