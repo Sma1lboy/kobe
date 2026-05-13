@@ -283,8 +283,12 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
       <box flexDirection="column">
         <Show when={modelStep() === "summary"}>
           <box flexDirection="row" gap={1}>
-            <text fg={field() === "model" ? theme.accent : theme.textMuted} wrapMode="none">
-              {field() === "model" ? "▸ model:" : "  model:"}
+            <text
+              fg={field() === "model" ? theme.accent : theme.textMuted}
+              attributes={field() === "model" ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+            >
+              model:
             </text>
             <text fg={theme.text} wrapMode="none">
               {modelSummary()}
@@ -293,7 +297,9 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
         </Show>
 
         <Show when={modelStep() === "model-pick"}>
-          <text fg={theme.accent}>▸ model</text>
+          <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+            model
+          </text>
           <box flexDirection="column" paddingLeft={2}>
             <For each={models()}>
               {(model, i) => {
@@ -348,7 +354,9 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
                 {cursorModel()?.label}
               </text>
             </box>
-            <text fg={theme.accent}>▸ effort</text>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              effort
+            </text>
             <box flexDirection="column" paddingLeft={2}>
               <For each={effortOptions()}>
                 {(choice, i) => {
@@ -390,8 +398,11 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
           field === "prompt"; otherwise the user is interacting with the
           Model region above. */}
       <box gap={0}>
-        <text fg={field() === "prompt" ? theme.accent : theme.textMuted}>
-          {field() === "prompt" ? "▸ prompt" : "  prompt"}
+        <text
+          fg={field() === "prompt" ? theme.accent : theme.textMuted}
+          attributes={field() === "prompt" ? TextAttributes.BOLD : undefined}
+        >
+          prompt
         </text>
         <input
           value={prompt()}
