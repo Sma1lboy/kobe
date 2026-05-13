@@ -103,6 +103,13 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f1",
   "ctrl+p",
   "ctrl+,",
+  // Terminal reset — `alt+r` kills the current shell and respawns at
+  // the worktree. Chosen over `ctrl+shift+r` because Windows Terminal
+  // / many host emulators reserve that for their own reset action and
+  // intercept it before the inner kobe process ever sees the bytes.
+  // `alt+r` is rarely bound in shells (readline doesn't use it) and
+  // not commonly intercepted by host terminals.
+  "alt+r",
 ] as const
 
 /**

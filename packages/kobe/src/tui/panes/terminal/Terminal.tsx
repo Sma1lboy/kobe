@@ -54,6 +54,8 @@ import { type BoxRenderable, StyledText } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { DialogConfirm } from "../../ui/dialog-confirm"
+import { useDialog } from "../../ui/dialog"
 import { useTerminalBindings } from "./keys"
 import type { CursorPos, TaskPty } from "./pty"
 import { PtyRegistry } from "./registry"
@@ -252,6 +254,48 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   /* --------- bindings ---------- */
 
+  // `alt+r` opens a confirm modal; user confirms → tear down the
+  // current PTY and acquire a fresh one with the same `cwd`. Lives
+  // here (not in `keys.ts`) because the dialog context is component-
+  // scoped via `useDialog()`. The async confirm needs the current
+  // pty / cwd / taskId / geometry at the time the user clicks OK,
+  // which we snapshot at click-time so a task switch mid-confirm
+  // doesn't reset the wrong shell.
+  const dialog = useDialog()
+  const requestReset = (): void => {
+    const handle = pty()
+    if (!handle) return
+    const cwd = props.cwd()
+    const taskId = props.taskId()
+    const geometry = bodyGeometry()
+    if (!cwd || !taskId || !geometry) return
+    const cwdAtClick = cwd
+    const taskIdAtClick = taskId
+    const geometryAtClick = geometry
+    void DialogConfirm.show(
+      dialog,
+      "Reset terminal?",
+      "The running shell will be killed and a fresh one will spawn at the worktree. Any in-flight processes (vim, htop, paused jobs) end immediately.",
+      "cancel",
+    ).then((ok) => {
+      if (ok !== true) return
+      const reg = registry()
+      // Only reset if the user is still on the same task — a
+      // mid-confirm switch invalidates the operation.
+      if (props.taskId() !== taskIdAtClick || props.cwd() !== cwdAtClick) return
+      try {
+        const fresh = reg.reset(taskIdAtClick, cwdAtClick, geometryAtClick)
+        setPty(fresh)
+        setSnapshot("")
+        setCursor(null)
+        setScrollOffset(0)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        setAcquireError(message)
+      }
+    })
+  }
+
   useTerminalBindings({
     focused,
     write: (data) => {
@@ -266,6 +310,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       // contract being "lines forward, i.e. toward newer output";
       // tests assert this convention.)
     },
+    reset: requestReset,
   })
 
   /* --------- view ---------- */

@@ -610,6 +610,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Terminal",
     description: "Scroll scrollback down",
   },
+  {
+    id: "terminal.reset",
+    scope: "terminal",
+    keys: ["alt+r"],
+    category: "Terminal",
+    description: "Reset terminal — kill the current shell and respawn",
+    hint: { keys: "alt+r", label: "reset" },
+  },
   // NOTE: The terminal pane's bare-key passthrough (every alphanumeric /
   // named key forwarded to the PTY) is intentionally NOT in this table.
   // Those aren't user-configurable shortcuts — they're terminal-pane
