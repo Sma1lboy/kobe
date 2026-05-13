@@ -288,16 +288,23 @@ export function Composer(props: ComposerProps) {
   // that edge case, dismissable with Esc — matches opcode's behavior.
   const [liveCursor, setLiveCursor] = createSignal(props.draft?.length ?? 0)
 
-  // Bash-mode detection — mirrors claude-code's `getModeFromInput` in
-  // `refs/claude-code/src/components/PromptInput/inputModes.ts`. We
-  // peek at the live buffer (not props.draft) so the visual updates on
-  // every keystroke without waiting for the parent's clear-on-submit
-  // roundtrip. Gated on `onBashCommand` being supplied — without a
-  // handler the visual swap would be a lie. The `! ` two-char check is
-  // a usability concession: a buffer of just `!` (no command yet) still
-  // counts as bash mode so the user sees the indicator engage as soon
-  // as they type the prefix, matching upstream.
-  const bashMode = createMemo(() => props.onBashCommand != null && liveBuffer().startsWith("!"))
+  // Bash-mode state — mirrors claude-code's `isInputModeCharacter`
+  // pattern in `refs/claude-code/src/components/PromptInput/inputModes.ts`,
+  // where typing `!` on an empty buffer SWITCHES MODES instead of
+  // inserting the character. Modeling this as a signal (not a memo over
+  // `liveBuffer().startsWith("!")`) keeps the `!` out of the textarea —
+  // an earlier draft used the prefix-check approach and the user saw
+  // `!!` (prompt glyph `!` + buffer `!`). Now the buffer holds the
+  // command verbatim and the glyph carries the mode.
+  //
+  // Entry:  empty buffer + `!` keystroke → swallow, setBashMode(true).
+  // Exit:   backspace / esc on an empty buffer → setBashMode(false).
+  // Reset:  on submit (so the next prompt starts in prompt mode).
+  //
+  // Gated on `onBashCommand` being supplied — without a handler the
+  // mode toggle would be a lie.
+  const [bashMode, setBashMode] = createSignal(false)
+  const bashAvailable = (): boolean => props.onBashCommand != null
 
   // Slash dropdown state. Cursor indexes into `slashMatches()`; reset
   // to 0 whenever the match list changes (e.g. user typed another char
@@ -791,6 +798,44 @@ export function Composer(props: ComposerProps) {
    * `handleKeyPress` too).
    */
   function handleKeyDown(key: KeyEvent): void {
+    // Bash-mode entry — empty buffer + `!` keystroke flips us into bash
+    // mode and SWALLOWS the `!` so it doesn't end up in the textarea.
+    // Mirrors claude-code's `isInputModeCharacter` check. Modifier
+    // gate: ctrl/meta/super out (those are chord prefixes); shift
+    // stays in scope because most US layouts produce `!` via shift+1
+    // and ship the shift modifier in the keypress event. We key off
+    // `sequence === "!"` instead of `name === "!"` because some
+    // terminals name the key by base-code (e.g. "1") and only the
+    // sequence reflects the rendered character.
+    if (
+      bashAvailable() &&
+      !bashMode() &&
+      liveBuffer().length === 0 &&
+      key.sequence === "!" &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super
+    ) {
+      setBashMode(true)
+      key.preventDefault()
+      return
+    }
+    // Bash-mode exit — backspace or escape on an empty bash buffer
+    // pops us back into prompt mode. Empty-buffer gate matters: in
+    // bash mode with a half-typed command, backspace deletes a char
+    // (and escape falls through to the textarea / dropdown handlers).
+    if (
+      bashMode() &&
+      liveBuffer().length === 0 &&
+      (key.name === "backspace" || key.name === "escape") &&
+      !key.ctrl &&
+      !key.meta &&
+      !key.super
+    ) {
+      setBashMode(false)
+      key.preventDefault()
+      return
+    }
     // ctrl+enter — steer. Submits the current buffer with mode='steer'
     // so the chat shell asks the orchestrator to interrupt the
     // in-flight subprocess before running the new prompt. We intercept
@@ -966,23 +1011,25 @@ export function Composer(props: ComposerProps) {
     if (!ref) return
     const raw = ref.plainText
     const trimmed = raw.trim()
-    // Bash-mode short-circuit (Claude-Code `!cmd` parity). The buffer
-    // starts with `!` AND the parent supplied `onBashCommand` → strip
-    // the prefix, hand the command to the parent for local shell
-    // execution, and bypass the engine entirely. Push the raw text
-    // (including the `!`) into prompt history so up-arrow recall
-    // restores the bash mode visual on recall.
-    if (bashMode() && trimmed.length > 1) {
-      const command = trimmed.slice(1).trim()
-      if (command.length === 0) return // bare `!` with no command — no-op
-      pushHistory(props.historyKey ?? "global", trimmed)
-      // Clear the textarea synchronously so the indicator turns off
-      // before the command starts streaming. Parent will also clear
-      // via the draft round-trip, but this avoids a one-tick flicker.
+    // Bash-mode short-circuit (Claude-Code `!cmd` parity). In bash mode
+    // the buffer holds the command verbatim — the `!` was swallowed
+    // at the keystroke that toggled the mode, not stored as a prefix.
+    // Push the `!`-prefixed form into history so up-arrow recall can
+    // distinguish bash entries from prompts later (and so a future
+    // history-replay can restore the bash-mode visual). Parent owns
+    // the actual shell exec via onBashCommand.
+    if (bashMode()) {
+      const command = trimmed
+      if (command.length === 0) return // bash mode with empty buffer — no-op
+      pushHistory(props.historyKey ?? "global", `!${command}`)
+      // Clear synchronously so the bash indicator drops before the
+      // command starts streaming. Parent's draft round-trip will also
+      // clear; this avoids a one-tick flicker.
       ref.setText("")
       setBuffer("")
       setLiveBuffer("")
       props.onDraftChange("")
+      setBashMode(false)
       resetHistoryNav()
       props.onBashCommand?.(command)
       return
