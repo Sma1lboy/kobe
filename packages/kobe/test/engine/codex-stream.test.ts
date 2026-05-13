@@ -57,4 +57,25 @@ describe("codex stream parser", () => {
 
     expect(ids).toEqual(["rollout-id"])
   })
+
+  it("normalizes codex cumulative usage without double-counting cached input or reasoning output", async () => {
+    const events = await collect([
+      JSON.stringify({
+        type: "turn.completed",
+        usage: {
+          input_tokens: 100,
+          cached_input_tokens: 30,
+          output_tokens: 11,
+          reasoning_output_tokens: 500,
+        },
+      }),
+    ])
+
+    expect(events[0]).toEqual({
+      type: "usage",
+      input_tokens: 70,
+      cache_read_input_tokens: 30,
+      output_tokens: 11,
+    })
+  })
 })

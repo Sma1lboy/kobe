@@ -13,7 +13,6 @@
  */
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
-import { withTotalSpeedForTurn } from "@/session/usage-metrics"
 import type {
   AIEngine,
   EngineCapabilities,
@@ -237,10 +236,9 @@ export class CodexLocal implements AIEngine {
       })
       try {
         for await (const ev of events) {
-          const enriched = enrichUsageEvent(ev, session?.spawnedAtIso)
-          queue.push(enriched)
+          queue.push(ev)
           if (session) this.notify(session)
-          if ((enriched.type === "done" || enriched.type === "error") && session) {
+          if ((ev.type === "done" || ev.type === "error") && session) {
             this.registry.unregister(session.sessionId, spawned.proc)
           }
         }
@@ -313,9 +311,4 @@ function formatExitMsg(prefix: string, code: number | null, signal: NodeJS.Signa
   const detail = stderrTail.trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" | ")
   if (detail) parts.push(`: ${detail}`)
   return parts.join(" ").replace(/ : /, ": ")
-}
-
-function enrichUsageEvent(ev: EngineEvent, startedAtIso: string | undefined): EngineEvent {
-  if (ev.type !== "usage") return ev
-  return { type: "usage", ...withTotalSpeedForTurn(ev, startedAtIso, new Date().toISOString()) }
 }

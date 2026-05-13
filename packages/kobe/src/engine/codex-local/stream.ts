@@ -27,16 +27,16 @@
  *
  *   { type: "turn.completed", usage: { input_tokens, cached_input_tokens,
  *                                       output_tokens, reasoning_output_tokens } }
- *       — emit `usage` (mapping `cached_input_tokens` →
- *         `cache_read_input_tokens` for kobe's neutral shape; lumping
- *         `reasoning_output_tokens` into `output_tokens` because kobe's
- *         UsageSnapshot has no reasoning bucket today). Then emit `done`
- *         and stop consuming.
+ *       — emit `usage`, then `done` and stop consuming. Codex's
+ *         `input_tokens` already includes `cached_input_tokens` and
+ *         `reasoning_output_tokens` is hidden model compute, so both are
+ *         normalized before reaching kobe's Claude-shaped usage snapshot.
  *
  * Bad lines collapse to an `error` event; the iterator continues.
  */
 
 import type { EngineEvent } from "@/types/engine"
+import { codexUsageToSnapshot } from "./usage"
 
 export type LineSource = AsyncIterable<string>
 
@@ -126,16 +126,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
     if (type === "turn.completed") {
       const usage = isObject(msg.usage) ? (msg.usage as Record<string, unknown>) : undefined
       if (usage) {
-        const inTok = numberOr(usage.input_tokens, 0)
-        const outTok = numberOr(usage.output_tokens, 0) + numberOr(usage.reasoning_output_tokens, 0)
-        const cacheRead =
-          typeof usage.cached_input_tokens === "number" ? (usage.cached_input_tokens as number) : undefined
-        yield {
-          type: "usage",
-          input_tokens: inTok,
-          output_tokens: outTok,
-          ...(cacheRead !== undefined ? { cache_read_input_tokens: cacheRead } : {}),
-        }
+        const snapshot = codexUsageToSnapshot(usage)
+        if (snapshot) yield { type: "usage", ...snapshot }
       }
       yield { type: "done" }
       return
@@ -176,10 +168,6 @@ function codexSessionId(msg: Record<string, unknown>): string | undefined {
   }
   const id = msg.thread_id
   return typeof id === "string" && id.length > 0 ? id : undefined
-}
-
-function numberOr(v: unknown, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) ? v : fallback
 }
 
 /** Strip the housekeeping fields so the tool input/output payload is the meaningful slice. */

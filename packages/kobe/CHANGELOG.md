@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex/GPT context telemetry no longer double-counts cached input or reports fake speed** — Codex `exec --json` emits cumulative usage where cached input is already part of input tokens, so kobe now normalizes it before the WORKSPACE header meter and suppresses derived `t/s` until a real per-turn delta is available (KOB-84).
+
 ## [0.5.19] - 2026-05-12
 
 ### Fixed
