@@ -31,6 +31,7 @@ import { setTimeout as sleep } from "node:timers/promises"
 import { createKobeCore } from "@/core/index"
 import { findRolloutFile } from "@/engine/codex-local/history"
 import { CodexLocal } from "@/engine/codex-local/index"
+import type { EngineEvent, OrchestratorEvent } from "@/types/engine"
 import { afterAll, beforeAll, describe, expect, test } from "vitest"
 
 const codexAvailable =
@@ -50,7 +51,7 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
     const handle = await engine.spawn("/tmp", "Reply with exactly the word PONG and nothing else.", PERMISSION)
     expect(handle.sessionId).toMatch(/^[0-9a-f-]{36}$/i)
     v1SessionId = handle.sessionId
-    const events: any[] = []
+    const events: EngineEvent[] = []
     for await (const ev of engine.stream(handle)) {
       events.push(ev)
       if (ev.type === "done" || ev.type === "error") break
@@ -74,7 +75,7 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
       },
     )
     expect(handle.sessionId).toBe(v1SessionId)
-    const events: any[] = []
+    const events: EngineEvent[] = []
     for await (const ev of engine.stream(handle)) {
       events.push(ev)
       if (ev.type === "done" || ev.type === "error") break
@@ -154,12 +155,12 @@ d("CodexLocal — real binary smoke (V1-V6)", () => {
         ...PERMISSION,
         model: choice.id,
       })
-      const events: any[] = []
+      const events: EngineEvent[] = []
       for await (const ev of engine.stream(handle)) {
         events.push(ev)
         if (ev.type === "done" || ev.type === "error") break
       }
-      const err = events.find((e) => e.type === "error")
+      const err = events.find((e): e is Extract<EngineEvent, { type: "error" }> => e.type === "error")
       if (err) {
         const msg = String(err.message).toLowerCase()
         // 400 invalid_request_error includes "model is not supported"
@@ -249,7 +250,7 @@ d("CodexLocal — orchestrator end-to-end (V7)", () => {
         const tab = after?.tabs[0]
         expect(tab).toBeDefined()
 
-        const events: any[] = []
+        const events: OrchestratorEvent[] = []
         const unsub = orch.subscribeEvents(
           task.id,
           (ev) => {
