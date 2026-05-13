@@ -66,7 +66,7 @@ export type TerminalBindingsOpts = {
   pageSize?: Accessor<number>
   /**
    * Tear down the current PTY and spawn a fresh shell at the same
-   * worktree. Fires from `ctrl+shift+r` after the user confirms; the
+   * worktree. Fires from `F5` after the user confirms; the
    * component owns the confirm dialog because it has the
    * `useDialog()` context.
    */

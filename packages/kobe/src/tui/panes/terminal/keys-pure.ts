@@ -103,15 +103,17 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f1",
   "ctrl+p",
   "ctrl+,",
-  // Terminal reset — `ctrl+shift+r` kills the current shell and
-  // respawns at the worktree. The mnemonic mirrors browser hard-reload
-  // (Chrome / Firefox / Edge all use ctrl+shift+r for it), so users
-  // already have the muscle memory for "shift means reset, not
-  // soft-reload." Initial pass used `alt+r`, but opentui's native
-  // debug-overlay handler grabs alt+r before it reaches the JS keymap;
-  // ctrl+shift+r is unbound in Windows Terminal / iTerm2 / WT / shell
-  // readline alike.
-  "ctrl+shift+r",
+  // Terminal reset — `F5` kills the current shell and respawns at the
+  // worktree. Earlier passes tried `alt+r` (eaten by opentui's native
+  // debug-overlay handler) and `ctrl+shift+r` (Windows Terminal and
+  // most legacy emulators do NOT distinguish `ctrl+shift+letter` from
+  // `ctrl+letter` at the byte level — kobe receives `ctrl+r` and the
+  // shell sees `\x12`, kicking off readline's reverse-i-search).
+  // F-keys are sent as their own escape sequences (`\x1bOP` /
+  // `\x1b[15~` for F5) so they're unambiguous regardless of modifier
+  // distinguishing capability, and the browser-refresh mnemonic
+  // matches the "reset / restart" intent.
+  "f5",
 ] as const
 
 /**

@@ -613,10 +613,10 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     id: "terminal.reset",
     scope: "terminal",
-    keys: ["ctrl+shift+r"],
+    keys: ["f5"],
     category: "Terminal",
     description: "Reset terminal — kill the current shell and respawn",
-    hint: { keys: "ctrl+shift+r", label: "reset" },
+    hint: { keys: "f5", label: "reset" },
   },
   // NOTE: The terminal pane's bare-key passthrough (every alphanumeric /
   // named key forwarded to the PTY) is intentionally NOT in this table.
