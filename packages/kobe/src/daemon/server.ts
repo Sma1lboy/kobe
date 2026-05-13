@@ -263,7 +263,20 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "task.model": {
         const taskId = requireString(payload, "taskId")
-        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"))
+        const modelEffort = optionalString(payload, "modelEffort")
+        if (
+          modelEffort !== undefined &&
+          modelEffort !== "none" &&
+          modelEffort !== "minimal" &&
+          modelEffort !== "low" &&
+          modelEffort !== "medium" &&
+          modelEffort !== "high" &&
+          modelEffort !== "xhigh" &&
+          modelEffort !== "max"
+        ) {
+          throw new Error("modelEffort must be a supported effort level")
+        }
+        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"), modelEffort)
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
@@ -397,6 +410,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // dodge the check. Now the wire allows undefined.
         const text = optionalString(payload, "text")
         await orch.runTask(taskId, text, tabId)
+        // First-message runs allocate the worktree lazily inside
+        // `runTask`: empty `worktreePath` flips to the real path, and
+        // `branch` / `status` change too. Without this broadcast, the
+        // TUI's RemoteOrchestrator never learns — Files / Terminal
+        // panes key off `worktreePath` and stay stuck on the placeholder
+        // "no task" state forever. Symptoms: the user types "hi" in a
+        // fresh task, sees the worktree-allocated system.info row in
+        // chat, but the right column never lights up.
+        broadcastTaskUpdated(orch, clients, taskId)
         const task = orch.getTask(taskId)
         if (task)
           broadcast(clients, {

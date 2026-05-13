@@ -84,7 +84,7 @@ async function buildOrchestrator(engine?: AIEngine): Promise<{
 class HistoryEngine implements AIEngine {
   readonly identity: EngineIdentity
   readonly capabilities: EngineCapabilities
-  readonly spawns: Array<{ cwd: string; prompt: string; model?: string }> = []
+  readonly spawns: Array<{ cwd: string; prompt: string; model?: string; modelEffort?: string }> = []
   readonly streamCalls: string[] = []
   private readonly scripts = new Map<string, readonly EngineEvent[]>()
   private next = 1
@@ -95,7 +95,7 @@ class HistoryEngine implements AIEngine {
   }
 
   async spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
-    this.spawns.push({ cwd, prompt, model: opts?.model })
+    this.spawns.push({ cwd, prompt, model: opts?.model, modelEffort: opts?.modelEffort })
     return { sessionId: `${this.vendor}-${this.next++}`, cwd }
   }
 
@@ -1386,7 +1386,7 @@ describe("Orchestrator engine call shape", () => {
     expect(firstTab?.sessionId).toBe("claude-1")
 
     const secondTab = await orch.createTab(task.id)
-    await orch.setModel(task.id, "gpt-5.4-mini", secondTab.id)
+    await orch.setModel(task.id, "gpt-5.5", secondTab.id, "xhigh")
     await orch.setActiveTab(task.id, secondTab.id)
     await orch.runTask(task.id, "second tab")
     await orch._waitForPumpsIdle()
@@ -1396,9 +1396,11 @@ describe("Orchestrator engine call shape", () => {
     const tab2 = updated?.tabs.find((t) => t.id === secondTab.id)
     expect(tab1?.vendor).toBe("claude")
     expect(tab2?.vendor).toBe("codex")
-    expect(tab2?.model).toBe("gpt-5.4-mini")
+    expect(tab2?.model).toBe("gpt-5.5")
+    expect(tab2?.modelEffort).toBe("xhigh")
     expect(claude.spawns[0]?.model).toBe(claudeCapabilities.defaultModelId())
-    expect(codex.spawns[0]?.model).toBe("gpt-5.4-mini")
+    expect(codex.spawns[0]?.model).toBe("gpt-5.5")
+    expect(codex.spawns[0]?.modelEffort).toBe("xhigh")
 
     const firstHistory = await orch.readHistoryWithMetrics(tab1?.sessionId ?? "")
     const secondHistory = await orch.readHistoryWithMetrics(tab2?.sessionId ?? "")

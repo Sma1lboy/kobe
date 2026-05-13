@@ -412,7 +412,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   {
     // Shift+tab inside the composer cycles the per-task permission mode
-    // (default → accept edits → plan → …); the chord is registered in
+    // (default ↔ plan); the chord is registered in
     // Composer's onKeyDown, not here. Doc-only entry so the status bar
     // advertises the binding to a focused user.
     id: "chat.cycle-mode",
@@ -610,6 +610,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Terminal",
     description: "Scroll scrollback down",
   },
+  {
+    id: "terminal.reset",
+    scope: "terminal",
+    keys: ["f5"],
+    category: "Terminal",
+    description: "Reset terminal — kill the current shell and respawn",
+    hint: { keys: "f5", label: "reset" },
+  },
   // NOTE: The terminal pane's bare-key passthrough (every alphanumeric /
   // named key forwarded to the PTY) is intentionally NOT in this table.
   // Those aren't user-configurable shortcuts — they're terminal-pane
@@ -692,6 +700,8 @@ export type KobeKeybindingsOpts = {
    */
   onFocusNext?: () => void
   onFocusPrev?: () => void
+  /** Whether tab / shift+tab pane cycling should be registered. */
+  focusCycleEnabled?: () => boolean
   /**
    * Called after the user confirms quit. Defaults to `process.exit(0)`
    * which is correct in the production binary. Tests can pass a spy.
@@ -737,6 +747,7 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
     })
   const onFocusNext = opts.onFocusNext ?? (() => {})
   const onFocusPrev = opts.onFocusPrev ?? (() => {})
+  const focusCycleEnabled = opts.focusCycleEnabled ?? (() => true)
 
   // Auto-copy on selection finish.
   //
@@ -811,8 +822,6 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       ...bindByIds({
         "palette.open": () => palette.show(),
         "help.open": () => opts.onShowHelp(),
-        "focus.next": () => onFocusNext(),
-        "focus.prev": () => onFocusPrev(),
         // Ctrl+C is modifier-prefixed so it never collides with composer
         // typing. DialogProvider's own ctrl+c binding sits higher on the
         // stack and still wins while a dialog is open — that's the
@@ -821,6 +830,13 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       }),
     ]
   })
+  const focusCycleBindings = createMemo<Binding[]>(() =>
+    bindByIds({
+      "focus.next": () => onFocusNext(),
+      "focus.prev": () => onFocusPrev(),
+    }),
+  )
 
   useBindings(() => ({ bindings: bindings() }))
+  useBindings(() => ({ enabled: focusCycleEnabled(), bindings: focusCycleBindings() }))
 }

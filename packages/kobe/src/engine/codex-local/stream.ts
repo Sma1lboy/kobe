@@ -3,10 +3,13 @@
  *
  * Codex's stream-json shape (observed in CLI v0.130):
  *
+ *   { type: "session_meta", payload: { id: "<UUID>" } }
  *   { type: "thread.started", thread_id: "<UUID>" }
- *       — emitted once at the start of a session. We capture `thread_id`
- *         as the kobe-side session id and resolve the spawn deferred.
- *         No EngineEvent emitted.
+ *       — emitted once at the start of a session, depending on Codex
+ *         CLI version. We prefer `session_meta.payload.id` because it is
+ *         the persisted rollout id used by `codex exec resume` and by
+ *         the Codex rollout JSONL filename lookup; `thread_id` is
+ *         accepted as a legacy stream fallback. No EngineEvent emitted.
  *
  *   { type: "turn.started" }
  *       — informational; no EngineEvent.
@@ -39,8 +42,8 @@ export type LineSource = AsyncIterable<string>
 
 export interface ParseStreamJsonOpts {
   /**
-   * Called exactly once when we observe `thread.started`. CodexLocal
-   * uses this to resolve the deferred returned from `spawn()`.
+   * Called exactly once when we observe Codex's persisted session id.
+   * CodexLocal uses this to resolve the deferred returned from `spawn()`.
    */
   readonly onSessionId?: (sessionId: string) => void
 }
@@ -66,8 +69,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
     const type = typeof msg.type === "string" ? (msg.type as string) : undefined
     if (!type) continue
 
-    if (type === "thread.started") {
-      const sid = typeof msg.thread_id === "string" ? (msg.thread_id as string) : undefined
+    if (type === "session_meta" || type === "thread.started") {
+      const sid = codexSessionId(msg)
       if (sid && !sessionIdEmitted) {
         sessionIdEmitted = true
         opts.onSessionId?.(sid)
@@ -163,6 +166,16 @@ export async function* readLines(stream: AsyncIterable<unknown>): AsyncIterable<
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
+function codexSessionId(msg: Record<string, unknown>): string | undefined {
+  if (msg.type === "session_meta") {
+    const payload = isObject(msg.payload) ? (msg.payload as Record<string, unknown>) : undefined
+    const id = payload?.id
+    return typeof id === "string" && id.length > 0 ? id : undefined
+  }
+  const id = msg.thread_id
+  return typeof id === "string" && id.length > 0 ? id : undefined
 }
 
 function numberOr(v: unknown, fallback: number): number {

@@ -260,6 +260,7 @@ export class TaskIndexStore {
           seq: 1,
           createdAt: now,
           ...(rest.model ? { model: rest.model } : {}),
+          ...(rest.modelEffort ? { modelEffort: rest.modelEffort } : {}),
           vendor: rest.vendor ?? DEFAULT_TASK_VENDOR,
         },
       ]
@@ -511,6 +512,7 @@ function coerceTask(value: unknown): Task | null {
         createdAt: tt.createdAt,
         ...(typeof tt.title === "string" ? { title: tt.title } : {}),
         ...(typeof tt.model === "string" ? { model: tt.model } : {}),
+        ...(isModelEffortLevel(tt.modelEffort) ? { modelEffort: tt.modelEffort } : {}),
         ...(isVendorId(tt.vendor) ? { vendor: tt.vendor } : {}),
       }
       tabs.push(tab)
@@ -574,6 +576,7 @@ function coerceTask(value: unknown): Task | null {
     // stored choices to survive a model-list refresh (a user-pinned
     // `claude-opus-4-7` shouldn't get scrubbed when 4.8 drops).
     model: typeof v.model === "string" ? v.model : undefined,
+    modelEffort: isModelEffortLevel(v.modelEffort) ? v.modelEffort : undefined,
     // Engine vendor: optional. Records pre-dating the field normalize
     // to DEFAULT_TASK_VENDOR ("claude") so the orchestrator can route
     // without per-call fallback. Unknown strings also fall back to the
@@ -596,6 +599,12 @@ function coerceTask(value: unknown): Task | null {
 
 function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMode {
   return v === "default" || v === "plan"
+}
+
+function isModelEffortLevel(v: unknown): v is import("@/types/task").ModelEffortLevel {
+  return (
+    v === "none" || v === "minimal" || v === "low" || v === "medium" || v === "high" || v === "xhigh" || v === "max"
+  )
 }
 
 function isVendorId(v: unknown): v is VendorId {

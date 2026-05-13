@@ -31,11 +31,17 @@ export type ModelChoice = {
   readonly vendor: VendorId
   /** Vendor-specific model id passed to the adapter. */
   readonly id: string
+  /** Optional model-bound reasoning/effort level passed to the adapter. */
+  readonly effort?: ModelEffortLevel
+  /** Optional picker grouping label for model-bound levels. */
+  readonly level?: string
   /** Short label shown in the composer footer + picker. */
   readonly label: string
   /** Optional one-liner shown next to the label in the picker. */
   readonly hint?: string
 }
+
+export type ModelEffortLevel = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
 
 /**
  * Vendor-supplied capability surface — the single way kobe's
@@ -59,6 +65,8 @@ export interface EngineCapabilities {
   readonly label: string
   /** Catalog of models this vendor offers in the composer picker. */
   readonly models: readonly ModelChoice[]
+  /** Permission/trust modes this vendor can run through kobe. */
+  readonly permissionModes: readonly PermissionModeChoice[]
   /**
    * Resolve the current default model id for this vendor. Implementations
    * read the vendor's settings file (e.g. `~/.claude/settings.json` for
@@ -114,6 +122,11 @@ export interface SessionHandle {
  */
 export type PermissionMode = "default" | "plan"
 
+export interface PermissionModeChoice {
+  readonly id: PermissionMode
+  readonly label: string
+}
+
 /**
  * Optional knobs at spawn time. All fields optional — engine impls supply
  * sensible defaults. New options must be added here, not on a subclass.
@@ -121,6 +134,8 @@ export type PermissionMode = "default" | "plan"
 export interface SpawnOpts {
   /** Model identifier passed through to the engine (e.g. "opus-4.6"). */
   readonly model?: string
+  /** Optional model-bound effort/reasoning level. */
+  readonly modelEffort?: ModelEffortLevel
   /** Extra environment variables merged into the child process env. */
   readonly env?: Readonly<Record<string, string>>
   /** Hard timeout in milliseconds; engine should kill on overrun. */

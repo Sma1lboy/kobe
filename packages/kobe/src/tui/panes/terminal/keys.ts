@@ -64,6 +64,13 @@ export type TerminalBindingsOpts = {
   scroll: (lines: number) => void
   /** How many lines `ctrl+pgup`/`ctrl+pgdown` move per press. */
   pageSize?: Accessor<number>
+  /**
+   * Tear down the current PTY and spawn a fresh shell at the same
+   * worktree. Fires from `F5` after the user confirms; the
+   * component owns the confirm dialog because it has the
+   * `useDialog()` context.
+   */
+  reset: () => void
 }
 
 /**
@@ -94,6 +101,7 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
     ...bindByIds({
       "terminal.scroll-up": () => opts.scroll(-pageSize()),
       "terminal.scroll-down": () => opts.scroll(pageSize()),
+      "terminal.reset": () => opts.reset(),
     }),
   )
 

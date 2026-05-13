@@ -46,8 +46,8 @@ Or run without installing:
 bunx @sma1lboy/kobe
 ```
 
-The first launch drops you into an empty sidebar — press `ctrl+n` to create
-your first task. kobe will ask for a repo path and a base branch, then spin
+The first launch drops you into an empty sidebar — press `n` to create your
+first task. kobe will ask for a repo path and a base branch, then spin
 up a worktree at `<repo>/.claude/worktrees/<task-id>/` and a chat pane
 talking to a fresh `claude` session inside it.
 
@@ -63,18 +63,17 @@ Once you're in, the keys you'll use most:
 
 | Key                | What it does                                                   |
 | ------------------ | -------------------------------------------------------------- |
-| `ctrl+n`           | New task (any pane, any time)                                  |
-| `ctrl+1` / `2` / `3` / `4` | Jump straight to a pane (sidebar, workspace, files, terminal) |
+| `ctrl+h` / `ctrl+j` / `ctrl+k` / `ctrl+l` | Jump straight to a pane (sidebar, workspace, files, terminal) |
 | `tab`              | Cycle focus to the next pane                                   |
 | `ctrl+q`           | Detach back to the sidebar (your task keeps streaming)         |
 | `ctrl+o`           | Open the active task's worktree in your editor                 |
-| `?`                | Show the full keybinding help dialog                           |
-| `,` or `ctrl+,`    | Open Settings (theme, transparent background, dev reset)       |
+| `F1`               | Show the full keybinding help dialog                           |
+| `ctrl+,`           | Open Settings (theme, transparent background, dev reset)       |
 | `q`                | Quit (with confirm)                                            |
 
-Inside the sidebar, with a task highlighted: `j/k` to move, `enter` to open,
-`r` to rename, `a` to archive, `d` to delete, `[` / `]` to switch between the
-working session and the archives view.
+Inside the sidebar, with a task highlighted: `n` creates a task, `j/k` moves,
+`enter` opens, `r` renames, `a` archives, `d` deletes, `s` opens Settings, and
+`[` / `]` switches between the working session and the archives view.
 
 Inside the chat composer:
 
@@ -148,6 +147,21 @@ and confirm `claude --version` works in the same shell you launched kobe from.
 kobe's renderer requires Bun ≥ 1.0; it does not run under Node.
 
 **The terminal pane is blank** — kobe starts your `$SHELL` through Bun's native PTY. Confirm `$SHELL` points at an installed shell, your Bun version supports `Bun.spawn({ terminal })`, and the active task's worktree path still exists. `KOBE_TERMINAL_BACKEND=pipe` is available only as a fallback.
+
+**Some shortcuts do not work inside tmux** — kobe asks opentui to enable the
+kitty / CSI-u keyboard protocol, but tmux must pass those extended key
+sequences through. Add this to `~/.tmux.conf`, then restart tmux:
+
+```tmux
+set -g extended-keys on
+set -as terminal-features ',xterm*:extkeys'
+set -as terminal-features ',tmux*:extkeys'
+```
+
+Your outer terminal still has to send the sequences. For iTerm2, enable
+profile-level CSI-u key reporting. Terminal-app or macOS-level shortcuts can
+still intercept Option/Cmd chords before tmux sees them; no tmux setting can
+pass through a shortcut the terminal never forwards.
 
 **`posix_spawnp failed` when running `bun run test:behavior`** — on macOS arm64,
 Bun's installer occasionally ships `node-pty`'s prebuilt `spawn-helper` without

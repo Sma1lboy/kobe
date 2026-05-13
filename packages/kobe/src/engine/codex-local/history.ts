@@ -29,6 +29,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { normalizeCodexContent } from "./normalize"
+import { isSyntheticCodexUserRow } from "./synthetic"
 
 export interface HistoryDeps {
   /** Absolute path to `~/.codex/sessions`. */
@@ -156,18 +157,12 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     const role = payload.role
     if (role !== "user" && role !== "assistant" && role !== "system") continue
     const blocks = normalizeCodexContent(payload.content)
-    // Drop codex's synthetic "<environment_context>...</environment_context>"
-    // envelope. Codex injects this as the first user message of every
-    // session (cwd / shell / current_date / timezone / network access
-    // / sandbox mode payload), persists it in the rollout JSONL, and
-    // — unfiltered — surfaces in kobe's chat as a leading "user said
-    // <environment_context>...</environment_context>" row that
-    // doesn't belong to the conversation. The live `codex exec --json`
-    // stream does NOT replay it (it lives only on disk), so the leak
-    // is history-reload only. claude-code has the same shape with its
-    // own `<system-reminder>` blocks and filters them at the same
-    // layer.
-    if (role === "user" && isEnvironmentContextEnvelope(blocks)) continue
+    // Drop Codex's synthetic user rows. Codex persists both repository
+    // instructions and the environment envelope in rollout JSONL as
+    // role=user messages, but the live `codex exec --json` stream does
+    // not replay them. Reloading history should therefore hide them so
+    // the visible transcript matches what the user actually typed.
+    if (role === "user" && isSyntheticCodexUserRow(blocks)) continue
     const ts = typeof parsed.timestamp === "string" ? (parsed.timestamp as string) : new Date().toISOString()
     out.push({ role, blocks, timestamp: ts, sessionId })
   }
@@ -198,7 +193,7 @@ export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | unde
       const payload = isObject(parsed.payload) ? (parsed.payload as Record<string, unknown>) : undefined
       if (payload?.type === "message" && payload.role === "user" && timestampMs !== null) {
         const blocks = normalizeCodexContent(payload.content)
-        if (!isEnvironmentContextEnvelope(blocks)) lastUserTimestampMs = timestampMs
+        if (!isSyntheticCodexUserRow(blocks)) lastUserTimestampMs = timestampMs
       }
       continue
     }
@@ -271,22 +266,6 @@ function mergedDurationMs(intervals: readonly { startMs: number; endMs: number }
 
 function numberOr(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback
-}
-
-/**
- * True when every text block in the message is just codex's
- * `<environment_context>...</environment_context>` envelope.
- * Conservative — anything else mixed in (a user prompt that happens to
- * paste an envelope-shaped string) is preserved.
- */
-function isEnvironmentContextEnvelope(blocks: readonly { type: string; text?: string }[]): boolean {
-  if (blocks.length === 0) return false
-  for (const b of blocks) {
-    if (b.type !== "text") return false
-    const t = (b.text ?? "").trim()
-    if (!t.startsWith("<environment_context>") || !t.endsWith("</environment_context>")) return false
-  }
-  return true
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

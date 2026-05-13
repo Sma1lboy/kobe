@@ -14,6 +14,10 @@ export const claudeCapabilities: EngineCapabilities = {
   vendorId: "claude",
   label: "Claude Code",
   models: CLAUDE_MODELS,
+  permissionModes: [
+    { id: "default", label: "default" },
+    { id: "plan", label: "plan mode" },
+  ],
   defaultModelId: resolveClaudeDefaultModelId,
   contextWindowFor: claudeContextWindowFor,
 }

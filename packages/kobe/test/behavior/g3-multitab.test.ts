@@ -95,17 +95,22 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
 
 /**
  * Type a string into the new-task dialog: open via shortcut, fill
- * prompt, tab to repo, clear prefilled cwd, type repo, submit.
+ * repo, submit, then send the first prompt through the focused composer.
  */
 async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
-  await kobe.sendKeys("\x0e") // ctrl+n
+  await kobe.sendKeys("n")
   await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  await kobe.typeText(prompt)
-  await kobe.sendKeys("\t")
   for (let i = 0; i < 200; i++) {
     await kobe.sendKeys("\x7f")
   }
   await kobe.typeText(repo)
+  await kobe.sendKeys("\t")
+  await new Promise((r) => setTimeout(r, 100))
+  await kobe.sendKeys("\t")
+  await new Promise((r) => setTimeout(r, 100))
+  await kobe.sendKeys("\r")
+  await new Promise((r) => setTimeout(r, 250))
+  await kobe.typeText(prompt)
   await kobe.sendKeys("\r")
 }
 
@@ -137,7 +142,7 @@ afterEach(async () => {
 // Multi-tab end-to-end
 // ---------------------------------------------------------------------
 
-test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", async () => {
+test("G3-multitab — ctrl+t opens a new tab; ctrl+[/ctrl+] cycle between them", async () => {
   const fixture = await buildFixture()
   tmpRoot = fixture.tmpRoot
   const port = await pickFreePort()
@@ -171,10 +176,9 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
   // the new-task flow committed.
   await kobe.waitFor((s) => s.includes("TABONE"), 15_000)
 
-  // The tab bar should show a "[1] chat 1" chip (the bracket-chip
-  // vocabulary kobe uses elsewhere; see Chat.tsx).
-  const afterTab1 = await kobe.waitFor((s) => s.includes("[1]"), 5_000)
-  expect(afterTab1).toContain("[1]")
+  // The unified center tab strip should show the first chat chip.
+  const afterTab1 = await kobe.waitFor((s) => s.includes("chat 1"), 5_000)
+  expect(afterTab1).toContain("chat 1")
 
   // ---- Tab 2 (via ctrl+t) -------------------------------------
   // Pre-script tab 2's reply on its session id BEFORE pressing ctrl+t.
@@ -185,7 +189,7 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
     events: [{ type: "assistant.delta", text: "TABTWO" }, { type: "done" }] satisfies EngineEvent[],
   })
 
-  // The chat-pane-scoped tab bindings (ctrl+t, ctrl+1..9, ctrl+w)
+  // The chat-pane-scoped tab bindings (ctrl+t, ctrl+[/ctrl+], ctrl+w)
   // only fire when the workspace pane owns focus. The new-task flow
   // pulls focus to workspace after createTask lands (see
   // src/tui/app.tsx `openNewTaskFlow`).
@@ -194,11 +198,11 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
   // Same encoding the rest of the suite uses for ctrl+digit (see
   // sidebar-delete.test.ts).
   await kobe.sendKeys("\x1b[116;5u")
-  // The tab bar should now show two chips. We wait for "[2]" to
+  // The tab bar should now show two chips. We wait for "chat 2" to
   // appear — proves createTab landed in the store and the chat shell
   // re-rendered with the new tab.
-  const afterCtrlT = await kobe.waitFor((s) => s.includes("[2]"), 10_000)
-  expect(afterCtrlT).toContain("[2]")
+  const afterCtrlT = await kobe.waitFor((s) => s.includes("chat 2"), 10_000)
+  expect(afterCtrlT).toContain("chat 2")
 
   // Send a different prompt in tab 2. The composer is focused and
   // empty (new tab), so typing + enter submits.
@@ -206,25 +210,20 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
   await kobe.sendKeys("\r")
   await kobe.waitFor((s) => s.includes("TABTWO"), 15_000)
 
-  // ---- ctrl+1: back to tab 1 ----------------------------------
-  // ctrl+<digit> is delivered as the kitty CSI-u sequence
-  // \x1b[<codepoint>;5u where `codepoint` is the ASCII codepoint of
-  // the *digit character* (NOT the integer 1). For '1' that's 49.
-  // The opentui kitty parser surfaces this as
-  // `{ ctrl: true, name: "1" }`, which `keymap.tsx#matchKey` chords
-  // to the literal "ctrl+1".
-  await kobe.sendKeys("\x1b[49;5u")
+  // ---- ctrl+[: back to tab 1 ----------------------------------
+  // ctrl+[ / ctrl+] are delivered as kitty CSI-u sequences so the
+  // parser can distinguish ctrl+[ from a plain escape byte.
+  await kobe.sendKeys("\x1b[91;5u")
   await new Promise((r) => setTimeout(r, 250))
 
-  // ---- ctrl+2: back to tab 2 ----------------------------------
-  // ASCII '2' = 50.
-  await kobe.sendKeys("\x1b[50;5u")
+  // ---- ctrl+]: back to tab 2 ----------------------------------
+  await kobe.sendKeys("\x1b[93;5u")
   await new Promise((r) => setTimeout(r, 250))
 
   // Both tabs should still be present in the rendered tab bar.
   const finalScreen = await kobe.capture()
-  expect(finalScreen).toContain("[1]")
-  expect(finalScreen).toContain("[2]")
+  expect(finalScreen).toContain("chat 1")
+  expect(finalScreen).toContain("chat 2")
 
   // ---- ctrl+w: close active tab (was tab 2) -------------------
   // After ctrl+w we should be back on tab 1 alone. We assert the
@@ -239,17 +238,17 @@ test("G3-multitab — ctrl+t opens a new tab; ctrl+1/ctrl+2 jump between them", 
   await kobe.sendKeys("\x1b[119;5u")
   await new Promise((r) => setTimeout(r, 300))
 
-  // After close, the rendered chat bar should have only [1] in the
+  // After close, the rendered chat bar should have only chat 1 in the
   // CURRENT frame (cumulative buffer still shows history). We
   // re-render by typing into the composer to force a new paint.
   await kobe.typeText("after close")
   await new Promise((r) => setTimeout(r, 200))
   // Capture the most recent ~last screen height worth of bytes.
   const afterClose = await kobe.capture()
-  // [1] should still be there; we don't assert on [2] presence
+  // chat 1 should still be there; we don't assert on chat 2 presence
   // because the cumulative buffer keeps it. But the composer's
   // typed text proves we're still functional after the close.
-  expect(afterClose).toContain("[1]")
+  expect(afterClose).toContain("chat 1")
   expect(afterClose).toContain("after close")
 
   await kobe.exit()

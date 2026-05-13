@@ -14,9 +14,30 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-05-12
+
+### Fixed
+
+- **Model picker now chooses model before effort** — the picker first lists each model once, then asks for an effort/reasoning level when the selected model supports one, and the composer footer continues to show the active `model · effort` combination (KOB-81).
+
+## [0.5.18] - 2026-05-12
+
+### Fixed
+
+- **Self-update no longer prints npm peer-dependency warnings for Solid** — kobe now declares the `solid-js@1.9.12` version required by `@opentui/solid@0.2.4`, so `kobe update` / the topbar updater can install the latest npm package without the noisy `ERESOLVE overriding peer dependency` warning (KOB-80).
+
+## [0.5.17] - 2026-05-12
+
 ### Changed
 
 - **Worktree directories now use short animal-name slugs** — KOB-65 replaces the 26-character ULID directory names (`<repo>/.claude/worktrees/01KRD9TZAZRDXHRYA23AT2A77R/`) with a Conductor-style pool of ~410 animal names allocated per repo (`<repo>/.claude/worktrees/panda/`), with `-v2`/`-v3` suffixes when a slug is recycled after archive. Branch names and PR titles remain the source of truth for "what this work is"; the slug is just "where it lives on disk", and now fits comfortably in a terminal prompt. Existing ULID-named worktrees keep their dirs and are not migrated; only new tasks get animal slugs.
+
+### Fixed
+
+- **Codex model picker no longer offers the broken `minimal` reasoning option** — real `codex exec` rejects `model_reasoning_effort="minimal"` with the default tool set, so the picker now exposes only the effort levels that smoke-tested successfully (`none`, `low`, `medium`, `high`, `xhigh`).
+- **Topbar session ids now come from the active engine session** — the branch header no longer falls back to the deprecated task-level `sessionId`, and Codex sessions bind to the persisted rollout id from `session_meta` so the displayed `sid` is the id that history and resume actually use.
+- **Plan-mode switching is visible again for Claude Code and Codex** — the composer footer now always shows the active engine-owned mode label (`default` / `full access` / `plan mode`) as a clickable control, with shift+tab still cycling the same mode.
+- **Fast Codex follow-up prompts no longer trip duplicate session registration** — Codex turns release their stop-registry slot as soon as a terminal stream event arrives, and delayed cleanup from the previous subprocess can no longer unregister the newer subprocess that reused the same rollout id (KOB-79).
 
 ## [0.5.16] - 2026-05-12
 

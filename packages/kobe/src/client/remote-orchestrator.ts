@@ -3,7 +3,14 @@ import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
-import type { Message, OrchestratorEvent, PermissionMode, SessionMeta, UserInputResponse } from "../types/engine.ts"
+import type {
+  Message,
+  ModelEffortLevel,
+  OrchestratorEvent,
+  PermissionMode,
+  SessionMeta,
+  UserInputResponse,
+} from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
 import type { ChatTab, Task } from "../types/task.ts"
@@ -287,8 +294,13 @@ export class RemoteOrchestrator {
     await this.client.request("task.permissionMode", { taskId, mode })
   }
 
-  async setModel(taskId: string, model: string | undefined, tabId?: string): Promise<void> {
-    await this.client.request("task.model", { taskId, model, tabId })
+  async setModel(
+    taskId: string,
+    model: string | undefined,
+    tabId?: string,
+    modelEffort?: ModelEffortLevel,
+  ): Promise<void> {
+    await this.client.request("task.model", { taskId, model, tabId, modelEffort })
   }
 
   async createTab(taskId: string, opts: { title?: string } = {}): Promise<ChatTab> {
