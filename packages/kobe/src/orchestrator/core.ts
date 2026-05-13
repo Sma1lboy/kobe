@@ -88,15 +88,34 @@ import {
   nextChatTabSeq,
   worktreeSlug,
 } from "../types/task.ts"
+import {
+  CONCURRENCY_CAP,
+  CannotDeleteMainTaskError,
+  ConcurrencyCapError,
+  IllegalTransitionError,
+  PRPreconditionError,
+  TaskNotFoundError,
+} from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
 import { MetadataSuggester } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
+import { autoBranch, deriveTitleFromPrompt } from "./title.ts"
 import { renderUserInputResponsePrompt } from "./user-input.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
+export { TITLE_CHAR_CAP, deriveTitleFromPrompt } from "./title.ts"
+
+export {
+  CannotDeleteMainTaskError,
+  CONCURRENCY_CAP,
+  ConcurrencyCapError,
+  IllegalTransitionError,
+  PRPreconditionError,
+  TaskNotFoundError,
+} from "./errors.ts"
 
 /** DI surface for the orchestrator. Tests pass test doubles here. */
 export interface OrchestratorDeps {
@@ -128,9 +147,6 @@ export interface OrchestratorDeps {
   readonly metadataSuggester?: MetadataSuggester
 }
 
-/** Maximum simultaneous `in_progress` tasks. From DESIGN §11.5. */
-export const CONCURRENCY_CAP = 20
-
 /**
  * Placeholder label used when the user creates a task without typing a
  * first prompt (the new flow — the dialog only asks for repo + branch).
@@ -143,60 +159,6 @@ export const CONCURRENCY_CAP = 20
  * collide.
  */
 export const PLACEHOLDER_TASK_TITLE = "(new task)"
-
-/** Thrown when a state-machine transition is illegal. */
-export class IllegalTransitionError extends Error {
-  constructor(
-    public readonly from: TaskStatus,
-    public readonly to: TaskStatus,
-    public readonly taskId: string,
-  ) {
-    super(`illegal transition for task ${taskId}: ${from} -> ${to}`)
-    this.name = "IllegalTransitionError"
-  }
-}
-
-/** Thrown when we'd exceed {@link CONCURRENCY_CAP}. */
-export class ConcurrencyCapError extends Error {
-  constructor() {
-    super(`concurrency cap reached: ${CONCURRENCY_CAP} tasks running`)
-    this.name = "ConcurrencyCapError"
-  }
-}
-
-/**
- * Thrown when {@link Orchestrator.requestPR} cannot satisfy its
- * preconditions (no worktree, no resolvable repo, task is canceled).
- * Carries a human-readable message; the button handler renders it.
- */
-export class PRPreconditionError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = "PRPreconditionError"
-  }
-}
-
-/** Thrown when a task id cannot be resolved. */
-export class TaskNotFoundError extends Error {
-  constructor(taskId: string) {
-    super(`task not found: ${taskId}`)
-    this.name = "TaskNotFoundError"
-  }
-}
-
-/**
- * Thrown when a caller tries to {@link Orchestrator.deleteTask} a task
- * with `kind: "main"`. Main tasks are bound to a saved repo entry, not
- * a kobe-allocated worktree — the user removes the repo from saved
- * repos instead, which archives the main task. The wording is the
- * literal copy the UI surfaces in its confirm dialog.
- */
-export class CannotDeleteMainTaskError extends Error {
-  constructor() {
-    super("cannot delete a main task; remove the repo from saved repos instead")
-    this.name = "CannotDeleteMainTaskError"
-  }
-}
 
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
@@ -2050,47 +2012,4 @@ export class Orchestrator {
     // killedForInput case: leave status as in_progress — the user is
     // about to answer and we'll resume via respondToInput → runTask.
   }
-}
-
-/** Title cap for {@link deriveTitleFromPrompt}. Short enough to fit in a 42-char sidebar with status badge prefix. */
-export const TITLE_CHAR_CAP = 40
-
-/**
- * Reduce an arbitrary user prompt to a one-line sidebar label.
- *
- * Algorithm:
- *   1. Replace every run of whitespace (incl. newlines) with one space.
- *   2. Trim.
- *   3. If empty, return "" (caller decides whether to throw).
- *   4. If the result fits in {@link TITLE_CHAR_CAP}, return it.
- *   5. Otherwise truncate at the cap and append "…".
- *
- * Exported so the new-task dialog can preview the derived title before
- * the user submits, and so unit tests can hit it directly without
- * standing up a full orchestrator.
- */
-export function deriveTitleFromPrompt(prompt: string): string {
-  if (typeof prompt !== "string") return ""
-  const collapsed = prompt.replace(/\s+/g, " ").trim()
-  if (collapsed.length === 0) return ""
-  if (collapsed.length <= TITLE_CHAR_CAP) return collapsed
-  return `${collapsed.slice(0, TITLE_CHAR_CAP)}…`
-}
-
-/**
- * Build `kobe/<slug>-<ulid-suffix-4>` from a user-supplied title and
- * a freshly-minted ulid. The 4-char suffix is the last 4 chars of the
- * ulid which gives ~1M of randomness per ms — collision-free in
- * practice. We slug aggressively (lowercase, alnum + hyphen) and cap
- * at 32 chars so the branch name stays short on `git log`.
- */
-function autoBranch(title: string, taskId: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 32)
-  const suffix = taskId.slice(-4).toLowerCase()
-  const base = slug || "task"
-  return `kobe/${base}-${suffix}`
 }

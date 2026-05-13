@@ -38,6 +38,18 @@
 
 import type { SessionUsageMetrics } from "../../../session/usage-metrics.ts"
 import type { EngineEvent, Message, OrchestratorEvent } from "../../../types/engine.ts"
+import type { QueuedPrompt } from "./queue.ts"
+
+export {
+  QUEUE_SOFT_CAP,
+  clearQueue,
+  dequeueFirst,
+  enqueueBashCommand,
+  enqueuePrompt,
+  queueIsFull,
+  removeFromQueue,
+  updateQueueItem,
+} from "./queue.ts"
 
 /* --------------------------------------------------------------------- */
 /*  Bounded scrollback                                                    */
@@ -175,34 +187,7 @@ export function cleanChatText(text: string): string {
   return text.replace(NOISE_TAG_PATTERN, "").trim()
 }
 
-/**
- * One queued user prompt awaiting dispatch.
- *
- * The queue exists to support submissions while a turn is already
- * streaming — the user types Enter and we stash the prompt here
- * instead of either rejecting it or interrupting the in-flight model.
- * Mirrors the `'later'` priority slot in claude-code's
- * `refs/claude-code/src/utils/messageQueueManager.ts` (single FIFO,
- * priority-driven). `kind: 'queued'` rows are NOT chat rows — they
- * never appear in `messages` and don't survive the JSONL replay; they
- * live alongside `messages` in {@link ChatState} and are drained by
- * the chat shell when streaming flips false.
- */
-/**
- * Queued user-initiated work pending dispatch when streaming ends.
- * Discriminated by `kind` so the chat shell can route the head item
- * to the right consumer (prompt → engine, bash → local subprocess) —
- * matches claude-code's queue-by-mode behavior in
- * `refs/claude-code/src/utils/handlePromptSubmit.ts:336` where a mid-
- * stream `!cmd` enqueues with `mode: 'bash'` and the drain runs
- * `processBashCommand` instead of `processTextPrompt`. The two shapes
- * carry different payload fields (`text` vs `command`) because
- * conflating them under a single `text` slot lost the type discriminator
- * downstream — the drain needed an explicit kind to fork on.
- */
-export type QueuedPrompt =
-  | { readonly id: string; readonly kind: "prompt"; readonly text: string; readonly ts: string }
-  | { readonly id: string; readonly kind: "bash"; readonly command: string; readonly ts: string }
+export type { QueuedPrompt } from "./queue.ts"
 
 /** One chronological row in the chat. The renderer maps these to JSX. */
 export type ChatRow =
@@ -348,15 +333,6 @@ export function createInitialState(): ChatState {
 }
 
 /**
- * Soft cap on queued prompts. Past this we reject further enqueues
- * with a system row instead of growing the queue without bound.
- * 50 leaves plenty of headroom for spam-typing several thoughts in
- * a row without rejecting; the user can still hit the cap by
- * actively trying. claude-code itself has no documented cap.
- */
-export const QUEUE_SOFT_CAP = 50
-
-/**
  * Replace messages from `engine.readHistory(sessionId)`. Called once
  * per task mount. Clears nothing else (history load is independent of
  * streaming state — typically nothing's streaming at mount anyway).
@@ -413,98 +389,6 @@ export function pushUser(state: ChatState, prompt: string, nowIso: string = new 
     activeTurnStartedAt: nowIso,
     messages: capMessages([...state.messages, { kind: "user", text: prompt, ts: nowIso }], nowIso),
   }
-}
-
-/**
- * Append a prompt to the queue. Returns the same state when the queue
- * is full (use {@link queueIsFull} to detect and surface a hint to the
- * user). Each entry gets a unique id — the chat shell uses it to tie
- * the cancel button on the rendered queue row back to the right entry.
- *
- * The id is `q-<ts>-<random>`; the random tail keeps two enqueues in
- * the same millisecond distinct (Date.now() granularity isn't fine
- * enough on fast machines).
- */
-export function enqueuePrompt(state: ChatState, prompt: string, nowIso: string = new Date().toISOString()): ChatState {
-  if (state.queue.length >= QUEUE_SOFT_CAP) return state
-  const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
-  return {
-    ...state,
-    queue: [...state.queue, { id, kind: "prompt", text: prompt, ts: nowIso }],
-  }
-}
-
-/**
- * Append a `!shell` command to the queue. Same FIFO + cap rules as
- * {@link enqueuePrompt}. Used by the bash submit path when the engine
- * is already streaming — the command waits until the current turn
- * finishes, then the queue-drain microtask runs it locally (no model
- * query). Mirrors claude-code's `enqueue({ mode: 'bash', ... })` in
- * `refs/claude-code/src/utils/handlePromptSubmit.ts`.
- */
-export function enqueueBashCommand(
-  state: ChatState,
-  command: string,
-  nowIso: string = new Date().toISOString(),
-): ChatState {
-  if (state.queue.length >= QUEUE_SOFT_CAP) return state
-  const id = `q-${nowIso}-${Math.random().toString(36).slice(2, 8)}`
-  return {
-    ...state,
-    queue: [...state.queue, { id, kind: "bash", command, ts: nowIso }],
-  }
-}
-
-/** Whether enqueuePrompt would refuse the next prompt. */
-export function queueIsFull(state: ChatState): boolean {
-  return state.queue.length >= QUEUE_SOFT_CAP
-}
-
-/**
- * Pop the head of the queue. Returns `[nextState, dequeued]` so the
- * caller can dispatch the prompt. Both fields are stable when the
- * queue is empty: `[state, null]`.
- */
-export function dequeueFirst(state: ChatState): [ChatState, QueuedPrompt | null] {
-  if (state.queue.length === 0) return [state, null]
-  const [head, ...rest] = state.queue
-  if (!head) return [state, null]
-  return [{ ...state, queue: rest }, head]
-}
-
-/**
- * Replace the text of a queued PROMPT by id, keeping its position and
- * id. Bash queue entries are intentionally not editable in place —
- * `!cmd` flows through a separate submit path and re-enqueues as a
- * fresh entry. No-op (identity-preserving) when the id is unknown,
- * targets a bash entry, or the text matches the existing value.
- */
-export function updateQueueItem(state: ChatState, id: string, text: string): ChatState {
-  if (state.queue.length === 0) return state
-  let changed = false
-  const next = state.queue.map((q) => {
-    if (q.id === id && q.kind === "prompt" && q.text !== text) {
-      changed = true
-      return { ...q, text }
-    }
-    return q
-  })
-  if (!changed) return state
-  return { ...state, queue: next }
-}
-
-/** Remove a queued prompt by id (the cancel-button path). */
-export function removeFromQueue(state: ChatState, id: string): ChatState {
-  if (state.queue.length === 0) return state
-  const next = state.queue.filter((q) => q.id !== id)
-  if (next.length === state.queue.length) return state
-  return { ...state, queue: next }
-}
-
-/** Wipe the queue. Used on task switch / tab close. */
-export function clearQueue(state: ChatState): ChatState {
-  if (state.queue.length === 0) return state
-  return { ...state, queue: [] }
 }
 
 /* --------------------------------------------------------------------- */

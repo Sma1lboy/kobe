@@ -69,9 +69,13 @@ import { EmptyBorder, SplitBorder } from "../../component/border"
 import type { SlashEntry } from "../../context/command-palette"
 import { useFocus } from "../../context/focus"
 import { useTheme } from "../../context/theme"
+import { ComposerPathChips } from "./ComposerPathChips"
+import { ComposerQueue } from "./ComposerQueue"
 import { clipboardImageSupported } from "./composer/clipboard-image"
+import { isCursorAtFirstLine, isCursorAtLastLine } from "./composer/cursor"
 import { getHistory, pushHistory } from "./composer/history"
 import { ImagePasteRegistry } from "./composer/image-paste"
+import { deleteImageTokenBackward, deleteImageTokenForward } from "./composer/image-token-delete"
 import { composerKeyBindings } from "./composer/keybindings"
 import { isPermissionModeCycleKey } from "./composer/keys"
 import {
@@ -81,7 +85,7 @@ import {
   findMentionContext,
   getWorktreeFiles,
 } from "./composer/mention"
-import { findPreviewablePathRefs, formatPreviewPathLabel } from "./composer/path-preview"
+import { findPreviewablePathRefs } from "./composer/path-preview"
 import { resolvePlaceholder } from "./composer/placeholder"
 
 /**
@@ -252,14 +256,6 @@ export interface ComposerProps {
    */
   editingQueueId?: Accessor<string | null>
 }
-
-/**
- * Hard cap on visible queued rows so a fast typist who stacked 30
- * prompts doesn't push the textarea off-screen. Overflow rolls up
- * into a single muted `+ … N more queued` summary row. Mirrors
- * claude-code's `PromptInputQueuedCommands` overflow shape.
- */
-const QUEUE_VISIBLE_CAP = 4
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
@@ -543,41 +539,6 @@ export function Composer(props: ComposerProps) {
   }
 
   /**
-   * True if the caret is on the buffer's first visual line. We use
-   * this to decide whether up arrow navigates history vs. moves the
-   * caret. opentui exposes the cursor's logical row via
-   * `editBuffer.getCursorPosition()`, but the more portable path is
-   * to compute from `cursorOffset` and the text content — count
-   * newlines before the offset.
-   */
-  function isCursorAtFirstLine(): boolean {
-    const ref = textareaRef
-    if (!ref) return true
-    const offset = ref.cursorOffset
-    const text = ref.plainText
-    // A cursor is "on line 1" iff there's no newline between offset 0
-    // and the cursor. We don't care about wrapped lines — those are a
-    // visual artifact, not a buffer-line distinction. (If we did
-    // honor visual wrap, multi-line history navigation would feel
-    // janky in narrow terminals where every prompt wraps.)
-    for (let i = 0; i < offset; i++) {
-      if (text[i] === "\n") return false
-    }
-    return true
-  }
-
-  function isCursorAtLastLine(): boolean {
-    const ref = textareaRef
-    if (!ref) return true
-    const offset = ref.cursorOffset
-    const text = ref.plainText
-    for (let i = offset; i < text.length; i++) {
-      if (text[i] === "\n") return false
-    }
-    return true
-  }
-
-  /**
    * Recall an older entry: bumps `historyIndex` toward the past. If
    * already at the oldest entry, no-op. On first call (historyIndex
    * is null), snapshot the live draft so a later "off the end" walk
@@ -740,55 +701,6 @@ export function Composer(props: ComposerProps) {
     }
   }
 
-  /**
-   * If the cursor is sitting immediately after a `[Image #N]` token,
-   * delete the whole token in one keystroke. Otherwise return false
-   * so the caller falls through to the textarea's default backspace.
-   *
-   * Why: the placeholder is a 10–12 char string the user shouldn't
-   * have to peck at — `[`, `I`, `m`, `a`, `g`, `e`, ` `, `#`, `1`,
-   * `]` is a tedious 10 backspaces, and once half-eaten the regex
-   * expansion no longer matches so the image silently doesn't get
-   * attached. Atomic delete keeps the placeholder honest: it's one
-   * thing in the user's head, it should be one thing to delete.
-   *
-   * We use `setSelection` + `deleteSelection` (instead of `setText`)
-   * so the operation participates in undo and the cursor lands at
-   * the natural position. `hasSelection()` short-circuits the path
-   * so an active selection's backspace still does the obvious thing
-   * (delete the selection — opentui's default).
-   */
-  function deleteImageTokenBackward(): boolean {
-    const ref = textareaRef
-    if (!ref) return false
-    if (ref.hasSelection()) return false
-    const offset = ref.cursorOffset
-    if (offset === 0) return false
-    const match = /\[Image #(\d+)\]$/.exec(ref.plainText.slice(0, offset))
-    if (!match) return false
-    const start = offset - match[0].length
-    ref.setSelection(start, offset)
-    ref.deleteSelection()
-    return true
-  }
-
-  /** Forward-delete twin: nukes a `[Image #N]` token starting at the
-   *  cursor. Mirrors {@link deleteImageTokenBackward} for the `delete`
-   *  key (and platforms / muscle memory that prefer it). */
-  function deleteImageTokenForward(): boolean {
-    const ref = textareaRef
-    if (!ref) return false
-    if (ref.hasSelection()) return false
-    const offset = ref.cursorOffset
-    const text = ref.plainText
-    if (offset >= text.length) return false
-    const match = /^\[Image #(\d+)\]/.exec(text.slice(offset))
-    if (!match) return false
-    ref.setSelection(offset, offset + match[0].length)
-    ref.deleteSelection()
-    return true
-  }
-
   /** opentui calls this on every textarea content change. */
   function handleContentChange(): void {
     const ref = textareaRef
@@ -917,13 +829,13 @@ export function Composer(props: ComposerProps) {
     // why partial token deletes would silently corrupt the @path
     // expansion at submit time.
     if (key.name === "backspace" && !key.ctrl && !key.meta && !key.super && !key.shift) {
-      if (deleteImageTokenBackward()) {
+      if (deleteImageTokenBackward(textareaRef)) {
         key.preventDefault()
         return
       }
     }
     if (key.name === "delete" && !key.ctrl && !key.meta && !key.super && !key.shift) {
-      if (deleteImageTokenForward()) {
+      if (deleteImageTokenForward(textareaRef)) {
         key.preventDefault()
         return
       }
@@ -1011,13 +923,13 @@ export function Composer(props: ComposerProps) {
     if (key.ctrl || key.meta || key.super) return
 
     if (key.name === "up" && !key.shift) {
-      if (isCursorAtFirstLine() && historyPrev()) {
+      if (isCursorAtFirstLine(textareaRef) && historyPrev()) {
         key.preventDefault()
       }
       return
     }
     if (key.name === "down" && !key.shift) {
-      if (isCursorAtLastLine() && historyNext()) {
+      if (isCursorAtLastLine(textareaRef) && historyNext()) {
         key.preventDefault()
       }
       return
@@ -1327,104 +1239,18 @@ export function Composer(props: ComposerProps) {
           flexGrow={1}
           backgroundColor={theme.backgroundElement}
         >
-          {/* Queued prompts — live inside the composer rail so the
-              queue shares the same bordered block as the textarea
-              that will eventually flush them. Each row carries
-              `[edit]` (load into composer for in-place edit), `[↑]`
-              (interrupt + send now), and `[x]` (cancel). Clicking
-              the row's marker / label / text body also loads the
-              entry for edit. Hidden entirely when the queue is
-              empty so the textarea keeps its natural eye-line. */}
-          <Show when={(props.queue?.() ?? []).length > 0}>
-            <box flexDirection="column" paddingBottom={1}>
-              <For each={(props.queue?.() ?? []).slice(0, QUEUE_VISIBLE_CAP)}>
-                {(entry, idx) => {
-                  const isPrompt = entry.kind === "prompt"
-                  const isEditing = () => props.editingQueueId?.() === entry.id
-                  const onRowEdit = () => props.onEditQueued?.(entry.id)
-                  return (
-                    <box flexDirection="row" gap={1} alignItems="flex-start">
-                      <box
-                        flexDirection="row"
-                        gap={1}
-                        alignItems="flex-start"
-                        flexGrow={1}
-                        onMouseUp={isPrompt ? onRowEdit : undefined}
-                      >
-                        <text fg={isEditing() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>
-                          ○
-                        </text>
-                        <text fg={theme.textMuted} wrapMode="none">
-                          queued{idx() === 0 ? " (next)" : ""}:
-                        </text>
-                        <Show when={entry.kind === "bash"}>
-                          <text fg={theme.warning} wrapMode="none">
-                            (bash)
-                          </text>
-                        </Show>
-                        <box flexGrow={1}>
-                          <text fg={theme.text}>{entry.kind === "bash" ? entry.command : entry.text}</text>
-                        </box>
-                      </box>
-                      <Show when={isPrompt}>
-                        <text fg={theme.primary} attributes={TextAttributes.BOLD} onMouseUp={onRowEdit}>
-                          [edit]
-                        </text>
-                      </Show>
-                      <text
-                        fg={theme.primary}
-                        attributes={TextAttributes.BOLD}
-                        onMouseUp={() => props.onSendQueuedNow?.(entry.id)}
-                      >
-                        [↑]
-                      </text>
-                      <text
-                        fg={theme.error}
-                        attributes={TextAttributes.BOLD}
-                        onMouseUp={() => props.onCancelQueued?.(entry.id)}
-                      >
-                        [x]
-                      </text>
-                    </box>
-                  )
-                }}
-              </For>
-              <Show when={(props.queue?.() ?? []).length > QUEUE_VISIBLE_CAP}>
-                <box flexDirection="row" gap={1} alignItems="flex-start">
-                  <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
-                    +
-                  </text>
-                  <text fg={theme.textMuted}>
-                    {`… ${(props.queue?.() ?? []).length - QUEUE_VISIBLE_CAP} more queued`}
-                  </text>
-                </box>
-              </Show>
-            </box>
-          </Show>
-          <Show when={props.hasTask && previewablePathRefs().length > 0}>
-            <box flexDirection="row" gap={1} alignItems="center" paddingBottom={1}>
-              <text fg={theme.textMuted} wrapMode="none">
-                open
-              </text>
-              <For each={previewablePathRefs()}>
-                {(ref) => (
-                  <box
-                    flexDirection="row"
-                    flexShrink={1}
-                    maxWidth={36}
-                    backgroundColor={theme.backgroundPanel}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    onMouseUp={() => props.onOpenFilePath?.(ref.path)}
-                  >
-                    <text fg={theme.primary} attributes={TextAttributes.UNDERLINE} wrapMode="none">
-                      {formatPreviewPathLabel(ref.path, 34)}
-                    </text>
-                  </box>
-                )}
-              </For>
-            </box>
-          </Show>
+          <ComposerQueue
+            queue={props.queue?.() ?? []}
+            editingQueueId={props.editingQueueId}
+            onEditQueued={props.onEditQueued}
+            onSendQueuedNow={props.onSendQueuedNow}
+            onCancelQueued={props.onCancelQueued}
+          />
+          <ComposerPathChips
+            hasTask={props.hasTask}
+            refs={previewablePathRefs()}
+            onOpenFilePath={props.onOpenFilePath}
+          />
           <box flexDirection="row" gap={1} alignItems="flex-start">
             {/* Prompt glyph — four states:
                 idle               → `>` (theme.primary)
