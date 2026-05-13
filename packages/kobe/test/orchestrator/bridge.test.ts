@@ -22,6 +22,7 @@ import { shortHomeTag } from "../../src/daemon/paths.ts"
 import { bridgeSocketPathForHome, startBridge } from "../../src/orchestrator/bridge/index.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
+import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -30,6 +31,29 @@ const REPO_INIT = path.resolve(__dirname, "../behavior/fixtures/repo-init.sh")
 let tmpRoot: string
 let homeDir: string
 let repo: string
+
+class NoopMetadataSuggester extends MetadataSuggester {
+  override async suggestBranchSlug(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestTitle(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestWorktreeSlug(): Promise<string | null> {
+    return null
+  }
+}
+
+function makeOrchestrator(store: TaskIndexStore): Orchestrator {
+  return new Orchestrator({
+    engine: new FakeAIEngine(),
+    store,
+    worktrees: new GitWorktreeManager(),
+    metadataSuggester: new NoopMetadataSuggester(),
+  })
+}
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-bridge-"))
@@ -99,7 +123,7 @@ describe("orchestrator bridge", () => {
   test("startBridge writes mcp.json and exports KOBE_MCP_CONFIG", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
-    const orch = new Orchestrator({ engine: new FakeAIEngine(), store, worktrees: new GitWorktreeManager() })
+    const orch = makeOrchestrator(store)
     const handles = await startBridge(orch, { homeDir })
     try {
       expect(handles.mcpConfigPath).toMatch(/mcp-\d+\.json$/)
@@ -118,7 +142,7 @@ describe("orchestrator bridge", () => {
   test("list_tasks → spawn_task → list_tasks roundtrip mutates the store", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
-    const orch = new Orchestrator({ engine: new FakeAIEngine(), store, worktrees: new GitWorktreeManager() })
+    const orch = makeOrchestrator(store)
     const handles = await startBridge(orch, { homeDir })
     try {
       const empty = (await call(handles.socketPath, "list_tasks", {})) as unknown[]
@@ -144,7 +168,7 @@ describe("orchestrator bridge", () => {
   test("unknown method returns a structured error", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
-    const orch = new Orchestrator({ engine: new FakeAIEngine(), store, worktrees: new GitWorktreeManager() })
+    const orch = makeOrchestrator(store)
     const handles = await startBridge(orch, { homeDir })
     try {
       await expect(call(handles.socketPath, "no_such_method", {})).rejects.toThrow(/unknown method/)

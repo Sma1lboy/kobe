@@ -8,6 +8,7 @@ import { fallbackTestSocketPath } from "../../src/daemon/paths.ts"
 import { startDaemonServer } from "../../src/daemon/server.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
+import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { FakeAIEngine } from "../behavior/fake-engine.ts"
 
@@ -18,6 +19,20 @@ let homeDir: string
 let repo: string
 let socketPath: string
 let pidPath: string
+
+class NoopMetadataSuggester extends MetadataSuggester {
+  override async suggestBranchSlug(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestTitle(): Promise<string | null> {
+    return null
+  }
+
+  override async suggestWorktreeSlug(): Promise<string | null> {
+    return null
+  }
+}
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-daemon-"))
@@ -37,7 +52,12 @@ afterEach(() => {
 async function buildOrchestrator(): Promise<Orchestrator> {
   const store = new TaskIndexStore({ homeDir })
   await store.load()
-  return new Orchestrator({ engine: new FakeAIEngine(), store, worktrees: new GitWorktreeManager() })
+  return new Orchestrator({
+    engine: new FakeAIEngine(),
+    store,
+    worktrees: new GitWorktreeManager(),
+    metadataSuggester: new NoopMetadataSuggester(),
+  })
 }
 
 describe("daemon server", () => {

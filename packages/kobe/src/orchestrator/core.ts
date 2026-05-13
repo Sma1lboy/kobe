@@ -90,7 +90,7 @@ import {
 } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
-import { MetadataSuggester } from "./metadata-suggester.ts"
+import { MetadataSuggester, type MetadataSuggestionContext } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
@@ -118,12 +118,12 @@ export interface OrchestratorDeps {
   readonly store: TaskIndexStore
   readonly worktrees: GitWorktreeManager
   /**
-   * Optional override for the claude-driven metadata suggester
+   * Optional override for the engine-driven metadata suggester
    * (branch slug today; worktree slug + title API exposed for
    * follow-ups). Tests inject a fake to avoid shelling out to
-   * `claude -p`. When omitted, the orchestrator constructs a default
-   * instance — the binary lookup inside it is lazy, so this stays
-   * free at construction time.
+   * the selected engine. When omitted, the orchestrator constructs a default
+   * instance. Construction is cheap; the engine is only touched when
+   * the orchestrator asks for a suggestion.
    */
   readonly metadataSuggester?: MetadataSuggester
 }
@@ -957,14 +957,19 @@ export class Orchestrator {
 
   /**
    * Replace a temp `kobe/tmp-<ulid>` branch with a meaningful name
-   * derived from `prompt` via a one-shot `claude -p` suggestion. Runs
+   * derived from `prompt` via a one-shot selected-engine suggestion. Runs
    * in the background — failures are swallowed so the chat never
    * sees a "branch rename failed" banner. Skips:
    *   - tasks whose branch isn't a tmp branch (user picked it)
    *   - empty prompts (nothing to derive from)
-   *   - claude binary missing / suggestion failed / timed out
+   *   - engine suggestion failed / timed out
    */
-  private async maybeRenameTempBranch(taskId: TaskId, tabId: string, prompt: string | undefined): Promise<void> {
+  private async maybeRenameTempBranch(
+    taskId: TaskId,
+    tabId: string,
+    prompt: string | undefined,
+    context: MetadataSuggestionContext,
+  ): Promise<void> {
     if (!prompt || prompt.trim().length === 0) return
     const task = this.store.get(taskId)
     if (!task || !task.worktreePath) return
@@ -977,7 +982,7 @@ export class Orchestrator {
       text: "branch: choosing a name…",
     })
 
-    const slug = await this.metadataSuggester.suggestBranchSlug(prompt)
+    const slug = await this.metadataSuggester.suggestBranchSlug(prompt, context)
     if (!slug) return
 
     // Re-read in case the task changed (rename, archive) while we
@@ -1002,8 +1007,8 @@ export class Orchestrator {
   }
 
   /**
-   * Replace the auto-derived sidebar title with a claude-suggested one
-   * via a one-shot `claude -p` call. Runs in the background — failures
+   * Replace the auto-derived sidebar title with an engine-suggested one
+   * via a one-shot selected-engine call. Runs in the background — failures
    * are swallowed.
    *
    * Skips the upgrade when the title isn't the truncate-derived form
@@ -1013,7 +1018,7 @@ export class Orchestrator {
    * skips again if the title shifted while we were waiting (the user
    * renamed it mid-flight).
    */
-  private async maybeUpgradeTitle(taskId: TaskId, prompt: string): Promise<void> {
+  private async maybeUpgradeTitle(taskId: TaskId, prompt: string, context: MetadataSuggestionContext): Promise<void> {
     if (!prompt || prompt.trim().length === 0) return
     const task = this.store.get(taskId)
     if (!task) return
@@ -1024,7 +1029,7 @@ export class Orchestrator {
     // here with task.title !== derived, and we leave it alone.
     if (task.title !== derived) return
 
-    const suggested = await this.metadataSuggester.suggestTitle(prompt)
+    const suggested = await this.metadataSuggester.suggestTitle(prompt, context)
     if (!suggested) return
     if (suggested === derived) return
 
@@ -1077,15 +1082,6 @@ export class Orchestrator {
         text: `worktree: ${task.worktreePath} (branch ${task.branch})`,
       })
     }
-    // Background: kick off a `claude -p` suggestion to replace the
-    // temp branch name with something meaningful. Fire-and-forget;
-    // never blocks the chat. The rename method emits its own
-    // system.info row when it succeeds.
-    if (isFirstAllocation && prompt) {
-      const renameTabId = this.resolveTab(task, tabId).id
-      void this.maybeRenameTempBranch(task.id, renameTabId, prompt)
-    }
-
     // Resolve the target tab. Default to the active one so existing
     // single-tab callers keep working. We don't auto-create — the
     // caller is expected to know the tab id (the active one is fine).
@@ -1156,6 +1152,21 @@ export class Orchestrator {
       : this.engineForTab(task, targetTab)
     const modelToUse = this.modelForTab(task, targetTab, engine)
     const modelEffortToUse = this.modelEffortForTab(task, targetTab)
+    const metadataContext: MetadataSuggestionContext = {
+      engine,
+      cwd: task.worktreePath || task.repo,
+      model: modelToUse,
+      ...(modelEffortToUse ? { modelEffort: modelEffortToUse } : {}),
+      ...(task.permissionMode ? { permissionMode: task.permissionMode } : {}),
+    }
+
+    // Background: kick off a selected-engine suggestion to replace the
+    // temp branch name with something meaningful. Fire-and-forget;
+    // never blocks the chat. The rename method emits its own
+    // system.info row when it succeeds.
+    if (isFirstAllocation && prompt) {
+      void this.maybeRenameTempBranch(task.id, targetTab.id, prompt, metadataContext)
+    }
 
     let handle: SessionHandle
     if (targetTab.sessionId) {
@@ -1196,12 +1207,12 @@ export class Orchestrator {
           const derived = deriveTitleFromPrompt(prompt)
           if (derived) await this.store.update(task.id, { title: derived })
         }
-        // Background: ask claude for a tighter sidebar title to replace
+        // Background: ask the selected engine for a tighter sidebar title to replace
         // the truncate-derived one. Fire-and-forget; the rename method
         // bails out if the user manually rewrote the title in the
         // meantime, so this never stomps an explicit choice.
         if (prompt && prompt.trim().length > 0) {
-          void this.maybeUpgradeTitle(task.id, prompt)
+          void this.maybeUpgradeTitle(task.id, prompt, metadataContext)
         }
       } finally {
         releaseLatch()

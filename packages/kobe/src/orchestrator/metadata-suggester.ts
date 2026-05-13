@@ -1,47 +1,35 @@
 /**
- * Single class that wraps every "ask claude for a piece of task
- * metadata" call kobe makes. Today: branch slugs (shipped) +
+ * Single class that wraps every "ask the active engine for a piece of
+ * task metadata" call kobe makes. Today: branch slugs (shipped) +
  * worktree slugs and titles (API only — not yet wired into the
  * orchestrator's main flow).
  *
  * Why a class instead of N exported functions:
  *
- *   - **One init seam.** `findClaudeBinary` is run once per instance,
- *     lazily on first method call, and the resolved path (or `null`
- *     for "binary missing, give up") is cached. Startup is not
- *     blocked: an instance can be constructed eagerly and the probe
- *     fires only when the orchestrator first asks for a suggestion.
- *
  *   - **One spawn + sanitize seam.** Each suggestion is a
- *     timeout-bounded `claude -p` shell-out that resolves to either
+ *     timeout-bounded engine one-shot that resolves to either
  *     a sanitized string or `null`. The instruction text and
  *     sanitizer differ per metadata kind; the runner doesn't.
  *
  *   - **Injectable.** `Orchestrator` accepts a `metadataSuggester` in
  *     its deps. Tests pass a fake that returns canned values without
- *     touching the network or the user's `claude` install.
+ *     touching the network or the user's engine install.
  *
  * Failure mode contract (matches the previous standalone helper):
  * NEVER throw, NEVER block the user-visible flow. Anything that goes
- * wrong (binary missing, prompt empty, timeout, claude error,
+ * wrong (engine error, prompt empty, timeout,
  * unparseable response) collapses to `null`. Callers ALWAYS have a
  * deterministic fallback (deriveTitleFromPrompt for titles, ulid
  * suffix for branches) so a `null` is never a hard failure for the
  * user.
  *
- * TODO(stabilize): each `claude -p` invocation writes a JSONL
- * session under `~/.claude/projects/<cwd-encoded>/<uuid>.jsonl`, so
- * we leak one tiny session per suggestion. To clean those up we'd
- * need to switch this helper to `--output-format stream-json`,
- * capture the session id from the `system.init` event, then call
- * `engine.deleteHistory(sid)` after the rename completes. Tracked
- * outside this consolidation.
+ * Metadata sessions are deleted best-effort after the one-shot stream
+ * completes so these suggestions do not clutter the user's history.
  */
 
-import { type ChildProcess, spawn } from "node:child_process"
-import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
+import type { AIEngine, ModelEffortLevel, PermissionMode, SessionHandle, SpawnOpts } from "../types/engine.ts"
 
-/** How long we wait for claude to reply before giving up on a suggestion. */
+/** How long we wait for the engine to reply before giving up on a suggestion. */
 const SUGGESTION_TIMEOUT_MS = 30_000
 
 /** Hard cap on slug length so kebab outputs stay readable in `git log` and on disk. */
@@ -51,7 +39,7 @@ const MAX_SLUG_LEN = 32
 const MAX_TITLE_LEN = 60
 
 /**
- * Builder for the prompt fed to `claude -p`. Returns the full
+ * Builder for the prompt fed to the selected engine. Returns the full
  * instruction text including the user's task at the bottom.
  */
 type InstructionBuilder = (userPrompt: string) => string
@@ -63,23 +51,27 @@ type InstructionBuilder = (userPrompt: string) => string
  */
 type ResponseSanitizer = (rawStdout: string) => string | null
 
+export type MetadataSuggestionContext = {
+  readonly engine: AIEngine
+  readonly cwd: string
+  readonly model?: string
+  readonly modelEffort?: ModelEffortLevel
+  readonly permissionMode?: PermissionMode
+}
+
 /**
- * Wraps the `claude -p` one-shot calls used to derive task metadata.
+ * Wraps the engine one-shot calls used to derive task metadata.
  * One instance per process is the common pattern; the orchestrator
  * holds a default instance unless tests inject their own.
  */
 export class MetadataSuggester {
-  // null sentinel inside the cached promise = "probed, claude is missing".
-  // The promise itself is created lazily so construction is free.
-  private binaryPromise: Promise<string | null> | null = null
-
   /**
    * Suggest a kebab-case slug for a git branch name. The caller composes
    * the final branch (e.g. `kobe/<slug>-<ulid-suffix>`); we only
    * return the action-oriented body.
    */
-  async suggestBranchSlug(prompt: string): Promise<string | null> {
-    return this.runOneShot(buildBranchInstruction, sanitizeKebabSlug, prompt)
+  async suggestBranchSlug(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    return this.runOneShot(buildBranchInstruction, sanitizeKebabSlug, prompt, context)
   }
 
   /**
@@ -89,8 +81,8 @@ export class MetadataSuggester {
    * deliberately deferred — the API is exposed so the orchestrator
    * can adopt it without another refactor.
    */
-  async suggestWorktreeSlug(prompt: string): Promise<string | null> {
-    return this.runOneShot(buildWorktreeInstruction, sanitizeKebabSlug, prompt)
+  async suggestWorktreeSlug(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    return this.runOneShot(buildWorktreeInstruction, sanitizeKebabSlug, prompt, context)
   }
 
   /**
@@ -100,24 +92,13 @@ export class MetadataSuggester {
    * derived title to a claude-asked one without touching the call
    * site again.
    */
-  async suggestTitle(prompt: string): Promise<string | null> {
-    return this.runOneShot(buildTitleInstruction, sanitizeTitleText, prompt)
+  async suggestTitle(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
+    return this.runOneShot(buildTitleInstruction, sanitizeTitleText, prompt, context)
   }
 
   /**
-   * Resolve the path to the user's `claude` binary, lazily and once.
-   * Cached even on failure so we don't repeatedly retry a missing
-   * install per-suggestion.
-   */
-  private async resolveBinary(): Promise<string | null> {
-    if (!this.binaryPromise) {
-      this.binaryPromise = findClaudeBinary().catch(() => null)
-    }
-    return this.binaryPromise
-  }
-
-  /**
-   * Spawn `claude -p <instruction>`, capture stdout to EOF, sanitize.
+   * Spawn the selected engine with a metadata-only instruction,
+   * capture assistant text to EOF, sanitize.
    * Resolves with the sanitized string or null on any failure path.
    * The promise NEVER rejects — that's a load-bearing invariant for
    * the orchestrator's "fire-and-forget" use of these methods.
@@ -126,53 +107,53 @@ export class MetadataSuggester {
     builder: InstructionBuilder,
     sanitize: ResponseSanitizer,
     prompt: string,
+    context: MetadataSuggestionContext,
   ): Promise<string | null> {
     const trimmed = prompt.trim()
     if (!trimmed) return null
-    const binary = await this.resolveBinary()
-    if (!binary) return null
 
-    return new Promise<string | null>((resolve) => {
-      let proc: ChildProcess
-      try {
-        proc = spawn(binary, ["-p", builder(trimmed)], {
-          // Don't run inside any worktree — these are tiny string
-          // tasks, not project work, and we don't want claude to
-          // pull in repo context (or have its cwd matter at all).
-          stdio: ["ignore", "pipe", "ignore"],
-          env: process.env,
-        })
-      } catch {
+    let handle: SessionHandle | null = null
+    let timedOut = false
+    const opts: SpawnOpts = {
+      ...(context.model ? { model: context.model } : {}),
+      ...(context.modelEffort ? { modelEffort: context.modelEffort } : {}),
+      ...(context.permissionMode ? { permissionMode: context.permissionMode } : {}),
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        timedOut = true
+        if (handle) void context.engine.stop(handle).catch(() => {})
         resolve(null)
-        return
-      }
-
-      let buf = ""
-      let settled = false
-      const settle = (v: string | null): void => {
-        if (settled) return
-        settled = true
-        try {
-          proc.kill()
-        } catch {
-          /* already dead */
-        }
-        resolve(v)
-      }
-
-      const timer = setTimeout(() => settle(null), SUGGESTION_TIMEOUT_MS)
-      proc.stdout?.on("data", (chunk: Buffer | string) => {
-        buf += typeof chunk === "string" ? chunk : chunk.toString("utf8")
-      })
-      proc.on("error", () => {
-        clearTimeout(timer)
-        settle(null)
-      })
-      proc.on("close", () => {
-        clearTimeout(timer)
-        settle(sanitize(buf))
-      })
+      }, SUGGESTION_TIMEOUT_MS)
     })
+    const run = (async (): Promise<string | null> => {
+      try {
+        handle = await context.engine.spawn(context.cwd, builder(trimmed), opts)
+        let buf = ""
+        for await (const ev of context.engine.stream(handle)) {
+          if (ev.type === "assistant.delta") {
+            buf += ev.text
+          } else if (ev.type === "error") {
+            return null
+          }
+        }
+        return sanitize(buf)
+      } catch {
+        return null
+      } finally {
+        if (timer) clearTimeout(timer)
+        if (handle) {
+          if (!timedOut) {
+            await context.engine.deleteHistory(handle.sessionId).catch(() => {})
+          }
+          if (timedOut) {
+            await context.engine.stop(handle).catch(() => {})
+          }
+        }
+      }
+    })()
+    return await Promise.race([run, timeout])
   }
 }
 
