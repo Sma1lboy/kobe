@@ -81,6 +81,7 @@ The seams matter:
 | Finding the `claude` binary | `src/engine/claude-code-local/binary.ts` |
 | Task lifecycle | `src/orchestrator/core.ts` |
 | Per-task chat tabs (multi-session) | `src/orchestrator/core.ts:913` (`createTab`) + `src/types/task.ts:63` (`ChatTab`) |
+| Pending user-input detection + response prompts | `src/orchestrator/user-input.ts` |
 | `git worktree` wrapper | `src/orchestrator/worktree/manager.ts` |
 | Worktree path convention | `src/orchestrator/worktree/paths.ts:30` |
 | Task index on disk | `src/orchestrator/index/store.ts` |

@@ -40,11 +40,10 @@ import {
   TITLE_CHAR_CAP,
   TaskNotFoundError,
   deriveTitleFromPrompt,
-  detectUserInputFromEngineEvent,
-  renderUserInputResponsePrompt,
 } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
+import { detectUserInputFromEngineEvent, renderUserInputResponsePrompt } from "../../src/orchestrator/user-input.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"

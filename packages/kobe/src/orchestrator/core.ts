@@ -68,17 +68,12 @@ import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
-  AskQuestionEntry,
-  AskQuestionPayload,
-  EngineEvent,
   EngineHistory,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
-  QuestionOption,
   SessionHandle,
   SessionMeta,
-  UserInputPayload,
   UserInputResponse,
 } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
@@ -99,6 +94,7 @@ import { MetadataSuggester } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { SessionPump } from "./session-pump.ts"
+import { renderUserInputResponsePrompt } from "./user-input.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
 
@@ -2054,116 +2050,6 @@ export class Orchestrator {
     // killedForInput case: leave status as in_progress — the user is
     // about to answer and we'll resume via respondToInput → runTask.
   }
-}
-
-/* --------------------------------------------------------------------- */
-/*  User-input request detection                                          */
-/* --------------------------------------------------------------------- */
-
-/**
- * Inspect an engine event to see if it represents a tool that pauses
- * the session for user input. Returns the typed payload to surface or
- * `null` when the event is uninteresting.
- *
- * Currently recognises {@link ExitPlanMode}; AskUserQuestion lands here
- * next. We dispatch on the `tool.start` event because:
- *
- *   1. The input already carries the plan body — we don't need to wait
- *      for the tool to finish writing a file on disk.
- *   2. In `claude -p` mode the subprocess can't actually wait for the
- *      user, so the tool returns very quickly with a "submitted for
- *      approval" marker and the subprocess exits. Reacting to start
- *      means the approval banner is up before the user sees the
- *      `done` event flip the spinner off.
- */
-export function detectUserInputFromEngineEvent(ev: EngineEvent): UserInputPayload | null {
-  if (ev.type !== "tool.start") return null
-  // Both v1 and v2 of ExitPlanMode ship under the same name (see
-  // refs/claude-code/src/tools/ExitPlanModeTool/constants.ts).
-  if (ev.name === "ExitPlanMode" || ev.name === "ExitPlanModeV2Tool") {
-    const input = ev.input
-    if (!input || typeof input !== "object") return null
-    const obj = input as Record<string, unknown>
-    const plan = typeof obj.plan === "string" ? obj.plan : ""
-    const filePath = typeof obj.filePath === "string" ? obj.filePath : null
-    // We always emit even when the plan body is empty — an empty plan
-    // is a model bug worth surfacing in the UI ("Approve this empty plan?")
-    // rather than silently swallowing.
-    return { kind: "approve_plan", plan, filePath }
-  }
-  if (ev.name === "AskUserQuestion") {
-    return parseAskUserQuestionInput(ev.input)
-  }
-  return null
-}
-
-/**
- * Pull a typed AskQuestion payload out of the raw tool input. Defensive:
- * the shape is documented (refs/claude-code/src/tools/AskUserQuestionTool/
- * AskUserQuestionTool.tsx schema) but we tolerate missing optional
- * fields rather than dropping the whole request. Returns null only
- * when the input has no usable question with at least one option.
- */
-function parseAskUserQuestionInput(input: unknown): AskQuestionPayload | null {
-  if (!input || typeof input !== "object") return null
-  const obj = input as Record<string, unknown>
-  if (!Array.isArray(obj.questions)) return null
-  const out: AskQuestionEntry[] = []
-  for (const q of obj.questions) {
-    if (!q || typeof q !== "object") continue
-    const qo = q as Record<string, unknown>
-    const question = typeof qo.question === "string" ? qo.question : ""
-    if (!question) continue
-    const header = typeof qo.header === "string" ? qo.header : ""
-    const multiSelect = qo.multiSelect === true
-    const opts = Array.isArray(qo.options) ? qo.options : []
-    const options: QuestionOption[] = []
-    for (const o of opts) {
-      if (!o || typeof o !== "object") continue
-      const oo = o as Record<string, unknown>
-      const label = typeof oo.label === "string" ? oo.label : ""
-      if (!label) continue
-      const description = typeof oo.description === "string" ? oo.description : ""
-      options.push({ label, description })
-    }
-    if (options.length === 0) continue
-    out.push({ question, header, multiSelect, options })
-  }
-  if (out.length === 0) return null
-  return { kind: "ask_question", questions: out }
-}
-
-/**
- * Build the synthetic user prompt sent on `--resume` after the user
- * answers a {@link UserInputRequestEvent}. Pure, exported for testing.
- *
- * Wording is deliberately minimal and direct — the model has the prior
- * context (the plan it just submitted), so this is just the "verdict"
- * not a re-statement. Returns `""` for unhandled response shapes so
- * the caller can short-circuit without sending an empty prompt.
- */
-export function renderUserInputResponsePrompt(req: UserInputPayload, response: UserInputResponse): string {
-  if (req.kind === "approve_plan" && response.kind === "approve_plan") {
-    if (response.approve) {
-      return "Plan approved. Please proceed with the implementation as outlined."
-    }
-    return "Plan rejected. Please reconsider the approach and present a revised plan."
-  }
-  if (req.kind === "ask_question" && response.kind === "ask_question") {
-    // One bullet per asked question with the user's answer. We
-    // iterate `req.questions` (not `response.answers`) so unanswered
-    // questions surface as "(no answer)" rather than disappearing —
-    // makes the model's continuation predictable when the user
-    // skipped one (e.g. multi-select with zero picks).
-    const lines: string[] = ["You asked:"]
-    for (const q of req.questions) {
-      const ans = response.answers[q.question]
-      lines.push(`- ${q.question} → ${ans && ans.length > 0 ? ans : "(no answer)"}`)
-    }
-    lines.push("", "Please continue.")
-    return lines.join("\n")
-  }
-  return ""
 }
 
 /** Title cap for {@link deriveTitleFromPrompt}. Short enough to fit in a 42-char sidebar with status badge prefix. */

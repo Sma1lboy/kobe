@@ -85,7 +85,7 @@ export function useTestSideChannel(deps: {
     // requestId selector.
     const latest = pending[pending.length - 1]
     if (!latest) throw new Error("no pending input for active task — picker hasn't rendered yet?")
-    const { renderUserInputResponsePrompt } = await import("../../orchestrator/core.ts")
+    const { renderUserInputResponsePrompt } = await import("../../orchestrator/user-input.ts")
     const prompt = renderUserInputResponsePrompt(latest.payload, response)
     await orchestrator.respondToInput(task.id, latest.requestId, response)
     return { taskId: task.id, requestId: latest.requestId, prompt }

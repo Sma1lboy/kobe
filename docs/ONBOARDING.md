@@ -75,7 +75,6 @@ kobe/
 ├── docs/                          # source-of-truth markdown
 │   ├── ARCHITECTURE.md
 │   ├── DESIGN.md
-│   ├── HANDOFF-v1.md
 │   ├── HARNESS.md
 │   ├── LINEAR.md
 │   ├── ONBOARDING.md  ← you are here
@@ -84,6 +83,7 @@ kobe/
 ├── .agents/skills/                # installed agent skills (linear, ...)
 ├── .claude/skills/                # symlinks → .agents/skills/<name>
 ├── .linear.toml                   # linear-cli pins workspace + KOB team
+├── HANDOFF.md                     # latest session state + follow-ups
 └── CLAUDE.md                      # workspace + project rules
 ```
 

@@ -19,8 +19,9 @@ If you're here to **use kobe**, read [`packages/kobe/README.md`](./packages/kobe
 
 If you're here to **work on it**, the orientation docs are at the repo root:
 
-- [`HANDOFF.md`](./HANDOFF.md) — original briefing, the why behind the project
+- [`HANDOFF.md`](./HANDOFF.md) — latest session state, current risks, open follow-ups
 - [`CLAUDE.md`](./CLAUDE.md) — operating rules + memory pointers
+- [`CONTEXT.md`](./CONTEXT.md) — domain vocabulary used by architecture discussions
 - [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy + architectural decisions
 - [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — where each piece of code lives, and why
 - [`docs/PLAN.md`](./docs/PLAN.md) — phase / wave plan and gate history

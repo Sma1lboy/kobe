@@ -38,7 +38,8 @@
 
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle } from "../types/engine.ts"
 import type { PendingInputBroker } from "../types/pending-input-broker.ts"
-import { chatRunStateKey, detectUserInputFromEngineEvent } from "./core.ts"
+import { chatRunStateKey } from "./core.ts"
+import { detectUserInputFromEngineEvent } from "./user-input.ts"
 
 export interface SessionPumpEnvironment {
   /**

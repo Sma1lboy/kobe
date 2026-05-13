@@ -190,22 +190,22 @@ bun run dev          # boots the 5-pane TUI under KOBE_DEV=1 (no update chip, et
 bun run test         # normal suite: fast tests + serial socket tests
 bun run test:behavior  # slow PTY suite; only run for user-visible TUI behavior
 bun run typecheck    # strict tsc
-bun run build        # produces ./dist/index.js for `npm publish`
+bun run build        # produces ./dist/cli/index.js + ./dist/bin/kobed.js for npm
 ```
 
 Architecture, design philosophy, and the team-of-agents operating model live in:
 
-- [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy, tech stack lock-in.
-- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — module map and current state.
-- [`docs/HARNESS.md`](./docs/HARNESS.md) — the agent self-test contract.
-- [`docs/PLAN.md`](./docs/PLAN.md) — phase / wave plan.
-- [`HANDOFF.md`](./HANDOFF.md) — current direction + what just shipped.
+- [`docs/DESIGN.md`](../../docs/DESIGN.md) — design philosophy, tech stack lock-in.
+- [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) — module map and current state.
+- [`docs/HARNESS.md`](../../docs/HARNESS.md) — the agent self-test contract.
+- [`docs/PLAN.md`](../../docs/PLAN.md) — phase / wave plan.
+- [`HANDOFF.md`](../../HANDOFF.md) — latest session state and follow-ups.
 
 ### Releasing
 
 Bump `package.json`, move `## [Unreleased]` in `CHANGELOG.md` to the new
 version section, commit, then push the matching `vX.Y.Z` tag. The release
-workflow ([`.github/workflows/release.yml`](./.github/workflows/release.yml))
+workflow ([`.github/workflows/release.yml`](../../.github/workflows/release.yml))
 runs typecheck + unit tests + build, asserts the tag matches `package.json`,
 then `npm publish --provenance` and creates a GitHub release with the
 changelog section as the body.

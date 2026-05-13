@@ -469,7 +469,7 @@ Polish + the bits that need cross-pane coordination.
 - [x] CLAUDE.md updated with Phase 2 entry plan
 - [x] HANDOFF.md replaced or updated for next session
 
-Shipped as `@sma1lboy/kobe@0.1.0` on npm (see [`CHANGELOG.md`](../CHANGELOG.md#010---2026-05-09)
+Shipped as `@sma1lboy/kobe@0.1.0` on npm (see [`CHANGELOG.md`](../packages/kobe/CHANGELOG.md#010---2026-05-09)
 for the full feature manifest). Wave 4 polish landed via the
 worktree-agent merges between 2026-05-09 morning and afternoon
 plus the inline approval flows (ExitPlanMode + AskUserQuestion).
