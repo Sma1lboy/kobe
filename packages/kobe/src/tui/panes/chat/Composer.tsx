@@ -228,6 +228,22 @@ export interface ComposerProps {
    * context. Omit to disable bash mode for this composer instance.
    */
   onBashCommand?: (command: string) => void
+  /**
+   * Begin editing a queued prompt: parent loads the entry's text into
+   * the composer draft and the next submit replaces the entry in
+   * place rather than dispatching a fresh prompt. Wired to the
+   * `[edit]` button and the queue row's clickable text body. Bash
+   * queue entries are intentionally not editable; the parent gates
+   * this affordance off for them.
+   */
+  onEditQueued?: (id: string) => void
+  /**
+   * Id of the queued prompt currently being edited (parent-owned).
+   * The matching row tints its leading `○` marker in `theme.primary`
+   * so the user can tell which entry the composer is targeting.
+   * `null` / undefined when no row is being edited.
+   */
+  editingQueueId?: Accessor<string | null>
 }
 
 /**
@@ -1301,45 +1317,65 @@ export function Composer(props: ComposerProps) {
         >
           {/* Queued prompts — live inside the composer rail so the
               queue shares the same bordered block as the textarea
-              that will eventually flush them. Each row carries `[▶]`
-              (interrupt + send now) and `[x]` (cancel) affordances.
-              Hidden entirely when the queue is empty so the textarea
-              keeps its natural eye-line. */}
+              that will eventually flush them. Each row carries
+              `[edit]` (load into composer for in-place edit), `[↑]`
+              (interrupt + send now), and `[x]` (cancel). Clicking
+              the row's marker / label / text body also loads the
+              entry for edit. Hidden entirely when the queue is
+              empty so the textarea keeps its natural eye-line. */}
           <Show when={(props.queue?.() ?? []).length > 0}>
             <box flexDirection="column" paddingBottom={1}>
               <For each={(props.queue?.() ?? []).slice(0, QUEUE_VISIBLE_CAP)}>
-                {(entry, idx) => (
-                  <box flexDirection="row" gap={1} alignItems="flex-start">
-                    <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
-                      +
-                    </text>
-                    <text fg={theme.textMuted} wrapMode="none">
-                      queued{idx() === 0 ? " (next)" : ""}:
-                    </text>
-                    <Show when={entry.kind === "bash"}>
-                      <text fg={theme.warning} wrapMode="none">
-                        (bash)
+                {(entry, idx) => {
+                  const isPrompt = entry.kind === "prompt"
+                  const isEditing = () => props.editingQueueId?.() === entry.id
+                  const onRowEdit = () => props.onEditQueued?.(entry.id)
+                  return (
+                    <box flexDirection="row" gap={1} alignItems="flex-start">
+                      <box
+                        flexDirection="row"
+                        gap={1}
+                        alignItems="flex-start"
+                        flexGrow={1}
+                        onMouseUp={isPrompt ? onRowEdit : undefined}
+                      >
+                        <text fg={isEditing() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>
+                          ○
+                        </text>
+                        <text fg={theme.textMuted} wrapMode="none">
+                          queued{idx() === 0 ? " (next)" : ""}:
+                        </text>
+                        <Show when={entry.kind === "bash"}>
+                          <text fg={theme.warning} wrapMode="none">
+                            (bash)
+                          </text>
+                        </Show>
+                        <box flexGrow={1}>
+                          <text fg={theme.text}>{entry.kind === "bash" ? entry.command : entry.text}</text>
+                        </box>
+                      </box>
+                      <Show when={isPrompt}>
+                        <text fg={theme.primary} attributes={TextAttributes.BOLD} onMouseUp={onRowEdit}>
+                          [edit]
+                        </text>
+                      </Show>
+                      <text
+                        fg={theme.primary}
+                        attributes={TextAttributes.BOLD}
+                        onMouseUp={() => props.onSendQueuedNow?.(entry.id)}
+                      >
+                        [↑]
                       </text>
-                    </Show>
-                    <box flexGrow={1}>
-                      <text fg={theme.text}>{entry.kind === "bash" ? entry.command : entry.text}</text>
+                      <text
+                        fg={theme.error}
+                        attributes={TextAttributes.BOLD}
+                        onMouseUp={() => props.onCancelQueued?.(entry.id)}
+                      >
+                        [x]
+                      </text>
                     </box>
-                    <text
-                      fg={theme.primary}
-                      attributes={TextAttributes.BOLD}
-                      onMouseUp={() => props.onSendQueuedNow?.(entry.id)}
-                    >
-                      [▶]
-                    </text>
-                    <text
-                      fg={theme.error}
-                      attributes={TextAttributes.BOLD}
-                      onMouseUp={() => props.onCancelQueued?.(entry.id)}
-                    >
-                      [x]
-                    </text>
-                  </box>
-                )}
+                  )
+                }}
               </For>
               <Show when={(props.queue?.() ?? []).length > QUEUE_VISIBLE_CAP}>
                 <box flexDirection="row" gap={1} alignItems="flex-start">

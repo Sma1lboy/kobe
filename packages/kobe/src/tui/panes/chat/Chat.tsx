@@ -73,6 +73,7 @@ import {
   pushSystemError,
   queueIsFull,
   removeFromQueue,
+  updateQueueItem,
 } from "./store"
 import { useChatSession } from "./use-chat-session"
 
@@ -212,6 +213,20 @@ export function Chat(props: ChatProps) {
 
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
+  // Id of the queue entry currently being edited via click-to-edit.
+  // Chat-scoped (not per-tab) — switching tabs implicitly resets via
+  // the createEffect below that watches the active tab's queue.
+  const [editingQueueId, setEditingQueueId] = createSignal<string | null>(null)
+
+  // Drop edit state when the target queue entry leaves the active tab's
+  // queue (cancelled, drained by the streaming finish effect, or the
+  // user switched tabs to a tab whose queue doesn't contain that id).
+  createEffect(() => {
+    const id = editingQueueId()
+    if (id === null) return
+    const present = activeState().queue.some((q) => q.id === id)
+    if (!present) setEditingQueueId(null)
+  })
 
   const tasksAcc = props.orchestrator.tasksSignal()
 
@@ -450,7 +465,7 @@ export function Chat(props: ChatProps) {
    *
    * The same lock is held by the steer path in {@link send} (and by
    * extension {@link sendQueuedNow}). Without that extension, a user
-   * who clicks `[▶]` on a queued prompt while two other prompts sit in
+   * who clicks `[↑]` on a queued prompt while two other prompts sit in
    * the queue races: `interruptTask` flips `isStreaming` false via the
    * `done` event in the gap between `await interruptTask` and
    * `await runTask`, the drain effect wakes up, pops the head, and now
@@ -795,7 +810,9 @@ export function Chat(props: ChatProps) {
 
   /**
    * Cancel one queued prompt by id. Called by the cancel-button on
-   * each queued row inside the composer.
+   * each queued row inside the composer. If the cancelled item was
+   * the one being edited, the createEffect that watches queue
+   * membership tears down `editingQueueId` on the next tick.
    */
   function cancelQueued(id: string): void {
     patchActiveState((s) => removeFromQueue(s, id))
@@ -823,6 +840,21 @@ export function Chat(props: ChatProps) {
       return
     }
     void send(entry.text, "steer")
+  }
+
+  /**
+   * Begin editing a queued prompt: load its text into the composer
+   * draft and remember the id so the next submit replaces the entry
+   * in place instead of dispatching a new prompt. Clicking a different
+   * queued row while already editing swaps the target (any uncommitted
+   * draft text on the previous target is discarded — pressing Enter
+   * is the only way to commit).
+   */
+  function editQueued(id: string): void {
+    const entry = activeState().queue.find((q) => q.id === id)
+    if (!entry || entry.kind !== "prompt") return
+    setEditingQueueId(id)
+    setDraft(entry.text)
   }
 
   /** Create a new tab and switch focus to it. Wired from `ctrl+t`. */
@@ -1014,6 +1046,28 @@ export function Chat(props: ChatProps) {
   }
 
   function handleComposerSubmit(trimmed: string, mode: "auto" | "steer" = "auto"): void {
+    // Click-to-edit commit: when a queue entry is being edited, the
+    // composer's submit replaces that entry's text in place instead
+    // of dispatching a new prompt. Empty trimmed text deletes the
+    // entry (same semantics as the [x] cancel button). If the target
+    // already left the queue mid-edit (the drain effect popped it),
+    // fall through to the normal send path so the user's text isn't
+    // silently dropped.
+    const editingId = editingQueueId()
+    if (editingId !== null) {
+      const stillQueued = activeState().queue.some((q) => q.id === editingId)
+      if (stillQueued) {
+        setEditingQueueId(null)
+        if (trimmed.length === 0) {
+          patchActiveState((s) => removeFromQueue(s, editingId))
+        } else {
+          patchActiveState((s) => updateQueueItem(s, editingId, trimmed))
+        }
+        setDraft("")
+        return
+      }
+      setEditingQueueId(null)
+    }
     if (trimmed.length === 0) {
       if (lastToolIndex() !== null) toggleExpandLastTool()
       return
@@ -1190,6 +1244,8 @@ export function Chat(props: ChatProps) {
           onCancelQueued={cancelQueued}
           onSendQueuedNow={sendQueuedNow}
           onBashCommand={handleBashCommand}
+          onEditQueued={editQueued}
+          editingQueueId={editingQueueId}
         />
       </Show>
     </box>
