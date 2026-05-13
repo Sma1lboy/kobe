@@ -697,6 +697,40 @@ export class Orchestrator {
     this.unsubscribeStore()
   }
 
+  /**
+   * Stop every live engine session (SIGTERM → grace → SIGKILL per the
+   * engine's `stop()` contract). Mirrors `stopAllTabsForTask` but
+   * across *every* (task, tab) we currently hold a handle for, with
+   * stops issued in parallel — each handle's session id is unique so
+   * the engine registries don't contend.
+   *
+   * Used by `KobeCore.close()` so a graceful daemon SIGTERM doesn't
+   * leave claude/codex subprocesses reparented to init, where they'd
+   * keep running models and writing transcript until something else
+   * kills them. The earlier `dispose()` path only unhooked the store
+   * subscription, which left every live session orphaned — load-bearing
+   * for anyone running `kobed stop` / `kobed restart` while tasks are
+   * active. See KOB / Pre-1.0 整理 leak audit.
+   */
+  async stopAllSessions(): Promise<void> {
+    const entries = Array.from(this.handles.entries())
+    this.handles.clear()
+    await Promise.allSettled(
+      entries.map(async ([key, handle]) => {
+        const sep = key.indexOf(":")
+        if (sep === -1) return
+        const taskId = key.slice(0, sep) as TaskId
+        const tabId = key.slice(sep + 1)
+        try {
+          await this.engineForTaskTabId(taskId, tabId).stop(handle)
+        } catch {
+          // Best-effort — every other lifecycle path also swallows here.
+        }
+      }),
+    )
+    this.bumpRunState()
+  }
+
   /** Snapshot of the current task list. Defensive copy. */
   listTasks(): Task[] {
     return this.store.list()

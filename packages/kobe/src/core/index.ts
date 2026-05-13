@@ -60,6 +60,13 @@ export async function createKobeCore(options: KobeCoreOptions = {}): Promise<Kob
     worktrees,
     bridge,
     async close() {
+      // Order matters: stop live engine sessions BEFORE we tear down
+      // the bridge (so any final mcp-bridge tool call replies cleanly)
+      // and BEFORE dispose() drops the store subscription. Without
+      // this, a graceful daemon shutdown (`kobed stop`, SIGTERM) left
+      // claude/codex subprocesses orphaned to init, where they'd keep
+      // running models and writing transcript indefinitely.
+      await orchestrator.stopAllSessions()
       await bridge?.close()
       orchestrator.dispose()
     },
