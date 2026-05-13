@@ -197,8 +197,8 @@ export interface ComposerProps {
    *
    * Discriminated by `kind`: prompt items show plain text, bash items
    * (Claude-Code `!cmd` parity, queued during streaming) render with a
-   * leading `!` in theme.warning so the user can tell at a glance which
-   * are queued shell commands vs queued model prompts.
+   * leading `(bash)` label in theme.warning so the user can tell at a
+   * glance which are queued shell commands vs queued model prompts.
    */
   queue?: Accessor<
     readonly (
@@ -1333,8 +1333,8 @@ export function Composer(props: ComposerProps) {
                       queued{idx() === 0 ? " (next)" : ""}:
                     </text>
                     <Show when={entry.kind === "bash"}>
-                      <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-                        !
+                      <text fg={theme.warning} wrapMode="none">
+                        (bash)
                       </text>
                     </Show>
                     <box flexGrow={1}>
