@@ -1,74 +1,11 @@
-/**
- * Orchestrator core — Wave 2 Stream E.
- *
- * The glue layer. Owns the task lifecycle and dispatches to the three
- * Wave 1 modules: {@link AIEngine} (Stream A), `GitWorktreeManager`
- * (Stream B), and `TaskIndexStore` (Stream C). The whole upstream stack
- * is injected so behavior tests can swap in `FakeAIEngine` and a tmpdir
- * store without touching network or git auth.
- *
- * Design notes:
- *
- *   - **Status state machine.** Transitions are enforced explicitly here,
- *     not implicitly through `update({ status })`. `runTask` only fires
- *     when the task is `backlog` (or already done/error and being
- *     re-run); `pauseTask` only fires when in_progress; `archiveTask`
- *     accepts `done` or `canceled` and is allowed from any state. Bad
- *     transitions throw `IllegalTransitionError` so callers can branch.
- *
- *   - **Concurrency cap (4).** Per DESIGN §11.5 (resolved). When a 5th
- *     `runTask` is requested we reject with a typed `ConcurrencyCapError`
- *     rather than silently queueing — the UI surfaces the error and the
- *     user can pause something. Queueing belongs in a later stream.
- *
- *   - **Resume cwd — typed via `SpawnOpts.cwd`.** `AIEngine.resume()`
- *     has no positional cwd parameter (only `spawn()` does). The
- *     orchestrator runs in kobe's binary cwd, NOT the task's worktree,
- *     so we must always pass `task.worktreePath` when resuming. The
- *     primary channel is the typed `opts.cwd` field on `SpawnOpts`;
- *     engines MUST honour it. We also still set
- *     `opts.env.KOBE_RESUME_CWD` as a defensive duplicate — the env-var
- *     back-channel can be removed in a follow-up release once external
- *     consumers are confirmed off it. Both paths are load-bearing and
- *     tested below.
- *
- *   - **Per-task event bus.** Events from `engine.stream(handle)` flow
- *     into a small in-memory bus (`Map<TaskId, Set<cb>>`). The chat
- *     pane subscribes per active task; on task switch the previous
- *     subscription is torn down. Subscribers are weak (we hold the cb,
- *     not the task), so a leaked subscription leaks one closure, not
- *     a worktree.
- *
- *   - **Solid integration.** `tasksSignal()` returns a Solid `Accessor`
- *     so `<Sidebar tasks={orch.tasksSignal()} />` works directly.
- *     Internally we keep a `createSignal<Task[]>` and rewrite it from a
- *     `TaskIndexStore.subscribe(cb)` listener. The store is the source
- *     of truth; the signal is a reactive mirror that wakes up on every
- *     mutation — without the orchestrator having to remember to call a
- *     `refreshSignal()` helper at every mutation point. The earlier
- *     "manual refresh after each mutation" pattern bit us when an
- *     unrelated code path mutated the store and the sidebar didn't
- *     redraw (Jackson's "task was done in JSON, sidebar still in
- *     Backlog" bug); the listener-based pattern is missable-by-design.
- *
- * What this file deliberately does NOT do:
- *
- *   - Persist event history (Claude Code's JSONL is the source of truth;
- *     `engine.readHistory(sessionId)` retrieves it).
- *   - Manage worktree teardown on archive (DESIGN §2.4 says we leave the
- *     worktree until the user explicitly removes it; we just stop the
- *     engine).
- *   - Branch lifecycle (we never delete branches).
- */
+/** Orchestrator facade: public task API plus wiring between domain modules. */
 
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
 import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
-import { resolveRepoRoot, sameRepoToplevel } from "../state/repos.ts"
 import type {
   AIEngine,
-  EngineHistory,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
@@ -77,17 +14,18 @@ import type {
   UserInputResponse,
 } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import type { ChatTab, PermissionMode, Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import {
-  type ChatTab,
-  DEFAULT_TASK_VENDOR,
-  type PermissionMode,
-  type Task,
-  type TaskId,
-  type TaskStatus,
-  type VendorId,
-  nextChatTabSeq,
-  worktreeSlug,
-} from "../types/task.ts"
+  clearChatTab,
+  closeChatTab,
+  createChatTab,
+  openSessionInChatTab,
+  resolveChatTab,
+  setActiveChatTab,
+  setChatTabTitle,
+  updateChatTab,
+} from "./chat-tabs.ts"
+import { EngineRouter } from "./engine-routing.ts"
 import {
   CONCURRENCY_CAP,
   CannotDeleteMainTaskError,
@@ -101,12 +39,15 @@ import { ulid } from "./index/ulid.ts"
 import { MetadataSuggester } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
+import { PLACEHOLDER_TASK_TITLE, TaskRunner } from "./run-task.ts"
 import { SessionPump } from "./session-pump.ts"
+import { TaskWorktreeCoordinator, summarizeWorktreeError } from "./task-worktree.ts"
 import { autoBranch, deriveTitleFromPrompt } from "./title.ts"
 import { renderUserInputResponsePrompt } from "./user-input.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
-import { SlugAllocator } from "./worktree/slug-allocator.ts"
 export { TITLE_CHAR_CAP, deriveTitleFromPrompt } from "./title.ts"
+export { PLACEHOLDER_TASK_TITLE } from "./run-task.ts"
+export { summarizeWorktreeError } from "./task-worktree.ts"
 
 export {
   CannotDeleteMainTaskError,
@@ -147,76 +88,23 @@ export interface OrchestratorDeps {
   readonly metadataSuggester?: MetadataSuggester
 }
 
-/**
- * Placeholder label used when the user creates a task without typing a
- * first prompt (the new flow — the dialog only asks for repo + branch).
- * `runTask` watches for this exact string on the first user submit and
- * back-fills a derived title from the prompt. See {@link runTask}.
- *
- * The sentinel must NEVER be a value `deriveTitleFromPrompt` could
- * produce — keep the leading paren so any user-typed prompt with this
- * exact text gets stripped of the parens by the deriver and won't
- * collide.
- */
-export const PLACEHOLDER_TASK_TITLE = "(new task)"
-
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
   readonly repo: string
-  /**
-   * The user's first prompt. Optional — when present, the first ~40
-   * characters become the auto-derived title (see
-   * {@link deriveTitleFromPrompt}). When absent, the task is given a
-   * placeholder title; the user can either type their first message in
-   * the composer afterward (the orchestrator auto-updates the title
-   * from the first non-empty `runTask` prompt — see {@link runTask})
-   * or pass `title` explicitly here.
-   *
-   * Claude Code does NOT persist a separate "title" field on its
-   * sessions, so we cannot recover one from `engine.readHistory`.
-   */
+  /** Optional first prompt used to derive the initial title. */
   readonly prompt?: string
-  /**
-   * Optional explicit title override. When omitted (the common path),
-   * we derive from `prompt` via {@link deriveTitleFromPrompt}. When
-   * provided, callers take responsibility for length/format — we still
-   * trim, but otherwise use it verbatim.
-   */
+  /** Explicit title override. */
   readonly title?: string
-  /**
-   * Branch override. When omitted, we generate
-   * `kobe/<title-slug>-<ulid-suffix-4>` so two same-titled tasks
-   * never collide.
-   */
+  /** Branch override; otherwise an auto branch is generated lazily. */
   readonly branch?: string
-  /**
-   * Base ref for the new branch. When omitted the new branch is rooted
-   * at the repo's current HEAD (git's default). When set, it must be
-   * something `git worktree add -b <new> <path> <baseRef>` accepts: a
-   * branch name, tag, or commit SHA. The new-task dialog defaults this
-   * to `"main"` so tasks always branch off the integration base unless
-   * the user picks otherwise. If the ref doesn't resolve, the
-   * underlying `git worktree add` fails and the error is surfaced to
-   * the caller (the dialog displays it).
-   */
+  /** Optional base ref for the new lazy worktree branch. */
   readonly baseRef?: string
 }
 
 /** Subscription teardown for {@link Orchestrator.subscribeEvents}. */
 export type Unsubscribe = () => void
 
-/**
- * Live engine state for one chat tab, derived from the per-tab handles
- * map and the pending-input bucket. Surfaced reactively via
- * {@link Orchestrator.chatRunStateSignal} so the workspace tab strip can
- * paint a status dot per chat-tab chip (green = streaming, yellow =
- * paused on `AskUserQuestion` / `ExitPlanMode`, absent = idle).
- *
- * Per-tab fidelity matters: a task with two tabs where tab A is asking
- * the user a question and tab B is still streaming should show yellow
- * on A and green on B simultaneously — task-level aggregation would
- * mask the distinction.
- */
+/** Live engine state for one chat tab. */
 export type ChatRunState = "running" | "awaiting_input" | "idle"
 
 export type TaskListListener = (snapshot: readonly Task[]) => void
@@ -230,48 +118,8 @@ export function chatRunStateKey(taskId: string, tabId: string): string {
   return `${taskId}:${tabId}`
 }
 
-/**
- * Composite (taskId, tabId) key for the engine's per-tab handle, the
- * subscriber bus, and the pump map. Centralised so all three keep the
- * same shape and a typo doesn't silently split a tab's stream from its
- * subscribers.
- */
 function tabKey(taskId: string, tabId: string): string {
   return `${taskId}:${tabId}`
-}
-
-/**
- * Boil a `git worktree add` failure down to a one-line, user-actionable
- * message. The raw `GitCommandError` text from `src/orchestrator/worktree/git.ts`
- * is dense; we strip it here so the chat banner the user sees is short
- * enough to read at a glance.
- *
- * Exported for unit tests (and for any future surface that wants to
- * format the same error). The original error is preserved as `cause`
- * by the caller so anyone logging the chain still has the full story.
- */
-export function summarizeWorktreeError(raw: string, repo: string, baseRef: string | null): string {
-  const m = raw.toLowerCase()
-  if (m.includes("invalid reference") || m.includes("unknown revision") || m.includes("not a valid object name")) {
-    const ref = baseRef ?? "(none)"
-    return `could not create worktree: base ref '${ref}' does not exist in ${repo}`
-  }
-  if (m.includes("not a git repository") || m.includes("not in a git directory")) {
-    return `could not create worktree: ${repo} is not a git repository`
-  }
-  if (m.includes("permission denied") || m.includes("eacces")) {
-    return `could not create worktree: permission denied writing into ${repo}/.claude/worktrees/`
-  }
-  if (m.includes("already exists") || m.includes("refusing to hijack") || m.includes("is on branch")) {
-    return `could not create worktree: a stale worktree already exists for this task (try removing it under ${repo}/.claude/worktrees/)`
-  }
-  if (m.includes("enoent") || m.includes("does not exist")) {
-    return `could not create worktree: ${repo} does not exist`
-  }
-  // Fallback: pull just the `fatal: <reason>` tail if present.
-  const fatal = raw.match(/fatal:\s*([^\n]+)/i)
-  if (fatal) return `could not create worktree: ${fatal[1]?.trim() ?? raw}`
-  return `could not create worktree: ${raw.trim()}`
 }
 
 /**
@@ -282,22 +130,13 @@ export function summarizeWorktreeError(raw: string, repo: string, baseRef: strin
  * surface; they don't reach past it.
  */
 export class Orchestrator {
-  /**
-   * Vendor → engine map. Populated by the constructor from
-   * `deps.engines` (preferred) or `deps.engine` (back-compat).
-   * Resolved per task via {@link engineFor}.
-   */
-  private readonly engines: Partial<Record<VendorId, AIEngine>>
-  /**
-   * Fallback engine used when a task's vendor isn't registered (a task
-   * from a newer kobe build, or unknown vendor in hand-edited JSON).
-   * Set to the first engine the constructor saw — that's claude in
-   * every production path today.
-   */
+  private readonly engineRouter: EngineRouter
   private readonly fallbackEngine: AIEngine
   private readonly store: TaskIndexStore
   private readonly worktrees: GitWorktreeManager
   private readonly metadataSuggester: MetadataSuggester
+  private readonly worktreeCoordinator: TaskWorktreeCoordinator
+  private readonly taskRunner: TaskRunner
   /**
    * Engine session handles keyed by `${taskId}:${tabId}`. Each chat tab
    * within a task owns an independent session; closing a tab tears down
@@ -355,33 +194,6 @@ export class Orchestrator {
    * Constructed in the constructor so the deps closure is built once.
    */
   private sessionPump!: SessionPump
-  /**
-   * Process-scoped record of branch/baseRef the user picked at
-   * `createTask` time but hasn't committed to disk yet (we allocate
-   * the worktree lazily on first `runTask`). Lost on kobe restart;
-   * `ensureWorktree` falls back to deterministic defaults if the
-   * map is missing the entry.
-   */
-  private readonly pendingWorktreeOpts = new Map<TaskId, { branch?: string; baseRef?: string }>()
-  /**
-   * Animal-name allocator for worktree directories (KOB-65). Seeded with
-   * the store's snapshot at construction; queries the store live on
-   * every `allocate()` so newly-created tasks count as occupied even
-   * across worktree creations that haven't yet persisted.
-   */
-  private readonly slugAllocator: SlugAllocator
-  /**
-   * Per-task in-flight `ensureWorktree` promises. Two concurrent
-   * `runTask` calls on the same not-yet-allocated task must coalesce
-   * onto one worktree creation — otherwise both pick distinct slugs
-   * and both call `git worktree add` with the same temp branch name,
-   * which git rejects with "branch already in use". The first caller
-   * installs the entry; subsequent callers await it and re-read the
-   * task from the store. Cleared once the allocation resolves
-   * (success or failure).
-   */
-  private readonly ensureWorktreeLatches = new Map<TaskId, Promise<Task>>()
-
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
   private readonly unsubscribeStore: TaskIndexUnsubscribe
@@ -397,47 +209,37 @@ export class Orchestrator {
   private readonly setRunState: (next: ReadonlyMap<string, ChatRunState>) => void
 
   constructor(deps: OrchestratorDeps) {
-    // Build the per-vendor engine map. Two input shapes:
-    //   - `engines: EngineMap` — preferred; explicit per-vendor.
-    //   - `engine: AIEngine` — back-compat single-engine path; we slot
-    //     it under its declared vendor and treat it as the fallback.
-    // Either way we record one engine as the "fallback" for tasks whose
-    // vendor isn't registered (would otherwise throw mid-runTask on an
-    // unknown task.vendor — defensive against hand-edited JSON or kobe
-    // downgrade scenarios).
-    const built: Partial<Record<VendorId, AIEngine>> = {}
-    let fallback: AIEngine | undefined
-    if (deps.engines) {
-      for (const [vendor, eng] of Object.entries(deps.engines) as Array<[VendorId, AIEngine | undefined]>) {
-        if (!eng) continue
-        built[vendor] = eng
-        fallback ??= eng
-      }
-    }
-    if (deps.engine) {
-      const v = deps.engine.capabilities.vendorId
-      built[v] ??= deps.engine
-      fallback ??= deps.engine
-    }
-    if (!fallback) {
-      throw new Error(
-        "Orchestrator: no usable engine found; both deps.engine and deps.engines were examined but contained no valid engines.",
-      )
-    }
-    this.engines = built
-    this.fallbackEngine = fallback
     this.store = deps.store
+    this.engineRouter = new EngineRouter({
+      engine: deps.engine,
+      engines: deps.engines,
+      store: deps.store,
+      onTabVendorResolved: (taskId, tabId, vendor) => this.updateTab(taskId, tabId, { vendor }),
+    })
+    this.fallbackEngine = this.engineRouter.fallback()
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
-    // Per-repo scoping: the same animal can be live in two different
-    // repos simultaneously without aliasing.
-    this.slugAllocator = new SlugAllocator((repo) =>
-      this.store
-        .list()
-        .filter((t) => t.repo === repo && !t.archived)
-        .map((t) => worktreeSlug(t))
-        .filter((s) => s.length > 0),
-    )
+    this.worktreeCoordinator = new TaskWorktreeCoordinator({
+      store: this.store,
+      worktrees: this.worktrees,
+      metadataSuggester: this.metadataSuggester,
+      dispatchEvent: (taskId, tabId, ev) => this.dispatchEvent(taskId, tabId, ev),
+    })
+    this.taskRunner = new TaskRunner({
+      store: this.store,
+      handles: this.handles,
+      pumps: this.pumps,
+      worktrees: this.worktreeCoordinator,
+      resolveTab: (task, tabId) => this.resolveTab(task, tabId),
+      dispatchEvent: (taskId, tabId, ev) => this.dispatchEvent(taskId, tabId, ev),
+      engineForTab: (task, tab) => this.engineForTab(task, tab),
+      engineForTabRun: (task, tab) => this.engineForTabRun(task, tab),
+      modelForTab: (task, tab, engine) => this.modelForTab(task, tab, engine),
+      modelEffortForTab: (task, tab) => this.modelEffortForTab(task, tab),
+      updateTab: (taskId, tabId, patch) => this.updateTab(taskId, tabId, patch),
+      runPumpAndCleanup: (taskId, tabId, handle) => this.runPumpAndCleanup(taskId, tabId, handle),
+      bumpRunState: () => this.bumpRunState(),
+    })
     // Seed the signal with the current store snapshot so synchronous
     // readers (the Sidebar's `createMemo`) see the right initial
     // shape on the very first paint.
@@ -478,105 +280,36 @@ export class Orchestrator {
     })
   }
 
-  /**
-   * Resolve the engine for a given vendor. Falls back to
-   * {@link fallbackEngine} when the vendor isn't registered (defensive
-   * against `Task.vendor` values that came from a newer kobe build or
-   * hand-edited JSON).
-   */
-  private engineForVendor(vendor: VendorId | undefined): AIEngine {
-    const v = vendor ?? DEFAULT_TASK_VENDOR
-    return this.engines[v] ?? this.fallbackEngine
-  }
-
-  /** Engine for a given task — single dispatch site for vendor routing. */
   private engineForTask(task: Task): AIEngine {
-    return this.engineForVendor(task.vendor)
+    return this.engineRouter.engineForTask(task)
   }
 
   private vendorForTab(task: Task, tab: ChatTab): VendorId {
-    return tab.vendor ?? task.vendor ?? "claude"
+    return this.engineRouter.vendorForTab(task, tab)
   }
 
   private modelForTab(task: Task, tab: ChatTab, engine: AIEngine): string {
-    return tab.model ?? task.model ?? engine.capabilities.defaultModelId()
+    return this.engineRouter.modelForTab(task, tab, engine)
   }
 
   private modelEffortForTab(task: Task, tab: ChatTab): ModelEffortLevel | undefined {
-    return tab.modelEffort ?? task.modelEffort
+    return this.engineRouter.modelEffortForTab(task, tab)
   }
 
   private engineForTab(task: Task, tab: ChatTab): AIEngine {
-    return this.engineForVendor(this.vendorForTab(task, tab))
+    return this.engineRouter.engineForTab(task, tab)
   }
 
   private async engineForTabRun(task: Task, tab: ChatTab): Promise<AIEngine> {
-    if (!tab.sessionId || tab.vendor) return this.engineForTab(task, tab)
-    const resolved = await this.findEngineWithHistory(tab.sessionId, this.vendorForTab(task, tab))
-    if (resolved.vendor && resolved.vendor !== tab.vendor) {
-      await this.updateTab(task.id, tab.id, { vendor: resolved.vendor })
-    }
-    return resolved.engine
+    return this.engineRouter.engineForTabRun(task, tab)
   }
 
-  private async findEngineWithHistory(
-    sessionId: string,
-    preferredVendor?: VendorId,
-  ): Promise<{ engine: AIEngine; vendor?: VendorId; history?: EngineHistory }> {
-    const candidates: Array<[VendorId | undefined, AIEngine]> = []
-    if (preferredVendor) candidates.push([preferredVendor, this.engineForVendor(preferredVendor)])
-    for (const [vendor, engine] of Object.entries(this.engines) as Array<[VendorId, AIEngine | undefined]>) {
-      if (!engine || vendor === preferredVendor) continue
-      candidates.push([vendor, engine])
-    }
-    if (candidates.length === 0) candidates.push([undefined, this.fallbackEngine])
-
-    let fallback = candidates[0] ?? [undefined, this.fallbackEngine]
-    let fallbackHistory: EngineHistory | undefined
-    for (const [vendor, engine] of candidates) {
-      try {
-        const history = await engine.readHistory(sessionId)
-        if (!fallbackHistory) {
-          fallback = [vendor, engine]
-          fallbackHistory = history
-        }
-        if (history.messages.length > 0 || history.usageMetrics) return { engine, vendor, history }
-      } catch {
-        // Try the next registered engine; a missing/corrupt transcript
-        // in one adapter should not hide a session owned by another.
-      }
-    }
-    return { engine: fallback[1], vendor: fallback[0], history: fallbackHistory }
-  }
-
-  /** Engine for a task id; defensive against a stale id (returns fallback). */
   private engineForTaskId(taskId: TaskId): AIEngine {
-    const task = this.store.get(taskId)
-    return task ? this.engineForTask(task) : this.fallbackEngine
+    return this.engineRouter.engineForTaskId(taskId)
   }
 
-  /** Engine for a concrete task tab; used by the live stream pump. */
   private engineForTaskTabId(taskId: TaskId, tabId: string): AIEngine {
-    const task = this.store.get(taskId)
-    if (!task) return this.fallbackEngine
-    const tab = task.tabs.find((t) => t.id === tabId)
-    return tab ? this.engineForTab(task, tab) : this.engineForTask(task)
-  }
-
-  /**
-   * Engine for a free-floating session id. Scans tasks to find which
-   * one owns the session; used by code paths (e.g. `readHistory`)
-   * that don't carry a task context. Falls back when no task matches —
-   * e.g. raw sessions opened by `claude --resume` outside kobe.
-   */
-  private engineForSessionId(sessionId: string): AIEngine {
-    for (const task of this.store.list()) {
-      for (const tab of task.tabs) {
-        if (tab.sessionId === sessionId) return this.engineForTab(task, tab)
-      }
-      if (task.sessionId === sessionId) return this.engineForTask(task)
-    }
-    return this.fallbackEngine
+    return this.engineRouter.engineForTaskTabId(taskId, tabId)
   }
 
   /**
@@ -735,491 +468,21 @@ export class Orchestrator {
     // the real task id (computing it before `store.create` would slug
     // an empty suffix). Persist only the user's explicit override (if
     // any) and baseRef; ensureWorktree re-derives auto names.
-    this.pendingWorktreeOpts.set(created.id, {
+    this.worktreeCoordinator.registerPendingWorktreeOpts(created.id, {
       branch: input.branch,
       baseRef: input.baseRef,
     })
     return created
   }
 
-  /**
-   * Ensure a "main" task exists for `repo`. Idempotent: if a task with
-   * `kind === "main"` and `repo === <repo>` is already in the store,
-   * return it — possibly after unarchiving (see below). Otherwise create
-   * one with `worktreePath === repo`, an empty `branch` (the live
-   * current branch is resolved at display time, not stored), `status:
-   * "backlog"`, and `kind: "main"`.
-   *
-   * Title: the repo basename. Stable across restarts so the sidebar's
-   * pinned row reads `kobe`, not `/Users/.../kobe`.
-   *
-   * Repo uniqueness: the orchestrator owns this invariant; there's no DB
-   * constraint. We scan the store for an existing `(kind: "main", repo)`
-   * pair and return it instead of creating a duplicate. Two clones at
-   * different paths (`/Users/x/kobe` vs `/tmp/kobe`) get separate main
-   * tasks — they're separate repos by path, per the issue spec.
-   *
-   * Unarchive on re-add: if the user previously removed `repo` from
-   * saved repos (which archives the main task) and is now re-adding it,
-   * `ensureMainTask` flips `archived: false` so the row reappears in
-   * Working session. Restoring without forcing the user to also press
-   * `a` matches "remove + re-add" being the symmetric pair.
-   *
-   * Permission mode: the freshly-created main task lands with no pinned
-   * `permissionMode` (CLI default). The user can still cycle it via
-   * shift+tab. Existing main tasks aren't touched on re-ensure — we
-   * don't override the user's stored choice across restarts.
-   *
-   * Boot-time seeding (in `app.tsx`) calls this for every entry in
-   * `getSavedRepos()`. Order doesn't matter: each ensure is independent.
-   */
   async ensureMainTask(repo: string): Promise<Task> {
-    if (!repo) throw new Error("ensureMainTask: repo is required")
-    // Normalize `repo` to its git toplevel. Main-task worktreePath must
-    // equal the repo root because the FileTree pane drives off
-    // `git ls-files --full-name`, which emits paths relative to the
-    // toplevel — pointing a main task at a monorepo subdirectory makes
-    // the tree render rooted at the wrong level. resolveRepoRoot falls
-    // back to the input for non-git directories.
-    const normalized = resolveRepoRoot(repo)
-    // Collect every main task whose `repo` resolves to the same git
-    // toplevel as `normalized`. This includes both the canonical row
-    // (if any) and any legacy pre-normalization row pointing at a
-    // subdirectory. We keep one — preferring an already-canonical
-    // row, falling back to the first match — re-key it to `normalized`
-    // if needed, and delete the duplicates. This heals state files
-    // where a stale daemon raced the migration and ended up creating
-    // a second main task before the orchestrator-side normalization
-    // was live.
-    const all = this.store.list()
-    const candidates = all.filter((t) => t.kind === "main" && sameRepoToplevel(t.repo, normalized))
-    const winner = candidates.find((t) => t.repo === normalized) ?? candidates[0]
-    if (winner) {
-      for (const dup of candidates) {
-        if (dup.id !== winner.id) {
-          try {
-            // store.remove (not deleteTask): main tasks point at the
-            // user's actual checkout, not a kobe-allocated worktree,
-            // so deleteTask both (a) refuses with CannotDeleteMain-
-            // TaskError and (b) would try to `git worktree remove`
-            // the repo root. We just want the orphan row gone.
-            await this.store.remove(dup.id)
-          } catch (err) {
-            // Worst case the orphan row stays — log and move on
-            // rather than throw and gate the whole boot.
-            // eslint-disable-next-line no-console
-            console.error(`[kobe orchestrator] ensureMainTask: failed to remove duplicate ${dup.id}:`, err)
-          }
-        }
-      }
-      let existing = winner
-      if (existing.repo !== normalized || existing.worktreePath !== normalized) {
-        existing = await this.store.update(existing.id, {
-          repo: normalized,
-          worktreePath: normalized,
-          title: normalized.split("/").filter(Boolean).pop() ?? normalized,
-        })
-      }
-      if (existing.archived) {
-        return await this.store.update(existing.id, { archived: false })
-      }
-      return existing
-    }
-    const basename = normalized.split("/").filter(Boolean).pop() ?? normalized
-    return await this.store.create({
-      title: basename,
-      repo: normalized,
-      branch: "",
-      worktreePath: normalized,
-      sessionId: null,
-      status: "backlog",
-      archived: false,
-      kind: "main",
-    })
+    return await this.worktreeCoordinator.ensureMainTask(repo)
   }
 
-  /**
-   * Allocate the worktree for a task that was created with the lazy
-   * (Wave 4.X) flow. Idempotent: returns the task untouched if
-   * `worktreePath` is already populated. Called by `runTask` on the
-   * first submit; not part of the public API because it's a
-   * runTask-internal step.
-   *
-   * Branch naming: if the user supplied an explicit `branch` at
-   * createTask time, we honor it. Otherwise we allocate a temp name
-   * `kobe/tmp-<ulid-suffix>` so the engine can start streaming
-   * immediately, and runTask kicks off `suggestBranchSlug` in the
-   * background to rename to a meaningful name without blocking.
-   */
-  private async ensureWorktree(task: Task): Promise<Task> {
-    if (task.worktreePath) return task
-    // Coalesce concurrent first-prompt callers onto one allocation.
-    // The runner-up awaits the in-flight latch, then re-reads the task
-    // from the store so it sees the now-populated branch/worktreePath.
-    // Without this latch, both callers would each pick a distinct slug
-    // and each fire `git worktree add` against the same temp branch —
-    // git rejects the second one with "branch already in use".
-    //
-    // If the in-flight allocation throws, propagate the same error to
-    // the runner-up rather than swallowing it. Otherwise the runner-up
-    // returns a task with `worktreePath: ""` and runTask spawns the
-    // engine with an empty cwd — a confusing downstream failure that
-    // hides the real error the first caller already surfaced.
-    const inflight = this.ensureWorktreeLatches.get(task.id)
-    if (inflight) {
-      await inflight
-      return this.requireTask(task.id)
-    }
-    const latch = this.doEnsureWorktree(task)
-    this.ensureWorktreeLatches.set(task.id, latch)
-    try {
-      return await latch
-    } finally {
-      this.ensureWorktreeLatches.delete(task.id)
-    }
-  }
-
-  private async doEnsureWorktree(task: Task): Promise<Task> {
-    const opts = this.pendingWorktreeOpts.get(task.id)
-    const branch = opts?.branch ?? `kobe/tmp-${task.id.slice(-8).toLowerCase()}`
-    const baseRef = opts?.baseRef
-    const slug = await this.slugAllocator.allocate(task.repo)
-    let info: Awaited<ReturnType<typeof this.worktrees.createForTask>>
-    try {
-      info = await this.worktrees.createForTask({
-        repo: task.repo,
-        slug,
-        branch,
-        baseRef,
-      })
-    } catch (err) {
-      this.slugAllocator.cancel(task.repo, slug)
-      // The raw `git worktree add` error is dense ("git worktree add
-      // -b kobe/tmp-... <path> <baseRef> (cwd=<repo>) exited with
-      // code 128: fatal: invalid reference: <baseRef>"). Boil it
-      // down to one of a few user-actionable shapes so the chat
-      // banner is short enough to read at a glance. The original is
-      // still attached as `cause` for anyone who logs the full chain.
-      const message = err instanceof Error ? err.message : String(err)
-      throw new Error(summarizeWorktreeError(message, task.repo, baseRef ?? null), { cause: err })
-    }
-    try {
-      this.pendingWorktreeOpts.delete(task.id)
-      const updated = await this.store.update(task.id, {
-        branch: info.branch,
-        worktreePath: info.path,
-      })
-      this.slugAllocator.commit(task.repo, slug)
-      return updated
-    } catch (err) {
-      this.slugAllocator.cancel(task.repo, slug)
-      throw err
-    }
-  }
-
-  /**
-   * Replace a temp `kobe/tmp-<ulid>` branch with a meaningful name
-   * derived from `prompt` via a one-shot `claude -p` suggestion. Runs
-   * in the background — failures are swallowed so the chat never
-   * sees a "branch rename failed" banner. Skips:
-   *   - tasks whose branch isn't a tmp branch (user picked it)
-   *   - empty prompts (nothing to derive from)
-   *   - claude binary missing / suggestion failed / timed out
-   */
-  private async maybeRenameTempBranch(taskId: TaskId, tabId: string, prompt: string | undefined): Promise<void> {
-    if (!prompt || prompt.trim().length === 0) return
-    const task = this.store.get(taskId)
-    if (!task || !task.worktreePath) return
-    if (!task.branch.startsWith("kobe/tmp-")) return
-
-    // Surface that the suggestion is in flight so the user sees what
-    // the temp branch name is going to become.
-    this.dispatchEvent(taskId, tabId, {
-      type: "system.info",
-      text: "branch: choosing a name…",
-    })
-
-    const slug = await this.metadataSuggester.suggestBranchSlug(prompt)
-    if (!slug) return
-
-    // Re-read in case the task changed (rename, archive) while we
-    // were waiting for claude.
-    const fresh = this.store.get(taskId)
-    if (!fresh || !fresh.worktreePath) return
-    if (fresh.branch !== task.branch) return // someone else renamed
-
-    const newBranch = `kobe/${slug}-${taskId.slice(-4).toLowerCase()}`
-    if (newBranch === fresh.branch) return
-
-    try {
-      await this.worktrees.renameBranch(fresh.worktreePath, fresh.branch, newBranch)
-      await this.store.update(taskId, { branch: newBranch })
-      this.dispatchEvent(taskId, tabId, {
-        type: "system.info",
-        text: `branch: renamed to ${newBranch}`,
-      })
-    } catch {
-      /* leave the temp name; user can rename via `r` in sidebar */
-    }
-  }
-
-  /**
-   * Replace the auto-derived sidebar title with a claude-suggested one
-   * via a one-shot `claude -p` call. Runs in the background — failures
-   * are swallowed.
-   *
-   * Skips the upgrade when the title isn't the truncate-derived form
-   * of `prompt`: that means either an explicit title from createTask
-   * or a manual rename via `r`, both of which we treat as load-bearing
-   * user intent. Re-reads the task after the suggestion lands and
-   * skips again if the title shifted while we were waiting (the user
-   * renamed it mid-flight).
-   */
-  private async maybeUpgradeTitle(taskId: TaskId, prompt: string): Promise<void> {
-    if (!prompt || prompt.trim().length === 0) return
-    const task = this.store.get(taskId)
-    if (!task) return
-    const derived = deriveTitleFromPrompt(prompt)
-    if (!derived) return
-    // Only upgrade titles we ourselves wrote from this prompt. An
-    // explicit createTask({title}) or sidebar `r` rename will land
-    // here with task.title !== derived, and we leave it alone.
-    if (task.title !== derived) return
-
-    const suggested = await this.metadataSuggester.suggestTitle(prompt)
-    if (!suggested) return
-    if (suggested === derived) return
-
-    const fresh = this.store.get(taskId)
-    if (!fresh) return
-    if (fresh.title !== derived) return // user renamed while we waited
-
-    await this.store.update(taskId, { title: suggested })
-  }
-
-  /**
-   * Run a task. First call spawns; subsequent calls (or calls with a
-   * `sessionId` already on the task) resume.
-   *
-   * Status transitions:
-   *   - `backlog` → `in_progress` (always allowed)
-   *   - `in_progress` → `in_progress` (no-op; already running). We
-   *     allow this for `runTask(id, prompt)` calls coming from a chat
-   *     send while the task is mid-stream, since the chat composer
-   *     calls runTask on every Enter. In that case we just resume.
-   *   - `done` / `in_review` / `error` → `in_progress` (resume — user
-   *     is continuing a finished session). Allowed.
-   *   - `canceled` → `in_progress` is rejected; canceled is terminal.
-   */
   async runTask(id: TaskId | string, prompt?: string, tabId?: string): Promise<void> {
-    let task = this.requireTask(id)
-    if (task.status === "canceled") {
-      throw new IllegalTransitionError(task.status, "in_progress", String(id))
-    }
-
-    // KOB-15: main tasks are bound to the repo root checkout — no
-    // `git worktree add`. Their `worktreePath === repo` is set by
-    // `ensureMainTask`, so `ensureWorktree` is skipped entirely. The
-    // engine cwd plumbing below already passes `task.worktreePath`,
-    // which IS the repo root for main tasks; no special-case there.
-    const isMain = task.kind === "main"
-    // Lazy worktree: tasks created via the new-task dialog land here
-    // with `worktreePath: ""`. Allocate it now (idempotent — returns
-    // the task untouched if it already has a worktree). Main tasks
-    // have a non-empty worktreePath from creation, so this branch is
-    // skipped for them.
-    const isFirstAllocation = !isMain && !task.worktreePath
-    if (isFirstAllocation) {
-      task = await this.ensureWorktree(task)
-      // Surface the allocation as a dim system row so the user can
-      // see the lazy infra running underneath their first prompt.
-      const targetTabForInfo = this.resolveTab(task, tabId)
-      this.dispatchEvent(task.id, targetTabForInfo.id, {
-        type: "system.info",
-        text: `worktree: ${task.worktreePath} (branch ${task.branch})`,
-      })
-    }
-    // Background: kick off a `claude -p` suggestion to replace the
-    // temp branch name with something meaningful. Fire-and-forget;
-    // never blocks the chat. The rename method emits its own
-    // system.info row when it succeeds.
-    if (isFirstAllocation && prompt) {
-      const renameTabId = this.resolveTab(task, tabId).id
-      void this.maybeRenameTempBranch(task.id, renameTabId, prompt)
-    }
-
-    // Resolve the target tab. Default to the active one so existing
-    // single-tab callers keep working. We don't auto-create — the
-    // caller is expected to know the tab id (the active one is fine).
-    let targetTab = this.resolveTab(task, tabId)
-    const key = tabKey(task.id, targetTab.id)
-
-    // First-spawn coalescing: if this tab has no sessionId yet AND a
-    // sibling runTask is already partway through spawning the initial
-    // session, wait for it instead of opening a duplicate `claude -p`.
-    // See {@link firstSpawnLatches} for the why-this-matters
-    // commentary. After the latch resolves we re-read the task so
-    // `targetTab.sessionId` reflects the just-established sid.
-    if (!targetTab.sessionId) {
-      const inflight = this.firstSpawnLatches.get(key)
-      if (inflight) {
-        await inflight.catch(() => {})
-        task = this.requireTask(id)
-        targetTab = this.resolveTab(task, tabId)
-      }
-    }
-
-    // Cap check covers both fresh runs and resumes — every running
-    // tab counts as one slot. (We deliberately count tabs not tasks:
-    // five concurrent tabs across one task is the same engine load as
-    // five tasks with one tab each.)
-    if (this.handles.has(key) === false) {
-      const running = this.countRunning()
-      if (running >= CONCURRENCY_CAP) {
-        throw new ConcurrencyCapError()
-      }
-    }
-
-    // Use the prompt; if none provided, fall back to a single space so
-    // the engine has *something* to send (Claude Code's CLI rejects an
-    // empty `-p`). The chat composer always supplies a real prompt;
-    // this fallback exists so the unit test for "runTask without
-    // chatting" doesn't trip.
-    const promptToSend = prompt && prompt.length > 0 ? prompt : " "
-
-    // Broadcast the user's prompt as a user.inject event BEFORE
-    // touching the engine. Two reasons:
-    //   1. Multi-attach correctness — the chat composer used to
-    //      `pushUser(state, text)` locally, which meant other clients
-    //      attached to the same daemon never received the user row.
-    //      Going through dispatchEvent puts the user message on the
-    //      same per-task event bus the daemon broadcasts to every
-    //      attached TUI.
-    //   2. Message-boundary correctness — the chat's assistant.delta
-    //      reducer concatenates consecutive deltas into the most
-    //      recent assistant row. Without a user row between two
-    //      turns, the second response's deltas merge into the first
-    //      assistant bubble. Emitting user.inject here re-anchors the
-    //      conversation so the next assistant.delta starts a new row.
-    // Blank prompts (the resume/continue path) intentionally skip the
-    // dispatch — there's no user-visible message to inject. Note
-    // requestPR and respondToInput previously dispatched user.inject
-    // themselves; with this change those redundant dispatches are
-    // removed so each user message hits the bus exactly once.
-    if (prompt && prompt.trim().length > 0) {
-      this.dispatchEvent(task.id, targetTab.id, { type: "user.inject", text: prompt })
-    }
-
-    // Model resolution is tab-scoped: one task/worktree can host a
-    // Claude tab and a Codex tab side-by-side. Legacy task-level
-    // model/vendor fields remain fallback data for old manifests.
-    const engine = targetTab.sessionId
-      ? await this.engineForTabRun(task, targetTab)
-      : this.engineForTab(task, targetTab)
-    const modelToUse = this.modelForTab(task, targetTab, engine)
-    const modelEffortToUse = this.modelEffortForTab(task, targetTab)
-
-    let handle: SessionHandle
-    if (targetTab.sessionId) {
-      handle = await engine.resume(targetTab.sessionId, promptToSend, {
-        cwd: task.worktreePath,
-        // Defensive duplicate: keep the env var alongside the typed
-        // field for one release in case any external consumer (test
-        // fixture, MCP bridge) still reads it. Remove in a follow-up
-        // once we've confirmed nothing relies on it.
-        env: { KOBE_RESUME_CWD: task.worktreePath },
-        permissionMode: task.permissionMode,
-        model: modelToUse,
-        modelEffort: modelEffortToUse,
-      })
-    } else {
-      // Claim the first-spawn latch so any sibling runTask racing us
-      // sees the in-flight promise and waits — see
-      // {@link firstSpawnLatches}. The latch is held across spawn +
-      // updateTab so a waiter that wakes up immediately after the
-      // promise resolves reads the persisted sessionId.
-      let releaseLatch: () => void = () => {}
-      const latch = new Promise<void>((resolve) => {
-        releaseLatch = resolve
-      })
-      this.firstSpawnLatches.set(key, latch)
-      try {
-        handle = await engine.spawn(task.worktreePath, promptToSend, {
-          permissionMode: task.permissionMode,
-          model: modelToUse,
-          modelEffort: modelEffortToUse,
-        })
-        // Persist the freshly-allocated session id back onto the tab so
-        // a future kobe restart can resume.
-        await this.updateTab(task.id, targetTab.id, { sessionId: handle.sessionId })
-        // First user submit on a placeholder-titled task → derive the
-        // sidebar label from the prompt.
-        if (task.title === PLACEHOLDER_TASK_TITLE && prompt && prompt.trim().length > 0) {
-          const derived = deriveTitleFromPrompt(prompt)
-          if (derived) await this.store.update(task.id, { title: derived })
-        }
-        // Background: ask claude for a tighter sidebar title to replace
-        // the truncate-derived one. Fire-and-forget; the rename method
-        // bails out if the user manually rewrote the title in the
-        // meantime, so this never stomps an explicit choice.
-        if (prompt && prompt.trim().length > 0) {
-          void this.maybeUpgradeTitle(task.id, prompt)
-        }
-      } finally {
-        releaseLatch()
-        this.firstSpawnLatches.delete(key)
-      }
-    }
-    this.handles.set(key, handle)
-    this.bumpRunState()
-
-    if (task.status !== "in_progress") {
-      await this.store.update(task.id, { status: "in_progress" })
-    }
-
-    // Spin the pump. Captures `key` so the closure references the
-    // right tab even if the user spawns more concurrently.
-    const pump = this.runPumpAndCleanup(task.id, targetTab.id, handle)
-    this.pumps.set(key, pump)
-    // Don't await — the caller wants to return as soon as the engine
-    // is started, not when it finishes. The pump runs to completion in
-    // the background.
-    pump.catch((err) => {
-      // Surface pump failures via the event bus instead of unhandled
-      // rejection. The test suite explicitly waits for terminal events.
-      this.dispatchEvent(task.id, targetTab.id, {
-        type: "error",
-        message: `pump failure: ${err instanceof Error ? err.message : String(err)}`,
-      })
-    })
+    await this.taskRunner.runTask(this.requireTask(id), prompt, tabId)
   }
 
-  /**
-   * Request a PR for a task by injecting a preset prompt into its chat.
-   *
-   * Design: kobe deliberately does NOT call `gh` / `glab` / etc itself.
-   * Instead we render a markdown prompt that walks the agent through
-   *   1. reviewing uncommitted changes,
-   *   2. committing,
-   *   3. pushing,
-   *   4. opening the PR with `gh pr create --base <target>`,
-   * and submit it as if the user had typed it (`runTask(taskId, prompt)`).
-   * The agent's own shell + tool use figures out provider quirks. Per-
-   * repo customization happens via `<worktreePath>/.kobe/pr-instructions.md`.
-   *
-   * Preconditions:
-   *   - Task must exist (else {@link TaskNotFoundError}).
-   *   - Task must NOT be `canceled` (terminal).
-   *   - Task must have a non-empty `worktreePath` (the createTask
-   *     placeholder window where worktreePath="" is briefly visible to
-   *     the UI; the button is disabled in that window — but defend in
-   *     depth here too).
-   *   - Task must have a non-empty `repo`.
-   *
-   * On precondition failure, throws {@link PRPreconditionError} with a
-   * human message. Other errors (template load, runTask) propagate as-is.
-   * We deliberately do NOT swallow — the caller surfaces failures.
-   */
   async requestPR(id: TaskId | string): Promise<void> {
     const task = this.requireTask(id)
     if (task.status === "canceled") {
@@ -1242,32 +505,6 @@ export class Orchestrator {
     await this.runTask(task.id, prompt, activeTab.id)
   }
 
-  /**
-   * Respond to a pending user-input request (currently only
-   * `ExitPlanMode` plan approvals; AskUserQuestion next).
-   *
-   * Lookup is by `(taskId, requestId)`. Unknown requests are a no-op
-   * — the caller may have raced a second click after the user already
-   * answered, in which case there's nothing to do. We *don't* throw on
-   * miss because the chat shouldn't have to defensive-check before
-   * dispatching every click.
-   *
-   * On match:
-   *   1. Drop the pending entry so a re-click is ignored.
-   *   2. Broadcast `user_input.resolved` so the chat can flip the
-   *      pending row's status to approved/rejected. Subscribers see
-   *      this BEFORE the synthetic prompt's user.inject so the visual
-   *      transition happens first.
-   *   3. Synthesize a follow-up prompt (the wording the model will see
-   *      as the "user's" reply) and run it via `runTask` — which
-   *      resumes the existing session via `--resume <sessionId>`.
-   *
-   * The synthetic prompts are intentionally short and unambiguous to
-   * keep the model's continuation behavior predictable. If we ever
-   * want richer responses (e.g. an approve-with-comments flow), build
-   * a kobe-side prompt builder rather than letting freeform text leak
-   * in through the chat composer.
-   */
   async respondToInput(id: TaskId | string, requestId: string, response: UserInputResponse): Promise<void> {
     const task = this.requireTask(id)
     const resolved = this.pendingInputBroker.resolve(task.id, requestId)
@@ -1295,33 +532,6 @@ export class Orchestrator {
     await this.runTask(task.id, prompt, tabId)
   }
 
-  /**
-   * Interrupt the in-flight subprocess for one tab WITHOUT changing
-   * task status — kobe's "steer" path. Maps to the user typing a new
-   * prompt mid-stream and asking us to abandon the current generation
-   * so the model can be redirected.
-   *
-   * Behaviour:
-   *   - Kills the engine handle for `(taskId, tabId)`. The pump's
-   *     `for await` loop ends, the pump's `finally` writes a terminal
-   *     status (`in_review` or `error`) to the store, and the chat
-   *     gets a `done`/`error` event.
-   *   - Emits a dim `system.info` row so the user sees in the chat
-   *     transcript that the turn was steered away from.
-   *   - Does NOT clear the sessionId. The next `runTask` call that
-   *     follows will `engine.resume(sessionId, ...)` and continue the
-   *     conversation; claude-code's JSONL retains whatever partial
-   *     assistant text was streamed before the kill, so the model
-   *     sees the truncated prior turn as context for the new prompt.
-   *
-   * Idempotent: if the tab has no live handle (turn already ended,
-   * tab was never started), this is a no-op.
-   *
-   * Distinct from {@link pauseTask}: pauseTask is task-level (stops
-   * every tab) and demotes status to backlog. interruptTask is
-   * tab-scoped and leaves status alone — the user is still actively
-   * driving the task, they just want a different generation.
-   */
   async interruptTask(id: TaskId | string, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
     const targetTab = this.resolveTab(task, tabId)
@@ -1354,19 +564,6 @@ export class Orchestrator {
     this.dispatchEvent(task.id, targetTab.id, { type: "done" })
   }
 
-  /**
-   * Steer the in-flight turn: interrupt the current subprocess and
-   * dispatch a new prompt against the same session, atomically.
-   *
-   * The recovery of the lost in-flight prompt — the one claude -p
-   * had been processing when we killed it — happens inside the
-   * engine's `stop()` (it appends a synthetic user record to the
-   * session JSONL so the next `--resume` reads a complete history).
-   * From the orchestrator's perspective `steerTask` is just an
-   * interrupt followed by a runTask; bundling them into one method
-   * is a TUI ergonomics thing (one RPC, one dispatch-lock window
-   * on the chat side).
-   */
   async steerTask(id: TaskId | string, prompt: string, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
     const targetTab = this.resolveTab(task, tabId)
@@ -1374,11 +571,6 @@ export class Orchestrator {
     await this.runTask(task.id, prompt, targetTab.id)
   }
 
-  /**
-   * Pause a running task. Status `in_progress` → `backlog`. Resets the
-   * engine handle so the next runTask resumes cleanly (the sessionId
-   * stays on the task).
-   */
   async pauseTask(id: TaskId | string): Promise<void> {
     const task = this.requireTask(id)
     if (task.status !== "in_progress") {
@@ -1391,10 +583,6 @@ export class Orchestrator {
     await this.store.update(task.id, { status: "backlog" })
   }
 
-  /**
-   * Move a task to a terminal status (`done` or `canceled`). Stops the
-   * engine if running. Idempotent for already-archived tasks.
-   */
   async archiveTask(id: TaskId | string, status: "done" | "canceled"): Promise<void> {
     const task = this.requireTask(id)
     if (status !== "done" && status !== "canceled") {
@@ -1404,16 +592,6 @@ export class Orchestrator {
     await this.store.archive(task.id, status)
   }
 
-  /**
-   * Toggle a task's `archived` flag. Wave 4.5 — sidebar splits into
-   * "Working session" (active) and "Archives" views; pressing `a` flips
-   * the cursor task between them. Non-destructive: the worktree, the
-   * session, and the manifest entry all stay; only the visibility
-   * filter changes.
-   *
-   * If `archived` is omitted, the flag is toggled. Pass it explicitly
-   * to force a state.
-   */
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
     const task = this.requireTask(id)
     const next = archived ?? !task.archived
@@ -1421,29 +599,12 @@ export class Orchestrator {
     await this.store.update(task.id, { archived: next })
   }
 
-  /**
-   * Set the tool-permission mode on a task. Persisted to the manifest
-   * so the next spawn/resume passes `--permission-mode <mode>` to the
-   * Claude CLI. The composer's shift+tab cycler calls this; passing
-   * `undefined` clears the field (CLI default).
-   *
-   * Note: this does NOT affect an in-flight session. A `--permission-mode`
-   * flag at spawn time is honored by claude until the next spawn — there's
-   * no live "demote permissions" wire. The mode change takes effect on
-   * the next user submit. Surface this to the UI if it ever becomes
-   * confusing in practice.
-   */
   async setPermissionMode(id: TaskId | string, mode: PermissionMode | undefined): Promise<void> {
     const task = this.requireTask(id)
     if (task.permissionMode === mode) return
     await this.store.update(task.id, { permissionMode: mode })
   }
 
-  /**
-   * Set a chat tab's model. Persisted to the tab and forwarded
-   * to that tab's engine on the next spawn/resume. Other tabs on the
-   * same task keep their own engine/model pins.
-   */
   async setModel(
     id: TaskId | string,
     model: string | undefined,
@@ -1461,33 +622,6 @@ export class Orchestrator {
     await this.updateTab(task.id, tab.id, { model, modelEffort, vendor })
   }
 
-  /**
-   * Rename a task. The sidebar's `r` keypress opens a small dialog that
-   * defaults to the current title; on submit we land here. Mirrors the
-   * shape of {@link setArchived} / {@link setPermissionMode} /
-   * {@link setModel} (require-task → no-op if unchanged → store.update).
-   *
-   * `createTask` derives an initial title from the first prompt
-   * (PLACEHOLDER_TASK_TITLE → first-40-chars of the prompt). This is the
-   * user-driven override path for "the auto-derived label is wrong / I
-   * want to organise my sidebar."
-   *
-   * Validation:
-   *   - Throws on empty / whitespace-only input. We trim first, then
-   *     reject if the result is empty — the new-task dialog already
-   *     guards this on its end, but defending in depth here means a
-   *     mis-wired UI path can't write a blank label and orphan a row in
-   *     the sidebar.
-   *   - Same-as-current (after trim) is a no-op so a user "editing" the
-   *     title to the same value doesn't churn the manifest file or fire
-   *     a redundant store notification.
-   *
-   * No length cap is enforced here. {@link deriveTitleFromPrompt}
-   * applies one when a title is auto-derived, but the user clicking
-   * "rename" is signalling they want the value as typed. The sidebar
-   * truncates on render (terminal column width clip), so an over-long
-   * title is a visual problem, not a corruption hazard.
-   */
   async setTitle(id: TaskId | string, title: string): Promise<void> {
     const task = this.requireTask(id)
     const trimmed = typeof title === "string" ? title.trim() : ""
@@ -1498,13 +632,6 @@ export class Orchestrator {
     await this.store.update(task.id, { title: trimmed })
   }
 
-  /**
-   * Toggle a regular task's pinned flag. Pinned regular tasks sort
-   * above unpinned regular tasks in the sidebar's flat list (still
-   * below `kind: "main"` rows). No-op on main rows — those are
-   * implicitly pinned by virtue of being saved-repo bound. Pass
-   * `pinned` explicitly to force a state, or omit to toggle.
-   */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     const task = this.requireTask(id)
     if (task.kind === "main") return
@@ -1513,29 +640,9 @@ export class Orchestrator {
     await this.store.update(task.id, { pinned: next })
   }
 
-  /**
-   * Rename a single chat tab on a task. Persists `tabs[i].title` so
-   * the chip in the center tab strip shows the user's label instead
-   * of the auto-derived `chat N` fallback. Trims input and rejects
-   * empty / whitespace-only — same shape as `setTitle`. Pass an empty
-   * string after trim is a no-op-throw, not a "clear back to default";
-   * if we want a clear-the-label verb later, add a sentinel arg.
-   */
   async setTabTitle(id: TaskId | string, tabId: string, title: string): Promise<void> {
     const task = this.requireTask(id)
-    const trimmed = typeof title === "string" ? title.trim() : ""
-    if (trimmed.length === 0) {
-      throw new Error("setTabTitle: title is required (empty or whitespace-only rejected)")
-    }
-    const idx = task.tabs.findIndex((t) => t.id === tabId)
-    if (idx < 0) {
-      throw new Error(`setTabTitle: tab ${tabId} not found on task ${task.id}`)
-    }
-    const current = task.tabs[idx]
-    if (!current) return
-    if (current.title === trimmed) return
-    const nextTabs = task.tabs.map((t) => (t.id === tabId ? { ...t, title: trimmed } : t))
-    await this.store.update(task.id, { tabs: nextTabs })
+    await setChatTabTitle(this.store, task, tabId, title)
   }
 
   /**
@@ -1620,105 +727,27 @@ export class Orchestrator {
     await this.store.remove(task.id)
   }
 
-  /**
-   * Read persisted message history for a session. Thin pass-through to
-   * `engine.readHistory(sessionId)` — exposed here (instead of leaking
-   * the engine reference) so the chat pane has a single orchestrator
-   * surface to consume. Wave 3 G's chat uses this on task switch.
-   *
-   * Returns `[]` if the engine has no record (e.g. brand-new session
-   * not yet flushed to disk). Never throws — engine errors collapse
-   * to an empty array, since a missing-history fallback is always
-   * "render nothing for past."
-   */
   async readHistory(sessionId: string): Promise<Message[]> {
-    return (await this.readHistoryWithMetrics(sessionId)).messages
+    return this.engineRouter.readHistory(sessionId)
   }
 
   async readHistoryWithMetrics(
     sessionId: string,
   ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
-    const preferred = this.engineForSessionId(sessionId)
-    const { history } = await this.findEngineWithHistory(sessionId, preferred.capabilities.vendorId)
-    if (!history) return { messages: [] }
-    const messages = [...history.messages]
-    const usageMetrics = history.usageMetrics
-    return {
-      messages,
-      ...(usageMetrics ? { usageMetrics } : {}),
-    }
+    return this.engineRouter.readHistoryWithMetrics(sessionId)
   }
 
-  /**
-   * List every persisted Claude Code session for a task's worktree.
-   *
-   * Powers the resume-picker (`chat.session.resume`). The engine scans
-   * `~/.claude/projects/<encoded-cwd>/*.jsonl` directly — kobe keeps no
-   * parallel index, so a session opened by raw `claude --resume` outside
-   * kobe still appears.
-   *
-   * Returns `[]` if the engine errors (so the picker shows a clean
-   * "no sessions yet" state instead of a toast).
-   */
   async listSessions(id: TaskId | string): Promise<SessionMeta[]> {
     const task = this.requireTask(id)
-    if (!task.worktreePath) return []
     const tab = this.resolveTab(task)
-    try {
-      return await this.engineForTab(task, tab).listSessions(task.worktreePath)
-    } catch {
-      return []
-    }
+    return this.engineRouter.listSessions(task, tab)
   }
 
-  /**
-   * Open `sessionId` in the chat shell as the active conversation.
-   *
-   * Behavior:
-   *   - If the task already has a tab whose `sessionId` matches, just
-   *     activate that tab. (No duplicate hydration; the existing tab
-   *     already has the message history loaded.)
-   *   - Otherwise, append a new tab whose `sessionId` is pre-seeded —
-   *     done in a single `store.update` so Chat.tsx's reactive subscribe
-   *     loop sees the tab with its sessionId set on first observation
-   *     and fires `readHistory` automatically. (createTab→updateTab in
-   *     two steps would race: the first observation would see
-   *     sessionId=null and skip history hydration.)
-   *
-   * Returns the (existing or new) tab id so the UI can `setActiveTab`
-   * after dismissing the picker dialog.
-   */
   async openSessionInTab(id: TaskId | string, sessionId: string, opts: { title?: string } = {}): Promise<string> {
     const task = this.requireTask(id)
-    const active = this.resolveTab(task)
-    const existing = task.tabs.find((t) => t.sessionId === sessionId)
-    if (existing) {
-      await this.setActiveTab(task.id, existing.id)
-      return existing.id
-    }
-    const tab: ChatTab = {
-      id: ulid(),
-      sessionId,
-      seq: nextChatTabSeq(task.tabs),
-      createdAt: new Date().toISOString(),
-      model: active.model ?? task.model,
-      modelEffort: active.modelEffort ?? task.modelEffort,
-      vendor: this.vendorForTab(task, active),
-      ...(opts.title ? { title: opts.title } : {}),
-    }
-    await this.store.update(task.id, { tabs: [...task.tabs, tab], activeTabId: tab.id })
-    return tab.id
+    return await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
   }
 
-  /**
-   * Subscribe to events for one task. Returns an unsubscribe
-   * function. Multiple subscribers are supported; events are
-   * broadcast in registration order. Subscribers receive engine
-   * events (`assistant.delta`, `tool.start`, `tool.result`, `usage`,
-   * `done`, `error`) AND synthetic `user.inject` events emitted by
-   * orchestrator-driven prompt injections (e.g. `requestPR`). The
-   * chat pane filters which to render.
-   */
   subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void, tabId?: string): Unsubscribe {
     const task = this.store.get(id)
     const taskId = (task?.id ?? id) as TaskId
@@ -1744,119 +773,26 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * Append a new chat tab to a task. The tab starts with no session
-   * (null sessionId); it spawns its own session on first `runTask` for
-   * that tab. The orchestrator does NOT auto-switch the active tab —
-   * that's a UI concern (the chat shell decides when to set focus on
-   * the new tab).
-   *
-   * Returns the freshly-created tab.
-   */
   async createTab(id: TaskId | string, opts: { title?: string } = {}): Promise<ChatTab> {
     const task = this.requireTask(id)
-    const active = this.resolveTab(task)
-    const {
-      id: _activeId,
-      sessionId: _activeSessionId,
-      title: _activeTitle,
-      seq: _activeSeq,
-      createdAt: _activeCreatedAt,
-      ...activeConfig
-    } = active
-    const tab: ChatTab = {
-      ...activeConfig,
-      id: ulid(),
-      sessionId: null,
-      seq: nextChatTabSeq(task.tabs),
-      createdAt: new Date().toISOString(),
-      model: activeConfig.model ?? task.model,
-      modelEffort: activeConfig.modelEffort ?? task.modelEffort,
-      vendor: activeConfig.vendor ?? this.vendorForTab(task, active),
-      ...(opts.title ? { title: opts.title } : {}),
-    }
-    const tabs = [...task.tabs, tab]
-    await this.store.update(task.id, { tabs })
-    return tab
+    return await createChatTab(this.chatTabDeps(), task, opts)
   }
 
-  /**
-   * Reset a chat tab back to an empty state. Stops any live engine
-   * session for the tab, drops its `sessionId` so the next `runTask`
-   * starts a brand-new Claude session instead of resuming the prior
-   * one, and dispatches a `chat.tab.cleared` event so every attached
-   * TUI's reducer wipes the tab's `ChatState` in lockstep.
-   *
-   * The on-disk JSONL transcript of the prior session is intentionally
-   * left intact — `/clear` is a "start over here" verb, not a delete.
-   * The user can still reach the old conversation via the resume picker
-   * (`ctrl+r`), which scans `~/.claude/projects/<cwd>/` directly.
-   */
   async clearTab(id: TaskId | string, tabId: string): Promise<void> {
     const task = this.requireTask(id)
-    if (!task.tabs.some((t) => t.id === tabId)) {
-      throw new Error(`clearTab: tab ${tabId} not found on task ${task.id}`)
-    }
-    await this.stopTab(task.id as TaskId, tabId)
-    await this.updateTab(task.id as TaskId, tabId, { sessionId: null })
-    this.dispatchEvent(task.id as TaskId, tabId, { type: "chat.tab.cleared" })
+    await clearChatTab(this.chatTabDeps(), task, tabId)
   }
 
-  /**
-   * Close (= remove) a chat tab. Stops the tab's engine session if
-   * running. Refuses to close the last remaining tab — kobe's chat
-   * shell always has at least one tab. If the closed tab was the
-   * active one, the next-most-recent tab becomes active (index − 1,
-   * or 0 if we closed index 0). The new active tab id is returned so
-   * the UI can reconcile its focus signal.
-   */
   async closeTab(id: TaskId | string, tabId: string): Promise<string> {
     const task = this.requireTask(id)
-    if (task.tabs.length <= 1) {
-      throw new Error(`closeTab: refusing to close the last tab on task ${task.id}`)
-    }
-    const idx = task.tabs.findIndex((t) => t.id === tabId)
-    if (idx < 0) {
-      throw new Error(`closeTab: tab ${tabId} not found on task ${task.id}`)
-    }
-
-    // Tear down this tab's engine session FIRST so the pump's
-    // terminal-status update doesn't race with our store.update below
-    // and clobber the pruned `tabs` array. stopTab is a no-op when
-    // there's no live handle.
-    await this.stopTab(task.id, tabId)
-
-    const remaining = task.tabs.filter((t) => t.id !== tabId)
-    let nextActive = task.activeTabId
-    if (task.activeTabId === tabId) {
-      // Switch to the previous tab in the visual order; if the closed
-      // tab was index 0, the new index 0 takes its place.
-      const prevIdx = Math.max(0, idx - 1)
-      nextActive = remaining[prevIdx]?.id ?? remaining[0]?.id ?? ""
-    }
-    await this.store.update(task.id, { tabs: remaining, activeTabId: nextActive })
-    return nextActive
+    return await closeChatTab(this.chatTabDeps(), task, tabId)
   }
 
-  /**
-   * Set which tab is active. Idempotent. Tab must exist on the task.
-   * The orchestrator stays out of UI decisions — it just persists
-   * which tab the user last interacted with so a kobe restart shows
-   * the same one.
-   */
   async setActiveTab(id: TaskId | string, tabId: string): Promise<void> {
     const task = this.requireTask(id)
-    if (!task.tabs.some((t) => t.id === tabId)) {
-      throw new Error(`setActiveTab: tab ${tabId} not found on task ${task.id}`)
-    }
-    if (task.activeTabId === tabId) return
-    await this.store.update(task.id, { activeTabId: tabId })
+    await setActiveChatTab(this.store, task, tabId)
   }
 
-  /**
-   * Wait for all in-flight pumps to settle. Test-only utility — the
-   * production UI does not block on this.
-   */
   async _waitForPumpsIdle(): Promise<void> {
     const pumps = Array.from(this.pumps.values())
     await Promise.allSettled(pumps)
@@ -1864,47 +800,31 @@ export class Orchestrator {
 
   // ---------- internals ----------
 
+  private chatTabDeps() {
+    return {
+      store: this.store,
+      createId: () => ulid(),
+      nowIso: () => new Date().toISOString(),
+      vendorForTab: (task: Task, tab: ChatTab) => this.vendorForTab(task, tab),
+      stopTab: (taskId: TaskId, tabId: string) => this.stopTab(taskId, tabId),
+      dispatchEvent: (taskId: TaskId, tabId: string, ev: OrchestratorEvent) => this.dispatchEvent(taskId, tabId, ev),
+    }
+  }
+
   private requireTask(id: TaskId | string): Task {
     const task = this.store.get(id)
     if (!task) throw new TaskNotFoundError(String(id))
     return task
   }
 
-  /**
-   * Resolve a chat tab on a task. When `tabId` is omitted, returns the
-   * task's active tab. Throws if the tab id is given but not found.
-   */
   private resolveTab(task: Task, tabId?: string): ChatTab {
-    if (tabId) {
-      const found = task.tabs.find((t) => t.id === tabId)
-      if (!found) throw new Error(`tab not found on task ${task.id}: ${tabId}`)
-      return found
-    }
-    const active = task.tabs.find((t) => t.id === task.activeTabId) ?? task.tabs[0]
-    if (!active) {
-      // Should be impossible — the store invariant guarantees
-      // tabs.length >= 1. Throw rather than fabricate one silently.
-      throw new Error(`task ${task.id} has no tabs`)
-    }
-    return active
+    return resolveChatTab(task, tabId)
   }
 
-  /**
-   * Patch a single tab's persisted fields. Used internally to write
-   * back a freshly-allocated sessionId after the engine spawns.
-   */
   private async updateTab(taskId: TaskId, tabId: string, patch: Partial<ChatTab>): Promise<void> {
-    const cur = this.store.get(taskId)
-    if (!cur) return
-    const tabs = cur.tabs.map((t) => (t.id === tabId ? { ...t, ...patch, id: t.id } : t))
-    await this.store.update(taskId, { tabs })
+    await updateChatTab(this.store, taskId, tabId, patch)
   }
 
-  /**
-   * Stop the engine handle for a single tab (if any). Idempotent.
-   * Drops the handle from the map. The pump's `finally` will also try
-   * to drop it — both calls are safe.
-   */
   private async stopTab(taskId: TaskId, tabId: string): Promise<void> {
     const key = tabKey(taskId, tabId)
     const handle = this.handles.get(key)
@@ -1917,11 +837,6 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * Stop every live tab handle on a task. Used by pause / archive /
-   * delete — those are task-level lifecycle operations that take down
-   * all sessions sharing the worktree.
-   */
   private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
     const prefix = `${taskId}:`
     const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
@@ -1962,24 +877,6 @@ export class Orchestrator {
     }
   }
 
-  /**
-   * Run the {@link SessionPump} for one (Task, ChatTab) handle and
-   * then do the orchestrator-side bookkeeping the pump can't do for
-   * itself: drop the handle from the registry, recompute the
-   * run-state signal, write a terminal task status when every
-   * sibling tab has stopped, and dispatch the buffered terminal
-   * event downstream.
-   *
-   * Sequencing is load-bearing:
-   *   1. handles.delete BEFORE the `stillLive` check — so the count
-   *      reflects "still live siblings" not "including me."
-   *   2. store.update(status) BEFORE the terminal-event dispatch —
-   *      a chat subscriber reacting to `done` by queuing a follow-up
-   *      `runTask` must see the post-terminal status, not the
-   *      mid-rename state.
-   *   3. handles.delete BEFORE bumpRunState — so the run-state map
-   *      doesn't show this tab as running after it terminated.
-   */
   private async runPumpAndCleanup(taskId: TaskId, tabId: string, handle: SessionHandle): Promise<void> {
     const key = tabKey(taskId, tabId)
     const { terminalEvent, killedForInput } = await this.sessionPump.run(taskId, tabId, handle)
