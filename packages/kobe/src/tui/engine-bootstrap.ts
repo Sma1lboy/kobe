@@ -123,6 +123,25 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
             })
           return
         }
+        if (req.url === "/merge" && req.method === "POST") {
+          type MergeTrigger = () => Promise<{ taskId: string; prompt: string }>
+          const trigger = (globalThis as { __kobeTestRequestLocalMerge?: MergeTrigger }).__kobeTestRequestLocalMerge
+          if (!trigger) {
+            res.writeHead(503, { "content-type": "text/plain" })
+            res.end("__kobeTestRequestLocalMerge not yet available")
+            return
+          }
+          trigger()
+            .then((info) => {
+              res.writeHead(200, { "content-type": "application/json" })
+              res.end(JSON.stringify(info))
+            })
+            .catch((err: unknown) => {
+              res.writeHead(500, { "content-type": "text/plain" })
+              res.end(err instanceof Error ? err.message : String(err))
+            })
+          return
+        }
         // Test affordance for the user-input pause flows. Mirrors
         // /pr above: the Shell mounts __kobeTestRespondToInput which
         // knows the active task + its current pending-input bucket.
