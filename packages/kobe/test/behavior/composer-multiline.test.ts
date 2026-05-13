@@ -124,15 +124,9 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
  * importing across test files would couple them).
  */
 async function createTaskWithDialog(kobe: KobeHandle, firstPrompt: string, repo: string): Promise<void> {
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
+  await kobe.createTask(repo)
+  await new Promise((r) => setTimeout(r, 250))
   await kobe.typeText(firstPrompt)
-  await kobe.sendKeys("\t")
-  // Clear the pre-filled cwd field.
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
   await kobe.sendKeys("\r")
 }
 

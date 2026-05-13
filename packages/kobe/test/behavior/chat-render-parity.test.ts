@@ -102,14 +102,9 @@ async function buildFixture(): Promise<{ tmpRoot: string; homeDir: string; repo:
 }
 
 async function fillNewTaskDialog(kobe: KobeHandle, prompt: string, repo: string): Promise<void> {
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
+  await kobe.createTask(repo)
+  await new Promise((r) => setTimeout(r, 250))
   await kobe.typeText(prompt)
-  await kobe.sendKeys("\t")
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
   await kobe.sendKeys("\r")
 }
 

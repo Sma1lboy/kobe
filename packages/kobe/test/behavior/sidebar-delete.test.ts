@@ -163,36 +163,10 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   await scriptEngine(port, "/finish", { sessionId: "fake-1" })
 
   // ---- create a task via the new-task dialog -------------------
-  await kobe.sendKeys("\x0e") // ctrl+n
-  await kobe.waitFor((s) => s.includes("New task"), 5_000)
-  // Settle so the dialog's prompt input has its focused listener
-  // attached before we start typing — the very first character
-  // can otherwise race with the input's stdin attach and land
-  // somewhere other than the prompt field.
-  await new Promise((r) => setTimeout(r, 250))
-  // Defensive: a stray byte during the dialog mount could land on the
-  // prompt field. Backspaces on an empty field are no-ops, so this is
-  // safe in the happy case. (Historically this guarded against the
-  // bare-`n` opener leaking an `n`; ctrl+n no longer leaks but the
-  // mount race still warrants a clear.)
-  for (let i = 0; i < 4; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-
   const TITLE = "delete-me"
-  await kobe.typeText(TITLE)
-  // Tab to the repo field, settle, clear the default, type our
-  // fixture path.
-  await kobe.sendKeys("\t")
+  await kobe.createTask(repo)
   await new Promise((r) => setTimeout(r, 250))
-  for (let i = 0; i < 200; i++) {
-    await kobe.sendKeys("\x7f")
-  }
-  await kobe.typeText(repo)
-  // Enter on the repo field commits when both prompt + repo are
-  // filled (the new-task dialog's tri-field flow falls back to a
-  // direct commit instead of cycling to baseRef when both
-  // upstream fields are valid).
+  await kobe.typeText(TITLE)
   await kobe.sendKeys("\r")
 
   // Sidebar shows the task. Wait until the title is visible.
@@ -224,17 +198,10 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   expect(fs.existsSync(created.worktreePath)).toBe(true)
 
   // ---- focus the sidebar so its `d` binding receives the keystroke ----
-  // After the new-task flow, focus is on `workspace` (the chat
-  // composer auto-focuses for the pendingPrompt flow). The sidebar's
-  // `d` binding is gated on `isFocused("sidebar")`, so we must move
-  // focus first. We use ctrl+1 — app.tsx wires `ctrl+1` to
-  // `setFocusedPane("sidebar")` and that binding is *not* gated on
-  // any input-focus state (modifier-prefixed keys always work). The
-  // PTY byte for ctrl+1 is `\x1b[49;5u` — kitty CSI-u where the
-  // first parameter is the ASCII codepoint of the digit '1' (49),
-  // NOT the integer 1. (The integer 1 in kitty form means "ctrl+\x01"
-  // which is a different chord and won't fire the binding.)
-  await kobe.sendKeys("\x1b[49;5u")
+  // After the new-task flow, focus is on `workspace`. ctrl+q is the
+  // explicit workspace → TASKS escape chord and is not swallowed by
+  // the composer as text input.
+  await kobe.sendKeys("\x11")
   await new Promise((r) => setTimeout(r, 250))
 
   // ---- press `d` on the sidebar cursor -------------------------

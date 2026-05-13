@@ -33,6 +33,7 @@ import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orch
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
 import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
+import { NullMetadataSuggester } from "../orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
@@ -753,7 +754,12 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const worktrees = new GitWorktreeManager()
-    orchestrator = new Orchestrator({ engines, store, worktrees })
+    orchestrator = new Orchestrator({
+      engines,
+      store,
+      worktrees,
+      ...(process.env.KOBE_TEST_ENGINE ? { metadataSuggester: new NullMetadataSuggester() } : {}),
+    })
     // Bridge: bind a Unix-socket RPC server + write an MCP config so
     // every claude subprocess kobe spawns gets the `kobe_*` tools.
     try {

@@ -267,6 +267,12 @@ export class CodexLocal implements AIEngine {
     let stderrTail = ""
     const contextWindowPromise = resolveOpenRouterContextWindow(modelId)
 
+    // Attach before resume's sync-bind path returns a handle; a fast
+    // failing codex can write stderr and exit immediately afterward.
+    captureStderrTail(spawned.stderr, (chunk) => {
+      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP)
+    })
+
     const bind = (sessionId: string) => {
       if (bound) {
         // On resume we sync-bind with the caller-supplied sid before
@@ -318,13 +324,6 @@ export class CodexLocal implements AIEngine {
         throw err
       }
     }
-
-    // Capture a rolling tail of stderr so that fatal exits (bad
-    // resume-sid, missing binary perms, sandbox refusal) can surface a
-    // useful message instead of just "exit code 1".
-    captureStderrTail(spawned.stderr, (chunk) => {
-      stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP)
-    })
 
     // Materialize exit info as a promise so the parser's finally block
     // can synchronously inspect the exit code *before* closing the
