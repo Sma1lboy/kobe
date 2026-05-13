@@ -90,6 +90,11 @@ import {
 } from "../types/task.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { ulid } from "./index/ulid.ts"
+import {
+  DEFAULT_LOCAL_MERGE_INSTRUCTIONS_TEMPLATE,
+  gatherLocalMergeState,
+  renderLocalMergeInstructions,
+} from "./local-merge/index.ts"
 import { MetadataSuggester } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
@@ -173,6 +178,17 @@ export class PRPreconditionError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "PRPreconditionError"
+  }
+}
+
+/**
+ * Thrown when {@link Orchestrator.requestLocalMerge} cannot start a merge
+ * prompt for the selected task.
+ */
+export class LocalMergePreconditionError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "LocalMergePreconditionError"
   }
 }
 
@@ -1278,6 +1294,37 @@ export class Orchestrator {
     // itself dispatches the user.inject — no need to do it twice.
     const activeTab = this.resolveTab(task)
     await this.runTask(task.id, prompt, activeTab.id)
+  }
+
+  /**
+   * Start the local-merge flow for a task.
+   *
+   * This is the local counterpart to {@link requestPR}: kobe does not run
+   * `git merge` itself. It creates a dedicated "Merge" ChatTab, inherits the
+   * active tab's engine/model configuration through {@link createTab}, switches
+   * that tab active, and injects a prompt that tells the agent to merge the
+   * task worktree into the parent repo checkout (`task.repo`).
+   */
+  async requestLocalMerge(id: TaskId | string): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.kind === "main") {
+      throw new LocalMergePreconditionError("Main repo rows are already the merge target.")
+    }
+    if (task.status === "canceled") {
+      throw new LocalMergePreconditionError("Cannot local-merge a canceled task.")
+    }
+    if (!task.worktreePath) {
+      throw new LocalMergePreconditionError("Task has no worktree yet — send a first prompt before merging.")
+    }
+    if (!task.repo) {
+      throw new LocalMergePreconditionError("Task has no parent repo path; cannot resolve local merge target.")
+    }
+
+    const state = await gatherLocalMergeState(task)
+    const prompt = renderLocalMergeInstructions(DEFAULT_LOCAL_MERGE_INSTRUCTIONS_TEMPLATE, state)
+    const mergeTab = await this.createTab(task.id, { title: "Merge" })
+    await this.setActiveTab(task.id, mergeTab.id)
+    await this.runTask(task.id, prompt, mergeTab.id)
   }
 
   /**

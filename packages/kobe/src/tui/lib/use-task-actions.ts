@@ -16,6 +16,9 @@
  *   - `confirmDeleteTask(taskId)` — confirms via DialogConfirm; for
  *     pinned "main" tasks it removes the saved-repos entry instead of
  *     deleting the worktree (KOB-15).
+ *   - `confirmLocalMergeTask(taskId)` — confirms the local-merge intent,
+ *     then asks the orchestrator to create a Merge chat tab and inject
+ *     the merge prompt.
  *
  * Must be invoked inside a Solid component scope (calls back into
  * dialog stack effects + reads/writes reactive signals).
@@ -48,6 +51,7 @@ export type TaskActions = {
   confirmRenameTask: (taskId: string) => Promise<void>
   confirmRenameChatTab: (tabId: string) => Promise<void>
   confirmDeleteTask: (taskId: string) => Promise<void>
+  confirmLocalMergeTask: (taskId: string) => Promise<void>
 }
 
 export function useTaskActions(deps: TaskActionsDeps): TaskActions {
@@ -202,10 +206,38 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     }
   }
 
+  /**
+   * Confirm + start a local merge. This is intentionally NOT the PR
+   * workflow: the orchestrator injects a prompt into a new Merge chat tab
+   * telling the agent to merge the task worktree into `task.repo`.
+   */
+  async function confirmLocalMergeTask(taskId: string): Promise<void> {
+    const task = orchestrator.getTask(taskId)
+    if (!task) return
+    const target = task.repo.split("/").filter(Boolean).pop() ?? task.repo
+    const ok = await DialogConfirm.show(
+      dialog,
+      `Local merge '${task.title}'?`,
+      `Starts a Merge chat tab that asks the agent to merge this task into the parent checkout '${target}'. This does not create a PR or delete the task worktree.`,
+      "cancel",
+      "merge",
+    )
+    if (ok !== true) return
+    try {
+      await orchestrator.requestLocalMerge(taskId)
+      setSelectedId(taskId)
+      setFocusedPane("workspace")
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[kobe] requestLocalMerge failed:", err)
+    }
+  }
+
   return {
     openNewTaskFlow,
     confirmRenameTask,
     confirmRenameChatTab,
     confirmDeleteTask,
+    confirmLocalMergeTask,
   }
 }

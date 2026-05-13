@@ -71,6 +71,12 @@ export type SidebarBindingsOpts = {
    */
   onArchiveRequest?: (taskId: string) => void
   /**
+   * Local-merge callback. Fires on Shift+M with the task id under the
+   * cursor. Lowercase `m` is captured but ignored for the same reason as
+   * Shift+P: terminal key normalization drops shift on letters.
+   */
+  onLocalMergeRequest?: (taskId: string) => void
+  /**
    * Rename callback. Fires on `r` with the task id under the cursor.
    * The sidebar emits a *request* — the parent (app.tsx) owns the
    * input dialog and the `orchestrator.setTitle` call. Optional, in
@@ -150,6 +156,11 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       "sidebar.archive": () => {
         const id = cursorTaskId()
         if (id !== undefined) opts.onArchiveRequest?.(id)
+      },
+      "sidebar.localMerge": (evt) => {
+        if (!evt.shift) return
+        const id = cursorTaskId()
+        if (id !== undefined) opts.onLocalMergeRequest?.(id)
       },
       "sidebar.rename": () => {
         const id = cursorTaskId()

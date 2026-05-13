@@ -356,6 +356,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "a", label: "archive" },
   },
   {
+    id: "sidebar.localMerge",
+    scope: "sidebar",
+    keys: ["m"],
+    category: "Sidebar",
+    description: "Local merge task into parent repo (Shift+M)",
+    hint: { keys: "M", label: "merge" },
+  },
+  {
     // Capital P pins / unpins a regular task. Lowercase `p` falls
     // through to a no-op (the handler gates on evt.shift) so a
     // mistyped lowercase doesn't churn the flag. Pinned regular tasks

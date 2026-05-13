@@ -36,6 +36,7 @@ import {
   CannotDeleteMainTaskError,
   ConcurrencyCapError,
   IllegalTransitionError,
+  LocalMergePreconditionError,
   Orchestrator,
   TITLE_CHAR_CAP,
   TaskNotFoundError,
@@ -317,6 +318,44 @@ describe("Orchestrator.createTask", () => {
     // archive() also flows through the listener bus.
     await store.archive(t.id, "canceled")
     expect(sig()[0]?.status).toBe("canceled")
+  })
+})
+
+// ----------------------------------------------------------------------
+// requestLocalMerge — sidebar M flow
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.requestLocalMerge", () => {
+  test("creates a Merge tab and injects a local-merge prompt", async () => {
+    const engine = new HistoryEngine("claude")
+    const { orch, store } = await buildOrchestrator(engine)
+    const task = await orch.createTask({ repo, title: "merge me" })
+
+    await orch.runTask(task.id, "first implementation pass")
+    await orch._waitForPumpsIdle()
+    const allocated = store.get(task.id)!
+    expect(allocated.worktreePath).not.toBe("")
+
+    await orch.requestLocalMerge(task.id)
+    await orch._waitForPumpsIdle()
+
+    const updated = store.get(task.id)!
+    const mergeTab = updated.tabs.find((tab) => tab.title === "Merge")
+    expect(mergeTab).toBeDefined()
+    expect(updated.activeTabId).toBe(mergeTab?.id)
+    expect(engine.spawns).toHaveLength(2)
+    const mergeSpawn = engine.spawns[1]!
+    expect(mergeSpawn.cwd).toBe(allocated.worktreePath)
+    expect(mergeSpawn.prompt).toContain("LOCAL MERGE, not PR")
+    expect(mergeSpawn.prompt).toContain(`Source task worktree:\n${allocated.worktreePath}`)
+    expect(mergeSpawn.prompt).toContain(`Target parent repo checkout:\n${repo}`)
+    expect(mergeSpawn.prompt).toContain("Do not create a pull request.")
+  })
+
+  test("rejects main repo rows because they are already the merge target", async () => {
+    const { orch } = await buildOrchestrator()
+    const main = await orch.ensureMainTask(repo)
+    await expect(orch.requestLocalMerge(main.id)).rejects.toBeInstanceOf(LocalMergePreconditionError)
   })
 })
 
