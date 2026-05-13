@@ -720,8 +720,13 @@ function ReadGrepGlobBanner(props: { row: Extract<ChatRow, { kind: "tool" }> }) 
 function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
   const { theme } = useTheme()
   const r = () => props.row
-  const stdoutView = (): BashOutputView => splitBashOutput(r().stdout, BASH_OUTPUT_COLLAPSED_CAP)
-  const stderrView = (): BashOutputView => splitBashOutput(r().stderr, BASH_OUTPUT_COLLAPSED_CAP)
+  // No line-count truncation. claude-code's `OutputLine` renders every
+  // line of bash output (only per-line column truncation, never a
+  // "show first N lines" cap). We mirror that — `splitBashOutput(_, -1)`
+  // means "no cap" and yields `hidden: 0`, so the trailing "… N more
+  // lines" tail never renders.
+  const stdoutView = (): BashOutputView => splitBashOutput(r().stdout, -1)
+  const stderrView = (): BashOutputView => splitBashOutput(r().stderr, -1)
   // Successful exits suppress the status footer entirely — the
   // command + its output is enough signal that it ran. We still
   // surface non-success states (running, interrupted, non-zero exit,
@@ -760,11 +765,6 @@ function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
               </text>
             )}
           </For>
-          <Show when={stdoutView().hidden > 0}>
-            <text fg={theme.textMuted}>
-              {`  … ${stdoutView().hidden} more ${stdoutView().hidden === 1 ? "line" : "lines"}`}
-            </text>
-          </Show>
         </box>
       </Show>
       <Show when={stderrView().totalLines > 0}>
@@ -776,11 +776,6 @@ function BashRow(props: { row: Extract<ChatRow, { kind: "bash" }> }) {
               </text>
             )}
           </For>
-          <Show when={stderrView().hidden > 0}>
-            <text fg={theme.error}>
-              {`  … ${stderrView().hidden} more ${stderrView().hidden === 1 ? "line" : "lines"}`}
-            </text>
-          </Show>
         </box>
       </Show>
       <Show when={statusText() != null}>
