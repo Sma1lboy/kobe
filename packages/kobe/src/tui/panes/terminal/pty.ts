@@ -220,6 +220,20 @@ export class BunTerminalTaskPty implements TaskPtyLike {
   private cols: number
   private rows: number
   private refreshQueued = false
+  /**
+   * Explicit-cd guard. We pass `cwd` to `Bun.spawn`, which puts the
+   * shell process in the worktree to start with — but the user's
+   * `.bashrc` / `.zshrc` can change directory after that (some configs
+   * unconditionally `cd $HOME`, or use `chpwd`/`zshrc` hooks that
+   * resolve symlinks). And without an explicit `cd` line in the
+   * scrollback, it's not obvious to the user which directory the
+   * terminal is in — especially with minimal prompts.
+   *
+   * After the shell's first paint (so we don't race the rc-file
+   * output), we write `cd "<cwd>"\n` once, then flip this flag so
+   * subsequent paints don't re-issue it.
+   */
+  private initialCdSent = false
 
   constructor(opts: TaskPtyOpts) {
     this.taskId = opts.taskId
@@ -316,6 +330,16 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     if (this._killed) return
     const chunk = typeof data === "string" ? data : Buffer.from(data).toString("utf8")
     this.term.write(chunk, () => this.queueRefresh())
+    // First paint is our signal that the shell finished its rc-file
+    // phase and is now interactive. Drop in an explicit `cd` so the
+    // terminal lands in the task's worktree even when the rc-file
+    // would have moved it elsewhere — and the user can see in the
+    // scrollback which directory this terminal belongs to.
+    if (!this.initialCdSent && this.cwd) {
+      this.initialCdSent = true
+      const escaped = this.cwd.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`")
+      this.write(`cd "${escaped}"\n`)
+    }
   }
 
   private queueRefresh(): void {
