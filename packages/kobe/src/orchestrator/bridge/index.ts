@@ -16,7 +16,7 @@
  * desired behavior for now (no recursion guard yet).
  */
 
-import { mkdir, unlink, writeFile } from "node:fs/promises"
+import { mkdir, readdir, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
@@ -39,6 +39,45 @@ export function bridgeSocketPathForHome(home: string, pid = process.pid): string
   return fitSocketPath(join(runDir, `bridge-${pid}.sock`), home, "bridge", pid)
 }
 
+/**
+ * Best-effort sweep of `<home>/.kobe/run/` for `bridge-<pid>.sock` and
+ * `mcp-<pid>.json` entries whose owner PID is no longer alive. The
+ * normal close path unlinks both files, but SIGKILL'd kobe / kobed
+ * runs (oom-killer, terminal closed mid-shutdown, panic) leave them
+ * behind, and a single dev day can accumulate dozens of stale entries.
+ * Skip our own pid and anything we can't parse — we'd rather underclean
+ * than wipe a live peer's file. Errors swallowed: stale-file cleanup
+ * must never block daemon startup.
+ */
+async function sweepStaleRunFiles(runDir: string): Promise<void> {
+  let entries: string[]
+  try {
+    entries = await readdir(runDir)
+  } catch {
+    return
+  }
+  const self = process.pid
+  await Promise.all(
+    entries.map(async (name) => {
+      const match = name.match(/^(?:bridge|mcp)-(\d+)\.(?:sock|json)$/)
+      if (!match) return
+      const pid = Number(match[1])
+      if (!Number.isFinite(pid) || pid === self) return
+      try {
+        process.kill(pid, 0)
+        return // owner still alive
+      } catch {
+        // ESRCH (no such process) or EPERM — treat both as "safe to
+        // sweep." EPERM means we don't own the process, which on macOS
+        // happens for `pid 1` and other system pids; the run/ pid is
+        // ours, so EPERM almost certainly means "wraparound, different
+        // owner, ours is gone."
+      }
+      await unlink(join(runDir, name)).catch(() => {})
+    }),
+  )
+}
+
 export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}): Promise<BridgeHandles> {
   const home = opts.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const runDir = join(home, ".kobe", "run")
@@ -55,6 +94,8 @@ export async function startBridge(orch: Orchestrator, opts: StartBridgeOpts = {}
   // socket fell back to $TMPDIR via fitSocketPath, the home-side runDir
   // still needs to exist for the mcp.json writeFile below.
   await mkdir(runDir, { recursive: true })
+
+  await sweepStaleRunFiles(runDir)
 
   const server: BridgeServer = await startBridgeServer(orch, socketPath)
   await mkdir(runDir, { recursive: true })
