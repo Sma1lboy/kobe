@@ -22,6 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - **Codex reasoning rows render as “思考过程” instead of raw JSON** — app-server and exec-stream reasoning items now show a clean thinking-process row without exposing `reasoning({"summary":[],"content":[]})` payloads (KOB-102).
+- **Codex tool calls rehydrate after restart** — persisted `function_call` / `function_call_output` rows now reload as paired tool rows instead of disappearing from the chat transcript (KOB-105).
 
 ## [0.5.21] - 2026-05-13
 

@@ -33,6 +33,61 @@ describe("codex history parser", () => {
     expect(out[0]?.blocks).toEqual([{ type: "text", text: "hello" }])
   })
 
+  it("hydrates persisted function_call rows as paired tool blocks", () => {
+    const raw = [
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:00Z",
+        payload: {
+          type: "function_call",
+          name: "exec_command",
+          arguments: '{"cmd":"pwd","workdir":"/tmp/repo"}',
+          call_id: "call_1",
+        },
+      }),
+      JSON.stringify({
+        type: "response_item",
+        timestamp: "2026-05-11T18:00:01Z",
+        payload: {
+          type: "function_call_output",
+          call_id: "call_1",
+          output: '{"output":"/tmp/repo\\n","metadata":{"exit_code":0}}',
+        },
+      }),
+    ].join("\n")
+
+    const out = parseJsonl(raw, SID)
+
+    expect(out).toEqual([
+      {
+        role: "assistant",
+        timestamp: "2026-05-11T18:00:00Z",
+        sessionId: SID,
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "call_1",
+            name: "exec_command",
+            input: { cmd: "pwd", workdir: "/tmp/repo" },
+          },
+        ],
+      },
+      {
+        role: "user",
+        timestamp: "2026-05-11T18:00:01Z",
+        sessionId: SID,
+        blocks: [
+          {
+            type: "tool_result",
+            callId: "call_1",
+            output: { output: "/tmp/repo\n", metadata: { exit_code: 0 } },
+            isError: false,
+          },
+        ],
+      },
+    ])
+  })
+
   it("drops the leading <environment_context> envelope user row", () => {
     // Real shape captured from `~/.codex/sessions/.../rollout-*.jsonl`:
     // codex injects this as the first user message of every session.

@@ -14,8 +14,9 @@
  *     { "type": "turn_context", ... }
  *     (more)
  *
- * We extract `response_item` records of type `message` with a known role
- * and surface them via {@link Message}; other record types are dropped.
+ * We extract `response_item` records of type `message` with a known role,
+ * plus persisted Codex tool call/result items, and surface them via
+ * {@link Message}; other record types are dropped.
  *
  * Session-lookup-by-UUID requires scanning the date-organized tree
  * because the UUID alone doesn't carry the rollout date — newest-first
@@ -27,6 +28,7 @@
 import { readFile, readdir, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
+import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
 import { normalizeCodexContent } from "./normalize"
 import { isSyntheticCodexUserRow } from "./synthetic"
@@ -154,6 +156,17 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     if (parsed.type !== "response_item") continue
     const payload = isObject(parsed.payload) ? (parsed.payload as Record<string, unknown>) : undefined
     if (!payload) continue
+    const ts = typeof parsed.timestamp === "string" ? (parsed.timestamp as string) : new Date().toISOString()
+    if (payload.type === "function_call") {
+      const msg = normalizeCodexToolCall(payload, ts, sessionId)
+      if (msg) out.push(msg)
+      continue
+    }
+    if (payload.type === "function_call_output") {
+      const msg = normalizeCodexToolResult(payload, ts, sessionId)
+      if (msg) out.push(msg)
+      continue
+    }
     if (payload.type !== "message") continue
     const role = payload.role
     if (role !== "user" && role !== "assistant" && role !== "system") continue
@@ -164,10 +177,51 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
     // not replay them. Reloading history should therefore hide them so
     // the visible transcript matches what the user actually typed.
     if (role === "user" && isSyntheticCodexUserRow(blocks)) continue
-    const ts = typeof parsed.timestamp === "string" ? (parsed.timestamp as string) : new Date().toISOString()
     out.push({ role, blocks, timestamp: ts, sessionId })
   }
   return out
+}
+
+function normalizeCodexToolCall(
+  payload: Record<string, unknown>,
+  timestamp: string,
+  sessionId: string,
+): Message | undefined {
+  const callId = typeof payload.call_id === "string" ? payload.call_id : undefined
+  if (!callId) return undefined
+  const name = typeof payload.name === "string" && payload.name.length > 0 ? payload.name : "function_call"
+  const block: ContentBlock = {
+    type: "tool_call",
+    callId,
+    name,
+    input: parseMaybeJson(payload.arguments),
+  }
+  return { role: "assistant", blocks: [block], timestamp, sessionId }
+}
+
+function normalizeCodexToolResult(
+  payload: Record<string, unknown>,
+  timestamp: string,
+  sessionId: string,
+): Message | undefined {
+  const callId = typeof payload.call_id === "string" ? payload.call_id : undefined
+  if (!callId) return undefined
+  const block: ContentBlock = {
+    type: "tool_result",
+    callId,
+    output: parseMaybeJson(payload.output),
+    isError: false,
+  }
+  return { role: "user", blocks: [block], timestamp, sessionId }
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return value
+  }
 }
 
 export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | undefined {
