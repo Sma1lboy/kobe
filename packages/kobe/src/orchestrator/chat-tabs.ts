@@ -65,10 +65,11 @@ export async function openSessionInChatTab(
   deps: ChatTabLifecycleDeps,
   task: Task,
   sessionId: string,
-  opts: { title?: string } = {},
+  opts: { title?: string; vendor?: VendorId } = {},
 ): Promise<string> {
   const active = resolveChatTab(task)
-  const existing = task.tabs.find((t) => t.sessionId === sessionId)
+  const targetVendor = opts.vendor ?? deps.vendorForTab(task, active)
+  const existing = task.tabs.find((t) => t.sessionId === sessionId && deps.vendorForTab(task, t) === targetVendor)
   if (existing) {
     await setActiveChatTab(deps.store, task, existing.id)
     return existing.id
@@ -80,7 +81,7 @@ export async function openSessionInChatTab(
     createdAt: deps.nowIso(),
     model: active.model ?? task.model,
     modelEffort: active.modelEffort ?? task.modelEffort,
-    vendor: deps.vendorForTab(task, active),
+    vendor: targetVendor,
     ...(opts.title ? { title: opts.title } : {}),
   }
   await deps.store.update(task.id, { tabs: [...task.tabs, tab], activeTabId: tab.id })

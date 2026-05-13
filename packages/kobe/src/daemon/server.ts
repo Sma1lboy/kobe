@@ -353,6 +353,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const taskId = requireString(payload, "taskId")
         const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {
           title: optionalString(payload, "title"),
+          vendor: optionalVendor(payload, "vendor"),
         })
         // openSessionInTab appends a new tab; subscribe every attached
         // client to its event bus so live deltas reach them.
@@ -637,6 +638,12 @@ async function readTaskHistory(
 
 function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {
   client.socket.write(frameToLine(frame))
+}
+
+function optionalVendor(payload: unknown, key: string): "claude" | "codex" | undefined {
+  if (!payload || typeof payload !== "object") return undefined
+  const v = (payload as Record<string, unknown>)[key]
+  return v === "claude" || v === "codex" ? v : undefined
 }
 
 function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void {

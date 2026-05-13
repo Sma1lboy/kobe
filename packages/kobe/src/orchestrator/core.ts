@@ -842,7 +842,11 @@ export class Orchestrator {
     return this.engineRouter.listSessions(task, tab)
   }
 
-  async openSessionInTab(id: TaskId | string, sessionId: string, opts: { title?: string } = {}): Promise<string> {
+  async openSessionInTab(
+    id: TaskId | string,
+    sessionId: string,
+    opts: { title?: string; vendor?: VendorId } = {},
+  ): Promise<string> {
     const task = this.requireTask(id)
     return await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
   }

@@ -168,10 +168,23 @@ export class EngineRouter {
 
   async listSessions(task: Task, tab: ChatTab): Promise<SessionMeta[]> {
     if (!task.worktreePath) return []
-    try {
-      return await this.engineForTab(task, tab).listSessions(task.worktreePath)
-    } catch {
-      return []
+    const preferredVendor = this.vendorForTab(task, tab)
+    const vendors = new Set<VendorId>()
+    vendors.add(preferredVendor)
+    for (const vendor of Object.keys(this.engines) as VendorId[]) vendors.add(vendor)
+
+    const out: SessionMeta[] = []
+    for (const vendor of vendors) {
+      const engine = this.engineForVendor(vendor)
+      try {
+        const sessions = await engine.listSessions(task.worktreePath)
+        for (const session of sessions) out.push({ ...session, vendor })
+      } catch {
+        // Per-engine best-effort: a missing/unauthed adapter should not
+        // hide sessions from another account engine.
+      }
     }
+    out.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    return out
   }
 }
