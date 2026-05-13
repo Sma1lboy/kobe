@@ -103,6 +103,17 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   "f1",
   "ctrl+p",
   "ctrl+,",
+  // Terminal reset — `F5` kills the current shell and respawns at the
+  // worktree. Earlier passes tried `alt+r` (eaten by opentui's native
+  // debug-overlay handler) and `ctrl+shift+r` (Windows Terminal and
+  // most legacy emulators do NOT distinguish `ctrl+shift+letter` from
+  // `ctrl+letter` at the byte level — kobe receives `ctrl+r` and the
+  // shell sees `\x12`, kicking off readline's reverse-i-search).
+  // F-keys are sent as their own escape sequences (`\x1bOP` /
+  // `\x1b[15~` for F5) so they're unambiguous regardless of modifier
+  // distinguishing capability, and the browser-refresh mnemonic
+  // matches the "reset / restart" intent.
+  "f5",
 ] as const
 
 /**

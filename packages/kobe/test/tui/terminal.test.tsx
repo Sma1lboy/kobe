@@ -218,6 +218,24 @@ describe("PtyRegistry", () => {
     expect(b.killed).toBe(true)
     expect(c.killed).toBe(true)
   })
+
+  test("reset() kills the old PTY and returns a fresh one bound to the same task id", () => {
+    const reg = new PtyRegistry(mockFactory)
+    const a = reg.acquire("task-1", "/tmp/work")
+    const b = reg.reset("task-1", "/tmp/work")
+    expect(a).not.toBe(b)
+    expect(a.killed).toBe(true)
+    expect(b.killed).toBe(false)
+    expect(reg.size).toBe(1)
+    expect(reg.get("task-1")).toBe(b)
+  })
+
+  test("reset() on an absent task id spawns a fresh PTY (no-op release path)", () => {
+    const reg = new PtyRegistry(mockFactory)
+    const fresh = reg.reset("never-acquired", "/tmp/work")
+    expect(fresh.killed).toBe(false)
+    expect(reg.size).toBe(1)
+  })
 })
 
 /* --------------------------------------------------------------------- */

@@ -117,6 +117,25 @@ export class PtyRegistry {
     for (const id of ids) this.release(id)
   }
 
+  /**
+   * Kill the PTY for `taskId` (if any) and immediately spawn a fresh
+   * one with the same `cwd` / `opts`. Returns the new instance.
+   *
+   * The use cases are "shell is stuck" / "binary spew corrupted the
+   * grid" / "I want a clean slate without restarting kobe." The
+   * user-visible effect is: scrollback wiped, fresh prompt at the
+   * worktree path, all in-flight processes (vim, htop, paused jobs)
+   * killed.
+   *
+   * Implemented in terms of release + acquire so the cleanup path is
+   * shared with archive teardown — no risk of leaking a PTY whose
+   * old listeners weren't unwired.
+   */
+  reset(taskId: string, cwd: string, opts: AcquireOpts = {}): TaskPty {
+    this.release(taskId)
+    return this.acquire(taskId, cwd, opts)
+  }
+
   /** Tests / debug: how many live PTYs are tracked. */
   get size(): number {
     return this.map.size
