@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- **Sidebar archive/delete actions now require an explicit confirmation choice** — pressing `a` opens an Archive/Unarchive confirm before moving a task between Working session and Archives, and destructive delete/remove-saved-repo confirms now default to Cancel so a stray Enter cannot commit the action (KOB-133).
 - **Tasks can start an AI-assisted local merge with `M`** — press Shift+M on a sidebar task to confirm a local merge, create a dedicated Merge chat tab, and inject a prompt that asks the agent to merge the task worktree into the parent repo checkout without creating a PR (KOB-110).
 - **New tasks inherit the active chat model** — creating a task now seeds its first chat tab from the current or last-active chat tab's engine/model/reasoning settings, falling back to defaults only when no prior model config exists (KOB-129).
 - **Resume history shows sessions from every engine** — the resume picker now loads Claude Code and Codex sessions for the task worktree, labels each row with its owning engine, and opens the selected session on the matching engine tab (KOB-130).

@@ -214,14 +214,18 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   // app.tsx Shell.confirmDeleteTask.
   await kobe.waitFor((s) => s.includes(`Delete '${TITLE}'?`), 10_000)
 
-  // ---- confirm ------------------------------------------------
-  // The DialogConfirm's default `active` is `confirm` (see
-  // src/tui/ui/dialog-confirm.tsx — `active: "confirm"`). app.tsx
-  // passes `"cancel"` as the *label* (button text override), but
-  // does NOT change the default-focused button. Pressing Enter
-  // immediately fires the confirm path. We don't navigate; the
-  // straight-through happy path is what `d` users will hit.
+  // ---- cancel-default guard -----------------------------------
+  // Destructive sidebar confirms default to Cancel. A fast `d` +
+  // Enter must not delete anything.
   await new Promise((r) => setTimeout(r, 100))
+  await kobe.sendKeys("\r")
+  await new Promise((r) => setTimeout(r, 250))
+  expect(fs.existsSync(created.worktreePath)).toBe(true)
+
+  // ---- confirm ------------------------------------------------
+  await kobe.sendKeys("d")
+  await kobe.waitFor((s) => s.includes(`Delete '${TITLE}'?`), 10_000)
+  await kobe.sendKeys("\x1b[C") // right arrow: Cancel -> Delete
   await kobe.sendKeys("\r")
 
   // ---- assertions ---------------------------------------------
@@ -246,6 +250,88 @@ test("pressing `d` on the sidebar cursor + confirm deletes the task and removes 
   const afterRaw = fs.readFileSync(manifestPath, "utf8")
   const after = JSON.parse(afterRaw) as { tasks: { id: string }[] }
   expect(after.tasks.find((t) => t.id === created.id)).toBeUndefined()
+
+  await kobe.exit()
+  expect(kobe.closed).toBe(true)
+}, 90_000)
+
+test("pressing `a` confirms before archiving a task", async () => {
+  // ---- fixtures ------------------------------------------------
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-sidebar-archive-"))
+  homeDir = path.join(tmpRoot, "home")
+  fs.mkdirSync(homeDir, { recursive: true })
+  repo = path.join(tmpRoot, "my-frontend")
+  const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
+  if (initResult.status !== 0) {
+    throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
+  }
+  const port = await pickFreePort()
+
+  // ---- spawn kobe ----------------------------------------------
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: homeDir,
+    },
+    cols: 120,
+    rows: 30,
+  })
+
+  await kobe.waitFor((s) => s.includes("KobeCode"), 10_000)
+  await waitForFakeServer(port)
+
+  await scriptEngine(port, "/script", {
+    sessionId: "fake-1",
+    events: [{ type: "done" }],
+  })
+  await scriptEngine(port, "/finish", { sessionId: "fake-1" })
+
+  const TITLE = "archive-me"
+  await kobe.createTask(repo)
+  await new Promise((r) => setTimeout(r, 250))
+  await kobe.typeText(TITLE)
+  await kobe.sendKeys("\r")
+  await kobe.waitFor((s) => s.includes(TITLE), 15_000)
+
+  const manifestPath = path.join(homeDir, ".kobe", "tasks.json")
+  await waitForManifestPopulated(manifestPath, 15_000)
+  const created = JSON.parse(fs.readFileSync(manifestPath, "utf8")).tasks[0] as { id: string; archived: boolean }
+  expect(created.archived).toBe(false)
+
+  // Focus sidebar, then open archive confirm on the selected task.
+  await kobe.sendKeys("\x11")
+  await new Promise((r) => setTimeout(r, 250))
+  await kobe.sendKeys("a")
+  await kobe.waitFor((s) => s.includes(`Archive '${TITLE}'?`), 10_000)
+  const dialogScreen = await kobe.capture()
+  expect(dialogScreen).toContain("Moves this task to Archives")
+
+  // Enter defaults to Cancel, so the task stays in Working session.
+  await kobe.sendKeys("\r")
+  await new Promise((r) => setTimeout(r, 250))
+  let after = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+    tasks: { id: string; archived: boolean }[]
+  }
+  expect(after.tasks.find((t) => t.id === created.id)?.archived).toBe(false)
+
+  // Explicitly move focus to the Archive button, then confirm.
+  await kobe.sendKeys("a")
+  await kobe.waitFor((s) => s.includes(`Archive '${TITLE}'?`), 10_000)
+  await kobe.sendKeys("\x1b[C")
+  await kobe.sendKeys("\r")
+  await waitForCondition(() => {
+    try {
+      const data = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+        tasks: { id: string; archived: boolean }[]
+      }
+      return data.tasks.find((t) => t.id === created.id)?.archived === true
+    } catch {
+      return false
+    }
+  }, 10_000)
+  after = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as { tasks: { id: string; archived: boolean }[] }
+  expect(after.tasks.find((t) => t.id === created.id)?.archived).toBe(true)
 
   await kobe.exit()
   expect(kobe.closed).toBe(true)
