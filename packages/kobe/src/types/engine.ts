@@ -245,6 +245,33 @@ export interface SessionMeta {
   readonly messageCount: number
 }
 
+export type BackgroundAgentStatus = "running" | "blocked" | "completed" | "failed" | "idle" | "unknown"
+
+/**
+ * One Claude Code background agent/session as normalized by an engine adapter.
+ *
+ * This intentionally sits on the engine seam: Claude owns how background
+ * agents are indexed and what their lifecycle states mean. Neutral kobe
+ * layers only consume this normalized shape and must not scan vendor-owned
+ * files directly.
+ */
+export interface BackgroundAgent {
+  /** Stable row id. For Claude Code this is the background job id when present, otherwise the session id. */
+  readonly id: string
+  readonly sessionId: string
+  readonly name: string | null
+  readonly status: BackgroundAgentStatus
+  /** Raw engine status string, kept for debugging / forward compatibility. */
+  readonly sourceStatus: string | null
+  readonly cwd: string
+  readonly agent: string | null
+  readonly jobId: string | null
+  readonly pid: number | null
+  readonly version: string | null
+  readonly startedAtMs: number | null
+  readonly updatedAtMs: number | null
+}
+
 /**
  * Normalized engine event. This is the wire format between the engine
  * impl and the orchestrator/UI.
@@ -549,6 +576,16 @@ export interface AIEngine {
    * single corrupt JSONL doesn't blank the whole list.
    */
   listSessions(cwd: string): Promise<SessionMeta[]>
+
+  /**
+   * List engine-owned background agents started under `cwd`.
+   *
+   * Claude Code's `claude agents --cwd <path>` is the product reference
+   * here. The adapter owns discovery/normalization; callers must not
+   * reverse-engineer vendor storage in TUI or orchestrator code.
+   * Engines with no background-agent concept return [].
+   */
+  listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]>
 
   /**
    * Permanently remove the persisted history for a session.

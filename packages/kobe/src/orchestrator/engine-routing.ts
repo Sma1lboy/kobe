@@ -1,6 +1,13 @@
 import type { EngineMap } from "../engine/registry.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
-import type { AIEngine, EngineHistory, Message, ModelEffortLevel, SessionMeta } from "../types/engine.ts"
+import type {
+  AIEngine,
+  BackgroundAgent,
+  EngineHistory,
+  Message,
+  ModelEffortLevel,
+  SessionMeta,
+} from "../types/engine.ts"
 import { type ChatTab, DEFAULT_TASK_VENDOR, type Task, type TaskId, type VendorId } from "../types/task.ts"
 import type { TaskIndexStore } from "./index/store.ts"
 
@@ -186,5 +193,11 @@ export class EngineRouter {
     }
     out.sort((a, b) => b.mtimeMs - a.mtimeMs)
     return out
+  }
+
+  async listBackgroundAgents(task: Task, tab: ChatTab): Promise<BackgroundAgent[]> {
+    if (!task.worktreePath) return []
+    const engine = this.engineForTab(task, tab)
+    return engine.listBackgroundAgents(task.worktreePath)
   }
 }

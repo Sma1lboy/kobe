@@ -3,6 +3,7 @@ import { codexCapabilities, codexIdentity } from "../../src/engine/codex-local/c
 import { MetadataSuggester } from "../../src/orchestrator/metadata-suggester.ts"
 import type {
   AIEngine,
+  BackgroundAgent,
   EngineEvent,
   EngineHistory,
   SessionHandle,
@@ -40,6 +41,10 @@ class OneShotEngine implements AIEngine {
   }
 
   async listSessions(_cwd: string): Promise<SessionMeta[]> {
+    return []
+  }
+
+  async listBackgroundAgents(_cwd: string): Promise<BackgroundAgent[]> {
     return []
   }
 

@@ -10,6 +10,7 @@
 import { describe, expectTypeOf, it } from "vitest"
 import type {
   AIEngine,
+  BackgroundAgent,
   ContentBlock,
   EngineCapabilities,
   EngineEvent,
@@ -115,6 +116,7 @@ describe("AIEngine", () => {
       | "readHistory"
       | "deleteHistory"
       | "listSessions"
+      | "listBackgroundAgents"
       | "stop"
     >()
   })
@@ -144,6 +146,11 @@ describe("AIEngine", () => {
   it("readHistory returns Promise<EngineHistory>", () => {
     expectTypeOf<AIEngine["readHistory"]>().parameters.toEqualTypeOf<[string]>()
     expectTypeOf<AIEngine["readHistory"]>().returns.toEqualTypeOf<Promise<EngineHistory>>()
+  })
+
+  it("listBackgroundAgents returns Promise<BackgroundAgent[]>", () => {
+    expectTypeOf<AIEngine["listBackgroundAgents"]>().parameters.toEqualTypeOf<[string]>()
+    expectTypeOf<AIEngine["listBackgroundAgents"]>().returns.toEqualTypeOf<Promise<BackgroundAgent[]>>()
   })
 
   it("stop returns Promise<void>", () => {
@@ -189,6 +196,9 @@ describe("AIEngine", () => {
       }
       async deleteHistory(_sessionId: string): Promise<void> {}
       async listSessions(_cwd: string): Promise<SessionMeta[]> {
+        return []
+      }
+      async listBackgroundAgents(_cwd: string): Promise<BackgroundAgent[]> {
         return []
       }
       async stop(_h: SessionHandle): Promise<void> {}

@@ -50,6 +50,7 @@ import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
 import type {
   AIEngine,
+  BackgroundAgent,
   EngineCapabilities,
   EngineEvent,
   EngineHistory,
@@ -138,6 +139,10 @@ class HistoryEngine implements AIEngine {
 
   async listSessions(_cwd: string) {
     return this.sessions
+  }
+
+  async listBackgroundAgents(_cwd: string): Promise<BackgroundAgent[]> {
+    return []
   }
 
   async stop(_h: SessionHandle): Promise<void> {}
@@ -958,6 +963,9 @@ describe("Orchestrator.deleteTask", () => {
       async listSessions() {
         return []
       },
+      async listBackgroundAgents() {
+        return []
+      },
       async stop() {
         throw new Error("simulated stuck engine")
       },
@@ -1143,6 +1151,9 @@ describe("Orchestrator.runTask on a main task", () => {
       },
       async deleteHistory() {},
       async listSessions() {
+        return []
+      },
+      async listBackgroundAgents() {
         return []
       },
       async stop() {},
@@ -1499,6 +1510,9 @@ describe("Orchestrator engine call shape", () => {
       },
       async deleteHistory() {},
       async listSessions() {
+        return []
+      },
+      async listBackgroundAgents() {
         return []
       },
       async stop() {},

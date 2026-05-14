@@ -354,6 +354,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         broadcastTaskUpdated(orch, clients, taskId)
         return { tabId }
       }
+      case "agent.background.list": {
+        const agents = await orch.listBackgroundAgents(requireString(payload, "taskId"))
+        return { agents }
+      }
       case "chat.interrupt": {
         await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
         return {}

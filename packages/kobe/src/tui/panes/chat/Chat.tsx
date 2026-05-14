@@ -38,13 +38,15 @@
  */
 
 import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
-import type { ScrollBoxRenderable } from "@opentui/core"
-import { type Accessor, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
+import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import type { PermissionMode } from "../../../types/engine.ts"
+import { bindByIds } from "../../context/keybindings"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
+import { AgentModeView } from "./AgentModeView"
 import { ChatView } from "./ChatView"
 import type { ComposerSlashEntry } from "./Composer"
 import { estimateContextTokensFromRows, stringifyErr } from "./chat-utils"
@@ -355,6 +357,14 @@ export function Chat(props: ChatProps) {
     const task = id ? tasksAcc().find((t) => t.id === id) : undefined
     const tab = task?.tabs.find((t) => t.id === activeTabId())
     return tab?.vendor ?? task?.vendor ?? "claude"
+  })
+  const [workspaceMode, setWorkspaceMode] = createSignal<"chat" | "agents">("chat")
+  const agentModeAvailable = createMemo(() => {
+    if (!props.taskId()) return false
+    return getCapabilities(activeVendor()).vendorId === "claude"
+  })
+  createEffect(() => {
+    if (!agentModeAvailable() && workspaceMode() === "agents") setWorkspaceMode("chat")
   })
   const activeTabHasSession = createMemo(() => {
     const id = props.taskId()
@@ -760,6 +770,12 @@ export function Chat(props: ChatProps) {
     enabled: props.focused?.() === true && (activeState().isStreaming || hasActiveBash()) && dialog.stack.length === 0,
     bindings: [{ key: "escape", cmd: () => void interruptStream() }],
   }))
+  useBindings(() => ({
+    enabled: props.focused?.() === true && agentModeAvailable() && dialog.stack.length === 0,
+    bindings: bindByIds({
+      "chat.agents.toggle": () => setWorkspaceMode((cur) => (cur === "agents" ? "chat" : "agents")),
+    }),
+  }))
 
   // Spinner shows whenever a turn is in flight — independent of how
   // many assistant rows already exist. Earlier this was gated on
@@ -881,73 +897,117 @@ export function Chat(props: ChatProps) {
   }
 
   return (
-    <ChatView
-      theme={theme}
-      hasTaskId={props.taskId() !== undefined}
-      setScrollRef={(r) => {
-        scrollRef = r
-      }}
-      messages={activeState().messages}
-      expandedToolIndex={expandedToolIndex()}
-      onToggleTool={toggleExpand}
-      expandedFoldStartIndex={expandedFoldStartIndex()}
-      onToggleFold={toggleFold}
-      showThinking={showThinking()}
-      onApprove={(requestId, approve) => {
-        const taskId = props.taskId()
-        if (!taskId) return
-        props.orchestrator
-          .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
-          .catch((err: unknown) => {
-            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-          })
-      }}
-      onAnswer={(requestId, answers) => {
-        const taskId = props.taskId()
-        if (!taskId) return
-        props.orchestrator
-          .respondToInput(taskId, requestId, { kind: "ask_question", answers })
-          .catch((err: unknown) => {
-            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-          })
-      }}
-      onClaimComposerFocus={setQuestionInlineFocus}
-      chatFocused={() => props.focused?.() ?? false}
-      loadingStartedAt={turnStartedAt()}
-      currentTurnChars={currentTurnChars()}
-      error={activeState().error}
-      showComposer={pendingInput().showsComposer}
-      draft={draft()}
-      onDraftChange={setDraft}
-      isStreaming={activeState().isStreaming}
-      composerHasTask={props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingInput().locksComposer}
-      noTaskMessage={
-        isArchived()
-          ? "(archived — unarchive to resume)"
-          : isCanceled()
-            ? "(task canceled — pick another or press ctrl+n to create)"
-            : pendingInput().composerDisabledMessage
-              ? pendingInput().composerDisabledMessage
-              : undefined
-      }
-      onSubmit={handleComposerSubmit}
-      composerFocused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
-      historyKey={activeTabId() ?? props.taskId()}
-      slashes={slashes}
-      permissionMode={permissionMode}
-      permissionModeLabel={permissionModeText}
-      onCyclePermissionMode={cyclePermissionMode}
-      modelLabel={modelLabel}
-      inputPlaceholder={() => pendingInput().composerPlaceholder ?? inputPlaceholder()}
-      onChooseModel={() => void chooseModel()}
-      worktreePath={worktreePath}
-      queue={() => activeState().queue}
-      onCancelQueued={cancelQueued}
-      onSendQueuedNow={sendQueuedNow}
-      onBashCommand={handleBashCommand}
-      onOpenFilePath={props.onOpenFilePath}
-      onEditQueued={editQueued}
-      editingQueueId={editingQueueId}
-    />
+    <box flexGrow={1} flexDirection="column">
+      <Show when={agentModeAvailable()}>
+        <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} paddingTop={1} flexShrink={0}>
+          <box
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={workspaceMode() === "chat" ? theme.primary : theme.backgroundElement}
+            onMouseUp={() => setWorkspaceMode("chat")}
+          >
+            <text
+              fg={workspaceMode() === "chat" ? theme.selectedListItemText : theme.textMuted}
+              attributes={workspaceMode() === "chat" ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+            >
+              Chat
+            </text>
+          </box>
+          <box
+            paddingLeft={1}
+            paddingRight={1}
+            backgroundColor={workspaceMode() === "agents" ? theme.primary : theme.backgroundElement}
+            onMouseUp={() => setWorkspaceMode("agents")}
+          >
+            <text
+              fg={workspaceMode() === "agents" ? theme.selectedListItemText : theme.textMuted}
+              attributes={workspaceMode() === "agents" ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+            >
+              Agents
+            </text>
+          </box>
+        </box>
+      </Show>
+      <Show when={workspaceMode() === "agents"} fallback={<ChatTranscript />}>
+        <AgentModeView orchestrator={props.orchestrator} taskId={() => props.taskId()} />
+      </Show>
+    </box>
   )
+
+  function ChatTranscript() {
+    return (
+      <ChatView
+        theme={theme}
+        hasTaskId={props.taskId() !== undefined}
+        setScrollRef={(r) => {
+          scrollRef = r
+        }}
+        messages={activeState().messages}
+        expandedToolIndex={expandedToolIndex()}
+        onToggleTool={toggleExpand}
+        expandedFoldStartIndex={expandedFoldStartIndex()}
+        onToggleFold={toggleFold}
+        showThinking={showThinking()}
+        onApprove={(requestId, approve) => {
+          const taskId = props.taskId()
+          if (!taskId) return
+          props.orchestrator
+            .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
+            .catch((err: unknown) => {
+              patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+            })
+        }}
+        onAnswer={(requestId, answers) => {
+          const taskId = props.taskId()
+          if (!taskId) return
+          props.orchestrator
+            .respondToInput(taskId, requestId, { kind: "ask_question", answers })
+            .catch((err: unknown) => {
+              patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+            })
+        }}
+        onClaimComposerFocus={setQuestionInlineFocus}
+        chatFocused={() => props.focused?.() ?? false}
+        loadingStartedAt={turnStartedAt()}
+        currentTurnChars={currentTurnChars()}
+        error={activeState().error}
+        showComposer={pendingInput().showsComposer}
+        draft={draft()}
+        onDraftChange={setDraft}
+        isStreaming={activeState().isStreaming}
+        composerHasTask={
+          props.taskId() !== undefined && !isArchived() && !isCanceled() && !pendingInput().locksComposer
+        }
+        noTaskMessage={
+          isArchived()
+            ? "(archived — unarchive to resume)"
+            : isCanceled()
+              ? "(task canceled — pick another or press ctrl+n to create)"
+              : pendingInput().composerDisabledMessage
+                ? pendingInput().composerDisabledMessage
+                : undefined
+        }
+        onSubmit={handleComposerSubmit}
+        composerFocused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
+        historyKey={activeTabId() ?? props.taskId()}
+        slashes={slashes}
+        permissionMode={permissionMode}
+        permissionModeLabel={permissionModeText}
+        onCyclePermissionMode={cyclePermissionMode}
+        modelLabel={modelLabel}
+        inputPlaceholder={() => pendingInput().composerPlaceholder ?? inputPlaceholder()}
+        onChooseModel={() => void chooseModel()}
+        worktreePath={worktreePath}
+        queue={() => activeState().queue}
+        onCancelQueued={cancelQueued}
+        onSendQueuedNow={sendQueuedNow}
+        onBashCommand={handleBashCommand}
+        onOpenFilePath={props.onOpenFilePath}
+        onEditQueued={editQueued}
+        editingQueueId={editingQueueId}
+      />
+    )
+  }
 }

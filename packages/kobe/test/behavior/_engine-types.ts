@@ -12,6 +12,7 @@
 
 export type {
   AIEngine,
+  BackgroundAgent,
   ContentBlock,
   EngineCapabilities,
   EngineEvent,

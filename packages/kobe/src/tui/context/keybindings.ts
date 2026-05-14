@@ -485,6 +485,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "ctrl+y", label: "resume" },
   },
   {
+    // Toggle the Claude-only Agent View submode inside the workspace.
+    // `ctrl+g` is free across the keymap, mnemonic enough for "agents",
+    // and remains a workspace-scoped ctrl+letter chord so it does not
+    // steal plain composer input.
+    id: "chat.agents.toggle",
+    scope: "workspace",
+    keys: ["ctrl+g"],
+    category: "Workspace",
+    description: "Toggle Claude Agent View",
+    hint: { keys: "ctrl+g", label: "agents" },
+  },
+  {
     id: "chat.tab.close",
     scope: "workspace",
     keys: ["ctrl+w"],

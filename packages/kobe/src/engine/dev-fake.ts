@@ -20,6 +20,7 @@
 import { FakeAIEngine } from "../../test/behavior/fake-engine.ts"
 import type {
   AIEngine,
+  BackgroundAgent,
   EngineCapabilities,
   EngineEvent,
   EngineHistory,
@@ -72,6 +73,10 @@ export class DevAIEngine implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return this.inner.listSessions(cwd)
+  }
+
+  async listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]> {
+    return this.inner.listBackgroundAgents(cwd)
   }
 
   async stop(handle: SessionHandle): Promise<void> {

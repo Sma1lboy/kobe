@@ -6,6 +6,7 @@ import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
   AIEngine,
+  BackgroundAgent,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
@@ -849,6 +850,12 @@ export class Orchestrator {
     const task = this.requireTask(id)
     const tab = this.resolveTab(task)
     return this.engineRouter.listSessions(task, tab)
+  }
+
+  async listBackgroundAgents(id: TaskId | string): Promise<BackgroundAgent[]> {
+    const task = this.requireTask(id)
+    const tab = this.resolveTab(task)
+    return this.engineRouter.listBackgroundAgents(task, tab)
   }
 
   async openSessionInTab(

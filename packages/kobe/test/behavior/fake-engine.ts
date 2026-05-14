@@ -26,6 +26,7 @@ import { claudeIdentity } from "@/engine/claude-code-local/capabilities"
 import { deriveSessionUsageMetrics } from "@/session/usage-metrics"
 import type {
   AIEngine,
+  BackgroundAgent,
   ContentBlock,
   EngineCapabilities,
   EngineEvent,
@@ -58,6 +59,7 @@ export class FakeAIEngine implements AIEngine {
   private nextId = 1
   private queues = new Map<string, ScriptedQueue>()
   private historyBySession = new Map<string, Message[]>()
+  private backgroundAgents: BackgroundAgent[] = []
   private stopped = new Set<string>()
 
   /**
@@ -85,6 +87,10 @@ export class FakeAIEngine implements AIEngine {
   /** Pre-seed history that `readHistory()` will return. */
   setHistory(sessionId: string, messages: Message[]): void {
     this.historyBySession.set(sessionId, messages)
+  }
+
+  setBackgroundAgents(agents: BackgroundAgent[]): void {
+    this.backgroundAgents = agents
   }
 
   async spawn(cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<SessionHandle> {
@@ -167,6 +173,10 @@ export class FakeAIEngine implements AIEngine {
     return out
   }
 
+  async listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]> {
+    return this.backgroundAgents.filter((agent) => agent.cwd === cwd || agent.cwd.startsWith(`${cwd}/`))
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     this.stopped.add(handle.sessionId)
     const q = this.queues.get(handle.sessionId)
@@ -184,6 +194,7 @@ export class FakeAIEngine implements AIEngine {
     }
     this.queues.clear()
     this.historyBySession.clear()
+    this.backgroundAgents = []
     this.stopped.clear()
     this.nextId = 1
   }

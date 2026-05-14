@@ -15,6 +15,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import type {
   AIEngine,
+  BackgroundAgent,
   EngineCapabilities,
   EngineEvent,
   EngineHistory,
@@ -111,6 +112,10 @@ export class CodexLocal implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return listSessionsForCwd(cwd)
+  }
+
+  async listBackgroundAgents(_cwd: string): Promise<BackgroundAgent[]> {
+    return []
   }
 
   async stop(handle: SessionHandle): Promise<void> {

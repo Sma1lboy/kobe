@@ -41,6 +41,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import { deriveSessionUsageMetrics, withTotalSpeedForTurn } from "@/session/usage-metrics"
 import type {
   AIEngine,
+  BackgroundAgent,
   EngineCapabilities,
   EngineEvent,
   EngineHistory,
@@ -49,6 +50,7 @@ import type {
   SessionMeta,
   SpawnOpts,
 } from "@/types/engine"
+import { listBackgroundAgentsForCwd } from "./background-agents"
 import { findClaudeBinary } from "./binary"
 import { claudeCapabilities, claudeIdentity } from "./capabilities"
 import {
@@ -154,6 +156,10 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return listSessionsForCwd(cwd)
+  }
+
+  async listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]> {
+    return listBackgroundAgentsForCwd(cwd)
   }
 
   async stop(handle: SessionHandle): Promise<void> {
