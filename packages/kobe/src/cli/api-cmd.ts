@@ -170,11 +170,7 @@ async function getTab(client: KobeDaemonClient, flags: Flags): Promise<unknown> 
 export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
   const [verb, ...rest] = argv
   if (!verb) {
-    fail(
-      "usage: kobe api <spawn-task|create-tab|send|get-task|get-tab> [flags] [--pretty]",
-      "MISSING_VERB",
-      2,
-    )
+    fail("usage: kobe api <spawn-task|create-tab|send|get-task|get-tab> [flags] [--pretty]", "MISSING_VERB", 2)
   }
 
   let parsed: ParsedArgs

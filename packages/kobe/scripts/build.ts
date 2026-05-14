@@ -19,7 +19,7 @@
  * `dist`, so this is the only mirror needed for npm publish.
  */
 
-import { cp, chmod } from "node:fs/promises"
+import { chmod, cp } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]

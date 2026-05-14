@@ -50,8 +50,7 @@ function resolveBundledSkill(): string {
   const distPath = resolve(dir, "../share/skills/kobe/SKILL.md")
   if (existsSync(distPath)) return distPath
   throw new Error(
-    `kobe: bundled SKILL.md not found (looked at ${sourcePath} and ${distPath}). ` +
-      "If you are running from source, the share/ directory should sit next to src/.",
+    `kobe: bundled SKILL.md not found (looked at ${sourcePath} and ${distPath}). If you are running from source, the share/ directory should sit next to src/.`,
   )
 }
 
@@ -86,9 +85,7 @@ async function runInstall(argv: readonly string[]): Promise<void> {
     const existingBytes = Buffer.byteLength(existing, "utf8")
     const bundledBytes = Buffer.byteLength(bundled, "utf8")
     console.error(
-      `kobe skill: ${target} exists and differs from the bundled version ` +
-        `(installed=${existingBytes}B, bundled=${bundledBytes}B). ` +
-        "Re-run with --yes to overwrite, or `kobe skill uninstall` first.",
+      `kobe skill: ${target} exists and differs from the bundled version (installed=${existingBytes}B, bundled=${bundledBytes}B). Re-run with --yes to overwrite, or \`kobe skill uninstall\` first.`,
     )
     process.exit(2)
   }

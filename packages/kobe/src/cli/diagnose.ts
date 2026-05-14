@@ -32,11 +32,11 @@ import { homedir, arch as osArch, platform as osPlatform, release as osRelease }
 import { join } from "node:path"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
 import { kobeStateDir } from "../env.ts"
-import { probeInstalledSkill } from "./skill-cmd.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { listWorktreeDirNames, worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 import type { Task, TaskStatus } from "../types/task.ts"
 import { CURRENT_VERSION, checkLatestVersion } from "../version.ts"
+import { probeInstalledSkill } from "./skill-cmd.ts"
 
 /** Status keys we break down counts by, in canonical display order. */
 const STATUS_ORDER: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
