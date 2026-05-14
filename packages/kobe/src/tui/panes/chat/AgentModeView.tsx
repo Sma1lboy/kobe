@@ -181,40 +181,37 @@ function AgentRow(props: {
   const { theme } = useTheme()
   const status = () => statusMeta(props.agent.status)
   const title = () => props.agent.name ?? props.agent.sessionId.slice(0, 8)
-  const detail = () => {
-    const updated = formatAge(props.agent.updatedAtMs ?? props.agent.startedAtMs)
-    const raw = props.agent.sourceStatus ? ` · ${props.agent.sourceStatus}` : ""
-    return `${props.agent.sessionId.slice(0, 8)} · ${updated}${raw}`
-  }
+  const activity = () => formatAgentActivity(props.agent)
+  const age = () => formatAge(props.agent.updatedAtMs ?? props.agent.startedAtMs)
   return (
     <box
-      flexDirection="column"
+      flexDirection="row"
+      gap={1}
+      minHeight={2}
       paddingLeft={1}
       paddingRight={1}
       backgroundColor={props.opening() ? theme.backgroundElement : undefined}
       onMouseUp={props.onOpen}
     >
-      <box flexDirection="row" gap={1}>
-        <text fg={status().color(theme)} wrapMode="none">
-          {status().marker}
-        </text>
-        <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-          {title()}
-        </text>
-        <Show when={props.opening()}>
-          <text fg={theme.textMuted} wrapMode="none">
-            opening...
-          </text>
-        </Show>
+      <text fg={status().color(theme)} wrapMode="none">
+        {status().marker}
+      </text>
+      <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+        {title()}
+      </text>
+      <box flexGrow={1}>
         <text fg={theme.textMuted} wrapMode="none">
-          {detail()}
+          {activity()}
         </text>
       </box>
-      <box paddingLeft={2}>
+      <Show when={props.opening()}>
         <text fg={theme.textMuted} wrapMode="none">
-          {props.agent.cwd}
+          opening...
         </text>
-      </box>
+      </Show>
+      <text fg={theme.textMuted} wrapMode="none">
+        {age()}
+      </text>
     </box>
   )
 }
@@ -252,6 +249,38 @@ function statusMeta(status: BackgroundAgentStatus): {
     default:
       return { marker: "·", color: (theme) => theme.textMuted }
   }
+}
+
+function formatAgentActivity(agent: BackgroundAgent): string {
+  const source = humanizeSourceStatus(agent.sourceStatus)
+  const fallback = statusActivity(agent.status)
+  if (source && source !== fallback) return source
+  return fallback
+}
+
+function statusActivity(status: BackgroundAgentStatus): string {
+  switch (status) {
+    case "running":
+      return "working"
+    case "blocked":
+      return "needs input"
+    case "idle":
+      return "ready"
+    case "completed":
+      return "completed"
+    case "failed":
+      return "failed"
+    case "stopped":
+      return "stopped"
+    default:
+      return "unknown"
+  }
+}
+
+function humanizeSourceStatus(status: string | null | undefined): string | null {
+  if (!status) return null
+  const normalized = status.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().toLowerCase()
+  return normalized.length > 0 ? normalized : null
 }
 
 function formatAge(ms: number | null): string {

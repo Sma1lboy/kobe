@@ -98,8 +98,9 @@ test("workspace Agent mode lists Claude background agents for the active worktre
   await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
   const screen = await kobe.waitFor((s) => s.includes("check checkout failure"), 10_000)
   expect(screen).toContain("WORKING")
-  expect(screen).toContain("session-")
-  expect(screen).toContain(repo)
+  expect(screen).toContain("running")
+  expect(screen).not.toContain("session-agent-1")
+  expect(screen).not.toContain(repo)
 })
 
 test("workspace Agent mode shows all product-facing background states", async () => {
@@ -239,8 +240,8 @@ test("workspace Agent mode can start a Claude background agent from a prompt", a
 
   const screen = await kobe.waitFor((s) => s.includes("write customer greeting") && s.includes("IDLE"), 10_000)
   expect(screen).toContain("IDLE")
-  expect(screen).toContain("session-")
-  expect(screen).toContain(repo)
+  expect(screen).toContain("idle")
+  expect(screen).not.toContain(repo)
 }, 20_000)
 
 test("workspace Agent mode opens a background agent session on row click", async () => {

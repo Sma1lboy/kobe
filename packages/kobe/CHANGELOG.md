@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Agent View rows match Claude's summary shape** — background rows now show session name, activity, and last-changed age without exposing per-row session ids or worktree paths (KOB-147).
 - **Opened background sessions restore pending questions** — clicking a blocked Claude background agent now keeps the opened Chat history refreshed and hydrates unresolved `AskUserQuestion` / plan-approval requests into the normal pending-input UI, including questions written after the tab opens (KOB-146).
 - **Claude Agent View status markers are quiet/static** — Working background rows now use the same static status dot style as the rest of Agent View instead of animated decorative glyphs (KOB-145).
 - **Claude Agent View background starts no longer require the dangerous-permissions disclaimer** — Agent View now omits `--permission-mode bypassPermissions` for default `claude --bg` launches, matching Claude Code's own background-agent path and avoiding the interactive disclaimer gate (KOB-142).
