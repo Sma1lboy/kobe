@@ -200,9 +200,13 @@ function AgentRow(props: {
         {title()}
       </text>
       <box flexGrow={1}>
-        <text fg={theme.textMuted} wrapMode="none">
-          {activity()}
-        </text>
+        <Show when={activity()}>
+          {(label) => (
+            <text fg={theme.textMuted} wrapMode="none">
+              {label()}
+            </text>
+          )}
+        </Show>
       </box>
       <Show when={props.opening()}>
         <text fg={theme.textMuted} wrapMode="none">
@@ -251,30 +255,42 @@ function statusMeta(status: BackgroundAgentStatus): {
   }
 }
 
-function formatAgentActivity(agent: BackgroundAgent): string {
+function formatAgentActivity(agent: BackgroundAgent): string | null {
   const source = humanizeSourceStatus(agent.sourceStatus)
-  const fallback = statusActivity(agent.status)
-  if (source && source !== fallback) return source
-  return fallback
+  if (!source || isGenericStatusLabel(source)) return null
+  return source
 }
 
-function statusActivity(status: BackgroundAgentStatus): string {
-  switch (status) {
-    case "running":
-      return "working"
-    case "blocked":
-      return "needs input"
-    case "idle":
-      return "ready"
-    case "completed":
-      return "completed"
-    case "failed":
-      return "failed"
-    case "stopped":
-      return "stopped"
-    default:
-      return "unknown"
-  }
+const GENERIC_STATUS_LABELS = new Set([
+  "running",
+  "working",
+  "active",
+  "in progress",
+  "busy",
+  "blocked",
+  "needs input",
+  "awaiting input",
+  "waiting for input",
+  "idle",
+  "done",
+  "complete",
+  "completed",
+  "success",
+  "succeeded",
+  "error",
+  "failed",
+  "crashed",
+  "stopped",
+  "stop",
+  "cancelled",
+  "canceled",
+  "interrupted",
+  "aborted",
+  "killed",
+])
+
+function isGenericStatusLabel(label: string): boolean {
+  return GENERIC_STATUS_LABELS.has(label)
 }
 
 function humanizeSourceStatus(status: string | null | undefined): string | null {

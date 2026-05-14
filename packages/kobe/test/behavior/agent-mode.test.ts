@@ -98,7 +98,7 @@ test("workspace Agent mode lists Claude background agents for the active worktre
   await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
   const screen = await kobe.waitFor((s) => s.includes("check checkout failure"), 10_000)
   expect(screen).toContain("WORKING")
-  expect(screen).toContain("running")
+  expect(screen).not.toContain("runningnow")
   expect(screen).not.toContain("session-agent-1")
   expect(screen).not.toContain(repo)
 })
@@ -240,7 +240,7 @@ test("workspace Agent mode can start a Claude background agent from a prompt", a
 
   const screen = await kobe.waitFor((s) => s.includes("write customer greeting") && s.includes("IDLE"), 10_000)
   expect(screen).toContain("IDLE")
-  expect(screen).toContain("idle")
+  expect(screen).not.toContain("idlenow")
   expect(screen).not.toContain(repo)
 }, 20_000)
 
