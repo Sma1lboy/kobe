@@ -216,9 +216,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const repo = requireString(payload, "repo")
         const modelEffort = optionalModelEffort(payload, "modelEffort")
         const vendor = optionalVendor(payload, "vendor")
+        const prompt = optionalString(payload, "prompt")
         const task = await orch.createTask({
           repo,
-          prompt: optionalString(payload, "prompt"),
+          prompt,
           title: optionalString(payload, "title"),
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
@@ -232,6 +233,27 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // multi-attach real-time sync silently breaks.
         for (const c of clients) subscribeClientToTask(orch, c, task)
         broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
+        // If the spawner provided a prompt, kick off the run as
+        // fire-and-forget so the RPC returns immediately. Without this
+        // an agent calling task.spawn (kobe api spawn-task) gets a task
+        // stuck in `backlog` with no worktree, no session, no chat —
+        // matches the older MCP bridge semantics (`spawn_task` always
+        // ran the task). The TUI's RemoteOrchestrator.spawnTask omits
+        // the prompt and uses a separate chat.send for the first
+        // message, so this branch is a no-op for it.
+        if (prompt) {
+          void orch.runTask(task.id, prompt).catch((err) => {
+            // Don't crash the daemon on a spawn-and-run that fails
+            // (worktree contention, engine missing, dirty repo). The
+            // task still exists; the user can retry from the TUI.
+            const msg = err instanceof Error ? err.message : String(err)
+            broadcast(clients, {
+              type: "event",
+              name: "engine.status",
+              payload: { taskId: task.id, tabId: task.activeTabId, status: "error", message: msg },
+            })
+          })
+        }
         return { taskId: task.id, task: serializeTask(task) }
       }
       case "task.archive": {
