@@ -440,7 +440,7 @@ export function DevSettingsSection(
             Restart backend
           </text>
           <text fg={theme.textMuted} wrapMode="word">
-            Stops the kobed daemon and quits this kobe window so the next launch spawns a fresh daemon — picks up daemon
+            Stops the kobe daemon and quits this kobe window so the next launch spawns a fresh daemon — picks up daemon
             / orchestrator / engine edits without a process kill. Other attached kobe windows will lose their connection
             too.
           </text>

@@ -121,17 +121,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       planUsagePoller.stop()
       // Stop the bridge before the socket so claude.ai gets the proper
       // environment-deregistration call and we don't leak an "online"
-      // worker on the cloud side after kobed exits.
+      // worker on the cloud side after the daemon exits.
       try {
         await rcBridge.stop()
       } catch {
-        /* best-effort — kobed shutdown should never block on bridge teardown */
+        /* best-effort — daemon shutdown should never block on bridge teardown */
       }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       // End attached client sockets BEFORE closing the server. server.close()
       // waits for every active connection to drain — if we close it first,
       // any TUI that doesn't disconnect on `daemon.stopping` will deadlock
-      // shutdown forever (this was the root cause of `kobed restart` hangs).
+      // shutdown forever (this was the root cause of `kobe daemon restart` hangs).
       for (const client of Array.from(clients)) {
         for (const unsub of client.subscriptions.values()) unsub()
         client.subscriptions.clear()

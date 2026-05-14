@@ -264,9 +264,9 @@ function Shell(props: AppDeps) {
   /* ------------------------------------------------------------------- */
   /*  Daemon disconnect modal (KOB-38)                                    */
   /* ------------------------------------------------------------------- */
-  // When the kobed socket drops, RemoteOrchestrator flips
+  // When the daemon socket drops, RemoteOrchestrator flips
   // `connectionState` to `"disconnected"`. We pop a modal letting the
-  // user pick Restart (spawn kobed + reconnect) or Quit (process.exit).
+  // user pick Restart (spawn `kobe daemon start` + reconnect) or Quit (process.exit).
   // Esc on the modal counts as Quit — daemon-less kobe is useless so
   // dismissing the prompt would just leave the user stranded.
   // In-process Orchestrator (KOBE_NO_DAEMON) has no socket and stays
@@ -275,7 +275,7 @@ function Shell(props: AppDeps) {
   async function showDisconnectDialog(): Promise<void> {
     const orch = props.orchestrator
     if (!(orch instanceof RemoteOrchestrator)) return
-    let message = "kobed is no longer reachable. Restart it and reconnect, or quit kobe?"
+    let message = "The kobe daemon is no longer reachable. Restart it and reconnect, or quit kobe?"
     while (true) {
       const choice = await DialogConfirm.show(dialog, "daemon disconnected", message, "Quit", "Restart")
       if (choice !== true) {

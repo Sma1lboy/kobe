@@ -102,6 +102,11 @@ async function main(): Promise<void> {
     await runMcpBridgeSubcommand(rest)
     return
   }
+  if (subcommand === "daemon") {
+    const { runDaemonSubcommand } = await import("./daemon-cmd.ts")
+    await runDaemonSubcommand(rest)
+    return
+  }
 
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid

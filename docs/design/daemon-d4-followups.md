@@ -6,6 +6,9 @@
 > where one was filed. Future agents: read this before re-opening
 > "should we add X to the daemon?" — the answer is probably already
 > here.
+>
+> Note: as of KOB-136 the standalone `kobed` bin was merged into
+> `kobe daemon ...`. References below use the original naming.
 
 Parent epic: [KOB-35 — Daemon split](https://linear.app/codesfox/issue/KOB-35).
 

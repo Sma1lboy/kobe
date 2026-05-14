@@ -38,7 +38,7 @@ export function shortHomeTag(homeDir: string): string {
  * `pidTag` is used only for ephemeral sockets (the bridge spawns one
  * per daemon PID, so a stale parent's socket file is replaced on
  * restart). For the daemon socket itself the pidTag is omitted so the
- * path stays stable across kobed restarts.
+ * path stays stable across daemon restarts.
  */
 export function fitSocketPath(naturalPath: string, homeDir: string, role: string, pidTag?: number): string {
   if (Buffer.byteLength(naturalPath, "utf8") <= SOCKET_PATH_SAFETY_LIMIT) return naturalPath
@@ -50,7 +50,7 @@ export function fitSocketPath(naturalPath: string, homeDir: string, role: string
 }
 
 /**
- * Resolve the unix-socket path for the kobed daemon.
+ * Resolve the unix-socket path for the kobe daemon.
  *
  * Resolution order:
  *   1. Caller-supplied `homeDir` argument → `<homeDir>/.kobe/daemon.sock`.

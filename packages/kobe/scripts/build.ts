@@ -8,22 +8,19 @@
  * plugins via flags, so we drive the build from a script that
  * registers the same Solid transform plugin first.
  *
- * Output: `dist/cli/index.js` and `dist/bin/kobed.js` with
- * `#!/usr/bin/env bun` shebangs and 755 perms so `npm install -g`
- * produces runnable `kobe` and `kobed` binaries. The `cli/` prefix on
- * the kobe binary is incidental — Bun computes the lowest common
- * ancestor of the two entrypoints (`./src`) and preserves the
- * subdirectory structure underneath. `package.json` `bin` paths
- * mirror this layout.
+ * Output: `dist/cli/index.js` with `#!/usr/bin/env bun` shebang and 755
+ * perms so `npm install -g` produces a runnable `kobe` binary. After
+ * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
+ * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  */
 
 import { chmod } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
-const OUT_FILES = ["./dist/cli/index.js", "./dist/bin/kobed.js"]
+const OUT_FILES = ["./dist/cli/index.js"]
 
 const result = await Bun.build({
-  entrypoints: ["./src/cli/index.ts", "./src/bin/kobed.ts"],
+  entrypoints: ["./src/cli/index.ts"],
   outdir: "./dist",
   root: "./src",
   target: "bun",

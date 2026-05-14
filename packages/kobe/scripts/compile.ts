@@ -1,14 +1,13 @@
 /**
  * Standalone-binary build entry.
  *
- * Produces two compiled binaries for the *current platform* via
+ * Produces the compiled `kobe` binary for the *current platform* via
  * `Bun.build({ compile: true })`:
  *
  *   ./release-bin/kobe
- *   ./release-bin/kobed
  *
  * Output lives outside `./dist/` on purpose: `dist/` is what `npm
- * publish` ships, and embedding 60+ MB executables into the npm
+ * publish` ships, and embedding a 60+ MB executable into the npm
  * tarball would bloat installs that only need the JS bundle.
  *
  * Cross-compilation is intentionally not used. `@opentui/core` loads
@@ -23,6 +22,10 @@
  * subpackage) into the executable's VFS. `node-pty` stays external as
  * before — it isn't used in production code (we drive PTYs via tmux),
  * only by the test driver.
+ *
+ * After the kobed → kobe bin merge (KOB-136), the single `kobe` binary
+ * also hosts the daemon (`kobe daemon start|stop|status|restart`), so
+ * there is no separate `kobed` binary to compile.
  */
 
 import { mkdirSync } from "node:fs"
@@ -31,24 +34,17 @@ import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 const OUT_DIR = "./release-bin"
 mkdirSync(OUT_DIR, { recursive: true })
 
-const ENTRIES: Array<{ name: string; entry: string }> = [
-  { name: "kobe", entry: "./src/cli/index.ts" },
-  { name: "kobed", entry: "./src/bin/kobed.ts" },
-]
-
-for (const { name, entry } of ENTRIES) {
-  const outfile = `${OUT_DIR}/${name}`
-  const result = await Bun.build({
-    entrypoints: [entry],
-    conditions: ["browser"],
-    plugins: [createSolidTransformPlugin()],
-    external: ["node-pty"],
-    compile: { outfile },
-  })
-  if (!result.success) {
-    console.error(`compile ${name} failed:`)
-    for (const log of result.logs) console.error(log)
-    process.exit(1)
-  }
-  console.log(`compiled ${outfile}`)
+const outfile = `${OUT_DIR}/kobe`
+const result = await Bun.build({
+  entrypoints: ["./src/cli/index.ts"],
+  conditions: ["browser"],
+  plugins: [createSolidTransformPlugin()],
+  external: ["node-pty"],
+  compile: { outfile },
+})
+if (!result.success) {
+  console.error("compile failed:")
+  for (const log of result.logs) console.error(log)
+  process.exit(1)
 }
+console.log(`compiled ${outfile}`)

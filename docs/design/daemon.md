@@ -1,7 +1,13 @@
-# Daemon — split kobe into `kobed` + thin TUI client
+# Daemon — split kobe into a daemon + thin TUI client
 
-> Design doc. Not implemented yet. Tracks the decision shape so a
-> future agent picks up Wave 1 with full context. Linear epic:
+> Design doc. Historical. Tracks the original decision shape when the
+> daemon was its own `kobed` binary. As of KOB-136 the daemon was
+> merged into the single `kobe` binary as `kobe daemon ...`; this doc
+> retains the original wording (e.g. `kobed start`) since it documents
+> the design at the time it was made. For current usage see
+> [`cli-api.md`](./cli-api.md) §6.
+>
+> Original Linear epic:
 > [KOB-35](https://linear.app/codesfox/issue/KOB-35/daemon-split-kobed-thin-tui-client-multi-attach-per-user).
 
 ---

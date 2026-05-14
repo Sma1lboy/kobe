@@ -54,7 +54,7 @@ export async function confirmResetState(
 }
 
 /**
- * Stop the kobed daemon and quit kobe. The next relaunch will spawn a
+ * Stop the kobe daemon and quit kobe. The next relaunch will spawn a
  * fresh daemon from disk, picking up daemon/orchestrator/engine edits.
  */
 export async function confirmRestartDaemon(
@@ -66,7 +66,7 @@ export async function confirmRestartDaemon(
   const ok = await DialogConfirm.show(
     dialog,
     "Restart backend?",
-    "Stops the kobed daemon and quits this kobe window. Relaunch to spawn a fresh daemon with the latest code. Other attached kobe windows will lose their daemon connection too.",
+    "Stops the kobe daemon and quits this kobe window. Relaunch to spawn a fresh daemon with the latest code. Other attached kobe windows will lose their daemon connection too.",
     "cancel",
   )
   if (ok !== true) return

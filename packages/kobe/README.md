@@ -190,7 +190,7 @@ bun run dev          # boots the 5-pane TUI under KOBE_DEV=1 (no update chip, et
 bun run test         # normal suite: fast tests + serial socket tests
 bun run test:behavior  # slow PTY suite; only run for user-visible TUI behavior
 bun run typecheck    # strict tsc
-bun run build        # produces ./dist/cli/index.js + ./dist/bin/kobed.js for npm
+bun run build        # produces ./dist/cli/index.js for npm
 ```
 
 Architecture, design philosophy, and the team-of-agents operating model live in:

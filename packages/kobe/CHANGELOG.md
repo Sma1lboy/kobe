@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: `kobed` is gone — daemon lifecycle moved to `kobe daemon ...`** — the standalone `kobed` binary was merged into the single `kobe` binary as part of the CLI surface unification (KOB-134/KOB-136). Use `kobe daemon start|stop|status|restart` from now on. The npm package no longer publishes a `kobed` bin and the release tarballs no longer include a separate `kobed` executable. Update any scripts or aliases that invoke `kobed` directly.
+
 ### Added
 
 - **Tasks can start an AI-assisted local merge with `M`** — press Shift+M on a sidebar task to confirm a local merge, create a dedicated Merge chat tab, and inject a prompt that asks the agent to merge the task worktree into the parent repo checkout without creating a PR (KOB-110).
