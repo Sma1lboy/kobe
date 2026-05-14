@@ -164,7 +164,12 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async startBackgroundAgent(cwd: string, prompt: string, opts?: SpawnOpts): Promise<BackgroundAgent | null> {
     const binaryPath = await this.binaryPathResolver()
-    const cliPermissionMode = opts?.permissionMode === "plan" ? "plan" : "bypassPermissions"
+    // `claude --bg` rejects `bypassPermissions` until the user has
+    // accepted Claude Code's dangerous-skip-permissions disclaimer
+    // interactively. Background Agent View should match Claude's own
+    // default launch path, so omit the flag unless the user explicitly
+    // has this task in plan mode.
+    const cliPermissionMode = opts?.permissionMode === "plan" ? "plan" : undefined
     return startBackgroundAgentForCwd({
       binaryPath,
       cwd,

@@ -89,6 +89,24 @@ describe("listBackgroundAgentsForCwd", () => {
 })
 
 describe("buildBackgroundAgentArgs", () => {
+  it("omits permission mode when the adapter leaves Claude's background default in place", () => {
+    const prevMcpConfig = process.env.KOBE_MCP_CONFIG
+    process.env.KOBE_MCP_CONFIG = ""
+    try {
+      expect(
+        buildBackgroundAgentArgs({
+          binaryPath: "/bin/claude",
+          cwd: "/repo",
+          prompt: "fix checkout flow",
+          model: "opus-4.6",
+        }),
+      ).toEqual(["--bg", "fix checkout flow", "--model", "opus-4.6"])
+    } finally {
+      if (prevMcpConfig === undefined) process.env.KOBE_MCP_CONFIG = ""
+      else process.env.KOBE_MCP_CONFIG = prevMcpConfig
+    }
+  })
+
   it("uses Claude Code's background-agent entrypoint with model and permission options", () => {
     const prevMcpConfig = process.env.KOBE_MCP_CONFIG
     process.env.KOBE_MCP_CONFIG = ""
