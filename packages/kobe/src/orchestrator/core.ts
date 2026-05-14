@@ -44,7 +44,14 @@ import {
 } from "./local-merge/index.ts"
 import { MetadataSuggester, type MetadataSuggestionContext } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
-import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
+import {
+  gatherPRState,
+  initialPRStatus,
+  loadPRInstructionsTemplate,
+  refreshPRStatus,
+  renderPRInstructions,
+  renderPRMergeInstructions,
+} from "./pr/index.ts"
 import { PLACEHOLDER_TASK_TITLE, TaskRunner } from "./run-task.ts"
 import { SessionPump } from "./session-pump.ts"
 import { TaskWorktreeCoordinator, summarizeWorktreeError } from "./task-worktree.ts"
@@ -499,9 +506,34 @@ export class Orchestrator {
     const state = await gatherPRState(task.worktreePath)
     const template = await loadPRInstructionsTemplate(task.worktreePath)
     const prompt = renderPRInstructions(template, state)
+    const initial = initialPRStatus(task.worktreePath)
+    if (initial || task.prStatus) await this.store.update(task.id, { prStatus: initial })
     // PR injection always targets the task's currently-active tab
     // (the user pressed the button while looking at it). runTask
     // itself dispatches the user.inject — no need to do it twice.
+    const activeTab = this.resolveTab(task)
+    await this.runTask(task.id, prompt, activeTab.id)
+  }
+
+  async refreshPRStatus(id: TaskId | string): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.status === "canceled" || !task.worktreePath) return
+    const next = await refreshPRStatus(task)
+    if (!next) return
+    const current = this.store.get(task.id)?.prStatus
+    if (JSON.stringify(current) === JSON.stringify(next)) return
+    await this.store.update(task.id, { prStatus: next })
+  }
+
+  async requestPRMerge(id: TaskId | string): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.status === "canceled") {
+      throw new PRPreconditionError("Cannot merge a PR for a canceled task.")
+    }
+    if (task.prStatus?.provider !== "github" || task.prStatus.lifecycle !== "ready_to_merge") {
+      throw new PRPreconditionError("The active task's GitHub PR is not ready to merge.")
+    }
+    const prompt = renderPRMergeInstructions(task.prStatus)
     const activeTab = this.resolveTab(task)
     await this.runTask(task.id, prompt, activeTab.id)
   }

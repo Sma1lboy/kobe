@@ -17,10 +17,11 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import type { Accessor } from "solid-js"
+import { type Accessor, createEffect, onCleanup } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { Task } from "../../types/task.ts"
 import { useTheme } from "../context/theme"
+import { describePRChip, shouldPollPRStatus } from "./create-pr-state"
 
 export type CreatePRButtonProps = {
   orchestrator: KobeOrchestrator
@@ -44,9 +45,30 @@ function isEnabled(task: Task | undefined): boolean {
 export function CreatePRButton(props: CreatePRButtonProps) {
   const { theme } = useTheme()
 
+  createEffect(() => {
+    const task = props.activeTask()
+    if (!task || !isEnabled(task) || !shouldPollPRStatus(task.prStatus)) return
+    const refresh = () => {
+      props.orchestrator.refreshPRStatus(task.id).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[kobe] refreshPRStatus failed:", err)
+      })
+    }
+    refresh()
+    const interval = setInterval(refresh, 30_000)
+    onCleanup(() => clearInterval(interval))
+  })
+
   function onClick(): void {
     const task = props.activeTask()
     if (!isEnabled(task) || !task) return
+    if (task.prStatus?.provider === "github" && task.prStatus.lifecycle === "ready_to_merge") {
+      props.orchestrator.requestPRMerge(task.id).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[kobe] requestPRMerge failed:", err)
+      })
+      return
+    }
     props.orchestrator.requestPR(task.id).catch((err: unknown) => {
       // Don't re-throw: the agent's chat will surface user-facing
       // messaging once the preset prompt lands and runs. The console
@@ -58,18 +80,31 @@ export function CreatePRButton(props: CreatePRButtonProps) {
   }
 
   const enabled = () => isEnabled(props.activeTask())
+  const state = () => describePRChip(props.activeTask()?.prStatus)
   // BOLD accent brackets for the "key" slot (matches the Hotkey chip);
   // dim to muted when the button is unusable so it reads as inactive.
-  const bracketColor = () => (enabled() ? theme.accent : theme.textMuted)
-  const labelColor = () => (enabled() ? theme.textMuted : theme.textMuted)
+  const bracketColor = () => {
+    if (!enabled()) return theme.textMuted
+    const tone = state().tone
+    if (tone === "error") return theme.error
+    if (tone === "warning") return theme.warning
+    return theme.accent
+  }
+  const labelColor = () => {
+    if (!enabled()) return theme.textMuted
+    const tone = state().tone
+    if (tone === "error") return theme.error
+    if (tone === "warning") return theme.warning
+    return tone === "accent" ? theme.accent : theme.textMuted
+  }
 
   return (
     <box flexDirection="row" gap={1} flexShrink={0} onMouseUp={enabled() ? onClick : undefined}>
       <text fg={bracketColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-        [PR]
+        {state().key}
       </text>
       <text fg={labelColor()} wrapMode="none">
-        Create PR
+        {state().label}
       </text>
     </box>
   )

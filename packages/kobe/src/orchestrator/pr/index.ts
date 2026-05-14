@@ -19,4 +19,5 @@ export {
   loadPRInstructionsTemplate,
   renderPRInstructions,
 } from "./instructions.ts"
+export { initialPRStatus, refreshPRStatus, renderPRMergeInstructions } from "./status.ts"
 export type { PRState } from "./instructions.ts"

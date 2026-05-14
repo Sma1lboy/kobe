@@ -56,6 +56,27 @@ export const DEFAULT_TASK_VENDOR: VendorId = "claude"
  */
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
+export type PRProviderId = "github" | "gitlab" | "bitbucket" | "unknown"
+
+export type PRCheckState = "none" | "pending" | "passing" | "failing" | "unknown"
+
+export type PRLifecycleState = "creating" | "open" | "ready_to_merge" | "merged" | "closed" | "unknown"
+
+export interface TaskPRStatus {
+  readonly provider: PRProviderId
+  readonly lifecycle: PRLifecycleState
+  readonly checkState: PRCheckState
+  readonly number?: number
+  readonly url?: string
+  readonly title?: string
+  readonly baseRef?: string
+  readonly headRef?: string
+  readonly reviewDecision?: string
+  readonly mergeable?: string
+  readonly lastCheckedAt?: string
+  readonly lastError?: string
+}
+
 /**
  * Re-export of {@link PermissionMode} so callers that only depend on
  * `Task` don't have to drag in the engine module just for the type
@@ -240,6 +261,7 @@ export interface Task {
    * new model isn't meaningful.
    */
   readonly vendor?: VendorId
+  readonly prStatus?: TaskPRStatus
   readonly createdAt: string
   readonly updatedAt: string
 }

@@ -413,7 +413,21 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       }
       case "pr.request": {
-        await orch.requestPR(requireString(payload, "taskId"))
+        const taskId = requireString(payload, "taskId")
+        await orch.requestPR(taskId)
+        broadcastTaskUpdated(orch, clients, taskId)
+        return {}
+      }
+      case "pr.status.refresh": {
+        const taskId = requireString(payload, "taskId")
+        await orch.refreshPRStatus(taskId)
+        broadcastTaskUpdated(orch, clients, taskId)
+        return {}
+      }
+      case "pr.merge.request": {
+        const taskId = requireString(payload, "taskId")
+        await orch.requestPRMerge(taskId)
+        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
       case "merge.local.request": {

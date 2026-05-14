@@ -45,7 +45,7 @@ import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promis
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { ENGINE_REGISTRY, capabilitiesForModelId } from "../../engine/registry.ts"
-import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus, VendorId } from "../../types/task.ts"
+import type { ChatTab, Task, TaskId, TaskIndex, TaskPRStatus, TaskStatus, VendorId } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
 
@@ -592,9 +592,46 @@ function coerceTask(value: unknown): Task | null {
     // `error_during_execution`, which is exactly the regression this
     // recovery catches.
     vendor: resolveTaskVendor(v.vendor, typeof v.model === "string" ? v.model : undefined),
+    prStatus: coercePRStatus(v.prStatus),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
+}
+
+function coercePRStatus(value: unknown): TaskPRStatus | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const v = value as Record<string, unknown>
+  if (!isPRProviderId(v.provider) || !isPRLifecycleState(v.lifecycle) || !isPRCheckState(v.checkState)) {
+    return undefined
+  }
+  return {
+    provider: v.provider,
+    lifecycle: v.lifecycle,
+    checkState: v.checkState,
+    ...(typeof v.number === "number" && Number.isFinite(v.number) ? { number: v.number } : {}),
+    ...(typeof v.url === "string" ? { url: v.url } : {}),
+    ...(typeof v.title === "string" ? { title: v.title } : {}),
+    ...(typeof v.baseRef === "string" ? { baseRef: v.baseRef } : {}),
+    ...(typeof v.headRef === "string" ? { headRef: v.headRef } : {}),
+    ...(typeof v.reviewDecision === "string" ? { reviewDecision: v.reviewDecision } : {}),
+    ...(typeof v.mergeable === "string" ? { mergeable: v.mergeable } : {}),
+    ...(typeof v.lastCheckedAt === "string" ? { lastCheckedAt: v.lastCheckedAt } : {}),
+    ...(typeof v.lastError === "string" ? { lastError: v.lastError } : {}),
+  }
+}
+
+function isPRProviderId(v: unknown): v is TaskPRStatus["provider"] {
+  return v === "github" || v === "gitlab" || v === "bitbucket" || v === "unknown"
+}
+
+function isPRLifecycleState(v: unknown): v is TaskPRStatus["lifecycle"] {
+  return (
+    v === "creating" || v === "open" || v === "ready_to_merge" || v === "merged" || v === "closed" || v === "unknown"
+  )
+}
+
+function isPRCheckState(v: unknown): v is TaskPRStatus["checkState"] {
+  return v === "none" || v === "pending" || v === "passing" || v === "failing" || v === "unknown"
 }
 
 function isPermissionMode(v: unknown): v is import("@/types/task").PermissionMode {

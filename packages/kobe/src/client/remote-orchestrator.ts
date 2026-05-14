@@ -406,6 +406,14 @@ export class RemoteOrchestrator {
     await this.client.request("pr.request", { taskId })
   }
 
+  async refreshPRStatus(taskId: string): Promise<void> {
+    await this.client.request("pr.status.refresh", { taskId })
+  }
+
+  async requestPRMerge(taskId: string): Promise<void> {
+    await this.client.request("pr.merge.request", { taskId })
+  }
+
   async requestLocalMerge(taskId: string): Promise<void> {
     await this.client.request("merge.local.request", { taskId })
   }

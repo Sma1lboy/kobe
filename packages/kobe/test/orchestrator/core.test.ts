@@ -39,6 +39,7 @@ import {
   IllegalTransitionError,
   LocalMergePreconditionError,
   Orchestrator,
+  PRPreconditionError,
   TITLE_CHAR_CAP,
   TaskNotFoundError,
   deriveTitleFromPrompt,
@@ -98,6 +99,8 @@ class HistoryEngine implements AIEngine {
   readonly identity: EngineIdentity
   readonly capabilities: EngineCapabilities
   readonly spawns: Array<{ cwd: string; prompt: string; model?: string; modelEffort?: string }> = []
+  readonly resumes: Array<{ sessionId: string; prompt: string; cwd?: string; model?: string; modelEffort?: string }> =
+    []
   readonly streamCalls: string[] = []
   readonly sessions: Array<{
     sessionId: string
@@ -122,7 +125,14 @@ class HistoryEngine implements AIEngine {
     this.scripts.set(sessionId, events)
   }
 
-  async resume(sessionId: string, _prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
+  async resume(sessionId: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
+    this.resumes.push({
+      sessionId,
+      prompt,
+      cwd: opts?.cwd,
+      model: opts?.model,
+      modelEffort: opts?.modelEffort,
+    })
     return { sessionId, cwd: opts?.cwd ?? "/" }
   }
 
@@ -452,6 +462,45 @@ describe("Orchestrator.requestLocalMerge", () => {
     const { orch } = await buildOrchestrator()
     const main = await orch.ensureMainTask(repo)
     await expect(orch.requestLocalMerge(main.id)).rejects.toBeInstanceOf(LocalMergePreconditionError)
+  })
+})
+
+// ----------------------------------------------------------------------
+// requestPRMerge — topbar ready-to-merge flow
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.requestPRMerge", () => {
+  test("injects a merge prompt into the active chat when GitHub PR is ready", async () => {
+    const engine = new HistoryEngine("claude")
+    const { orch, store } = await buildOrchestrator(engine)
+    const task = await orch.createTask({ repo, title: "merge pr" })
+
+    await orch.runTask(task.id, "first implementation pass")
+    await orch._waitForPumpsIdle()
+    await store.update(task.id, {
+      prStatus: {
+        provider: "github",
+        lifecycle: "ready_to_merge",
+        checkState: "passing",
+        number: 132,
+        url: "https://github.com/sma1lboy/kobe/pull/132",
+      },
+    })
+
+    await orch.requestPRMerge(task.id)
+    await orch._waitForPumpsIdle()
+
+    expect(engine.resumes.at(-1)?.prompt).toContain("clicked Merge")
+    expect(engine.resumes.at(-1)?.prompt).toContain("Re-check the PR status")
+    expect(engine.resumes.at(-1)?.prompt).toContain("gh pr merge")
+  })
+
+  test("rejects when the active task's PR is not ready", async () => {
+    const { orch, store } = await buildOrchestrator()
+    const task = await orch.createTask({ repo, title: "not ready" })
+    await store.update(task.id, { prStatus: { provider: "github", lifecycle: "open", checkState: "pending" } })
+
+    await expect(orch.requestPRMerge(task.id)).rejects.toBeInstanceOf(PRPreconditionError)
   })
 })
 

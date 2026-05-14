@@ -43,6 +43,8 @@ export type DaemonRequestName =
   | "chat.input.respond"
   | "merge.local.request"
   | "pr.request"
+  | "pr.status.refresh"
+  | "pr.merge.request"
   | "chat.history"
   | "chat.send"
   | "rcBridge.start"
@@ -84,6 +86,7 @@ export interface SerializedTask {
   readonly model?: string
   readonly modelEffort?: Task["modelEffort"]
   readonly vendor?: Task["vendor"]
+  readonly prStatus?: Task["prStatus"]
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -113,6 +116,7 @@ export function serializeTask(task: Task): SerializedTask {
     model: task.model,
     modelEffort: task.modelEffort,
     vendor: task.vendor,
+    prStatus: task.prStatus,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }
