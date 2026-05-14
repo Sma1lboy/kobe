@@ -27,6 +27,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Claude Agent View status markers are quiet/static** — Working background rows now use the same static status dot style as the rest of Agent View instead of animated decorative glyphs (KOB-145).
 - **Claude Agent View background starts no longer require the dangerous-permissions disclaimer** — Agent View now omits `--permission-mode bypassPermissions` for default `claude --bg` launches, matching Claude Code's own background-agent path and avoiding the interactive disclaimer gate (KOB-142).
 - **Started chat tabs stay bound to their engine** — once a chat tab has a Claude Code or Codex session, the model picker keeps other-engine models visible but disabled with a new-chat-required hint, and the orchestrator rejects cross-engine retargeting so history/resume data cannot cross vendors (KOB-128).
 - **Task metadata naming now follows the selected chat-tab engine** — branch/title suggestions route through the active tab's `AIEngine` with its selected model and reasoning effort instead of always shelling out to Claude (KOB-111).
