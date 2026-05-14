@@ -1,6 +1,7 @@
 import type { KeyEvent, TextareaRenderable } from "@opentui/core"
 import { type Accessor, createEffect, createMemo, createSignal, on } from "solid-js"
 import { makeDropdownWindow } from "./dropdown-window"
+import { isPlainAutocompleteTabKey } from "./keys"
 import {
   type MentionContext,
   type MentionMatch,
@@ -130,7 +131,7 @@ export function createMentionController(args: {
       key.preventDefault()
       return true
     }
-    if ((key.name === "return" || key.name === "tab") && !key.shift && !key.ctrl) {
+    if ((key.name === "return" && !key.shift && !key.ctrl) || isPlainAutocompleteTabKey(key)) {
       const match = matches()[cursor()]
       if (match) {
         insertSelection(match.path)

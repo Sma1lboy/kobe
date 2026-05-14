@@ -60,7 +60,7 @@ import { PromptHistoryNavigator } from "./composer/history-nav"
 import { HistoryPalette } from "./composer/history-palette"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { deleteImageTokenBackward, deleteImageTokenForward } from "./composer/image-token-delete"
-import { isPermissionModeCycleKey } from "./composer/keys"
+import { isPermissionModeCycleKey, isPlainAutocompleteTabKey } from "./composer/keys"
 import { createMentionController } from "./composer/mention-controller"
 
 /**
@@ -702,7 +702,7 @@ export function Composer(props: ComposerProps) {
         key.preventDefault()
         return
       }
-      if (key.name === "tab" && !key.shift) {
+      if (isPlainAutocompleteTabKey(key)) {
         // Auto-fill the buffer with the highlighted entry's display
         // (e.g. `/comp` → `/compact`). Doesn't submit — the user can
         // keep typing args or hit enter to run. Mirrors claude-code's
