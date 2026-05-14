@@ -40,6 +40,30 @@ describe("normalizeBackgroundAgent", () => {
       updatedAtMs: 20,
     })
   })
+
+  it("normalizes every product-facing background status", () => {
+    const rows = [
+      ["working", "running"],
+      ["needs_input", "blocked"],
+      ["idle", "idle"],
+      ["success", "completed"],
+      ["error", "failed"],
+      ["claude stop", "stopped"],
+      ["cancelled", "stopped"],
+      ["killed", "stopped"],
+    ] as const
+
+    for (const [source, expected] of rows) {
+      expect(
+        normalizeBackgroundAgent({
+          kind: "bg",
+          sessionId: `session-${source}`,
+          cwd: "/repo",
+          status: source,
+        })?.status,
+      ).toBe(expected)
+    }
+  })
 })
 
 describe("listBackgroundAgentsForCwd", () => {

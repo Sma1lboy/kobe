@@ -23,7 +23,11 @@ export function AgentModeView(props: {
   const [starting, setStarting] = createSignal(false)
   const [openingSessionId, setOpeningSessionId] = createSignal<string | null>(null)
   const [refreshTick, setRefreshTick] = createSignal(0)
+  const [statusFrame, setStatusFrame] = createSignal(0)
   let textareaRef: TextareaRenderable | undefined
+
+  const frameTimer = setInterval(() => setStatusFrame((n) => n + 1), 160)
+  onCleanup(() => clearInterval(frameTimer))
 
   createEffect(() => {
     const taskId = props.taskId()
@@ -125,6 +129,7 @@ export function AgentModeView(props: {
                     {(agent) => (
                       <AgentRow
                         agent={agent}
+                        frame={statusFrame}
                         opening={() => openingSessionId() === agent.sessionId}
                         onOpen={() => void openAgent(agent)}
                       />
@@ -175,11 +180,12 @@ export function AgentModeView(props: {
 
 function AgentRow(props: {
   readonly agent: BackgroundAgent
+  readonly frame: () => number
   readonly opening: () => boolean
   readonly onOpen: () => void
 }) {
   const { theme } = useTheme()
-  const status = () => statusMeta(props.agent.status)
+  const status = () => statusMeta(props.agent.status, props.frame())
   const title = () => props.agent.name ?? props.agent.sessionId.slice(0, 8)
   const detail = () => {
     const updated = formatAge(props.agent.updatedAtMs ?? props.agent.startedAtMs)
@@ -226,6 +232,7 @@ function groupedAgents(agents: readonly BackgroundAgent[]): Array<{ label: strin
     { key: "idle", label: "idle", items: [] },
     { key: "completed", label: "completed", items: [] },
     { key: "failed", label: "failed", items: [] },
+    { key: "stopped", label: "stopped", items: [] },
     { key: "unknown", label: "other", items: [] },
   ]
   const byKey = new Map(groups.map((g) => [g.key, g]))
@@ -233,17 +240,26 @@ function groupedAgents(agents: readonly BackgroundAgent[]): Array<{ label: strin
   return groups.filter((g) => g.items.length > 0)
 }
 
-function statusMeta(status: BackgroundAgentStatus): {
+const RUNNING_FRAMES = ["·", "✢", "✳", "✶", "✻", "*", "✻", "✶", "✳", "✢"] as const
+
+function statusMeta(
+  status: BackgroundAgentStatus,
+  frame: number,
+): {
   marker: string
   color: (theme: Theme) => Theme["text"]
 } {
   switch (status) {
     case "running":
-      return { marker: "●", color: (theme) => theme.success }
+      return { marker: RUNNING_FRAMES[frame % RUNNING_FRAMES.length] ?? "*", color: (theme) => theme.success }
     case "blocked":
       return { marker: "●", color: (theme) => theme.warning }
+    case "completed":
+      return { marker: "✓", color: (theme) => theme.success }
     case "failed":
-      return { marker: "!", color: (theme) => theme.warning }
+      return { marker: "!", color: (theme) => theme.error }
+    case "stopped":
+      return { marker: "■", color: (theme) => theme.textMuted }
     default:
       return { marker: "·", color: (theme) => theme.textMuted }
   }

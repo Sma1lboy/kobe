@@ -102,6 +102,80 @@ test("workspace Agent mode lists Claude background agents for the active worktre
   expect(screen).toContain(repo)
 })
 
+test("workspace Agent mode shows all product-facing background states", async () => {
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-agent-mode-states-"))
+  const homeDir = path.join(tmpRoot, "home")
+  const repo = path.join(tmpRoot, "repo")
+  const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
+  if (initResult.status !== 0) throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
+
+  const kobeDir = path.join(homeDir, ".kobe")
+  fs.mkdirSync(kobeDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(kobeDir, "tasks.json"),
+    `${JSON.stringify({
+      version: 2,
+      tasks: [
+        {
+          id: "01AGENTSTATES",
+          title: "agent states smoke",
+          repo,
+          branch: "kobe/agent-states",
+          worktreePath: repo,
+          kind: "task",
+          sessionId: null,
+          tabs: [
+            {
+              id: "tab-1",
+              sessionId: null,
+              seq: 1,
+              vendor: "claude",
+              createdAt: "2026-05-14T00:00:00.000Z",
+            },
+          ],
+          activeTabId: "tab-1",
+          status: "backlog",
+          archived: false,
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z",
+        },
+      ],
+    })}\n`,
+    "utf8",
+  )
+
+  const port = await pickFreePort()
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: homeDir,
+    },
+    cols: 120,
+    rows: 36,
+  })
+  await kobe.waitFor((s) => s.includes("agent states smoke"), 10_000)
+  await waitForFakeServer(port)
+  await postAgents(port, [
+    backgroundAgent("working checkout", "running", repo, 60),
+    backgroundAgent("answer question", "blocked", repo, 50),
+    backgroundAgent("ready for prompt", "idle", repo, 40),
+    backgroundAgent("finished task", "completed", repo, 30),
+    backgroundAgent("hit error", "failed", repo, 20),
+    backgroundAgent("stopped manually", "stopped", repo, 10),
+  ])
+
+  await kobe.sendKeys("\t") // sidebar -> workspace
+  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
+  const screen = await kobe.waitFor((s) => s.includes("stopped manually") && s.includes("STOPPED"), 10_000)
+  expect(screen).toContain("WORKING")
+  expect(screen).toContain("NEEDS INPUT")
+  expect(screen).toContain("IDLE")
+  expect(screen).toContain("COMPLETED")
+  expect(screen).toContain("FAILED")
+  expect(screen).toContain("STOPPED")
+})
+
 test("workspace Agent mode can start a Claude background agent from a prompt", async () => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-agent-mode-start-"))
   const homeDir = path.join(tmpRoot, "home")
@@ -302,6 +376,29 @@ async function postAgents(port: number, agents: BackgroundAgent[]): Promise<void
 
 async function postHistory(port: number, sessionId: string, messages: Message[]): Promise<void> {
   await post(port, "/history", { sessionId, messages })
+}
+
+function backgroundAgent(
+  name: string,
+  status: BackgroundAgent["status"],
+  cwd: string,
+  updatedAtMs: number,
+): BackgroundAgent {
+  const id = name.replace(/\s+/g, "-")
+  return {
+    id,
+    sessionId: `session-${id}`,
+    name,
+    status,
+    sourceStatus: status,
+    cwd,
+    agent: "claude",
+    jobId: id,
+    pid: null,
+    version: "fake",
+    startedAtMs: updatedAtMs,
+    updatedAtMs,
+  }
 }
 
 async function post(port: number, endpoint: string, payload: Record<string, unknown>): Promise<void> {

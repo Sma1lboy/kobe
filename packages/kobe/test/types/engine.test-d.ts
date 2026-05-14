@@ -72,6 +72,14 @@ describe("SessionHandle", () => {
   })
 })
 
+describe("BackgroundAgentStatus", () => {
+  it("covers every product-facing background-agent state plus unknown", () => {
+    expectTypeOf<BackgroundAgent["status"]>().toEqualTypeOf<
+      "running" | "blocked" | "idle" | "completed" | "failed" | "stopped" | "unknown"
+    >()
+  })
+})
+
 describe("SpawnOpts", () => {
   it("makes every field optional", () => {
     const _empty: SpawnOpts = {}

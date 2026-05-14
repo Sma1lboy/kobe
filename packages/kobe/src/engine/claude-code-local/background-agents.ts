@@ -207,8 +207,11 @@ function normalizeStatus(status: string | null): BackgroundAgentStatus {
   const s = (status ?? "").toLowerCase().replace(/[\s_-]+/g, "-")
   if (["running", "working", "active", "in-progress", "busy"].includes(s)) return "running"
   if (["blocked", "needs-input", "awaiting-input", "waiting-for-input"].includes(s)) return "blocked"
+  if (["stopped", "stop", "claude-stop", "cancelled", "canceled", "interrupted", "aborted", "killed"].includes(s)) {
+    return "stopped"
+  }
   if (["done", "complete", "completed", "success", "succeeded"].includes(s)) return "completed"
-  if (["error", "failed", "crashed", "killed"].includes(s)) return "failed"
+  if (["error", "failed", "crashed"].includes(s)) return "failed"
   if (s === "idle") return "idle"
   return "unknown"
 }

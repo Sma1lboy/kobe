@@ -245,7 +245,7 @@ export interface SessionMeta {
   readonly messageCount: number
 }
 
-export type BackgroundAgentStatus = "running" | "blocked" | "completed" | "failed" | "idle" | "unknown"
+export type BackgroundAgentStatus = "running" | "blocked" | "idle" | "completed" | "failed" | "stopped" | "unknown"
 
 /**
  * One Claude Code background agent/session as normalized by an engine adapter.
