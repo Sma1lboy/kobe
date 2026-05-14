@@ -449,6 +449,7 @@ function Shell(props: AppDeps) {
     confirmRenameTask,
     confirmRenameChatTab,
     confirmDeleteTask,
+    confirmArchiveTask,
     confirmLocalMergeTask,
   } = useTaskActions({
     orchestrator: props.orchestrator,
@@ -563,10 +564,7 @@ function Shell(props: AppDeps) {
               void confirmDeleteTask(id)
             }}
             onArchiveRequest={(id: string) => {
-              void props.orchestrator.setArchived(id).catch((err) => {
-                // eslint-disable-next-line no-console
-                console.error("[kobe] setArchived failed:", err)
-              })
+              void confirmArchiveTask(id)
             }}
             onLocalMergeRequest={(id: string) => {
               void confirmLocalMergeTask(id)

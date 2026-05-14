@@ -32,14 +32,19 @@ export type DialogConfirmProps = {
   label?: string
   /** Custom label for the confirm button (default: `confirm`). Titlecased on render. */
   confirmLabel?: string
+  /** Which button receives initial keyboard focus (default: `confirm`). */
+  initialActive?: "confirm" | "cancel"
 }
 
 export type DialogConfirmResult = boolean | undefined
+export type DialogConfirmOptions = {
+  initialActive?: "confirm" | "cancel"
+}
 
 export function DialogConfirm(props: DialogConfirmProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
-  const [store, setStore] = createStore({ active: "confirm" as "confirm" | "cancel" })
+  const [store, setStore] = createStore({ active: props.initialActive ?? ("confirm" as "confirm" | "cancel") })
 
   useBindings(() => ({
     bindings: [
@@ -108,6 +113,7 @@ DialogConfirm.show = (
   message: string,
   label?: string,
   confirmLabel?: string,
+  options?: DialogConfirmOptions,
 ): Promise<DialogConfirmResult> => {
   return new Promise<DialogConfirmResult>((resolve) => {
     dialog.replace(
@@ -119,6 +125,7 @@ DialogConfirm.show = (
           onCancel={() => resolve(false)}
           label={label}
           confirmLabel={confirmLabel}
+          initialActive={options?.initialActive}
         />
       ),
       () => resolve(undefined),
