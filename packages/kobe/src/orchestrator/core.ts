@@ -858,6 +858,14 @@ export class Orchestrator {
     return this.engineRouter.listBackgroundAgents(task, tab)
   }
 
+  async startBackgroundAgent(id: TaskId | string, prompt: string): Promise<BackgroundAgent | null> {
+    const trimmed = prompt.trim()
+    if (!trimmed) throw new Error("Prompt is required")
+    const task = this.requireTask(id)
+    const tab = this.resolveTab(task)
+    return this.engineRouter.startBackgroundAgent(task, tab, trimmed)
+  }
+
   async openSessionInTab(
     id: TaskId | string,
     sessionId: string,

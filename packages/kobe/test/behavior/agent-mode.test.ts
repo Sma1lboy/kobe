@@ -102,6 +102,73 @@ test("workspace Agent mode lists Claude background agents for the active worktre
   expect(screen).toContain(repo)
 })
 
+test("workspace Agent mode can start a Claude background agent from a prompt", async () => {
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-agent-mode-start-"))
+  const homeDir = path.join(tmpRoot, "home")
+  const repo = path.join(tmpRoot, "repo")
+  const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
+  if (initResult.status !== 0) throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
+
+  const kobeDir = path.join(homeDir, ".kobe")
+  fs.mkdirSync(kobeDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(kobeDir, "tasks.json"),
+    `${JSON.stringify({
+      version: 2,
+      tasks: [
+        {
+          id: "01AGENTSTART",
+          title: "agent start smoke",
+          repo,
+          branch: "kobe/agent-start",
+          worktreePath: repo,
+          kind: "task",
+          sessionId: null,
+          tabs: [
+            {
+              id: "tab-1",
+              sessionId: null,
+              seq: 1,
+              vendor: "claude",
+              createdAt: "2026-05-14T00:00:00.000Z",
+            },
+          ],
+          activeTabId: "tab-1",
+          status: "backlog",
+          archived: false,
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z",
+        },
+      ],
+    })}\n`,
+    "utf8",
+  )
+
+  const port = await pickFreePort()
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: homeDir,
+    },
+    cols: 120,
+    rows: 30,
+  })
+  await kobe.waitFor((s) => s.includes("agent start smoke"), 10_000)
+  await waitForFakeServer(port)
+
+  await kobe.sendKeys("\t") // sidebar -> workspace
+  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
+  await kobe.waitFor((s) => s.includes("Start a background agent"), 10_000)
+  await kobe.typeText("write customer greeting")
+  await kobe.sendKeys("\r")
+
+  const screen = await kobe.waitFor((s) => s.includes("write customer greeting") && s.includes("IDLE"), 10_000)
+  expect(screen).toContain("IDLE")
+  expect(screen).toContain("session-")
+  expect(screen).toContain(repo)
+}, 20_000)
+
 async function pickFreePort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const srv = net.createServer()

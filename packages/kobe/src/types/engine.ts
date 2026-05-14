@@ -588,6 +588,16 @@ export interface AIEngine {
   listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]>
 
   /**
+   * Start an engine-owned background agent under `cwd`.
+   *
+   * Claude Code owns this lifecycle via `claude --bg <prompt>` and the
+   * `claude agents` index. Kobe only forwards the prompt/model/permission
+   * choices and consumes the normalized row the adapter can find after
+   * launch. Engines with no background-agent concept may return `null`.
+   */
+  startBackgroundAgent(cwd: string, prompt: string, opts?: SpawnOpts): Promise<BackgroundAgent | null>
+
+  /**
    * Permanently remove the persisted history for a session.
    *
    * Guarantees: best-effort. Removes the on-disk JSONL (or its remote

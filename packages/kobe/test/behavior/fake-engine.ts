@@ -177,6 +177,27 @@ export class FakeAIEngine implements AIEngine {
     return this.backgroundAgents.filter((agent) => agent.cwd === cwd || agent.cwd.startsWith(`${cwd}/`))
   }
 
+  async startBackgroundAgent(cwd: string, prompt: string, _opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    const id = `bg-${this.nextId++}`
+    const now = Date.now()
+    const agent: BackgroundAgent = {
+      id,
+      sessionId: `session-${id}`,
+      name: prompt.trim().slice(0, 48) || null,
+      status: "idle",
+      sourceStatus: "idle",
+      cwd,
+      agent: "claude",
+      jobId: id,
+      pid: null,
+      version: "fake",
+      startedAtMs: now,
+      updatedAtMs: now,
+    }
+    this.backgroundAgents = [agent, ...this.backgroundAgents]
+    return agent
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     this.stopped.add(handle.sessionId)
     const q = this.queues.get(handle.sessionId)

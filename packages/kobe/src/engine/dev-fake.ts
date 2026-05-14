@@ -79,6 +79,10 @@ export class DevAIEngine implements AIEngine {
     return this.inner.listBackgroundAgents(cwd)
   }
 
+  async startBackgroundAgent(cwd: string, prompt: string, opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    return this.inner.startBackgroundAgent(cwd, prompt, opts)
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     return this.inner.stop(handle)
   }

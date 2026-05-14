@@ -48,6 +48,10 @@ class OneShotEngine implements AIEngine {
     return []
   }
 
+  async startBackgroundAgent(_cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    return null
+  }
+
   async deleteHistory(sessionId: string): Promise<void> {
     this.deleted.push(sessionId)
   }

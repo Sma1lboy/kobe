@@ -358,6 +358,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const agents = await orch.listBackgroundAgents(requireString(payload, "taskId"))
         return { agents }
       }
+      case "agent.background.start": {
+        const agent = await orch.startBackgroundAgent(
+          requireString(payload, "taskId"),
+          requireString(payload, "prompt"),
+        )
+        return { agent }
+      }
       case "chat.interrupt": {
         await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
         return {}

@@ -931,7 +931,11 @@ export function Chat(props: ChatProps) {
         </box>
       </Show>
       <Show when={workspaceMode() === "agents"} fallback={<ChatTranscript />}>
-        <AgentModeView orchestrator={props.orchestrator} taskId={() => props.taskId()} />
+        <AgentModeView
+          orchestrator={props.orchestrator}
+          taskId={() => props.taskId()}
+          focused={() => props.focused?.() ?? false}
+        />
       </Show>
     </box>
   )

@@ -1,20 +1,29 @@
-import { TextAttributes } from "@opentui/core"
+import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
 import type { BackgroundAgent, BackgroundAgentStatus } from "../../../types/engine"
+import { useFocus } from "../../context/focus"
 import { type Theme, useTheme } from "../../context/theme"
+import { composerKeyBindings } from "./composer/keybindings"
 
 export function AgentModeView(props: {
   readonly orchestrator: KobeOrchestrator
   readonly taskId: () => string | undefined
+  readonly focused?: () => boolean
 }) {
   const { theme } = useTheme()
+  const focusCtx = useFocus()
   const [agents, setAgents] = createSignal<readonly BackgroundAgent[]>([])
+  const [draft, setDraft] = createSignal("")
   const [error, setError] = createSignal<string | null>(null)
   const [loading, setLoading] = createSignal(false)
+  const [starting, setStarting] = createSignal(false)
+  const [refreshTick, setRefreshTick] = createSignal(0)
+  let textareaRef: TextareaRenderable | undefined
 
   createEffect(() => {
     const taskId = props.taskId()
+    refreshTick()
     if (!taskId) {
       setAgents([])
       return
@@ -38,34 +47,97 @@ export function AgentModeView(props: {
     })
   })
 
+  createEffect(() => {
+    focusCtx.refocusTick()
+    const ref = textareaRef
+    if (!ref) return
+    if (props.focused?.()) ref.focus()
+    else ref.blur()
+  })
+
+  async function submitPrompt(): Promise<void> {
+    const taskId = props.taskId()
+    const ref = textareaRef
+    const prompt = (ref?.plainText ?? draft()).trim()
+    if (!taskId || !prompt || starting()) return
+    setStarting(true)
+    setError(null)
+    try {
+      const agent = await props.orchestrator.startBackgroundAgent(taskId, prompt)
+      if (agent) setAgents((cur) => [agent, ...cur.filter((existing) => existing.id !== agent.id)])
+      ref?.setText("")
+      setDraft("")
+      setRefreshTick((n) => n + 1)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setStarting(false)
+    }
+  }
+
   return (
     <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1}>
-      <Show when={loading()}>
-        <text fg={theme.textMuted}>loading agents...</text>
-      </Show>
-      <Show when={error()}>{(err) => <text fg={theme.warning}>agent view error: {err()}</text>}</Show>
-      <Show when={!loading() && !error() && agents().length === 0}>
-        <box flexGrow={1} alignItems="center" justifyContent="center">
-          <text fg={theme.textMuted}>No Claude background agents for this worktree.</text>
-        </box>
-      </Show>
-      <Show when={agents().length > 0}>
-        <box flexDirection="column" gap={1}>
-          <For each={groupedAgents(agents())}>
-            {(group) => (
-              <box flexDirection="column" gap={0}>
-                <box flexDirection="row" gap={1}>
-                  <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
-                    {group.label.toUpperCase()}
-                  </text>
-                  <text fg={theme.textMuted}>{String(group.items.length)}</text>
+      <box flexGrow={1} flexDirection="column">
+        <Show when={loading()}>
+          <text fg={theme.textMuted}>loading agents...</text>
+        </Show>
+        <Show when={error()}>{(err) => <text fg={theme.warning}>agent view error: {err()}</text>}</Show>
+        <Show when={!loading() && !error() && agents().length === 0}>
+          <box flexGrow={1} alignItems="center" justifyContent="center">
+            <text fg={theme.textMuted}>No Claude background agents for this worktree.</text>
+          </box>
+        </Show>
+        <Show when={agents().length > 0}>
+          <box flexDirection="column" gap={1}>
+            <For each={groupedAgents(agents())}>
+              {(group) => (
+                <box flexDirection="column" gap={0}>
+                  <box flexDirection="row" gap={1}>
+                    <text fg={theme.textMuted} attributes={TextAttributes.BOLD}>
+                      {group.label.toUpperCase()}
+                    </text>
+                    <text fg={theme.textMuted}>{String(group.items.length)}</text>
+                  </box>
+                  <For each={group.items}>{(agent) => <AgentRow agent={agent} />}</For>
                 </box>
-                <For each={group.items}>{(agent) => <AgentRow agent={agent} />}</For>
-              </box>
-            )}
-          </For>
+              )}
+            </For>
+          </box>
+        </Show>
+      </box>
+      <box
+        flexShrink={0}
+        flexDirection="column"
+        paddingLeft={1}
+        paddingRight={1}
+        paddingTop={1}
+        paddingBottom={1}
+        backgroundColor={theme.backgroundElement}
+      >
+        <box flexDirection="row" gap={1} alignItems="flex-start">
+          <text fg={starting() ? theme.textMuted : theme.primary} attributes={TextAttributes.BOLD}>
+            {starting() ? "..." : ">"}
+          </text>
+          <box flexGrow={1} minHeight={2} maxHeight={4}>
+            <textarea
+              ref={(r: TextareaRenderable) => {
+                textareaRef = r
+                if (draft()) r.setText(draft())
+                if (props.focused?.()) r.focus()
+              }}
+              placeholder={starting() ? "Starting background agent..." : "Start a background agent"}
+              placeholderColor={theme.textMuted}
+              textColor={theme.text}
+              backgroundColor={theme.backgroundElement}
+              focusedBackgroundColor={theme.backgroundElement}
+              wrapMode="word"
+              keyBindings={composerKeyBindings}
+              onContentChange={setDraft}
+              onSubmit={() => void submitPrompt()}
+            />
+          </box>
         </box>
-      </Show>
+      </box>
     </box>
   )
 }

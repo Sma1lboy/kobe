@@ -145,6 +145,10 @@ class HistoryEngine implements AIEngine {
     return []
   }
 
+  async startBackgroundAgent(_cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    return null
+  }
+
   async stop(_h: SessionHandle): Promise<void> {}
 }
 
@@ -966,6 +970,9 @@ describe("Orchestrator.deleteTask", () => {
       async listBackgroundAgents() {
         return []
       },
+      async startBackgroundAgent() {
+        return null
+      },
       async stop() {
         throw new Error("simulated stuck engine")
       },
@@ -1155,6 +1162,9 @@ describe("Orchestrator.runTask on a main task", () => {
       },
       async listBackgroundAgents() {
         return []
+      },
+      async startBackgroundAgent() {
+        return null
       },
       async stop() {},
     }
@@ -1514,6 +1524,9 @@ describe("Orchestrator engine call shape", () => {
       },
       async listBackgroundAgents() {
         return []
+      },
+      async startBackgroundAgent() {
+        return null
       },
       async stop() {},
     }

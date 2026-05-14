@@ -50,7 +50,7 @@ import type {
   SessionMeta,
   SpawnOpts,
 } from "@/types/engine"
-import { listBackgroundAgentsForCwd } from "./background-agents"
+import { listBackgroundAgentsForCwd, startBackgroundAgentForCwd } from "./background-agents"
 import { findClaudeBinary } from "./binary"
 import { claudeCapabilities, claudeIdentity } from "./capabilities"
 import {
@@ -160,6 +160,21 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async listBackgroundAgents(cwd: string): Promise<BackgroundAgent[]> {
     return listBackgroundAgentsForCwd(cwd)
+  }
+
+  async startBackgroundAgent(cwd: string, prompt: string, opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    const binaryPath = await this.binaryPathResolver()
+    const cliPermissionMode = opts?.permissionMode === "plan" ? "plan" : "bypassPermissions"
+    return startBackgroundAgentForCwd({
+      binaryPath,
+      cwd,
+      prompt,
+      model: opts?.model,
+      modelEffort: opts?.modelEffort,
+      permissionMode: cliPermissionMode,
+      env: opts?.env,
+      timeoutMs: opts?.timeoutMs,
+    })
   }
 
   async stop(handle: SessionHandle): Promise<void> {

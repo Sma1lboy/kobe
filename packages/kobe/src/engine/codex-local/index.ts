@@ -118,6 +118,10 @@ export class CodexLocal implements AIEngine {
     return []
   }
 
+  async startBackgroundAgent(_cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+    return null
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     const sid = handle.sessionId
     await this.registry.kill(sid, this.stopGraceMs)

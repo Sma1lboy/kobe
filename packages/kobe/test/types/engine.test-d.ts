@@ -117,6 +117,7 @@ describe("AIEngine", () => {
       | "deleteHistory"
       | "listSessions"
       | "listBackgroundAgents"
+      | "startBackgroundAgent"
       | "stop"
     >()
   })
@@ -151,6 +152,11 @@ describe("AIEngine", () => {
   it("listBackgroundAgents returns Promise<BackgroundAgent[]>", () => {
     expectTypeOf<AIEngine["listBackgroundAgents"]>().parameters.toEqualTypeOf<[string]>()
     expectTypeOf<AIEngine["listBackgroundAgents"]>().returns.toEqualTypeOf<Promise<BackgroundAgent[]>>()
+  })
+
+  it("startBackgroundAgent returns Promise<BackgroundAgent | null>", () => {
+    expectTypeOf<AIEngine["startBackgroundAgent"]>().parameters.toEqualTypeOf<[string, string, SpawnOpts?]>()
+    expectTypeOf<AIEngine["startBackgroundAgent"]>().returns.toEqualTypeOf<Promise<BackgroundAgent | null>>()
   })
 
   it("stop returns Promise<void>", () => {
@@ -200,6 +206,9 @@ describe("AIEngine", () => {
       }
       async listBackgroundAgents(_cwd: string): Promise<BackgroundAgent[]> {
         return []
+      }
+      async startBackgroundAgent(_cwd: string, _prompt: string, _opts?: SpawnOpts): Promise<BackgroundAgent | null> {
+        return null
       }
       async stop(_h: SessionHandle): Promise<void> {}
     }

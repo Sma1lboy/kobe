@@ -200,4 +200,15 @@ export class EngineRouter {
     const engine = this.engineForTab(task, tab)
     return engine.listBackgroundAgents(task.worktreePath)
   }
+
+  async startBackgroundAgent(task: Task, tab: ChatTab, prompt: string): Promise<BackgroundAgent | null> {
+    if (!task.worktreePath) throw new Error("Task has no worktree path")
+    const engine = this.engineForTab(task, tab)
+    return engine.startBackgroundAgent(task.worktreePath, prompt, {
+      model: this.modelForTab(task, tab, engine),
+      modelEffort: this.modelEffortForTab(task, tab),
+      permissionMode: task.permissionMode,
+      cwd: task.worktreePath,
+    })
+  }
 }

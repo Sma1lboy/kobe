@@ -376,6 +376,14 @@ export class RemoteOrchestrator {
     return res.agents
   }
 
+  async startBackgroundAgent(taskId: string, prompt: string): Promise<BackgroundAgent | null> {
+    const res = await this.client.request<{ agent: BackgroundAgent | null }>("agent.background.start", {
+      taskId,
+      prompt,
+    })
+    return res.agent
+  }
+
   async openSessionInTab(
     taskId: string,
     sessionId: string,

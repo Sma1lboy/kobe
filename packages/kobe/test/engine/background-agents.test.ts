@@ -1,7 +1,11 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { listBackgroundAgentsForCwd, normalizeBackgroundAgent } from "@/engine/claude-code-local/background-agents"
+import {
+  buildBackgroundAgentArgs,
+  listBackgroundAgentsForCwd,
+  normalizeBackgroundAgent,
+} from "@/engine/claude-code-local/background-agents"
 import { describe, expect, it } from "vitest"
 
 describe("normalizeBackgroundAgent", () => {
@@ -81,5 +85,36 @@ describe("listBackgroundAgentsForCwd", () => {
 
     expect(out.map((agent) => agent.sessionId)).toEqual(["session-new", "session-old"])
     expect(out.map((agent) => agent.status)).toEqual(["running", "idle"])
+  })
+})
+
+describe("buildBackgroundAgentArgs", () => {
+  it("uses Claude Code's background-agent entrypoint with model and permission options", () => {
+    const prevMcpConfig = process.env.KOBE_MCP_CONFIG
+    process.env.KOBE_MCP_CONFIG = ""
+    try {
+      expect(
+        buildBackgroundAgentArgs({
+          binaryPath: "/bin/claude",
+          cwd: "/repo",
+          prompt: "fix checkout flow",
+          model: "opus-4.6",
+          modelEffort: "high",
+          permissionMode: "bypassPermissions",
+        }),
+      ).toEqual([
+        "--bg",
+        "fix checkout flow",
+        "--model",
+        "opus-4.6",
+        "--effort",
+        "high",
+        "--permission-mode",
+        "bypassPermissions",
+      ])
+    } finally {
+      if (prevMcpConfig === undefined) process.env.KOBE_MCP_CONFIG = ""
+      else process.env.KOBE_MCP_CONFIG = prevMcpConfig
+    }
   })
 })
