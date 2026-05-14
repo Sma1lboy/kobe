@@ -107,6 +107,11 @@ async function main(): Promise<void> {
     await runDaemonSubcommand(rest)
     return
   }
+  if (subcommand === "api") {
+    const { runApiSubcommand } = await import("./api-cmd.ts")
+    await runApiSubcommand(rest)
+    return
+  }
 
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid

@@ -206,6 +206,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       case "task.list":
         return { tasks: orch.listTasks().map(serializeTask) }
+      case "task.get": {
+        const taskId = requireString(payload, "taskId")
+        const task = orch.getTask(taskId)
+        if (!task) throw new Error(`task not found: ${taskId}`)
+        return { task: serializeTask(task) }
+      }
       case "task.spawn": {
         const repo = requireString(payload, "repo")
         const modelEffort = optionalModelEffort(payload, "modelEffort")
