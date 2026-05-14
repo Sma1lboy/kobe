@@ -12,9 +12,14 @@
  * perms so `npm install -g` produces a runnable `kobe` binary. After
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
+ *
+ * Sidecar assets: `share/skills/kobe/SKILL.md` is copied to
+ * `dist/share/skills/kobe/SKILL.md` so `kobe skill install` (KOB-137)
+ * can find it post-bundle. The `files` field in package.json includes
+ * `dist`, so this is the only mirror needed for npm publish.
  */
 
-import { chmod } from "node:fs/promises"
+import { cp, chmod } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
@@ -43,4 +48,10 @@ if (!result.success) {
 }
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
-console.log(`built ${OUT_FILES.join(", ")}`)
+
+// Mirror sidecar assets into dist/ so they ship in the npm tarball.
+// `kobe skill install` resolves the bundled SKILL.md via `dist/share/`
+// when running from an installed npm package.
+await cp("./share", "./dist/share", { recursive: true })
+
+console.log(`built ${OUT_FILES.join(", ")} + dist/share/`)

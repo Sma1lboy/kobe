@@ -112,6 +112,11 @@ async function main(): Promise<void> {
     await runApiSubcommand(rest)
     return
   }
+  if (subcommand === "skill") {
+    const { runSkillSubcommand } = await import("./skill-cmd.ts")
+    await runSkillSubcommand(rest)
+    return
+  }
 
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid

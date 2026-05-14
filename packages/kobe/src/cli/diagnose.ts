@@ -32,6 +32,7 @@ import { homedir, arch as osArch, platform as osPlatform, release as osRelease }
 import { join } from "node:path"
 import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
 import { kobeStateDir } from "../env.ts"
+import { probeInstalledSkill } from "./skill-cmd.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { listWorktreeDirNames, worktreeRootFor } from "../orchestrator/worktree/paths.ts"
 import type { Task, TaskStatus } from "../types/task.ts"
@@ -337,6 +338,16 @@ export async function buildDiagnoseReport(): Promise<string> {
     }
   } else {
     lines.push(formatKv("exists:", "no (no UI prefs persisted yet)"))
+  }
+
+  // --- skill ---
+  section("skill")
+  try {
+    const probe = probeInstalledSkill()
+    lines.push(formatKv("path:", probe.path))
+    lines.push(formatKv("installed:", probe.installed ? "yes" : "no (run `kobe skill install`)"))
+  } catch (err) {
+    lines.push(formatKv("status:", `(unavailable: ${(err as Error).message})`))
   }
 
   // --- worktrees ---
