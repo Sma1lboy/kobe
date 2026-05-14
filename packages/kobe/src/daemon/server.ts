@@ -352,6 +352,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // client to its event bus so live deltas reach them.
         for (const c of clients) subscribeClientToTab(orch, c, taskId, tabId)
         broadcastTaskUpdated(orch, clients, taskId)
+        broadcastPendingInputForTab(orch, clients, taskId, tabId)
         return { tabId }
       }
       case "agent.background.list": {
@@ -583,6 +584,26 @@ function broadcastTaskUpdated(orch: Orchestrator, clients: ReadonlySet<ClientSta
   const task = orch.getTask(taskId)
   if (!task) return
   broadcast(clients, { type: "event", name: "task.updated", payload: { taskId, task: serializeTask(task) } })
+}
+
+function broadcastPendingInputForTab(
+  orch: Orchestrator,
+  clients: ReadonlySet<ClientState>,
+  taskId: string,
+  tabId: string,
+): void {
+  const key = `${taskId}:${tabId}`
+  for (const entry of orch.peekPendingInput(taskId)) {
+    if (entry.tabKey !== key) continue
+    broadcast(
+      clients,
+      normalizeEventForWire(taskId, tabId, {
+        type: "user_input.request",
+        requestId: entry.requestId,
+        payload: entry.payload,
+      }),
+    )
+  }
 }
 
 function unsubscribeClientFromTask(client: ClientState, taskId: string): void {

@@ -44,7 +44,11 @@ import {
 } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { MetadataSuggester, type MetadataSuggestionContext } from "../../src/orchestrator/metadata-suggester.ts"
-import { detectUserInputFromEngineEvent, renderUserInputResponsePrompt } from "../../src/orchestrator/user-input.ts"
+import {
+  detectPendingUserInputFromHistory,
+  detectUserInputFromEngineEvent,
+  renderUserInputResponsePrompt,
+} from "../../src/orchestrator/user-input.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor } from "../../src/orchestrator/worktree/paths.ts"
 import { SlugAllocator } from "../../src/orchestrator/worktree/slug-allocator.ts"
@@ -55,6 +59,7 @@ import type {
   EngineEvent,
   EngineHistory,
   EngineIdentity,
+  Message,
   OrchestratorEvent,
   SessionHandle,
   SpawnOpts,
@@ -1826,6 +1831,84 @@ describe("detectUserInputFromEngineEvent", () => {
     expect(
       detectUserInputFromEngineEvent({ type: "tool.start", name: "AskUserQuestion", input: { questions: [] } }),
     ).toBeNull()
+  })
+})
+
+describe("detectPendingUserInputFromHistory", () => {
+  test("rehydrates unresolved AskUserQuestion tool calls from history", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        sessionId: "session-bg",
+        timestamp: "2026-05-14T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "toolu_question",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Which library?",
+                  header: "Library",
+                  options: [{ label: "date-fns", description: "Small" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]
+
+    expect(detectPendingUserInputFromHistory("session-bg", messages)).toEqual([
+      {
+        requestId: "history:session-bg:toolu_question",
+        payload: {
+          kind: "ask_question",
+          questions: [
+            {
+              question: "Which library?",
+              header: "Library",
+              multiSelect: false,
+              options: [{ label: "date-fns", description: "Small" }],
+            },
+          ],
+        },
+      },
+    ])
+  })
+
+  test("does not rehydrate user-input tools that already have a tool_result", () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        sessionId: "session-bg",
+        timestamp: "2026-05-14T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "toolu_question",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Which library?",
+                  options: [{ label: "date-fns", description: "" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        role: "user",
+        sessionId: "session-bg",
+        timestamp: "2026-05-14T00:00:01.000Z",
+        blocks: [{ type: "tool_result", callId: "toolu_question", output: "date-fns", isError: false }],
+      },
+    ]
+
+    expect(detectPendingUserInputFromHistory("session-bg", messages)).toEqual([])
   })
 })
 

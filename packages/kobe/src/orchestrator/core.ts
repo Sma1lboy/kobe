@@ -50,7 +50,7 @@ import { PLACEHOLDER_TASK_TITLE, TaskRunner } from "./run-task.ts"
 import { SessionPump } from "./session-pump.ts"
 import { TaskWorktreeCoordinator, summarizeWorktreeError } from "./task-worktree.ts"
 import { deriveTitleFromPrompt } from "./title.ts"
-import { renderUserInputResponsePrompt } from "./user-input.ts"
+import { detectPendingUserInputFromHistory, renderUserInputResponsePrompt } from "./user-input.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 export { TITLE_CHAR_CAP, deriveTitleFromPrompt } from "./title.ts"
 export { PLACEHOLDER_TASK_TITLE } from "./run-task.ts"
@@ -548,14 +548,11 @@ export class Orchestrator {
     // Tell the chat the row is no longer pending. Fire BEFORE runTask
     // so the approval banner flips to its final state in the same
     // render frame the synthetic user row appears.
-    // Multi-tab caveat: pendingInput is keyed by taskId only (not
-    // tabId) so we route the resolved event through the task's
-    // active tab. In single-tab tasks this matches exactly; for
-    // multi-tab, an approval surfaced from a non-active tab will
-    // still resolve correctly but the chat banner update lands on
-    // the active tab. Tightening this requires storing tabId in
-    // pendingInput, which is a follow-up.
-    const tabId = task.activeTabId
+    // Route the resolved event back to the tab that originally surfaced
+    // the pending input; fall back defensively for legacy broker keys.
+    const tabId = resolved.tabKey.startsWith(`${task.id}:`)
+      ? resolved.tabKey.slice(`${task.id}:`.length)
+      : task.activeTabId
     this.dispatchEvent(task.id, tabId, { type: "user_input.resolved", requestId, response })
 
     const prompt = renderUserInputResponsePrompt(pending, response)
@@ -872,7 +869,9 @@ export class Orchestrator {
     opts: { title?: string; vendor?: VendorId } = {},
   ): Promise<string> {
     const task = this.requireTask(id)
-    return await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
+    const tabId = await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
+    await this.hydratePendingInputFromHistory(task.id, tabId, sessionId)
+    return tabId
   }
 
   subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void, tabId?: string): Unsubscribe {
@@ -953,6 +952,27 @@ export class Orchestrator {
 
   private async updateTab(taskId: TaskId, tabId: string, patch: Partial<ChatTab>): Promise<void> {
     await updateChatTab(this.store, taskId, tabId, patch)
+  }
+
+  private async hydratePendingInputFromHistory(taskId: TaskId, tabId: string, sessionId: string): Promise<void> {
+    let history: { messages: Message[] }
+    try {
+      history = await this.engineRouter.readHistoryWithMetrics(sessionId)
+    } catch {
+      return
+    }
+    const pending = detectPendingUserInputFromHistory(sessionId, history.messages)
+    if (pending.length === 0) return
+    const key = tabKey(taskId, tabId)
+    for (const entry of pending) {
+      this.pendingInputBroker.record(taskId, key, entry.requestId, entry.payload)
+      this.dispatchEvent(taskId, tabId, {
+        type: "user_input.request",
+        requestId: entry.requestId,
+        payload: entry.payload,
+      })
+    }
+    this.bumpRunState()
   }
 
   private async stopTab(taskId: TaskId, tabId: string): Promise<void> {

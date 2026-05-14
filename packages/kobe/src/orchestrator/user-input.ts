@@ -2,6 +2,7 @@ import type {
   AskQuestionEntry,
   AskQuestionPayload,
   EngineEvent,
+  Message,
   QuestionOption,
   UserInputPayload,
   UserInputResponse,
@@ -35,6 +36,50 @@ export function detectUserInputFromEngineEvent(ev: EngineEvent): UserInputPayloa
     return parseAskUserQuestionInput(ev.input)
   }
   return null
+}
+
+export interface PendingUserInputFromHistory {
+  readonly requestId: string
+  readonly payload: UserInputPayload
+}
+
+/**
+ * Historical transcripts do not replay live `user_input.request`
+ * events. When kobe opens a session it did not actively pump (notably
+ * Claude background agents), scan unresolved user-input tool calls and
+ * rebuild the same pending-input request the live pump would have
+ * emitted.
+ */
+export function detectPendingUserInputFromHistory(
+  sessionId: string,
+  messages: readonly Message[],
+): PendingUserInputFromHistory[] {
+  const pending = new Map<string, PendingUserInputFromHistory>()
+  let fallbackSeq = 0
+
+  for (const message of messages) {
+    for (const block of message.blocks) {
+      if (block.type === "tool_call") {
+        const payload = detectUserInputFromEngineEvent({
+          type: "tool.start",
+          name: block.name,
+          input: block.input,
+        })
+        if (!payload) continue
+        const key = block.callId.length > 0 ? block.callId : `anon-${fallbackSeq++}`
+        pending.set(key, {
+          requestId: `history:${sessionId}:${key}`,
+          payload,
+        })
+        continue
+      }
+      if (block.type === "tool_result" && block.callId.length > 0) {
+        pending.delete(block.callId)
+      }
+    }
+  }
+
+  return Array.from(pending.values())
 }
 
 /**

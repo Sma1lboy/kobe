@@ -466,6 +466,11 @@ export function applyEvent(
       // new Claude session instead of resuming the old one.
       return createInitialState()
     case "user_input.request": {
+      if (
+        state.messages.some((m) => (m.kind === "approval" || m.kind === "question") && m.requestId === ev.requestId)
+      ) {
+        return { ...state, isStreaming: false }
+      }
       // Subprocess has exited (the tool runs to completion in -p mode
       // and just leaves a marker), so streaming flips off — the
       // approval / question row IS the new "active" UI affordance,

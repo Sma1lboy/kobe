@@ -337,6 +337,125 @@ test("workspace Agent mode opens a background agent session on row click", async
   expect(screen).toContain("background agent is checking the failing checkout now")
 }, 20_000)
 
+test("workspace Agent mode opens a blocked background question in the Chat interface", async () => {
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-agent-mode-question-"))
+  const homeDir = path.join(tmpRoot, "home")
+  const repo = path.join(tmpRoot, "repo")
+  const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
+  if (initResult.status !== 0) throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
+
+  const kobeDir = path.join(homeDir, ".kobe")
+  fs.mkdirSync(kobeDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(kobeDir, "tasks.json"),
+    `${JSON.stringify({
+      version: 2,
+      tasks: [
+        {
+          id: "01AGENTQUESTION",
+          title: "agent question smoke",
+          repo,
+          branch: "kobe/agent-question",
+          worktreePath: repo,
+          kind: "task",
+          sessionId: null,
+          tabs: [
+            {
+              id: "tab-1",
+              sessionId: null,
+              seq: 1,
+              vendor: "claude",
+              createdAt: "2026-05-14T00:00:00.000Z",
+            },
+          ],
+          activeTabId: "tab-1",
+          status: "backlog",
+          archived: false,
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z",
+        },
+      ],
+    })}\n`,
+    "utf8",
+  )
+
+  const port = await pickFreePort()
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: homeDir,
+    },
+    cols: 120,
+    rows: 34,
+  })
+  await kobe.waitFor((s) => s.includes("agent question smoke"), 10_000)
+  await waitForFakeServer(port)
+  await postAgents(port, [
+    {
+      id: "job-question",
+      sessionId: "session-agent-question",
+      name: "choose date library",
+      status: "blocked",
+      sourceStatus: "needs_input",
+      cwd: repo,
+      agent: "claude",
+      jobId: "job-question",
+      pid: 456,
+      version: "2.1.141",
+      startedAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+    },
+  ])
+  await postHistory(port, "session-agent-question", [
+    {
+      role: "assistant",
+      blocks: [
+        {
+          type: "tool_call",
+          callId: "toolu_question",
+          name: "AskUserQuestion",
+          input: {
+            questions: [
+              {
+                question: "Which library should the background agent use?",
+                header: "Library",
+                multiSelect: false,
+                options: [
+                  { label: "date-fns", description: "Small and functional" },
+                  { label: "luxon", description: "Class-based dates" },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      timestamp: "2026-05-14T00:00:00.000Z",
+      sessionId: "session-agent-question",
+    },
+  ])
+
+  await kobe.sendKeys("\t") // sidebar -> workspace
+  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
+  await kobe.waitFor((s) => s.includes("choose date library"), 10_000)
+  await kobe.click(48, 10)
+  await kobe.waitFor(
+    (s) =>
+      s.includes("Awaiting your answer") &&
+      s.includes("background") &&
+      s.includes("agent use?") &&
+      s.includes("date-fns"),
+    10_000,
+  )
+
+  await post(port, "/respond", {
+    kind: "ask_question",
+    answers: { "Which library should the background agent use?": "date-fns" },
+  })
+  const screen = await kobe.waitFor((s) => s.includes("date-fns") && s.includes("Please continue."), 10_000)
+  expect(screen).toContain("Which library should the background agent use?")
+}, 20_000)
+
 async function pickFreePort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const srv = net.createServer()
