@@ -34,7 +34,7 @@
 
 import type { Accessor } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator.ts"
-import { removeSavedRepo } from "../../state/repos.ts"
+import { addSavedRepo, removeSavedRepo } from "../../state/repos.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { getCurrentBranch } from "../component/new-task-dialog/state"
 import { QuickForkDialog } from "../component/quick-fork-dialog"
@@ -86,7 +86,11 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       const raw = kv.get("lastNewTaskRepo")
       return typeof raw === "string" && raw.trim() ? raw : process.cwd()
     })()
-    const result = await NewTaskDialog.show(dialog, defaultRepo, savedRepos())
+    const defaultCloneParent = (() => {
+      const raw = kv.get("lastClonedRepoParent")
+      return typeof raw === "string" && raw.trim() ? raw : undefined
+    })()
+    const result = await NewTaskDialog.show(dialog, defaultRepo, savedRepos(), { defaultCloneParent })
     if (!result) return
     try {
       // Dialog no longer asks for a first prompt — orchestrator gives
@@ -99,6 +103,18 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
         ...initialChatModelConfig(orchestrator.getTask(selectedId() ?? ""), kv),
       })
       kv.set("lastNewTaskRepo", result.repo)
+      if (result.cloned) {
+        // Persist the parent dir the user picked so the next clone
+        // defaults to the same location, and surface the freshly-
+        // cloned repo in the existing-tab picker via saved-repos.
+        kv.set("lastClonedRepoParent", result.cloned.parentDir)
+        try {
+          addSavedRepo(result.repo)
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error("[kobe] addSavedRepo after clone failed:", err)
+        }
+      }
       setSelectedId(created.id)
       // Pull focus to the chat pane so the user can immediately type
       // / use chat-pane-scoped keybindings (ctrl+t for new chat tab,

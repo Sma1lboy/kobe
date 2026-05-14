@@ -12,28 +12,52 @@
  * signals. Keep this file Solid-free.
  */
 
+import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
+import * as path from "node:path"
 
 /* --------------------------------------------------------------------- */
 /*  Public types                                                          */
 /* --------------------------------------------------------------------- */
 
-/** Result of a successful submit. */
-export type NewTaskInput = { repo: string; baseRef: string }
+/**
+ * Result of a successful submit. `cloned` is set when the user came in
+ * via the New Repo tab — the clone has already completed at this point
+ * and `repo` is the freshly-cloned worktree path. The caller uses the
+ * presence of `cloned` to persist `lastClonedRepoParent` and add `repo`
+ * to the saved-repos list so it shows up in the existing-tab picker
+ * next time.
+ */
+export type NewTaskInput = {
+  repo: string
+  baseRef: string
+  cloned?: { parentDir: string }
+}
 
 /**
- * Three field states for the dialog:
- *   - "repo" — the unified repo input. Free-text editable; the
- *     dropdown below it swaps between saved-repo and subdirectory
- *     browse based on the input shape (see `pickerModeFor`).
- *   - "baseRef" — branch field.
- *   - "confirm" — the bottom-right Create button. The dialog only
- *     submits when this field is activated (Enter / click), so the
- *     repo + branch fields are pure selection surfaces.
- * Tab cycles repo → baseRef → confirm → repo.
+ * Which sub-tab the dialog is showing:
+ *   - "existing" — pick an existing local repo + branch (legacy behavior).
+ *   - "clone"    — clone a remote repo, then create a task on the clone.
+ *
+ * Switched via Ctrl+[ / Ctrl+] while the dialog is open. With only two
+ * tabs the chord pair behaves as a toggle.
  */
-export type Field = "repo" | "baseRef" | "confirm"
+export type DialogTab = "existing" | "clone"
+
+/** Cycle helper for the two-tab strip. */
+export function nextDialogTab(tab: DialogTab): DialogTab {
+  return tab === "existing" ? "clone" : "existing"
+}
+
+/**
+ * Field states for the dialog. The "existing" tab uses `repo` / `baseRef`
+ * / `confirm`. The "clone" tab uses `cloneUrl` / `cloneParent` /
+ * `cloneFolder` / `cloneBaseRef` / `confirm` — same `confirm` value is
+ * shared so the bottom-row Create button works identically on both
+ * surfaces. Tab cycling stays inside a single sub-tab's field list.
+ */
+export type Field = "repo" | "baseRef" | "cloneUrl" | "cloneParent" | "cloneFolder" | "cloneBaseRef" | "confirm"
 
 /**
  * Which list the unified picker should render under the repo input.
@@ -96,12 +120,30 @@ export function stripNewlines(v: string): string {
 }
 
 /**
- * Advance the field-cycle state. Tab walks repo → baseRef → confirm → repo.
+ * Advance the field-cycle state. Tab walks within the current sub-tab's
+ * field list:
+ *   existing:   repo → baseRef → confirm → repo
+ *   clone:      cloneUrl → cloneParent → cloneFolder → cloneBaseRef → confirm → cloneUrl
+ *
+ * `confirm` is shared between both sub-tabs — the caller is responsible
+ * for resetting to the right "first field" when the user switches tabs.
  */
-export function nextField(field: Field): Field {
+export function nextField(field: Field, tab: DialogTab = "existing"): Field {
+  if (tab === "clone") {
+    if (field === "cloneUrl") return "cloneParent"
+    if (field === "cloneParent") return "cloneFolder"
+    if (field === "cloneFolder") return "cloneBaseRef"
+    if (field === "cloneBaseRef") return "confirm"
+    return "cloneUrl"
+  }
   if (field === "repo") return "baseRef"
   if (field === "baseRef") return "confirm"
   return "repo"
+}
+
+/** First field for a sub-tab (used when switching tabs). */
+export function firstFieldFor(tab: DialogTab): Field {
+  return tab === "clone" ? "cloneUrl" : "repo"
 }
 
 /**
@@ -389,4 +431,179 @@ export function resolveBaseRef(typed: string, filteredBranches: readonly string[
   if (picked) return picked
   const t = typed.trim()
   return t || DEFAULT_BASE_REF
+}
+
+/* --------------------------------------------------------------------- */
+/*  Clone tab — URL parsing, folder naming, target validation, spawn      */
+/* --------------------------------------------------------------------- */
+
+/**
+ * Derive a sensible default folder name from a git URL. Strips trailing
+ * `/`, takes the part after the last `/` or `:` (SCP-form support), and
+ * strips a trailing `.git`. Returns "" for inputs we can't make sense of.
+ *
+ *   https://github.com/foo/bar.git    → "bar"
+ *   git@github.com:foo/bar.git        → "bar"
+ *   ssh://git@host:22/foo/bar         → "bar"
+ *   https://example.com/path/repo/    → "repo"
+ *   not-a-url                         → "not-a-url"
+ */
+export function deriveFolderName(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, "")
+  if (!trimmed) return ""
+  const lastSlash = trimmed.lastIndexOf("/")
+  const lastColon = trimmed.lastIndexOf(":")
+  const cutAt = Math.max(lastSlash, lastColon)
+  const tail = cutAt >= 0 ? trimmed.slice(cutAt + 1) : trimmed
+  return tail.replace(/\.git$/i, "")
+}
+
+/**
+ * Soft-validate a git URL. We don't want to over-restrict here — the
+ * dialog defers real validation to `git clone` itself (whose error
+ * message we surface inline). The pre-check only rejects obviously
+ * empty / whitespace input so the Create button can stay disabled.
+ *
+ * Returns null when the URL looks plausibly clone-able, or a reason
+ * string otherwise.
+ */
+export function validateGitUrl(url: string): string | null {
+  const trimmed = url.trim()
+  if (!trimmed) return "git URL is required"
+  // Must contain either `://` (https / ssh / git) or `:` (SCP-form), or
+  // be a local path. Refuse only completely formless single-token input.
+  const hasProtocol = trimmed.includes("://")
+  const hasScpSep = trimmed.includes("@") && trimmed.includes(":")
+  const hasPathSep = trimmed.includes("/")
+  if (!hasProtocol && !hasScpSep && !hasPathSep) {
+    return `does not look like a git URL: ${trimmed}`
+  }
+  return null
+}
+
+/**
+ * Validate the target clone directory before spawning `git`. Catches
+ * the common foot-guns — empty folder name, path separators inside the
+ * folder name, parent doesn't exist, target already exists — before we
+ * spend a network round-trip just to have git complain.
+ *
+ * Returns null when the target is usable, or a reason string otherwise.
+ * `parentDir` may use `~/...`; it's expanded here before fs checks.
+ */
+export function validateCloneTarget(parentDir: string, folder: string): string | null {
+  const folderTrimmed = folder.trim()
+  if (!folderTrimmed) return "folder name is required"
+  if (folderTrimmed.includes("/") || folderTrimmed.includes("\\")) {
+    return "folder name cannot contain path separators"
+  }
+  const parentTrimmed = parentDir.trim()
+  if (!parentTrimmed) return "parent directory is required"
+  const parentExpanded = expandHome(parentTrimmed)
+  let parentStat: import("node:fs").Stats
+  try {
+    parentStat = fs.statSync(parentExpanded)
+  } catch {
+    return `parent directory does not exist: ${parentExpanded}`
+  }
+  if (!parentStat.isDirectory()) return `not a directory: ${parentExpanded}`
+  const target = path.join(parentExpanded, folderTrimmed)
+  if (fs.existsSync(target)) return `target already exists: ${target}`
+  return null
+}
+
+/**
+ * Compose the absolute target path the clone will land at. Caller is
+ * expected to have already passed `validateCloneTarget`.
+ */
+export function resolveCloneTarget(parentDir: string, folder: string): string {
+  return path.join(expandHome(parentDir.trim()), folder.trim())
+}
+
+/**
+ * Pick a folder name that doesn't collide with an existing entry inside
+ * `parentDir`. Returns `base` when nothing collides; otherwise tries
+ * `${base}-2`, `${base}-3`, … until a free slot is found.
+ *
+ * Bails out early (returns `base` verbatim) when the parent path is
+ * missing or not a directory — we don't want this helper to mask a
+ * real validation error by handing back a fake-available name.
+ *
+ * Used by the New Repo tab's auto-derive-folder-from-URL effect so the
+ * default folder name doesn't immediately fail `validateCloneTarget`
+ * just because the user has already cloned the same repo before. The
+ * user can still type a different name manually; the suffix only fills
+ * the gap left by the URL-derived default.
+ */
+export function findAvailableFolderName(parentDir: string, base: string): string {
+  const trimmed = base.trim()
+  if (!trimmed) return base
+  const parentExpanded = expandHome(parentDir.trim())
+  if (!parentExpanded) return base
+  try {
+    const stat = fs.statSync(parentExpanded)
+    if (!stat.isDirectory()) return base
+  } catch {
+    return base
+  }
+  if (!fs.existsSync(path.join(parentExpanded, trimmed))) return trimmed
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${trimmed}-${n}`
+    if (!fs.existsSync(path.join(parentExpanded, candidate))) return candidate
+  }
+  return trimmed
+}
+
+/** Result of {@link cloneRepo}. */
+export type CloneResult = { ok: true; path: string } | { ok: false; error: string }
+
+/** Optional progress callback. Receives whatever line git wrote to stderr last. */
+export type CloneProgress = (line: string) => void
+
+/**
+ * Async `git clone <url> <target>` wrapper. Streams stderr lines to
+ * `onProgress` so the dialog can render a live "Cloning…" hint. Resolves
+ * with `{ ok: true }` on exit code 0; otherwise returns the trimmed
+ * stderr so the dialog can render it inline.
+ *
+ * Synchronous fallback was rejected — `spawnSync` would block the
+ * opentui renderer for the duration of the clone, so esc / mouse / any
+ * other dialog interaction freezes until git exits.
+ */
+export function cloneRepo(url: string, target: string, onProgress?: CloneProgress): Promise<CloneResult> {
+  return new Promise<CloneResult>((resolve) => {
+    let stderrBuf = ""
+    try {
+      const child = spawn("git", ["clone", "--progress", url, target], {
+        stdio: ["ignore", "ignore", "pipe"],
+      })
+      child.stderr?.setEncoding("utf-8")
+      child.stderr?.on("data", (chunk: string) => {
+        stderrBuf += chunk
+        if (onProgress) {
+          // git emits CR-separated progress updates on the same line.
+          // Split on either CR or LF so the latest fragment surfaces.
+          const lines = chunk.split(/[\r\n]+/).filter((s) => s.trim().length > 0)
+          const last = lines[lines.length - 1]
+          if (last) onProgress(last)
+        }
+      })
+      child.on("error", (err: Error) => {
+        resolve({ ok: false, error: err.message })
+      })
+      child.on("close", (code: number | null) => {
+        if (code === 0) {
+          resolve({ ok: true, path: target })
+          return
+        }
+        const tail =
+          stderrBuf
+            .split(/[\r\n]+/)
+            .filter((s) => s.trim().length > 0)
+            .pop() ?? `git clone exited with ${code}`
+        resolve({ ok: false, error: tail })
+      })
+    } catch (err) {
+      resolve({ ok: false, error: err instanceof Error ? err.message : String(err) })
+    }
+  })
 }
