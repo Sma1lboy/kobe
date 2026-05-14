@@ -21,26 +21,36 @@
  * tolerant branch here without standing up a real repo).
  */
 
+import * as fs from "node:fs"
 import * as os from "node:os"
-import { describe, expect, test } from "vitest"
+import * as path from "node:path"
+import { afterAll, beforeAll, describe, expect, test } from "vitest"
 import {
   DEFAULT_BASE_REF,
   PICKER_MAX_VISIBLE,
   clampCursor,
+  cloneRepo,
   computeRepoOptions,
+  deriveFolderName,
   expandHome,
   filterBranches,
   filterRepos,
   filterSubdirs,
+  findAvailableFolderName,
+  firstFieldFor,
   getCurrentBranch,
   joinDrill,
   listLocalBranches,
   listSubdirs,
+  nextDialogTab,
   nextField,
   pickerModeFor,
   resolveBaseRef,
+  resolveCloneTarget,
   splitPathForDirSuggest,
   stripNewlines,
+  validateCloneTarget,
+  validateGitUrl,
   validateRepoPath,
   windowAround,
 } from "../../../src/tui/component/new-task-dialog/state"
@@ -58,10 +68,30 @@ describe("stripNewlines", () => {
 })
 
 describe("nextField — tab cycling", () => {
-  test("walks repo → baseRef → confirm → repo", () => {
+  test("walks repo → baseRef → confirm → repo (existing tab default)", () => {
     expect(nextField("repo")).toBe("baseRef")
     expect(nextField("baseRef")).toBe("confirm")
     expect(nextField("confirm")).toBe("repo")
+  })
+
+  test("clone tab walks cloneUrl → cloneParent → cloneFolder → cloneBaseRef → confirm → cloneUrl", () => {
+    expect(nextField("cloneUrl", "clone")).toBe("cloneParent")
+    expect(nextField("cloneParent", "clone")).toBe("cloneFolder")
+    expect(nextField("cloneFolder", "clone")).toBe("cloneBaseRef")
+    expect(nextField("cloneBaseRef", "clone")).toBe("confirm")
+    expect(nextField("confirm", "clone")).toBe("cloneUrl")
+  })
+})
+
+describe("nextDialogTab + firstFieldFor", () => {
+  test("nextDialogTab toggles between existing and clone", () => {
+    expect(nextDialogTab("existing")).toBe("clone")
+    expect(nextDialogTab("clone")).toBe("existing")
+  })
+
+  test("firstFieldFor returns the lead field for each tab", () => {
+    expect(firstFieldFor("existing")).toBe("repo")
+    expect(firstFieldFor("clone")).toBe("cloneUrl")
   })
 })
 
@@ -376,4 +406,185 @@ describe("joinDrill — preserves ~ prefix when applicable", () => {
     // User explicitly typed an absolute path — respect that.
     expect(joinDrill(`${home}/proj`, `${home}/`, "projects")).toBe(`${home}/projects/`)
   })
+})
+
+describe("deriveFolderName — repo name derivation from git URL", () => {
+  test("https URL with .git suffix → bare name", () => {
+    expect(deriveFolderName("https://github.com/foo/bar.git")).toBe("bar")
+  })
+
+  test("https URL without .git suffix", () => {
+    expect(deriveFolderName("https://github.com/foo/bar")).toBe("bar")
+  })
+
+  test("SCP-form (git@host:path) → name after last separator, .git stripped", () => {
+    expect(deriveFolderName("git@github.com:foo/bar.git")).toBe("bar")
+    expect(deriveFolderName("git@github.com:singleton.git")).toBe("singleton")
+  })
+
+  test("ssh:// URL", () => {
+    expect(deriveFolderName("ssh://git@host:22/foo/bar.git")).toBe("bar")
+  })
+
+  test("trailing slashes are stripped before extracting the last segment", () => {
+    expect(deriveFolderName("https://example.com/path/repo/")).toBe("repo")
+    expect(deriveFolderName("https://example.com/path/repo//")).toBe("repo")
+  })
+
+  test("trims surrounding whitespace", () => {
+    expect(deriveFolderName("  https://github.com/foo/bar.git  ")).toBe("bar")
+  })
+
+  test("empty input → empty result", () => {
+    expect(deriveFolderName("")).toBe("")
+    expect(deriveFolderName("   ")).toBe("")
+  })
+
+  test("input without any separator is returned as-is (minus .git)", () => {
+    expect(deriveFolderName("loose-name.git")).toBe("loose-name")
+    expect(deriveFolderName("loose-name")).toBe("loose-name")
+  })
+})
+
+describe("validateGitUrl — soft URL pre-check", () => {
+  test("rejects empty / whitespace input", () => {
+    expect(validateGitUrl("")).toBe("git URL is required")
+    expect(validateGitUrl("   ")).toBe("git URL is required")
+  })
+
+  test("accepts plausible URL shapes (https, scp-form, ssh, local path)", () => {
+    expect(validateGitUrl("https://github.com/foo/bar.git")).toBeNull()
+    expect(validateGitUrl("git@github.com:foo/bar.git")).toBeNull()
+    expect(validateGitUrl("ssh://git@host/foo/bar")).toBeNull()
+    expect(validateGitUrl("/local/path/to/repo")).toBeNull()
+    expect(validateGitUrl("./relative/repo")).toBeNull()
+  })
+
+  test("rejects formless single tokens", () => {
+    const reason = validateGitUrl("not-a-url")
+    expect(reason).not.toBeNull()
+    expect(reason).toMatch(/^does not look like a git URL/)
+  })
+})
+
+describe("validateCloneTarget — pre-spawn fs sanity checks", () => {
+  const tmpRoot = path.join(os.tmpdir(), `kobe-clone-target-${process.pid}-${Date.now()}`)
+  beforeAll(() => {
+    fs.mkdirSync(tmpRoot, { recursive: true })
+  })
+  afterAll(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  test("empty folder name → reason", () => {
+    expect(validateCloneTarget(tmpRoot, "")).toBe("folder name is required")
+    expect(validateCloneTarget(tmpRoot, "   ")).toBe("folder name is required")
+  })
+
+  test("folder name with path separator → reason", () => {
+    expect(validateCloneTarget(tmpRoot, "a/b")).toBe("folder name cannot contain path separators")
+    expect(validateCloneTarget(tmpRoot, "a\\b")).toBe("folder name cannot contain path separators")
+  })
+
+  test("missing parent dir → reason", () => {
+    const missing = path.join(tmpRoot, "no-such-parent-xyz")
+    const reason = validateCloneTarget(missing, "x")
+    expect(reason).not.toBeNull()
+    expect(reason).toMatch(/^parent directory does not exist:/)
+  })
+
+  test("parent is a regular file → reason", () => {
+    const filePath = path.join(tmpRoot, "regular-file")
+    fs.writeFileSync(filePath, "")
+    const reason = validateCloneTarget(filePath, "x")
+    expect(reason).not.toBeNull()
+    expect(reason).toMatch(/^not a directory:/)
+  })
+
+  test("target already exists → reason", () => {
+    const dirName = "already-here"
+    fs.mkdirSync(path.join(tmpRoot, dirName), { recursive: true })
+    const reason = validateCloneTarget(tmpRoot, dirName)
+    expect(reason).not.toBeNull()
+    expect(reason).toMatch(/^target already exists:/)
+  })
+
+  test("happy path → null", () => {
+    expect(validateCloneTarget(tmpRoot, "fresh-name")).toBeNull()
+  })
+})
+
+describe("findAvailableFolderName — auto-suffix on collision", () => {
+  const tmpRoot = path.join(os.tmpdir(), `kobe-find-folder-${process.pid}-${Date.now()}`)
+  beforeAll(() => {
+    fs.mkdirSync(tmpRoot, { recursive: true })
+  })
+  afterAll(() => {
+    fs.rmSync(tmpRoot, { recursive: true, force: true })
+  })
+
+  test("returns base verbatim when nothing collides", () => {
+    expect(findAvailableFolderName(tmpRoot, "fresh-name")).toBe("fresh-name")
+  })
+
+  test("appends -2 when base collides once", () => {
+    const base = "collides-once"
+    fs.mkdirSync(path.join(tmpRoot, base), { recursive: true })
+    expect(findAvailableFolderName(tmpRoot, base)).toBe(`${base}-2`)
+  })
+
+  test("walks past existing -2 / -3 to find first free slot", () => {
+    const base = "walk-past"
+    fs.mkdirSync(path.join(tmpRoot, base), { recursive: true })
+    fs.mkdirSync(path.join(tmpRoot, `${base}-2`), { recursive: true })
+    fs.mkdirSync(path.join(tmpRoot, `${base}-3`), { recursive: true })
+    expect(findAvailableFolderName(tmpRoot, base)).toBe(`${base}-4`)
+  })
+
+  test("returns base unchanged when parent dir is missing (so validation surfaces the real error)", () => {
+    const missing = path.join(tmpRoot, "no-such-parent-xyz")
+    expect(findAvailableFolderName(missing, "anything")).toBe("anything")
+  })
+
+  test("returns base unchanged when base is empty / whitespace", () => {
+    expect(findAvailableFolderName(tmpRoot, "")).toBe("")
+    expect(findAvailableFolderName(tmpRoot, "   ")).toBe("   ")
+  })
+
+  test("trims surrounding whitespace on the base before checking", () => {
+    const base = "trim-check"
+    fs.mkdirSync(path.join(tmpRoot, base), { recursive: true })
+    expect(findAvailableFolderName(tmpRoot, `  ${base}  `)).toBe(`${base}-2`)
+  })
+})
+
+describe("resolveCloneTarget — path join with ~ expansion", () => {
+  test("joins absolute parent + folder", () => {
+    expect(resolveCloneTarget("/tmp", "foo")).toBe(path.join("/tmp", "foo"))
+  })
+
+  test("expands ~ in parent before joining", () => {
+    const home = os.homedir()
+    expect(resolveCloneTarget("~/projects", "foo")).toBe(path.join(home, "projects", "foo"))
+  })
+
+  test("trims both inputs", () => {
+    expect(resolveCloneTarget("  /tmp  ", "  foo  ")).toBe(path.join("/tmp", "foo"))
+  })
+})
+
+describe("cloneRepo — async git clone wrapper (failure path only)", () => {
+  // We can't safely run a real `git clone` from CI without a network, so
+  // only the failure surface is asserted here. The happy path is covered
+  // by the behavior test (`test/behavior/keybindings.test.ts` already
+  // exercises the full new-task flow; the clone variant rides the same
+  // dispatch path once it lands).
+  test("returns ok:false with a non-empty error for an obviously bogus URL", async () => {
+    const target = path.join(os.tmpdir(), `kobe-clone-fail-${process.pid}-${Date.now()}`)
+    const res = await cloneRepo("does-not-exist://malformed", target)
+    expect(res.ok).toBe(false)
+    if (!res.ok) {
+      expect(res.error.length).toBeGreaterThan(0)
+    }
+  }, 15_000)
 })

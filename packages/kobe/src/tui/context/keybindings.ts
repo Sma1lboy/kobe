@@ -664,6 +664,19 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Dialog",
     description: "Close the top dialog (esc)",
   },
+  {
+    // New-task dialog sub-tab cycling. Chord is registered inside the
+    // dialog's own useBindings (so it wins over the workspace
+    // `chat.tab.cycle-*` bindings, which are gated off while a dialog
+    // is on the stack). This entry is doc-only — help dialog and any
+    // future settings UI render it from here.
+    id: "dialog.newtask.tab.cycle",
+    scope: "global",
+    keys: [],
+    category: "Dialog",
+    description: "Switch New Task tab (Existing / New Repo)",
+    hint: { keys: "ctrl+[/]", label: "tab" },
+  },
 ] as const
 
 /** Lookup helper used by tests and pane registration. */
