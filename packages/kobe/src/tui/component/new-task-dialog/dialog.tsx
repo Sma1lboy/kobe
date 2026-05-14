@@ -634,6 +634,19 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               onSubmit={() => onCloneParentSubmit()}
             />
           </box>
+          {/* Persistence hint — surfaces the fact that this field
+              remembers your last value across dialog opens (kv
+              `lastClonedRepoParent`), so a follow-up clone defaults
+              to the same parent. Only shown while the field is
+              focused; sits between the input and the drill-down so
+              the user sees it where they're already looking. */}
+          <Show when={field() === "cloneParent"}>
+            <box paddingLeft={2}>
+              <text fg={theme.textMuted} wrapMode="none">
+                (remembered — next clone defaults to this dir)
+              </text>
+            </box>
+          </Show>
           <Show when={field() === "cloneParent" && cloneParentFiltered().length > 0}>
             <box gap={0} paddingLeft={2}>
               <Show when={cloneParentWindow().start > 0}>
