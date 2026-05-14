@@ -86,6 +86,12 @@ class HistoryEngine implements AIEngine {
   readonly capabilities: EngineCapabilities
   readonly spawns: Array<{ cwd: string; prompt: string; model?: string; modelEffort?: string }> = []
   readonly streamCalls: string[] = []
+  readonly sessions: Array<{
+    sessionId: string
+    mtimeMs: number
+    firstUserMessage: string | null
+    messageCount: number
+  }> = []
   private readonly scripts = new Map<string, readonly EngineEvent[]>()
   private next = 1
 
@@ -131,7 +137,7 @@ class HistoryEngine implements AIEngine {
   async deleteHistory(_sessionId: string): Promise<void> {}
 
   async listSessions(_cwd: string) {
-    return []
+    return this.sessions
   }
 
   async stop(_h: SessionHandle): Promise<void> {}
@@ -1547,6 +1553,45 @@ describe("Orchestrator engine call shape", () => {
     const secondHistory = await orch.readHistoryWithMetrics(tab2?.sessionId ?? "")
     expect(firstHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "claude history for claude-1" }])
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
+  })
+
+  test("resume sessions are loaded from every registered engine and preserve selected engine", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const codex = new HistoryEngine("codex")
+    claude.sessions.push({
+      sessionId: "same-id",
+      mtimeMs: 100,
+      firstUserMessage: "claude prompt",
+      messageCount: 2,
+    })
+    codex.sessions.push({
+      sessionId: "same-id",
+      mtimeMs: 200,
+      firstUserMessage: "codex prompt",
+      messageCount: 3,
+    })
+    const orch = new Orchestrator({
+      engines: { claude, codex },
+      store,
+      worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
+    })
+
+    const task = await orch.ensureMainTask(repo)
+    const sessions = await orch.listSessions(task.id)
+    expect(sessions.map((s) => `${s.vendor}:${s.sessionId}:${s.firstUserMessage}`)).toEqual([
+      "codex:same-id:codex prompt",
+      "claude:same-id:claude prompt",
+    ])
+
+    const codexTabId = await orch.openSessionInTab(task.id, "same-id", { vendor: "codex", title: "codex prompt" })
+    const claudeTabId = await orch.openSessionInTab(task.id, "same-id", { vendor: "claude", title: "claude prompt" })
+    const updated = orch.getTask(task.id)
+    expect(updated?.tabs.find((t) => t.id === codexTabId)?.vendor).toBe("codex")
+    expect(updated?.tabs.find((t) => t.id === claudeTabId)?.vendor).toBe("claude")
+    expect(codexTabId).not.toBe(claudeTabId)
   })
 
   test("started chat tabs cannot switch to another engine", async () => {

@@ -235,6 +235,8 @@ export interface EngineHistory {
  */
 export interface SessionMeta {
   readonly sessionId: string
+  /** Engine adapter that owns this persisted session. Filled by kobe when aggregating across engines. */
+  readonly vendor?: VendorId
   /** File mtime in epoch ms — used for sort order ("most recent first"). */
   readonly mtimeMs: number
   /** First user prompt, truncated to ~200 chars by the engine. */

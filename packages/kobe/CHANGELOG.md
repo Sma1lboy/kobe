@@ -22,8 +22,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **`kobe api <verb>` shell surface for driving kobe from any agent with Bash** — five short-lived verbs (`spawn-task`, `create-tab`, `send`, `get-task`, `get-tab`) talk to the running daemon and print JSON on stdout. Designed to replace the MCP bridge for the fan-out use case while staying agent-portable (Claude Code, Codex, Cursor, custom). Daemon-missing is a hard error (`BAD_DAEMON`, exit 2). MCP bridge stays in tree as a fallback (KOB-134/KOB-138).
 - **`kobe skill install` ships a bundled SKILL.md that teaches the model when to fan out** — writes `~/.claude/skills/kobe/SKILL.md` from the npm-packaged copy, with `--yes` to overwrite. `kobe diagnose` now reports the install state so you can see at a glance whether the skill is active. Companion to `kobe api` — the capability alone does not change behaviour without a skill telling the model when to use it (KOB-137).
+- **Sidebar archive/delete actions now require an explicit confirmation choice** — pressing `a` opens an Archive/Unarchive confirm before moving a task between Working session and Archives, and destructive delete/remove-saved-repo confirms now default to Cancel so a stray Enter cannot commit the action (KOB-133).
 - **Tasks can start an AI-assisted local merge with `M`** — press Shift+M on a sidebar task to confirm a local merge, create a dedicated Merge chat tab, and inject a prompt that asks the agent to merge the task worktree into the parent repo checkout without creating a PR (KOB-110).
 - **New tasks inherit the active chat model** — creating a task now seeds its first chat tab from the current or last-active chat tab's engine/model/reasoning settings, falling back to defaults only when no prior model config exists (KOB-129).
+- **Resume history shows sessions from every engine** — the resume picker now loads Claude Code and Codex sessions for the task worktree, labels each row with its owning engine, and opens the selected session on the matching engine tab (KOB-130).
 
 ### Fixed
 

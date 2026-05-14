@@ -1,12 +1,11 @@
 /**
  * Resume-session picker — kobe's analogue to claude-code's `/resume` UI.
  *
- * Shows every persisted Claude Code session for the active task's
- * worktree, newest first. Selecting a row opens that session in a new
- * chat tab via `orchestrator.openSessionInTab` — or, if the session is
- * already attached to one of the task's existing tabs, jumps to that
- * tab instead. The orchestrator handles the dedup; this component only
- * picks.
+ * Shows every persisted engine session for the active task's worktree,
+ * newest first. Selecting a row opens that session in a new chat tab via
+ * `orchestrator.openSessionInTab` — or, if the same engine/session is
+ * already attached to one of the task's existing tabs, jumps to that tab
+ * instead. The orchestrator handles the dedup; this component only picks.
  *
  * Visual + interaction grammar borrows from claude-code's
  * `LogSelector.tsx` (`refs/claude-code/src/components/LogSelector.tsx`):
@@ -18,11 +17,9 @@
  *     opening F1
  *
  * Data source contract: kobe maintains NO parallel session index. The
- * list is recomputed from `~/.claude/projects/<encoded-cwd>/*.jsonl`
- * every time the picker opens, so a session opened by raw
- * `claude --resume` outside kobe still appears. Per CLAUDE.md / memory
- * `feedback_refs_copy_dont_reinvent`: we lift opcode's
- * `get_project_sessions` algorithm in `engine/claude-code-local/sessions.ts`.
+ * list is recomputed from each registered engine's durable history every
+ * time the picker opens, so a session opened by raw engine CLIs outside
+ * kobe still appears.
  */
 
 import type { KobeOrchestrator } from "@/client/remote-orchestrator"
@@ -32,6 +29,7 @@ import { For, Show, createMemo, createResource, createSignal } from "solid-js"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { engineLabel } from "./resume-dialog-labels"
 
 /** Sentinel string the behavior test asserts on. */
 export const RESUME_DIALOG_TITLE = "kobe — resume session"
@@ -79,6 +77,7 @@ export function ResumeDialog(props: ResumeDialogProps) {
     void props.orchestrator
       .openSessionInTab(props.taskId, picked.sessionId, {
         title: deriveTabTitle(picked),
+        vendor: picked.vendor,
       })
       .then(() => dialog.clear())
   }
@@ -142,6 +141,11 @@ export function ResumeDialog(props: ResumeDialogProps) {
                     <box flexGrow={1} flexShrink={1}>
                       <text fg={selected() ? theme.selectedListItemText : theme.text} wrapMode="none">
                         {row.firstUserMessage ?? "(no user message)"}
+                      </text>
+                    </box>
+                    <box width={10} flexShrink={0}>
+                      <text fg={selected() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                        {engineLabel(row)}
                       </text>
                     </box>
                     <box width={10} flexShrink={0}>

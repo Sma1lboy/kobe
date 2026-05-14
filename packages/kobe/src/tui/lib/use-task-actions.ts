@@ -22,6 +22,8 @@
  *   - `confirmDeleteTask(taskId)` — confirms via DialogConfirm; for
  *     pinned "main" tasks it removes the saved-repos entry instead of
  *     deleting the worktree (KOB-15).
+ *   - `confirmArchiveTask(taskId)` — confirms before toggling a task
+ *     between Working session and Archives.
  *   - `confirmLocalMergeTask(taskId)` — confirms the local-merge intent,
  *     then asks the orchestrator to create a Merge chat tab and inject
  *     the merge prompt.
@@ -61,6 +63,7 @@ export type TaskActions = {
   confirmRenameTask: (taskId: string) => Promise<void>
   confirmRenameChatTab: (tabId: string) => Promise<void>
   confirmDeleteTask: (taskId: string) => Promise<void>
+  confirmArchiveTask: (taskId: string) => Promise<void>
   confirmLocalMergeTask: (taskId: string) => Promise<void>
 }
 
@@ -276,6 +279,8 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
         `Remove '${repoLabel}' from saved repos?`,
         `This will remove '${repoLabel}' from your saved repos. The directory and its files stay on disk.`,
         "cancel",
+        "remove",
+        { initialActive: "cancel" },
       )
       if (ok !== true) return
       try {
@@ -293,6 +298,8 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       `Delete '${task.title}'?`,
       `Removes the worktree at ${task.worktreePath}, deletes the chat history, and removes the task. This cannot be undone. The git branch is kept.`,
       "cancel",
+      "delete",
+      { initialActive: "cancel" },
     )
     if (ok !== true) return
     try {
@@ -303,6 +310,37 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[kobe] deleteTask failed:", err)
+    }
+  }
+
+  /**
+   * Confirm + archive/unarchive a task. Archive is intentionally
+   * non-destructive, but it hides the row from the default Working
+   * session view, so it still gets an explicit confirmation.
+   */
+  async function confirmArchiveTask(taskId: string): Promise<void> {
+    const task = orchestrator.getTask(taskId)
+    if (!task) return
+    const nextArchived = !task.archived
+    const verb = nextArchived ? "Archive" : "Unarchive"
+    const view = nextArchived ? "Archives" : "Working session"
+    const ok = await DialogConfirm.show(
+      dialog,
+      `${verb} '${task.title}'?`,
+      nextArchived
+        ? "Moves this task to Archives. The worktree, git branch, and chat history stay on disk."
+        : "Moves this task back to Working session.",
+      "cancel",
+      verb.toLowerCase(),
+      { initialActive: "cancel" },
+    )
+    if (ok !== true) return
+    try {
+      await orchestrator.setArchived(taskId, nextArchived)
+      if (!nextArchived) setSelectedId(taskId)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`[kobe] move task to ${view} failed:`, err)
     }
   }
 
@@ -339,6 +377,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     confirmRenameTask,
     confirmRenameChatTab,
     confirmDeleteTask,
+    confirmArchiveTask,
     confirmLocalMergeTask,
   }
 }
