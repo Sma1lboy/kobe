@@ -934,7 +934,9 @@ export function Chat(props: ChatProps) {
         <AgentModeView
           orchestrator={props.orchestrator}
           taskId={() => props.taskId()}
+          vendor={activeVendor}
           focused={() => props.focused?.() ?? false}
+          onOpenAgent={() => setWorkspaceMode("chat")}
         />
       </Show>
     </box>

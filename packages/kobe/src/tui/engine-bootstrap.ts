@@ -107,6 +107,16 @@ async function mountFakeEngineServer(fake: import("../../test/behavior/fake-engi
           res.end("{}")
           return
         }
+        if (req.url === "/history" && req.method === "POST") {
+          const { sessionId, messages } = JSON.parse(body) as {
+            sessionId: string
+            messages: import("../types/engine.ts").Message[]
+          }
+          fake.setHistory(sessionId, messages)
+          res.writeHead(200, { "content-type": "application/json" })
+          res.end("{}")
+          return
+        }
         // Test affordance for W4.PR: trigger requestPR on the active
         // task. The Shell mounts a global function that knows the
         // active task; we call it from here. Returns 503 if the Shell

@@ -4,7 +4,7 @@ import * as net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeAll, expect, test } from "vitest"
-import type { BackgroundAgent } from "../../src/types/engine"
+import type { BackgroundAgent, Message } from "../../src/types/engine"
 import { type KobeHandle, spawnKobe } from "./driver"
 
 const REPO_INIT = path.resolve(__dirname, "fixtures/repo-init.sh")
@@ -169,6 +169,100 @@ test("workspace Agent mode can start a Claude background agent from a prompt", a
   expect(screen).toContain(repo)
 }, 20_000)
 
+test("workspace Agent mode opens a background agent session on row click", async () => {
+  tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-agent-mode-open-"))
+  const homeDir = path.join(tmpRoot, "home")
+  const repo = path.join(tmpRoot, "repo")
+  const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
+  if (initResult.status !== 0) throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
+
+  const kobeDir = path.join(homeDir, ".kobe")
+  fs.mkdirSync(kobeDir, { recursive: true })
+  fs.writeFileSync(
+    path.join(kobeDir, "tasks.json"),
+    `${JSON.stringify({
+      version: 2,
+      tasks: [
+        {
+          id: "01AGENTOPEN",
+          title: "agent open smoke",
+          repo,
+          branch: "kobe/agent-open",
+          worktreePath: repo,
+          kind: "task",
+          sessionId: null,
+          tabs: [
+            {
+              id: "tab-1",
+              sessionId: null,
+              seq: 1,
+              vendor: "claude",
+              createdAt: "2026-05-14T00:00:00.000Z",
+            },
+          ],
+          activeTabId: "tab-1",
+          status: "backlog",
+          archived: false,
+          createdAt: "2026-05-14T00:00:00.000Z",
+          updatedAt: "2026-05-14T00:00:00.000Z",
+        },
+      ],
+    })}\n`,
+    "utf8",
+  )
+
+  const port = await pickFreePort()
+  kobe = await spawnKobe({
+    env: {
+      KOBE_TEST_ENGINE: "fake",
+      KOBE_TEST_FAKE_PORT: String(port),
+      KOBE_HOME_DIR: homeDir,
+    },
+    cols: 120,
+    rows: 30,
+  })
+  await kobe.waitFor((s) => s.includes("agent open smoke"), 10_000)
+  await waitForFakeServer(port)
+  await postAgents(port, [
+    {
+      id: "job-open",
+      sessionId: "session-agent-open",
+      name: "inspect failing checkout",
+      status: "running",
+      sourceStatus: "running",
+      cwd: repo,
+      agent: "claude",
+      jobId: "job-open",
+      pid: 456,
+      version: "2.1.141",
+      startedAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+    },
+  ])
+  await postHistory(port, "session-agent-open", [
+    {
+      role: "user",
+      blocks: [{ type: "text", text: "inspect failing checkout" }],
+      timestamp: "2026-05-14T00:00:00.000Z",
+      sessionId: "session-agent-open",
+    },
+    {
+      role: "assistant",
+      blocks: [{ type: "text", text: "background agent is checking the failing checkout now" }],
+      timestamp: "2026-05-14T00:00:01.000Z",
+      sessionId: "session-agent-open",
+    },
+  ])
+
+  await kobe.sendKeys("\t") // sidebar -> workspace
+  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
+  await kobe.waitFor((s) => s.includes("inspect failing checkout"), 10_000)
+  await kobe.click(48, 10)
+  const screen = await kobe.waitFor((s) => s.includes("background agent is checking the failing checkout now"), 10_000)
+  expect(screen).toContain("Chat")
+  expect(screen).toContain("background agent is checking the failing checkout now")
+}, 20_000)
+
 async function pickFreePort(): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     const srv = net.createServer()
@@ -204,6 +298,10 @@ async function waitForFakeServer(port: number, timeoutMs = 10_000): Promise<void
 
 async function postAgents(port: number, agents: BackgroundAgent[]): Promise<void> {
   await post(port, "/agents", { agents })
+}
+
+async function postHistory(port: number, sessionId: string, messages: Message[]): Promise<void> {
+  await post(port, "/history", { sessionId, messages })
 }
 
 async function post(port: number, endpoint: string, payload: Record<string, unknown>): Promise<void> {

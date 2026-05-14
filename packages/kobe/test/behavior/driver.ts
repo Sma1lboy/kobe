@@ -85,6 +85,8 @@ export interface SpawnKobeOpts {
 export interface KobeHandle {
   /** Send raw bytes to the kobe stdin. Useful for control codes. */
   sendKeys(seq: string): Promise<void>
+  /** Send one SGR mouse click at 1-based terminal coordinates. */
+  click(col: number, row: number): Promise<void>
   /** Open the New Task dialog through the current product keybinding contract. */
   openNewTaskDialog(): Promise<void>
   /** Open New Task, replace repo/baseRef fields, and activate the Create button. */
@@ -212,6 +214,11 @@ export async function spawnKobe(opts: SpawnKobeOpts = {}): Promise<KobeHandle> {
     async sendKeys(seq) {
       if (closed) throw new Error("kobe pty is closed")
       term.write(seq)
+      await sleep(settleMs)
+    },
+    async click(col, row) {
+      if (closed) throw new Error("kobe pty is closed")
+      term.write(`\x1b[<0;${col};${row}M\x1b[<0;${col};${row}m`)
       await sleep(settleMs)
     },
     async openNewTaskDialog() {

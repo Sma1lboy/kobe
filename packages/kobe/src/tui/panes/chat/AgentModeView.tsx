@@ -2,6 +2,7 @@ import { TextAttributes, type TextareaRenderable } from "@opentui/core"
 import { For, Show, createEffect, createSignal, onCleanup } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
 import type { BackgroundAgent, BackgroundAgentStatus } from "../../../types/engine"
+import type { VendorId } from "../../../types/task"
 import { useFocus } from "../../context/focus"
 import { type Theme, useTheme } from "../../context/theme"
 import { composerKeyBindings } from "./composer/keybindings"
@@ -9,7 +10,9 @@ import { composerKeyBindings } from "./composer/keybindings"
 export function AgentModeView(props: {
   readonly orchestrator: KobeOrchestrator
   readonly taskId: () => string | undefined
+  readonly vendor: () => VendorId
   readonly focused?: () => boolean
+  readonly onOpenAgent?: () => void
 }) {
   const { theme } = useTheme()
   const focusCtx = useFocus()
@@ -18,6 +21,7 @@ export function AgentModeView(props: {
   const [error, setError] = createSignal<string | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [starting, setStarting] = createSignal(false)
+  const [openingSessionId, setOpeningSessionId] = createSignal<string | null>(null)
   const [refreshTick, setRefreshTick] = createSignal(0)
   let textareaRef: TextareaRenderable | undefined
 
@@ -75,6 +79,25 @@ export function AgentModeView(props: {
     }
   }
 
+  async function openAgent(agent: BackgroundAgent): Promise<void> {
+    const taskId = props.taskId()
+    if (!taskId || openingSessionId()) return
+    setOpeningSessionId(agent.sessionId)
+    setError(null)
+    try {
+      await props.orchestrator.openSessionInTab(taskId, agent.sessionId, {
+        title: agent.name ?? `bg ${agent.sessionId.slice(0, 8)}`,
+        vendor: props.vendor(),
+      })
+      focusCtx.setFocused("workspace")
+      props.onOpenAgent?.()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setOpeningSessionId(null)
+    }
+  }
+
   return (
     <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1}>
       <box flexGrow={1} flexDirection="column">
@@ -98,7 +121,15 @@ export function AgentModeView(props: {
                     </text>
                     <text fg={theme.textMuted}>{String(group.items.length)}</text>
                   </box>
-                  <For each={group.items}>{(agent) => <AgentRow agent={agent} />}</For>
+                  <For each={group.items}>
+                    {(agent) => (
+                      <AgentRow
+                        agent={agent}
+                        opening={() => openingSessionId() === agent.sessionId}
+                        onOpen={() => void openAgent(agent)}
+                      />
+                    )}
+                  </For>
                 </box>
               )}
             </For>
@@ -142,7 +173,11 @@ export function AgentModeView(props: {
   )
 }
 
-function AgentRow(props: { readonly agent: BackgroundAgent }) {
+function AgentRow(props: {
+  readonly agent: BackgroundAgent
+  readonly opening: () => boolean
+  readonly onOpen: () => void
+}) {
   const { theme } = useTheme()
   const status = () => statusMeta(props.agent.status)
   const title = () => props.agent.name ?? props.agent.sessionId.slice(0, 8)
@@ -152,7 +187,13 @@ function AgentRow(props: { readonly agent: BackgroundAgent }) {
     return `${props.agent.sessionId.slice(0, 8)} · ${updated}${raw}`
   }
   return (
-    <box flexDirection="column" paddingLeft={1} paddingRight={1}>
+    <box
+      flexDirection="column"
+      paddingLeft={1}
+      paddingRight={1}
+      backgroundColor={props.opening() ? theme.backgroundElement : undefined}
+      onMouseUp={props.onOpen}
+    >
       <box flexDirection="row" gap={1}>
         <text fg={status().color(theme)} wrapMode="none">
           {status().marker}
@@ -160,6 +201,11 @@ function AgentRow(props: { readonly agent: BackgroundAgent }) {
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           {title()}
         </text>
+        <Show when={props.opening()}>
+          <text fg={theme.textMuted} wrapMode="none">
+            opening...
+          </text>
+        </Show>
         <text fg={theme.textMuted} wrapMode="none">
           {detail()}
         </text>
