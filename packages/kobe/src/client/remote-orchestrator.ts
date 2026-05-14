@@ -370,11 +370,16 @@ export class RemoteOrchestrator {
     return res.sessions
   }
 
-  async openSessionInTab(taskId: string, sessionId: string, opts: { title?: string } = {}): Promise<string> {
+  async openSessionInTab(
+    taskId: string,
+    sessionId: string,
+    opts: { title?: string; vendor?: SessionMeta["vendor"] } = {},
+  ): Promise<string> {
     const res = await this.client.request<{ tabId: string }>("chat.session.open", {
       taskId,
       sessionId,
       title: opts.title,
+      vendor: opts.vendor,
     })
     return res.tabId
   }

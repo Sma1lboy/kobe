@@ -346,6 +346,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const taskId = requireString(payload, "taskId")
         const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {
           title: optionalString(payload, "title"),
+          vendor: optionalVendor(payload, "vendor"),
         })
         // openSessionInTab appends a new tab; subscribe every attached
         // client to its event bus so live deltas reach them.

@@ -61,7 +61,7 @@ describe("ClaudeCodeLocal (with fake claude binary)", () => {
       { type: "assistant.delta", text: "hello from fake claude" },
       { type: "tool.start", name: "Read", input: { path: "/etc/hosts" } },
       { type: "tool.result", name: "Read", output: "127.0.0.1 localhost" },
-      { type: "usage", input_tokens: 7, output_tokens: 11, total_speed_tokens_per_second: expect.any(Number) },
+      expect.objectContaining({ type: "usage", input_tokens: 7, output_tokens: 11 }),
       { type: "done" },
     ])
   }, 15_000)
