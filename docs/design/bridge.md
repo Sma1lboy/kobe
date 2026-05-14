@@ -4,6 +4,11 @@
 > (KOB-30). This file captures the architecture, what is deliberately
 > unfinished, and the open distribution decision for the agent-side
 > skill that teaches the model when to use these tools.
+>
+> **As of KOB-134/KOB-138, `kobe api <verb>` is the recommended path
+> for agent-driven access; see [`cli-api.md`](./cli-api.md). The MCP
+> bridge documented below remains in tree as a fallback for installs
+> that already use it, but new work targets the CLI surface.**
 
 ---
 
