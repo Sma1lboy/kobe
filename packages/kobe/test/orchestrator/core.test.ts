@@ -99,6 +99,7 @@ class HistoryEngine implements AIEngine {
     messageCount: number
   }> = []
   private readonly scripts = new Map<string, readonly EngineEvent[]>()
+  private readonly histories = new Map<string, readonly Message[]>()
   private next = 1
 
   constructor(private readonly vendor: VendorId) {
@@ -115,6 +116,10 @@ class HistoryEngine implements AIEngine {
     this.scripts.set(sessionId, events)
   }
 
+  history(sessionId: string, messages: readonly Message[]): void {
+    this.histories.set(sessionId, messages)
+  }
+
   async resume(sessionId: string, _prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
     return { sessionId, cwd: opts?.cwd ?? "/" }
   }
@@ -128,6 +133,8 @@ class HistoryEngine implements AIEngine {
   }
 
   async readHistory(sessionId: string): Promise<EngineHistory> {
+    const messages = this.histories.get(sessionId)
+    if (messages) return { messages }
     return {
       messages: [
         {
@@ -1624,6 +1631,65 @@ describe("Orchestrator engine call shape", () => {
     expect(updated?.tabs.find((t) => t.id === codexTabId)?.vendor).toBe("codex")
     expect(updated?.tabs.find((t) => t.id === claudeTabId)?.vendor).toBe("claude")
     expect(codexTabId).not.toBe(claudeTabId)
+  })
+
+  test("history reads rehydrate pending input that appears after a background tab is opened", async () => {
+    const engine = new HistoryEngine("claude")
+    const { orch } = await buildOrchestrator(engine)
+    const task = await orch.createTask({ repo, title: "bg question", prompt: "" })
+    const tabId = await orch.openSessionInTab(task.id, "bg-session", { vendor: "claude", title: "bg question" })
+    const events: OrchestratorEvent[] = []
+    const unsubscribe = orch.subscribeEvents(task.id, (ev) => events.push(ev), tabId)
+
+    engine.history("bg-session", [
+      {
+        role: "assistant",
+        sessionId: "bg-session",
+        timestamp: "2026-05-14T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "toolu_late_question",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Which library should I use?",
+                  options: [{ label: "date-fns", description: "Small" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ])
+
+    await orch.readHistoryWithMetrics("bg-session")
+
+    const payload = {
+      kind: "ask_question" as const,
+      questions: [
+        {
+          question: "Which library should I use?",
+          header: "",
+          multiSelect: false,
+          options: [{ label: "date-fns", description: "Small" }],
+        },
+      ],
+    }
+    expect(orch.peekPendingInput(task.id)).toEqual([
+      {
+        requestId: "history:bg-session:toolu_late_question",
+        tabKey: `${task.id}:${tabId}`,
+        payload,
+      },
+    ])
+    expect(events).toContainEqual({
+      type: "user_input.request",
+      requestId: "history:bg-session:toolu_late_question",
+      payload,
+    })
+    unsubscribe()
   })
 
   test("started chat tabs cannot switch to another engine", async () => {

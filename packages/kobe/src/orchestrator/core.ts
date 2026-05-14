@@ -840,7 +840,9 @@ export class Orchestrator {
   async readHistoryWithMetrics(
     sessionId: string,
   ): Promise<{ messages: Message[]; usageMetrics?: SessionUsageMetrics }> {
-    return this.engineRouter.readHistoryWithMetrics(sessionId)
+    const history = await this.engineRouter.readHistoryWithMetrics(sessionId)
+    this.hydratePendingInputFromMessages(sessionId, history.messages)
+    return history
   }
 
   async listSessions(id: TaskId | string): Promise<SessionMeta[]> {
@@ -961,18 +963,42 @@ export class Orchestrator {
     } catch {
       return
     }
-    const pending = detectPendingUserInputFromHistory(sessionId, history.messages)
+    this.hydratePendingInputFromMessages(sessionId, history.messages, [{ taskId, tabId }])
+  }
+
+  private hydratePendingInputFromMessages(
+    sessionId: string,
+    messages: readonly Message[],
+    targets = this.tabsForSession(sessionId),
+  ): void {
+    const pending = detectPendingUserInputFromHistory(sessionId, messages)
     if (pending.length === 0) return
-    const key = tabKey(taskId, tabId)
-    for (const entry of pending) {
-      this.pendingInputBroker.record(taskId, key, entry.requestId, entry.payload)
-      this.dispatchEvent(taskId, tabId, {
-        type: "user_input.request",
-        requestId: entry.requestId,
-        payload: entry.payload,
-      })
+    let changed = false
+    for (const target of targets) {
+      const existing = new Set(this.pendingInputBroker.snapshot(target.taskId).map((entry) => entry.requestId))
+      const key = tabKey(target.taskId, target.tabId)
+      for (const entry of pending) {
+        if (existing.has(entry.requestId)) continue
+        this.pendingInputBroker.record(target.taskId, key, entry.requestId, entry.payload)
+        changed = true
+        this.dispatchEvent(target.taskId, target.tabId, {
+          type: "user_input.request",
+          requestId: entry.requestId,
+          payload: entry.payload,
+        })
+      }
     }
-    this.bumpRunState()
+    if (changed) this.bumpRunState()
+  }
+
+  private tabsForSession(sessionId: string): Array<{ taskId: TaskId; tabId: string }> {
+    const out: Array<{ taskId: TaskId; tabId: string }> = []
+    for (const task of this.store.list()) {
+      for (const tab of task.tabs) {
+        if (tab.sessionId === sessionId) out.push({ taskId: task.id, tabId: tab.id })
+      }
+    }
+    return out
   }
 
   private async stopTab(taskId: TaskId, tabId: string): Promise<void> {

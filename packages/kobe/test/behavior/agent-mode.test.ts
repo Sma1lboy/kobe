@@ -409,6 +409,25 @@ test("workspace Agent mode opens a blocked background question in the Chat inter
   ])
   await postHistory(port, "session-agent-question", [
     {
+      role: "user",
+      blocks: [{ type: "text", text: "use ask user question to ask me question" }],
+      timestamp: "2026-05-14T00:00:00.000Z",
+      sessionId: "session-agent-question",
+    },
+  ])
+
+  await kobe.sendKeys("\t") // sidebar -> workspace
+  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
+  await kobe.waitFor((s) => s.includes("choose date library"), 10_000)
+  await kobe.click(48, 10)
+  await postHistory(port, "session-agent-question", [
+    {
+      role: "user",
+      blocks: [{ type: "text", text: "use ask user question to ask me question" }],
+      timestamp: "2026-05-14T00:00:00.000Z",
+      sessionId: "session-agent-question",
+    },
+    {
       role: "assistant",
       blocks: [
         {
@@ -430,15 +449,10 @@ test("workspace Agent mode opens a blocked background question in the Chat inter
           },
         },
       ],
-      timestamp: "2026-05-14T00:00:00.000Z",
+      timestamp: "2026-05-14T00:00:01.000Z",
       sessionId: "session-agent-question",
     },
   ])
-
-  await kobe.sendKeys("\t") // sidebar -> workspace
-  await kobe.sendKeys("\x07") // ctrl+g, chat.agents.toggle
-  await kobe.waitFor((s) => s.includes("choose date library"), 10_000)
-  await kobe.click(48, 10)
   await kobe.waitFor(
     (s) =>
       s.includes("Awaiting your answer") &&

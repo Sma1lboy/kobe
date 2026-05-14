@@ -177,6 +177,44 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     tabSubs = new Map()
   }
 
+  function replayPendingForTab(taskId: string, tabId: string): void {
+    if (opts.taskId() !== taskId) return
+    const key = chatRunStateKey(taskId, tabId)
+    const pending = orchestrator.peekPendingInput(taskId)
+    for (const entry of pending) {
+      if (entry.tabKey !== key) continue
+      patchStateForTab(tabId, (s) =>
+        applyEvent(s, { type: "user_input.request", requestId: entry.requestId, payload: entry.payload }),
+      )
+    }
+  }
+
+  function hydrateHistoryForTab(
+    taskId: string,
+    tabId: string,
+    sessionId: string,
+    hydrateOpts: { showError?: boolean } = {},
+  ): void {
+    orchestrator
+      .readHistoryWithMetrics(sessionId)
+      .then(({ messages, usageMetrics }) => {
+        if (opts.taskId() !== taskId) return
+        patchStateForTab(tabId, (s) => setMessagesFromHistory(s, messages, usageMetrics))
+        // Pending input rows must land AFTER history hydration —
+        // `setMessagesFromHistory` replaces `messages` wholesale, so
+        // a synthesized approval / question row dispatched before
+        // history loads would be wiped.
+        replayPendingForTab(taskId, tabId)
+      })
+      .catch((err) => {
+        if (hydrateOpts.showError !== false) {
+          const msg = err instanceof Error ? err.message : String(err)
+          patchStateForTab(tabId, (s) => pushSystemError(s, `history load failed: ${msg}`))
+        }
+        replayPendingForTab(taskId, tabId)
+      })
+  }
+
   /**
    * Reconcile subscriptions against the current ChatTab list. Adds a
    * sub (and seeds state + hydrates history) for every new tab, drops
@@ -220,36 +258,10 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       // composer until the user manually submitted something. The
       // orchestrator's chat-run-state map is authoritative; mirror it.
       patchStateForTab(tabId, (s) => ({ ...s, isStreaming: runState === "running" }))
-      const replayPending = (): void => {
-        if (opts.taskId() !== taskId) return
-        const pending = orchestrator.peekPendingInput(taskId)
-        for (const entry of pending) {
-          if (entry.tabKey !== tabKey) continue
-          patchStateForTab(tabId, (s) =>
-            applyEvent(s, { type: "user_input.request", requestId: entry.requestId, payload: entry.payload }),
-          )
-        }
-      }
       if (tab.sessionId) {
-        const sid = tab.sessionId
-        orchestrator
-          .readHistoryWithMetrics(sid)
-          .then(({ messages, usageMetrics }) => {
-            if (opts.taskId() !== taskId) return
-            patchStateForTab(tabId, (s) => setMessagesFromHistory(s, messages, usageMetrics))
-            // Pending input rows must land AFTER history hydration —
-            // `setMessagesFromHistory` replaces `messages` wholesale, so
-            // a synthesized approval / question row dispatched before
-            // history loads would be wiped.
-            replayPending()
-          })
-          .catch((err) => {
-            const msg = err instanceof Error ? err.message : String(err)
-            patchStateForTab(tabId, (s) => pushSystemError(s, `history load failed: ${msg}`))
-            replayPending()
-          })
+        hydrateHistoryForTab(taskId, tabId, tab.sessionId)
       } else {
-        replayPending()
+        replayPendingForTab(taskId, tabId)
       }
     }
     for (const [tabId, unsub] of tabSubs) {
@@ -336,6 +348,22 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       }
     }
     syncTabSubs(id, live.tabs)
+  })
+
+  createEffect(() => {
+    const live = task()
+    const tabId = activeTabId()
+    if (!live || !tabId) return
+    const tab = live.tabs.find((candidate) => candidate.id === tabId)
+    if (!tab?.sessionId) return
+    const sessionId = tab.sessionId
+    const taskId = live.id
+    const interval = setInterval(() => {
+      const runState = orchestrator.chatRunStateSignal()().get(chatRunStateKey(taskId, tabId))
+      if (runState === "running") return
+      hydrateHistoryForTab(taskId, tabId, sessionId, { showError: false })
+    }, 1500)
+    onCleanup(() => clearInterval(interval))
   })
 
   onCleanup(() => {
