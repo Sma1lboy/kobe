@@ -41,6 +41,7 @@
 
 import { allModels, defaultCapabilities } from "@/engine/registry"
 import type { ModelEffortLevel } from "@/types/engine"
+import type { VendorId } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
@@ -57,6 +58,7 @@ export type QuickForkSubmit = {
   prompt: string
   modelId: string
   effort: ModelEffortLevel | undefined
+  vendor: VendorId
 }
 
 export type QuickForkDialogProps = {
@@ -128,7 +130,7 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
     const m = cursorModel()
     if (!m) return
     const effort = effortOptions()[effortCursor()]?.effort
-    props.onSubmit({ prompt: text, modelId: m.id, effort })
+    props.onSubmit({ prompt: text, modelId: m.id, effort, vendor: m.vendor })
     dialog.clear()
   }
 

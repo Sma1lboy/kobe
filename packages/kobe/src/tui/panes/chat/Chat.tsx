@@ -377,7 +377,7 @@ export function Chat(props: ChatProps) {
     const lockedVendor = activeTabHasSession() ? activeVendor() : undefined
     const result = await ModelPicker.show(dialog, modelId(), modelEffort(), activeVendor(), lockedVendor)
     if (result === undefined) return
-    await props.orchestrator.setModel(id, result.id, tabId, result.effort).catch((err: unknown) => {
+    await props.orchestrator.setModel(id, result.id, tabId, result.effort, result.vendor).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[kobe] setModel failed:", err)
     })

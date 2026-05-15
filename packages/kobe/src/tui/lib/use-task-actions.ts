@@ -194,12 +194,14 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       // Apply chosen model+effort/permission to the new task's default
       // tab before dispatching the run so the engine spawn uses the
       // intended config from the very first invocation. setModel routes
-      // the new task to the right vendor based on the model id.
+      // shared model ids through the vendor chosen in the picker.
       const newTabId = created.activeTabId
-      await orchestrator.setModel(created.id, result.modelId, newTabId, result.effort).catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("[kobe] quick-fork setModel failed:", err)
-      })
+      await orchestrator
+        .setModel(created.id, result.modelId, newTabId, result.effort, result.vendor)
+        .catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error("[kobe] quick-fork setModel failed:", err)
+        })
       if (inheritedPermission !== undefined) {
         await orchestrator.setPermissionMode(created.id, inheritedPermission).catch((err: unknown) => {
           // eslint-disable-next-line no-console

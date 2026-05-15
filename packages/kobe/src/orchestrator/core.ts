@@ -642,14 +642,16 @@ export class Orchestrator {
     model: string | undefined,
     tabId?: string,
     modelEffort?: ModelEffortLevel,
+    vendorHint?: VendorId,
   ): Promise<void> {
     const task = this.requireTask(id)
     const tab = this.resolveTab(task, tabId)
-    // Derive the vendor from the picked model so a codex pick routes
-    // the next runTask through the codex engine. When `model` is
-    // cleared (undefined), the vendor stays put — clearing means "use
-    // this vendor's default model," not "switch back to claude."
-    const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
+    // Route fresh tabs through the selected engine. The picker passes
+    // vendorHint for shared ids like "auto"; older callers still fall
+    // back to model catalog lookup. When `model` is cleared
+    // (undefined), the vendor stays put — clearing means "use this
+    // vendor's default model," not "switch back to claude."
+    const vendor = vendorHint ?? (model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab))
     const currentVendor = this.vendorForTab(task, tab)
     if (tab.sessionId && vendor !== currentVendor) {
       throw new Error("setModel: cannot switch engine for a started chat tab; create a new chat tab")
