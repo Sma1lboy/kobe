@@ -22,6 +22,7 @@
  */
 
 import type { Task } from "@/types/task"
+import { fuzzyMatch } from "./fuzzy"
 
 /**
  * Which sidebar view is active. Rendered as a tab strip at the top of
@@ -60,6 +61,12 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * Archived view: same structure (main rows the user archived float to
  * the top of the archives list), still ordered by repo basename.
  *
+ * `searchQuery` — optional case-insensitive subsequence filter applied
+ * after view filtering, before grouping. Haystack per task is
+ * `title + " " + basename(repo)`. Empty / undefined query is a no-op.
+ * Search preserves the main → pinned → regular ordering so users
+ * filtering inside a long list still see the same predictable shape.
+ *
  * Why two passes rather than a single sort: the regular-task ordering
  * is owned by the orchestrator (createdAt-derived ULID order), and
  * sorting both groups together would scramble it. A stable partition
@@ -72,8 +79,12 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * Pure: no Solid, no opentui. Component code calls this inside a memo;
  * tests call it directly.
  */
-export function buildRows(tasks: readonly Task[], view: SidebarView): SidebarRow[] {
-  const filtered = filterByView(tasks, view)
+export function buildRows(tasks: readonly Task[], view: SidebarView, searchQuery?: string): SidebarRow[] {
+  const filteredByView = filterByView(tasks, view)
+  const q = searchQuery?.trim() ?? ""
+  const filtered = q
+    ? filteredByView.filter((t) => fuzzyMatch(q, `${t.title} ${repoBasename(t.repo)}`))
+    : filteredByView
   const main: Task[] = []
   const pinnedRegular: Task[] = []
   const regular: Task[] = []

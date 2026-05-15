@@ -49,8 +49,10 @@
  */
 
 import type { Task, TaskStatus } from "@/types/task"
+import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, untrack } from "solid-js"
+import { useRenderer } from "@opentui/solid"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 import { SIDEBAR_WIDTH } from "../../component/sidebar"
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
@@ -89,6 +91,15 @@ export type SidebarProps = {
    * canonical entry point.
    */
   onAddTask?: () => void
+  /**
+   * Fires when the `/`-search filter opens or closes. Lifted out of
+   * the sidebar so the app-level Shell can gate its sidebar-scoped
+   * plain-letter bindings (`n` / `s` / `q` in app-keymap.tsx) on
+   * `!sidebarSearchActive()` — otherwise typing `n` / `s` / `q` into
+   * the search query would fire those chords and steal the
+   * keystroke before it could reach the input.
+   */
+  onSearchActiveChange?: (active: boolean) => void
   /**
    * Optional width override. When omitted, falls back to {@link SIDEBAR_WIDTH}.
    * Wired by the Shell so the sidebar↔workspace splitter can resize the pane
@@ -145,6 +156,82 @@ export function Sidebar(props: SidebarProps) {
   // through `VIEW_TABS`.
   const [view, setView] = createSignal<SidebarView>("active")
 
+  // `/`-search state. `searchMode` flips on when the user presses `/`
+  // and back off when they press enter (commits a selection) or esc
+  // (cancels). The query is fuzz-matched against task title + repo
+  // basename inside `buildRows`. While the mode is on, the inline
+  // input row is rendered above the view switcher and the sidebar's
+  // single-letter chords are de-registered (see keys.ts) so typed
+  // letters reach the input rather than firing j/k/g/d/a/r/P/m.
+  //
+  // `prevSelectedIdBeforeSearch` is snapshotted on enter so esc can
+  // restore the user to the task they were looking at before they
+  // started searching — otherwise the cursor would drift to wherever
+  // the last filtered match left it.
+  const [searchMode, setSearchMode] = createSignal(false)
+  const [searchQuery, setSearchQuery] = createSignal("")
+
+  function enterSearch(): void {
+    setSearchQuery("")
+    setSearchMode(true)
+    props.onSearchActiveChange?.(true)
+  }
+  function exitSearch(_select: boolean): void {
+    // Both enter (`select=true`) and esc (`select=false`) just close
+    // the search row. On enter, ctrl.selectCurrent has already fired
+    // in keys.ts and set selectedId to the highlighted match; on esc
+    // we leave selectedId alone — only the cursor moved during the
+    // search, and the cursor-sync effect will glide back to the
+    // already-selected task once `flatIds` returns to the unfiltered
+    // list. We DON'T call props.onSelect on exit because the host
+    // (app.tsx) pulls focus to the workspace on every select, which
+    // is wrong for an esc — the user wanted to stay in the sidebar.
+    setSearchMode(false)
+    setSearchQuery("")
+    props.onSearchActiveChange?.(false)
+  }
+
+  // Search-mode keystroke capture. We render the query as a plain
+  // `<text>` rather than using opentui's `<input>` element — earlier
+  // attempts with `<input>` ran into a stack of issues we couldn't
+  // pin down (chars eaten on mount-race; reactive value prop wiping
+  // the buffer on every keystroke; placeholder leaking into the
+  // workspace after exit). A custom text-based input bypasses all of
+  // it: when search mode is on, we subscribe to the renderer's
+  // global keypress event, append printable chars to `searchQuery`,
+  // and let `<text>{searchQuery()}</text>` re-render via Solid.
+  //
+  // The listener runs AFTER the keymap dispatch (which registers
+  // first), so chords that already fired `preventDefault` are
+  // skipped. Non-printable / modifier-prefixed keys are ignored.
+  // Backspace pops the last char.
+  createEffect(() => {
+    if (!searchMode()) return
+    const r = useRenderer()
+    if (!r) return
+    const listener = (evt: KeyEvent): void => {
+      if (evt.defaultPrevented) return
+      if (!focusedAccessor()) return
+      if (evt.ctrl || evt.meta || evt.option) return
+      if (evt.name === "backspace") {
+        setSearchQuery((q) => q.slice(0, -1))
+        return
+      }
+      // Printable single chars only — opentui's KeyEvent.sequence
+      // holds the raw byte that arrived; non-printables (esc, arrows,
+      // function keys) have multi-byte sequences or names like
+      // "escape" / "return" / "up" that we already handle through
+      // Block C bindings.
+      const seq = evt.sequence
+      if (!seq || seq.length !== 1) return
+      const code = seq.charCodeAt(0)
+      if (code < 32 || code === 127) return
+      setSearchQuery((q) => q + seq)
+    }
+    r.keyInput.on("keypress", listener)
+    onCleanup(() => r.keyInput.off("keypress", listener))
+  })
+
   // Tick that busts each main row's branch-name memo on a fixed
   // interval. Cheap (one signal write per tick); the actual git call
   // only happens when a row is visible and re-renders. We deliberately
@@ -161,8 +248,10 @@ export function Sidebar(props: SidebarProps) {
   void branchInterval
 
   // Filtered, flat row list for the active view. Recomputes only when
-  // the upstream tasks accessor or the view changes.
-  const rows = createMemo(() => buildRows(props.tasks(), view()))
+  // the upstream tasks accessor, the view, or the search query
+  // changes. Search query is only applied when `searchMode` is on so
+  // we don't keep filtering against stale query text after esc-cancel.
+  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
   const flatIds = createMemo(() => flattenIds(rows()))
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
@@ -199,6 +288,17 @@ export function Sidebar(props: SidebarProps) {
     }),
   )
 
+  // Reset cursor to 0 on every search query keystroke — keeps the
+  // highlight landed on the top match instead of stranding it on a
+  // now-hidden row. Only runs while search mode is on.
+  createEffect(
+    on([searchMode, searchQuery], () => {
+      if (!searchMode()) return
+      const ids = flatIds()
+      setCursorIndex(ids.length > 0 ? 0 : -1)
+    }),
+  )
+
   /**
    * Cycle the view by `delta` (-1 = `[` / left, +1 = `]` / right). Wraps:
    * `[` from the leftmost lands on the rightmost and vice versa. Today
@@ -229,6 +329,9 @@ export function Sidebar(props: SidebarProps) {
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
+    searchMode,
+    onSearchEnter: () => enterSearch(),
+    onSearchExit: (select) => exitSearch(select),
   })
 
   return (
@@ -271,6 +374,38 @@ export function Sidebar(props: SidebarProps) {
           TASKS
         </text>
       </box>
+
+      {/* Inline `/`-search input. Only rendered while searchMode is on
+         (entered via `/`); de-rendering on exit keeps the row count
+         stable for users not using search. The input is auto-focused
+         so the user can start typing immediately; up/down/enter/esc
+         are handled by the sidebar-scope search bindings in keys.ts,
+         not by the input itself. */}
+      {/* Inline `/`-search row. Rendered as plain text rather than
+         an opentui `<input>` element so the typed query is fully
+         controlled by our `searchQuery` signal — see the
+         createEffect above that captures keystrokes from the global
+         keypress event. Avoids the focus/value-prop quirks of
+         InputRenderable in a conditionally-mounted slot. */}
+      <Show when={searchMode()}>
+        <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
+          <text fg={theme.info} wrapMode="none">
+            /
+          </text>
+          <text fg={theme.text} wrapMode="none">
+            {searchQuery()}
+          </text>
+          <text fg={theme.info} attributes={TextAttributes.BLINK} wrapMode="none">
+            █
+          </text>
+          <Show when={searchQuery().length === 0}>
+            <text fg={theme.textMuted} wrapMode="none">
+              {" "}
+              fuzzy filter
+            </text>
+          </Show>
+        </box>
+      </Show>
 
       {/* View switcher: tab strip with the active view bracketed +
          emphasized. `[` / `]` toggles. */}
@@ -376,7 +511,13 @@ export function Sidebar(props: SidebarProps) {
           </For>
           <Show when={flatIds().length === 0}>
             <box paddingTop={1} paddingLeft={1}>
-              <text fg={theme.textMuted}>{view() === "active" ? "No active tasks." : "No archived tasks."}</text>
+              <text fg={theme.textMuted}>
+                {searchMode() && searchQuery().trim().length > 0
+                  ? "No matching tasks."
+                  : view() === "active"
+                    ? "No active tasks."
+                    : "No archived tasks."}
+              </text>
             </box>
           </Show>
         </box>

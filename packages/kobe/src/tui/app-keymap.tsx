@@ -83,6 +83,15 @@ export type AppKeymapDeps = {
   activeTask: Accessor<Task | undefined>
   /** Open the active task's worktree in the detected editor. */
   openActiveTaskInEditor: () => void
+  /**
+   * Whether the sidebar's `/`-search filter is currently active. Gates
+   * the plain-letter sidebar chords (`n` / `s` / `q`) off — without
+   * this, typing those letters into the search query would fire the
+   * chord and steal the keystroke from the inline search input.
+   * Optional so embedders that don't mount the sidebar (tests) just
+   * get the unconditional behavior.
+   */
+  sidebarSearchActive?: Accessor<boolean>
 }
 
 /* --------------------------------------------------------------------- */
@@ -149,8 +158,10 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
   // the SIDEBAR is focused — single-letter chords would otherwise
   // collide with composer typing. Once on the sidebar, `n` opens
   // the new-task dialog, `q` opens quit-confirm, `s` opens settings.
+  // Also gated off while the sidebar's `/`-search is active so the
+  // letters reach the inline search input as literal text.
   useBindings(() => ({
-    enabled: focusedPane() === "sidebar" && dialog.stack.length === 0,
+    enabled: focusedPane() === "sidebar" && dialog.stack.length === 0 && !(deps.sidebarSearchActive?.() ?? false),
     bindings: bindByIds({
       "task.new": () => {
         void deps.openNewTaskFlow()
