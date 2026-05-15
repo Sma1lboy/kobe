@@ -88,6 +88,7 @@ export function AgentModeView(props: {
       await props.orchestrator.openSessionInTab(taskId, agent.sessionId, {
         title: agent.name ?? `bg ${agent.sessionId.slice(0, 8)}`,
         vendor: props.vendor(),
+        source: "background_agent",
       })
       focusCtx.setFocused("workspace")
       props.onOpenAgent?.()

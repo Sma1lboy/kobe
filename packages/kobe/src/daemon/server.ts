@@ -347,6 +347,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {
           title: optionalString(payload, "title"),
           vendor: optionalVendor(payload, "vendor"),
+          source: optionalChatTabSource(payload, "source"),
         })
         // openSessionInTab appends a new tab; subscribe every attached
         // client to its event bus so live deltas reach them.
@@ -708,6 +709,14 @@ function optionalVendor(payload: Record<string, unknown>, key: string): VendorId
   const value = optionalString(payload, key)
   if (value !== undefined && value !== "claude" && value !== "codex") {
     throw new Error(`${key} must be a supported vendor`)
+  }
+  return value
+}
+
+function optionalChatTabSource(payload: Record<string, unknown>, key: string): "background_agent" | undefined {
+  const value = optionalString(payload, key)
+  if (value !== undefined && value !== "background_agent") {
+    throw new Error(`${key} must be a supported chat tab source`)
   }
   return value
 }

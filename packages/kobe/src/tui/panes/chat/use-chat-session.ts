@@ -193,13 +193,17 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     taskId: string,
     tabId: string,
     sessionId: string,
-    hydrateOpts: { showError?: boolean } = {},
+    hydrateOpts: { showError?: boolean; preservePendingRows?: boolean } = {},
   ): Promise<void> {
     return orchestrator
       .readHistoryWithMetrics(sessionId)
       .then(({ messages, usageMetrics }) => {
         if (opts.taskId() !== taskId) return
-        patchStateForTab(tabId, (s) => setMessagesFromHistory(s, messages, usageMetrics))
+        patchStateForTab(tabId, (s) =>
+          hydrateOpts.preservePendingRows && hasPendingInputRow(s)
+            ? s
+            : setMessagesFromHistory(s, messages, usageMetrics),
+        )
         // Pending input rows must land AFTER history hydration —
         // `setMessagesFromHistory` replaces `messages` wholesale, so
         // a synthesized approval / question row dispatched before
@@ -213,6 +217,14 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         }
         replayPendingForTab(taskId, tabId)
       })
+  }
+
+  function hasPendingInputRow(state: ChatState): boolean {
+    return state.messages.some((message) => {
+      if (message.kind === "approval") return message.status === "pending"
+      if (message.kind === "question") return message.answers === null
+      return false
+    })
   }
 
   /**
@@ -259,7 +271,9 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       // orchestrator's chat-run-state map is authoritative; mirror it.
       patchStateForTab(tabId, (s) => ({ ...s, isStreaming: runState === "running" }))
       if (tab.sessionId) {
-        hydrateHistoryForTab(taskId, tabId, tab.sessionId)
+        hydrateHistoryForTab(taskId, tabId, tab.sessionId, {
+          preservePendingRows: tab.source === "background_agent",
+        })
       } else {
         replayPendingForTab(taskId, tabId)
       }
@@ -356,6 +370,7 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     if (!live || !tabId) return
     const tab = live.tabs.find((candidate) => candidate.id === tabId)
     if (!tab?.sessionId) return
+    if (tab.source !== "background_agent") return
     const sessionId = tab.sessionId
     const taskId = live.id
     let refreshing = false
@@ -363,7 +378,7 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       const runState = orchestrator.chatRunStateSignal()().get(chatRunStateKey(taskId, tabId))
       if (runState === "running" || runState === "awaiting_input" || refreshing) return
       refreshing = true
-      hydrateHistoryForTab(taskId, tabId, sessionId, { showError: false }).finally(() => {
+      hydrateHistoryForTab(taskId, tabId, sessionId, { showError: false, preservePendingRows: true }).finally(() => {
         refreshing = false
       })
     }, 1500)

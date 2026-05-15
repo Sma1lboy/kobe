@@ -1637,7 +1637,11 @@ describe("Orchestrator engine call shape", () => {
     const engine = new HistoryEngine("claude")
     const { orch } = await buildOrchestrator(engine)
     const task = await orch.createTask({ repo, title: "bg question", prompt: "" })
-    const tabId = await orch.openSessionInTab(task.id, "bg-session", { vendor: "claude", title: "bg question" })
+    const tabId = await orch.openSessionInTab(task.id, "bg-session", {
+      vendor: "claude",
+      title: "bg question",
+      source: "background_agent",
+    })
     const events: OrchestratorEvent[] = []
     const unsubscribe = orch.subscribeEvents(task.id, (ev) => events.push(ev), tabId)
 
@@ -1692,11 +1696,47 @@ describe("Orchestrator engine call shape", () => {
     unsubscribe()
   })
 
+  test("history reads do not rehydrate pending input for normal resumed tabs", async () => {
+    const engine = new HistoryEngine("claude")
+    const { orch } = await buildOrchestrator(engine)
+    const task = await orch.createTask({ repo, title: "normal resumed question", prompt: "" })
+    const tabId = await orch.openSessionInTab(task.id, "normal-session", { vendor: "claude", title: "normal" })
+    const events: OrchestratorEvent[] = []
+    const unsubscribe = orch.subscribeEvents(task.id, (ev) => events.push(ev), tabId)
+    engine.history("normal-session", [
+      {
+        role: "assistant",
+        sessionId: "normal-session",
+        timestamp: "2026-05-14T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "toolu_normal_question",
+            name: "AskUserQuestion",
+            input: {
+              questions: [{ question: "Which library?", options: [{ label: "date-fns", description: "Small" }] }],
+            },
+          },
+        ],
+      },
+    ])
+
+    await orch.readHistoryWithMetrics("normal-session")
+
+    expect(orch.peekPendingInput(task.id)).toEqual([])
+    expect(events).not.toContainEqual(expect.objectContaining({ type: "user_input.request" }))
+    unsubscribe()
+  })
+
   test("history reads do not rehydrate a history pending input after it is answered", async () => {
     const engine = new HistoryEngine("claude")
     const { orch } = await buildOrchestrator(engine)
     const task = await orch.createTask({ repo, title: "bg answered question", prompt: "" })
-    const tabId = await orch.openSessionInTab(task.id, "bg-session", { vendor: "claude", title: "bg question" })
+    const tabId = await orch.openSessionInTab(task.id, "bg-session", {
+      vendor: "claude",
+      title: "bg question",
+      source: "background_agent",
+    })
     const events: OrchestratorEvent[] = []
     const unsubscribe = orch.subscribeEvents(task.id, (ev) => events.push(ev), tabId)
     engine.history("bg-session", [

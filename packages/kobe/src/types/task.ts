@@ -84,6 +84,12 @@ export interface ChatTab {
   readonly modelEffort?: ModelEffortLevel
   readonly vendor?: VendorId
   /**
+   * Optional origin for tabs opened from an engine-owned background agent.
+   * Normal chat/resume tabs leave this unset so their history hydration
+   * follows the original non-polling chat path.
+   */
+  readonly source?: "background_agent"
+  /**
    * Per-task display ordinal. Assigned at creation as
    * `max(existing tabs' seq) + 1`, never recomputed. The default tab
    * label is `chat ${seq}` — using the array index would renumber

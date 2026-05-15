@@ -514,6 +514,7 @@ function coerceTask(value: unknown): Task | null {
         ...(typeof tt.model === "string" ? { model: tt.model } : {}),
         ...(isModelEffortLevel(tt.modelEffort) ? { modelEffort: tt.modelEffort } : {}),
         ...(isVendorId(tt.vendor) ? { vendor: tt.vendor } : {}),
+        ...(tt.source === "background_agent" ? { source: tt.source } : {}),
       }
       tabs.push(tab)
     }

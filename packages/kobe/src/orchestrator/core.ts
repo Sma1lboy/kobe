@@ -870,11 +870,11 @@ export class Orchestrator {
   async openSessionInTab(
     id: TaskId | string,
     sessionId: string,
-    opts: { title?: string; vendor?: VendorId } = {},
+    opts: { title?: string; vendor?: VendorId; source?: ChatTab["source"] } = {},
   ): Promise<string> {
     const task = this.requireTask(id)
     const tabId = await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
-    await this.hydratePendingInputFromHistory(task.id, tabId, sessionId)
+    if (opts.source === "background_agent") await this.hydratePendingInputFromHistory(task.id, tabId, sessionId)
     return tabId
   }
 
@@ -971,7 +971,7 @@ export class Orchestrator {
   private hydratePendingInputFromMessages(
     sessionId: string,
     messages: readonly Message[],
-    targets = this.tabsForSession(sessionId),
+    targets = this.backgroundTabsForSession(sessionId),
   ): void {
     const pending = detectPendingUserInputFromHistory(sessionId, messages)
     if (pending.length === 0) return
@@ -994,11 +994,12 @@ export class Orchestrator {
     if (changed) this.bumpRunState()
   }
 
-  private tabsForSession(sessionId: string): Array<{ taskId: TaskId; tabId: string }> {
+  private backgroundTabsForSession(sessionId: string): Array<{ taskId: TaskId; tabId: string }> {
     const out: Array<{ taskId: TaskId; tabId: string }> = []
     for (const task of this.store.list()) {
       for (const tab of task.tabs) {
-        if (tab.sessionId === sessionId) out.push({ taskId: task.id, tabId: tab.id })
+        if (tab.sessionId === sessionId && tab.source === "background_agent")
+          out.push({ taskId: task.id, tabId: tab.id })
       }
     }
     return out

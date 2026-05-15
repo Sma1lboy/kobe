@@ -65,7 +65,7 @@ export async function openSessionInChatTab(
   deps: ChatTabLifecycleDeps,
   task: Task,
   sessionId: string,
-  opts: { title?: string; vendor?: VendorId } = {},
+  opts: { title?: string; vendor?: VendorId; source?: ChatTab["source"] } = {},
 ): Promise<string> {
   const active = resolveChatTab(task)
   const targetVendor = opts.vendor ?? deps.vendorForTab(task, active)
@@ -83,6 +83,7 @@ export async function openSessionInChatTab(
     modelEffort: active.modelEffort ?? task.modelEffort,
     vendor: targetVendor,
     ...(opts.title ? { title: opts.title } : {}),
+    ...(opts.source ? { source: opts.source } : {}),
   }
   await deps.store.update(task.id, { tabs: [...task.tabs, tab], activeTabId: tab.id })
   return tab.id
@@ -100,6 +101,7 @@ export async function createChatTab(
     title: _activeTitle,
     seq: _activeSeq,
     createdAt: _activeCreatedAt,
+    source: _activeSource,
     ...activeConfig
   } = active
   const tab: ChatTab = {
