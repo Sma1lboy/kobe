@@ -1,6 +1,12 @@
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
-import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
+import {
+  type AllEventsListener,
+  type ChatRunState,
+  type Orchestrator,
+  type Unsubscribe,
+  chatRunStateKey,
+} from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
@@ -54,6 +60,8 @@ export class RemoteOrchestrator {
   private readonly setRcBridge: (next: RcBridgeStatus) => void
   private readonly ensureReachable: () => Promise<unknown>
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
+  /** Global listeners — mirror of {@link Orchestrator.globalSubscribers}. */
+  private readonly globalSubscribers = new Set<AllEventsListener>()
   /**
    * Wire-fed replica of the daemon's pending-input bucket. Same
    * adapter as the local Orchestrator uses — see
@@ -401,6 +409,14 @@ export class RemoteOrchestrator {
     }
   }
 
+  /** Mirror of {@link Orchestrator.subscribeAllEvents}. */
+  subscribeAllEvents(cb: AllEventsListener): Unsubscribe {
+    this.globalSubscribers.add(cb)
+    return () => {
+      this.globalSubscribers.delete(cb)
+    }
+  }
+
   async requestPR(taskId: string): Promise<void> {
     await this.client.request("pr.request", { taskId })
   }
@@ -511,8 +527,19 @@ export class RemoteOrchestrator {
 
   private dispatch(taskId: string, tabId: string, ev: OrchestratorEvent): void {
     const set = this.subscribers.get(`${taskId}:${tabId}`)
-    if (!set) return
-    for (const cb of set) cb(ev)
+    if (set) {
+      for (const cb of set) cb(ev)
+    }
+    if (this.globalSubscribers.size > 0) {
+      for (const cb of this.globalSubscribers) {
+        try {
+          cb(taskId, tabId, ev)
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error("[kobe remote] global subscriber threw:", err)
+        }
+      }
+    }
   }
 
   private markRunState(taskId: string, tabId: string | undefined, state: ChatRunState): void {

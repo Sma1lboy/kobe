@@ -1470,6 +1470,67 @@ describe("Orchestrator.subscribeEvents", () => {
 })
 
 // ----------------------------------------------------------------------
+// subscribeAllEvents — global listener fan-out (KOB-153)
+// ----------------------------------------------------------------------
+
+describe("Orchestrator.subscribeAllEvents", () => {
+  test("fans out every (taskId, tabId, ev) tuple across all tasks; unsubscribe stops delivery", async () => {
+    const fake = new FakeAIEngine()
+    const { orch } = await buildOrchestrator(fake)
+    const t1 = await orch.createTask({ repo, title: "sub-all-1", prompt: "" })
+    const t2 = await orch.createTask({ repo, title: "sub-all-2", prompt: "" })
+
+    const seen: Array<{ taskId: string; tabId: string; type: string }> = []
+    const unsub = orch.subscribeAllEvents((taskId, tabId, ev) => {
+      seen.push({ taskId, tabId, type: ev.type })
+    })
+
+    fake.script("fake-1", [{ type: "assistant.delta", text: "first" }, { type: "done" }])
+    await orch.runTask(t1.id, "go-1")
+    await orch._waitForPumpsIdle()
+
+    fake.script("fake-2", [{ type: "assistant.delta", text: "second" }, { type: "done" }])
+    await orch.runTask(t2.id, "go-2")
+    await orch._waitForPumpsIdle()
+
+    // Both tasks emit through the same global listener with their own taskId.
+    const taskIdsSeen = new Set(seen.map((s) => s.taskId))
+    expect(taskIdsSeen.has(t1.id)).toBe(true)
+    expect(taskIdsSeen.has(t2.id)).toBe(true)
+    // Each task contributed at least one `done` — the only event the
+    // bell/flash UI actually cares about.
+    expect(seen.filter((s) => s.type === "done" && s.taskId === t1.id)).toHaveLength(1)
+    expect(seen.filter((s) => s.type === "done" && s.taskId === t2.id)).toHaveLength(1)
+
+    // After unsubscribe, no more events.
+    unsub()
+    const before = seen.length
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t1.id, "after-unsub")
+    await orch._waitForPumpsIdle()
+    expect(seen.length).toBe(before)
+  })
+
+  test("per-tab subscribeEvents and global subscribeAllEvents both fire for the same event", async () => {
+    const fake = new FakeAIEngine()
+    const { orch } = await buildOrchestrator(fake)
+    const t = await orch.createTask({ repo, title: "dual", prompt: "" })
+
+    const perTab: OrchestratorEvent[] = []
+    const global: OrchestratorEvent[] = []
+    orch.subscribeEvents(t.id, (ev) => perTab.push(ev))
+    orch.subscribeAllEvents((_taskId, _tabId, ev) => global.push(ev))
+
+    fake.script("fake-1", [{ type: "done" }])
+    await orch.runTask(t.id, "go")
+    await orch._waitForPumpsIdle()
+
+    expect(perTab.some((e) => e.type === "done")).toBe(true)
+    expect(global.some((e) => e.type === "done")).toBe(true)
+  })
+})
+
+// ----------------------------------------------------------------------
 // SessionHandle plumbing — spy on engine.spawn arguments
 // ----------------------------------------------------------------------
 
