@@ -58,6 +58,7 @@ import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
 import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
+import { readWorktreeChanges } from "./worktree-changes"
 
 export type SidebarProps = {
   tasks: Accessor<readonly Task[]>
@@ -146,6 +147,21 @@ const VIEW_TABS: ReadonlyArray<{ view: SidebarView; label: string }> = [
  * call generator on every redraw frame. Exported for tests.
  */
 export const MAIN_BRANCH_POLL_MS = 2_000
+
+/**
+ * Reserved width (cells) for the per-row "uncommitted changes" chip
+ * (`+N −M`). Sized to fit the common `+9 −9` (5 cell) case exactly;
+ * the chip is right-aligned inside the column so longer chips (e.g.
+ * `+12 −3`, 6 char) extend slightly leftward toward the title rather
+ * than cluttering the row's right edge with reserved padding. Even
+ * longer chips (`+99 −99`, 7 char) clip on the left — rare in practice
+ * and the right edge stays aligned, which is what the eye tracks.
+ * Keeping the column reserved even when empty is the whole point of
+ * this — the eye should land on the same x for every row's chip
+ * regardless of how short or long the title above it is. Exported for
+ * tests.
+ */
+export const CHANGES_COLUMN_WIDTH = 5
 
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
@@ -472,6 +488,22 @@ export function Sidebar(props: SidebarProps) {
                 branchTick()
                 return readCurrentBranch(task.repo)
               })
+              // Per-row "uncommitted changes" file counts, rendered on
+              // the right edge as `+N −M`. Keyed on the same `branchTick`
+              // so we only shell out at the established 2s cadence.
+              // Empty string when the worktree is clean — the renderer
+              // skips the chip entirely. Applies to both main and regular
+              // rows: on a main row a non-zero count is just as useful as
+              // on a worktree row, and the repo's branch label still has
+              // room next to it inside the 42-cell sidebar.
+              const changesLabel = createMemo(() => {
+                branchTick()
+                const { added, deleted } = readWorktreeChanges(task.worktreePath)
+                const parts: string[] = []
+                if (added > 0) parts.push(`+${added}`)
+                if (deleted > 0) parts.push(`−${deleted}`)
+                return parts.join(" ")
+              })
               const titleText = isMain ? repoBasename(task.repo) : task.title
               return (
                 <box
@@ -495,15 +527,39 @@ export function Sidebar(props: SidebarProps) {
                   >
                     {titleText}
                   </text>
-                  <Show when={isMain && branchLabel().length > 0}>
-                    <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                      {branchLabel()}
-                    </text>
-                  </Show>
-                  <Show when={!isMain && task.pinned === true}>
-                    <text fg={isCursor() ? theme.selectedListItemText : theme.warning} wrapMode="none">
-                      ▴
-                    </text>
+                  {/* Changes column — fixed width so the chip aligns
+                      across rows like a table column rather than floating
+                      against each title's right edge. Stays present (and
+                      empty) on rows with a clean worktree, which is the
+                      whole point: the eye should land on the same x for
+                      every row's chip. Right-aligned so the digits' right
+                      edges line up across rows (what the eye tracks) and
+                      so short chips sit closer to the row's right side
+                      rather than crowding the title. */}
+                  <box width={CHANGES_COLUMN_WIDTH} flexShrink={0} flexDirection="row" justifyContent="flex-end">
+                    <Show when={changesLabel().length > 0}>
+                      <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                        {changesLabel()}
+                      </text>
+                    </Show>
+                  </box>
+                  {/* Branch label + pin marker — wrapped so they don't
+                      collide with the changes column on the left, and so
+                      the row stays clean (no empty container) when there
+                      is nothing to show. */}
+                  <Show when={(isMain && branchLabel().length > 0) || (!isMain && task.pinned === true)}>
+                    <box flexDirection="row" gap={1} paddingLeft={1}>
+                      <Show when={isMain && branchLabel().length > 0}>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                          {branchLabel()}
+                        </text>
+                      </Show>
+                      <Show when={!isMain && task.pinned === true}>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.warning} wrapMode="none">
+                          ▴
+                        </text>
+                      </Show>
+                    </box>
                   </Show>
                 </box>
               )
