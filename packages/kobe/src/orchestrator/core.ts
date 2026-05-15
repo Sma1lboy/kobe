@@ -42,13 +42,14 @@ import {
   gatherLocalMergeState,
   renderLocalMergeInstructions,
 } from "./local-merge/index.ts"
-import { MetadataSuggester, type MetadataSuggestionContext } from "./metadata-suggester.ts"
+import { MetadataSuggester } from "./metadata-suggester.ts"
 import { InMemoryPendingInputBroker } from "./pending-input-broker.ts"
 import { gatherPRState, loadPRInstructionsTemplate, renderPRInstructions } from "./pr/index.ts"
 import { PLACEHOLDER_TASK_TITLE, TaskRunner } from "./run-task.ts"
 import { SessionPump } from "./session-pump.ts"
 import { TaskWorktreeCoordinator, summarizeWorktreeError } from "./task-worktree.ts"
 import { deriveTitleFromPrompt } from "./title.ts"
+import { TitleSuggester } from "./title-suggester.ts"
 import { renderUserInputResponsePrompt } from "./user-input.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 export { TITLE_CHAR_CAP, deriveTitleFromPrompt } from "./title.ts"
@@ -95,7 +96,6 @@ export interface OrchestratorDeps {
   readonly metadataSuggester?: MetadataSuggester
 }
 
-const TITLE_SUGGESTION_MIN_USER_TURNS = 3
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
   readonly repo: string
@@ -150,12 +150,7 @@ export class Orchestrator {
   private readonly metadataSuggester: MetadataSuggester
   private readonly worktreeCoordinator: TaskWorktreeCoordinator
   private readonly taskRunner: TaskRunner
-  private readonly taskTitleCandidates = new Map<TaskId, { fallbackTitle: string }>()
-  private readonly titleSuggestionUserPrompts = new Map<string, string[]>()
-  private readonly titleSuggestionContexts = new Map<string, MetadataSuggestionContext>()
-  private readonly titleSuggestionAttempted = new Set<TaskId>()
-  private readonly titleSuggestionInFlight = new Set<TaskId>()
-  private readonly pendingTitleTurnKeys = new Set<string>()
+  private readonly titleSuggester: TitleSuggester
   /**
    * Engine session handles keyed by `${taskId}:${tabId}`. Each chat tab
    * within a task owns an independent session; closing a tab tears down
@@ -215,6 +210,7 @@ export class Orchestrator {
     })
     this.worktrees = deps.worktrees
     this.metadataSuggester = deps.metadataSuggester ?? new MetadataSuggester()
+    this.titleSuggester = new TitleSuggester({ store: this.store, suggester: this.metadataSuggester })
     this.worktreeCoordinator = new TaskWorktreeCoordinator({
       store: this.store,
       worktrees: this.worktrees,
@@ -228,14 +224,14 @@ export class Orchestrator {
       worktrees: this.worktreeCoordinator,
       resolveTab: (task, tabId) => this.resolveTab(task, tabId),
       dispatchEvent: (taskId, tabId, ev) => this.dispatchEvent(taskId, tabId, ev),
-      engineForTab: (task, tab) => this.engineForTab(task, tab),
-      engineForTabRun: (task, tab) => this.engineForTabRun(task, tab),
-      modelForTab: (task, tab, engine) => this.modelForTab(task, tab, engine),
-      modelEffortForTab: (task, tab) => this.modelEffortForTab(task, tab),
+      engineForTab: (task, tab) => this.engineRouter.engineForTab(task, tab),
+      engineForTabRun: (task, tab) => this.engineRouter.engineForTabRun(task, tab),
+      modelForTab: (task, tab, engine) => this.engineRouter.modelForTab(task, tab, engine),
+      modelEffortForTab: (task, tab) => this.engineRouter.modelEffortForTab(task, tab),
       updateTab: (taskId, tabId, patch) => this.updateTab(taskId, tabId, patch),
       runPumpAndCleanup: (taskId, tabId, handle) => this.runPumpAndCleanup(taskId, tabId, handle),
       recordTitleSuggestionInput: (task, tab, prompt, context) =>
-        this.recordTitleSuggestionInput(task, tab, prompt, context),
+        this.titleSuggester.recordTurn(task, tab, prompt, context),
       bumpRunState: () => this.bumpRunState(),
     })
     // Seed the signal with the current store snapshot so synchronous
@@ -270,44 +266,12 @@ export class Orchestrator {
     // — it returns a result and the orchestrator does the post-run
     // bookkeeping in `runPumpAndCleanup`.
     this.sessionPump = new SessionPump({
-      engineFor: (taskId, tabId) => this.engineForTaskTabId(taskId as TaskId, tabId),
+      engineFor: (taskId, tabId) => this.engineRouter.engineForTaskTabId(taskId as TaskId, tabId),
       broker: this.pendingInputBroker,
       dispatch: (taskId, tabId, ev) => this.dispatchEvent(taskId as TaskId, tabId, ev),
       nextRequestId: () => `req-${++this.requestIdCounter}`,
       onPendingInputChange: () => this.bumpRunState(),
     })
-  }
-
-  private engineForTask(task: Task): AIEngine {
-    return this.engineRouter.engineForTask(task)
-  }
-
-  private vendorForTab(task: Task, tab: ChatTab): VendorId {
-    return this.engineRouter.vendorForTab(task, tab)
-  }
-
-  private modelForTab(task: Task, tab: ChatTab, engine: AIEngine): string {
-    return this.engineRouter.modelForTab(task, tab, engine)
-  }
-
-  private modelEffortForTab(task: Task, tab: ChatTab): ModelEffortLevel | undefined {
-    return this.engineRouter.modelEffortForTab(task, tab)
-  }
-
-  private engineForTab(task: Task, tab: ChatTab): AIEngine {
-    return this.engineRouter.engineForTab(task, tab)
-  }
-
-  private async engineForTabRun(task: Task, tab: ChatTab): Promise<AIEngine> {
-    return this.engineRouter.engineForTabRun(task, tab)
-  }
-
-  private engineForTaskId(taskId: TaskId): AIEngine {
-    return this.engineRouter.engineForTaskId(taskId)
-  }
-
-  private engineForTaskTabId(taskId: TaskId, tabId: string): AIEngine {
-    return this.engineRouter.engineForTaskTabId(taskId, tabId)
   }
 
   /**
@@ -579,7 +543,7 @@ export class Orchestrator {
       text: "(turn interrupted — sending new prompt)",
     })
     try {
-      await this.engineForTask(task).stop(handle)
+      await this.engineRouter.engineForTask(task).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -649,8 +613,8 @@ export class Orchestrator {
     // the next runTask through the codex engine. When `model` is
     // cleared (undefined), the vendor stays put — clearing means "use
     // this vendor's default model," not "switch back to claude."
-    const vendor = model ? capabilitiesForModelId(model).vendorId : this.vendorForTab(task, tab)
-    const currentVendor = this.vendorForTab(task, tab)
+    const vendor = model ? capabilitiesForModelId(model).vendorId : this.engineRouter.vendorForTab(task, tab)
+    const currentVendor = this.engineRouter.vendorForTab(task, tab)
     if (tab.sessionId && vendor !== currentVendor) {
       throw new Error("setModel: cannot switch engine for a started chat tab; create a new chat tab")
     }
@@ -666,77 +630,7 @@ export class Orchestrator {
     }
     if (task.title === trimmed) return
     await this.store.update(task.id, { title: trimmed })
-    this.taskTitleCandidates.delete(task.id)
-    this.titleSuggestionAttempted.add(task.id)
-  }
-
-  private recordTitleSuggestionInput(
-    task: Task,
-    tab: ChatTab,
-    prompt: string | undefined,
-    context: MetadataSuggestionContext,
-  ): void {
-    const trimmed = prompt?.trim()
-    if (!trimmed) return
-    const key = tabKey(task.id, tab.id)
-    const prompts = this.titleSuggestionUserPrompts.get(key) ?? []
-    prompts.push(trimmed)
-    this.titleSuggestionUserPrompts.set(key, prompts)
-    this.titleSuggestionContexts.set(key, context)
-    this.pendingTitleTurnKeys.add(key)
-
-    if (this.taskTitleCandidates.has(task.id)) return
-    if (tab.sessionId) return
-    const fallbackTitle = deriveTitleFromPrompt(trimmed)
-    if (!fallbackTitle) return
-    if (task.title === PLACEHOLDER_TASK_TITLE || task.title === fallbackTitle) {
-      this.taskTitleCandidates.set(task.id, { fallbackTitle })
-    }
-  }
-
-  private clearTitleSuggestionTab(taskId: TaskId, tabId: string): void {
-    const key = tabKey(taskId, tabId)
-    this.titleSuggestionUserPrompts.delete(key)
-    this.titleSuggestionContexts.delete(key)
-    this.pendingTitleTurnKeys.delete(key)
-  }
-
-  private clearTitleSuggestionTask(taskId: TaskId): void {
-    this.taskTitleCandidates.delete(taskId)
-    this.titleSuggestionAttempted.delete(taskId)
-    this.titleSuggestionInFlight.delete(taskId)
-    for (const key of this.titleSuggestionUserPrompts.keys()) {
-      if (key.startsWith(`${taskId}:`)) {
-        this.titleSuggestionUserPrompts.delete(key)
-        this.titleSuggestionContexts.delete(key)
-        this.pendingTitleTurnKeys.delete(key)
-      }
-    }
-  }
-
-  private async maybeUpgradeTitleAfterEnoughTurns(taskId: TaskId, tabId: string): Promise<void> {
-    if (this.titleSuggestionAttempted.has(taskId) || this.titleSuggestionInFlight.has(taskId)) return
-    const key = tabKey(taskId, tabId)
-    const prompts = this.titleSuggestionUserPrompts.get(key) ?? []
-    if (prompts.length < TITLE_SUGGESTION_MIN_USER_TURNS) return
-    const candidate = this.taskTitleCandidates.get(taskId)
-    const context = this.titleSuggestionContexts.get(key)
-    const task = this.store.get(taskId)
-    if (!candidate || !context || !task) return
-    if (task.title !== candidate.fallbackTitle) return
-
-    this.titleSuggestionAttempted.add(taskId)
-    this.titleSuggestionInFlight.add(taskId)
-    try {
-      const suggested = await this.metadataSuggester.suggestTitle(buildFeatureTitlePrompt(prompts), context)
-      if (!suggested || suggested === candidate.fallbackTitle) return
-      const fresh = this.store.get(taskId)
-      if (!fresh) return
-      if (fresh.title !== candidate.fallbackTitle) return
-      await this.store.update(taskId, { title: suggested })
-    } finally {
-      this.titleSuggestionInFlight.delete(taskId)
-    }
+    this.titleSuggester.noteUserRename(task.id)
   }
 
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
@@ -818,7 +712,7 @@ export class Orchestrator {
 
     if (task.sessionId) {
       try {
-        await this.engineForTask(task).deleteHistory(task.sessionId)
+        await this.engineRouter.engineForTask(task).deleteHistory(task.sessionId)
       } catch (err) {
         // Best-effort: stale FS state (file already gone, permission
         // issue) shouldn't block the index drop.
@@ -830,7 +724,7 @@ export class Orchestrator {
     // Drop any pending-input entries still attributed to this task —
     // a delete mid-pause used to leak them into the broker forever.
     this.pendingInputBroker.clearForTask(task.id)
-    this.clearTitleSuggestionTask(task.id)
+    this.titleSuggester.clearTask(task.id)
 
     await this.store.remove(task.id)
   }
@@ -893,13 +787,13 @@ export class Orchestrator {
   async clearTab(id: TaskId | string, tabId: string): Promise<void> {
     const task = this.requireTask(id)
     await clearChatTab(this.chatTabDeps(), task, tabId)
-    this.clearTitleSuggestionTab(task.id as TaskId, tabId)
+    this.titleSuggester.clearTab(task.id, tabId)
   }
 
   async closeTab(id: TaskId | string, tabId: string): Promise<string> {
     const task = this.requireTask(id)
     const nextActive = await closeChatTab(this.chatTabDeps(), task, tabId)
-    this.clearTitleSuggestionTab(task.id, tabId)
+    this.titleSuggester.clearTab(task.id, tabId)
     return nextActive
   }
 
@@ -920,7 +814,7 @@ export class Orchestrator {
       store: this.store,
       createId: () => ulid(),
       nowIso: () => new Date().toISOString(),
-      vendorForTab: (task: Task, tab: ChatTab) => this.vendorForTab(task, tab),
+      vendorForTab: (task: Task, tab: ChatTab) => this.engineRouter.vendorForTab(task, tab),
       stopTab: (taskId: TaskId, tabId: string) => this.stopTab(taskId, tabId),
       dispatchEvent: (taskId: TaskId, tabId: string, ev: OrchestratorEvent) => this.dispatchEvent(taskId, tabId, ev),
     }
@@ -945,7 +839,7 @@ export class Orchestrator {
     const handle = this.handles.get(key)
     if (!handle) return
     try {
-      await this.engineForTaskId(taskId).stop(handle)
+      await this.engineRouter.engineForTaskId(taskId).stop(handle)
     } finally {
       this.handles.delete(key)
       this.bumpRunState()
@@ -955,7 +849,7 @@ export class Orchestrator {
   private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
     const prefix = `${taskId}:`
     const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
-    const engine = this.engineForTaskId(taskId)
+    const engine = this.engineRouter.engineForTaskId(taskId)
     for (const key of keys) {
       const handle = this.handles.get(key)
       if (!handle) continue
@@ -1014,18 +908,10 @@ export class Orchestrator {
     if (terminalEvent && !killedForInput) {
       this.dispatchEvent(taskId, tabId, terminalEvent)
     }
-    if (terminalEvent?.type === "done" && !killedForInput && this.pendingTitleTurnKeys.delete(key)) {
-      await this.maybeUpgradeTitleAfterEnoughTurns(taskId, tabId)
+    if (terminalEvent?.type === "done" && !killedForInput) {
+      await this.titleSuggester.onTurnDone(taskId, tabId)
     }
     // killedForInput case: leave status as in_progress — the user is
     // about to answer and we'll resume via respondToInput → runTask.
   }
-}
-
-function buildFeatureTitlePrompt(prompts: readonly string[]): string {
-  const lines = prompts.slice(0, TITLE_SUGGESTION_MIN_USER_TURNS).map((prompt, i) => {
-    const collapsed = prompt.replace(/\s+/g, " ").trim()
-    return `${i + 1}. ${collapsed}`
-  })
-  return ["Conversation user messages:", ...lines].join("\n")
 }
