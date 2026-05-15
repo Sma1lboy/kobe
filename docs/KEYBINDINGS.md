@@ -61,6 +61,7 @@ site — they should agree.
 | `tab`            | pane cycle vs textarea focus actions    | `useKobeKeybindings` no-ops `tab` when workspace has focus so the composer's own tab handling (slash completion, indent) wins.                                                      |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
 | `ctrl+[` / `ctrl+]` | chat tab cycle vs new-task dialog sub-tab cycle | Dialog-local handler wins while the New Task dialog is open. App-level workspace bindings are gated `enabled: dialog.stack.length === 0`, so the dialog's `useBindings` registration intercepts the chord first and toggles between the "For Existing" and "For New Repo" sub-tabs. Closing the dialog restores the chat-tab cycle. |
+| sidebar letter chords (`j`/`k`/`g`/`G`/`d`/`a`/`r`/`P`/`m`) vs `/`-search typing | Letter chords are registered in a sidebar-scoped `useBindings` block gated `enabled: focused() && !searchMode()`. When `/` enters search mode the block de-registers, so subsequent letter keys fall through to the inline search input as literal text. `[` / `]` view switch lives in a separate always-on block and keeps firing during search. A second search-only block registers `up`/`down` (filtered-list nav), `enter` (commit), and `esc` (cancel + restore prior selection). |
 
 ## tmux passthrough
 

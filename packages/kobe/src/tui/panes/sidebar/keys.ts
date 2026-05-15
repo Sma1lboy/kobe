@@ -103,6 +103,30 @@ export type SidebarBindingsOpts = {
    * (+1, "next view"). The parent owns the active-view signal.
    */
   onViewSwitch?: (delta: -1 | 1) => void
+  /**
+   * Whether the `/`-search filter is currently active. When true, the
+   * sidebar's single-letter chords (j/k/g/G/d/a/r/P/m) are de-registered
+   * so the user's typing fills the search query input instead of
+   * triggering chords. Non-letter chords (`[`, `]` view switch) keep
+   * firing — the user is allowed to switch view while searching.
+   * Defaults to () => false; sidebars that don't wire search just get
+   * the legacy behaviour.
+   */
+  searchMode?: Accessor<boolean>
+  /**
+   * Fires when the user presses `/` while not in search mode. The
+   * parent flips `searchMode` to true and renders the inline filter
+   * input.
+   */
+  onSearchEnter?: () => void
+  /**
+   * Fires when the user commits or cancels a search:
+   *   - `select: true`  → user pressed `enter` on a filtered match.
+   *     The parent should keep the new selection and exit search mode.
+   *   - `select: false` → user pressed `esc`. The parent should exit
+   *     search mode and restore the previously-selected task.
+   */
+  onSearchExit?: (select: boolean) => void
 }
 
 /**
@@ -131,8 +155,13 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
     return ids[idx]
   }
 
+  const searchModeAccessor = (): boolean => opts.searchMode?.() ?? false
+
+  // Block A — letter chords + `/` to enter search. Disabled while the
+  // user is typing in the search input so typed letters reach the
+  // input instead of firing j/k/g/G/d/a/r/P/m chords.
   useBindings(() => ({
-    enabled: opts.focused(),
+    enabled: opts.focused() && !searchModeAccessor(),
     bindings: bindByIds({
       // sidebar.nav covers j/k/down/up — handler discriminates direction
       // via evt.name. The matcher delivers e.g. {name: "j"} or {name: "down"}.
@@ -175,12 +204,44 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         const id = cursorTaskId()
         if (id !== undefined) opts.onPinRequest?.(id)
       },
-      // `[` and `]` both register against sidebar.view; handler routes
-      // by chord. `]` = +1 ("next view"), `[` = -1.
+      "sidebar.search.enter": () => opts.onSearchEnter?.(),
+    }),
+  }))
+
+  // Block B — view switcher. Always on (even during search) so the
+  // user can flip between Working session / Archives while filtering.
+  // `[` / `]` aren't letters that go into the search query, so keeping
+  // them live doesn't collide with typing.
+  useBindings(() => ({
+    enabled: opts.focused(),
+    bindings: bindByIds({
       "sidebar.view": (evt) => {
         if (evt.name === "]") opts.onViewSwitch?.(1)
         else opts.onViewSwitch?.(-1)
       },
+    }),
+  }))
+
+  // Block C — search-mode chords. Only registered while the search
+  // input is showing, so they don't shadow the normal sidebar chords
+  // outside search mode (no esc / no return-as-search-commit).
+  useBindings(() => ({
+    enabled: opts.focused() && searchModeAccessor(),
+    bindings: bindByIds({
+      // Up/down nav over the filtered rows. j/k are intentionally
+      // excluded here — they need to fall through to the input as
+      // literal text.
+      "sidebar.search.nav": (evt) => {
+        if (evt.name === "down") ctrl.moveDown()
+        else if (evt.name === "up") ctrl.moveUp()
+      },
+      // Enter commits: select the highlighted task AND exit search.
+      "sidebar.search.submit": () => {
+        ctrl.selectCurrent()
+        opts.onSearchExit?.(true)
+      },
+      // Esc cancels: exit search and restore the prior selection.
+      "sidebar.search.cancel": () => opts.onSearchExit?.(false),
     }),
   }))
 }

@@ -393,6 +393,48 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Delete task (with confirm)",
     hint: { keys: "d", label: "delete" },
   },
+  {
+    // `/`-search filter. Enters an inline search mode rendered at the
+    // top of the sidebar: typed text fuzz-matches against task title +
+    // repo basename, up/down navigates the filtered list, enter selects
+    // + exits, esc cancels + restores. While search is active the
+    // single-letter sidebar chords (j/k/g/G/d/a/r/P/m) are
+    // de-registered so they fall through to the input as literal text.
+    // `[` / `]` view switch keeps working so the user can search inside
+    // Archives.
+    id: "sidebar.search.enter",
+    scope: "sidebar",
+    keys: ["/"],
+    category: "Sidebar",
+    description: "Search tasks (fuzzy filter)",
+    hint: { keys: "/", label: "search" },
+  },
+  {
+    // Search-mode nav. Only fires while the search input is focused —
+    // j/k are intentionally NOT bound here so they reach the input.
+    id: "sidebar.search.nav",
+    scope: "sidebar",
+    keys: ["down", "up"],
+    category: "Sidebar",
+    description: "Move highlight in search results",
+  },
+  {
+    // Search-mode submit: select highlighted match and leave search.
+    id: "sidebar.search.submit",
+    scope: "sidebar",
+    keys: ["return"],
+    category: "Sidebar",
+    description: "Select search match and exit search",
+  },
+  {
+    // Search-mode cancel. Only registered while searching; outside
+    // search there is no sidebar-scope esc handler.
+    id: "sidebar.search.cancel",
+    scope: "sidebar",
+    keys: ["escape"],
+    category: "Sidebar",
+    description: "Cancel search (restore prior selection)",
+  },
 
   // ─── Workspace (chat) ─────────────────────────────────────────────────
   {

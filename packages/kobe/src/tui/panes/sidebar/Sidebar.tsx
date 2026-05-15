@@ -145,6 +145,40 @@ export function Sidebar(props: SidebarProps) {
   // through `VIEW_TABS`.
   const [view, setView] = createSignal<SidebarView>("active")
 
+  // `/`-search state. `searchMode` flips on when the user presses `/`
+  // and back off when they press enter (commits a selection) or esc
+  // (cancels). The query is fuzz-matched against task title + repo
+  // basename inside `buildRows`. While the mode is on, the inline
+  // input row is rendered above the view switcher and the sidebar's
+  // single-letter chords are de-registered (see keys.ts) so typed
+  // letters reach the input rather than firing j/k/g/d/a/r/P/m.
+  //
+  // `prevSelectedIdBeforeSearch` is snapshotted on enter so esc can
+  // restore the user to the task they were looking at before they
+  // started searching — otherwise the cursor would drift to wherever
+  // the last filtered match left it.
+  const [searchMode, setSearchMode] = createSignal(false)
+  const [searchQuery, setSearchQuery] = createSignal("")
+  let prevSelectedIdBeforeSearch: string | null = null
+
+  function enterSearch(): void {
+    prevSelectedIdBeforeSearch = props.selectedId()
+    setSearchQuery("")
+    setSearchMode(true)
+  }
+  function exitSearch(select: boolean): void {
+    setSearchMode(false)
+    setSearchQuery("")
+    // On esc-cancel, re-select the task that was active before the user
+    // entered search mode. On enter-commit (`select=true`),
+    // ctrl.selectCurrent() already fired in the keys handler so the
+    // parent's selectedId is up to date — leave it alone.
+    if (!select && prevSelectedIdBeforeSearch !== null) {
+      props.onSelect(prevSelectedIdBeforeSearch)
+    }
+    prevSelectedIdBeforeSearch = null
+  }
+
   // Tick that busts each main row's branch-name memo on a fixed
   // interval. Cheap (one signal write per tick); the actual git call
   // only happens when a row is visible and re-renders. We deliberately
@@ -161,8 +195,10 @@ export function Sidebar(props: SidebarProps) {
   void branchInterval
 
   // Filtered, flat row list for the active view. Recomputes only when
-  // the upstream tasks accessor or the view changes.
-  const rows = createMemo(() => buildRows(props.tasks(), view()))
+  // the upstream tasks accessor, the view, or the search query
+  // changes. Search query is only applied when `searchMode` is on so
+  // we don't keep filtering against stale query text after esc-cancel.
+  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
   const flatIds = createMemo(() => flattenIds(rows()))
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
@@ -199,6 +235,17 @@ export function Sidebar(props: SidebarProps) {
     }),
   )
 
+  // Reset cursor to 0 on every search query keystroke — keeps the
+  // highlight landed on the top match instead of stranding it on a
+  // now-hidden row. Only runs while search mode is on.
+  createEffect(
+    on([searchMode, searchQuery], () => {
+      if (!searchMode()) return
+      const ids = flatIds()
+      setCursorIndex(ids.length > 0 ? 0 : -1)
+    }),
+  )
+
   /**
    * Cycle the view by `delta` (-1 = `[` / left, +1 = `]` / right). Wraps:
    * `[` from the leftmost lands on the rightmost and vice versa. Today
@@ -229,6 +276,9 @@ export function Sidebar(props: SidebarProps) {
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
+    searchMode,
+    onSearchEnter: () => enterSearch(),
+    onSearchExit: (select) => exitSearch(select),
   })
 
   return (
@@ -271,6 +321,26 @@ export function Sidebar(props: SidebarProps) {
           TASKS
         </text>
       </box>
+
+      {/* Inline `/`-search input. Only rendered while searchMode is on
+         (entered via `/`); de-rendering on exit keeps the row count
+         stable for users not using search. The input is auto-focused
+         so the user can start typing immediately; up/down/enter/esc
+         are handled by the sidebar-scope search bindings in keys.ts,
+         not by the input itself. */}
+      <Show when={searchMode()}>
+        <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
+          <text fg={theme.info} wrapMode="none">
+            /
+          </text>
+          <input
+            value={searchQuery()}
+            placeholder="fuzzy filter"
+            focused={true}
+            onInput={(v: string) => setSearchQuery(v.replace(/[\r\n]+/g, ""))}
+          />
+        </box>
+      </Show>
 
       {/* View switcher: tab strip with the active view bracketed +
          emphasized. `[` / `]` toggles. */}
@@ -376,7 +446,13 @@ export function Sidebar(props: SidebarProps) {
           </For>
           <Show when={flatIds().length === 0}>
             <box paddingTop={1} paddingLeft={1}>
-              <text fg={theme.textMuted}>{view() === "active" ? "No active tasks." : "No archived tasks."}</text>
+              <text fg={theme.textMuted}>
+                {searchMode() && searchQuery().trim().length > 0
+                  ? "No matching tasks."
+                  : view() === "active"
+                    ? "No active tasks."
+                    : "No archived tasks."}
+              </text>
             </box>
           </Show>
         </box>
