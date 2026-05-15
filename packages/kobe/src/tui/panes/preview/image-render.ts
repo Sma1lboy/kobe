@@ -51,6 +51,28 @@ export type DecodedImage = {
 }
 
 /**
+ * Multi-frame decoded image (animated GIF). Each frame has the same
+ * dimensions; only the pixel bytes differ. {@link MediaBody} flips
+ * through them on a timer at `frameDelayMs` cadence.
+ *
+ * We cap frame count at MAX_FRAMES; longer animations are decimated by
+ * letting ffmpeg emit at a capped fps. The per-frame redraw cost in
+ * opentui (one `<span>` per cell, ~6000 cells for a 100×60 image)
+ * outweighs anything finer than ~10 fps anyway.
+ */
+export type DecodedImageSequence = {
+  readonly cols: number
+  readonly pixelRows: number
+  readonly frames: readonly Uint8Array[]
+  readonly frameDelayMs: number
+}
+
+/** Hard ceiling on animated-image frame count — keeps memory bounded. */
+const MAX_FRAMES = 60
+/** Lower bound on per-frame delay — anything faster looks like a stutter in opentui. */
+const MIN_FRAME_DELAY_MS = 33
+
+/**
  * Pick output dimensions that fit `(maxCols, maxRows)` character cells
  * while preserving the source aspect ratio (taking the 2:1 cell aspect
  * into account so the rendered image isn't squished vertically).
@@ -216,6 +238,124 @@ export async function probeMediaDims(absPath: string): Promise<{ width: number; 
       resolve({ width, height })
     })
   })
+}
+
+/**
+ * Probe an animated image for its frame count and timing. Returns
+ * `null` on failure; the caller can fall back to a static first-frame
+ * decode in that case.
+ *
+ * Strategy: ask ffprobe for `nb_read_frames` (definitive count, needs
+ * a full stream scan but for short GIFs is cheap) and `duration`. The
+ * mean delay is `duration / nb_read_frames` clamped to a sane floor.
+ * We don't try to honour per-frame `delay_time` from the GIF header —
+ * the cost of fine-grained timing isn't worth it for a TUI preview.
+ */
+export async function probeFrameTiming(absPath: string): Promise<{ frameCount: number; frameDelayMs: number } | null> {
+  if (!absPath) return null
+  return new Promise((resolve) => {
+    const child = spawn(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=nb_read_frames,duration",
+        "-of",
+        "csv=p=0",
+        absPath,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    )
+    const out: Buffer[] = []
+    child.stdout.on("data", (c: Buffer) => out.push(c))
+    child.on("error", () => resolve(null))
+    child.on("close", (code) => {
+      if (code !== 0) return resolve(null)
+      const text = Buffer.concat(out).toString("utf8").trim()
+      // ffprobe with multiple show_entries on the same stream emits
+      // them comma-separated on one line. Order matches the request
+      // order: `duration,nb_read_frames`. The first scalar in our
+      // request was `nb_read_frames` though — but ffprobe reorders to
+      // its internal canonical sequence, so we tolerate either order.
+      const parts = text.split(/[,\n]/).map((s) => s.trim())
+      let frameCount = 0
+      let durationSec = 0
+      for (const p of parts) {
+        const n = Number.parseFloat(p)
+        if (!Number.isFinite(n) || n <= 0) continue
+        if (Number.isInteger(n) && !frameCount) frameCount = n
+        else if (!durationSec) durationSec = n
+      }
+      if (!frameCount || !durationSec) return resolve(null)
+      const mean = (durationSec * 1000) / frameCount
+      resolve({ frameCount, frameDelayMs: Math.max(MIN_FRAME_DELAY_MS, mean) })
+    })
+  })
+}
+
+/**
+ * Decode every frame of `absPath` (typically an animated GIF) into a
+ * fixed-size pixel grid. The output stream is `frameCount` × `cols` ×
+ * `pxRows` × 3 bytes; we slice it into per-frame `Uint8Array`s.
+ *
+ * If `frameCount * cols * pxRows * 3` would exceed the memory cap we
+ * leave the result at MAX_FRAMES frames by letting ffmpeg sample at a
+ * matching fps via `-vf "fps=…"`. The MediaBody timer cycles through
+ * whatever count we end up with at `frameDelayMs` cadence.
+ */
+export async function decodeAnimatedImage(
+  absPath: string,
+  targetCols: number,
+  targetPxRows: number,
+  frameCount: number,
+  frameDelayMs: number,
+): Promise<DecodedImageSequence | null> {
+  if (targetCols <= 0 || targetPxRows <= 0 || frameCount <= 0) return null
+  if (!(await ffmpegAvailable())) return null
+  const cappedFrames = Math.min(frameCount, MAX_FRAMES)
+  // If we decimate, slow down the playback delay proportionally so the
+  // total animation duration stays close to the source.
+  const effectiveDelay = (frameDelayMs * frameCount) / cappedFrames
+  const filters = [`scale=${targetCols}:${targetPxRows}:flags=lanczos`]
+  if (cappedFrames < frameCount) {
+    // Force ffmpeg to emit exactly `cappedFrames` frames spread across
+    // the input — set fps and frame cap so the count is deterministic.
+    const sourceFps = (frameCount * 1000) / (frameDelayMs * frameCount) // = 1000/frameDelayMs
+    const targetFps = (sourceFps * cappedFrames) / frameCount
+    filters.unshift(`fps=${targetFps.toFixed(3)}`)
+  }
+  const args = [
+    "-loglevel",
+    "error",
+    "-i",
+    absPath,
+    "-vf",
+    filters.join(","),
+    "-frames:v",
+    String(cappedFrames),
+    "-pix_fmt",
+    "rgb24",
+    "-f",
+    "rawvideo",
+    "-",
+  ]
+  const frameBytes = targetCols * targetPxRows * 3
+  const buf = await runFfmpegRawvideo(args, frameBytes * cappedFrames)
+  if (!buf) return null
+  const frames: Uint8Array[] = []
+  for (let i = 0; i < cappedFrames; i += 1) {
+    const start = i * frameBytes
+    const slice = buf.subarray(start, start + frameBytes)
+    // Copy out of the shared Buffer into an owned Uint8Array so a
+    // garbage Buffer release doesn't pull a frame's data out from
+    // under the renderer.
+    frames.push(new Uint8Array(slice))
+  }
+  return { cols: targetCols, pixelRows: targetPxRows, frames, frameDelayMs: effectiveDelay }
 }
 
 /**

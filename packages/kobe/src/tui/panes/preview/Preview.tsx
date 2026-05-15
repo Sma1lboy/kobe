@@ -32,16 +32,31 @@
  */
 
 import { RGBA, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
+import {
+  type Accessor,
+  For,
+  Match,
+  Show,
+  Switch,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+} from "solid-js"
 import { useTheme } from "../../context/theme"
 import { DiffLine, FileLine } from "./DiffLine"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import {
   type DecodedImage,
+  type DecodedImageSequence,
   computeTargetDims,
+  decodeAnimatedImage,
   decodeImage,
   decodePdfFirstPage,
   decodeVideoFirstFrame,
+  probeFrameTiming,
   probeMediaDims,
 } from "./image-render"
 import { usePreviewBindings } from "./keys"
@@ -66,6 +81,7 @@ import {
   setActiveScroll,
   tabLabel,
 } from "./state"
+import { type XmlToken, splitTokensByLine, tokenizeXml } from "./xml-highlight"
 
 /** Public props — matches the contract in the brief verbatim. */
 export type PreviewProps = {
@@ -154,6 +170,8 @@ type MediaContent = {
   readonly mtime: Date
   readonly dims?: ImageDims
   readonly decoded?: DecodedImage
+  /** Animated frames for GIFs; if set, MediaBody flips through them on a timer. */
+  readonly animation?: DecodedImageSequence
 }
 
 type ContentState =
@@ -162,6 +180,7 @@ type ContentState =
   | { kind: "error"; message: string }
   | { kind: "lines"; lines: string[]; mode: PreviewMode }
   | { kind: "media"; media: MediaContent }
+  | { kind: "xml"; rows: XmlToken[][] }
 
 /**
  * Boil a `readFile` / `readDiff` error string down to something the
@@ -349,13 +368,54 @@ export function Preview(props: PreviewProps) {
               },
             })
           }
+          const pushAnimation = (probedDims: ImageDims, animation: DecodedImageSequence) => {
+            if (!stillActive()) return
+            setContent({
+              kind: "media",
+              media: {
+                relPath: key.path,
+                kind: mediaKind,
+                size: s.size,
+                mtime: s.mtime,
+                dims: probedDims,
+                animation,
+              },
+            })
+          }
 
           const budget = computeImageBudget()
           if (mediaKind.kind === "image" && dims) {
             const target = computeTargetDims(dims.width, dims.height, budget.maxCols, budget.maxRows)
-            void decodeImage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
-              if (decoded) pushDecoded(dims as ImageDims, decoded)
-            })
+            // GIFs go through the multi-frame decoder. We probe timing
+            // first to decide between animated and still rendering;
+            // a 1-frame GIF (yes, it's a thing) falls through to the
+            // static decodeImage path so MediaBody doesn't spin up a
+            // pointless animation timer.
+            if (mediaKind.format === "gif") {
+              void probeFrameTiming(s.absPath).then(async (timing) => {
+                if (timing && timing.frameCount > 1) {
+                  const seq = await decodeAnimatedImage(
+                    s.absPath,
+                    target.cols,
+                    target.pixelRows,
+                    timing.frameCount,
+                    timing.frameDelayMs,
+                  )
+                  if (seq) {
+                    pushAnimation(dims as ImageDims, seq)
+                    return
+                  }
+                }
+                // Fallback: timing failed, or single frame, or decode
+                // failed — show the still first frame.
+                const still = await decodeImage(s.absPath, target.cols, target.pixelRows)
+                if (still) pushDecoded(dims as ImageDims, still)
+              })
+            } else {
+              void decodeImage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
+                if (decoded) pushDecoded(dims as ImageDims, decoded)
+              })
+            }
           } else if (mediaKind.kind === "video") {
             // Video: probe dims first (no cheap header parser like PNG),
             // then decode the first frame at the aspect-correct size.
@@ -422,6 +482,15 @@ export function Preview(props: PreviewProps) {
             kind: "error",
             message: "(binary file — preview not supported)",
           })
+          return
+        }
+        // SVG (and any other XML-family text) goes through the XML
+        // tokenizer for syntax-aware coloring. Diff mode keeps the
+        // unified-diff rendering path because the green/red prefix
+        // semantics are more useful there than tag/attr colors.
+        if (mediaKind.kind === "svg" && key.mode === "file") {
+          const tokens = tokenizeXml(r.text)
+          setContent({ kind: "xml", rows: splitTokensByLine(tokens) })
           return
         }
         setContent({ kind: "lines", lines: splitLines(r.text), mode: "file" })
@@ -622,6 +691,9 @@ function Body(props: { content: Accessor<ContentState>; refSet: (r: ScrollBoxRen
         <Match when={kind() === "media"}>
           <MediaBody content={props.content} />
         </Match>
+        <Match when={kind() === "xml"}>
+          <XmlBody content={props.content} refSet={props.refSet} />
+        </Match>
       </Switch>
     </box>
   )
@@ -742,47 +814,154 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
             ["Modified", formatMtime(info.mtime)],
           ]
         })
+        // VSCode-style UX: once the inline preview is up, the full
+        // metadata table becomes redundant chrome. We collapse it to a
+        // single compact "300×168 · PNG · 52.1 KiB" subtitle next to
+        // the path. The expanded table only renders when the decode
+        // hasn't (or can't) succeed — that's the case where the user
+        // actually needs to see size / mtime to decide whether to open
+        // externally.
+        const previewReady = createMemo(() => {
+          const info = m()
+          return info.decoded != null || info.animation != null
+        })
+        const decodedSubtitle = createMemo(() => {
+          const info = m()
+          if (!previewReady()) return null
+          const parts: string[] = []
+          if (info.dims) parts.push(`${info.dims.width}×${info.dims.height}`)
+          parts.push(describeMediaKind(info.kind))
+          parts.push(formatBytes(info.size))
+          if (info.animation) parts.push(`▶ ${info.animation.frames.length} frames`)
+          return parts.join(" · ")
+        })
         const hint = createMemo(() => {
           const info = m()
           const canPreview = info.kind.kind === "image" || info.kind.kind === "video" || info.kind.kind === "pdf"
-          if (canPreview && !info.decoded) return "rendering preview…"
+          if (canPreview && !previewReady()) return "rendering preview…"
           return "(binary file — open externally to view)"
+        })
+
+        // Animation: when a GIF's frames are loaded, run a setInterval
+        // that flips the active frame index. The interval is rebuilt
+        // (and the old one torn down) whenever the animation reference
+        // changes — switching tabs replaces the MediaContent snapshot
+        // entirely, which resets the timer cleanly.
+        const [frameIdx, setFrameIdx] = createSignal(0)
+        createEffect(
+          on(
+            () => m().animation,
+            (seq) => {
+              setFrameIdx(0)
+              if (!seq || seq.frames.length <= 1) return
+              const timer = setInterval(() => {
+                setFrameIdx((i) => (i + 1) % seq.frames.length)
+              }, seq.frameDelayMs)
+              onCleanup(() => clearInterval(timer))
+            },
+          ),
+        )
+        const currentDecoded = createMemo<DecodedImage | null>(() => {
+          const info = m()
+          if (info.animation) {
+            const idx = frameIdx() % info.animation.frames.length
+            return {
+              cols: info.animation.cols,
+              pixelRows: info.animation.pixelRows,
+              rgb: info.animation.frames[idx],
+            }
+          }
+          return info.decoded ?? null
         })
         return (
           <box paddingTop={1} paddingLeft={1} paddingRight={1} flexDirection="column">
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
               {m().relPath}
+              <Show when={decodedSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
             </text>
-            <Show when={m().decoded}>
+            <Show when={currentDecoded()}>
               {(decoded) => (
                 <box paddingTop={1} flexDirection="column">
                   <HalfBlockImage decoded={decoded()} />
                 </box>
               )}
             </Show>
-            <box paddingTop={1} flexDirection="column">
-              <For each={lines()}>
-                {([label, value]) => (
-                  <box flexDirection="row">
-                    <text fg={theme.textMuted} wrapMode="none">
-                      {label.padEnd(11, " ")}
-                    </text>
-                    <text fg={theme.text} wrapMode="none">
-                      {value}
-                    </text>
-                  </box>
-                )}
-              </For>
-            </box>
-            <box paddingTop={1}>
-              <text fg={theme.textMuted} wrapMode="word">
-                {hint()}
-              </text>
-            </box>
+            <Show when={!previewReady()}>
+              <box paddingTop={1} flexDirection="column">
+                <For each={lines()}>
+                  {([label, value]) => (
+                    <box flexDirection="row">
+                      <text fg={theme.textMuted} wrapMode="none">
+                        {label.padEnd(11, " ")}
+                      </text>
+                      <text fg={theme.text} wrapMode="none">
+                        {value}
+                      </text>
+                    </box>
+                  )}
+                </For>
+              </box>
+              <box paddingTop={1}>
+                <text fg={theme.textMuted} wrapMode="word">
+                  {hint()}
+                </text>
+              </box>
+            </Show>
           </box>
         )
       }}
     </Show>
+  )
+}
+
+/**
+ * Render a tokenized XML/SVG document as colored text rows. Each token
+ * picks a theme color based on its kind; whitespace and unknown content
+ * are rendered without styling so the visible diff vs. plain text is
+ * limited to genuinely-meaningful tokens.
+ *
+ * Wrapped in a scrollbox to match `LinesBody` so the body scroll keymap
+ * still works on highlighted documents.
+ */
+function XmlBody(props: { content: Accessor<ContentState>; refSet: (r: ScrollBoxRenderable) => void }) {
+  const { theme } = useTheme()
+  const rows = createMemo<XmlToken[][]>(() => {
+    const c = props.content()
+    return c.kind === "xml" ? c.rows : []
+  })
+  const colorFor = (kind: XmlToken["kind"]): RGBA => {
+    switch (kind) {
+      case "tag-delim":
+        return theme.accent
+      case "tag-name":
+        return theme.info
+      case "attr-name":
+        return theme.warning
+      case "attr-eq":
+        return theme.textMuted
+      case "attr-value":
+        return theme.success
+      case "comment":
+      case "cdata":
+      case "doctype":
+        return theme.textMuted
+      default:
+        return theme.text
+    }
+  }
+  return (
+    <scrollbox ref={props.refSet} flexGrow={1} scrollbarOptions={{ visible: false }}>
+      <For each={rows()}>
+        {(row) => (
+          <box paddingLeft={1} paddingRight={1}>
+            <text wrapMode="none">
+              <For each={row}>{(tok) => <span style={{ fg: colorFor(tok.kind) }}>{tok.text}</span>}</For>
+              <Show when={row.length === 0}> </Show>
+            </text>
+          </box>
+        )}
+      </For>
+    </scrollbox>
   )
 }
 
