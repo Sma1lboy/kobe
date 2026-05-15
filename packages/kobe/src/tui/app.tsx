@@ -466,6 +466,13 @@ function Shell(props: AppDeps) {
   // app-keymap.tsx so the priority stack + scope rationale are
   // visible in one place. See that file for the registration order
   // and the rule about plain-letter vs modifier-prefixed chords.
+  // Mirror of the sidebar's `/`-search active flag, lifted here so the
+  // app keymap can gate the sidebar-scope plain-letter chords (n/s/q)
+  // off while the user is typing in the search input. The Sidebar
+  // component still owns the underlying signal; this is a one-way
+  // observer wired via its `onSearchActiveChange` callback.
+  const [sidebarSearchActive, setSidebarSearchActive] = createSignal(false)
+
   useAppKeymap({
     dialog,
     focusedPane,
@@ -480,6 +487,7 @@ function Shell(props: AppDeps) {
     onQuit: quit,
     activeTask,
     openActiveTaskInEditor,
+    sidebarSearchActive,
   })
 
   // Per-ChatTab completion notifications.
@@ -579,6 +587,7 @@ function Shell(props: AppDeps) {
               })
             }}
             onAddTask={() => void openNewTaskFlow()}
+            onSearchActiveChange={(active: boolean) => setSidebarSearchActive(active)}
             selectedId={selectedId}
             focused={isFocused("sidebar")}
           />

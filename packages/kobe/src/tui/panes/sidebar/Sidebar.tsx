@@ -90,6 +90,15 @@ export type SidebarProps = {
    */
   onAddTask?: () => void
   /**
+   * Fires when the `/`-search filter opens or closes. Lifted out of
+   * the sidebar so the app-level Shell can gate its sidebar-scoped
+   * plain-letter bindings (`n` / `s` / `q` in app-keymap.tsx) on
+   * `!sidebarSearchActive()` — otherwise typing `n` / `s` / `q` into
+   * the search query would fire those chords and steal the
+   * keystroke before it could reach the input.
+   */
+  onSearchActiveChange?: (active: boolean) => void
+  /**
    * Optional width override. When omitted, falls back to {@link SIDEBAR_WIDTH}.
    * Wired by the Shell so the sidebar↔workspace splitter can resize the pane
    * at runtime. Reactive — changing the accessor's value reflows immediately.
@@ -165,6 +174,7 @@ export function Sidebar(props: SidebarProps) {
     prevSelectedIdBeforeSearch = props.selectedId()
     setSearchQuery("")
     setSearchMode(true)
+    props.onSearchActiveChange?.(true)
   }
   function exitSearch(select: boolean): void {
     setSearchMode(false)
@@ -177,6 +187,7 @@ export function Sidebar(props: SidebarProps) {
       props.onSelect(prevSelectedIdBeforeSearch)
     }
     prevSelectedIdBeforeSearch = null
+    props.onSearchActiveChange?.(false)
   }
 
   // Tick that busts each main row's branch-name memo on a fixed
