@@ -48,6 +48,7 @@ import {
 import { useTheme } from "../../context/theme"
 import { DiffLine, FileLine } from "./DiffLine"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
+import { openExternal } from "./external-open"
 import {
   type DecodedImage,
   type DecodedImageSequence,
@@ -522,6 +523,17 @@ export function Preview(props: PreviewProps) {
       scroll?.scrollTo(1e9)
     },
     pageSize: () => PAGE_LINES,
+    openExternal: () => {
+      // Only meaningful when the active tab is a media file with a
+      // resolved absolute path. Other ContentState kinds (lines, xml,
+      // loading, error) don't have an external viewer concept — the
+      // key becomes a no-op there, which is the right UX (a stray `o`
+      // shouldn't launch anything).
+      const c = content()
+      if (c.kind === "media") {
+        openExternal(c.media.absPath)
+      }
+    },
   })
 
   return (
@@ -814,12 +826,14 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
         //   * an image preview is rendering → "rendering preview…"
         //   * the file kind is not previewable → ticket's verbatim copy
         //     "Preview not supported for <type>. Open externally."
+        //     plus the `o` keybinding so the user can actually do it
+        //     without leaving the TUI.
         //   * decode failed for an image → same "preview not supported"
         //     phrasing, since the user's recovery is the same.
         const hint = createMemo(() => {
           const info = m()
           if (info.kind.kind === "image" && !previewReady()) return "rendering preview…"
-          return `Preview not supported for ${describeMediaKind(info.kind)}. Open externally.`
+          return `Preview not supported for ${describeMediaKind(info.kind)}. Press o to open externally.`
         })
 
         // Animation: when a GIF's frames are loaded, run a setInterval
