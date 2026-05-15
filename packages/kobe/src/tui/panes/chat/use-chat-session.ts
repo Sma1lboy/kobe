@@ -194,8 +194,8 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     tabId: string,
     sessionId: string,
     hydrateOpts: { showError?: boolean } = {},
-  ): void {
-    orchestrator
+  ): Promise<void> {
+    return orchestrator
       .readHistoryWithMetrics(sessionId)
       .then(({ messages, usageMetrics }) => {
         if (opts.taskId() !== taskId) return
@@ -358,10 +358,14 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
     if (!tab?.sessionId) return
     const sessionId = tab.sessionId
     const taskId = live.id
+    let refreshing = false
     const interval = setInterval(() => {
       const runState = orchestrator.chatRunStateSignal()().get(chatRunStateKey(taskId, tabId))
-      if (runState === "running") return
-      hydrateHistoryForTab(taskId, tabId, sessionId, { showError: false })
+      if (runState === "running" || runState === "awaiting_input" || refreshing) return
+      refreshing = true
+      hydrateHistoryForTab(taskId, tabId, sessionId, { showError: false }).finally(() => {
+        refreshing = false
+      })
     }, 1500)
     onCleanup(() => clearInterval(interval))
   })
