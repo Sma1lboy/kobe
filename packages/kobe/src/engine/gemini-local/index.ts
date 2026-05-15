@@ -64,7 +64,6 @@ export class GeminiLocal implements AIEngine {
         while (true) {
           if (idx < session.queue.length) {
             const ev = session.queue[idx++]
-            if (!ev) continue
             yield ev
             if (ev.type === "done" || ev.type === "error") return
             continue
@@ -190,7 +189,8 @@ export class GeminiLocal implements AIEngine {
         })
         if (session) this.notify(session)
       } finally {
-        await Promise.race([exitObserved, new Promise<void>((r) => setTimeout(r, 500))])
+        // stdout can close before the child emits exit; keep cleanup bounded.
+        await Promise.race([exitObserved, new Promise<void>((r) => setTimeout(r, PROCESS_EXIT_GRACE_MS))])
         if (session) {
           const lastEv = queue[queue.length - 1]
           if (
@@ -229,6 +229,7 @@ export class GeminiLocal implements AIEngine {
 }
 
 const STDERR_TAIL_CAP = 4 * 1024
+const PROCESS_EXIT_GRACE_MS = 500
 
 function captureStderrTail(
   stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNullStreams["stderr"]["on"] },

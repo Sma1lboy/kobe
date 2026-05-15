@@ -116,12 +116,12 @@ export interface GeminiRecordMessage {
 export function parseConversation(raw: string, opts: { metadataOnly?: boolean } = {}): GeminiConversation | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
-  if (trimmed.startsWith("{") && !trimmed.includes("\n")) {
+  if (trimmed.startsWith("{")) {
     try {
       const parsed = JSON.parse(trimmed)
       return normalizeLegacyConversation(parsed)
     } catch {
-      return null
+      /* fall through to newline-record parsing */
     }
   }
 
@@ -150,7 +150,7 @@ export function parseConversation(raw: string, opts: { metadataOnly?: boolean } 
       metadata = { ...metadata, ...record.$set }
       continue
     }
-    if (typeof record.sessionId === "string" && typeof record.projectHash === "string") {
+    if (typeof record.sessionId === "string") {
       metadata = { ...metadata, ...record }
       continue
     }

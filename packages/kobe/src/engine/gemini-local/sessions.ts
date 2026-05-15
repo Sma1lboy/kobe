@@ -10,7 +10,7 @@ export async function listSessionsForCwd(cwd: string, deps?: GeminiHistoryDeps):
   const actualDeps = deps ?? defaultDeps
   const projectIds = await projectIdentifiersForCwd(cwd, actualDeps)
   if (projectIds.size === 0) return []
-  const out: SessionMeta[] = []
+  const bySessionId = new Map<string, SessionMeta>()
   for (const file of await listChatFiles(actualDeps)) {
     const projectId = path.basename(path.dirname(path.dirname(file)))
     if (!projectIds.has(projectId)) continue
@@ -18,13 +18,16 @@ export async function listSessionsForCwd(cwd: string, deps?: GeminiHistoryDeps):
     const conversation = parseConversation(raw)
     if (!conversation || conversation.kind === "subagent") continue
     const st = await stat(file).catch(() => null)
-    out.push({
+    const next: SessionMeta = {
       sessionId: conversation.sessionId,
       mtimeMs: st?.mtimeMs ?? Date.parse(conversation.lastUpdated),
       firstUserMessage: (conversation.firstUserMessage ?? null)?.slice(0, PREVIEW_CHAR_CAP) ?? null,
       messageCount: conversation.messages.length,
-    })
+    }
+    const prev = bySessionId.get(next.sessionId)
+    if (!prev || next.mtimeMs > prev.mtimeMs) bySessionId.set(next.sessionId, next)
   }
+  const out = [...bySessionId.values()]
   out.sort((a, b) => b.mtimeMs - a.mtimeMs)
   return out
 }
