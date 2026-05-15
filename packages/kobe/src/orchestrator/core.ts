@@ -183,6 +183,7 @@ export class Orchestrator {
    * per-process by design.
    */
   private readonly pendingInputBroker: PendingInputBroker = new InMemoryPendingInputBroker()
+  private readonly resolvedHistoryInputRequestIds = new Set<string>()
   /** Counter for generating unique requestIds across the orchestrator's lifetime. */
   private requestIdCounter = 0
   /**
@@ -542,6 +543,7 @@ export class Orchestrator {
     const task = this.requireTask(id)
     const resolved = this.pendingInputBroker.resolve(task.id, requestId)
     if (!resolved) return
+    if (requestId.startsWith("history:")) this.resolvedHistoryInputRequestIds.add(requestId)
     const pending = resolved.payload
     this.bumpRunState()
 
@@ -978,6 +980,7 @@ export class Orchestrator {
       const existing = new Set(this.pendingInputBroker.snapshot(target.taskId).map((entry) => entry.requestId))
       const key = tabKey(target.taskId, target.tabId)
       for (const entry of pending) {
+        if (this.resolvedHistoryInputRequestIds.has(entry.requestId)) continue
         if (existing.has(entry.requestId)) continue
         this.pendingInputBroker.record(target.taskId, key, entry.requestId, entry.payload)
         changed = true

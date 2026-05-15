@@ -1692,6 +1692,61 @@ describe("Orchestrator engine call shape", () => {
     unsubscribe()
   })
 
+  test("history reads do not rehydrate a history pending input after it is answered", async () => {
+    const engine = new HistoryEngine("claude")
+    const { orch } = await buildOrchestrator(engine)
+    const task = await orch.createTask({ repo, title: "bg answered question", prompt: "" })
+    const tabId = await orch.openSessionInTab(task.id, "bg-session", { vendor: "claude", title: "bg question" })
+    const events: OrchestratorEvent[] = []
+    const unsubscribe = orch.subscribeEvents(task.id, (ev) => events.push(ev), tabId)
+    engine.history("bg-session", [
+      {
+        role: "assistant",
+        sessionId: "bg-session",
+        timestamp: "2026-05-14T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_call",
+            callId: "toolu_late_question",
+            name: "AskUserQuestion",
+            input: {
+              questions: [
+                {
+                  question: "Which library should I use?",
+                  options: [{ label: "date-fns", description: "Small" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ])
+
+    await orch.readHistoryWithMetrics("bg-session")
+    expect(orch.peekPendingInput(task.id).map((entry) => entry.requestId)).toEqual([
+      "history:bg-session:toolu_late_question",
+    ])
+
+    await orch.respondToInput(task.id, "history:bg-session:toolu_late_question", {
+      kind: "ask_question",
+      answers: { "Which library should I use?": "date-fns" },
+    })
+    await orch._waitForPumpsIdle()
+    expect(orch.peekPendingInput(task.id)).toEqual([])
+
+    events.length = 0
+    await orch.readHistoryWithMetrics("bg-session")
+
+    expect(orch.peekPendingInput(task.id)).toEqual([])
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: "user_input.request",
+        requestId: "history:bg-session:toolu_late_question",
+      }),
+    )
+    unsubscribe()
+  })
+
   test("started chat tabs cannot switch to another engine", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
