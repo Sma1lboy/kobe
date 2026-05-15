@@ -169,12 +169,24 @@ export function Sidebar(props: SidebarProps) {
   const [searchMode, setSearchMode] = createSignal(false)
   const [searchQuery, setSearchQuery] = createSignal("")
   let prevSelectedIdBeforeSearch: string | null = null
+  // Imperative handle on the inline search input so we can call
+  // `.focus()` after the input mounts. opentui's declarative
+  // `focused={true}` prop wasn't enough on its own: the `<Show>`
+  // wrapper meant the input mounted on the same tick that `/`
+  // triggered enterSearch(), and opentui's keyboard focus didn't
+  // propagate to the new element before the user's next keystroke
+  // arrived — the first char after `/` got dropped because nothing
+  // was holding focus. Calling focus() through this ref on the
+  // microtask queue lets Solid commit the mount first, then forces
+  // focus before the next stdin event lands.
+  let searchInputEl: { focus(): void } | undefined
 
   function enterSearch(): void {
     prevSelectedIdBeforeSearch = props.selectedId()
     setSearchQuery("")
     setSearchMode(true)
     props.onSearchActiveChange?.(true)
+    queueMicrotask(() => searchInputEl?.focus())
   }
   function exitSearch(select: boolean): void {
     setSearchMode(false)
@@ -345,6 +357,17 @@ export function Sidebar(props: SidebarProps) {
             /
           </text>
           <input
+            ref={(el: { focus(): void } | undefined) => {
+              searchInputEl = el
+              // Eager focus on first mount. The queueMicrotask path in
+              // enterSearch() handles the race when this ref fires
+              // before opentui has wired the new element into its
+              // keyboard-focus tree; calling .focus() here as well is
+              // a no-op when the input already has focus, but covers
+              // the case where Solid's commit happens before
+              // queueMicrotask drains.
+              el?.focus()
+            }}
             value={searchQuery()}
             placeholder="fuzzy filter"
             focused={true}
