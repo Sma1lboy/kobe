@@ -65,6 +65,7 @@ import { useThemePersistence } from "./lib/use-theme-persistence"
 import { useWorkspaceTabs } from "./lib/use-workspace-tabs"
 import { detectWorktreeOpener, openWorktree } from "./lib/worktree-opener"
 import { Chat } from "./panes/chat/Chat"
+import { bootstrapHistory } from "./panes/chat/composer/history"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
@@ -893,6 +894,13 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
       console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
     }
   }
+  // Replay persisted prompt history into the in-memory STORE before
+  // the first composer mounts (KOB-157). Sync read of a small JSONL
+  // file under `<kobeStateDir()>/composer-history.jsonl`. Failures are
+  // swallowed inside `bootstrapHistory` — a fresh install with no
+  // history file is the most common case and shouldn't slow boot or
+  // surface a warning.
+  bootstrapHistory()
   // Renderer-level background: transparent so the host terminal's
   // background (theme, image, transparency setting) shows through where
   // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier

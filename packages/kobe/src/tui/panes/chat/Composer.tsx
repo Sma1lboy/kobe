@@ -233,6 +233,14 @@ export interface ComposerProps {
    * without the palette (the Ctrl+R chord becomes inert).
    */
   taskLabelForHistoryKey?: (historyKey: string) => string | undefined
+  /**
+   * Absolute path of the active task's repo root — the worktree's
+   * parent project, NOT the worktree itself. Used as the `project`
+   * field when persisting submitted prompts to disk (KOB-157), so a
+   * later session can filter palette rows by project. `undefined`
+   * persists under the global bucket.
+   */
+  currentProjectRoot?: Accessor<string | undefined>
 }
 
 export function Composer(props: ComposerProps) {
@@ -751,7 +759,7 @@ export function Composer(props: ComposerProps) {
     if (bashMode()) {
       const command = trimmed
       if (command.length === 0) return // bash mode with empty buffer — no-op
-      pushHistory(props.historyKey ?? "global", `!${command}`)
+      pushHistory(props.historyKey ?? "global", `!${command}`, { project: props.currentProjectRoot?.() })
       // Clear synchronously so the bash indicator drops before the
       // command starts streaming. Parent's draft round-trip will also
       // clear; this avoids a one-tick flicker.
@@ -791,7 +799,7 @@ export function Composer(props: ComposerProps) {
     const expandedRaw = hasImages ? imageRegistry.expand(raw) : raw
     const expandedTrimmed = hasImages ? expandedRaw.trim() : trimmed
     if (expandedTrimmed.length > 0) {
-      pushHistory(props.historyKey ?? "global", expandedRaw)
+      pushHistory(props.historyKey ?? "global", expandedRaw, { project: props.currentProjectRoot?.() })
     }
     if (hasImages) imageRegistry.clear()
     setPasteHint(null)

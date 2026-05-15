@@ -1,10 +1,22 @@
-import { beforeEach, describe, expect, test } from "vitest"
+import { afterAll, beforeEach, describe, expect, test } from "vitest"
 import {
   clearAllHistory,
   getAllHistoryEntries,
   getHistory,
   pushHistory,
 } from "../../src/tui/panes/chat/composer/history.ts"
+
+// KOB-157 persistence: keep these unit tests off disk. Without this
+// env override pushHistory would append to the developer's real
+// `~/.kobe/composer-history.jsonl` (or whatever KOBE_HOME_DIR points
+// at) — fine in test sandboxes, but vitest workers don't isolate the
+// home dir for /test/tui/ tests.
+const PRIOR_PERSIST = process.env.KOBE_HISTORY_PERSIST
+process.env.KOBE_HISTORY_PERSIST = "false"
+afterAll(() => {
+  if (PRIOR_PERSIST === undefined) Reflect.deleteProperty(process.env, "KOBE_HISTORY_PERSIST")
+  else process.env.KOBE_HISTORY_PERSIST = PRIOR_PERSIST
+})
 
 describe("composer/history — getAllHistoryEntries (KOB-154)", () => {
   beforeEach(() => {

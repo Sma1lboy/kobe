@@ -237,6 +237,17 @@ export function Chat(props: ChatProps) {
 
   const tasksAcc = props.orchestrator.tasksSignal()
 
+  // Active task's repo root (the worktree's parent project, NOT the
+  // worktree itself). Threaded to Composer for KOB-157 persistence —
+  // stamped onto every disk-persisted history entry so a future
+  // session can filter the palette per-project. `undefined` when no
+  // task is selected; persistence falls back to the global bucket.
+  const currentProjectRoot = createMemo<string | undefined>(() => {
+    const tid = props.taskId()
+    if (!tid) return undefined
+    return props.orchestrator.getTask(tid)?.repo
+  })
+
   // Reverse-lookup for the Ctrl+R prompt-history palette (KOB-154).
   // Composer keys per-tab history rings by `chatTab.id`, occasionally
   // by task id (fallback when no tab is set), or the literal "global".
@@ -967,6 +978,7 @@ export function Chat(props: ChatProps) {
       onEditQueued={editQueued}
       editingQueueId={editingQueueId}
       taskLabelForHistoryKey={taskLabelForHistoryKey}
+      currentProjectRoot={currentProjectRoot}
     />
   )
 }
