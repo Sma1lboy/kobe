@@ -50,7 +50,8 @@ import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import { chatRunStateKey } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { ChatTab, Task, TaskStatus } from "../../../types/task.ts"
-import { type ChatState, applyEvent, createInitialState, pushSystemError, setMessagesFromHistory } from "./store"
+import type { ChatState } from "./row-types"
+import { applyEvent, createInitialState, pushSystemError, setMessagesFromHistory } from "./store"
 
 export interface UseChatSessionOptions {
   /** Solid accessor for the active task id (undefined when none selected). */

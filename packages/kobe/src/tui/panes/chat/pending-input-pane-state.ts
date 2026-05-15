@@ -1,5 +1,5 @@
 import type { UserInputResponse } from "../../../types/engine"
-import type { ChatRow, ChatState } from "./store"
+import type { ChatRow, ChatState } from "./row-types"
 
 export type PendingInputRow = Extract<ChatRow, { kind: "approval" | "question" }>
 export type PendingApprovalRow = Extract<ChatRow, { kind: "approval" }>

@@ -4,7 +4,8 @@ import {
   findPendingInput,
   pendingInputPaneState,
 } from "../../src/tui/panes/chat/pending-input-pane-state"
-import { type ChatState, createInitialState } from "../../src/tui/panes/chat/store"
+import type { ChatState } from "../../src/tui/panes/chat/row-types"
+import { createInitialState } from "../../src/tui/panes/chat/store"
 
 const TS = "2026-05-13T00:00:00.000Z"
 

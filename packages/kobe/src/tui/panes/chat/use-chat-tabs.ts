@@ -6,7 +6,7 @@ import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 import type { useDialog } from "../../ui/dialog"
 import { stringifyErr } from "./chat-utils"
-import type { ChatState } from "./store"
+import type { ChatState } from "./row-types"
 import { pushSystemError } from "./store"
 
 type PatchState = (fn: (state: ChatState) => ChatState) => void

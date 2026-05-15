@@ -1,4 +1,4 @@
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 
 export function estimateContextTokensFromRows(rows: readonly ChatRow[]): number {
   let chars = 0

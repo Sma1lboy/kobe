@@ -6,7 +6,8 @@ import type { Theme } from "../../context/theme"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
-import type { ChatRow, QueuedPrompt } from "./store"
+import type { ChatRow } from "./row-types"
+import type { QueuedPrompt } from "./store"
 
 export interface ChatViewProps {
   readonly theme: Theme

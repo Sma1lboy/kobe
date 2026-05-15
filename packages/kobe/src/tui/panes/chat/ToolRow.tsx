@@ -18,7 +18,7 @@ import {
   formatWriteDiff,
 } from "./edit-diff"
 import { BLACK_CIRCLE, RESULT_PREFIX } from "./message-figures"
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "./tool-banners"
 import { lookupToolMeta } from "./tool-registry"
 

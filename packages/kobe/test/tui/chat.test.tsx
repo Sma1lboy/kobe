@@ -22,8 +22,8 @@ import {
   formatMultiEditDiff,
   formatWriteDiff,
 } from "../../src/tui/panes/chat/edit-diff.ts"
+import type { ChatState } from "../../src/tui/panes/chat/row-types.ts"
 import {
-  type ChatState,
   QUEUE_SOFT_CAP,
   SCROLLBACK_CAP,
   applyEvent,

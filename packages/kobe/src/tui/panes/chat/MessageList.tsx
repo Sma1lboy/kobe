@@ -49,7 +49,7 @@ import { useTheme } from "../../context/theme"
 import { AssistantRow, BashRow, ReasoningRow, SystemRow, UserRow } from "./MessageRows"
 import { ToolRow } from "./ToolRow"
 import { ApprovalRow, QuestionRow } from "./UserInputRows"
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 import { ToolFoldRow, groupRenderItems, summarizeToolRun } from "./tool-fold"
 import { classifyTool } from "./tool-registry"
 

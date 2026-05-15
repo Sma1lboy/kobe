@@ -1,5 +1,5 @@
+import type { ChatRow, ChatState } from "./row-types"
 import { capMessages } from "./scrollback"
-import type { ChatRow, ChatState } from "./store"
 
 export interface PendingBashContext {
   readonly command: string

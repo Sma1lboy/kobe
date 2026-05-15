@@ -1,8 +1,8 @@
 import { type Accessor, createMemo, onCleanup } from "solid-js"
 import { runBashCommand } from "./bash-mode"
 import { stringifyErr } from "./chat-utils"
+import type { ChatState } from "./row-types"
 import {
-  type ChatState,
   QUEUE_SOFT_CAP,
   drainPendingBashContext,
   enqueueBashCommand,

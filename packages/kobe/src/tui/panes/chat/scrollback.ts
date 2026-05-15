@@ -1,4 +1,4 @@
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 
 export const SCROLLBACK_CAP = 1000
 

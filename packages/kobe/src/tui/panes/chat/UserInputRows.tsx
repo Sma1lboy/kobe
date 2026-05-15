@@ -5,7 +5,7 @@ import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { Markdown } from "./Markdown"
 import { BLACK_CIRCLE, RESULT_PREFIX } from "./message-figures"
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 
 /**
  * Approval row — kobe's host-side rendering of an `ExitPlanMode` plan

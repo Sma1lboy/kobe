@@ -13,7 +13,7 @@ import {
   extractTag,
 } from "./composer/xml-tags"
 import { BLACK_CIRCLE, REFERENCE_MARK } from "./message-figures"
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 
 /**
  * User prompt row.

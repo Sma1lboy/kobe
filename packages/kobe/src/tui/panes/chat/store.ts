@@ -43,7 +43,6 @@ import { capMessages } from "./scrollback.ts"
 
 export { cleanChatText } from "./noise-filter.ts"
 export { setMessagesFromHistory } from "./history-hydrate.ts"
-export type { ChatRow, ChatState } from "./row-types.ts"
 
 export { SCROLLBACK_CAP } from "./scrollback.ts"
 export {

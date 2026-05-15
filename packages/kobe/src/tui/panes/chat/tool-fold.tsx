@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../../context/theme"
-import type { ChatRow } from "./store"
+import type { ChatRow } from "./row-types"
 import { classifyTool } from "./tool-registry"
 
 type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }

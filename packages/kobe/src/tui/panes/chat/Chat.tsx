@@ -54,8 +54,8 @@ import { permissionModeLabel } from "./composer/permission-mode"
 import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
+import type { ChatState } from "./row-types"
 import {
-  type ChatState,
   QUEUE_SOFT_CAP,
   type QueuedPrompt,
   createInitialState,
