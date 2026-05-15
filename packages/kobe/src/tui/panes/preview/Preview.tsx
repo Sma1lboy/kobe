@@ -36,7 +36,14 @@ import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, crea
 import { useTheme } from "../../context/theme"
 import { DiffLine, FileLine } from "./DiffLine"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
-import { type DecodedImage, computeTargetDims, decodeImage } from "./image-render"
+import {
+  type DecodedImage,
+  computeTargetDims,
+  decodeImage,
+  decodePdfFirstPage,
+  decodeVideoFirstFrame,
+  probeMediaDims,
+} from "./image-render"
 import { usePreviewBindings } from "./keys"
 import {
   type ImageDims,
@@ -97,22 +104,36 @@ export type PreviewApi = {
  */
 const PAGE_LINES = 20
 
-/**
- * Half-block image dimensions budget for the preview pane.
- *
- * The pane width varies with terminal size, but we don't have access
- * to opentui's layout-measurement APIs at the call site (the effect
- * runs before the first paint of the body). These constants are a
- * conservative starting point — small enough to fit comfortably in
- * the ~40-cell center column on a default-size Windows Terminal, big
- * enough that the rendered image is still recognisable. A follow-up
- * can read the box's measured size and re-decode on resize.
- */
-const IMAGE_MAX_COLS = 60
-const IMAGE_MAX_ROWS = 30
-
 /** Half-block character (U+2580): fg paints the upper half, bg the lower. */
 const HALF_BLOCK_UPPER = "▀"
+
+/**
+ * Compute a half-block image budget that scales with the terminal size.
+ *
+ * The preview pane shares the row with the sidebar (42 cells) and the
+ * file tree (38 cells, FILETREE_WIDTH in `filetree/FileTree.tsx`).
+ * Whatever's left is the center column, minus a few cells for padding
+ * around the card. Vertically we reserve roughly half the terminal —
+ * the chat panel below the workspace and the metadata-card lines need
+ * to stay readable, and an image that scrolls off-screen defeats the
+ * point of an inline preview.
+ *
+ * Falls back to a conservative fixed budget when stdout isn't a TTY
+ * (the test runner most commonly).
+ */
+const SIDEBAR_RESERVED_COLS = 42
+const FILETREE_RESERVED_COLS = 38
+const PANE_PADDING_COLS = 6
+const PANE_HEADROOM_ROWS = 14
+
+function computeImageBudget(): { maxCols: number; maxRows: number } {
+  const out = process.stdout as { columns?: number; rows?: number }
+  const termCols = typeof out.columns === "number" && out.columns > 0 ? out.columns : 120
+  const termRows = typeof out.rows === "number" && out.rows > 0 ? out.rows : 40
+  const maxCols = Math.max(20, termCols - SIDEBAR_RESERVED_COLS - FILETREE_RESERVED_COLS - PANE_PADDING_COLS)
+  const maxRows = Math.max(10, Math.floor((termRows - PANE_HEADROOM_ROWS) / 2))
+  return { maxCols, maxRows }
+}
 
 /**
  * `media` is the metadata card shown for binary file types we recognise
@@ -260,18 +281,28 @@ export function Preview(props: PreviewProps) {
         }
         setContent({ kind: "loading" })
 
-        // Known media types (images, video, audio, pdf, archives…) never
+        // Known media types (images, video, pdf, audio, archives…) never
         // go through the text pipeline in either mode — KOB-14. We render
-        // a metadata card with type, size, mtime, and parsed image
-        // dimensions when available. SVG is XML and falls through to the
-        // text path below.
+        // a metadata card with type, size, mtime, and parsed dimensions
+        // when available, plus an inline half-block preview for the
+        // kinds where it makes sense (image / video first-frame / pdf
+        // first-page). SVG is XML and falls through to the text path
+        // below.
         const mediaKind = detectMediaKind(key.path)
-        if (mediaKind.kind === "image" || mediaKind.kind === "binary") {
+        const canPreview =
+          mediaKind.kind === "image" ||
+          mediaKind.kind === "video" ||
+          mediaKind.kind === "pdf" ||
+          mediaKind.kind === "binary"
+        if (canPreview) {
           const s = await statFile(wt, key.path)
           if (!s.ok) {
             setContent({ kind: "error", message: summarizePreviewError(s.error) })
             return
           }
+          // Header-parsed image dims when we have a known format. Video
+          // and PDF dims are filled in via ffprobe / pdftoppm asynchronously
+          // alongside the inline render.
           let dims: ImageDims | undefined
           if (mediaKind.kind === "image") {
             const h = await readHeaderBytes(wt, key.path, 32 * 1024)
@@ -281,34 +312,80 @@ export function Preview(props: PreviewProps) {
             }
           }
           // Set the metadata card first so the user sees something
-          // immediately while ffmpeg works in the background.
+          // immediately while ffmpeg / pdftoppm works in the background.
           setContent({
             kind: "media",
             media: { relPath: key.path, kind: mediaKind, size: s.size, mtime: s.mtime, dims },
           })
-          // Kick off the inline half-block render for image files. We
-          // don't await — the metadata card is already displayed and the
-          // decoded image flows in via a second `setContent` once ready.
-          // Stale-result guard: re-check the active tab path before
-          // mutating, because the user may have switched tabs while
-          // ffmpeg was scaling.
+
+          // Stale-tab guard helper: if the user switched away while a
+          // probe / decode was running, drop the result silently.
+          const stillActive = () => {
+            const cur = active()
+            return cur != null && cur.path === key.path
+          }
+          // Reflect freshly-discovered dims back into the metadata card
+          // without dropping any other field. Keeps the card useful when
+          // decode succeeds OR fails downstream.
+          const pushDims = (probedDims: ImageDims) => {
+            if (!stillActive()) return
+            dims = probedDims
+            setContent({
+              kind: "media",
+              media: { relPath: key.path, kind: mediaKind, size: s.size, mtime: s.mtime, dims },
+            })
+          }
+          const pushDecoded = (probedDims: ImageDims, decoded: DecodedImage) => {
+            if (!stillActive()) return
+            setContent({
+              kind: "media",
+              media: {
+                relPath: key.path,
+                kind: mediaKind,
+                size: s.size,
+                mtime: s.mtime,
+                dims: probedDims,
+                decoded,
+              },
+            })
+          }
+
+          const budget = computeImageBudget()
           if (mediaKind.kind === "image" && dims) {
-            const target = computeTargetDims(dims.width, dims.height, IMAGE_MAX_COLS, IMAGE_MAX_ROWS)
+            const target = computeTargetDims(dims.width, dims.height, budget.maxCols, budget.maxRows)
             void decodeImage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
-              if (!decoded) return
-              const cur = active()
-              if (!cur || cur.path !== key.path) return
-              setContent({
-                kind: "media",
-                media: {
-                  relPath: key.path,
-                  kind: mediaKind,
-                  size: s.size,
-                  mtime: s.mtime,
-                  dims,
-                  decoded,
-                },
-              })
+              if (decoded) pushDecoded(dims as ImageDims, decoded)
+            })
+          } else if (mediaKind.kind === "video") {
+            // Video: probe dims first (no cheap header parser like PNG),
+            // then decode the first frame at the aspect-correct size.
+            void probeMediaDims(s.absPath).then(async (probed) => {
+              if (!probed || !stillActive()) return
+              pushDims(probed)
+              const target = computeTargetDims(probed.width, probed.height, budget.maxCols, budget.maxRows)
+              const decoded = await decodeVideoFirstFrame(s.absPath, target.cols, target.pixelRows)
+              if (decoded) pushDecoded(probed, decoded)
+            })
+          } else if (mediaKind.kind === "pdf") {
+            // PDF: pdftoppm doesn't expose page size cheaply, so we render
+            // straight to the full half-block budget and rely on
+            // aspect-correct rasterization downstream of pdftoppm. The
+            // resulting PNG's dims feed back from probeMediaDims after
+            // decode for the metadata card.
+            const target = computeTargetDims(
+              // A4 portrait aspect (1:1.41) is the safe default — most
+              // PDFs are close. `computeTargetDims` will downscale if the
+              // budget can't fit.
+              850,
+              1100,
+              budget.maxCols,
+              budget.maxRows,
+            )
+            void decodePdfFirstPage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
+              if (!decoded || !stillActive()) return
+              // We don't have authoritative page dims; report the render
+              // dims so the user at least sees what was produced.
+              pushDecoded({ width: target.cols, height: target.pixelRows }, decoded)
             })
           }
           return
@@ -622,6 +699,10 @@ export function describeMediaKind(kind: MediaKind): string {
       }
       return labels[kind.format]
     }
+    case "video":
+      return kind.label
+    case "pdf":
+      return "PDF document"
     case "binary":
       return kind.label
     case "svg":
@@ -646,21 +727,33 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
   return (
     <Show when={media()}>
       {(m) => {
-        const info = m()
-        const lines = [
-          ["Type", describeMediaKind(info.kind)],
-          ...(info.dims ? [["Dimensions", `${info.dims.width} × ${info.dims.height} px`]] : []),
-          ["Size", formatBytes(info.size)],
-          ["Modified", formatMtime(info.mtime)],
-        ] as const
-        const hint =
-          info.kind.kind === "image" && !info.decoded ? "rendering preview…" : "(binary file — open externally to view)"
+        // `m` is a Solid accessor; we read it through createMemo so each
+        // derived field re-tracks when the underlying MediaContent flips
+        // (e.g. metadata-only snapshot → metadata+decoded snapshot after
+        // ffmpeg returns). Reading `m()` once at the top of the function
+        // would freeze the values on first paint and the half-block
+        // image would never appear.
+        const lines = createMemo<readonly (readonly [string, string])[]>(() => {
+          const info = m()
+          return [
+            ["Type", describeMediaKind(info.kind)],
+            ...(info.dims ? [["Dimensions", `${info.dims.width} × ${info.dims.height} px`] as const] : []),
+            ["Size", formatBytes(info.size)],
+            ["Modified", formatMtime(info.mtime)],
+          ]
+        })
+        const hint = createMemo(() => {
+          const info = m()
+          const canPreview = info.kind.kind === "image" || info.kind.kind === "video" || info.kind.kind === "pdf"
+          if (canPreview && !info.decoded) return "rendering preview…"
+          return "(binary file — open externally to view)"
+        })
         return (
           <box paddingTop={1} paddingLeft={1} paddingRight={1} flexDirection="column">
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-              {info.relPath}
+              {m().relPath}
             </text>
-            <Show when={info.decoded}>
+            <Show when={m().decoded}>
               {(decoded) => (
                 <box paddingTop={1} flexDirection="column">
                   <HalfBlockImage decoded={decoded()} />
@@ -668,7 +761,7 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
               )}
             </Show>
             <box paddingTop={1} flexDirection="column">
-              <For each={lines}>
+              <For each={lines()}>
                 {([label, value]) => (
                   <box flexDirection="row">
                     <text fg={theme.textMuted} wrapMode="none">
@@ -683,7 +776,7 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
             </box>
             <box paddingTop={1}>
               <text fg={theme.textMuted} wrapMode="word">
-                {hint}
+                {hint()}
               </text>
             </box>
           </box>

@@ -23,19 +23,29 @@ export type ImageFormat = "png" | "jpg" | "gif" | "webp"
  * Classification produced from a relative path's extension.
  *
  *   - `image`  → known raster format; preview pane shows a media card
- *                and (if `dims` parses) the pixel dimensions.
+ *                and (if `dims` parses) the pixel dimensions, plus
+ *                an inline half-block render.
+ *   - `video`  → mp4/mov/webm/mkv/etc. Preview pane shows a metadata
+ *                card and an inline half-block render of the first
+ *                frame (ffmpeg `-ss 0 -frames:v 1`). `label` is the
+ *                human-readable description ("MP4 video").
+ *   - `pdf`    → PDF document. Preview pane renders the first page
+ *                inline via pdftoppm → ffmpeg.
  *   - `svg`    → XML text; renders through the regular text pipeline.
  *                Returning a discrete kind lets the caller skip the
  *                NUL-byte sniff (SVGs are pure ASCII/UTF-8 but the sniff
  *                is harmless either way; this just documents intent).
- *   - `binary` → known opaque format (pdf / video / audio / archive).
+ *   - `binary` → other opaque format (audio / archive / font / wasm…).
+ *                Metadata card only — no inline preview attempted.
  *                The `label` is the human-readable description shown
- *                on the media card (e.g. "PDF document").
+ *                on the media card (e.g. "WOFF2 font").
  *   - `text`   → unknown extension. Caller falls through to the existing
  *                text path; the NUL-byte sniff catches surprise binaries.
  */
 export type MediaKind =
   | { readonly kind: "image"; readonly format: ImageFormat }
+  | { readonly kind: "video"; readonly label: string }
+  | { readonly kind: "pdf" }
   | { readonly kind: "svg" }
   | { readonly kind: "binary"; readonly label: string }
   | { readonly kind: "text" }
@@ -52,19 +62,31 @@ const IMAGE_EXT: Readonly<Record<string, ImageFormat>> = {
 }
 
 /**
- * Known opaque-binary extensions and their human labels. Keep this
- * conservative — listing an extension here commits us to rendering a
- * metadata card for it instead of dumping bytes. Anything genuinely
- * unknown should stay in the `text` lane so the NUL-byte sniff decides.
+ * Video container extensions and their human labels. These get inline
+ * first-frame previews via ffmpeg in addition to the metadata card.
  */
-const BINARY_EXT_LABELS: Readonly<Record<string, string>> = {
-  pdf: "PDF document",
-  // Video
+const VIDEO_EXT_LABELS: Readonly<Record<string, string>> = {
   mp4: "MP4 video",
+  m4v: "MP4 video",
   mov: "QuickTime video",
   webm: "WebM video",
   mkv: "Matroska video",
   avi: "AVI video",
+  flv: "Flash video",
+  wmv: "Windows Media video",
+}
+
+/**
+ * Known opaque-binary extensions and their human labels. Keep this
+ * conservative — listing an extension here commits us to rendering a
+ * metadata card for it instead of dumping bytes. Anything genuinely
+ * unknown should stay in the `text` lane so the NUL-byte sniff decides.
+ *
+ * Note: pdf and the video formats live in their own dispatch branches
+ * (each has an inline preview path); they are intentionally NOT listed
+ * here.
+ */
+const BINARY_EXT_LABELS: Readonly<Record<string, string>> = {
   // Audio
   mp3: "MP3 audio",
   wav: "WAV audio",
@@ -104,8 +126,11 @@ export function detectMediaKind(relPath: string): MediaKind {
   const ext = path.extname(relPath).slice(1).toLowerCase()
   if (!ext) return { kind: "text" }
   if (ext === "svg") return { kind: "svg" }
+  if (ext === "pdf") return { kind: "pdf" }
   const fmt = IMAGE_EXT[ext]
   if (fmt) return { kind: "image", format: fmt }
+  const vlabel = VIDEO_EXT_LABELS[ext]
+  if (vlabel) return { kind: "video", label: vlabel }
   const label = BINARY_EXT_LABELS[ext]
   if (label) return { kind: "binary", label }
   return { kind: "text" }

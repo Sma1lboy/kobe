@@ -30,6 +30,9 @@
  */
 
 import { spawn } from "node:child_process"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import path from "node:path"
 
 /** Aspect-ratio fudge factor — terminal cells are ~2× tall as wide. */
 const CELL_ASPECT = 2
@@ -110,6 +113,46 @@ export function _resetFfmpegProbeCache(): void {
  * stream is exactly `cols * pixelRows * 3` bytes — no padding, no
  * variable-length frames, easy to slice.
  */
+/**
+ * Run ffmpeg with the supplied argv (which must already specify the
+ * input, any seek flags, the `scale` filter, `rgb24` pixel format, and
+ * `-f rawvideo -` as the destination) and read exactly `expectedBytes`
+ * of stdout. Returns null on any deviation: spawn failure, undersized
+ * output, oversized output (we kill the process), or non-zero exit.
+ *
+ * Shared by every preview decoder so the bytes-per-pixel accounting and
+ * cleanup live in one place.
+ */
+function runFfmpegRawvideo(args: readonly string[], expectedBytes: number): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] })
+    const chunks: Buffer[] = []
+    let total = 0
+    let failed = false
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (failed) return
+      total += chunk.length
+      if (total > expectedBytes) {
+        failed = true
+        child.kill("SIGTERM")
+        return
+      }
+      chunks.push(chunk)
+    })
+    child.stderr.on("data", () => {
+      // ffmpeg diagnostics are discarded — the media card reports
+      // failure via the "preview unavailable" copy.
+    })
+    child.on("error", () => resolve(null))
+    child.on("close", () => {
+      if (failed) return resolve(null)
+      const buf = Buffer.concat(chunks)
+      if (buf.length !== expectedBytes) return resolve(null)
+      resolve(buf)
+    })
+  })
+}
+
 export async function decodeImage(
   absPath: string,
   targetCols: number,
@@ -132,40 +175,151 @@ export async function decodeImage(
     "rawvideo",
     "-",
   ]
-  const expectedBytes = targetCols * targetPxRows * 3
+  const buf = await runFfmpegRawvideo(args, targetCols * targetPxRows * 3)
+  if (!buf) return null
+  return {
+    cols: targetCols,
+    pixelRows: targetPxRows,
+    rgb: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+  }
+}
+
+/**
+ * Probe a media file for its video-stream dimensions via ffprobe.
+ * Used by the video / PDF / unrecognised-image branches that don't
+ * have a known header parser. Returns null on spawn failure or
+ * unparseable output — caller picks a fallback path.
+ *
+ * Output format: `ffprobe -of csv=p=0` returns just `W,H` on stdout
+ * for a single stream selection. We tolerate extra whitespace and
+ * trailing newlines but reject anything else.
+ */
+export async function probeMediaDims(absPath: string): Promise<{ width: number; height: number } | null> {
+  if (!absPath) return null
   return new Promise((resolve) => {
-    const child = spawn("ffmpeg", args, { stdio: ["ignore", "pipe", "pipe"] })
-    const chunks: Buffer[] = []
-    let total = 0
-    let failed = false
-    child.stdout.on("data", (chunk: Buffer) => {
-      if (failed) return
-      total += chunk.length
-      if (total > expectedBytes) {
-        // ffmpeg shouldn't ever overshoot when we ask for a single
-        // frame at a fixed scale, but if it does we bail rather than
-        // buffer unbounded.
-        failed = true
-        child.kill("SIGTERM")
-        return
-      }
-      chunks.push(chunk)
-    })
-    child.stderr.on("data", () => {
-      // We never log to stderr from the TUI — ffmpeg diagnostics are
-      // discarded. The metadata card communicates failure via "preview
-      // unavailable" copy.
-    })
+    const child = spawn(
+      "ffprobe",
+      ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", absPath],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    )
+    const out: Buffer[] = []
+    child.stdout.on("data", (c: Buffer) => out.push(c))
     child.on("error", () => resolve(null))
-    child.on("close", () => {
-      if (failed) return resolve(null)
-      const buf = Buffer.concat(chunks)
-      if (buf.length !== expectedBytes) return resolve(null)
-      resolve({
-        cols: targetCols,
-        pixelRows: targetPxRows,
-        rgb: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
-      })
+    child.on("close", (code) => {
+      if (code !== 0) return resolve(null)
+      const text = Buffer.concat(out).toString("utf8").trim()
+      const m = text.match(/^(\d+),(\d+)/)
+      if (!m) return resolve(null)
+      const width = Number.parseInt(m[1], 10)
+      const height = Number.parseInt(m[2], 10)
+      if (!width || !height) return resolve(null)
+      resolve({ width, height })
     })
   })
+}
+
+/**
+ * Decode the first video frame at `absPath` to RGB. We do an input-side
+ * seek (`-ss 0` before `-i`) so ffmpeg jumps to the keyframe at the
+ * head of the stream instead of decoding from the start every time;
+ * combined with `-frames:v 1` this is the cheapest way to grab a
+ * representative thumbnail. Containers that put metadata at the end
+ * (like some MP4s) still decode fast enough — single frame is bounded
+ * work.
+ */
+export async function decodeVideoFirstFrame(
+  absPath: string,
+  targetCols: number,
+  targetPxRows: number,
+): Promise<DecodedImage | null> {
+  if (targetCols <= 0 || targetPxRows <= 0) return null
+  if (!(await ffmpegAvailable())) return null
+  const args = [
+    "-loglevel",
+    "error",
+    "-ss",
+    "0",
+    "-i",
+    absPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    `scale=${targetCols}:${targetPxRows}:flags=lanczos`,
+    "-pix_fmt",
+    "rgb24",
+    "-f",
+    "rawvideo",
+    "-",
+  ]
+  const buf = await runFfmpegRawvideo(args, targetCols * targetPxRows * 3)
+  if (!buf) return null
+  return {
+    cols: targetCols,
+    pixelRows: targetPxRows,
+    rgb: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+  }
+}
+
+type ProbedPdftoppm = { available: boolean }
+let pdftoppmProbed: ProbedPdftoppm | null = null
+
+/**
+ * Cached availability probe for pdftoppm (poppler-utils). The binary
+ * either exists or it doesn't — the result is cached for the lifetime
+ * of the process so we never re-fork to check.
+ */
+async function pdftoppmAvailable(): Promise<boolean> {
+  if (pdftoppmProbed) return pdftoppmProbed.available
+  const ok = await new Promise<boolean>((resolve) => {
+    const child = spawn("pdftoppm", ["-v"], { stdio: ["ignore", "ignore", "ignore"] })
+    child.on("error", () => resolve(false))
+    // pdftoppm -v prints version to stderr and exits 99 (poppler quirk);
+    // any non-error spawn is enough for us.
+    child.on("close", () => resolve(true))
+  })
+  pdftoppmProbed = { available: ok }
+  return ok
+}
+
+/** For tests: reset the pdftoppm-availability cache. */
+export function _resetPdftoppmProbeCache(): void {
+  pdftoppmProbed = null
+}
+
+/**
+ * Render the first page of a PDF as a half-block preview. Pipeline:
+ *
+ *   1. `pdftoppm -png -r 100 -f 1 -l 1 -singlefile` writes one PNG of
+ *      page 1 at 100 DPI to a tmpdir (≈ 850×1100 for A4).
+ *   2. The existing image decoder takes that PNG and scales it down to
+ *      the target half-block grid via ffmpeg.
+ *   3. Tmpdir is cleaned up regardless of success or failure.
+ *
+ * Returns null when pdftoppm is missing, the spawn fails, or the
+ * generated PNG can't be decoded. The caller falls back to the
+ * "PDF document" metadata card.
+ */
+export async function decodePdfFirstPage(
+  absPath: string,
+  targetCols: number,
+  targetPxRows: number,
+): Promise<DecodedImage | null> {
+  if (targetCols <= 0 || targetPxRows <= 0) return null
+  if (!(await pdftoppmAvailable())) return null
+  const dir = await mkdtemp(path.join(tmpdir(), "kobe-pdf-")).catch(() => null)
+  if (!dir) return null
+  const pagePath = path.join(dir, "page")
+  try {
+    const ok = await new Promise<boolean>((resolve) => {
+      const child = spawn("pdftoppm", ["-png", "-r", "100", "-f", "1", "-l", "1", "-singlefile", absPath, pagePath], {
+        stdio: ["ignore", "ignore", "ignore"],
+      })
+      child.on("error", () => resolve(false))
+      child.on("close", (code) => resolve(code === 0))
+    })
+    if (!ok) return null
+    return await decodeImage(`${pagePath}.png`, targetCols, targetPxRows)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
 }

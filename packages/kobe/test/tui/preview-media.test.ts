@@ -35,9 +35,18 @@ describe("detectMediaKind", () => {
     expect(detectMediaKind("logo.svg")).toEqual({ kind: "svg" })
   })
 
+  it("classifies pdf as its own kind (has an inline first-page preview path)", () => {
+    expect(detectMediaKind("paper.pdf")).toEqual({ kind: "pdf" })
+  })
+
+  it("classifies video formats as `video` (has an inline first-frame preview path)", () => {
+    expect(detectMediaKind("clip.mp4")).toEqual({ kind: "video", label: "MP4 video" })
+    expect(detectMediaKind("clip.MOV")).toEqual({ kind: "video", label: "QuickTime video" })
+    expect(detectMediaKind("clip.webm")).toEqual({ kind: "video", label: "WebM video" })
+    expect(detectMediaKind("clip.mkv")).toEqual({ kind: "video", label: "Matroska video" })
+  })
+
   it("classifies opaque binary formats with a human label", () => {
-    expect(detectMediaKind("paper.pdf")).toEqual({ kind: "binary", label: "PDF document" })
-    expect(detectMediaKind("clip.mp4")).toEqual({ kind: "binary", label: "MP4 video" })
     expect(detectMediaKind("song.mp3")).toEqual({ kind: "binary", label: "MP3 audio" })
     expect(detectMediaKind("bundle.zip")).toEqual({ kind: "binary", label: "ZIP archive" })
     expect(detectMediaKind("font.woff2")).toEqual({ kind: "binary", label: "WOFF2 font" })
