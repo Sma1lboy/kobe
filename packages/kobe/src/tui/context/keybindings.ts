@@ -517,8 +517,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // user can jump back to (or fork from) any prior conversation.
     // Selecting an already-open session focuses its tab; otherwise a
     // new tab is opened seeded with that sessionId. Chord chosen for
-    // mnemonic "yank from history" — `ctrl+r` is taken by tab-rename
-    // and `ctrl+h` collides with terminals' backspace byte.
+    // mnemonic "yank from history" — `ctrl+r` belongs to the prompt
+    // history palette (claude-code parity, KOB-154) and `ctrl+h`
+    // collides with terminals' backspace byte.
     id: "chat.session.resume",
     scope: "workspace",
     keys: ["ctrl+y"],
@@ -534,19 +535,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Close chat tab",
   },
   {
-    // Rename the active chat tab. Modifier-prefixed so it doesn't
-    // collide with composer typing; workspace-scoped so it's silent
-    // when the sidebar / files / terminal own focus. The chord is
-    // free across the keymap (no other binding registers ctrl+r) and
-    // the composer's onKeyDown explicitly skips ctrl-prefixed combos
-    // for non-newline keys, so we can fire freely while the input
-    // has focus.
+    // Rename the active chat tab. F2 is the cross-OS / cross-IDE
+    // rename convention (file managers on Windows + Linux, IntelliJ,
+    // VS Code etc.) — chosen here because `ctrl+r` is owned by the
+    // composer's prompt-history palette (claude-code parity, KOB-154
+    // → KOB-156). F2 has no other binding in kobe and doesn't
+    // collide with terminal bytes the way some control chords do.
     id: "chat.tab.rename",
     scope: "workspace",
-    keys: ["ctrl+r"],
+    keys: ["f2"],
     category: "Workspace",
     description: "Rename active chat tab",
-    hint: { keys: "ctrl+r", label: "rename tab" },
+    hint: { keys: "f2", label: "rename tab" },
   },
   {
     // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket

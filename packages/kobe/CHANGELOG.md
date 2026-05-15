@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Rename chat tab moves from `Ctrl+R` to `F2`** — `Ctrl+R` is the shell-readline / Claude Code reverse-i-search convention, claimed in this release by the new cross-task prompt-history palette (KOB-154). Rename tab gets `F2` instead — the cross-OS / cross-IDE rename chord. Same workspace scope, same behavior, just a different key (KOB-156).
 - **Breaking: `kobed` is gone — daemon lifecycle moved to `kobe daemon ...`** — the standalone `kobed` binary was merged into the single `kobe` binary as part of the CLI surface unification (KOB-134/KOB-136). Use `kobe daemon start|stop|status|restart` from now on. The npm package no longer publishes a `kobed` bin and the release tarballs no longer include a separate `kobed` executable. Update any scripts or aliases that invoke `kobed` directly.
 
 ### Added
