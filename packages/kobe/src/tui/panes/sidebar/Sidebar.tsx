@@ -49,8 +49,10 @@
  */
 
 import type { Task, TaskStatus } from "@/types/task"
+import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, untrack } from "solid-js"
+import { useRenderer } from "@opentui/solid"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 import { SIDEBAR_WIDTH } from "../../component/sidebar"
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
@@ -168,41 +170,67 @@ export function Sidebar(props: SidebarProps) {
   // the last filtered match left it.
   const [searchMode, setSearchMode] = createSignal(false)
   const [searchQuery, setSearchQuery] = createSignal("")
-  let prevSelectedIdBeforeSearch: string | null = null
-  // Imperative handle on the inline search input. We DON'T bind the
-  // `value` prop reactively (`value={searchQuery()}`): each keystroke
-  // would round-trip user-type → insertText → emit input → onInput
-  // → setSearchQuery → Solid re-render → node.value setter with the
-  // same string. In practice that round-trip dropped the visible
-  // typed text on the renderer's next paint — placeholder vanished
-  // (so the keystroke was processed) but the typed char never showed
-  // up. opentui's InputRenderable owns its own buffer; we read from
-  // it via `onInput` and write to it imperatively via this ref (only
-  // when clearing on enterSearch / exitSearch).
-  let searchInputEl: ({ focus(): void } & { value: string }) | undefined
 
   function enterSearch(): void {
-    prevSelectedIdBeforeSearch = props.selectedId()
     setSearchQuery("")
-    if (searchInputEl) searchInputEl.value = ""
     setSearchMode(true)
     props.onSearchActiveChange?.(true)
-    queueMicrotask(() => searchInputEl?.focus())
   }
-  function exitSearch(select: boolean): void {
+  function exitSearch(_select: boolean): void {
+    // Both enter (`select=true`) and esc (`select=false`) just close
+    // the search row. On enter, ctrl.selectCurrent has already fired
+    // in keys.ts and set selectedId to the highlighted match; on esc
+    // we leave selectedId alone — only the cursor moved during the
+    // search, and the cursor-sync effect will glide back to the
+    // already-selected task once `flatIds` returns to the unfiltered
+    // list. We DON'T call props.onSelect on exit because the host
+    // (app.tsx) pulls focus to the workspace on every select, which
+    // is wrong for an esc — the user wanted to stay in the sidebar.
     setSearchMode(false)
     setSearchQuery("")
-    if (searchInputEl) searchInputEl.value = ""
-    // On esc-cancel, re-select the task that was active before the user
-    // entered search mode. On enter-commit (`select=true`),
-    // ctrl.selectCurrent() already fired in the keys handler so the
-    // parent's selectedId is up to date — leave it alone.
-    if (!select && prevSelectedIdBeforeSearch !== null) {
-      props.onSelect(prevSelectedIdBeforeSearch)
-    }
-    prevSelectedIdBeforeSearch = null
     props.onSearchActiveChange?.(false)
   }
+
+  // Search-mode keystroke capture. We render the query as a plain
+  // `<text>` rather than using opentui's `<input>` element — earlier
+  // attempts with `<input>` ran into a stack of issues we couldn't
+  // pin down (chars eaten on mount-race; reactive value prop wiping
+  // the buffer on every keystroke; placeholder leaking into the
+  // workspace after exit). A custom text-based input bypasses all of
+  // it: when search mode is on, we subscribe to the renderer's
+  // global keypress event, append printable chars to `searchQuery`,
+  // and let `<text>{searchQuery()}</text>` re-render via Solid.
+  //
+  // The listener runs AFTER the keymap dispatch (which registers
+  // first), so chords that already fired `preventDefault` are
+  // skipped. Non-printable / modifier-prefixed keys are ignored.
+  // Backspace pops the last char.
+  createEffect(() => {
+    if (!searchMode()) return
+    const r = useRenderer()
+    if (!r) return
+    const listener = (evt: KeyEvent): void => {
+      if (evt.defaultPrevented) return
+      if (!focusedAccessor()) return
+      if (evt.ctrl || evt.meta || evt.option) return
+      if (evt.name === "backspace") {
+        setSearchQuery((q) => q.slice(0, -1))
+        return
+      }
+      // Printable single chars only — opentui's KeyEvent.sequence
+      // holds the raw byte that arrived; non-printables (esc, arrows,
+      // function keys) have multi-byte sequences or names like
+      // "escape" / "return" / "up" that we already handle through
+      // Block C bindings.
+      const seq = evt.sequence
+      if (!seq || seq.length !== 1) return
+      const code = seq.charCodeAt(0)
+      if (code < 32 || code === 127) return
+      setSearchQuery((q) => q + seq)
+    }
+    r.keyInput.on("keypress", listener)
+    onCleanup(() => r.keyInput.off("keypress", listener))
+  })
 
   // Tick that busts each main row's branch-name memo on a fixed
   // interval. Cheap (one signal write per tick); the actual git call
@@ -353,29 +381,29 @@ export function Sidebar(props: SidebarProps) {
          so the user can start typing immediately; up/down/enter/esc
          are handled by the sidebar-scope search bindings in keys.ts,
          not by the input itself. */}
-      {/* Inline `/`-search row. Fully `<Show>`'d so the input element
-         is unmounted while search is inactive — earlier always-mount
-         + height=0 left the placeholder bleeding into the workspace
-         below because opentui doesn't fully suppress a zero-height
-         input's layout box. The first-char-after-`/` race that
-         originally pushed us to always-mount turned out to be a
-         different bug (a reactive `value` prop double-writing the
-         buffer); with that prop removed the ref-based imperative
-         focus is enough. */}
+      {/* Inline `/`-search row. Rendered as plain text rather than
+         an opentui `<input>` element so the typed query is fully
+         controlled by our `searchQuery` signal — see the
+         createEffect above that captures keystrokes from the global
+         keypress event. Avoids the focus/value-prop quirks of
+         InputRenderable in a conditionally-mounted slot. */}
       <Show when={searchMode()}>
         <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
           <text fg={theme.info} wrapMode="none">
             /
           </text>
-          <input
-            ref={(el: ({ focus(): void } & { value: string }) | undefined) => {
-              searchInputEl = el
-              el?.focus()
-            }}
-            placeholder="fuzzy filter"
-            focused={true}
-            onInput={(v: string) => setSearchQuery(v.replace(/[\r\n]+/g, ""))}
-          />
+          <text fg={theme.text} wrapMode="none">
+            {searchQuery()}
+          </text>
+          <text fg={theme.info} attributes={TextAttributes.BLINK} wrapMode="none">
+            █
+          </text>
+          <Show when={searchQuery().length === 0}>
+            <text fg={theme.textMuted} wrapMode="none">
+              {" "}
+              fuzzy filter
+            </text>
+          </Show>
         </box>
       </Show>
 
