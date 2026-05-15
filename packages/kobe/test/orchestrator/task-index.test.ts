@@ -702,6 +702,15 @@ describe("TaskIndexStore — vendor self-heal", () => {
     expect(store.get("01HZA")?.vendor).toBe("claude")
   })
 
+  test("loader preserves stored vendor when the model id is shared by multiple catalogs", async () => {
+    await writeRawTask({ model: "auto", vendor: "gemini" })
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const task = store.get("01HZA")
+    expect(task?.model).toBe("auto")
+    expect(task?.vendor).toBe("gemini")
+  })
+
   test("loader preserves stored vendor when the model id matches no catalog (unknown id)", async () => {
     // Free-form pinned ids must round-trip without surprise vendor flips.
     await writeRawTask({ model: "some-future-model-id", vendor: "codex" })

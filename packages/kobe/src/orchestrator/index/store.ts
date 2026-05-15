@@ -44,7 +44,7 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { ENGINE_REGISTRY, capabilitiesForModelId } from "../../engine/registry.ts"
+import { ENGINE_REGISTRY } from "../../engine/registry.ts"
 import type { ChatTab, Task, TaskId, TaskIndex, TaskStatus, VendorId } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { ulid } from "./ulid.ts"
@@ -583,14 +583,12 @@ function coerceTask(value: unknown): Task | null {
     // default — defensive against hand-edited JSON or future vendor
     // values that this kobe build doesn't yet know about.
     //
-    // Self-heal: if the stored model id sits in another vendor's
-    // catalog (e.g. early-codex tasks ended up with vendor="claude"
-    // when the catalog hadn't been corrected yet), trust the model id
-    // and override the vendor. The model id is the load-bearing pin
-    // — `Task.model="gpt-5.5" + vendor="claude"` is internally
-    // contradictory: claude rejects `--model gpt-5.5` with
-    // `error_during_execution`, which is exactly the regression this
-    // recovery catches.
+    // Self-heal: if the stored model id sits in exactly one other
+    // vendor's catalog (e.g. early-codex tasks ended up with
+    // vendor="claude" when the catalog hadn't been corrected yet),
+    // trust the model id and override the vendor. Shared ids like
+    // Gemini/Claude "auto" are intentionally ambiguous, so the stored
+    // vendor stays load-bearing.
     vendor: resolveTaskVendor(v.vendor, typeof v.model === "string" ? v.model : undefined),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
@@ -617,19 +615,22 @@ function isVendorId(v: unknown): v is VendorId {
  * to a different vendor's catalog. See {@link Task.vendor} comment in
  * `types/task.ts` for the contract.
  *
- * The `capabilitiesForModelId` helper returns `defaultCapabilities`
- * (= claude) when no catalog matches — that's a "don't know" signal,
- * not "should be claude". So we only override when the catalog
- * actually identifies a vendor for this id. Free-form pinned ids
- * (e.g. a custom model id the user typed in) round-trip with their
- * stored vendor unchanged.
+ * Free-form pinned ids (e.g. a custom model id the user typed in)
+ * round-trip with their stored vendor unchanged. Ambiguous ids that
+ * appear in multiple catalogs also preserve the stored vendor; a model
+ * id alone is not enough to distinguish `claude:auto` from
+ * `gemini:auto`.
  */
 function resolveTaskVendor(rawVendor: unknown, modelId: string | undefined): VendorId {
   const stored = isVendorId(rawVendor) ? rawVendor : DEFAULT_TASK_VENDOR
   if (!modelId) return stored
-  const matched = Object.values(ENGINE_REGISTRY).some((caps) => caps?.models.some((m) => m.id === modelId))
-  if (!matched) return stored
-  return capabilitiesForModelId(modelId).vendorId
+  const matchedVendors = new Set<VendorId>()
+  for (const [vendor, caps] of Object.entries(ENGINE_REGISTRY) as Array<
+    [VendorId, (typeof ENGINE_REGISTRY)[VendorId]]
+  >) {
+    if (caps?.models.some((m) => m.id === modelId)) matchedVendors.add(vendor)
+  }
+  return matchedVendors.size === 1 ? (matchedVendors.values().next().value ?? stored) : stored
 }
 
 function isTaskStatus(s: string): s is TaskStatus {
