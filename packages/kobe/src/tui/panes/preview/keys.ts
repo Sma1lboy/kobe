@@ -19,9 +19,6 @@
  *   - `pageup`      → scroll body by -viewport height
  *   - `g g` (chord) → jump to top
  *   - `G`           → jump to bottom (shift+g, like vim)
- *   - `o`           → open the active tab in the OS default application
- *                     (only fires when the consumer wires `openExternal`;
- *                     no-op otherwise).
  *
  * The `g g` chord uses the same approach as the sidebar: `shift+g` arrives
  * as `name="g", shift=true` from opentui (see keymap.tsx note about
@@ -52,13 +49,6 @@ export type PreviewBindingsOpts = {
   scrollToTop: () => void
   /** Jump scroll to the very bottom. */
   scrollToBottom: () => void
-  /**
-   * Optional handler for `o` — open the active tab externally. The
-   * caller decides whether the active tab is openable (e.g. a media
-   * file with a known absolute path) and what command to dispatch.
-   * When unset, the key is unbound.
-   */
-  openExternal?: () => void
   /**
    * Optional viewport height accessor for pgup/pgdn. Defaults to 10
    * lines if not provided — matches dialog-diff's fallback.
@@ -230,17 +220,6 @@ export function usePreviewBindings(opts: PreviewBindingsOpts): void {
             else pressG()
           },
         },
-        ...(opts.openExternal
-          ? [
-              {
-                key: "o",
-                cmd: () => {
-                  disarmChord()
-                  opts.openExternal?.()
-                },
-              },
-            ]
-          : []),
       ],
     }
   })
