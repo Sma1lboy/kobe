@@ -12,6 +12,7 @@ function show(
   dialog: DialogContext,
   opts: {
     readonly taskLabelFor: (historyKey: string) => string | undefined
+    readonly currentProject: string | undefined
   },
 ): Promise<string | undefined> {
   return new Promise<string | undefined>((resolve) => {
@@ -19,6 +20,7 @@ function show(
       () => (
         <HistoryPaletteView
           taskLabelFor={opts.taskLabelFor}
+          currentProject={opts.currentProject}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}
         />

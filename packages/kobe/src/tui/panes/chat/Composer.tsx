@@ -619,7 +619,10 @@ export function Composer(props: ComposerProps) {
     // the palette, but each row falls back to "no task label".
     if (key.name === "r" && key.ctrl && !key.shift && !key.meta && !key.super) {
       const resolver = props.taskLabelForHistoryKey ?? (() => undefined)
-      void HistoryPalette.show(dialog, { taskLabelFor: resolver }).then((picked) => {
+      void HistoryPalette.show(dialog, {
+        taskLabelFor: resolver,
+        currentProject: props.currentProjectRoot?.(),
+      }).then((picked) => {
         if (picked !== undefined) applyHistoryRecall(picked)
       })
       key.preventDefault()

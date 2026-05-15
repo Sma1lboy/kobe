@@ -48,10 +48,25 @@ type PaletteRow = {
 }
 
 function rowsFromEntries(
-  entries: ReadonlyArray<{ readonly key: string; readonly value: string; readonly seq: number }>,
+  entries: ReadonlyArray<{
+    readonly key: string
+    readonly value: string
+    readonly seq: number
+    readonly project: string | undefined
+  }>,
   labelFor: (key: string) => string | undefined,
+  currentProject: string | undefined,
 ): PaletteRow[] {
-  return entries.map((e) => {
+  // Per-project scope (Claude Code parity, KOB-157 follow-up). When a
+  // current project is known, hide rows from other repos — they're
+  // context-free in this composer and would dilute the fuzzy match.
+  // No current project (rare: no task selected) falls back to "show
+  // every project + global" so the palette is never silently empty.
+  const filtered =
+    currentProject === undefined
+      ? entries
+      : entries.filter((e) => e.project === currentProject || e.project === undefined)
+  return filtered.map((e) => {
     const isBash = e.value.startsWith("!")
     return {
       value: e.value,
@@ -81,6 +96,7 @@ function truncate(text: string, max: number): string {
 
 export function HistoryPaletteView(props: {
   taskLabelFor: (historyKey: string) => string | undefined
+  currentProject: string | undefined
   onSubmit: (value: string) => void
   onCancel: () => void
 }) {
@@ -89,7 +105,7 @@ export function HistoryPaletteView(props: {
   // Snapshot entries on open. The palette is short-lived; if the user
   // submits a prompt while the palette is open they can re-open to see
   // the newest one. Keeps the cursor stable across the user's typing.
-  const allRows = rowsFromEntries(getAllHistoryEntries(), props.taskLabelFor)
+  const allRows = rowsFromEntries(getAllHistoryEntries(), props.taskLabelFor, props.currentProject)
   const [query, setQuery] = createSignal("")
   const [cursor, setCursor] = createSignal(0)
 

@@ -56,7 +56,19 @@ export const HISTORY_LIMIT = 200
  * "global newest-first" ordering without needing wall-clock timestamps
  * (which we'd need a migration story for once we ever persist).
  */
-type HistoryEntry = { readonly value: string; readonly seq: number }
+type HistoryEntry = {
+  readonly value: string
+  readonly seq: number
+  /**
+   * Absolute path of the repo this prompt was submitted from, or
+   * `undefined` for the rare "no task selected" (literal `"global"`
+   * key) path. Lets the Ctrl+R palette filter rows by current
+   * project (KOB-157 follow-up, Claude Code parity) — disk entries
+   * already carried this; the in-memory ring needed it too so
+   * current-session pushes can be filtered before they hit disk.
+   */
+  readonly project: string | undefined
+}
 const STORE: Map<string, HistoryEntry[]> = new Map()
 let SEQ = 0
 
@@ -110,7 +122,7 @@ export function bootstrapHistory(): void {
     const key = projectKey(e.project)
     SEQ += 1
     const ring = STORE.get(key) ?? []
-    ring.push({ value: e.display, seq: SEQ })
+    ring.push({ value: e.display, seq: SEQ, project: e.project })
     if (ring.length > HISTORY_LIMIT) {
       ring.splice(0, ring.length - HISTORY_LIMIT)
     }
@@ -132,7 +144,7 @@ export function pushHistory(key: string, value: string, opts: { readonly project
   const last = ring[ring.length - 1]
   if (last && last.value === value) return
   SEQ += 1
-  ring.push({ value, seq: SEQ })
+  ring.push({ value, seq: SEQ, project: opts.project })
   if (ring.length > HISTORY_LIMIT) {
     ring.splice(0, ring.length - HISTORY_LIMIT)
   }
@@ -170,7 +182,9 @@ export function getHistory(key: string): readonly string[] {
 /**
  * Snapshot of every history entry across every key, sorted globally
  * newest-first by insertion sequence. Feeds the Ctrl+R palette
- * (KOB-154) so the user can search prompts they've sent from any task.
+ * (KOB-154); the palette applies its own per-project filter using
+ * each entry's `project` field (Claude Code parity — keeps unrelated
+ * repos out of the visible list).
  *
  * Returns a fresh array — safe to index, sort, filter without
  * worrying about future {@link pushHistory} calls invalidating it.
@@ -179,10 +193,11 @@ export function getAllHistoryEntries(): ReadonlyArray<{
   readonly key: string
   readonly value: string
   readonly seq: number
+  readonly project: string | undefined
 }> {
-  const out: Array<{ key: string; value: string; seq: number }> = []
+  const out: Array<{ key: string; value: string; seq: number; project: string | undefined }> = []
   for (const [key, ring] of STORE) {
-    for (const e of ring) out.push({ key, value: e.value, seq: e.seq })
+    for (const e of ring) out.push({ key, value: e.value, seq: e.seq, project: e.project })
   }
   out.sort((a, b) => b.seq - a.seq)
   return out

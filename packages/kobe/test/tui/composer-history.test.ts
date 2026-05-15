@@ -56,4 +56,15 @@ describe("composer/history — getAllHistoryEntries (KOB-154)", () => {
   test("empty store returns empty array", () => {
     expect(getAllHistoryEntries()).toEqual([])
   })
+
+  test("entries carry the project field for per-project palette filtering", () => {
+    pushHistory("tab-a", "from repo X", { project: "/repo/X" })
+    pushHistory("tab-b", "from repo Y", { project: "/repo/Y" })
+    pushHistory("tab-c", "no project")
+    const all = getAllHistoryEntries()
+    const byValue = new Map(all.map((e) => [e.value, e.project]))
+    expect(byValue.get("from repo X")).toBe("/repo/X")
+    expect(byValue.get("from repo Y")).toBe("/repo/Y")
+    expect(byValue.get("no project")).toBeUndefined()
+  })
 })
