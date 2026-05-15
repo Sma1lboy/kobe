@@ -351,30 +351,41 @@ export function Sidebar(props: SidebarProps) {
          so the user can start typing immediately; up/down/enter/esc
          are handled by the sidebar-scope search bindings in keys.ts,
          not by the input itself. */}
-      <Show when={searchMode()}>
-        <box flexDirection="row" gap={0} paddingBottom={1} paddingLeft={1}>
+      {/* Inline `/`-search row. The input is ALWAYS mounted so opentui's
+         keyboard-focus tree already knows about it when `searchMode`
+         flips on — `focused={searchMode()}` then synchronously calls
+         `node.focus()` via opentui-solid's prop binding before the
+         user's next keystroke arrives. Earlier versions wrapped the
+         input in `<Show>` and the mount-and-focus happened in the
+         same tick as the `/` keystroke; the next char (e.g. `g`)
+         arrived before opentui had wired focus to the freshly-mounted
+         element, so it landed on no focused element and was dropped.
+         Now the row is height-collapsed to 0 when search is off and
+         the input is blurred — same visual result without the race. */}
+      <box
+        flexDirection="row"
+        gap={0}
+        paddingBottom={searchMode() ? 1 : 0}
+        paddingLeft={1}
+        height={searchMode() ? 1 : 0}
+        overflow="hidden"
+      >
+        <Show when={searchMode()}>
           <text fg={theme.info} wrapMode="none">
             /
           </text>
-          <input
-            ref={(el: { focus(): void } | undefined) => {
-              searchInputEl = el
-              // Eager focus on first mount. The queueMicrotask path in
-              // enterSearch() handles the race when this ref fires
-              // before opentui has wired the new element into its
-              // keyboard-focus tree; calling .focus() here as well is
-              // a no-op when the input already has focus, but covers
-              // the case where Solid's commit happens before
-              // queueMicrotask drains.
-              el?.focus()
-            }}
-            value={searchQuery()}
-            placeholder="fuzzy filter"
-            focused={true}
-            onInput={(v: string) => setSearchQuery(v.replace(/[\r\n]+/g, ""))}
-          />
-        </box>
-      </Show>
+        </Show>
+        <input
+          ref={(el: { focus(): void } | undefined) => {
+            searchInputEl = el
+            if (searchMode()) el?.focus()
+          }}
+          value={searchQuery()}
+          placeholder="fuzzy filter"
+          focused={searchMode()}
+          onInput={(v: string) => setSearchQuery(v.replace(/[\r\n]+/g, ""))}
+        />
+      </box>
 
       {/* View switcher: tab strip with the active view bracketed +
          emphasized. `[` / `]` toggles. */}
