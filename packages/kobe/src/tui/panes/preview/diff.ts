@@ -20,7 +20,7 @@
  */
 
 import { spawn } from "node:child_process"
-import { open } from "node:fs/promises"
+import { open, stat } from "node:fs/promises"
 import path from "node:path"
 
 /**
@@ -219,4 +219,64 @@ export async function isPathChanged(worktreePath: string, relPath: string): Prom
 export function splitLines(text: string): string[] {
   if (!text) return []
   return text.split(/\r?\n/)
+}
+
+export type StatResult =
+  | { readonly ok: true; readonly size: number; readonly mtime: Date; readonly absPath: string }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * Stat a worktree-relative path. Returns size, mtime and the resolved
+ * absolute path so the media card has everything it needs in one call.
+ * Uses the same toplevel-walk-up as {@link readFile} so toplevel-relative
+ * paths emitted by FileTree resolve correctly from a subdir worktreePath
+ * (KOB-19).
+ */
+export async function statFile(worktreePath: string, relPath: string): Promise<StatResult> {
+  if (!worktreePath) return { ok: false, error: "no worktree path" }
+  if (!relPath) return { ok: false, error: "no file path" }
+  if (relPath.split("/").includes("..")) {
+    return { ok: false, error: "path escapes worktree" }
+  }
+  const top = await resolveGitToplevel(worktreePath)
+  const absPath = path.join(top, relPath)
+  try {
+    const s = await stat(absPath)
+    return { ok: true, size: s.size, mtime: s.mtime, absPath }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: msg }
+  }
+}
+
+export type HeaderResult = { readonly ok: true; readonly buf: Buffer } | { readonly ok: false; readonly error: string }
+
+/**
+ * Read up to `bytes` bytes from the start of a worktree-relative path.
+ * Used by the media pane for image-header parsing — we only need the
+ * first ~32 KiB to extract dimensions, so reading wholesale through
+ * {@link readFile} (which materializes up to 2 MiB and converts to
+ * utf-8) would be wasteful for large images.
+ */
+export async function readHeaderBytes(worktreePath: string, relPath: string, bytes: number): Promise<HeaderResult> {
+  if (!worktreePath) return { ok: false, error: "no worktree path" }
+  if (!relPath) return { ok: false, error: "no file path" }
+  if (relPath.split("/").includes("..")) {
+    return { ok: false, error: "path escapes worktree" }
+  }
+  if (bytes <= 0) return { ok: true, buf: Buffer.alloc(0) }
+  const top = await resolveGitToplevel(worktreePath)
+  const absPath = path.join(top, relPath)
+  let handle: Awaited<ReturnType<typeof open>> | null = null
+  try {
+    handle = await open(absPath, "r")
+    const buf = Buffer.allocUnsafe(bytes)
+    const { bytesRead } = await handle.read(buf, 0, bytes, 0)
+    return { ok: true, buf: buf.subarray(0, bytesRead) }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return { ok: false, error: msg }
+  } finally {
+    await handle?.close().catch(() => {})
+  }
 }

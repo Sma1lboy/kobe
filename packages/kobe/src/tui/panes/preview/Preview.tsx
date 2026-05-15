@@ -31,12 +31,21 @@
  * adds noise we don't need at this scale.
  */
 
-import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import { RGBA, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Match, Show, Switch, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { DiffLine, FileLine } from "./DiffLine"
-import { isPathChanged, readDiff, readFile, splitLines } from "./diff"
+import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
+import { type DecodedImage, computeTargetDims, decodeImage } from "./image-render"
 import { usePreviewBindings } from "./keys"
+import {
+  type ImageDims,
+  type ImageFormat,
+  type MediaKind,
+  detectMediaKind,
+  formatBytes,
+  parseImageHeader,
+} from "./media"
 import {
   EMPTY_STATE,
   type PreviewMode,
@@ -88,11 +97,50 @@ export type PreviewApi = {
  */
 const PAGE_LINES = 20
 
+/**
+ * Half-block image dimensions budget for the preview pane.
+ *
+ * The pane width varies with terminal size, but we don't have access
+ * to opentui's layout-measurement APIs at the call site (the effect
+ * runs before the first paint of the body). These constants are a
+ * conservative starting point — small enough to fit comfortably in
+ * the ~40-cell center column on a default-size Windows Terminal, big
+ * enough that the rendered image is still recognisable. A follow-up
+ * can read the box's measured size and re-decode on resize.
+ */
+const IMAGE_MAX_COLS = 60
+const IMAGE_MAX_ROWS = 30
+
+/** Half-block character (U+2580): fg paints the upper half, bg the lower. */
+const HALF_BLOCK_UPPER = "▀"
+
+/**
+ * `media` is the metadata card shown for binary file types we recognise
+ * by extension (images, video, audio, pdf, archives…). We never dump
+ * binary bytes through the text pipeline — the card gives the user
+ * enough context (type, size, mtime, image dimensions when parseable)
+ * to decide whether to open the file externally. KOB-14.
+ *
+ * For images we also try a half-block inline render via ffmpeg
+ * (slice 2). `decoded` is undefined while loading, set to a
+ * {@link DecodedImage} on success, and stays undefined on failure —
+ * the metadata card alone is the fallback in that case.
+ */
+type MediaContent = {
+  readonly relPath: string
+  readonly kind: MediaKind
+  readonly size: number
+  readonly mtime: Date
+  readonly dims?: ImageDims
+  readonly decoded?: DecodedImage
+}
+
 type ContentState =
   | { kind: "loading" }
   | { kind: "empty" }
   | { kind: "error"; message: string }
   | { kind: "lines"; lines: string[]; mode: PreviewMode }
+  | { kind: "media"; media: MediaContent }
 
 /**
  * Boil a `readFile` / `readDiff` error string down to something the
@@ -211,6 +259,61 @@ export function Preview(props: PreviewProps) {
           return
         }
         setContent({ kind: "loading" })
+
+        // Known media types (images, video, audio, pdf, archives…) never
+        // go through the text pipeline in either mode — KOB-14. We render
+        // a metadata card with type, size, mtime, and parsed image
+        // dimensions when available. SVG is XML and falls through to the
+        // text path below.
+        const mediaKind = detectMediaKind(key.path)
+        if (mediaKind.kind === "image" || mediaKind.kind === "binary") {
+          const s = await statFile(wt, key.path)
+          if (!s.ok) {
+            setContent({ kind: "error", message: summarizePreviewError(s.error) })
+            return
+          }
+          let dims: ImageDims | undefined
+          if (mediaKind.kind === "image") {
+            const h = await readHeaderBytes(wt, key.path, 32 * 1024)
+            if (h.ok) {
+              const parsed = parseImageHeader(h.buf, mediaKind.format)
+              if (parsed) dims = parsed
+            }
+          }
+          // Set the metadata card first so the user sees something
+          // immediately while ffmpeg works in the background.
+          setContent({
+            kind: "media",
+            media: { relPath: key.path, kind: mediaKind, size: s.size, mtime: s.mtime, dims },
+          })
+          // Kick off the inline half-block render for image files. We
+          // don't await — the metadata card is already displayed and the
+          // decoded image flows in via a second `setContent` once ready.
+          // Stale-result guard: re-check the active tab path before
+          // mutating, because the user may have switched tabs while
+          // ffmpeg was scaling.
+          if (mediaKind.kind === "image" && dims) {
+            const target = computeTargetDims(dims.width, dims.height, IMAGE_MAX_COLS, IMAGE_MAX_ROWS)
+            void decodeImage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
+              if (!decoded) return
+              const cur = active()
+              if (!cur || cur.path !== key.path) return
+              setContent({
+                kind: "media",
+                media: {
+                  relPath: key.path,
+                  kind: mediaKind,
+                  size: s.size,
+                  mtime: s.mtime,
+                  dims,
+                  decoded,
+                },
+              })
+            })
+          }
+          return
+        }
+
         if (key.mode === "diff") {
           const base = props.diffBase()
           if (!base) {
@@ -233,10 +336,11 @@ export function Preview(props: PreviewProps) {
           setContent({ kind: "error", message: summarizePreviewError(r.error) })
           return
         }
-        // Binary files render as garbage in the TUI. Detect with a
-        // null-byte sniff and short-circuit to a friendly placeholder
-        // rather than dumping bytes to the screen.
-        if (looksBinary(r.text)) {
+        // SVG is text by definition — its kind is already known, so we
+        // skip the NUL-byte sniff. For anything else the sniff is still
+        // the final guard against surprise binaries (unknown extension,
+        // missing extension, etc.).
+        if (mediaKind.kind !== "svg" && looksBinary(r.text)) {
           setContent({
             kind: "error",
             message: "(binary file — preview not supported)",
@@ -438,6 +542,9 @@ function Body(props: { content: Accessor<ContentState>; refSet: (r: ScrollBoxRen
         <Match when={kind() === "lines"}>
           <LinesBody content={props.content} refSet={props.refSet} />
         </Match>
+        <Match when={kind() === "media"}>
+          <MediaBody content={props.content} />
+        </Match>
       </Switch>
     </box>
   )
@@ -492,5 +599,154 @@ function LinesBody(props: { content: Accessor<ContentState>; refSet: (r: ScrollB
         </For>
       </scrollbox>
     </Show>
+  )
+}
+
+/**
+ * Metadata card for binary media files (KOB-14). We never try to
+ * render image pixels in the TUI — opentui has no built-in image
+ * renderable on this version, and writing raw graphics escapes from
+ * inside an opentui frame would race with its screen buffer. The
+ * card tells the user what the file is, how big it is, when it last
+ * changed, and (for images we can parse) its pixel dimensions — enough
+ * to decide whether to open it externally.
+ */
+export function describeMediaKind(kind: MediaKind): string {
+  switch (kind.kind) {
+    case "image": {
+      const labels: Readonly<Record<ImageFormat, string>> = {
+        png: "PNG image",
+        jpg: "JPEG image",
+        gif: "GIF image",
+        webp: "WEBP image",
+      }
+      return labels[kind.format]
+    }
+    case "binary":
+      return kind.label
+    case "svg":
+      return "SVG image"
+    case "text":
+      return "text"
+  }
+}
+
+/** Compact `YYYY-MM-DD HH:MM` formatter for the mtime line. */
+export function formatMtime(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function MediaBody(props: { content: Accessor<ContentState> }) {
+  const { theme } = useTheme()
+  const media = createMemo<MediaContent | null>(() => {
+    const c = props.content()
+    return c.kind === "media" ? c.media : null
+  })
+  return (
+    <Show when={media()}>
+      {(m) => {
+        const info = m()
+        const lines = [
+          ["Type", describeMediaKind(info.kind)],
+          ...(info.dims ? [["Dimensions", `${info.dims.width} × ${info.dims.height} px`]] : []),
+          ["Size", formatBytes(info.size)],
+          ["Modified", formatMtime(info.mtime)],
+        ] as const
+        const hint =
+          info.kind.kind === "image" && !info.decoded ? "rendering preview…" : "(binary file — open externally to view)"
+        return (
+          <box paddingTop={1} paddingLeft={1} paddingRight={1} flexDirection="column">
+            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+              {info.relPath}
+            </text>
+            <Show when={info.decoded}>
+              {(decoded) => (
+                <box paddingTop={1} flexDirection="column">
+                  <HalfBlockImage decoded={decoded()} />
+                </box>
+              )}
+            </Show>
+            <box paddingTop={1} flexDirection="column">
+              <For each={lines}>
+                {([label, value]) => (
+                  <box flexDirection="row">
+                    <text fg={theme.textMuted} wrapMode="none">
+                      {label.padEnd(11, " ")}
+                    </text>
+                    <text fg={theme.text} wrapMode="none">
+                      {value}
+                    </text>
+                  </box>
+                )}
+              </For>
+            </box>
+            <box paddingTop={1}>
+              <text fg={theme.textMuted} wrapMode="word">
+                {hint}
+              </text>
+            </box>
+          </box>
+        )
+      }}
+    </Show>
+  )
+}
+
+/**
+ * Render a {@link DecodedImage} as a stack of half-block character
+ * rows. Each TUI row pairs two pixel rows: `fg` paints the upper half,
+ * `bg` paints the lower half. We rebuild the cell grid once via
+ * `createMemo` so re-renders that don't change the source bytes don't
+ * walk the pixel array again.
+ *
+ * Adjacent cells with identical (fg, bg) pairs are merged into runs
+ * keyed by `"rrggbb_rrggbb"`. For real photographic content this is
+ * mostly a no-op (every cell differs); for screenshots / UI captures
+ * with flat fills it cuts the span count substantially.
+ */
+function HalfBlockImage(props: { decoded: DecodedImage }) {
+  type Run = { text: string; fg: RGBA; bg: RGBA }
+  const rows = createMemo<Run[][]>(() => {
+    const d = props.decoded
+    const out: Run[][] = []
+    for (let y = 0; y < d.pixelRows; y += 2) {
+      const row: Run[] = []
+      let cur: Run | null = null
+      let curKey = ""
+      for (let x = 0; x < d.cols; x++) {
+        const topBase = (y * d.cols + x) * 3
+        const botBase = ((y + 1) * d.cols + x) * 3
+        const tr = d.rgb[topBase]
+        const tg = d.rgb[topBase + 1]
+        const tb = d.rgb[topBase + 2]
+        const br = d.rgb[botBase]
+        const bg = d.rgb[botBase + 1]
+        const bb = d.rgb[botBase + 2]
+        const key = `${tr},${tg},${tb}_${br},${bg},${bb}`
+        if (cur && key === curKey) {
+          cur.text += HALF_BLOCK_UPPER
+          continue
+        }
+        cur = {
+          text: HALF_BLOCK_UPPER,
+          fg: RGBA.fromInts(tr, tg, tb, 255),
+          bg: RGBA.fromInts(br, bg, bb, 255),
+        }
+        curKey = key
+        row.push(cur)
+      }
+      out.push(row)
+    }
+    return out
+  })
+  return (
+    <For each={rows()}>
+      {(row) => (
+        <text wrapMode="none">
+          <For each={row}>{(run) => <span style={{ fg: run.fg, bg: run.bg }}>{run.text}</span>}</For>
+        </text>
+      )}
+    </For>
   )
 }
