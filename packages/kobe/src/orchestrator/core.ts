@@ -118,15 +118,6 @@ export interface CreateTaskInput {
 /** Subscription teardown for {@link Orchestrator.subscribeEvents}. */
 export type Unsubscribe = () => void
 
-/**
- * Callback shape for {@link Orchestrator.subscribeAllEvents} — a global
- * listener that sees every event from every (task, tab) pair. Used by
- * cross-task UI signals like the background-completion bell + sidebar
- * flash, where per-tab `subscribeEvents` would force the caller to
- * juggle subscriptions every time tasks/tabs come and go.
- */
-export type AllEventsListener = (taskId: string, tabId: string, ev: OrchestratorEvent) => void
-
 /** Live engine state for one chat tab. */
 export type ChatRunState = "running" | "awaiting_input" | "idle"
 
@@ -178,13 +169,6 @@ export class Orchestrator {
    * background so a tab's "done" arrives even if the user isn't looking.
    */
   private readonly subscribers = new Map<string, Set<(ev: OrchestratorEvent) => void>>()
-  /**
-   * Global event-bus subscribers — fired for every event from every
-   * (task, tab) pair. Companion to {@link subscribers} for cross-task
-   * UI signals (background-completion bell + sidebar flash). Kept as a
-   * separate Set so the per-tab fast path stays O(1) in the common case.
-   */
-  private readonly globalSubscribers = new Set<AllEventsListener>()
   /** Background pump promises — kept so tests can `await` settle. */
   private readonly pumps = new Map<string, Promise<void>>()
   /**
@@ -876,21 +860,6 @@ export class Orchestrator {
     return await openSessionInChatTab(this.chatTabDeps(), task, sessionId, opts)
   }
 
-  /**
-   * Subscribe to every event from every (task, tab) pair. Used by
-   * cross-task UI signals — background-completion bell, sidebar row
-   * flash — where per-tab {@link subscribeEvents} would require the
-   * caller to track task/tab lifecycle and re-subscribe on every change.
-   * Returns an unsubscribe function with the same semantics as the
-   * per-tab variant.
-   */
-  subscribeAllEvents(cb: AllEventsListener): Unsubscribe {
-    this.globalSubscribers.add(cb)
-    return () => {
-      this.globalSubscribers.delete(cb)
-    }
-  }
-
   subscribeEvents(id: TaskId | string, cb: (ev: OrchestratorEvent) => void, tabId?: string): Unsubscribe {
     const task = this.store.get(id)
     const taskId = (task?.id ?? id) as TaskId
@@ -1003,29 +972,15 @@ export class Orchestrator {
 
   private dispatchEvent(taskId: TaskId, tabId: string, ev: OrchestratorEvent): void {
     const set = this.subscribers.get(tabKey(taskId, tabId))
-    if (set) {
-      for (const cb of set) {
-        try {
-          cb(ev)
-        } catch (err) {
-          // Swallow subscriber errors — one bad listener must not break
-          // the bus for others. Log so it isn't silent.
-          // eslint-disable-next-line no-console
-          console.error("[kobe orchestrator] subscriber threw:", err)
-        }
-      }
-    }
-    // Global listeners run after per-tab — they're cross-cutting UI
-    // signals (bell, sidebar flash) and should never starve the per-tab
-    // path. Same error-swallowing contract.
-    if (this.globalSubscribers.size > 0) {
-      for (const cb of this.globalSubscribers) {
-        try {
-          cb(taskId, tabId, ev)
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error("[kobe orchestrator] global subscriber threw:", err)
-        }
+    if (!set) return
+    for (const cb of set) {
+      try {
+        cb(ev)
+      } catch (err) {
+        // Swallow subscriber errors — one bad listener must not break
+        // the bus for others. Log so it isn't silent.
+        // eslint-disable-next-line no-console
+        console.error("[kobe orchestrator] subscriber threw:", err)
       }
     }
   }

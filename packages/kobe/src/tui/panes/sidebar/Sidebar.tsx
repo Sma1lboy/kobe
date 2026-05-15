@@ -49,7 +49,7 @@
  */
 
 import type { Task, TaskStatus } from "@/types/task"
-import type { KeyEvent, RGBA } from "@opentui/core"
+import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
@@ -107,15 +107,6 @@ export type SidebarProps = {
    * at runtime. Reactive — changing the accessor's value reflows immediately.
    */
   width?: Accessor<number>
-  /**
-   * Transient per-task "flash kind" map — set by the parent when a
-   * non-focused task finishes its turn (KOB-153). The matching row
-   * paints in `theme.success` (`"done"`) or `theme.error` (`"error"`)
-   * for ~1.2s, overriding the cursor / selected backgrounds so the
-   * signal is unmissable. Missing key = no flash. Empty / undefined
-   * accessor leaves all rows in steady state.
-   */
-  flashes?: Accessor<ReadonlyMap<string, "done" | "error">>
 }
 
 /**
@@ -514,37 +505,20 @@ export function Sidebar(props: SidebarProps) {
                 return parts.join(" ")
               })
               const titleText = isMain ? repoBasename(task.repo) : task.title
-              // Background-task completion flash (KOB-153). The parent
-              // sets a transient "done" / "error" kind for non-focused
-              // tasks; we override the cursor/selected backgrounds so
-              // the signal is impossible to miss for ~1.2s. Flash wins
-              // over cursor because the cursor steady-state is already
-              // a strong attention cue — drawing through it briefly is
-              // the whole point.
-              const flashKind = (): "done" | "error" | undefined => props.flashes?.().get(task.id)
-              const rowBg = (): RGBA | undefined => {
-                const fk = flashKind()
-                if (fk === "done") return theme.success
-                if (fk === "error") return theme.error
-                if (isCursor()) return theme.primary
-                if (isSelected()) return theme.backgroundElement
-                return undefined
-              }
-              const onFlashRow = (): boolean => flashKind() !== undefined
               return (
                 <box
                   flexDirection="row"
                   paddingLeft={1}
                   paddingRight={1}
                   gap={1}
-                  backgroundColor={rowBg()}
+                  backgroundColor={isCursor() ? theme.primary : isSelected() ? theme.backgroundElement : undefined}
                   onMouseUp={() => props.onSelect(task.id)}
                 >
-                  <text fg={isCursor() || onFlashRow() ? theme.selectedListItemText : badgeColor()} wrapMode="none">
+                  <text fg={isCursor() ? theme.selectedListItemText : badgeColor()} wrapMode="none">
                     {isMain ? "★" : badge.glyph}
                   </text>
                   <text
-                    fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.text}
+                    fg={isCursor() ? theme.selectedListItemText : theme.text}
                     attributes={
                       (isMain || (isSelected() && !isCursor())) && !isCursor() ? TextAttributes.BOLD : undefined
                     }
@@ -564,10 +538,7 @@ export function Sidebar(props: SidebarProps) {
                       rather than crowding the title. */}
                   <box width={CHANGES_COLUMN_WIDTH} flexShrink={0} flexDirection="row" justifyContent="flex-end">
                     <Show when={changesLabel().length > 0}>
-                      <text
-                        fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted}
-                        wrapMode="none"
-                      >
+                      <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                         {changesLabel()}
                       </text>
                     </Show>
@@ -579,18 +550,12 @@ export function Sidebar(props: SidebarProps) {
                   <Show when={(isMain && branchLabel().length > 0) || (!isMain && task.pinned === true)}>
                     <box flexDirection="row" gap={1} paddingLeft={1}>
                       <Show when={isMain && branchLabel().length > 0}>
-                        <text
-                          fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted}
-                          wrapMode="none"
-                        >
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                           {branchLabel()}
                         </text>
                       </Show>
                       <Show when={!isMain && task.pinned === true}>
-                        <text
-                          fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.warning}
-                          wrapMode="none"
-                        >
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.warning} wrapMode="none">
                           ▴
                         </text>
                       </Show>

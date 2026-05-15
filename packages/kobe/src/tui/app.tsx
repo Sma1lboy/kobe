@@ -192,73 +192,6 @@ function Shell(props: AppDeps) {
     if (pp.taskId !== selectedId()) return undefined
     return pp.prompt
   })
-  // Background-task completion alert (KOB-153). Subscribe to every
-  // event from every (task, tab) pair via the orchestrator's global
-  // bus; when a `done`/`error` lands on a task that ISN'T currently
-  // focused, ring the terminal bell and stash a transient "flash kind"
-  // signal that the Sidebar reads to paint the row in `theme.success` /
-  // `theme.error` for ~1.2s. Focusing the task before the timer expires
-  // cancels the flash immediately (no manual dismiss needed).
-  const FLASH_HOLD_MS = 1200
-  const [taskFlashes, setTaskFlashes] = createSignal<ReadonlyMap<string, "done" | "error">>(new Map())
-  const flashTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  function clearTaskFlash(taskId: string): void {
-    const t = flashTimers.get(taskId)
-    if (t) {
-      clearTimeout(t)
-      flashTimers.delete(taskId)
-    }
-    setTaskFlashes((prev) => {
-      if (!prev.has(taskId)) return prev
-      const next = new Map(prev)
-      next.delete(taskId)
-      return next
-    })
-  }
-  onMount(() => {
-    const unsub = props.orchestrator.subscribeAllEvents((taskId, _tabId, ev) => {
-      if (ev.type !== "done" && ev.type !== "error") return
-      // Focused-task completions don't need a signal — the user is
-      // already looking at the chat where the result lands.
-      if (selectedId() === taskId) return
-      try {
-        process.stderr.write("\x07")
-      } catch {
-        // stderr write can fail on a closed pipe in tests; swallow.
-      }
-      const kind: "done" | "error" = ev.type
-      const existing = flashTimers.get(taskId)
-      if (existing) clearTimeout(existing)
-      setTaskFlashes((prev) => {
-        const next = new Map(prev)
-        next.set(taskId, kind)
-        return next
-      })
-      const timer = setTimeout(() => {
-        flashTimers.delete(taskId)
-        setTaskFlashes((prev) => {
-          if (!prev.has(taskId)) return prev
-          const next = new Map(prev)
-          next.delete(taskId)
-          return next
-        })
-      }, FLASH_HOLD_MS)
-      flashTimers.set(taskId, timer)
-    })
-    onCleanup(() => {
-      unsub()
-      for (const t of flashTimers.values()) clearTimeout(t)
-      flashTimers.clear()
-    })
-  })
-  // Auto-dismiss the flash for any task the user focuses — they've now
-  // seen it, no need to wait for the timer.
-  createEffect(
-    on(selectedId, (id) => {
-      if (id) clearTaskFlash(id)
-    }),
-  )
-
   // Per-task accessors for the right-column panes. FileTree + Preview key
   // off `worktreePath`; Terminal keys off both `cwd` and `taskId` (so the
   // pty registry can deduplicate per task per the resolved Wave-1 decision).
@@ -658,7 +591,6 @@ function Shell(props: AppDeps) {
             onSearchActiveChange={(active: boolean) => setSidebarSearchActive(active)}
             selectedId={selectedId}
             focused={isFocused("sidebar")}
-            flashes={taskFlashes}
           />
         </box>
         {/* Sidebar ↔ workspace splitter. */}
