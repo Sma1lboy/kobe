@@ -66,9 +66,15 @@ export function defaultHistoryPath(): string {
 }
 
 /**
- * Sync read on boot. Returns surviving entries in original (oldest →
- * newest) order. Missing file = empty. Malformed lines are skipped
+ * Sync read on boot. Returns surviving entries sorted oldest → newest
+ * by `timestamp`. Missing file = empty. Malformed lines are skipped
  * with a single warning aggregating the count.
+ *
+ * Sort by timestamp (not file position) because concurrent appends to
+ * the same file can interleave at byte level even though each line's
+ * write is POSIX-atomic. The on-disk `timestamp` field is captured
+ * synchronously at push time, so it remains the canonical ordering
+ * key even if two TUIs (or one TUI pushing quickly) race the writes.
  *
  * Sync (not async) because the TUI's boot path is synchronous —
  * loading before the first composer mount lets us replay into the
@@ -109,26 +115,59 @@ export function loadFromDisk(path: string = defaultHistoryPath()): DiskHistoryEn
   if (malformed > 0) {
     console.warn(`[kobe] composer history: skipped ${malformed} malformed line(s) in ${path}`)
   }
+  out.sort((a, b) => a.timestamp - b.timestamp)
   return out
 }
 
 /**
- * Fire-and-forget append. Resolves silently on success; on failure
- * logs once and resolves anyway. Never throws — the composer's
- * pushHistory call site treats persistence as best-effort.
+ * Serial write queue. Even though POSIX `appendFile` writes <PIPE_BUF
+ * (typically 4KB) atomically, two concurrent `appendFile` calls can
+ * still complete in *opposite* order from how they were issued — the
+ * OS interleaves them by scheduling, not by submission time. That
+ * scrambles the file's chronology and breaks the
+ * loadFromDisk-by-file-order assumption.
+ *
+ * Chaining every append onto the same promise lets the test pass
+ * deterministically AND matches the user's mental model: prompts
+ * land on disk in the same order they were submitted, period. Cost
+ * is negligible (one fs call per push, which is sub-ms anyway).
+ *
+ * The chain swallows errors so a single bad write doesn't poison
+ * later ones.
+ */
+let writeQueue: Promise<void> = Promise.resolve()
+
+/**
+ * Best-effort append. Returns a promise that resolves when *this*
+ * call's write has landed; callers can `void` it (fire-and-forget)
+ * or `await` it (e.g. tests proving the write reached disk). Failure
+ * logs once via `console.warn` and the chain keeps going.
  *
  * Ensures the parent directory exists (first append on a fresh
  * install needs to create `~/.kobe/`).
  */
-export async function appendToDisk(entry: DiskHistoryEntry, path: string = defaultHistoryPath()): Promise<void> {
-  try {
-    const dir = dirname(path)
-    await mkdir(dir, { recursive: true })
-    const line = `${JSON.stringify(entry)}\n`
-    await appendFile(path, line, { encoding: "utf8", mode: 0o600 })
-  } catch (err) {
-    console.warn(`[kobe] composer history append failed: ${err instanceof Error ? err.message : err}`)
-  }
+export function appendToDisk(entry: DiskHistoryEntry, path: string = defaultHistoryPath()): Promise<void> {
+  const next = writeQueue.then(async () => {
+    try {
+      const dir = dirname(path)
+      await mkdir(dir, { recursive: true })
+      const line = `${JSON.stringify(entry)}\n`
+      await appendFile(path, line, { encoding: "utf8", mode: 0o600 })
+    } catch (err) {
+      console.warn(`[kobe] composer history append failed: ${err instanceof Error ? err.message : err}`)
+    }
+  })
+  writeQueue = next
+  return next
+}
+
+/**
+ * Drain the write queue. Tests use this to deterministically wait for
+ * fire-and-forget pushes to land on disk before asserting. Production
+ * code shouldn't need to call it.
+ */
+export function flushPendingWrites(): Promise<void> {
+  return writeQueue
 }
 
 /**
