@@ -237,6 +237,24 @@ export function Chat(props: ChatProps) {
 
   const tasksAcc = props.orchestrator.tasksSignal()
 
+  // Reverse-lookup for the Ctrl+R prompt-history palette (KOB-154).
+  // Composer keys per-tab history rings by `chatTab.id`, occasionally
+  // by task id (fallback when no tab is set), or the literal "global".
+  // The palette renders rows as `<task-title>  ·  <prompt>`, so we
+  // walk the live task list to map either of those id shapes back to
+  // a title. Walk cost is O(tasks * tabs-per-task); both are small
+  // (typically < 100 entries combined), and the palette opens
+  // interactively — cheap enough to call once per render.
+  function taskLabelForHistoryKey(historyKey: string): string | undefined {
+    if (historyKey === "global") return undefined
+    const tasks = tasksAcc()
+    for (const t of tasks) {
+      if (t.id === historyKey) return t.title
+      if (t.tabs.some((tab) => tab.id === historyKey)) return t.title
+    }
+    return undefined
+  }
+
   const contextMeterLabel = createMemo(() => {
     const tid = props.taskId()
     const tabId = activeTabId()
@@ -948,6 +966,7 @@ export function Chat(props: ChatProps) {
       onOpenFilePath={props.onOpenFilePath}
       onEditQueued={editQueued}
       editingQueueId={editingQueueId}
+      taskLabelForHistoryKey={taskLabelForHistoryKey}
     />
   )
 }

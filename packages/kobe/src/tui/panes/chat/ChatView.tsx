@@ -49,6 +49,7 @@ export interface ChatViewProps {
   readonly onOpenFilePath?: (relPath: string) => void
   readonly onEditQueued: (id: string) => void
   readonly editingQueueId: Accessor<string | null>
+  readonly taskLabelForHistoryKey?: (historyKey: string) => string | undefined
 }
 
 export function ChatView(props: ChatViewProps) {
@@ -140,6 +141,7 @@ export function ChatView(props: ChatViewProps) {
           onOpenFilePath={props.onOpenFilePath}
           onEditQueued={props.onEditQueued}
           editingQueueId={props.editingQueueId}
+          taskLabelForHistoryKey={props.taskLabelForHistoryKey}
         />
       </Show>
     </box>

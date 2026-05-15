@@ -36,8 +36,15 @@ export const HISTORY_LIMIT = 200
  * deleted — the per-key ring is bounded, the key set isn't (a session
  * with 1000 tasks creates 1000 keys; that's fine, each key holds at
  * most {@link HISTORY_LIMIT} short strings).
+ *
+ * Each entry carries a monotonic `seq` so cross-key consumers (the
+ * Ctrl+R palette, KOB-154) can merge entries from many keys into one
+ * "global newest-first" ordering without needing wall-clock timestamps
+ * (which we'd need a migration story for once we ever persist).
  */
-const STORE: Map<string, string[]> = new Map()
+type HistoryEntry = { readonly value: string; readonly seq: number }
+const STORE: Map<string, HistoryEntry[]> = new Map()
+let SEQ = 0
 
 /**
  * Push a new entry to the history for `key`. No-op for empty /
@@ -51,8 +58,9 @@ export function pushHistory(key: string, value: string): void {
   if (value.trim().length === 0) return
   const ring = STORE.get(key) ?? []
   const last = ring[ring.length - 1]
-  if (last === value) return
-  ring.push(value)
+  if (last && last.value === value) return
+  SEQ += 1
+  ring.push({ value, seq: SEQ })
   if (ring.length > HISTORY_LIMIT) {
     ring.splice(0, ring.length - HISTORY_LIMIT)
   }
@@ -71,7 +79,24 @@ export function pushHistory(key: string, value: string): void {
 export function getHistory(key: string): readonly string[] {
   const ring = STORE.get(key)
   if (!ring) return []
-  return ring.slice()
+  return ring.map((e) => e.value)
+}
+
+/**
+ * Snapshot of every history entry across every key, sorted globally
+ * newest-first by insertion sequence. Feeds the Ctrl+R palette
+ * (KOB-154) so the user can search prompts they've sent from any task.
+ *
+ * Returns a fresh array — safe to index, sort, filter without
+ * worrying about future {@link pushHistory} calls invalidating it.
+ */
+export function getAllHistoryEntries(): ReadonlyArray<{ readonly key: string; readonly value: string; readonly seq: number }> {
+  const out: Array<{ key: string; value: string; seq: number }> = []
+  for (const [key, ring] of STORE) {
+    for (const e of ring) out.push({ key, value: e.value, seq: e.seq })
+  }
+  out.sort((a, b) => b.seq - a.seq)
+  return out
 }
 
 /**
@@ -84,8 +109,10 @@ export function clearHistory(key: string): void {
 }
 
 /**
- * Clear all history. Tests-only.
+ * Clear all history. Tests-only. Resets the monotonic `seq` counter
+ * too so per-test ordering assertions stay deterministic.
  */
 export function clearAllHistory(): void {
   STORE.clear()
+  SEQ = 0
 }
