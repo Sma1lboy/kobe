@@ -169,21 +169,22 @@ export function Sidebar(props: SidebarProps) {
   const [searchMode, setSearchMode] = createSignal(false)
   const [searchQuery, setSearchQuery] = createSignal("")
   let prevSelectedIdBeforeSearch: string | null = null
-  // Imperative handle on the inline search input so we can call
-  // `.focus()` after the input mounts. opentui's declarative
-  // `focused={true}` prop wasn't enough on its own: the `<Show>`
-  // wrapper meant the input mounted on the same tick that `/`
-  // triggered enterSearch(), and opentui's keyboard focus didn't
-  // propagate to the new element before the user's next keystroke
-  // arrived — the first char after `/` got dropped because nothing
-  // was holding focus. Calling focus() through this ref on the
-  // microtask queue lets Solid commit the mount first, then forces
-  // focus before the next stdin event lands.
-  let searchInputEl: { focus(): void } | undefined
+  // Imperative handle on the inline search input. We DON'T bind the
+  // `value` prop reactively (`value={searchQuery()}`): each keystroke
+  // would round-trip user-type → insertText → emit input → onInput
+  // → setSearchQuery → Solid re-render → node.value setter with the
+  // same string. In practice that round-trip dropped the visible
+  // typed text on the renderer's next paint — placeholder vanished
+  // (so the keystroke was processed) but the typed char never showed
+  // up. opentui's InputRenderable owns its own buffer; we read from
+  // it via `onInput` and write to it imperatively via this ref (only
+  // when clearing on enterSearch / exitSearch).
+  let searchInputEl: ({ focus(): void } & { value: string }) | undefined
 
   function enterSearch(): void {
     prevSelectedIdBeforeSearch = props.selectedId()
     setSearchQuery("")
+    if (searchInputEl) searchInputEl.value = ""
     setSearchMode(true)
     props.onSearchActiveChange?.(true)
     queueMicrotask(() => searchInputEl?.focus())
@@ -191,6 +192,7 @@ export function Sidebar(props: SidebarProps) {
   function exitSearch(select: boolean): void {
     setSearchMode(false)
     setSearchQuery("")
+    if (searchInputEl) searchInputEl.value = ""
     // On esc-cancel, re-select the task that was active before the user
     // entered search mode. On enter-commit (`select=true`),
     // ctrl.selectCurrent() already fired in the keys handler so the
@@ -376,11 +378,10 @@ export function Sidebar(props: SidebarProps) {
           </text>
         </Show>
         <input
-          ref={(el: { focus(): void } | undefined) => {
+          ref={(el: ({ focus(): void } & { value: string }) | undefined) => {
             searchInputEl = el
             if (searchMode()) el?.focus()
           }}
-          value={searchQuery()}
           placeholder="fuzzy filter"
           focused={searchMode()}
           onInput={(v: string) => setSearchQuery(v.replace(/[\r\n]+/g, ""))}
