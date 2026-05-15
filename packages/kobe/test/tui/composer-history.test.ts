@@ -20,12 +20,7 @@ describe("composer/history — getAllHistoryEntries (KOB-154)", () => {
     const all = getAllHistoryEntries()
 
     // Newest first regardless of which key the entry came from.
-    expect(all.map((e) => e.value)).toEqual([
-      "second from b",
-      "second from a",
-      "first from b",
-      "first from a",
-    ])
+    expect(all.map((e) => e.value)).toEqual(["second from b", "second from a", "first from b", "first from a"])
     // Each row carries the key it came from so callers can resolve a label.
     expect(all[0]?.key).toBe("task-b")
     expect(all[3]?.key).toBe("task-a")

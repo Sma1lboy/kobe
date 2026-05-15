@@ -90,7 +90,11 @@ export function getHistory(key: string): readonly string[] {
  * Returns a fresh array — safe to index, sort, filter without
  * worrying about future {@link pushHistory} calls invalidating it.
  */
-export function getAllHistoryEntries(): ReadonlyArray<{ readonly key: string; readonly value: string; readonly seq: number }> {
+export function getAllHistoryEntries(): ReadonlyArray<{
+  readonly key: string
+  readonly value: string
+  readonly seq: number
+}> {
   const out: Array<{ key: string; value: string; seq: number }> = []
   for (const [key, ring] of STORE) {
     for (const e of ring) out.push({ key, value: e.value, seq: e.seq })

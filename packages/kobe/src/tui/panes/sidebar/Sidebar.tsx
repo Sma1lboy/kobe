@@ -540,10 +540,7 @@ export function Sidebar(props: SidebarProps) {
                   backgroundColor={rowBg()}
                   onMouseUp={() => props.onSelect(task.id)}
                 >
-                  <text
-                    fg={isCursor() || onFlashRow() ? theme.selectedListItemText : badgeColor()}
-                    wrapMode="none"
-                  >
+                  <text fg={isCursor() || onFlashRow() ? theme.selectedListItemText : badgeColor()} wrapMode="none">
                     {isMain ? "★" : badge.glyph}
                   </text>
                   <text
@@ -567,7 +564,10 @@ export function Sidebar(props: SidebarProps) {
                       rather than crowding the title. */}
                   <box width={CHANGES_COLUMN_WIDTH} flexShrink={0} flexDirection="row" justifyContent="flex-end">
                     <Show when={changesLabel().length > 0}>
-                      <text fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                      <text
+                        fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted}
+                        wrapMode="none"
+                      >
                         {changesLabel()}
                       </text>
                     </Show>
@@ -579,7 +579,10 @@ export function Sidebar(props: SidebarProps) {
                   <Show when={(isMain && branchLabel().length > 0) || (!isMain && task.pinned === true)}>
                     <box flexDirection="row" gap={1} paddingLeft={1}>
                       <Show when={isMain && branchLabel().length > 0}>
-                        <text fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                        <text
+                          fg={isCursor() || onFlashRow() ? theme.selectedListItemText : theme.textMuted}
+                          wrapMode="none"
+                        >
                           {branchLabel()}
                         </text>
                       </Show>

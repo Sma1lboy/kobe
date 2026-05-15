@@ -163,9 +163,7 @@ export function HistoryPaletteView(props: {
         when={matches().length > 0}
         fallback={
           <box paddingBottom={1}>
-            <text fg={theme.textMuted}>
-              {allRows.length === 0 ? "No prompt history yet." : "No matches."}
-            </text>
+            <text fg={theme.textMuted}>{allRows.length === 0 ? "No prompt history yet." : "No matches."}</text>
           </box>
         }
       >
@@ -199,11 +197,7 @@ export function HistoryPaletteView(props: {
                       ·
                     </text>
                   </Show>
-                  <text
-                    fg={isHighlighted() ? theme.selectedListItemText : theme.text}
-                    wrapMode="none"
-                    flexGrow={1}
-                  >
+                  <text fg={isHighlighted() ? theme.selectedListItemText : theme.text} wrapMode="none" flexGrow={1}>
                     {truncate(row.display, 80)}
                   </text>
                 </box>
@@ -212,7 +206,8 @@ export function HistoryPaletteView(props: {
           </For>
           <Show when={window().total > window().items.length}>
             <text fg={theme.textMuted}>
-              {window().total - window().items.length} more match{window().total - window().items.length === 1 ? "" : "es"} hidden — keep typing or scroll
+              {window().total - window().items.length} more match
+              {window().total - window().items.length === 1 ? "" : "es"} hidden — keep typing or scroll
             </text>
           </Show>
         </box>
