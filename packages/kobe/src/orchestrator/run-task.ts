@@ -1,4 +1,5 @@
 import type { AIEngine, OrchestratorEvent, SessionHandle } from "../types/engine"
+import { tabKey } from "../types/tab-key"
 import type { ChatTab, ModelEffortLevel, Task, TaskId } from "../types/task"
 import { CONCURRENCY_CAP, ConcurrencyCapError, IllegalTransitionError } from "./errors"
 import type { TaskIndexStore } from "./index/store"
@@ -7,10 +8,6 @@ import type { TaskWorktreeCoordinator } from "./task-worktree"
 import { deriveTitleFromPrompt } from "./title"
 
 export const PLACEHOLDER_TASK_TITLE = "(new task)"
-
-function tabKey(taskId: string, tabId: string): string {
-  return `${taskId}:${tabId}`
-}
 
 export class TaskRunner {
   private readonly firstSpawnLatches = new Map<string, Promise<void>>()

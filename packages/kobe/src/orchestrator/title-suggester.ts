@@ -26,6 +26,7 @@
  * suggestion attempt per cold start.
  */
 
+import { tabKey, tabKeyMatchesTask } from "../types/tab-key.ts"
 import type { ChatTab, Task, TaskId } from "../types/task.ts"
 import type { TaskIndexStore } from "./index/store.ts"
 import type { MetadataSuggester, MetadataSuggestionContext } from "./metadata-suggester.ts"
@@ -37,10 +38,6 @@ const MIN_USER_TURNS = 3
 export interface TitleSuggesterDeps {
   readonly store: TaskIndexStore
   readonly suggester: MetadataSuggester
-}
-
-function tabKey(taskId: TaskId | string, tabId: string): string {
-  return `${taskId}:${tabId}`
 }
 
 export class TitleSuggester {
@@ -111,9 +108,8 @@ export class TitleSuggester {
     this.candidates.delete(taskId)
     this.attempted.delete(taskId)
     this.inFlight.delete(taskId)
-    const prefix = `${taskId}:`
     for (const key of this.userPrompts.keys()) {
-      if (key.startsWith(prefix)) {
+      if (tabKeyMatchesTask(key, taskId)) {
         this.userPrompts.delete(key)
         this.contexts.delete(key)
         this.pendingTurnKeys.delete(key)

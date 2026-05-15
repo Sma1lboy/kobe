@@ -31,11 +31,12 @@ import {
 } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
-import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
+import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { NullMetadataSuggester } from "../orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
+import { tabKey } from "../types/tab-key.ts"
 import type { ChatTab } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
@@ -505,7 +506,7 @@ function Shell(props: AppDeps) {
     const tabId = activeChatTabIdAcc()
     if (!taskId || !tabId) return null
     if (!isChatTabActive()) return null
-    return chatRunStateKey(taskId, tabId)
+    return tabKey(taskId, tabId)
   })
   useCompletionNotifications({
     chatRunState: chatRunStateAcc,

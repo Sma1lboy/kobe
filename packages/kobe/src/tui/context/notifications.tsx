@@ -27,6 +27,7 @@
  */
 
 import { type Accessor, type ParentProps, createContext, createSignal, useContext } from "solid-js"
+import { tabKey as unreadKey } from "../../types/tab-key.ts"
 import { pulse as pulseSound } from "../lib/sound"
 import { useKV } from "./kv"
 
@@ -58,10 +59,6 @@ export interface NotificationsContext {
 }
 
 const ctx = createContext<NotificationsContext>()
-
-function unreadKey(taskId: string, tabId: string): string {
-  return `${taskId}:${tabId}`
-}
 
 export function NotificationsProvider(props: ParentProps) {
   const kv = useKV()

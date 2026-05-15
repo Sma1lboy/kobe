@@ -11,7 +11,8 @@
  */
 
 import { type Accessor, createEffect } from "solid-js"
-import { type ChatRunState, chatRunStateKey } from "../../orchestrator/core"
+import type { ChatRunState } from "../../orchestrator/core"
+import { parseTabKey, tabKey } from "../../types/tab-key"
 import type { Task } from "../../types/task"
 import type { NotificationsContext } from "../context/notifications"
 
@@ -52,8 +53,9 @@ export function useCompletionNotifications(deps: CompletionNotificationsDeps): v
       // running → awaiting_input: tab paused waiting for the user.
       if (state === "running" && next === "awaiting_input") {
         if (key === visible) continue
-        const [taskId, tabId] = splitKey(key)
-        if (!taskId || !tabId) continue
+        const parsed = parseTabKey(key)
+        if (!parsed) continue
+        const { taskId, tabId } = parsed
         deps.notifications.notify({
           kind: "needs_input",
           taskId,
@@ -65,8 +67,9 @@ export function useCompletionNotifications(deps: CompletionNotificationsDeps): v
       // running | awaiting_input → idle: tab finished its turn.
       if ((state === "running" || state === "awaiting_input") && next === undefined) {
         if (key === visible) continue
-        const [taskId, tabId] = splitKey(key)
-        if (!taskId || !tabId) continue
+        const parsed = parseTabKey(key)
+        if (!parsed) continue
+        const { taskId, tabId } = parsed
         deps.notifications.notify({
           kind: "done",
           taskId,
@@ -79,17 +82,6 @@ export function useCompletionNotifications(deps: CompletionNotificationsDeps): v
   })
 }
 
-/**
- * Inverse of {@link chatRunStateKey}. Returns `[taskId, tabId]` or
- * `[null, null]` when the key shape is unexpected (defensive — every
- * key currently in the map should already be in shape).
- */
-function splitKey(key: string): readonly [string | null, string | null] {
-  const idx = key.indexOf(":")
-  if (idx < 0) return [null, null]
-  return [key.slice(0, idx), key.slice(idx + 1)]
-}
-
 // Re-export so callers building the visibleTabKey accessor don't need a
 // second import path.
-export { chatRunStateKey }
+export { tabKey }

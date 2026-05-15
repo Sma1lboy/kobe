@@ -1,6 +1,6 @@
 import { type Accessor, createSignal } from "solid-js"
 import type { RcBridgeStatus } from "../daemon/rc-bridge.ts"
-import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey } from "../orchestrator/core.ts"
+import type { ChatRunState, Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
@@ -13,6 +13,7 @@ import type {
 } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
+import { tabKey } from "../types/tab-key.ts"
 import type { ChatTab, Task, VendorId } from "../types/task.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
@@ -492,7 +493,7 @@ export class RemoteOrchestrator {
       if (!ev) return
       if (ev.type === "user_input.request") {
         this.markRunState(taskId, tabId, "awaiting_input")
-        this.pendingInputBroker.record(taskId, `${taskId}:${tabId}`, ev.requestId, ev.payload)
+        this.pendingInputBroker.record(taskId, tabKey(taskId, tabId), ev.requestId, ev.payload)
       }
       if (ev.type === "user_input.resolved") {
         this.clearRunState(taskId, tabId)
@@ -510,7 +511,7 @@ export class RemoteOrchestrator {
   }
 
   private dispatch(taskId: string, tabId: string, ev: OrchestratorEvent): void {
-    const set = this.subscribers.get(`${taskId}:${tabId}`)
+    const set = this.subscribers.get(tabKey(taskId, tabId))
     if (!set) return
     for (const cb of set) cb(ev)
   }
@@ -518,13 +519,13 @@ export class RemoteOrchestrator {
   private markRunState(taskId: string, tabId: string | undefined, state: ChatRunState): void {
     if (!tabId) return
     const next = new Map(this.runStateAcc())
-    next.set(chatRunStateKey(taskId, tabId), state)
+    next.set(tabKey(taskId, tabId), state)
     this.setRunState(next)
   }
 
   private clearRunState(taskId: string, tabId: string): void {
     const next = new Map(this.runStateAcc())
-    next.delete(chatRunStateKey(taskId, tabId))
+    next.delete(tabKey(taskId, tabId))
     this.setRunState(next)
   }
 }

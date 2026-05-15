@@ -3,6 +3,7 @@ import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../types/engine.ts"
+import { tabKey, tabKeyMatchesTask } from "../types/tab-key.ts"
 import type { Task } from "../types/task.ts"
 import type { ClientState, DaemonClientConnection, DaemonContext } from "./context.ts"
 import { daemonHandlers } from "./handlers/index.ts"
@@ -218,7 +219,7 @@ function subscribeClientToTask(orch: Orchestrator, client: ClientState, task: Ta
 }
 
 function subscribeClientToTab(orch: Orchestrator, client: ClientState, taskId: string, tabId: string): void {
-  const key = `${taskId}:${tabId}`
+  const key = tabKey(taskId, tabId)
   if (client.subscriptions.has(key)) return
   const unsub = orch.subscribeEvents(
     taskId,
@@ -247,9 +248,8 @@ function broadcastTaskUpdated(orch: Orchestrator, clients: ReadonlySet<ClientSta
 }
 
 function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
-  const prefix = `${taskId}:`
   for (const [key, unsub] of client.subscriptions) {
-    if (!key.startsWith(prefix)) continue
+    if (!tabKeyMatchesTask(key, taskId)) continue
     unsub()
     client.subscriptions.delete(key)
   }

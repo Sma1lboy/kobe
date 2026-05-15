@@ -38,7 +38,7 @@
 
 import type { AIEngine, EngineEvent, OrchestratorEvent, SessionHandle } from "../types/engine.ts"
 import type { PendingInputBroker } from "../types/pending-input-broker.ts"
-import { chatRunStateKey } from "./core.ts"
+import { tabKey } from "../types/tab-key.ts"
 import { detectUserInputFromEngineEvent } from "./user-input.ts"
 
 export interface SessionPumpEnvironment {
@@ -102,7 +102,7 @@ export class SessionPump {
    * but defensive against the loop bailing early.
    */
   async run(taskId: string, tabId: string, handle: SessionHandle): Promise<PumpRunResult> {
-    const tabKey = chatRunStateKey(taskId, tabId)
+    const key = tabKey(taskId, tabId)
     const engine = this.env.engineFor(taskId, tabId)
     let killedForInput = false
     let terminalEvent: EngineEvent | null = null
@@ -115,7 +115,7 @@ export class SessionPump {
         if (inputReq) {
           this.env.dispatch(taskId, tabId, ev)
           const requestId = this.env.nextRequestId()
-          this.env.broker.record(taskId, tabKey, requestId, inputReq)
+          this.env.broker.record(taskId, key, requestId, inputReq)
           this.env.onPendingInputChange?.()
           this.env.dispatch(taskId, tabId, {
             type: "user_input.request",

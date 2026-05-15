@@ -14,6 +14,7 @@ import type {
   UserInputResponse,
 } from "../types/engine.ts"
 import type { PendingInputBroker, PendingInputEntry } from "../types/pending-input-broker.ts"
+import { tabKey, tabKeyMatchesTask } from "../types/tab-key.ts"
 import type { ChatTab, PermissionMode, Task, TaskId, VendorId } from "../types/task.ts"
 import {
   clearChatTab,
@@ -122,19 +123,6 @@ export type Unsubscribe = () => void
 export type ChatRunState = "running" | "awaiting_input" | "idle"
 
 export type TaskListListener = (snapshot: readonly Task[]) => void
-
-/**
- * Compose the composite key used by {@link Orchestrator.chatRunStateSignal}
- * so callers don't need to know that the underlying shape is
- * `${taskId}:${tabId}`. Mirrors the private {@link tabKey} helper.
- */
-export function chatRunStateKey(taskId: string, tabId: string): string {
-  return `${taskId}:${tabId}`
-}
-
-function tabKey(taskId: string, tabId: string): string {
-  return `${taskId}:${tabId}`
-}
 
 /**
  * Owner of the task lifecycle.
@@ -847,8 +835,7 @@ export class Orchestrator {
   }
 
   private async stopAllTabsForTask(taskId: TaskId): Promise<void> {
-    const prefix = `${taskId}:`
-    const keys = Array.from(this.handles.keys()).filter((k) => k.startsWith(prefix))
+    const keys = Array.from(this.handles.keys()).filter((k) => tabKeyMatchesTask(k, taskId))
     const engine = this.engineRouter.engineForTaskId(taskId)
     for (const key of keys) {
       const handle = this.handles.get(key)
@@ -893,7 +880,7 @@ export class Orchestrator {
       // tabs have stopped. With multi-tab, a single tab finishing
       // doesn't mean the task is done — the user may still have other
       // tabs streaming.
-      const stillLive = Array.from(this.handles.keys()).some((k) => k.startsWith(`${taskId}:`))
+      const stillLive = Array.from(this.handles.keys()).some((k) => tabKeyMatchesTask(k, taskId))
       if (!stillLive) {
         try {
           await this.store.update(taskId, { status: terminal === "done" ? "done" : "error" })

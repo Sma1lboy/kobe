@@ -47,8 +47,8 @@
 
 import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
-import { chatRunStateKey } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
+import { tabKey } from "../../../types/tab-key.ts"
 import type { ChatTab, Task, TaskStatus } from "../../../types/task.ts"
 import type { ChatState } from "./row-types"
 import { applyEvent, createInitialState, pushSystemError, setMessagesFromHistory } from "./store"
@@ -211,8 +211,8 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       // mid-stream sees `isStreaming: false` (composer unlocked, spinner
       // missing) and an empty messages list with no approval / question
       // row, until the next live event happens to land.
-      const tabKey = chatRunStateKey(taskId, tabId)
-      const runState = orchestrator.chatRunStateSignal()().get(tabKey)
+      const key = tabKey(taskId, tabId)
+      const runState = orchestrator.chatRunStateSignal()().get(key)
       // Sync isStreaming in BOTH directions on re-attach. Now that
       // statesByTab is module-scoped and survives Chat remounts +
       // task switches, a turn that finished while the user was on
@@ -225,7 +225,7 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         if (opts.taskId() !== taskId) return
         const pending = orchestrator.peekPendingInput(taskId)
         for (const entry of pending) {
-          if (entry.tabKey !== tabKey) continue
+          if (entry.tabKey !== key) continue
           patchStateForTab(tabId, (s) =>
             applyEvent(s, { type: "user_input.request", requestId: entry.requestId, payload: entry.payload }),
           )

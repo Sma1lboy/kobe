@@ -11,7 +11,8 @@
 import { basename } from "node:path"
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show } from "solid-js"
-import { type ChatRunState, chatRunStateKey } from "../../orchestrator/core.ts"
+import type { ChatRunState } from "../../orchestrator/core.ts"
+import { tabKey } from "../../types/tab-key.ts"
 import type { ChatTab } from "../../types/task.ts"
 import { type NotificationKind, notificationKey } from "../context/notifications"
 import { useTheme } from "../context/theme"
@@ -43,7 +44,7 @@ export function CenterTabStrip(props: {
   activeTaskId: Accessor<string | undefined>
   /**
    * Per-chat-tab live engine state, keyed by `${taskId}:${tabId}`
-   * (compose via {@link chatRunStateKey}). Drives the leading status
+   * (compose via {@link tabKey}). Drives the leading status
    * dot on each chat-tab chip — green when streaming, yellow when the
    * tab is paused on `AskUserQuestion` / `ExitPlanMode`, no dot when
    * idle. Absence of an entry == idle.
@@ -119,7 +120,7 @@ export function CenterTabStrip(props: {
             const runState = (): ChatRunState | undefined => {
               const taskId = props.activeTaskId()
               if (!taskId) return undefined
-              return props.chatRunState().get(chatRunStateKey(taskId, tab.id))
+              return props.chatRunState().get(tabKey(taskId, tab.id))
             }
             // Unread badge — shares the leading status-dot slot.
             // Suppressed when
