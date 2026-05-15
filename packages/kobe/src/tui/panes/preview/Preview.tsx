@@ -54,10 +54,7 @@ import {
   computeTargetDims,
   decodeAnimatedImage,
   decodeImage,
-  decodePdfFirstPage,
-  decodeVideoFirstFrame,
   probeFrameTiming,
-  probeMediaDims,
 } from "./image-render"
 import { usePreviewBindings } from "./keys"
 import {
@@ -165,6 +162,13 @@ function computeImageBudget(): { maxCols: number; maxRows: number } {
  */
 type MediaContent = {
   readonly relPath: string
+  /**
+   * Resolved absolute path. Shown on the metadata card for opaque
+   * binaries (PDF, video, audio, archives…) so the user can select
+   * and copy it into a terminal / `xdg-open` invocation — the "open
+   * externally" hint from the KOB-14 ticket.
+   */
+  readonly absPath: string
   readonly kind: MediaKind
   readonly size: number
   readonly mtime: Date
@@ -300,13 +304,16 @@ export function Preview(props: PreviewProps) {
         }
         setContent({ kind: "loading" })
 
-        // Known media types (images, video, pdf, audio, archives…) never
-        // go through the text pipeline in either mode — KOB-14. We render
-        // a metadata card with type, size, mtime, and parsed dimensions
-        // when available, plus an inline half-block preview for the
-        // kinds where it makes sense (image / video first-frame / pdf
-        // first-page). SVG is XML and falls through to the text path
-        // below.
+        // Known media types (images, GIF, video, PDF, audio, archives…)
+        // never go through the text pipeline in either mode — KOB-14.
+        // Render policy follows the ticket scope verbatim:
+        //   * image / GIF — inline half-block preview (animated for
+        //     multi-frame GIFs), with metadata as fallback.
+        //   * video / PDF / audio / opaque binary — metadata card only,
+        //     plus "Preview not supported for <type>. Open externally."
+        //     and the absolute path so the user can copy it into an
+        //     external viewer.
+        //   * SVG — falls through to the text path with XML highlighting.
         const mediaKind = detectMediaKind(key.path)
         const canPreview =
           mediaKind.kind === "image" ||
@@ -319,9 +326,9 @@ export function Preview(props: PreviewProps) {
             setContent({ kind: "error", message: summarizePreviewError(s.error) })
             return
           }
-          // Header-parsed image dims when we have a known format. Video
-          // and PDF dims are filled in via ffprobe / pdftoppm asynchronously
-          // alongside the inline render.
+          // Header-parsed image dims when we have a known image format.
+          // Video / PDF stay in the metadata-only lane (per ticket); we
+          // don't probe their dims because we never decode them inline.
           let dims: ImageDims | undefined
           if (mediaKind.kind === "image") {
             const h = await readHeaderBytes(wt, key.path, 32 * 1024)
@@ -331,10 +338,18 @@ export function Preview(props: PreviewProps) {
             }
           }
           // Set the metadata card first so the user sees something
-          // immediately while ffmpeg / pdftoppm works in the background.
+          // immediately while ffmpeg works in the background (image
+          // path only).
           setContent({
             kind: "media",
-            media: { relPath: key.path, kind: mediaKind, size: s.size, mtime: s.mtime, dims },
+            media: {
+              relPath: key.path,
+              absPath: s.absPath,
+              kind: mediaKind,
+              size: s.size,
+              mtime: s.mtime,
+              dims,
+            },
           })
 
           // Stale-tab guard helper: if the user switched away while a
@@ -343,23 +358,13 @@ export function Preview(props: PreviewProps) {
             const cur = active()
             return cur != null && cur.path === key.path
           }
-          // Reflect freshly-discovered dims back into the metadata card
-          // without dropping any other field. Keeps the card useful when
-          // decode succeeds OR fails downstream.
-          const pushDims = (probedDims: ImageDims) => {
-            if (!stillActive()) return
-            dims = probedDims
-            setContent({
-              kind: "media",
-              media: { relPath: key.path, kind: mediaKind, size: s.size, mtime: s.mtime, dims },
-            })
-          }
           const pushDecoded = (probedDims: ImageDims, decoded: DecodedImage) => {
             if (!stillActive()) return
             setContent({
               kind: "media",
               media: {
                 relPath: key.path,
+                absPath: s.absPath,
                 kind: mediaKind,
                 size: s.size,
                 mtime: s.mtime,
@@ -374,6 +379,7 @@ export function Preview(props: PreviewProps) {
               kind: "media",
               media: {
                 relPath: key.path,
+                absPath: s.absPath,
                 kind: mediaKind,
                 size: s.size,
                 mtime: s.mtime,
@@ -383,8 +389,8 @@ export function Preview(props: PreviewProps) {
             })
           }
 
-          const budget = computeImageBudget()
           if (mediaKind.kind === "image" && dims) {
+            const budget = computeImageBudget()
             const target = computeTargetDims(dims.width, dims.height, budget.maxCols, budget.maxRows)
             // GIFs go through the multi-frame decoder. We probe timing
             // first to decide between animated and still rendering;
@@ -416,37 +422,6 @@ export function Preview(props: PreviewProps) {
                 if (decoded) pushDecoded(dims as ImageDims, decoded)
               })
             }
-          } else if (mediaKind.kind === "video") {
-            // Video: probe dims first (no cheap header parser like PNG),
-            // then decode the first frame at the aspect-correct size.
-            void probeMediaDims(s.absPath).then(async (probed) => {
-              if (!probed || !stillActive()) return
-              pushDims(probed)
-              const target = computeTargetDims(probed.width, probed.height, budget.maxCols, budget.maxRows)
-              const decoded = await decodeVideoFirstFrame(s.absPath, target.cols, target.pixelRows)
-              if (decoded) pushDecoded(probed, decoded)
-            })
-          } else if (mediaKind.kind === "pdf") {
-            // PDF: pdftoppm doesn't expose page size cheaply, so we render
-            // straight to the full half-block budget and rely on
-            // aspect-correct rasterization downstream of pdftoppm. The
-            // resulting PNG's dims feed back from probeMediaDims after
-            // decode for the metadata card.
-            const target = computeTargetDims(
-              // A4 portrait aspect (1:1.41) is the safe default — most
-              // PDFs are close. `computeTargetDims` will downscale if the
-              // budget can't fit.
-              850,
-              1100,
-              budget.maxCols,
-              budget.maxRows,
-            )
-            void decodePdfFirstPage(s.absPath, target.cols, target.pixelRows).then((decoded) => {
-              if (!decoded || !stillActive()) return
-              // We don't have authoritative page dims; report the render
-              // dims so the user at least sees what was produced.
-              pushDecoded({ width: target.cols, height: target.pixelRows }, decoded)
-            })
           }
           return
         }
@@ -835,11 +810,16 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
           if (info.animation) parts.push(`▶ ${info.animation.frames.length} frames`)
           return parts.join(" · ")
         })
+        // Hint string at the bottom of the card. Three states:
+        //   * an image preview is rendering → "rendering preview…"
+        //   * the file kind is not previewable → ticket's verbatim copy
+        //     "Preview not supported for <type>. Open externally."
+        //   * decode failed for an image → same "preview not supported"
+        //     phrasing, since the user's recovery is the same.
         const hint = createMemo(() => {
           const info = m()
-          const canPreview = info.kind.kind === "image" || info.kind.kind === "video" || info.kind.kind === "pdf"
-          if (canPreview && !previewReady()) return "rendering preview…"
-          return "(binary file — open externally to view)"
+          if (info.kind.kind === "image" && !previewReady()) return "rendering preview…"
+          return `Preview not supported for ${describeMediaKind(info.kind)}. Open externally.`
         })
 
         // Animation: when a GIF's frames are loaded, run a setInterval
@@ -900,6 +880,21 @@ function MediaBody(props: { content: Accessor<ContentState> }) {
                     </box>
                   )}
                 </For>
+                {/*
+                  Absolute path on its own row so the user can mouse-
+                  select + copy it into an external viewer. The ticket
+                  asks for "a copy-path hint" — in a TUI without a
+                  clipboard primitive, exposing the full path verbatim
+                  is the closest equivalent.
+                */}
+                <box flexDirection="row">
+                  <text fg={theme.textMuted} wrapMode="none">
+                    {"Path".padEnd(11, " ")}
+                  </text>
+                  <text fg={theme.text} wrapMode="none">
+                    {m().absPath}
+                  </text>
+                </box>
               </box>
               <box paddingTop={1}>
                 <text fg={theme.textMuted} wrapMode="word">
