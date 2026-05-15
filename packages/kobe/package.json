@@ -6,8 +6,7 @@
   "type": "module",
   "packageManager": "bun@1.3.13",
   "bin": {
-    "kobe": "dist/cli/index.js",
-    "kobed": "dist/bin/kobed.js"
+    "kobe": "dist/cli/index.js"
   },
   "files": ["dist", "README.md", "LICENSE"],
   "publishConfig": {

@@ -121,17 +121,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       planUsagePoller.stop()
       // Stop the bridge before the socket so claude.ai gets the proper
       // environment-deregistration call and we don't leak an "online"
-      // worker on the cloud side after kobed exits.
+      // worker on the cloud side after the daemon exits.
       try {
         await rcBridge.stop()
       } catch {
-        /* best-effort — kobed shutdown should never block on bridge teardown */
+        /* best-effort — daemon shutdown should never block on bridge teardown */
       }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       // End attached client sockets BEFORE closing the server. server.close()
       // waits for every active connection to drain — if we close it first,
       // any TUI that doesn't disconnect on `daemon.stopping` will deadlock
-      // shutdown forever (this was the root cause of `kobed restart` hangs).
+      // shutdown forever (this was the root cause of `kobe daemon restart` hangs).
       for (const client of Array.from(clients)) {
         for (const unsub of client.subscriptions.values()) unsub()
         client.subscriptions.clear()
@@ -206,13 +206,20 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       case "task.list":
         return { tasks: orch.listTasks().map(serializeTask) }
+      case "task.get": {
+        const taskId = requireString(payload, "taskId")
+        const task = orch.getTask(taskId)
+        if (!task) throw new Error(`task not found: ${taskId}`)
+        return { task: serializeTask(task) }
+      }
       case "task.spawn": {
         const repo = requireString(payload, "repo")
         const modelEffort = optionalModelEffort(payload, "modelEffort")
         const vendor = optionalVendor(payload, "vendor")
+        const prompt = optionalString(payload, "prompt")
         const task = await orch.createTask({
           repo,
-          prompt: optionalString(payload, "prompt"),
+          prompt,
           title: optionalString(payload, "title"),
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
@@ -226,6 +233,27 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // multi-attach real-time sync silently breaks.
         for (const c of clients) subscribeClientToTask(orch, c, task)
         broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
+        // If the spawner provided a prompt, kick off the run as
+        // fire-and-forget so the RPC returns immediately. Without this
+        // an agent calling task.spawn (kobe api spawn-task) gets a task
+        // stuck in `backlog` with no worktree, no session, no chat —
+        // matches the older MCP bridge semantics (`spawn_task` always
+        // ran the task). The TUI's RemoteOrchestrator.spawnTask omits
+        // the prompt and uses a separate chat.send for the first
+        // message, so this branch is a no-op for it.
+        if (prompt) {
+          void orch.runTask(task.id, prompt).catch((err) => {
+            // Don't crash the daemon on a spawn-and-run that fails
+            // (worktree contention, engine missing, dirty repo). The
+            // task still exists; the user can retry from the TUI.
+            const msg = err instanceof Error ? err.message : String(err)
+            broadcast(clients, {
+              type: "event",
+              name: "engine.status",
+              payload: { taskId: task.id, tabId: task.activeTabId, status: "error", message: msg },
+            })
+          })
+        }
         return { taskId: task.id, task: serializeTask(task) }
       }
       case "task.archive": {

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url"
 import { defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
 import { KobeDaemonClient } from "./index.ts"
 
+const DAEMON_START_ARGS = ["daemon", "start"] as const
+
 export interface OwnedDaemonClient {
   readonly client: KobeDaemonClient
   readonly socketPath: string
@@ -16,10 +18,10 @@ export interface OwnedDaemonClient {
 
 /**
  * If the daemon socket already accepts connections, do nothing. Otherwise
- * spawn a detached `kobed start` and poll until the socket is reachable
- * (5s deadline). Both the TUI startup path and the in-session "Restart
- * daemon" prompt share this so the spawn+poll loop lives in exactly one
- * place.
+ * spawn a detached `kobe daemon start` and poll until the socket is
+ * reachable (5s deadline). Both the TUI startup path and the in-session
+ * "Restart daemon" prompt share this so the spawn+poll loop lives in
+ * exactly one place.
  *
  * Returns the resolved socket path so the caller can build a client
  * pointed at it. Throws if the daemon never comes up within the deadline.
@@ -28,18 +30,12 @@ export async function ensureDaemonReachable(): Promise<string> {
   const socketPath = defaultDaemonSocketPath()
   if (await testCanConnect(socketPath)) return socketPath
 
-  const { entry, runWithBun } = resolveKobedEntry()
-  const child = runWithBun
-    ? spawn(process.execPath, [entry, "start"], {
-        detached: true,
-        stdio: "ignore",
-        env: process.env,
-      })
-    : spawn(entry, ["start"], {
-        detached: true,
-        stdio: "ignore",
-        env: process.env,
-      })
+  const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+    env: process.env,
+  })
   child.unref()
 
   const deadline = Date.now() + 5000
@@ -103,23 +99,17 @@ export async function connectOrStartOwnedDaemon(): Promise<OwnedDaemonClient> {
 export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: string): Promise<void> {
   await unlink(socketPath).catch(() => {})
 
-  const { entry, runWithBun } = resolveKobedEntry()
+  const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
   const env = {
     ...process.env,
     KOBE_DAEMON_SOCKET_PATH: socketPath,
     KOBE_DAEMON_PID_PATH: pidPath,
   }
-  const child = runWithBun
-    ? spawn(process.execPath, [entry, "start"], {
-        detached: true,
-        stdio: "ignore",
-        env,
-      })
-    : spawn(entry, ["start"], {
-        detached: true,
-        stdio: "ignore",
-        env,
-      })
+  const child = spawn(command, args, {
+    detached: true,
+    stdio: "ignore",
+    env,
+  })
   child.unref()
 
   const deadline = Date.now() + 5000
@@ -145,42 +135,30 @@ async function testCanConnect(socketPath: string): Promise<boolean> {
 }
 
 /**
- * Where to find `kobed`, expressed as either a JS entry to feed back to
- * `process.execPath` (the bun runtime) or a standalone executable to
- * spawn directly.
+ * Build the argv used to spawn a detached `kobe <subcommand>` child.
+ * Returns `[command, ...args]`; callers pass to `child_process.spawn`
+ * as `spawn(command, args, opts)`.
  *
  * Three layouts are possible:
- *  - dev: running from source via `bun src/cli/index.ts`. `import.meta.url`
- *    points into `src/`, so we resolve the sibling `src/bin/kobed.ts`.
- *  - npm package: running the bundled `dist/cli/index.js`. The sibling
- *    `dist/bin/kobed.js` is what we want.
- *  - standalone: running a `bun build --compile` binary.
- *    `import.meta.url` lives inside the embedded VFS (`/$bunfs` on
- *    posix, `B:\~BUN` on Windows), so neither source nor dist exist on
- *    the user's filesystem. Spawn the sibling `kobed` executable next
- *    to `process.execPath` instead.
+ *  - dev: running from source. `import.meta.url` points at
+ *    `.../src/client/daemon-process.ts`; the cli entry sits at
+ *    `../cli/index.ts` relative to it.
+ *  - npm package: daemon-process is bundled INTO `dist/cli/index.js`, so
+ *    `import.meta.url` resolves there. `../cli/index.js` resolves back
+ *    to the same bundled entry — bun re-executes itself against it.
+ *  - standalone: running a `bun build --compile` binary. `process.execPath`
+ *    IS the kobe binary, so we re-exec it directly. After the kobed → kobe
+ *    bin merge (KOB-136), no sibling lookup is needed.
  */
-function resolveKobedEntry(): { entry: string; runWithBun: boolean } {
+function resolveKobeSpawn(subcommand: readonly string[]): string[] {
   const here = fileURLToPath(import.meta.url)
   if (here.startsWith("/$bunfs") || here.startsWith("B:\\~BUN")) {
-    const exeDir = dirname(process.execPath)
-    const ext = process.platform === "win32" ? ".exe" : ""
-    const sibling = join(exeDir, `kobed${ext}`)
-    if (!existsSync(sibling)) {
-      throw new Error(
-        `kobe: standalone build expected sibling kobed binary at ${sibling}; extract the full release tarball.`,
-      )
-    }
-    return { entry: sibling, runWithBun: false }
+    return [process.execPath, ...subcommand]
   }
   const dir = dirname(here)
-  const sourceEntry = resolve(dir, "../bin/kobed.ts")
-  if (existsSync(sourceEntry)) return { entry: sourceEntry, runWithBun: true }
-  // here = .../dist/cli/index.js, so kobed.js sits at ../bin/ relative to it.
-  // Using argv[1]'s dirname (the old path) double-counted /cli and produced
-  // .../dist/cli/bin/kobed.js, which doesn't exist; spawn then failed silently
-  // (stdio:"ignore") and the connect loop reported only "daemon did not start".
-  const distEntry = resolve(dir, "../bin/kobed.js")
-  if (existsSync(distEntry)) return { entry: distEntry, runWithBun: true }
-  throw new Error(`kobe: could not locate kobed entry near ${dir}; expected ../bin/kobed.{ts,js}`)
+  const sourceEntry = resolve(dir, "../cli/index.ts")
+  if (existsSync(sourceEntry)) return [process.execPath, sourceEntry, ...subcommand]
+  const distEntry = resolve(dir, "../cli/index.js")
+  if (existsSync(distEntry)) return [process.execPath, distEntry, ...subcommand]
+  throw new Error(`kobe: could not locate kobe entry near ${dir}; expected ../cli/index.{ts,js}`)
 }

@@ -46,8 +46,8 @@ _Avoid_: mcp-server, plugin-host.
 
 ### Daemon split
 
-**Daemon** (or **`kobed`**):
-The long-running process that holds the **Orchestrator** and serves N **TUI Clients** over a Unix socket. One per user, not per repo.
+**Daemon**:
+The long-running process that holds the **Orchestrator** and serves N **TUI Clients** over a Unix socket. One per user, not per repo. Spawned via `kobe daemon start` (was `kobed start` pre-KOB-136).
 _Avoid_: server, backend, host.
 
 **TUI Client**:

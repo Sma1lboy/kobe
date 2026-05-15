@@ -3,7 +3,7 @@
  * that registers this machine as an environment claude.ai can spawn
  * sessions onto).
  *
- * One instance per kobed. Off by default; user toggles it from the
+ * One instance per daemon process. Off by default; user toggles it from the
  * settings dialog. While running, the workspace top bar shows an "RC"
  * chip with the environment ID; the dialog also surfaces the
  * `https://claude.ai/code?environment=env_xxx` deeplink so the user
@@ -17,9 +17,9 @@
  *     use. Workers it spawns use the standard `--print stream-json`
  *     mode internally and aren't our concern.
  *
- *   - State is stored in memory only. If kobed restarts the bridge
+ *   - State is stored in memory only. If the daemon restarts the bridge
  *     dies with it; user re-enables via settings. (Persisting an
- *     "auto-start on kobed boot" preference is a follow-up.)
+ *     "auto-start on daemon boot" preference is a follow-up.)
  *
  *   - Lifecycle: start → starting → running → (proc exits OR stop()) →
  *     off / error. `stop()` is graceful (SIGTERM, 5s grace, SIGKILL),

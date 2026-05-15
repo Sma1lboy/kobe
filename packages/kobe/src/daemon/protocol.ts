@@ -21,6 +21,7 @@ export type DaemonRequestName =
   | "daemon.stop"
   | "subscribe"
   | "task.list"
+  | "task.get"
   | "task.spawn"
   | "task.archive"
   | "task.rename"

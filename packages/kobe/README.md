@@ -173,6 +173,88 @@ an exec bit. The behavior-test driver fixes it lazily on first spawn (see
 validates the repo path before creating; if it's complaining, check that
 `git status` runs cleanly inside the path you typed.
 
+## Driving kobe from another agent
+
+Inside kobe, the `claude` (or `codex`, etc.) you are talking to can call back
+out and spawn more kobe tasks — useful when you ask it to "try three approaches
+in parallel" instead of doing them sequentially in one chat. The mechanism is a
+small CLI surface; design rationale lives in [`docs/design/cli-api.md`](../../docs/design/cli-api.md).
+
+### Daemon lifecycle
+
+A `kobe daemon` process holds your tasks and chat sessions. The TUI auto-starts
+one on first launch; in scripts you may want to manage it explicitly.
+
+```bash
+kobe daemon start     # spawn detached, listen on the unix socket
+kobe daemon status    # JSON status (pid, uptime, attached clients, task count)
+kobe daemon restart   # graceful stop + start
+kobe daemon stop      # tell the daemon to drain and exit
+```
+
+> Pre-0.6 builds shipped a separate `kobed` binary for the same commands. It
+> was removed in favor of the single-bin surface (KOB-136); any script with
+> `kobed restart` needs a one-time rename to `kobe daemon restart`.
+
+### `kobe api <verb>` — five shell verbs
+
+Each call is a short-lived process: open the daemon socket, do one RPC, print
+JSON to stdout, exit. Any tool with a `Bash` capability (Claude Code, Codex,
+Cursor, a custom agent) can drive it.
+
+| verb | flags | what it does |
+|---|---|---|
+| `spawn-task` | `--repo PATH --prompt TEXT [--title T] [--base-branch B]` | Create a new task + worktree + chat session. |
+| `create-tab` | `--task-id ID [--title T]` | Open an extra chat tab on an existing task. |
+| `send`       | `--task-id ID --prompt TEXT [--tab-id TID]` | Resume the task's session with a new prompt. |
+| `get-task`   | `--task-id ID` | Read task metadata (status, branch, worktree, tabs). |
+| `get-tab`    | `--task-id ID --tab-id TID` | Read a single tab off the task. |
+
+Output is one JSON object on stdout, `\n` terminated, exit 0. Errors land on
+stderr as `{"error":{"message":"...","code":"..."}}` with a non-zero exit.
+Add `--pretty` for human inspection.
+
+Fan-out from a shell:
+
+```bash
+T1=$(kobe api spawn-task --repo "$PWD" --prompt "Approach A: state machine"   | jq -r .taskId)
+T2=$(kobe api spawn-task --repo "$PWD" --prompt "Approach B: event sourcing"  | jq -r .taskId)
+T3=$(kobe api spawn-task --repo "$PWD" --prompt "Approach C: reducer pattern" | jq -r .taskId)
+
+# Tell the user three tasks are running — they'll appear in the sidebar.
+echo "Spawned $T1 $T2 $T3"
+
+# Poll until each settles.
+for ID in $T1 $T2 $T3; do
+  until [ "$(kobe api get-task --task-id "$ID" | jq -r .task.status)" = "idle" ]; do
+    sleep 10
+  done
+done
+```
+
+If the daemon isn't running, `kobe api ...` exits 2 with
+`{"error":{"code":"BAD_DAEMON",...}}` on stderr. Start it with
+`kobe daemon start` (or just launch the TUI).
+
+### Install the agent skill
+
+`kobe api` gives the *capability*. The bundled SKILL.md gives the model the
+*intent* — when to fan out, how to scope subtask prompts, how to read results
+back. Install it once:
+
+```bash
+kobe skill install              # writes ~/.claude/skills/kobe/SKILL.md
+kobe skill install --yes        # overwrite an existing copy
+kobe skill uninstall            # remove it
+```
+
+After install, Claude Code automatically picks up the skill on its next launch.
+For project-level overrides, copy the file to `<repo>/.claude/skills/kobe/SKILL.md`
+and customise — Claude Code's discovery order is project > user > none.
+
+`kobe diagnose` reports whether the skill is installed, which is the
+fastest way to confirm.
+
 ## Coming later
 
 - Homebrew tap (mirroring [`sma1lboy/homebrew-codefox`](https://github.com/sma1lboy/homebrew-codefox)) so you can `brew install kobe` without touching Bun directly.
@@ -190,7 +272,7 @@ bun run dev          # boots the 5-pane TUI under KOBE_DEV=1 (no update chip, et
 bun run test         # normal suite: fast tests + serial socket tests
 bun run test:behavior  # slow PTY suite; only run for user-visible TUI behavior
 bun run typecheck    # strict tsc
-bun run build        # produces ./dist/cli/index.js + ./dist/bin/kobed.js for npm
+bun run build        # produces ./dist/cli/index.js for npm
 ```
 
 Architecture, design philosophy, and the team-of-agents operating model live in:

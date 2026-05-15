@@ -8,8 +8,8 @@
 #   `publish`   — gates (typecheck/test/build) → npm publish → create
 #                 the GitHub Release shell with the extracted CHANGELOG
 #                 notes.
-#   `binaries`  — matrix per OS+arch. Each runner builds standalone
-#                 `kobe` + `kobed` executables for its native platform
+#   `binaries`  — matrix per OS+arch. Each runner builds the standalone
+#                 `kobe` executable for its native platform
 #                 (no cross-compile: `@opentui/core` resolves
 #                 `@opentui/core-${platform}-${arch}` via a runtime
 #                 template-literal import, and the matching native
@@ -170,12 +170,12 @@ jobs:
         working-directory: packages/kobe
         run: bun run scripts/compile.ts
 
-      - name: Tar binaries
-        # Tar from inside release-bin so the archive contains bare
-        # `kobe` + `kobed` at the root — users can extract straight onto
+      - name: Tar binary
+        # Tar from inside release-bin so the archive contains the bare
+        # `kobe` binary at the root — users can extract straight onto
         # their PATH directory.
         working-directory: packages/kobe/release-bin
-        run: tar -czf "${{ matrix.asset }}.tar.gz" kobe kobed
+        run: tar -czf "${{ matrix.asset }}.tar.gz" kobe
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2

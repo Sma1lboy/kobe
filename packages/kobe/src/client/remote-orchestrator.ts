@@ -162,7 +162,7 @@ export class RemoteOrchestrator {
 
   /**
    * KOB-38: invoked by the host TUI when the user clicks "Restart" in
-   * the disconnect modal. Spawns kobed if it isn't already running,
+   * the disconnect modal. Spawns the daemon if it isn't already running,
    * opens a fresh socket on the existing client, then runs the same
    * hello + subscribe seeding as {@link init} — pending-input replicas
    * for previously-known tasks are cleared first so a request resolved
@@ -224,7 +224,7 @@ export class RemoteOrchestrator {
    * daemon binds the bridge to that task's worktree (and to the
    * specific tab when `tabId` is also given) so the dialog can show
    * a `/resume <sid>` hint. Without `taskId` the daemon falls back
-   * to its own process cwd's git toplevel — useful for kobed
+   * to its own process cwd's git toplevel — useful for daemon
    * installations that aren't task-anchored, but the dialog won't
    * surface a session-resume hint.
    */

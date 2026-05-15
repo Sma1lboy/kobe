@@ -1,4 +1,12 @@
-#!/usr/bin/env bun
+/**
+ * `kobe daemon <command>` — daemon lifecycle subcommands.
+ *
+ * Ported from the now-removed `kobed` bin (KOB-136). The body is the same
+ * logic with a different argv shape: the dispatcher in `cli/index.ts`
+ * passes `rest` already trimmed of the `daemon` verb, so we read the
+ * sub-command at `argv[0]` instead of `argv[2]`.
+ */
+
 import { unlink } from "node:fs/promises"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { KobeDaemonClient } from "../client/index.ts"
@@ -6,8 +14,8 @@ import { createKobeCore } from "../core/index.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile, startDaemonServer } from "../daemon/server.ts"
 
-async function main(): Promise<void> {
-  const [, , command = "status"] = process.argv
+export async function runDaemonSubcommand(argv: readonly string[]): Promise<void> {
+  const [command = "status"] = argv
   const socketPath = defaultDaemonSocketPath()
   const pidPath = defaultDaemonPidPath()
 
@@ -18,8 +26,8 @@ async function main(): Promise<void> {
       console.log(JSON.stringify(status, null, 2))
     } catch {
       const pid = await readPidFile(pidPath)
-      if (pid) console.log(`kobed: no daemon socket at ${socketPath} (stale pidfile pid=${pid})`)
-      else console.log(`kobed: no daemon running at ${socketPath}`)
+      if (pid) console.log(`kobe daemon: no daemon socket at ${socketPath} (stale pidfile pid=${pid})`)
+      else console.log(`kobe daemon: no daemon running at ${socketPath}`)
       process.exitCode = 1
     } finally {
       client.close()
@@ -31,7 +39,7 @@ async function main(): Promise<void> {
     const client = new KobeDaemonClient(socketPath)
     try {
       await client.request("daemon.stop")
-      console.log("kobed: stop requested")
+      console.log("kobe daemon: stop requested")
     } finally {
       client.close()
     }
@@ -93,17 +101,16 @@ async function main(): Promise<void> {
     // would otherwise (re-)spawn into that same wedged state.
     await unlink(socketPath).catch(() => {})
     // Spawn the new daemon as a detached child instead of becoming it
-    // ourselves — otherwise `kobed restart` blocks the shell forever
-    // and looks "hung" to anyone running it interactively (or via
-    // `bun run daemon:restart`).
+    // ourselves — otherwise `kobe daemon restart` blocks the shell
+    // forever and looks "hung" to anyone running it interactively.
     const next = await connectOrStartDaemon()
     next.close()
-    console.log(`kobed: restarted, listening on ${socketPath}`)
+    console.log(`kobe daemon: restarted, listening on ${socketPath}`)
     return
   }
 
   if (command !== "start") {
-    console.error("usage: kobed start|stop|status|restart")
+    console.error("usage: kobe daemon start|stop|status|restart")
     process.exit(2)
   }
 
@@ -116,7 +123,7 @@ async function main(): Promise<void> {
       await core.close()
     },
   })
-  console.log(`kobed: listening on ${server.socketPath}`)
+  console.log(`kobe daemon: listening on ${server.socketPath}`)
 
   const shutdown = async () => {
     await server.close()
@@ -126,8 +133,3 @@ async function main(): Promise<void> {
   process.once("SIGINT", () => void shutdown())
   process.once("SIGTERM", () => void shutdown())
 }
-
-main().catch((err) => {
-  console.error("kobed failed:", err instanceof Error ? err.message : String(err))
-  process.exit(1)
-})

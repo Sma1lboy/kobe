@@ -18,7 +18,7 @@ export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>
 export type LifecycleEvent = "close"
 
 /**
- * JSON-line client over the kobed unix socket.
+ * JSON-line client over the kobe daemon's unix socket.
  *
  * Connection model: dumb but explicit. Open a socket via {@link connect},
  * use it until {@link close} (graceful) / {@link forceDisconnect} (kill)
