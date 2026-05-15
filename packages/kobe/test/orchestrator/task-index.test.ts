@@ -17,6 +17,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
+import { ENGINE_REGISTRY } from "../../src/engine/registry.ts"
 import { LockfileError, acquire, isProcessAlive, release } from "../../src/orchestrator/index/lockfile.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { ULID_ALPHABET, _resetUlidStateForTests, ulid } from "../../src/orchestrator/index/ulid.ts"
@@ -703,12 +704,22 @@ describe("TaskIndexStore — vendor self-heal", () => {
   })
 
   test("loader preserves stored vendor when the model id is shared by multiple catalogs", async () => {
-    await writeRawTask({ model: "auto", vendor: "gemini" })
-    const store = new TaskIndexStore({ homeDir })
-    await store.load()
-    const task = store.get("01HZA")
-    expect(task?.model).toBe("auto")
-    expect(task?.vendor).toBe("gemini")
+    const originalClaude = ENGINE_REGISTRY.claude
+    try {
+      if (!originalClaude) throw new Error("claude registry missing")
+      ENGINE_REGISTRY.claude = {
+        ...originalClaude,
+        models: [...originalClaude.models, { vendor: "claude", id: "auto", label: "Claude auto" }],
+      }
+      await writeRawTask({ model: "auto", vendor: "gemini" })
+      const store = new TaskIndexStore({ homeDir })
+      await store.load()
+      const task = store.get("01HZA")
+      expect(task?.model).toBe("auto")
+      expect(task?.vendor).toBe("gemini")
+    } finally {
+      ENGINE_REGISTRY.claude = originalClaude
+    }
   })
 
   test("loader preserves stored vendor when the model id matches no catalog (unknown id)", async () => {
