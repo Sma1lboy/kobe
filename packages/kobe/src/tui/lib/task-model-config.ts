@@ -51,7 +51,7 @@ function hasModelConfig(config: InitialChatModelConfig): boolean {
 }
 
 function isVendor(value: unknown): value is VendorId {
-  return value === "claude" || value === "codex"
+  return value === "claude" || value === "codex" || value === "gemini"
 }
 
 function isModelEffort(value: unknown): value is ModelEffortLevel {

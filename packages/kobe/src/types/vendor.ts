@@ -1,8 +1,8 @@
 /**
  * Engine vendor identifier.
  *
- * One of: `"claude"` (the only one wired up today, served by
- * `engine/claude-code-local/`), plus future entrants (`"codex"`, …).
+ * One of the local CLI engines kobe can route chat tabs to:
+ * `"claude"`, `"codex"`, or `"gemini"`.
  *
  * Where this surfaces:
  *   - `ModelChoice.vendor` so the composer picker can group / filter
@@ -12,4 +12,4 @@
  * `"claude-opus-4-7[1m]"`, `"gpt-5-codex"`). The vendor is inferable
  * from the picker entry the user chose; we don't double-persist it.
  */
-export type VendorId = "claude" | "codex"
+export type VendorId = "claude" | "codex" | "gemini"
