@@ -29,6 +29,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **Up-arrow history recall restores bash mode for `!`-prefixed entries** — recalling a previous `!cmd` submission now flips the composer back into bash mode and strips the `!` prefix, mirroring how the entry was originally submitted. Previously the `!` came back as literal text and the user had to re-trigger bash mode by hand (KOB-151).
 - **Started chat tabs stay bound to their engine** — once a chat tab has a Claude Code or Codex session, the model picker keeps other-engine models visible but disabled with a new-chat-required hint, and the orchestrator rejects cross-engine retargeting so history/resume data cannot cross vendors (KOB-128).
 - **Task metadata naming now follows the selected chat-tab engine** — branch/title suggestions route through the active tab's `AIEngine` with its selected model and reasoning effort instead of always shelling out to Claude (KOB-111).
 - **Task title suggestions wait for enough chat context** — new tasks keep the first user prompt as the cheap fallback title, then after three completed user turns ask the selected engine for a feature-style task name without overwriting manual renames (KOB-113).

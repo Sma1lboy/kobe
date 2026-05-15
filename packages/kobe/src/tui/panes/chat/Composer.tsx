@@ -236,10 +236,33 @@ export function Composer(props: ComposerProps) {
   // (c) directly calling `setText`/`focus`/`submit` from handlers.
   let textareaRef: TextareaRenderable | undefined
 
+  // History recall is bash-mode-aware: the live-draft snapshot encodes
+  // bash mode as a leading `!` (the same on-disk shape submit uses, see
+  // handleSubmit's `pushHistory(key, \`!${command}\`)`). The setter
+  // mirrors that — a recalled `!`-prefixed entry strips the `!`, sets
+  // the buffer to the rest, and flips bash mode back on so the user
+  // gets the same visual state as when they originally submitted.
+  // Without this, up-arrow on a `!ls`-style entry just dumps the raw
+  // `!ls` into the textarea as a normal prompt and the user has to
+  // re-trigger bash mode by hand. Gated on `bashAvailable()` so a
+  // composer without `onBashCommand` shows the `!` verbatim (the
+  // history could have been seeded by a prior composer that had bash
+  // wired up — better to expose the raw text than silently swallow it).
   const historyNav = new PromptHistoryNavigator(
     () => getHistory(props.historyKey ?? "global"),
-    () => textareaRef?.plainText ?? "",
-    setBuffer,
+    () => {
+      const text = textareaRef?.plainText ?? ""
+      return bashMode() ? `!${text}` : text
+    },
+    (recalled: string) => {
+      if (recalled.startsWith("!") && bashAvailable()) {
+        setBuffer(recalled.slice(1))
+        setBashMode(true)
+        return
+      }
+      setBuffer(recalled)
+      setBashMode(false)
+    },
   )
 
   // Per-composer image-paste registry. Owns disk writes for pasted
