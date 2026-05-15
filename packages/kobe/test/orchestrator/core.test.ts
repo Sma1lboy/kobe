@@ -1568,7 +1568,7 @@ describe("Orchestrator engine call shape", () => {
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
   })
 
-  test("explicit vendor selection routes shared model ids to the selected engine", async () => {
+  test("explicit vendor selection routes Gemini model ids to the selected engine", async () => {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const claude = new HistoryEngine("claude")
@@ -1580,19 +1580,19 @@ describe("Orchestrator engine call shape", () => {
       metadataSuggester: new NoopMetadataSuggester(),
     })
 
-    const task = await orch.createTask({ repo, title: "gemini auto", prompt: "" })
+    const task = await orch.createTask({ repo, title: "gemini explicit", prompt: "" })
     const tab = orch.getTask(task.id)?.tabs[0]
     expect(tab).toBeDefined()
 
-    await orch.setModel(task.id, "auto", tab?.id, undefined, "gemini")
+    await orch.setModel(task.id, "gemini-3.1-pro-preview", tab?.id, undefined, "gemini")
     await orch.runTask(task.id, "hello", tab?.id)
     await orch._waitForPumpsIdle()
 
     const updated = orch.getTask(task.id)?.tabs[0]
     expect(updated?.vendor).toBe("gemini")
-    expect(updated?.model).toBe("auto")
+    expect(updated?.model).toBe("gemini-3.1-pro-preview")
     expect(claude.spawns).toHaveLength(0)
-    expect(gemini.spawns[0]).toMatchObject({ prompt: "hello", model: "auto" })
+    expect(gemini.spawns[0]).toMatchObject({ prompt: "hello", model: "gemini-3.1-pro-preview" })
   })
 
   test("resume sessions are loaded from every registered engine and preserve selected engine", async () => {

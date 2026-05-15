@@ -705,11 +705,16 @@ describe("TaskIndexStore — vendor self-heal", () => {
 
   test("loader preserves stored vendor when the model id is shared by multiple catalogs", async () => {
     const originalClaude = ENGINE_REGISTRY.claude
+    const originalGemini = ENGINE_REGISTRY.gemini
     try {
-      if (!originalClaude) throw new Error("claude registry missing")
+      if (!originalClaude || !originalGemini) throw new Error("engine registry missing")
       ENGINE_REGISTRY.claude = {
         ...originalClaude,
         models: [...originalClaude.models, { vendor: "claude", id: "auto", label: "Claude auto" }],
+      }
+      ENGINE_REGISTRY.gemini = {
+        ...originalGemini,
+        models: [...originalGemini.models, { vendor: "gemini", id: "auto", label: "Gemini auto" }],
       }
       await writeRawTask({ model: "auto", vendor: "gemini" })
       const store = new TaskIndexStore({ homeDir })
@@ -719,6 +724,7 @@ describe("TaskIndexStore — vendor self-heal", () => {
       expect(task?.vendor).toBe("gemini")
     } finally {
       ENGINE_REGISTRY.claude = originalClaude
+      ENGINE_REGISTRY.gemini = originalGemini
     }
   })
 

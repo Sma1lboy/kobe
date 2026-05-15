@@ -618,8 +618,8 @@ function isVendorId(v: unknown): v is VendorId {
  * Free-form pinned ids (e.g. a custom model id the user typed in)
  * round-trip with their stored vendor unchanged. Ambiguous ids that
  * appear in multiple catalogs also preserve the stored vendor; a model
- * id alone is not enough to distinguish `claude:auto` from
- * `gemini:auto`.
+ * id alone is not enough to distinguish which vendor owns a shared
+ * alias.
  */
 function resolveTaskVendor(rawVendor: unknown, modelId: string | undefined): VendorId {
   const stored = isVendorId(rawVendor) ? rawVendor : DEFAULT_TASK_VENDOR
