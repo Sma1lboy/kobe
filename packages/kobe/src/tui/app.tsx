@@ -896,11 +896,15 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
   }
   // Replay persisted prompt history into the in-memory STORE before
   // the first composer mounts (KOB-157). Sync read of a small JSONL
-  // file under `<kobeStateDir()>/composer-history.jsonl`. Failures are
-  // swallowed inside `bootstrapHistory` — a fresh install with no
-  // history file is the most common case and shouldn't slow boot or
-  // surface a warning.
-  bootstrapHistory()
+  // file under `<kobeStateDir()>/composer-history.jsonl`. The set of
+  // live task ids lets bootstrapHistory replay entries under their
+  // original task id when that task still exists (so the same task's
+  // ↑ walks past sessions naturally) and fall back to a synthetic
+  // `project-<root>` key when the task was deleted between sessions
+  // (those entries surface only via Ctrl+R). Failures are swallowed
+  // inside `bootstrapHistory` — a fresh install with no history file
+  // is the most common case and shouldn't slow boot or warn.
+  bootstrapHistory({ liveTaskIds: new Set(orchestrator.listTasks().map((t) => t.id)) })
   // Renderer-level background: transparent so the host terminal's
   // background (theme, image, transparency setting) shows through where
   // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier

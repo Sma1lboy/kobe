@@ -106,11 +106,14 @@ export interface ComposerProps {
   // ----- W4.C extensions (all optional; parent doesn't need to set) -----
 
   /**
-   * Stable string used to scope prompt history. Defaults to the
-   * sentinel `"global"` so callers that don't pass it still get a
-   * working history. Recommended: pass the active task id so each
-   * task gets its own ring (matches the "iterate on the same problem"
-   * use case better than a global pool of all your prompts).
+   * Stable string used to scope prompt history. In production this is
+   * the active task id — task ids persist across kobe restarts (they
+   * live in `~/.kobe/tasks.json`), so the same task's ↑↓ walks past
+   * sessions' prompts after a reboot (Claude Code parity, per-project
+   * filtered there, per-task here because kobe has a task model).
+   * Defaults to the sentinel `"global"` when omitted; callers that
+   * pass an ephemeral key (e.g. a chat-tab id) get a working but
+   * session-only history ring with no cross-restart persistence.
    */
   historyKey?: string
   /**
@@ -762,7 +765,10 @@ export function Composer(props: ComposerProps) {
     if (bashMode()) {
       const command = trimmed
       if (command.length === 0) return // bash mode with empty buffer — no-op
-      pushHistory(props.historyKey ?? "global", `!${command}`, { project: props.currentProjectRoot?.() })
+      pushHistory(props.historyKey ?? "global", `!${command}`, {
+        project: props.currentProjectRoot?.(),
+        taskId: props.historyKey,
+      })
       // Clear synchronously so the bash indicator drops before the
       // command starts streaming. Parent's draft round-trip will also
       // clear; this avoids a one-tick flicker.
@@ -802,7 +808,10 @@ export function Composer(props: ComposerProps) {
     const expandedRaw = hasImages ? imageRegistry.expand(raw) : raw
     const expandedTrimmed = hasImages ? expandedRaw.trim() : trimmed
     if (expandedTrimmed.length > 0) {
-      pushHistory(props.historyKey ?? "global", expandedRaw, { project: props.currentProjectRoot?.() })
+      pushHistory(props.historyKey ?? "global", expandedRaw, {
+        project: props.currentProjectRoot?.(),
+        taskId: props.historyKey,
+      })
     }
     if (hasImages) imageRegistry.clear()
     setPasteHint(null)

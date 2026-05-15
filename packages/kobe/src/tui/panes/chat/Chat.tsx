@@ -961,7 +961,7 @@ export function Chat(props: ChatProps) {
       }
       onSubmit={handleComposerSubmit}
       composerFocused={() => (props.focused?.() ?? false) && !questionInlineFocus()}
-      historyKey={activeTabId() ?? props.taskId()}
+      historyKey={props.taskId()}
       slashes={slashes}
       permissionMode={permissionMode}
       permissionModeLabel={permissionModeText}

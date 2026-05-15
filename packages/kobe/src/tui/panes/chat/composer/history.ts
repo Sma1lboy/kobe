@@ -106,20 +106,34 @@ function projectKey(project: string | undefined): string {
 /**
  * Sync load + replay of `<kobeStateDir()>/composer-history.jsonl`
  * into the in-memory STORE. Call once at TUI boot before the first
- * composer mounts so Ctrl+R has the prior session's prompts on
- * first paint. Entries land under per-project synthetic keys (see
- * {@link projectKey}) — up-arrow on a new tab still walks its own
- * empty ring, but the palette sees everything.
+ * composer mounts so the prior session's prompts are reachable from
+ * the very first ↑ press / Ctrl+R open.
  *
- * Idempotent: calling twice replays the file twice into STORE, so
- * production code calls this exactly once. Tests should clear STORE
- * (via {@link clearAllHistory}) between runs.
+ * Keying policy (matches Claude Code's
+ * `refs/claude-code/src/history.ts:190-217` per-project scope, adapted
+ * for kobe's task model):
+ *
+ *   - An entry whose `taskId` matches a task that's still alive on
+ *     this boot is replayed under its `taskId` key, so the same
+ *     task's ↑ walks naturally from "your last session in this
+ *     task" → "the session before that" → …
+ *   - An entry whose task no longer exists (the user deleted it
+ *     between sessions) — or whose disk entry predates the `taskId`
+ *     field — falls back to a synthetic `project-<root>` key. ↑↓
+ *     never reaches those (no chat tab keys by that string), but the
+ *     Ctrl+R palette surfaces them under the current project filter
+ *     until they're pruned by the disk cap.
+ *
+ * Idempotent: calling twice replays the file twice. Production
+ * code calls this exactly once at boot; tests should
+ * {@link clearAllHistory} between runs.
  */
-export function bootstrapHistory(): void {
+export function bootstrapHistory(opts: { readonly liveTaskIds?: ReadonlySet<string> } = {}): void {
   if (!isPersistEnabled()) return
+  const live = opts.liveTaskIds
   const entries = loadFromDisk()
   for (const e of entries) {
-    const key = projectKey(e.project)
+    const key = e.taskId && (!live || live.has(e.taskId)) ? e.taskId : projectKey(e.project)
     SEQ += 1
     const ring = STORE.get(key) ?? []
     ring.push({ value: e.display, seq: SEQ, project: e.project })
@@ -138,7 +152,11 @@ export function bootstrapHistory(): void {
  * The value is stored as-is (no trim) so the user gets back exactly
  * what they typed if they re-edit a recalled entry.
  */
-export function pushHistory(key: string, value: string, opts: { readonly project?: string } = {}): void {
+export function pushHistory(
+  key: string,
+  value: string,
+  opts: { readonly project?: string; readonly taskId?: string } = {},
+): void {
   if (value.trim().length === 0) return
   const ring = STORE.get(key) ?? []
   const last = ring[ring.length - 1]
@@ -154,7 +172,12 @@ export function pushHistory(key: string, value: string, opts: { readonly project
   // errors with a single console.warn. The `void` is intentional —
   // bun's `eslint-no-floating-promises` would otherwise complain.
   if (isPersistEnabled()) {
-    const entry: DiskHistoryEntry = { display: value, timestamp: Date.now(), project: opts.project }
+    const entry: DiskHistoryEntry = {
+      display: value,
+      timestamp: Date.now(),
+      project: opts.project,
+      taskId: opts.taskId,
+    }
     void appendToDisk(entry)
     appendsSincePrune += 1
     if (appendsSincePrune >= DISK_PRUNE_INTERVAL) {

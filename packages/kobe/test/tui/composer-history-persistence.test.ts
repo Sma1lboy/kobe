@@ -7,6 +7,7 @@ import {
   bootstrapHistory,
   clearAllHistory,
   getAllHistoryEntries,
+  getHistory,
   pushHistory,
 } from "../../src/tui/panes/chat/composer/history.ts"
 
@@ -112,6 +113,42 @@ describe("composer history persistence end-to-end (KOB-157)", () => {
     const lines = await readLines(historyPath)
     expect(lines).toHaveLength(2)
     expect(lines.map((l) => JSON.parse(l).display)).toEqual(["from session one", "from session two"])
+  })
+
+  test("bootstrap replays under taskId when the task is still alive", async () => {
+    // Two tasks submitted prompts last "session"; on this boot only
+    // one of them still exists (the other was deleted by the user).
+    pushHistory("task-alive", "still-needed", { project: "/repo/p", taskId: "task-alive" })
+    pushHistory("task-dead", "orphan", { project: "/repo/p", taskId: "task-dead" })
+    await readLines(historyPath)
+
+    clearAllHistory()
+    bootstrapHistory({ liveTaskIds: new Set(["task-alive"]) })
+
+    const all = getAllHistoryEntries()
+    // Alive task's entry replays under its taskId — same key the
+    // composer reads from for ↑↓ when that task's chat is open.
+    expect(all.find((e) => e.value === "still-needed")?.key).toBe("task-alive")
+    // Dead task's entry falls back to the project synthetic key —
+    // surfaces only via Ctrl+R (project-filtered), never reached by ↑.
+    expect(all.find((e) => e.value === "orphan")?.key).toBe("project-/repo/p")
+  })
+
+  test("up-arrow ring sees prior session's prompts after bootstrap (Claude Code parity)", async () => {
+    // Session 1: user submits two prompts in task T.
+    pushHistory("task-T", "session-one-first", { project: "/repo/p", taskId: "task-T" })
+    pushHistory("task-T", "session-one-second", { project: "/repo/p", taskId: "task-T" })
+    await readLines(historyPath)
+
+    // "Restart": clear in-memory STORE, bootstrap with T still alive.
+    clearAllHistory()
+    bootstrapHistory({ liveTaskIds: new Set(["task-T"]) })
+
+    // The composer's PromptHistoryNavigator reads getHistory(taskId).
+    // After bootstrap that ring contains both prior-session entries —
+    // ↑↓ walks them as if the session never ended.
+    const ring = getHistory("task-T")
+    expect(ring).toEqual(["session-one-first", "session-one-second"])
   })
 
   test("persists nothing when KOBE_HISTORY_PERSIST=false", async () => {

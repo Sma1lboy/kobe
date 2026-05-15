@@ -55,9 +55,19 @@ export type DiskHistoryEntry = {
    * Absolute path of the repo (worktree's parent project root) the
    * task was submitted from, or `undefined` when no task was active
    * (the literal `"global"` history key — rare in practice). Used by
-   * future per-project palette filtering; today we ignore it on read.
+   * the Ctrl+R palette to scope rows to the current project.
    */
   readonly project: string | undefined
+  /**
+   * Task id at submission time. `bootstrapHistory` replays an entry
+   * under its `taskId` key when that task is still alive on the next
+   * boot (so the same task's ↑ walks across-session history); when
+   * the task has been deleted between sessions, the entry falls back
+   * to the `project-<root>` key and surfaces only via Ctrl+R. Older
+   * files written before this field existed parse with
+   * `taskId === undefined` and follow the same fallback path.
+   */
+  readonly taskId: string | undefined
 }
 
 /** Default on-disk path. Tests can override via the `path` arg. */
@@ -107,6 +117,7 @@ export function loadFromDisk(path: string = defaultHistoryPath()): DiskHistoryEn
         display: parsed.display,
         timestamp: parsed.timestamp,
         project: typeof parsed.project === "string" ? parsed.project : undefined,
+        taskId: typeof parsed.taskId === "string" ? parsed.taskId : undefined,
       })
     } catch {
       malformed += 1

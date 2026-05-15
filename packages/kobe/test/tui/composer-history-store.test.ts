@@ -28,9 +28,9 @@ describe("composer/history-store (KOB-157)", () => {
   })
 
   test("append + load round-trips and preserves order (oldest → newest)", async () => {
-    const a: DiskHistoryEntry = { display: "first", timestamp: 1, project: "/repo/a" }
-    const b: DiskHistoryEntry = { display: "second", timestamp: 2, project: "/repo/b" }
-    const c: DiskHistoryEntry = { display: "!ls -la", timestamp: 3, project: undefined }
+    const a: DiskHistoryEntry = { display: "first", timestamp: 1, project: "/repo/a", taskId: "task-1" }
+    const b: DiskHistoryEntry = { display: "second", timestamp: 2, project: "/repo/b", taskId: "task-2" }
+    const c: DiskHistoryEntry = { display: "!ls -la", timestamp: 3, project: undefined, taskId: undefined }
     await appendToDisk(a, path)
     await appendToDisk(b, path)
     await appendToDisk(c, path)
@@ -39,6 +39,19 @@ describe("composer/history-store (KOB-157)", () => {
     expect(loaded).toEqual([a, b, c])
     // Bash prefix preserved verbatim so reload restores the recall path.
     expect(loaded[2]?.display.startsWith("!")).toBe(true)
+  })
+
+  test("legacy disk entries without taskId still parse (back-compat)", () => {
+    writeFileSync(
+      path,
+      [
+        JSON.stringify({ display: "pre-taskId", timestamp: 1, project: "/r" }),
+        JSON.stringify({ display: "with-taskId", timestamp: 2, project: "/r", taskId: "t-7" }),
+      ].join("\n"),
+    )
+    const loaded = loadFromDisk(path)
+    expect(loaded[0]?.taskId).toBeUndefined()
+    expect(loaded[1]?.taskId).toBe("t-7")
   })
 
   test("malformed lines are skipped, valid lines survive", () => {
@@ -61,7 +74,7 @@ describe("composer/history-store (KOB-157)", () => {
   test("pruneToCap rewrites the file to the newest N entries", async () => {
     // Write CAP + 5 entries so prune has work to do.
     for (let i = 0; i < DISK_HISTORY_CAP + 5; i++) {
-      await appendToDisk({ display: `entry ${i}`, timestamp: i, project: "/r" }, path)
+      await appendToDisk({ display: `entry ${i}`, timestamp: i, project: "/r", taskId: undefined }, path)
     }
     await pruneToCap(path, DISK_HISTORY_CAP)
     const remaining = loadFromDisk(path)
@@ -72,8 +85,8 @@ describe("composer/history-store (KOB-157)", () => {
   })
 
   test("pruneToCap is a no-op below the cap", async () => {
-    await appendToDisk({ display: "a", timestamp: 1, project: undefined }, path)
-    await appendToDisk({ display: "b", timestamp: 2, project: undefined }, path)
+    await appendToDisk({ display: "a", timestamp: 1, project: undefined, taskId: undefined }, path)
+    await appendToDisk({ display: "b", timestamp: 2, project: undefined, taskId: undefined }, path)
     const before = readFileSync(path, "utf8")
     await pruneToCap(path, DISK_HISTORY_CAP)
     expect(readFileSync(path, "utf8")).toBe(before)
@@ -81,7 +94,7 @@ describe("composer/history-store (KOB-157)", () => {
 
   test("appendToDisk creates the parent dir on a fresh install", async () => {
     const nested = join(dir, "nested", "deeper", "composer-history.jsonl")
-    await appendToDisk({ display: "fresh", timestamp: 1, project: undefined }, nested)
-    expect(loadFromDisk(nested)).toEqual([{ display: "fresh", timestamp: 1, project: undefined }])
+    await appendToDisk({ display: "fresh", timestamp: 1, project: undefined, taskId: undefined }, nested)
+    expect(loadFromDisk(nested)).toEqual([{ display: "fresh", timestamp: 1, project: undefined, taskId: undefined }])
   })
 })
