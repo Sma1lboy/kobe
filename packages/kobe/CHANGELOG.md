@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-## [0.53.0] - 2026-05-16
+## [0.5.3] - 2026-05-16
 
 ### Changed
 
