@@ -83,6 +83,7 @@ const claudeRegistry: Readonly<Record<string, ToolMeta>> = {
 const registries: Readonly<Record<VendorId, Readonly<Record<string, ToolMeta>>>> = {
   claude: claudeRegistry,
   codex: {},
+  gemini: {},
 }
 
 /**

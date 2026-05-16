@@ -297,7 +297,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "task.model": {
         const taskId = requireString(payload, "taskId")
         const modelEffort = optionalModelEffort(payload, "modelEffort")
-        await orch.setModel(taskId, optionalString(payload, "model"), optionalString(payload, "tabId"), modelEffort)
+        const vendor = optionalVendor(payload, "vendor")
+        await orch.setModel(
+          taskId,
+          optionalString(payload, "model"),
+          optionalString(payload, "tabId"),
+          modelEffort,
+          vendor,
+        )
         broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
@@ -702,7 +709,7 @@ function optionalModelEffort(payload: Record<string, unknown>, key: string): Mod
 
 function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
   const value = optionalString(payload, key)
-  if (value !== undefined && value !== "claude" && value !== "codex") {
+  if (value !== undefined && value !== "claude" && value !== "codex" && value !== "gemini") {
     throw new Error(`${key} must be a supported vendor`)
   }
   return value

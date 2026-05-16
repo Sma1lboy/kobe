@@ -17,14 +17,14 @@ import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
 import { type ModelPickerModelOption, modelPickerEffortOptions, modelPickerModelOptions } from "./model-picker-row"
 
-export type ModelPickerResult = Pick<ModelChoice, "id" | "effort"> | undefined
+export type ModelPickerResult = Pick<ModelChoice, "vendor" | "id" | "effort"> | undefined
 
 export type ModelPickerProps = {
   current: string | undefined
   currentEffort?: string | undefined
   currentVendor?: VendorId | undefined
   lockedVendor?: VendorId | undefined
-  onPick: (choice: Pick<ModelChoice, "id" | "effort">) => void
+  onPick: (choice: Pick<ModelChoice, "vendor" | "id" | "effort">) => void
   onCancel: () => void
 }
 
@@ -68,7 +68,7 @@ function ModelPicker(props: ModelPickerProps) {
     if (model.disabled) return
     const efforts = modelPickerEffortOptions(model)
     if (efforts.length <= 1 && efforts[0]?.effort === undefined) {
-      props.onPick({ id: model.id, effort: undefined })
+      props.onPick({ vendor: model.vendor, id: model.id, effort: undefined })
       dialog.clear()
       return
     }
@@ -81,7 +81,7 @@ function ModelPicker(props: ModelPickerProps) {
     if (!model) return
     const choice = effortChoices()[effortCursor()]
     if (!choice) return
-    props.onPick({ id: model.id, effort: choice.effort })
+    props.onPick({ vendor: model.vendor, id: model.id, effort: choice.effort })
     dialog.clear()
   }
 
@@ -164,8 +164,10 @@ function ModelPicker(props: ModelPickerProps) {
                   paddingRight={1}
                   backgroundColor={active() ? theme.primary : undefined}
                   onMouseUp={() => {
+                    const model = selectedModel()
+                    if (!model) return
                     setEffortCursor(i())
-                    props.onPick({ id: choice.id, effort: choice.effort })
+                    props.onPick({ vendor: model.vendor, id: choice.id, effort: choice.effort })
                     dialog.clear()
                   }}
                 >
@@ -205,7 +207,7 @@ function ModelPicker(props: ModelPickerProps) {
                     if (disabled()) return
                     const efforts = modelPickerEffortOptions(model)
                     if (efforts.length <= 1 && efforts[0]?.effort === undefined) {
-                      props.onPick({ id: model.id, effort: undefined })
+                      props.onPick({ vendor: model.vendor, id: model.id, effort: undefined })
                       dialog.clear()
                       return
                     }

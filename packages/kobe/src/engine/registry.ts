@@ -27,6 +27,7 @@ import type { AIEngine, EngineCapabilities, EngineIdentity, ModelChoice, ModelEf
 import type { VendorId } from "@/types/vendor"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities"
+import { geminiCapabilities, geminiIdentity } from "./gemini-local/capabilities"
 
 /**
  * Runtime engine map — vendor → live `AIEngine` instance.
@@ -49,11 +50,13 @@ type IdentityRegistry = Partial<Record<VendorId, EngineIdentity>>
 export const ENGINE_REGISTRY: Registry = {
   claude: claudeCapabilities,
   codex: codexCapabilities,
+  gemini: geminiCapabilities,
 }
 
 export const ENGINE_IDENTITIES: IdentityRegistry = {
   claude: claudeIdentity,
   codex: codexIdentity,
+  gemini: geminiIdentity,
 }
 
 export const defaultCapabilities: EngineCapabilities = claudeCapabilities

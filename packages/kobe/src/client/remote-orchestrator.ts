@@ -316,8 +316,9 @@ export class RemoteOrchestrator {
     model: string | undefined,
     tabId?: string,
     modelEffort?: ModelEffortLevel,
+    vendor?: VendorId,
   ): Promise<void> {
-    await this.client.request("task.model", { taskId, model, tabId, modelEffort })
+    await this.client.request("task.model", { taskId, model, tabId, modelEffort, vendor })
   }
 
   async createTab(taskId: string, opts: { title?: string } = {}): Promise<ChatTab> {

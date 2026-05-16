@@ -2,7 +2,7 @@
  * Engine selection + fake-engine HTTP side-channel.
  *
  * Builds the `AIEngine` the orchestrator drives:
- *   - Default: `ClaudeCodeLocal` (subprocess wrapper around `claude` CLI).
+ *   - Default map: `ClaudeCodeLocal`, `CodexLocal`, and `GeminiLocal`.
  *   - With `KOBE_TEST_ENGINE=fake`: in-process `FakeAIEngine` plus a tiny
  *     HTTP side-channel on `KOBE_TEST_FAKE_PORT` for behavior tests to
  *     script events. The test pre-allocates the port and POSTs JSON to
@@ -20,14 +20,14 @@
  */
 
 import { ClaudeCodeLocal } from "../engine/claude-code-local/index.ts"
-import { CodexLocal } from "../engine/codex-local/index.ts"
+import { buildDefaultEngines } from "../engine/default-engines.ts"
 import type { EngineMap } from "../engine/registry.ts"
 import type { AIEngine } from "../types/engine.ts"
 
 /**
  * Single-engine build path. Test modes return a `FakeAIEngine` or
  * `DevAIEngine`; production callers should use {@link buildEngines}
- * instead so codex is wired alongside claude.
+ * instead so codex/gemini are wired alongside claude.
  */
 export async function buildEngine(): Promise<AIEngine> {
   if (process.env.KOBE_TEST_ENGINE === "fake") {
@@ -47,18 +47,15 @@ export async function buildEngine(): Promise<AIEngine> {
  * Build the per-vendor engine map the orchestrator routes through.
  * Test modes still go through {@link buildEngine} — they have one
  * fake engine and the orchestrator's fallback path covers any vendor a
- * task is pinned to. Production registers both claude and codex so a
- * task pinned to `vendor: "codex"` lands on the right adapter.
+ * task is pinned to. Production registers every local vendor so a task
+ * pinned to codex/gemini lands on the right adapter.
  */
 export async function buildEngines(): Promise<EngineMap> {
   if (process.env.KOBE_TEST_ENGINE) {
     const engine = await buildEngine()
     return { [engine.capabilities.vendorId]: engine }
   }
-  return {
-    claude: new ClaudeCodeLocal(),
-    codex: new CodexLocal(),
-  }
+  return buildDefaultEngines()
 }
 
 /**

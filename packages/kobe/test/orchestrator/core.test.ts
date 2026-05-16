@@ -31,6 +31,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { claudeCapabilities, claudeIdentity } from "../../src/engine/claude-code-local/capabilities.ts"
 import { codexCapabilities, codexIdentity } from "../../src/engine/codex-local/capabilities.ts"
+import { geminiCapabilities, geminiIdentity } from "../../src/engine/gemini-local/capabilities.ts"
 import {
   CONCURRENCY_CAP,
   CannotDeleteMainTaskError,
@@ -68,6 +69,18 @@ let tmpRoot: string
 let homeDir: string
 let repo: string
 
+const historyEngineIdentities = {
+  claude: claudeIdentity,
+  codex: codexIdentity,
+  gemini: geminiIdentity,
+} satisfies Record<VendorId, EngineIdentity>
+
+const historyEngineCapabilities = {
+  claude: claudeCapabilities,
+  codex: codexCapabilities,
+  gemini: geminiCapabilities,
+} satisfies Record<VendorId, EngineCapabilities>
+
 async function buildOrchestrator(engine?: AIEngine): Promise<{
   orch: Orchestrator
   store: TaskIndexStore
@@ -96,8 +109,8 @@ class HistoryEngine implements AIEngine {
   private next = 1
 
   constructor(private readonly vendor: VendorId) {
-    this.identity = vendor === "codex" ? codexIdentity : claudeIdentity
-    this.capabilities = vendor === "codex" ? codexCapabilities : claudeCapabilities
+    this.identity = historyEngineIdentities[vendor]
+    this.capabilities = historyEngineCapabilities[vendor]
   }
 
   async spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
@@ -1553,6 +1566,33 @@ describe("Orchestrator engine call shape", () => {
     const secondHistory = await orch.readHistoryWithMetrics(tab2?.sessionId ?? "")
     expect(firstHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "claude history for claude-1" }])
     expect(secondHistory.messages[0]?.blocks).toEqual([{ type: "text", text: "codex history for codex-1" }])
+  })
+
+  test("explicit vendor selection routes Gemini model ids to the selected engine", async () => {
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    const claude = new HistoryEngine("claude")
+    const gemini = new HistoryEngine("gemini")
+    const orch = new Orchestrator({
+      engines: { claude, gemini },
+      store,
+      worktrees: new GitWorktreeManager(),
+      metadataSuggester: new NoopMetadataSuggester(),
+    })
+
+    const task = await orch.createTask({ repo, title: "gemini explicit", prompt: "" })
+    const tab = orch.getTask(task.id)?.tabs[0]
+    expect(tab).toBeDefined()
+
+    await orch.setModel(task.id, "gemini-3.1-pro-preview", tab?.id, undefined, "gemini")
+    await orch.runTask(task.id, "hello", tab?.id)
+    await orch._waitForPumpsIdle()
+
+    const updated = orch.getTask(task.id)?.tabs[0]
+    expect(updated?.vendor).toBe("gemini")
+    expect(updated?.model).toBe("gemini-3.1-pro-preview")
+    expect(claude.spawns).toHaveLength(0)
+    expect(gemini.spawns[0]).toMatchObject({ prompt: "hello", model: "gemini-3.1-pro-preview" })
   })
 
   test("resume sessions are loaded from every registered engine and preserve selected engine", async () => {
