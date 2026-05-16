@@ -66,6 +66,30 @@ describe("FakeAIEngine", () => {
     expect(out).toEqual([])
   })
 
+  test("resume does not replay events consumed by a stopped stream", async () => {
+    const engine = new FakeAIEngine()
+    const handle = await engine.spawn("/tmp/x", "hi")
+    engine.script(handle.sessionId, [
+      { type: "tool.start", name: "ExitPlanMode", input: { plan: "approve me" } },
+      { type: "done" },
+    ])
+
+    const first = engine.stream(handle)[Symbol.asyncIterator]()
+    expect(await first.next()).toEqual({
+      done: false,
+      value: { type: "tool.start", name: "ExitPlanMode", input: { plan: "approve me" } },
+    })
+    await engine.stop(handle)
+    await first.next()
+
+    const resumed = await engine.resume(handle.sessionId, "Plan approved.", { cwd: "/tmp/x" })
+    engine.script(handle.sessionId, [{ type: "done" }])
+
+    const out: EngineEvent[] = []
+    for await (const ev of engine.stream(resumed)) out.push(ev)
+    expect(out).toEqual([{ type: "done" }])
+  })
+
   test("readHistory returns pre-seeded messages", async () => {
     const engine = new FakeAIEngine()
     engine.setHistory("preset", [
