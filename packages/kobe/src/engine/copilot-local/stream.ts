@@ -11,6 +11,7 @@ export async function* parseStreamJson(
   opts: ParseCopilotStreamJsonOpts = {},
 ): AsyncIterable<EngineEvent> {
   const toolNameById = new Map<string, string>()
+  const startedToolIds = new Set<string>()
   const completedMessageIds = new Set<string>()
   let terminalSeen = false
 
@@ -48,6 +49,8 @@ export async function* parseStreamJson(
         for (const request of Array.isArray(data.toolRequests) ? data.toolRequests : []) {
           const tool = normalizeToolRequest(request)
           if (!tool) continue
+          if (startedToolIds.has(tool.id)) continue
+          startedToolIds.add(tool.id)
           toolNameById.set(tool.id, tool.name)
           yield { type: "tool.start", name: tool.name, input: tool.input }
         }
@@ -61,7 +64,11 @@ export async function* parseStreamJson(
       case "tool.execution_start": {
         const id = typeof data.toolCallId === "string" ? data.toolCallId : undefined
         const name = typeof data.toolName === "string" ? data.toolName : "tool"
-        if (id) toolNameById.set(id, name)
+        if (id) {
+          if (startedToolIds.has(id)) break
+          startedToolIds.add(id)
+          toolNameById.set(id, name)
+        }
         yield { type: "tool.start", name, input: normalizeToolArgs(data.arguments) }
         break
       }

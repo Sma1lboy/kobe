@@ -19,7 +19,8 @@ function readModelFromSettings(): string | null {
     const parsed = JSON.parse(stripJsonComments(readFileSync(SETTINGS_PATH, "utf8"))) as unknown
     if (!isObject(parsed)) return null
     const model = parsed.model ?? parsed.defaultModel
-    return typeof model === "string" && model.length > 0 ? model : null
+    const trimmed = typeof model === "string" ? model.trim() : ""
+    return trimmed.length > 0 ? trimmed : null
   } catch {
     return null
   }

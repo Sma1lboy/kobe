@@ -49,6 +49,32 @@ describe("copilot stream parser", () => {
     ])
   })
 
+  it("deduplicates tool starts repeated across assistant messages and execution events", async () => {
+    const events = await collect([
+      JSON.stringify({
+        type: "assistant.message",
+        data: {
+          messageId: "m1",
+          content: "",
+          toolRequests: [{ id: "call-1", name: "shell", arguments: [{ command: "git status" }] }],
+        },
+      }),
+      JSON.stringify({
+        type: "tool.execution_start",
+        data: { toolCallId: "call-1", toolName: "shell", arguments: [{ command: "git status" }] },
+      }),
+      JSON.stringify({
+        type: "tool.execution_complete",
+        data: { toolCallId: "call-1", success: true, result: { content: "clean" } },
+      }),
+      JSON.stringify({ type: "result", sessionId: "s", exitCode: 0 }),
+    ])
+
+    expect(events.filter((event) => event.type === "tool.start")).toEqual([
+      { type: "tool.start", name: "shell", input: { command: "git status" } },
+    ])
+  })
+
   it("turns non-zero results into terminal errors", async () => {
     const events = await collect([JSON.stringify({ type: "result", sessionId: "s", exitCode: 1 })])
 

@@ -29,6 +29,7 @@ interface RunningSession {
   readonly spawned: SpawnedCopilot
   readonly queue: EngineEvent[]
   waiters: Array<() => void>
+  cursor: number
   closed: boolean
 }
 
@@ -61,10 +62,9 @@ export class CopilotLocal implements AIEngine {
       async *[Symbol.asyncIterator]() {
         const session = self.running.get(sid)
         if (!session) return
-        let idx = 0
         while (true) {
-          if (idx < session.queue.length) {
-            const ev = session.queue[idx++]
+          if (session.cursor < session.queue.length) {
+            const ev = session.queue[session.cursor++]
             yield ev
             if (ev.type === "done" || ev.type === "error") return
             continue
@@ -124,6 +124,7 @@ export class CopilotLocal implements AIEngine {
       spawned,
       queue,
       waiters: [],
+      cursor: 0,
       closed: false,
     }
     this.running.set(args.sessionId, session)

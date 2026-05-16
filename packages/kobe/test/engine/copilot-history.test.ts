@@ -31,6 +31,45 @@ describe("copilot history", () => {
     expect(history.usageMetrics).toEqual({ input_tokens: 0, output_tokens: 2, context_tokens: 123 })
   })
 
+  it("rejects session ids that escape session-state", async () => {
+    const root = await makeCopilotRoot()
+
+    await expect(readHistoryWithMetrics("../outside", depsFor(root))).rejects.toThrow("Invalid Copilot session id")
+  })
+
+  it("deduplicates repeated tool execution starts", async () => {
+    const root = await makeCopilotRoot()
+    const sessionDir = path.join(root, "session-state", "session-1")
+    await mkdir(sessionDir, { recursive: true })
+    await writeFile(
+      path.join(sessionDir, "events.jsonl"),
+      [
+        JSON.stringify({
+          type: "tool.execution_start",
+          timestamp: "2026-05-16T10:00:00Z",
+          data: { toolCallId: "call-1", toolName: "shell", arguments: [{ command: "git status" }] },
+        }),
+        JSON.stringify({
+          type: "tool.execution_start",
+          timestamp: "2026-05-16T10:00:01Z",
+          data: { toolCallId: "call-1", toolName: "shell", arguments: [{ command: "git status" }] },
+        }),
+        JSON.stringify({
+          type: "tool.execution_complete",
+          timestamp: "2026-05-16T10:00:02Z",
+          data: { toolCallId: "call-1", success: true, result: { content: "clean" } },
+        }),
+      ].join("\n"),
+    )
+
+    const history = await readHistoryWithMetrics("session-1", depsFor(root))
+    const toolCalls = history.messages.flatMap((message) =>
+      message.blocks.filter((block) => block.type === "tool_call"),
+    )
+
+    expect(toolCalls).toHaveLength(1)
+  })
+
   it("lists sessions for a cwd via workspace.yaml", async () => {
     const root = await makeCopilotRoot()
     const cwd = "/tmp/kobe-copilot-repo"

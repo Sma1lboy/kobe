@@ -32,7 +32,7 @@ export async function readHistoryWithMetrics(
   sessionId: string,
   deps: CopilotHistoryDeps = defaultDeps,
 ): Promise<EngineHistory> {
-  const file = path.join(deps.copilotDir(), "session-state", sessionId, "events.jsonl")
+  const file = sessionEventsPath(deps.copilotDir(), sessionId)
   const raw = await deps.readFile(file).catch(() => "")
   if (!raw) return { messages: [] }
   const messages = parseEventsJsonl(raw, sessionId)
@@ -45,10 +45,18 @@ export async function readHistory(sessionId: string, deps: CopilotHistoryDeps = 
 }
 
 export async function deleteHistory(sessionId: string, deps: CopilotHistoryDeps = defaultDeps): Promise<void> {
-  const file = path.join(deps.copilotDir(), "session-state", sessionId, "events.jsonl")
+  const file = sessionEventsPath(deps.copilotDir(), sessionId)
   await deps.unlink(file).catch((err: NodeJS.ErrnoException) => {
     if (err.code !== "ENOENT") throw err
   })
+}
+
+export function sessionEventsPath(copilotDir: string, sessionId: string): string {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(sessionId)) throw new Error("Invalid Copilot session id")
+  const sessionStateDir = path.resolve(copilotDir, "session-state")
+  const file = path.resolve(sessionStateDir, sessionId, "events.jsonl")
+  if (!file.startsWith(`${sessionStateDir}${path.sep}`)) throw new Error("Invalid Copilot session id")
+  return file
 }
 
 export function parseEventsJsonl(raw: string, sessionId: string): Message[] {
@@ -97,6 +105,7 @@ export function parseEventsJsonl(raw: string, sessionId: string): Message[] {
       const id = typeof data.toolCallId === "string" ? data.toolCallId : undefined
       if (!id || startedTools.has(id)) continue
       const name = typeof data.toolName === "string" ? data.toolName : "tool"
+      startedTools.add(id)
       out.push({
         role: "assistant",
         blocks: [{ type: "tool_call", callId: id, name, input: normalizeToolArgs(data.arguments) }],
