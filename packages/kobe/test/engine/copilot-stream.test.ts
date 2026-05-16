@@ -64,6 +64,36 @@ describe("copilot stream parser", () => {
     ])
   })
 
+  it("deduplicates reasoning by content when reasoning ids are absent", async () => {
+    const events = await collect([
+      JSON.stringify({ type: "assistant.reasoning_delta", data: { deltaContent: "checking " } }),
+      JSON.stringify({ type: "assistant.reasoning_delta", data: { deltaContent: "the code" } }),
+      JSON.stringify({ type: "assistant.reasoning", data: { content: "checking the code" } }),
+      JSON.stringify({ type: "assistant.message", data: { content: "done", reasoningText: "checking the code" } }),
+      JSON.stringify({ type: "result", sessionId: "s", exitCode: 0 }),
+    ])
+
+    expect(events).toEqual([
+      { type: "reasoning.delta", text: "checking " },
+      { type: "reasoning.delta", text: "the code" },
+      { type: "assistant.delta", text: "done" },
+      { type: "done" },
+    ])
+  })
+
+  it("streams reasoning text from complete assistant messages when no reasoning event exists", async () => {
+    const events = await collect([
+      JSON.stringify({ type: "assistant.message", data: { content: "done", reasoningText: "checked history" } }),
+      JSON.stringify({ type: "result", sessionId: "s", exitCode: 0 }),
+    ])
+
+    expect(events).toEqual([
+      { type: "reasoning.delta", text: "checked history" },
+      { type: "assistant.delta", text: "done" },
+      { type: "done" },
+    ])
+  })
+
   it("deduplicates tool starts repeated across assistant messages and execution events", async () => {
     const events = await collect([
       JSON.stringify({

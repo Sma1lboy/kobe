@@ -62,6 +62,7 @@ export function sessionEventsPath(copilotDir: string, sessionId: string): string
 export function parseEventsJsonl(raw: string, sessionId: string): Message[] {
   const out: Message[] = []
   const startedTools = new Set<string>()
+  const seenReasoningTexts = new Set<string>()
   for (const line of raw.split("\n")) {
     const t = line.trim()
     if (!t) continue
@@ -83,6 +84,11 @@ export function parseEventsJsonl(raw: string, sessionId: string): Message[] {
 
     if (record.type === "assistant.message") {
       const blocks: ContentBlock[] = []
+      const reasoningText = typeof data.reasoningText === "string" ? data.reasoningText : ""
+      if (reasoningText && !seenReasoningTexts.has(reasoningKey(reasoningText))) {
+        seenReasoningTexts.add(reasoningKey(reasoningText))
+        blocks.push({ type: "thinking", text: reasoningText })
+      }
       const text = typeof data.content === "string" ? data.content : ""
       if (text) blocks.push({ type: "text", text })
       for (const request of Array.isArray(data.toolRequests) ? data.toolRequests : []) {
@@ -97,7 +103,11 @@ export function parseEventsJsonl(raw: string, sessionId: string): Message[] {
 
     if (record.type === "assistant.reasoning") {
       const text = typeof data.content === "string" ? data.content : ""
-      if (text) out.push({ role: "assistant", blocks: [{ type: "thinking", text }], timestamp, sessionId })
+      const key = reasoningKey(text)
+      if (text && !seenReasoningTexts.has(key)) {
+        seenReasoningTexts.add(key)
+        out.push({ role: "assistant", blocks: [{ type: "thinking", text }], timestamp, sessionId })
+      }
       continue
     }
 
@@ -180,6 +190,10 @@ function normalizeToolArgs(value: unknown): unknown {
 
 function numberOr(v: unknown, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) ? v : fallback
+}
+
+function reasoningKey(text: string): string {
+  return text.trim()
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {

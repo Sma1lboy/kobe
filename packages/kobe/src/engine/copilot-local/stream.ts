@@ -14,6 +14,8 @@ export async function* parseStreamJson(
   const startedToolIds = new Set<string>()
   const completedMessageIds = new Set<string>()
   const streamedReasoningIds = new Set<string>()
+  const reasoningTextById = new Map<string, string>()
+  const completedReasoningTexts = new Set<string>()
   let terminalSeen = false
 
   for await (const rawLine of lines) {
@@ -45,6 +47,11 @@ export async function* parseStreamJson(
       }
       case "assistant.message": {
         const id = typeof data.messageId === "string" ? data.messageId : undefined
+        const reasoningText = typeof data.reasoningText === "string" ? data.reasoningText : ""
+        if (reasoningText && !hasReasoningText(completedReasoningTexts, reasoningTextById, reasoningText)) {
+          completedReasoningTexts.add(reasoningKey(reasoningText))
+          yield { type: "reasoning.delta", text: reasoningText }
+        }
         const text = typeof data.content === "string" ? data.content : ""
         if (text && (!id || !completedMessageIds.has(id))) yield { type: "assistant.delta", text }
         for (const request of Array.isArray(data.toolRequests) ? data.toolRequests : []) {
@@ -60,13 +67,23 @@ export async function* parseStreamJson(
       case "assistant.reasoning": {
         const id = typeof data.reasoningId === "string" ? data.reasoningId : undefined
         const text = typeof data.content === "string" ? data.content : ""
-        if (text && (!id || !streamedReasoningIds.has(id))) yield { type: "reasoning.delta", text }
+        const alreadySeen = text ? hasReasoningText(completedReasoningTexts, reasoningTextById, text) : false
+        if (text) completedReasoningTexts.add(reasoningKey(text))
+        if (text && !alreadySeen && (!id || !streamedReasoningIds.has(id))) {
+          yield { type: "reasoning.delta", text }
+        }
         break
       }
       case "assistant.reasoning_delta": {
         const text = typeof data.deltaContent === "string" ? data.deltaContent : ""
         const id = typeof data.reasoningId === "string" ? data.reasoningId : undefined
-        if (id) streamedReasoningIds.add(id)
+        if (id) {
+          streamedReasoningIds.add(id)
+          reasoningTextById.set(id, `${reasoningTextById.get(id) ?? ""}${text}`)
+        } else if (text) {
+          const fallbackId = "__copilot_reasoning__"
+          reasoningTextById.set(fallbackId, `${reasoningTextById.get(fallbackId) ?? ""}${text}`)
+        }
         if (text) yield { type: "reasoning.delta", text }
         break
       }
@@ -133,6 +150,23 @@ function normalizeToolRequest(value: unknown): { id: string; name: string; input
     typeof value.name === "string" ? value.name : typeof value.toolName === "string" ? value.toolName : undefined
   if (!id || !name) return null
   return { id, name, input: normalizeToolArgs(value.arguments ?? value.input) }
+}
+
+function hasReasoningText(completed: Set<string>, streamed: Map<string, string>, text: string): boolean {
+  const key = reasoningKey(text)
+  return completed.has(key) || reasoningTextByIdHas(streamed, text)
+}
+
+function reasoningTextByIdHas(streamed: Map<string, string>, text: string): boolean {
+  const key = reasoningKey(text)
+  for (const value of streamed.values()) {
+    if (reasoningKey(value) === key) return true
+  }
+  return false
+}
+
+function reasoningKey(text: string): string {
+  return text.trim()
 }
 
 function normalizeToolArgs(value: unknown): unknown {

@@ -70,6 +70,57 @@ describe("copilot history", () => {
     expect(toolCalls).toHaveLength(1)
   })
 
+  it("hydrates reasoningText from assistant messages without duplicating reasoning records", async () => {
+    const root = await makeCopilotRoot()
+    const sessionDir = path.join(root, "session-state", "session-1")
+    await mkdir(sessionDir, { recursive: true })
+    await writeFile(
+      path.join(sessionDir, "events.jsonl"),
+      [
+        JSON.stringify({
+          type: "assistant.reasoning",
+          timestamp: "2026-05-16T10:00:00Z",
+          data: { reasoningId: "r1", content: "checked history" },
+        }),
+        JSON.stringify({
+          type: "assistant.message",
+          timestamp: "2026-05-16T10:00:01Z",
+          data: { content: "done", reasoningText: "checked history" },
+        }),
+      ].join("\n"),
+    )
+
+    const history = await readHistoryWithMetrics("session-1", depsFor(root))
+    const thinkingBlocks = history.messages.flatMap((message) =>
+      message.blocks.filter((block) => block.type === "thinking"),
+    )
+
+    expect(thinkingBlocks).toEqual([{ type: "thinking", text: "checked history" }])
+    expect(history.messages.at(-1)?.blocks).toEqual([{ type: "text", text: "done" }])
+  })
+
+  it("hydrates reasoningText from assistant messages when no reasoning record exists", async () => {
+    const root = await makeCopilotRoot()
+    const sessionDir = path.join(root, "session-state", "session-1")
+    await mkdir(sessionDir, { recursive: true })
+    await writeFile(
+      path.join(sessionDir, "events.jsonl"),
+      JSON.stringify({
+        type: "assistant.message",
+        timestamp: "2026-05-16T10:00:00Z",
+        data: { content: "done", reasoningText: "checked history" },
+      }),
+    )
+
+    const history = await readHistoryWithMetrics("session-1", depsFor(root))
+
+    expect(history.messages).toHaveLength(1)
+    expect(history.messages[0]?.blocks).toEqual([
+      { type: "thinking", text: "checked history" },
+      { type: "text", text: "done" },
+    ])
+  })
+
   it("lists sessions for a cwd via workspace.yaml", async () => {
     const root = await makeCopilotRoot()
     const cwd = "/tmp/kobe-copilot-repo"
