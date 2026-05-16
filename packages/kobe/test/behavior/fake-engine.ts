@@ -63,10 +63,8 @@ export class FakeAIEngine implements AIEngine {
   /**
    * Pre-seed events for a session id. Subsequent calls *append* —
    * later `script()` calls extend the queue, they don't replace it.
-   * Events are consumed globally per session so a resumed subprocess
-   * doesn't replay old stream events the previous subprocess already saw.
-   * If `stream(handle)` has already drained, new events are still delivered
-   * (the iterator wakes on the new push).
+   * If `stream(handle)` has already drained, new events are still
+   * delivered (the iterator wakes on the new push).
    */
   script(sessionId: string, events: EngineEvent[]): void {
     const q = this.ensureQueue(sessionId)
@@ -122,10 +120,11 @@ export class FakeAIEngine implements AIEngine {
 
     return {
       async *[Symbol.asyncIterator]() {
+        let idx = 0
         while (true) {
           if (stopped.has(sessionId)) return
-          if (q.events.length > 0) {
-            const ev = q.events.shift()
+          if (idx < q.events.length) {
+            const ev = q.events[idx++]
             if (ev) yield ev
             if (ev?.type === "done" || ev?.type === "error") return
             continue

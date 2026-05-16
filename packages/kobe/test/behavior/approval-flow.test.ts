@@ -406,12 +406,15 @@ test("approval — ExitPlanMode click-through approves + emits the synthetic res
   // The synthetic prompt the model will see on resume.
   expect(result.prompt).toContain("Plan approved")
 
-  // Picker row flipped to the resolved state. `kobe.capture()` returns
-  // cumulative scrollback (see driver.ts), not the current visible frame,
-  // and opentui's cell capture can drop a single chip character while the
-  // row rerenders under load. Pin the stable user-facing banner instead of
-  // the exact `[approved]` chip spelling.
-  const resolved = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("UserapprovedClaude"), 10_000)
+  // Picker row flipped to the resolved state. The `[approved]` chip
+  // and the "User approved Claude's plan" banner are positive
+  // assertions only — `kobe.capture()` returns the cumulative scrollback
+  // buffer (see driver.ts), not the current visible frame, so the
+  // pre-resolve "[ Approve ]" / "[ Reject ]" render is still in the
+  // buffer at this point. We pin the resolve transition by checking
+  // both new-state strings appear (and via `waitFor` order, that they
+  // appear AFTER the resolve was issued).
+  const resolved = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("[approved]"), 10_000)
   const collapsed = resolved.replace(/\s+/g, "")
   expect(collapsed).toContain("UserapprovedClaude")
 
@@ -486,16 +489,21 @@ test("approval — AskUserQuestion click-through submits answer + emits the synt
   expect(result.prompt).toContain("ANSWER_OPTION_ALPHA")
   expect(result.prompt).toContain("Please continue")
 
-  // Picker row flipped to the answered state. Positive assertions only:
-  // the pending "[ Submit ]" render remains in cumulative scrollback, and
-  // opentui's cell capture may drop a single banner/chip character under
-  // load. The selected answer label is the stable user-visible state.
-  const resolved = await kobe.waitFor((s) => s.includes("ANSWER_OPTION_ALPHA") && s.includes("You asked"), 10_000)
+  // Picker row flipped to the answered state. Positive assertions
+  // only — `kobe.capture()` returns the cumulative scrollback buffer
+  // (see driver.ts + the matching note in the ExitPlanMode click-through
+  // test above), so the pending "[ Submit ]" render is still in the
+  // buffer at this point. We pin the resolve transition via the
+  // [submitted] chip + the "Answered" banner copy + the chosen label
+  // appearing as the rendered answer line.
+  const resolved = await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("[submitted]"), 10_000)
+  const collapsed = resolved.replace(/\s+/g, "")
+  expect(collapsed).toContain("Answered")
   expect(resolved).toContain("ANSWER_OPTION_ALPHA")
 
   // Synthetic user-row from user.inject is in chat with the rendered
   // answer text — proves the right prompt got sent on resume.
-  expect(resolved).toContain("You asked")
+  await kobe.waitFor((s) => s.includes("ANSWER_OPTION_ALPHA") && s.includes("You asked"), 5_000)
 
   await kobe.exit()
 }, 60_000)
