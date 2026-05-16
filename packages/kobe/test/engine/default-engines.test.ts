@@ -8,5 +8,6 @@ describe("buildDefaultEngines", () => {
     expect(engines.claude?.capabilities.vendorId).toBe("claude")
     expect(engines.codex?.capabilities.vendorId).toBe("codex")
     expect(engines.gemini?.capabilities.vendorId).toBe("gemini")
+    expect(engines.copilot?.capabilities.vendorId).toBe("copilot")
   })
 })

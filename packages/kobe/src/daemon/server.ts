@@ -709,7 +709,7 @@ function optionalModelEffort(payload: Record<string, unknown>, key: string): Mod
 
 function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
   const value = optionalString(payload, key)
-  if (value !== undefined && value !== "claude" && value !== "codex" && value !== "gemini") {
+  if (value !== undefined && value !== "claude" && value !== "codex" && value !== "gemini" && value !== "copilot") {
     throw new Error(`${key} must be a supported vendor`)
   }
   return value

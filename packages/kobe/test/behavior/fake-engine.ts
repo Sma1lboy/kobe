@@ -46,6 +46,7 @@ function firstUserText(blocks: readonly ContentBlock[]): string | null {
 
 type ScriptedQueue = {
   events: EngineEvent[]
+  cursor: number
   /** Resolves when a new event arrives or the queue is closed. */
   waiters: Array<() => void>
   closed: boolean
@@ -120,11 +121,12 @@ export class FakeAIEngine implements AIEngine {
 
     return {
       async *[Symbol.asyncIterator]() {
-        let idx = 0
+        let idx = q.cursor
         while (true) {
           if (stopped.has(sessionId)) return
           if (idx < q.events.length) {
             const ev = q.events[idx++]
+            q.cursor = Math.max(q.cursor, idx)
             if (ev) yield ev
             if (ev?.type === "done" || ev?.type === "error") return
             continue
@@ -191,7 +193,7 @@ export class FakeAIEngine implements AIEngine {
   private ensureQueue(sessionId: string): ScriptedQueue {
     let q = this.queues.get(sessionId)
     if (!q) {
-      q = { events: [], waiters: [], closed: false }
+      q = { events: [], cursor: 0, waiters: [], closed: false }
       this.queues.set(sessionId, q)
     }
     return q

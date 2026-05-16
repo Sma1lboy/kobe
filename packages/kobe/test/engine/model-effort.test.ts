@@ -3,17 +3,21 @@ import { CLAUDE_MODELS } from "../../src/engine/claude-code-local/models"
 import { buildArgs as buildClaudeArgs } from "../../src/engine/claude-code-local/spawn"
 import { CODEX_MODELS } from "../../src/engine/codex-local/models"
 import { buildArgs as buildCodexArgs } from "../../src/engine/codex-local/spawn"
+import { COPILOT_MODELS } from "../../src/engine/copilot-local/models"
+import { buildArgs as buildCopilotArgs } from "../../src/engine/copilot-local/spawn"
 
 describe("model-bound effort spawn args", () => {
   test("catalog exposes only efforts accepted by each engine's current CLI path", () => {
     const claudeEfforts = new Set(CLAUDE_MODELS.flatMap((m) => (m.effort ? [m.effort] : [])))
     const codexEfforts = new Set(CODEX_MODELS.flatMap((m) => (m.effort ? [m.effort] : [])))
+    const copilotEfforts = new Set(COPILOT_MODELS.flatMap((m) => (m.effort ? [m.effort] : [])))
 
     expect([...claudeEfforts].sort()).toEqual(["high", "low", "max", "medium", "xhigh"])
     // `minimal` is intentionally absent: current codex exec keeps web
     // search/image tools enabled, and the API rejects minimal effort
     // with that tool set.
     expect([...codexEfforts].sort()).toEqual(["high", "low", "medium", "none", "xhigh"])
+    expect([...copilotEfforts].sort()).toEqual(["high", "low", "medium", "xhigh"])
   })
 
   test("all claude effort catalog choices forward through --effort", () => {
@@ -51,6 +55,25 @@ describe("model-bound effort spawn args", () => {
     }
   })
 
+  test("all copilot effort catalog choices forward through --reasoning-effort", () => {
+    const choices = COPILOT_MODELS.filter((m) => m.effort)
+    expect(choices.length).toBeGreaterThan(0)
+
+    for (const choice of choices) {
+      const args = buildCopilotArgs({
+        binaryPath: "/bin/copilot",
+        cwd: "/tmp/repo",
+        prompt: "work",
+        sessionId: "session-1",
+        model: choice.id,
+        modelEffort: choice.effort,
+      })
+
+      expect(args).toContain("--reasoning-effort")
+      expect(args).toContain(choice.effort)
+    }
+  })
+
   test("claude forwards model effort through --effort", () => {
     expect(
       buildClaudeArgs({
@@ -82,5 +105,18 @@ describe("model-bound effort spawn args", () => {
         modelEffort: "xhigh",
       }),
     ).toContain('model_reasoning_effort="xhigh"')
+  })
+
+  test("copilot forwards model effort through --reasoning-effort", () => {
+    expect(
+      buildCopilotArgs({
+        binaryPath: "/bin/copilot",
+        cwd: "/tmp/repo",
+        prompt: "work",
+        sessionId: "session-1",
+        model: "gpt-5.2",
+        modelEffort: "xhigh",
+      }),
+    ).toContain("--reasoning-effort")
   })
 })

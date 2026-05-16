@@ -31,6 +31,7 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest"
 import { claudeCapabilities, claudeIdentity } from "../../src/engine/claude-code-local/capabilities.ts"
 import { codexCapabilities, codexIdentity } from "../../src/engine/codex-local/capabilities.ts"
+import { copilotCapabilities, copilotIdentity } from "../../src/engine/copilot-local/capabilities.ts"
 import { geminiCapabilities, geminiIdentity } from "../../src/engine/gemini-local/capabilities.ts"
 import {
   CONCURRENCY_CAP,
@@ -73,12 +74,14 @@ const historyEngineIdentities = {
   claude: claudeIdentity,
   codex: codexIdentity,
   gemini: geminiIdentity,
+  copilot: copilotIdentity,
 } satisfies Record<VendorId, EngineIdentity>
 
 const historyEngineCapabilities = {
   claude: claudeCapabilities,
   codex: codexCapabilities,
   gemini: geminiCapabilities,
+  copilot: copilotCapabilities,
 } satisfies Record<VendorId, EngineCapabilities>
 
 async function buildOrchestrator(engine?: AIEngine): Promise<{

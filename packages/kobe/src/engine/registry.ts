@@ -27,6 +27,7 @@ import type { AIEngine, EngineCapabilities, EngineIdentity, ModelChoice, ModelEf
 import type { VendorId } from "@/types/vendor"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities"
+import { copilotCapabilities, copilotIdentity } from "./copilot-local/capabilities"
 import { geminiCapabilities, geminiIdentity } from "./gemini-local/capabilities"
 
 /**
@@ -51,12 +52,14 @@ export const ENGINE_REGISTRY: Registry = {
   claude: claudeCapabilities,
   codex: codexCapabilities,
   gemini: geminiCapabilities,
+  copilot: copilotCapabilities,
 }
 
 export const ENGINE_IDENTITIES: IdentityRegistry = {
   claude: claudeIdentity,
   codex: codexIdentity,
   gemini: geminiIdentity,
+  copilot: copilotIdentity,
 }
 
 export const defaultCapabilities: EngineCapabilities = claudeCapabilities
