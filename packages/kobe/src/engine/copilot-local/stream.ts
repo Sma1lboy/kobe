@@ -13,6 +13,7 @@ export async function* parseStreamJson(
   const toolNameById = new Map<string, string>()
   const startedToolIds = new Set<string>()
   const completedMessageIds = new Set<string>()
+  const streamedReasoningIds = new Set<string>()
   let terminalSeen = false
 
   for await (const rawLine of lines) {
@@ -57,7 +58,15 @@ export async function* parseStreamJson(
         break
       }
       case "assistant.reasoning": {
+        const id = typeof data.reasoningId === "string" ? data.reasoningId : undefined
         const text = typeof data.content === "string" ? data.content : ""
+        if (text && (!id || !streamedReasoningIds.has(id))) yield { type: "reasoning.delta", text }
+        break
+      }
+      case "assistant.reasoning_delta": {
+        const text = typeof data.deltaContent === "string" ? data.deltaContent : ""
+        const id = typeof data.reasoningId === "string" ? data.reasoningId : undefined
+        if (id) streamedReasoningIds.add(id)
         if (text) yield { type: "reasoning.delta", text }
         break
       }

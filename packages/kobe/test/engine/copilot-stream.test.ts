@@ -49,6 +49,21 @@ describe("copilot stream parser", () => {
     ])
   })
 
+  it("does not duplicate complete reasoning after streamed reasoning deltas", async () => {
+    const events = await collect([
+      JSON.stringify({ type: "assistant.reasoning_delta", data: { reasoningId: "r1", deltaContent: "checking " } }),
+      JSON.stringify({ type: "assistant.reasoning_delta", data: { reasoningId: "r1", deltaContent: "the code" } }),
+      JSON.stringify({ type: "assistant.reasoning", data: { reasoningId: "r1", content: "checking the code" } }),
+      JSON.stringify({ type: "result", sessionId: "s", exitCode: 0 }),
+    ])
+
+    expect(events).toEqual([
+      { type: "reasoning.delta", text: "checking " },
+      { type: "reasoning.delta", text: "the code" },
+      { type: "done" },
+    ])
+  })
+
   it("deduplicates tool starts repeated across assistant messages and execution events", async () => {
     const events = await collect([
       JSON.stringify({
