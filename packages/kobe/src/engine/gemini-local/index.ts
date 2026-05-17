@@ -87,6 +87,10 @@ export class GeminiLocal implements AIEngine {
     return listSessionsForCwd(cwd)
   }
 
+  async listCommands() {
+    return []
+  }
+
   async stop(handle: SessionHandle): Promise<void> {
     const sid = handle.sessionId
     await this.registry.kill(sid, this.stopGraceMs)

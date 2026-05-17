@@ -29,6 +29,7 @@ import type {
   SpawnOpts,
 } from "../types/engine.ts"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
+import { listClaudeCommands } from "./claude-code-local/commands.ts"
 
 export interface DevAIEngineOpts {
   /** Delay between successive scripted events. Defaults to 30ms. */
@@ -72,6 +73,10 @@ export class DevAIEngine implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return this.inner.listSessions(cwd)
+  }
+
+  async listCommands(opts?: { cwd?: string }) {
+    return listClaudeCommands(opts?.cwd)
   }
 
   async stop(handle: SessionHandle): Promise<void> {

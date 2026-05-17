@@ -32,6 +32,7 @@ import {
 } from "./app-server"
 import { findCodexBinary } from "./binary"
 import { codexCapabilities, codexIdentity } from "./capabilities"
+import { listCodexCommands } from "./commands"
 import { deleteHistory as deleteHistoryImpl, readHistoryWithMetrics as readHistoryImpl } from "./history"
 import { resolveOpenRouterContextWindow } from "./openrouter"
 import { listSessionsForCwd } from "./sessions"
@@ -111,6 +112,10 @@ export class CodexLocal implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return listSessionsForCwd(cwd)
+  }
+
+  async listCommands(opts?: { cwd?: string }) {
+    return listCodexCommands(opts?.cwd)
   }
 
   async stop(handle: SessionHandle): Promise<void> {

@@ -36,6 +36,7 @@ export type DaemonRequestName =
   | "chat.tab.rename"
   | "chat.tab.clear"
   | "chat.sessions"
+  | "chat.commands"
   | "chat.session.open"
   | "chat.interrupt"
   | "chat.steer"

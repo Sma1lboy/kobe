@@ -59,7 +59,7 @@ describe("ClaudeCodeLocal (with fake claude binary)", () => {
     //   result success+usage  → usage, done
     expect(events).toEqual([
       { type: "assistant.delta", text: "hello from fake claude" },
-      { type: "tool.start", name: "Read", input: { path: "/etc/hosts" } },
+      { type: "tool.start", name: "Read", input: { path: "/etc/hosts" }, id: "tu_a" },
       { type: "tool.result", name: "Read", output: "127.0.0.1 localhost" },
       expect.objectContaining({ type: "usage", input_tokens: 7, output_tokens: 11 }),
       { type: "done" },

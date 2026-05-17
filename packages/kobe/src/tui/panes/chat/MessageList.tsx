@@ -44,14 +44,30 @@
  * the shell (tool toggles persist across re-renders of MessageList).
  */
 
-import { type Accessor, For, Show } from "solid-js"
+import { type Accessor, For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { AssistantRow, BashRow, ReasoningRow, SystemRow, UserRow } from "./MessageRows"
 import { ToolRow } from "./ToolRow"
 import { ApprovalRow, QuestionRow } from "./UserInputRows"
 import type { ChatRow } from "./store"
-import { ToolFoldRow, groupRenderItems, summarizeToolRun } from "./tool-fold"
+import { type MessageRenderItem, ToolFoldRow, groupRenderItems, summarizeToolRun } from "./tool-fold"
 import { classifyTool } from "./tool-registry"
+
+type RowItem = Extract<MessageRenderItem, { kind: "row" }>
+type FoldItem = Extract<MessageRenderItem, { kind: "fold" }>
+
+/** Structural equality for fold items — all fields are primitives. */
+function foldItemsEqual(a: FoldItem, b: FoldItem): boolean {
+  return (
+    a.startIndex === b.startIndex &&
+    a.inFlight === b.inFlight &&
+    a.counts.search === b.counts.search &&
+    a.counts.read === b.counts.read &&
+    a.counts.list === b.counts.list &&
+    a.counts.bash === b.counts.bash &&
+    a.counts.other === b.counts.other
+  )
+}
 
 export interface MessageListProps {
   /** Chronological list of chat rows. Render in array order. */
@@ -125,6 +141,45 @@ export interface MessageListProps {
  */
 export function MessageList(props: MessageListProps) {
   const { theme } = useTheme()
+
+  // Stable-identity projection of the grouped render items.
+  //
+  // `groupRenderItems` is pure and allocates fresh wrapper objects on
+  // every call. Solid's `<For>` is referentially keyed — fed brand-new
+  // wrappers each render it tears down and rebuilds *every* visible row
+  // on every streaming event (assistant delta, tool start/result),
+  // which opentui then re-lays-out wholesale: the visible "twitch".
+  //
+  // We reconcile here: a `row` wrapper is reused as-is when its backing
+  // `ChatRow` reference and list index are unchanged (the chat store is
+  // an immutable reducer, so an unmodified row keeps its reference); a
+  // `fold` wrapper is reused when its counts / in-flight / start index
+  // all match. Only genuinely-changed items get a fresh reference, so
+  // `<For>` recreates just those rows and leaves the rest in place.
+  let rowCache = new Map<ChatRow, RowItem>()
+  let foldCache = new Map<number, FoldItem>()
+
+  const groupedItems = createMemo<MessageRenderItem[]>(() => {
+    const raw = groupRenderItems(props.messages, props.expandedFoldStartIndex)
+    const nextRowCache = new Map<ChatRow, RowItem>()
+    const nextFoldCache = new Map<number, FoldItem>()
+    const out = raw.map((item): MessageRenderItem => {
+      if (item.kind === "row") {
+        const cached = rowCache.get(item.row)
+        const reuse = cached && cached.index === item.index ? cached : item
+        nextRowCache.set(item.row, reuse)
+        return reuse
+      }
+      const cached = foldCache.get(item.startIndex)
+      const reuse = cached && foldItemsEqual(cached, item) ? cached : item
+      nextFoldCache.set(item.startIndex, reuse)
+      return reuse
+    })
+    rowCache = nextRowCache
+    foldCache = nextFoldCache
+    return out
+  })
+
   return (
     <box flexDirection="column" gap={0}>
       {/* Empty placeholder — same copy as before so behavior tests
@@ -135,7 +190,7 @@ export function MessageList(props: MessageListProps) {
         </box>
       </Show>
 
-      <For each={groupRenderItems(props.messages, props.expandedFoldStartIndex)}>
+      <For each={groupedItems()}>
         {(item) => {
           if (item.kind === "fold") {
             const startIndex = item.startIndex

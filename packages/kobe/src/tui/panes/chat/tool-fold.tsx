@@ -21,6 +21,12 @@ export type MessageRenderItem =
 
 const TOOL_FOLD_THRESHOLD = 3
 
+/**
+ * Pure projection of the chat rows into render items. Allocates fresh
+ * wrapper objects every call — `MessageList` reconciles them against
+ * the previous render so Solid's referentially-keyed `<For>` only
+ * rebuilds rows that actually changed (see `MessageList`'s memo).
+ */
 export function groupRenderItems(
   messages: readonly ChatRow[],
   expandedFoldStartIndex: number | null = null,

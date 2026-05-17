@@ -98,3 +98,13 @@ export function clearQueue<S extends QueueState>(state: S): S {
   if (state.queue.length === 0) return state
   return { ...state, queue: [] }
 }
+
+/**
+ * Set the queue-paused flag. While paused the chat shell skips the
+ * auto-drain; explicit "send now" promotion still works. Identity-
+ * stable when the flag already holds the requested value.
+ */
+export function setQueuePaused<S extends { readonly queuePaused: boolean }>(state: S, paused: boolean): S {
+  if (state.queuePaused === paused) return state
+  return { ...state, queuePaused: paused }
+}

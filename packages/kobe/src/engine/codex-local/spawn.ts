@@ -48,6 +48,12 @@ export function spawnCodexProcess(opts: SpawnCodexOpts): SpawnedCodex {
     cwd: opts.cwd,
     env: { ...process.env, ...(opts.env ?? {}) },
     stdio: ["pipe", "pipe", "pipe"],
+    // Own process group — see `claude-code-local/spawn.ts`. The shared
+    // `SessionRegistry.kill()` signals `-pid` (the whole group) so an
+    // interrupt reaps `codex`'s tool/sandbox children too. Keeping this
+    // identical to the claude path is deliberate: `stop()` must behave
+    // the same regardless of engine.
+    detached: true,
   }) as ChildProcessWithoutNullStreams
 
   // Codex prints "Reading additional input from stdin..." and waits even

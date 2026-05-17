@@ -6,6 +6,7 @@ import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
   AIEngine,
+  EngineCommandEntry,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
@@ -317,6 +318,13 @@ export class Orchestrator {
     return this.engineRouter.engineForTaskTabId(taskId, tabId)
   }
 
+  async listCommandsForTab(taskId: string, tabId: string): Promise<readonly EngineCommandEntry[]> {
+    const id = taskId as TaskId
+    const task = this.store.get(id)
+    const engine = this.engineForTaskTabId(id, tabId)
+    return engine.listCommands?.({ cwd: task?.worktreePath }) ?? []
+  }
+
   /**
    * Recompute the per-tab run-state map from `handles` +
    * `pendingInputRequestTab` and push it into the signal. Cheap (one
@@ -491,6 +499,29 @@ export class Orchestrator {
     await this.taskRunner.runTask(this.requireTask(id), prompt, tabId)
   }
 
+  /**
+   * Guard against injecting a synthetic turn (PR / PR-merge) onto a
+   * tab that is already busy. A PR turn that lands while the tab has
+   * a live pump would resume the session concurrently with the
+   * in-flight turn (two pumps, one session id); one that lands while
+   * an `AskUserQuestion` / `ExitPlanMode` request is unanswered would
+   * jump the queue ahead of the pending input. Both are surfaced as
+   * `PRPreconditionError` so the TUI shows the same banner it uses
+   * for the other PR preconditions.
+   *
+   * `tabId` is the tab the synthetic turn targets (the active tab).
+   * Pending-input is keyed by task, so any unanswered request on the
+   * task blocks — not just one on the target tab.
+   */
+  private assertTabIdleForInjection(task: Task, tabId: string, verb: string): void {
+    if (this.handles.has(tabKey(task.id, tabId))) {
+      throw new PRPreconditionError(`A turn is already running — wait for it to finish or interrupt it before ${verb}.`)
+    }
+    if (this.pendingInputBroker.snapshot(task.id).length > 0) {
+      throw new PRPreconditionError(`Answer the pending question/approval before ${verb}.`)
+    }
+  }
+
   async requestPR(id: TaskId | string): Promise<void> {
     const task = this.requireTask(id)
     if (task.status === "canceled") {
@@ -502,16 +533,17 @@ export class Orchestrator {
     if (!task.repo) {
       throw new PRPreconditionError("Task has no repo path; cannot resolve git state.")
     }
+    // PR injection always targets the task's currently-active tab
+    // (the user pressed the button while looking at it). runTask
+    // itself dispatches the user.inject — no need to do it twice.
+    const activeTab = this.resolveTab(task)
+    this.assertTabIdleForInjection(task, activeTab.id, "creating a PR")
     // gatherPRState never throws — each git call has its own fallback.
     const state = await gatherPRState(task.worktreePath)
     const template = await loadPRInstructionsTemplate(task.worktreePath)
     const prompt = renderPRInstructions(template, state)
     const initial = initialPRStatus(task.worktreePath)
     if (initial || task.prStatus) await this.store.update(task.id, { prStatus: initial })
-    // PR injection always targets the task's currently-active tab
-    // (the user pressed the button while looking at it). runTask
-    // itself dispatches the user.inject — no need to do it twice.
-    const activeTab = this.resolveTab(task)
     await this.runTask(task.id, prompt, activeTab.id)
   }
 
@@ -535,6 +567,7 @@ export class Orchestrator {
     }
     const prompt = renderPRMergeInstructions(task.prStatus)
     const activeTab = this.resolveTab(task)
+    this.assertTabIdleForInjection(task, activeTab.id, "merging the PR")
     await this.runTask(task.id, prompt, activeTab.id)
   }
 

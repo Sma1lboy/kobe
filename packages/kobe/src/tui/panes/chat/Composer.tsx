@@ -187,6 +187,14 @@ export interface ComposerProps {
       | { readonly id: string; readonly kind: "bash"; readonly command: string }
     )[]
   >
+  /**
+   * Whether the active tab's queue auto-drain is paused. When true the
+   * queue panel surfaces a "resume" affordance and the parent skips
+   * draining queued items as turns end.
+   */
+  queuePaused?: Accessor<boolean>
+  /** Toggle the queue-paused flag (pause/resume button). */
+  onToggleQueuePause?: () => void
   /** Drop a queued prompt by id (cancel button). */
   onCancelQueued?: (id: string) => void
   /**
@@ -922,6 +930,8 @@ export function Composer(props: ComposerProps) {
       slashWindow={slashWindow()}
       slashCursor={slashCursor()}
       queue={props.queue?.() ?? []}
+      queuePaused={props.queuePaused?.() ?? false}
+      onToggleQueuePause={props.onToggleQueuePause}
       editingQueueId={props.editingQueueId}
       onEditQueued={props.onEditQueued}
       onSendQueuedNow={props.onSendQueuedNow}

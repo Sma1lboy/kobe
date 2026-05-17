@@ -45,6 +45,8 @@ export interface ChatViewProps {
   readonly onChooseModel: () => void
   readonly worktreePath: Accessor<string | undefined>
   readonly queue: Accessor<readonly QueuedPrompt[]>
+  readonly queuePaused: Accessor<boolean>
+  readonly onToggleQueuePause: () => void
   readonly onCancelQueued: (id: string) => void
   readonly onSendQueuedNow: (id: string) => void
   readonly onBashCommand: (command: string) => void
@@ -150,6 +152,8 @@ export function ChatView(props: ChatViewProps) {
           onChooseModel={props.onChooseModel}
           worktreePath={props.worktreePath}
           queue={props.queue}
+          queuePaused={props.queuePaused}
+          onToggleQueuePause={props.onToggleQueuePause}
           onCancelQueued={props.onCancelQueued}
           onSendQueuedNow={props.onSendQueuedNow}
           onBashCommand={props.onBashCommand}

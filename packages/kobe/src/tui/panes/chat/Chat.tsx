@@ -41,7 +41,7 @@ import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
-import type { PermissionMode } from "../../../types/engine.ts"
+import type { EngineCommandEntry, PermissionMode, UserInputResponse } from "../../../types/engine.ts"
 import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
@@ -50,9 +50,7 @@ import { ChatView } from "./ChatView"
 import type { ComposerSlashEntry } from "./Composer"
 import { estimateContextTokensFromRows, stringifyErr } from "./chat-utils"
 import { ModelPicker } from "./composer/ModelPicker"
-import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
 import { permissionModeLabel } from "./composer/permission-mode"
-import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
 import {
@@ -65,6 +63,7 @@ import {
   pushSystemError,
   queueIsFull,
   removeFromQueue,
+  setQueuePaused,
   updateQueueItem,
 } from "./store"
 import { useBashMode } from "./use-bash-mode"
@@ -143,50 +142,16 @@ export function Chat(props: ChatProps) {
   const { theme } = useTheme()
   const dialog = useDialog()
 
-  // Slash-command list. Two sources, merged on every task switch:
-  //
-  //   1. Built-ins — from refs/claude-code/src/commands/, baked into
-  //      ./composer/builtin-slashes.ts via scripts/extract-claude-code-commands.mjs.
-  //      Filtered to commands that actually run in `claude -p`.
-  //   2. User-defined — `<worktree>/.claude/{commands,skills}/` plus
-  //      `~/.claude/{commands,skills}/`, scanned at runtime by
-  //      loadUserSlashes() (ported from vibe-kanban's
-  //      slash_commands.rs). Project entries shadow global ones; user
-  //      entries shadow built-ins on name collision.
-  //
-  // We don't add kobe-specific slashes here — keyboard shortcuts
-  // (n / d / a) own the orchestrator verbs so the slash menu stays
-  // the pure claude-code surface.
-  const [userSlashes, setUserSlashes] = createSignal<readonly BuiltinSlash[]>([])
-  createEffect(
-    on(
-      () => props.taskId(),
-      (taskId) => {
-        const task = taskId ? props.orchestrator.getTask(taskId) : undefined
-        const wt = task?.worktreePath || undefined
-        loadUserSlashes(wt)
-          .then(setUserSlashes)
-          .catch(() => setUserSlashes([]))
-      },
-    ),
-  )
+  const [engineCommands, setEngineCommands] = createSignal<readonly EngineCommandEntry[]>([])
 
   const slashes = createMemo<readonly ComposerSlashEntry[]>(() => {
-    // User overrides built-in on name collision. We track origin
-    // alongside the entry so the dropdown can surface a "user" tag —
-    // a name collision where the user shadowed a built-in counts as
-    // a user entry (their definition is what runs).
-    type Tagged = { entry: BuiltinSlash; source: "builtin" | "user" }
-    const map = new Map<string, Tagged>()
-    for (const e of BUILTIN_CLAUDE_SLASHES) map.set(e.name, { entry: e, source: "builtin" })
-    for (const e of userSlashes()) map.set(e.name, { entry: e, source: "user" })
-    const claudeEntries: ComposerSlashEntry[] = [...map.values()].map(({ entry, source }) => ({
-      display: `/${entry.name}`,
-      description: entry.description || undefined,
-      aliases: entry.aliases?.map((a) => `/${a}`),
-      source,
+    const engineEntries: ComposerSlashEntry[] = engineCommands().map((entry) => ({
+      display: entry.display,
+      description: entry.description,
+      aliases: entry.aliases ? [...entry.aliases] : undefined,
+      source: entry.source === "builtin" ? "builtin" : "user",
       onSelect: () => {
-        void send(`/${entry.name}`)
+        void send(entry.submitText ?? entry.display)
       },
     }))
     // kobe-side slashes are short-circuited in `send()` rather than
@@ -202,7 +167,7 @@ export function Chat(props: ChatProps) {
         },
       },
     ]
-    return [...kobeEntries, ...claudeEntries].sort((a, b) => a.display.localeCompare(b.display))
+    return [...kobeEntries, ...engineEntries].sort((a, b) => a.display.localeCompare(b.display))
   })
 
   // Per-ChatTab state + subscription lifecycle live in
@@ -228,6 +193,38 @@ export function Chat(props: ChatProps) {
   const patchActiveState = session.patchActiveState
   const patchStateForTab = session.patchStateForTab
 
+  const tasksAcc = props.orchestrator.tasksSignal()
+  const activeCommandScope = createMemo(() => {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    const task = taskId ? tasksAcc().find((t) => t.id === taskId) : undefined
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    return {
+      taskId,
+      tabId,
+      vendor: tab?.vendor ?? task?.vendor ?? "claude",
+    }
+  })
+  let commandRequestSeq = 0
+
+  createEffect(
+    on(activeCommandScope, ({ taskId, tabId }) => {
+      const seq = ++commandRequestSeq
+      if (!taskId || !tabId) {
+        setEngineCommands([])
+        return
+      }
+      props.orchestrator
+        .listCommandsForTab(taskId, tabId)
+        .then((commands) => {
+          if (seq === commandRequestSeq) setEngineCommands(commands)
+        })
+        .catch(() => {
+          if (seq === commandRequestSeq) setEngineCommands([])
+        })
+    }),
+  )
+
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
   // Id of the queue entry currently being edited via click-to-edit.
@@ -244,8 +241,6 @@ export function Chat(props: ChatProps) {
     const present = activeState().queue.some((q) => q.id === id)
     if (!present) setEditingQueueId(null)
   })
-
-  const tasksAcc = props.orchestrator.tasksSignal()
 
   // Active task's repo root (the worktree's parent project, NOT the
   // worktree itself). Threaded to Composer for KOB-157 persistence —
@@ -412,16 +407,18 @@ export function Chat(props: ChatProps) {
   /**
    * Open the model picker for the active tab.
    *
-   * `forceVendorUnlock` skips the active-session vendor lock — used by
-   * the `/clear` path, which has just dropped the session but whose
-   * `sessionId: null` update arrives over the socket asynchronously, so
-   * `activeTabHasSession()` may still read stale `true` at call time.
+   * `forceVendorLock` pins the picker to the active tab's vendor even
+   * when no session is live — used by the `/clear` path. `/clear` is a
+   * reset of the chat tab, not an engine switch: the user should pick a
+   * model for the *same* engine, not jump to a different vendor. The
+   * session has just been dropped (so the default `activeTabHasSession`
+   * gate would unlock the vendor), hence the explicit force.
    */
-  async function chooseModel(forceVendorUnlock = false): Promise<void> {
+  async function chooseModel(forceVendorLock = false): Promise<void> {
     const id = props.taskId()
     if (!id) return
     const tabId = activeTabId() ?? undefined
-    const lockedVendor = !forceVendorUnlock && activeTabHasSession() ? activeVendor() : undefined
+    const lockedVendor = forceVendorLock || activeTabHasSession() ? activeVendor() : undefined
     const result = await ModelPicker.show(dialog, modelId(), modelEffort(), activeVendor(), lockedVendor)
     if (result === undefined) return
     await props.orchestrator.setModel(id, result.id, tabId, result.effort, result.vendor).catch((err: unknown) => {
@@ -527,6 +524,23 @@ export function Chat(props: ChatProps) {
   // entry in the queue would sit there until the user manually pokes
   // some other reactive state (KOB-83 queue-chain regression).
   const [dispatching, setDispatching] = createSignal(false)
+  // Queue-drain lock held across a pending-input resolution. When the
+  // user answers a question / approves a plan, the orchestrator
+  // resolves the input (dispatching `user_input.resolved`, which flips
+  // `hasPendingInput()` false) AND kicks a resume turn — but the
+  // daemon broadcasts that resume turn's `user.inject` to the TUI as a
+  // SEPARATE message. In the gap the active tab is `!isStreaming`
+  // (inject not seen yet) AND `!hasPendingInput` (the row is already
+  // resolved): exactly the drain effect's fire condition. Without this
+  // lock a queued prompt — e.g. one the user stashed mid-stream before
+  // the AskUserQuestion appeared — dispatches concurrently with the
+  // resume turn, two runTasks fighting for one session id. Set true
+  // when the user resolves an input (see `respondToPendingInput`);
+  // cleared by the watcher below once the resume turn streams.
+  const [awaitingResumeTurn, setAwaitingResumeTurn] = createSignal(false)
+  createEffect(() => {
+    if (activeState().isStreaming) setAwaitingResumeTurn(false)
+  })
   createEffect(() => {
     const taskId = props.taskId()
     const tabId = activeTabId()
@@ -534,15 +548,17 @@ export function Chat(props: ChatProps) {
     if (!taskId || !tabId) return
     if (state.isStreaming) return
     if (state.queue.length === 0) return
+    if (state.queuePaused) return
     if (hasPendingInput()) return
+    if (awaitingResumeTurn()) return
     if (dispatching()) return
     // Dequeue inside a microtask so the createEffect's reactive read
     // graph is settled before we mutate state. Without the defer, the
     // patch races the effect's tracking and we can miss the next tick.
     queueMicrotask(async () => {
-      if (dispatching()) return
+      if (dispatching() || awaitingResumeTurn()) return
       const cur = activeState()
-      if (cur.isStreaming || cur.queue.length === 0) return
+      if (cur.isStreaming || cur.queue.length === 0 || cur.queuePaused) return
       setDispatching(true)
       try {
         let head: QueuedPrompt | null = null
@@ -736,16 +752,33 @@ export function Chat(props: ChatProps) {
   function sendQueuedNow(id: string): void {
     const entry = activeState().queue.find((q) => q.id === id)
     if (!entry) return
-    patchActiveState((s) => removeFromQueue(s, id))
     if (entry.kind === "bash") {
       // Bash items in the queue can't "steer" — there's no engine turn
       // to interrupt for a local shell call. Promote to immediate
       // execution instead; aborts whatever bash is currently in-flight
       // for the tab (matches the abort-prior rule in runBashLocally).
+      patchActiveState((s) => removeFromQueue(s, id))
       void runBashLocally(entry.command)
       return
     }
+    // A prompt item steers the in-flight turn — but `send` refuses
+    // outright while a question/approval picker holds the floor
+    // (`hasPendingInput()`). Bail BEFORE removing the entry so the
+    // prompt isn't silently dropped: the user can retry "send now"
+    // once they've answered the pending input.
+    if (hasPendingInput()) return
+    patchActiveState((s) => removeFromQueue(s, id))
     void send(entry.text, "steer")
+  }
+
+  /**
+   * Toggle the active tab's queue-paused flag. While paused the
+   * drain effect leaves queued items alone as turns end; the user
+   * still drains them one at a time via each row's "send now"
+   * action, or all at once by un-pausing.
+   */
+  function toggleQueuePause(): void {
+    patchActiveState((s) => setQueuePaused(s, !s.queuePaused))
   }
 
   /**
@@ -809,6 +842,27 @@ export function Chat(props: ChatProps) {
     enabled: props.focused?.() === true && (activeState().isStreaming || hasActiveBash()) && dialog.stack.length === 0,
     bindings: [{ key: "escape", cmd: () => void interruptStream() }],
   }))
+
+  /**
+   * Resolve a pending question / plan-approval through the
+   * orchestrator while holding the queue-drain lock.
+   *
+   * Every approval/question response routes through here so the lock
+   * documented on `awaitingResumeTurn` is always claimed: it goes up
+   * the instant the user resolves the input and comes down only when
+   * the resume turn's `isStreaming` flips true (the watcher effect by
+   * that signal's declaration). That closes the window between the
+   * daemon's `user_input.resolved` broadcast and the resume turn's
+   * `user.inject` — without it a queued prompt slips out mid-question.
+   * On error no resume turn arrives, so the lock is dropped here.
+   */
+  function respondToPendingInput(taskId: string, requestId: string, response: UserInputResponse): void {
+    setAwaitingResumeTurn(true)
+    props.orchestrator.respondToInput(taskId, requestId, response).catch((err: unknown) => {
+      setAwaitingResumeTurn(false)
+      patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
+    })
+  }
 
   // Spinner shows whenever a turn is in flight — independent of how
   // many assistant rows already exist. Earlier this was gated on
@@ -913,11 +967,7 @@ export function Chat(props: ChatProps) {
     if (q) {
       const taskId = props.taskId()
       if (!taskId) return
-      props.orchestrator
-        .respondToInput(taskId, q.requestId, answerQuestionWithFreeText(q, trimmed))
-        .catch((err: unknown) => {
-          patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-        })
+      respondToPendingInput(taskId, q.requestId, answerQuestionWithFreeText(q, trimmed))
       setDraft("")
       return
     }
@@ -945,20 +995,12 @@ export function Chat(props: ChatProps) {
       onApprove={(requestId, approve) => {
         const taskId = props.taskId()
         if (!taskId) return
-        props.orchestrator
-          .respondToInput(taskId, requestId, { kind: "approve_plan", approve })
-          .catch((err: unknown) => {
-            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-          })
+        respondToPendingInput(taskId, requestId, { kind: "approve_plan", approve })
       }}
       onAnswer={(requestId, answers) => {
         const taskId = props.taskId()
         if (!taskId) return
-        props.orchestrator
-          .respondToInput(taskId, requestId, { kind: "ask_question", answers })
-          .catch((err: unknown) => {
-            patchActiveState((s) => pushSystemError(s, `respondToInput failed: ${stringifyErr(err)}`))
-          })
+        respondToPendingInput(taskId, requestId, { kind: "ask_question", answers })
       }}
       onClaimComposerFocus={setQuestionInlineFocus}
       chatFocused={() => props.focused?.() ?? false}
@@ -991,6 +1033,8 @@ export function Chat(props: ChatProps) {
       onChooseModel={() => void chooseModel()}
       worktreePath={worktreePath}
       queue={() => activeState().queue}
+      queuePaused={() => activeState().queuePaused}
+      onToggleQueuePause={toggleQueuePause}
       onCancelQueued={cancelQueued}
       onSendQueuedNow={sendQueuedNow}
       onBashCommand={handleBashCommand}

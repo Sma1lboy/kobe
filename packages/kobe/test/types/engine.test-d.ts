@@ -12,6 +12,8 @@ import type {
   AIEngine,
   ContentBlock,
   EngineCapabilities,
+  EngineCommandDiscoveryOpts,
+  EngineCommandEntry,
   EngineEvent,
   EngineHistory,
   EngineIdentity,
@@ -115,6 +117,7 @@ describe("AIEngine", () => {
       | "readHistory"
       | "deleteHistory"
       | "listSessions"
+      | "listCommands"
       | "stop"
     >()
   })
@@ -149,6 +152,12 @@ describe("AIEngine", () => {
   it("stop returns Promise<void>", () => {
     expectTypeOf<AIEngine["stop"]>().parameters.toEqualTypeOf<[SessionHandle]>()
     expectTypeOf<AIEngine["stop"]>().returns.toEqualTypeOf<Promise<void>>()
+  })
+
+  it("listCommands has the expected optional signature", () => {
+    expectTypeOf<AIEngine["listCommands"]>().toEqualTypeOf<
+      ((opts?: EngineCommandDiscoveryOpts) => Promise<readonly EngineCommandEntry[]>) | undefined
+    >()
   })
 
   it("a structurally compatible impl is assignable to AIEngine", () => {

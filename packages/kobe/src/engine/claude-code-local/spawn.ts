@@ -80,6 +80,13 @@ export function spawnClaudeProcess(opts: SpawnClaudeOpts): SpawnedClaude {
     // top so explicit overrides win.
     env: { ...process.env, ...(opts.env ?? {}) },
     stdio: ["pipe", "pipe", "pipe"],
+    // Run `claude` as its own process-group leader so an interrupt can
+    // signal the *whole* tree — claude spawns subagents and Bash-tool
+    // children, and a PID-only kill leaves those alive (Esc looks like
+    // it did nothing). `SessionRegistry.kill` sends to `-pid` (the
+    // group). We deliberately do NOT `unref()`: kobe stays the owner
+    // and keeps reading the child's stdout.
+    detached: true,
   }) as ChildProcessWithoutNullStreams
 
   return {
