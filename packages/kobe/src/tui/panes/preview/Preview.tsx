@@ -47,7 +47,7 @@ import type { ContentState } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
 import { renderAnimatedGifWithChafa } from "./gif-frames"
-import { computeImageBudget } from "./image-budget"
+import { computeImageBudget, fitImageToBudget } from "./image-budget"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
 import { detectSixelSupport } from "./sixel-capability"
@@ -374,11 +374,14 @@ export function Preview(props: PreviewProps) {
     if (detectSixelSupport()) {
       const sixel = await renderImageAsSixel(s.absPath, maxCols, maxRows)
       if (sixel) {
-        // We sized the chafa render to the same cell budget, so the
-        // cell footprint is the budget itself, possibly trimmed by
-        // aspect ratio. Trust the budget here; the renderable will
-        // clamp if its parent gives it less.
-        pushSixel(dims as ImageDims, sixel, { cols: maxCols, rows: maxRows })
+        // chafa preserves aspect ratio, so the rendered image
+        // typically fills only one axis of the (maxCols × maxRows)
+        // budget. Predict the actual cell footprint from the image's
+        // known dimensions + chafa's default 1:2 font-ratio so the
+        // SixelImageRenderable's black background matches the image
+        // area instead of the full budget rectangle.
+        const sixelCells = fitImageToBudget(dims, maxCols, maxRows)
+        pushSixel(dims as ImageDims, sixel, sixelCells)
         return
       }
     }
