@@ -64,6 +64,7 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, o
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
+import { openExternally } from "./open-external"
 
 /**
  * Default width of the pane in terminal cells. Paired with the
@@ -453,6 +454,17 @@ export function FileTree(props: FileTreeProps) {
   function refresh(): void {
     setRefreshTick((n) => n + 1)
   }
+  function openExternal(): void {
+    const r = rows()
+    const i = cursorIndex()
+    if (i < 0 || i >= r.length) return
+    const row = r[i]
+    if (!row || row.kind === "dir") return
+    const wt = props.worktreePath()
+    if (!wt) return
+    const absPath = `${wt}/${row.path}`
+    openExternally(absPath)
+  }
 
   useFileTreeBindings({
     focused: focusedAccessor,
@@ -461,6 +473,7 @@ export function FileTree(props: FileTreeProps) {
     setTab: (t) => setTab(t),
     currentTab: tab,
     openCurrent,
+    openExternal,
     refresh,
     expandOrDescend,
     collapseOrParent,
