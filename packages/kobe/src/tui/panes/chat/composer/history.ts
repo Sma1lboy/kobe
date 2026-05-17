@@ -1,16 +1,19 @@
 /**
  * Per-key prompt history for the chat composer.
  *
- * In-memory only, per-process — there is NO disk persistence yet. The
- * agent brief explicitly defers cross-session storage; recommended path
- * is `~/.kobe/composer-history.jsonl` once we surface a write path to
- * the orchestrator. Until then, history dies when kobe exits.
+ * The in-memory layer here is a per-key (typically per chat tab) ring
+ * that serves up-arrow recall. Cross-session persistence lives in
+ * `./history-store.ts` (KOB-157) — at boot the TUI calls
+ * {@link bootstrapHistory} to replay disk entries into the in-memory
+ * STORE under a synthetic `project-${root}` key so the Ctrl+R palette
+ * (KOB-154) sees them. New submissions append to disk via
+ * {@link pushHistory}'s optional `project` field, fire-and-forget.
  *
  * Keying: callers pass a `historyKey` string (typically the active
- * task id or `"global"`). Each key gets its own ring. We use a module-
- * level singleton because the TUI mounts/unmounts the composer on
- * every task switch — the buffer must survive that without Solid
- * context plumbing.
+ * chat tab id, occasionally a task id, or the literal `"global"`).
+ * Each key gets its own ring. We use a module-level singleton because
+ * the TUI mounts/unmounts the composer on every task switch — the
+ * buffer must survive that without Solid context plumbing.
  *
  * Ring semantics (mirrors readline / opcode / Claude Code):
  *
@@ -22,10 +25,21 @@
  *     immediately previous entry." The user can re-issue the same
  *     prompt 5 times with a different prompt in between.
  *
+ * Up-arrow scope on reload: persisted entries are replayed under a
+ * `project-${root}` key, so a fresh chat tab's up-arrow walk (keyed
+ * by tab id) does NOT see them. They only surface via the Ctrl+R
+ * palette, which merges every key. This is a deliberate divergence
+ * from Claude Code (which feeds disk entries into up-arrow): kobe's
+ * per-tab ring carries the active session's intent, mixing in
+ * unrelated old prompts would clutter it.
+ *
  * Tested via the behavior test (sends a prompt, presses up, asserts
- * recall) — no dedicated unit test file because the surface is small
- * and the integration test pins the load-bearing invariants.
+ * recall) plus dedicated unit tests in
+ * `test/tui/composer-history.test.ts` for the cross-key palette
+ * ordering invariants.
  */
+
+import { type DiskHistoryEntry, appendToDisk, loadFromDisk, pruneToCap } from "./history-store"
 
 /** Max entries kept per key. 200 is roomy for a session without bloating memory. */
 export const HISTORY_LIMIT = 200
@@ -36,8 +50,99 @@ export const HISTORY_LIMIT = 200
  * deleted — the per-key ring is bounded, the key set isn't (a session
  * with 1000 tasks creates 1000 keys; that's fine, each key holds at
  * most {@link HISTORY_LIMIT} short strings).
+ *
+ * Each entry carries a monotonic `seq` so cross-key consumers (the
+ * Ctrl+R palette, KOB-154) can merge entries from many keys into one
+ * "global newest-first" ordering without needing wall-clock timestamps
+ * (which we'd need a migration story for once we ever persist).
  */
-const STORE: Map<string, string[]> = new Map()
+type HistoryEntry = {
+  readonly value: string
+  readonly seq: number
+  /**
+   * Absolute path of the repo this prompt was submitted from, or
+   * `undefined` for the rare "no task selected" (literal `"global"`
+   * key) path. Lets the Ctrl+R palette filter rows by current
+   * project (KOB-157 follow-up, Claude Code parity) — disk entries
+   * already carried this; the in-memory ring needed it too so
+   * current-session pushes can be filtered before they hit disk.
+   */
+  readonly project: string | undefined
+}
+const STORE: Map<string, HistoryEntry[]> = new Map()
+let SEQ = 0
+
+/**
+ * Count of disk appends since the last `pruneToCap` call. We prune
+ * opportunistically every {@link DISK_PRUNE_INTERVAL} appends rather
+ * than on every push, since the prune rewrites the whole file. With
+ * the default cap (1000 entries) and a typical user pushing 50–100
+ * prompts per session, this means pruning roughly every other day —
+ * the file's bounded size stays bounded.
+ */
+const DISK_PRUNE_INTERVAL = 50
+let appendsSincePrune = 0
+
+/**
+ * Disable disk persistence for tests. Vitest workers share the
+ * process, so per-test `~/.kobe/composer-history.jsonl` writes would
+ * leak between tests AND poison the user's real history. Tests set
+ * `KOBE_HISTORY_PERSIST=false` (via env at boot or by patching this
+ * function in the suite) to opt out.
+ */
+function isPersistEnabled(): boolean {
+  return process.env.KOBE_HISTORY_PERSIST !== "false"
+}
+
+/**
+ * Synthetic in-memory key under which on-disk entries are replayed at
+ * boot. Per-project so the palette can later filter by current task's
+ * worktree root without restructuring storage.
+ */
+function projectKey(project: string | undefined): string {
+  return project ? `project-${project}` : "global"
+}
+
+/**
+ * Sync load + replay of `<kobeStateDir()>/composer-history.jsonl`
+ * into the in-memory STORE. Call once at TUI boot before the first
+ * composer mounts so the prior session's prompts are reachable from
+ * the very first ↑ press / Ctrl+R open.
+ *
+ * Keying policy (matches Claude Code's
+ * `refs/claude-code/src/history.ts:190-217` per-project scope, adapted
+ * for kobe's task model):
+ *
+ *   - An entry whose `taskId` matches a task that's still alive on
+ *     this boot is replayed under its `taskId` key, so the same
+ *     task's ↑ walks naturally from "your last session in this
+ *     task" → "the session before that" → …
+ *   - An entry whose task no longer exists (the user deleted it
+ *     between sessions) — or whose disk entry predates the `taskId`
+ *     field — falls back to a synthetic `project-<root>` key. ↑↓
+ *     never reaches those (no chat tab keys by that string), but the
+ *     Ctrl+R palette surfaces them under the current project filter
+ *     until they're pruned by the disk cap.
+ *
+ * Idempotent: calling twice replays the file twice. Production
+ * code calls this exactly once at boot; tests should
+ * {@link clearAllHistory} between runs.
+ */
+export function bootstrapHistory(opts: { readonly liveTaskIds?: ReadonlySet<string> } = {}): void {
+  if (!isPersistEnabled()) return
+  const live = opts.liveTaskIds
+  const entries = loadFromDisk()
+  for (const e of entries) {
+    const key = e.taskId && (!live || live.has(e.taskId)) ? e.taskId : projectKey(e.project)
+    SEQ += 1
+    const ring = STORE.get(key) ?? []
+    ring.push({ value: e.display, seq: SEQ, project: e.project })
+    if (ring.length > HISTORY_LIMIT) {
+      ring.splice(0, ring.length - HISTORY_LIMIT)
+    }
+    STORE.set(key, ring)
+  }
+}
 
 /**
  * Push a new entry to the history for `key`. No-op for empty /
@@ -47,16 +152,39 @@ const STORE: Map<string, string[]> = new Map()
  * The value is stored as-is (no trim) so the user gets back exactly
  * what they typed if they re-edit a recalled entry.
  */
-export function pushHistory(key: string, value: string): void {
+export function pushHistory(
+  key: string,
+  value: string,
+  opts: { readonly project?: string; readonly taskId?: string } = {},
+): void {
   if (value.trim().length === 0) return
   const ring = STORE.get(key) ?? []
   const last = ring[ring.length - 1]
-  if (last === value) return
-  ring.push(value)
+  if (last && last.value === value) return
+  SEQ += 1
+  ring.push({ value, seq: SEQ, project: opts.project })
   if (ring.length > HISTORY_LIMIT) {
     ring.splice(0, ring.length - HISTORY_LIMIT)
   }
   STORE.set(key, ring)
+  // Best-effort persistence. Fire-and-forget so the composer's submit
+  // path never blocks on disk I/O; appendToDisk swallows its own
+  // errors with a single console.warn. The `void` is intentional —
+  // bun's `eslint-no-floating-promises` would otherwise complain.
+  if (isPersistEnabled()) {
+    const entry: DiskHistoryEntry = {
+      display: value,
+      timestamp: Date.now(),
+      project: opts.project,
+      taskId: opts.taskId,
+    }
+    void appendToDisk(entry)
+    appendsSincePrune += 1
+    if (appendsSincePrune >= DISK_PRUNE_INTERVAL) {
+      appendsSincePrune = 0
+      void pruneToCap()
+    }
+  }
 }
 
 /**
@@ -71,7 +199,31 @@ export function pushHistory(key: string, value: string): void {
 export function getHistory(key: string): readonly string[] {
   const ring = STORE.get(key)
   if (!ring) return []
-  return ring.slice()
+  return ring.map((e) => e.value)
+}
+
+/**
+ * Snapshot of every history entry across every key, sorted globally
+ * newest-first by insertion sequence. Feeds the Ctrl+R palette
+ * (KOB-154); the palette applies its own per-project filter using
+ * each entry's `project` field (Claude Code parity — keeps unrelated
+ * repos out of the visible list).
+ *
+ * Returns a fresh array — safe to index, sort, filter without
+ * worrying about future {@link pushHistory} calls invalidating it.
+ */
+export function getAllHistoryEntries(): ReadonlyArray<{
+  readonly key: string
+  readonly value: string
+  readonly seq: number
+  readonly project: string | undefined
+}> {
+  const out: Array<{ key: string; value: string; seq: number; project: string | undefined }> = []
+  for (const [key, ring] of STORE) {
+    for (const e of ring) out.push({ key, value: e.value, seq: e.seq, project: e.project })
+  }
+  out.sort((a, b) => b.seq - a.seq)
+  return out
 }
 
 /**
@@ -84,8 +236,10 @@ export function clearHistory(key: string): void {
 }
 
 /**
- * Clear all history. Tests-only.
+ * Clear all history. Tests-only. Resets the monotonic `seq` counter
+ * too so per-test ordering assertions stay deterministic.
  */
 export function clearAllHistory(): void {
   STORE.clear()
+  SEQ = 0
 }

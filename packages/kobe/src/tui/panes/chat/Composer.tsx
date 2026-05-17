@@ -50,12 +50,14 @@ import type { PermissionMode } from "../../../types/engine"
 import type { SlashEntry } from "../../context/command-palette"
 import { useFocus } from "../../context/focus"
 import { useTheme } from "../../context/theme"
+import { useDialog } from "../../ui/dialog"
 import { type ComposerModeTone, ComposerView } from "./ComposerView"
 import { clipboardImageSupported } from "./composer/clipboard-image"
 import { isCursorAtFirstLine, isCursorAtLastLine } from "./composer/cursor"
 import { makeDropdownWindow } from "./composer/dropdown-window"
 import { getHistory, pushHistory } from "./composer/history"
 import { PromptHistoryNavigator } from "./composer/history-nav"
+import { HistoryPalette } from "./composer/history-palette"
 import { ImagePasteRegistry } from "./composer/image-paste"
 import { deleteImageTokenBackward, deleteImageTokenForward } from "./composer/image-token-delete"
 import { isPermissionModeCycleKey } from "./composer/keys"
@@ -104,11 +106,14 @@ export interface ComposerProps {
   // ----- W4.C extensions (all optional; parent doesn't need to set) -----
 
   /**
-   * Stable string used to scope prompt history. Defaults to the
-   * sentinel `"global"` so callers that don't pass it still get a
-   * working history. Recommended: pass the active task id so each
-   * task gets its own ring (matches the "iterate on the same problem"
-   * use case better than a global pool of all your prompts).
+   * Stable string used to scope prompt history. In production this is
+   * the active task id — task ids persist across kobe restarts (they
+   * live in `~/.kobe/tasks.json`), so the same task's ↑↓ walks past
+   * sessions' prompts after a reboot (Claude Code parity, per-project
+   * filtered there, per-task here because kobe has a task model).
+   * Defaults to the sentinel `"global"` when omitted; callers that
+   * pass an ephemeral key (e.g. a chat-tab id) get a working but
+   * session-only history ring with no cross-restart persistence.
    */
   historyKey?: string
   /**
@@ -222,11 +227,29 @@ export interface ComposerProps {
    * `null` / undefined when no row is being edited.
    */
   editingQueueId?: Accessor<string | null>
+  /**
+   * Maps a history key (typically a chat tab id, occasionally a task
+   * id, or the literal `"global"`) to a human-readable label. Used by
+   * the Ctrl+R cross-task history palette (KOB-154) to show which task
+   * each remembered prompt came from. `undefined` return falls back to
+   * showing no task label. Omit the prop entirely to ship a composer
+   * without the palette (the Ctrl+R chord becomes inert).
+   */
+  taskLabelForHistoryKey?: (historyKey: string) => string | undefined
+  /**
+   * Absolute path of the active task's repo root — the worktree's
+   * parent project, NOT the worktree itself. Used as the `project`
+   * field when persisting submitted prompts to disk (KOB-157), so a
+   * later session can filter palette rows by project. `undefined`
+   * persists under the global bucket.
+   */
+  currentProjectRoot?: Accessor<string | undefined>
 }
 
 export function Composer(props: ComposerProps) {
   const { theme } = useTheme()
   const focusCtx = useFocus()
+  const dialog = useDialog()
 
   // Imperative ref to the textarea renderable. Set via the `ref` prop
   // callback once opentui mounts the node. We need imperative access
@@ -248,21 +271,27 @@ export function Composer(props: ComposerProps) {
   // composer without `onBashCommand` shows the `!` verbatim (the
   // history could have been seeded by a prior composer that had bash
   // wired up — better to expose the raw text than silently swallow it).
+  //
+  // Extracted as a function so the Ctrl+R palette (KOB-154) and the
+  // up-arrow recall both route through identical logic — the palette
+  // returns the raw stored value (`!cmd` for bash) just like the
+  // history ring does, so the same dispatch shape applies.
+  function applyHistoryRecall(recalled: string): void {
+    if (recalled.startsWith("!") && bashAvailable()) {
+      setBuffer(recalled.slice(1))
+      setBashMode(true)
+      return
+    }
+    setBuffer(recalled)
+    setBashMode(false)
+  }
   const historyNav = new PromptHistoryNavigator(
     () => getHistory(props.historyKey ?? "global"),
     () => {
       const text = textareaRef?.plainText ?? ""
       return bashMode() ? `!${text}` : text
     },
-    (recalled: string) => {
-      if (recalled.startsWith("!") && bashAvailable()) {
-        setBuffer(recalled.slice(1))
-        setBashMode(true)
-        return
-      }
-      setBuffer(recalled)
-      setBashMode(false)
-    },
+    applyHistoryRecall,
   )
 
   // Per-composer image-paste registry. Owns disk writes for pasted
@@ -584,6 +613,24 @@ export function Composer(props: ComposerProps) {
       key.preventDefault()
       return
     }
+    // Ctrl+R — cross-task prompt-history palette (KOB-154). Runs ahead
+    // of the textarea / slash dropdown / history nav so the chord wins
+    // regardless of buffer state; the textarea has no default ctrl+r
+    // action so we're not shadowing anything. The chord is inert when
+    // the parent didn't thread `taskLabelForHistoryKey` (i.e. the host
+    // composer isn't wired up for cross-task labels) — we still open
+    // the palette, but each row falls back to "no task label".
+    if (key.name === "r" && key.ctrl && !key.shift && !key.meta && !key.super) {
+      const resolver = props.taskLabelForHistoryKey ?? (() => undefined)
+      void HistoryPalette.show(dialog, {
+        taskLabelFor: resolver,
+        currentProject: props.currentProjectRoot?.(),
+      }).then((picked) => {
+        if (picked !== undefined) applyHistoryRecall(picked)
+      })
+      key.preventDefault()
+      return
+    }
     // shift+tab cycles the per-task permission mode. Highest priority
     // because we want it consistent regardless of dropdown state.
     // Falls through silently when the parent doesn't supply a cycler.
@@ -718,7 +765,10 @@ export function Composer(props: ComposerProps) {
     if (bashMode()) {
       const command = trimmed
       if (command.length === 0) return // bash mode with empty buffer — no-op
-      pushHistory(props.historyKey ?? "global", `!${command}`)
+      pushHistory(props.historyKey ?? "global", `!${command}`, {
+        project: props.currentProjectRoot?.(),
+        taskId: props.historyKey,
+      })
       // Clear synchronously so the bash indicator drops before the
       // command starts streaming. Parent's draft round-trip will also
       // clear; this avoids a one-tick flicker.
@@ -758,7 +808,10 @@ export function Composer(props: ComposerProps) {
     const expandedRaw = hasImages ? imageRegistry.expand(raw) : raw
     const expandedTrimmed = hasImages ? expandedRaw.trim() : trimmed
     if (expandedTrimmed.length > 0) {
-      pushHistory(props.historyKey ?? "global", expandedRaw)
+      pushHistory(props.historyKey ?? "global", expandedRaw, {
+        project: props.currentProjectRoot?.(),
+        taskId: props.historyKey,
+      })
     }
     if (hasImages) imageRegistry.clear()
     setPasteHint(null)
