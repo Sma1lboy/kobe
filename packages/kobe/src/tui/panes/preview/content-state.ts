@@ -48,6 +48,18 @@ export type MediaContent = {
   readonly dims?: ImageDims
   /** Static-image preview rendered by chafa into a character grid. */
   readonly grid?: ChafaGrid
+  /**
+   * Static-image preview rendered as raw sixel bytes. Set when the
+   * host terminal supports sixel (see `detectSixelSupport`); takes
+   * precedence over `grid` in `MediaBody`.
+   */
+  readonly sixel?: Buffer
+  /**
+   * Cell footprint (width × height) the sixel image occupies. We can't
+   * derive it from the sixel byte stream cheaply; capture it at decode
+   * time so the renderable can claim the right number of cells.
+   */
+  readonly sixelCells?: { readonly cols: number; readonly rows: number }
   /** Animated frames + frame timing (animated GIFs). */
   readonly animation?: {
     readonly frames: readonly ChafaGrid[]

@@ -110,6 +110,35 @@ export async function renderImageWithChafa(
   return parseChafaOutput(out)
 }
 
+/**
+ * Render `absPath` as a sixel escape sequence sized to fit within
+ * `maxCols` × `maxRows` cells. Returns the raw bytes — the caller is
+ * responsible for writing them to stdout at the right cursor position
+ * and at the right point in opentui's render cycle (see
+ * `SixelImageRenderable`). Returns `null` on any failure.
+ *
+ * Sixel resolution is pixels per cell, so the upper-bound cell area
+ * translates to a far higher pixel count than the symbols path —
+ * Windows Terminal v1.22+, kitty, xterm, mlterm, and iTerm2 all
+ * render real pixels for this content.
+ */
+export async function renderImageAsSixel(absPath: string, maxCols: number, maxRows: number): Promise<Buffer | null> {
+  if (maxCols <= 0 || maxRows <= 0) return null
+  if (!(await chafaAvailable())) return null
+  const args = [
+    "--format=sixels",
+    "--colors=full",
+    "--color-space=din99d",
+    `--size=${maxCols}x${maxRows}`,
+    "-w",
+    "9",
+    absPath,
+  ]
+  const out = await runChafa(args)
+  if (!out || out.length === 0) return null
+  return out
+}
+
 function runChafa(args: readonly string[]): Promise<Buffer | null> {
   return new Promise((resolve) => {
     const child = spawn("chafa", args, { stdio: ["ignore", "pipe", "pipe"] })

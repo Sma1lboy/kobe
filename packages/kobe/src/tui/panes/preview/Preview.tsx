@@ -42,7 +42,7 @@ import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMoun
 import { Body } from "./body/Body"
 import { Header } from "./body/Header"
 import { TabBar } from "./body/TabBar"
-import { type ChafaGrid, renderImageWithChafa } from "./chafa-render"
+import { type ChafaGrid, renderImageAsSixel, renderImageWithChafa } from "./chafa-render"
 import type { ContentState } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
@@ -50,6 +50,7 @@ import { renderAnimatedGifWithChafa } from "./gif-frames"
 import { computeImageBudget } from "./image-budget"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
+import { detectSixelSupport } from "./sixel-capability"
 import {
   EMPTY_STATE,
   type PreviewState,
@@ -321,6 +322,22 @@ export function Preview(props: PreviewProps) {
         },
       })
     }
+    const pushSixel = (probedDims: ImageDims, sixel: Buffer, sixelCells: { cols: number; rows: number }) => {
+      if (!stillActive()) return
+      setContent({
+        kind: "media",
+        media: {
+          relPath,
+          absPath: s.absPath,
+          kind: mediaKind,
+          size: s.size,
+          mtime: s.mtime,
+          dims: probedDims,
+          sixel,
+          sixelCells,
+        },
+      })
+    }
     const pushAnimation = (
       probedDims: ImageDims,
       animation: { frames: readonly ChafaGrid[]; frameDelayMs: number },
@@ -348,6 +365,20 @@ export function Preview(props: PreviewProps) {
       const seq = await renderAnimatedGifWithChafa(s.absPath, maxCols, maxRows)
       if (seq && seq.frames.length > 1) {
         pushAnimation(dims as ImageDims, seq)
+        return
+      }
+    }
+    // Sixel-capable terminals get a real-pixel render; everyone else
+    // falls back to chafa's character grid. We try sixel first and
+    // only run the symbols path if it didn't produce output.
+    if (detectSixelSupport()) {
+      const sixel = await renderImageAsSixel(s.absPath, maxCols, maxRows)
+      if (sixel) {
+        // We sized the chafa render to the same cell budget, so the
+        // cell footprint is the budget itself, possibly trimmed by
+        // aspect ratio. Trust the budget here; the renderable will
+        // clamp if its parent gives it less.
+        pushSixel(dims as ImageDims, sixel, { cols: maxCols, rows: maxRows })
         return
       }
     }

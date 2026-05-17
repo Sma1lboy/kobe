@@ -18,6 +18,7 @@ import { useTheme } from "../../../context/theme"
 import type { ChafaCell, ChafaGrid, ChafaRGB } from "../chafa-render"
 import type { ContentState, MediaContent } from "../content-state"
 import { describeMediaKind, formatBytes, formatMtime } from "../format"
+import "./SixelImageRenderable"
 
 export function MediaBody(props: { content: Accessor<ContentState> }) {
   const { theme } = useTheme()
@@ -44,7 +45,7 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
         })
         const previewReady = createMemo(() => {
           const info = m()
-          return info.grid != null || info.animation != null
+          return info.grid != null || info.animation != null || info.sixel != null
         })
         const gridSubtitle = createMemo(() => {
           const info = m()
@@ -95,7 +96,20 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
               {m().relPath}
               <Show when={gridSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
             </text>
-            <Show when={currentGrid()}>{(grid) => <ChafaGridView grid={grid()} />}</Show>
+            <Show
+              when={m().sixel && m().sixelCells}
+              fallback={<Show when={currentGrid()}>{(grid) => <ChafaGridView grid={grid()} />}</Show>}
+            >
+              {(_anchor) => {
+                const sixel = createMemo(() => m().sixel as Buffer)
+                const cells = createMemo(() => m().sixelCells as { cols: number; rows: number })
+                return (
+                  <box paddingTop={1} flexDirection="column">
+                    <sixel_image sixel={sixel()} width={cells().cols} height={cells().rows} />
+                  </box>
+                )
+              }}
+            </Show>
             <Show when={!previewReady()}>
               <box paddingTop={1} flexDirection="column">
                 <For each={lines()}>
