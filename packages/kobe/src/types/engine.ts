@@ -131,6 +131,27 @@ export interface PermissionModeChoice {
   readonly label: string
 }
 
+export type EngineCommandSource = "builtin" | "user" | "project" | "system"
+export type EngineCommandKind = "slash" | "skill"
+
+export interface EngineCommandEntry {
+  /** Label shown in the slash dropdown, including the leading trigger. */
+  readonly display: string
+  readonly description?: string
+  readonly aliases?: readonly string[]
+  readonly source: EngineCommandSource
+  readonly kind: EngineCommandKind
+  /**
+   * Text submitted to the engine when the user selects this entry. Defaults
+   * to `display` for native slash commands. Codex skills use `$skill-name`.
+   */
+  readonly submitText?: string
+}
+
+export interface EngineCommandDiscoveryOpts {
+  readonly cwd?: string
+}
+
 /**
  * Optional knobs at spawn time. All fields optional — engine impls supply
  * sensible defaults. New options must be added here, not on a subclass.
@@ -512,6 +533,16 @@ export interface AIEngine {
    * as a stable descriptor for the lifetime of the engine instance.
    */
   readonly capabilities: EngineCapabilities
+
+  /**
+   * Discover engine-owned composer commands for `cwd`.
+   *
+   * This is intentionally runtime IO, not part of
+   * {@link EngineCapabilities}: user/project skills live on disk and can
+   * change while kobe is running. The TUI must consume this through the
+   * active engine instead of hard-coding vendor command folders.
+   */
+  listCommands?(opts?: EngineCommandDiscoveryOpts): Promise<readonly EngineCommandEntry[]>
 
   /**
    * Start a fresh session in `cwd` with the given prompt.

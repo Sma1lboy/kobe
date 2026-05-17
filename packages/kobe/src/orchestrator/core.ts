@@ -6,6 +6,7 @@ import { type EngineMap, capabilitiesForModelId } from "../engine/registry.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
   AIEngine,
+  EngineCommandEntry,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
@@ -315,6 +316,13 @@ export class Orchestrator {
 
   private engineForTaskTabId(taskId: TaskId, tabId: string): AIEngine {
     return this.engineRouter.engineForTaskTabId(taskId, tabId)
+  }
+
+  async listCommandsForTab(taskId: string, tabId: string): Promise<readonly EngineCommandEntry[]> {
+    const id = taskId as TaskId
+    const task = this.store.get(id)
+    const engine = this.engineForTaskTabId(id, tabId)
+    return engine.listCommands?.({ cwd: task?.worktreePath }) ?? []
   }
 
   /**
