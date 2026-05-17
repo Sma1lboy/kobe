@@ -72,6 +72,8 @@ export type AppKeymapDeps = {
   focusHjklTargets: Record<string, PaneId>
   /** Open the new-task dialog flow (defined in app.tsx — uses kv, orchestrator, etc.). */
   openNewTaskFlow: () => Promise<void> | void
+  /** Open the background-tasks manager dialog (defined in app.tsx — needs run-state + selection). */
+  openBackgroundTasks: () => void
   /** KV store + orchestrator handle for the settings dialog. */
   kv: KVContext
   orchestrator: KobeOrchestrator
@@ -189,8 +191,8 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
   }))
 
   /* ----- 4. Global modifier-prefixed chords ----- */
-  // `ctrl+,` (settings.open) is a modifier chord — safe to leave
-  // global since it can't collide with typing.
+  // `ctrl+,` (settings.open), `ctrl+b` (tasks.background) are modifier
+  // chords — safe to leave global since they can't collide with typing.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: bindByIds({
@@ -198,6 +200,7 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
       "settings.open": () => {
         void SettingsDialog.show(dialog, deps.kv, deps.orchestrator)
       },
+      "tasks.background": () => deps.openBackgroundTasks(),
     }),
   }))
 

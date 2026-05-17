@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Background-tasks manager (`ctrl+b`) — a dialog listing every chat session running out of view across all tasks, with the run/needs-input state for each; press enter to jump straight to a session or `x` to interrupt it. A status-bar indicator shows the background count and self-hides when nothing is running unattended. Mirrors Claude Code's background-task model.
+
 ## [0.5.23] - 2026-05-17
 
 ### Changed

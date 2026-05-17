@@ -190,6 +190,22 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open active task worktree in editor",
   },
   {
+    // Background-tasks manager. `ctrl+b` mirrors claude-code's
+    // background chord (`refs/claude-code` `task:background`). Global +
+    // modifier-prefixed → compliant with docs/KEYBINDINGS.md (globals
+    // MUST be modifier-prefixed). No status-bar hint: the
+    // `BackgroundTasksIndicator` chip carries the affordance and only
+    // appears when something is actually running out of view, so a
+    // permanent right-column hint would just be idle clutter.
+    // tmux caveat: `ctrl+b` is tmux's default prefix key — tmux users
+    // press it twice (`ctrl+b ctrl+b`) to forward it to kobe.
+    id: "tasks.background",
+    scope: "global",
+    keys: ["ctrl+b"],
+    category: "Global",
+    description: "Open background tasks (sessions running out of view)",
+  },
+  {
     id: "settings.open",
     scope: "global",
     keys: ["ctrl+,"],
