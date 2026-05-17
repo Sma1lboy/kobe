@@ -94,16 +94,26 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
     if (!type) continue
 
     // Subagent events carry `parent_tool_use_id` set to the parent's
-    // Agent/Task tool_use id. Their assistant text/tool_use and user
-    // tool_result blocks are the subagent's *internal* work — the
-    // parent's chat already sees the Agent tool_use (input) and its
-    // matching tool_result (the subagent's final summary). Letting the
-    // internal blocks through would interleave the subagent's Glob /
-    // Read / Bash banners with the parent's transcript and bury the
-    // Agent row under noise. Drop them at the parser. Only events with
-    // `parent_tool_use_id: null` (or absent) belong to the top-level
-    // session.
-    if ("parent_tool_use_id" in msg && msg.parent_tool_use_id != null) continue
+    // Agent/Task tool_use id. We surface the subagent's *tool steps*
+    // (its Read / Grep / Bash calls) so the chat can nest them under
+    // the parent Agent row — the user watches the subagent's progress
+    // live instead of staring at an opaque Agent spinner. What we do
+    // NOT surface from a subagent:
+    //   - its assistant text / reasoning — that's the subagent's
+    //     internal prose; flattening it into the parent transcript is
+    //     the pollution the nesting is meant to avoid.
+    //   - its `system` (a separate session_id we must not capture as
+    //     the parent's) and its terminal `result` (would fire a
+    //     top-level `done` and kill the *parent* stream).
+    // So a subagent contributes only `assistant` tool_use blocks and
+    // `user` tool_result blocks, each tagged with `parentId`. Events
+    // with `parent_tool_use_id: null` (or absent) belong to the
+    // top-level session and pass through normally.
+    const parentToolUseId =
+      "parent_tool_use_id" in msg && typeof msg.parent_tool_use_id === "string"
+        ? (msg.parent_tool_use_id as string)
+        : undefined
+    if (parentToolUseId != null && type !== "assistant" && type !== "user") continue
 
     if (type === "system") {
       const subtype = typeof msg.subtype === "string" ? (msg.subtype as string) : undefined
@@ -124,6 +134,8 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
         if (!isObject(block)) continue
         const blockType = typeof block.type === "string" ? (block.type as string) : undefined
         if (blockType === "text") {
+          // Subagent prose stays internal — only its tool steps surface.
+          if (parentToolUseId != null) continue
           const text = typeof block.text === "string" ? (block.text as string) : ""
           if (text) yield { type: "assistant.delta", text }
         } else if (blockType === "tool_use") {
@@ -131,7 +143,13 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
           const id = typeof block.id === "string" ? (block.id as string) : undefined
           if (id) toolNameById.set(id, name)
           const input = "input" in block ? block.input : undefined
-          yield { type: "tool.start", name, input }
+          yield {
+            type: "tool.start",
+            name,
+            input,
+            ...(id ? { id } : {}),
+            ...(parentToolUseId != null ? { parentId: parentToolUseId } : {}),
+          }
         }
       }
       continue
@@ -146,7 +164,12 @@ export async function* parseStreamJson(lines: LineSource, opts: ParseStreamJsonO
           const id = typeof block.tool_use_id === "string" ? (block.tool_use_id as string) : undefined
           const name = (id && toolNameById.get(id)) || "tool"
           const output = "content" in block ? block.content : undefined
-          yield { type: "tool.result", name, output }
+          yield {
+            type: "tool.result",
+            name,
+            output,
+            ...(parentToolUseId != null ? { parentId: parentToolUseId } : {}),
+          }
         }
       }
       continue

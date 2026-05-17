@@ -1,9 +1,19 @@
 import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { ChatRow } from "./store"
-import { classifyTool } from "./tool-registry"
+import { classifyTool, isSubagentTool } from "./tool-registry"
 
-type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }
+export type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }
+
+/**
+ * A tool row is foldable into the "Searched N…, read M…" summary unless
+ * it is a subagent (Agent/Task) row — those carry their own nested
+ * progress UI and must render standalone. Non-tool rows are never
+ * foldable.
+ */
+function isFoldableTool(row: ChatRow | undefined): boolean {
+  return row?.kind === "tool" && !isSubagentTool(row.name)
+}
 
 export type MessageRenderItem =
   | { kind: "row"; row: ChatRow; index: number }
@@ -19,13 +29,13 @@ export function groupRenderItems(
   let i = 0
   while (i < messages.length) {
     const row = messages[i]
-    if (!row || row.kind !== "tool") {
+    if (!isFoldableTool(row)) {
       if (row) items.push({ kind: "row", row, index: i })
       i++
       continue
     }
     let j = i
-    while (j < messages.length && messages[j]?.kind === "tool") j++
+    while (j < messages.length && isFoldableTool(messages[j])) j++
     if (j - i >= TOOL_FOLD_THRESHOLD) {
       const counts: ToolCounts = { search: 0, read: 0, list: 0, bash: 0, other: 0 }
       let inFlight = 0

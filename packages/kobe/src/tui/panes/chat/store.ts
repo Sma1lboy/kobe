@@ -107,6 +107,31 @@ export function cleanChatText(text: string): string {
 
 export type { QueuedPrompt } from "./queue.ts"
 
+/**
+ * One nested tool step run *inside* a subagent (Agent/Task) tool call.
+ *
+ * The engine reports a subagent's internal Read/Grep/Bash calls with a
+ * `parentId` pointing at the Agent row's `toolUseId` (see
+ * {@link EngineEvent} `tool.start`). Rather than appending those to the
+ * top-level transcript — which would bury the Agent row in noise — the
+ * chat collects them here, on the parent tool row's {@link ChatRow}
+ * `children`, and the renderer shows them nested + collapsible under
+ * the Agent banner. This mirrors Claude Code's own TUI, where a Task's
+ * sub-steps render indented beneath it.
+ *
+ * Deliberately lighter than a full tool ChatRow: no `ts`, no nested
+ * `children` (kobe flattens grandchild subagents — a subagent that
+ * itself spawns a subagent has those deeper steps dropped at the
+ * parser rather than mis-attached). Just enough to render the step
+ * banner + a done/running glyph.
+ */
+export interface ToolChildRow {
+  readonly name: string
+  readonly input: unknown
+  readonly output?: unknown
+  readonly done: boolean
+}
+
 /** One chronological row in the chat. The renderer maps these to JSX. */
 export type ChatRow =
   | { readonly kind: "user"; readonly text: string; readonly ts: string }
@@ -126,9 +151,22 @@ export type ChatRow =
        * case — which is fine in-stream where one call rarely overlaps
        * with another of the same name, but breaks for replay where
        * the full session is on disk and parallel same-name calls are
-       * common). Optional: live tool rows leave it undefined.
+       * common). Optional: history-hydrated rows always set it; live
+       * rows set it whenever the engine event carried an `id` (the
+       * Claude path always does) so subagent child steps can be paired
+       * to this row by `parentId === toolUseId`.
        */
       readonly toolUseId?: string
+      /**
+       * Nested tool steps run inside this call when it is a subagent
+       * (Agent/Task) invocation. Populated live from `tool.start` /
+       * `tool.result` events carrying a `parentId` equal to this row's
+       * `toolUseId`. Absent for ordinary (non-subagent) tool rows and
+       * for history-hydrated rows (replay nesting is a follow-up —
+       * subagents persist to a separate JSONL the history reader
+       * doesn't load).
+       */
+      readonly children?: readonly ToolChildRow[]
     }
   | { readonly kind: "system"; readonly text: string; readonly ts: string }
   /**
@@ -363,15 +401,60 @@ export function applyEvent(
         messages: capMessages([...state.messages, { kind: "assistant", text: ev.text, ts: nowIso }], nowIso),
       }
     }
-    case "tool.start":
+    case "tool.start": {
+      // Subagent child step: nest it under the parent Agent/Task row
+      // instead of appending to the top-level transcript. Match the
+      // parent by `toolUseId === ev.parentId`. If no parent row exists
+      // (a grandchild — a subagent that itself spawned a subagent;
+      // kobe nests one level only), drop it rather than pollute the
+      // top-level chat.
+      if (ev.parentId != null) {
+        const pidx = findLastIndex(state.messages, (m) => m.kind === "tool" && m.toolUseId === ev.parentId)
+        if (pidx < 0) return state
+        const parent = state.messages[pidx] as Extract<ChatRow, { kind: "tool" }>
+        const child: ToolChildRow = { name: ev.name, input: ev.input, done: false }
+        const patched: ChatRow = { ...parent, children: [...(parent.children ?? []), child] }
+        const next = state.messages.slice()
+        next[pidx] = patched
+        // In-place patch — no length change, cap not needed.
+        return { ...state, messages: next }
+      }
       return {
         ...state,
         messages: capMessages(
-          [...state.messages, { kind: "tool", name: ev.name, input: ev.input, done: false, ts: nowIso }],
+          [
+            ...state.messages,
+            {
+              kind: "tool",
+              name: ev.name,
+              input: ev.input,
+              done: false,
+              ts: nowIso,
+              ...(ev.id ? { toolUseId: ev.id } : {}),
+            },
+          ],
           nowIso,
         ),
       }
+    }
     case "tool.result": {
+      // Subagent child result: patch the matching child on its parent
+      // Agent/Task row. Same parent lookup as `tool.start`; same
+      // grandchild-drop rule.
+      if (ev.parentId != null) {
+        const pidx = findLastIndex(state.messages, (m) => m.kind === "tool" && m.toolUseId === ev.parentId)
+        if (pidx < 0) return state
+        const parent = state.messages[pidx] as Extract<ChatRow, { kind: "tool" }>
+        const kids = parent.children ?? []
+        const cidx = findLastIndex(kids, (c) => !c.done && c.name === ev.name)
+        if (cidx < 0) return state
+        const nextKids = kids.slice()
+        nextKids[cidx] = { ...(kids[cidx] as ToolChildRow), output: ev.output, done: true }
+        const patched: ChatRow = { ...parent, children: nextKids }
+        const next = state.messages.slice()
+        next[pidx] = patched
+        return { ...state, messages: next }
+      }
       // Find the most recent unfinished tool row with this name and
       // patch it. If none, append a standalone result row.
       const idx = findLastIndex(state.messages, (m) => m.kind === "tool" && !m.done && m.name === ev.name)

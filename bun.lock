@@ -25,10 +25,9 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.5.21",
+      "version": "0.5.23",
       "bin": {
         "kobe": "dist/cli/index.js",
-        "kobed": "dist/bin/kobed.js",
       },
       "dependencies": {
         "@ansi-tools/parser": "^1.0.15",
