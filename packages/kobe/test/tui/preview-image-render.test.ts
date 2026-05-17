@@ -25,22 +25,24 @@ describe("computeTargetDims", () => {
   })
 
   it("scales a wide source so width matches the col budget", () => {
-    // 1920 × 1080 in a 80 × 50 cell budget: pixel budget is 320 × 400.
-    // Width is the limiting axis (320 / 1920 < 400 / 1080) so cols snaps
-    // to 320 and rows scales by the same factor.
+    // 1920 × 1080 in an 80 × 50 cell budget. With width as the limit,
+    // cols saturates at maxCols × PX and rows scales by the same factor.
     const r = computeTargetDims(1920, 1080, 80, 50)
     expect(r.cols).toBe(80 * PX)
-    // 320 * 1080/1920 = 180 → snap to multiple of PY
-    expect(r.pixelRows).toBe(180 - (180 % PY))
+    const rawRows = 80 * PX * (1080 / 1920)
+    const expectedRows = Math.floor(rawRows) - (Math.floor(rawRows) % PY)
+    expect(r.pixelRows).toBe(expectedRows)
   })
 
   it("scales a tall source so height matches the row budget", () => {
-    // 1080 × 1920 in a 100 × 50 cell budget: pixel budget is 400 × 400.
-    // Both axes hit the cap at 400; tall source picks the row axis.
+    // 1080 × 1920 in a 100 × 50 cell budget. Height is the limit so
+    // pixelRows saturates at maxRows × PY and cols scales by the same
+    // factor.
     const r = computeTargetDims(1080, 1920, 100, 50)
     expect(r.pixelRows).toBe(50 * PY)
-    const expected = Math.floor(50 * PY * (1080 / 1920))
-    expect(r.cols).toBe(expected - (expected % PX))
+    const rawCols = 50 * PY * (1080 / 1920)
+    const expectedCols = Math.floor(rawCols) - (Math.floor(rawCols) % PX)
+    expect(r.cols).toBe(expectedCols)
   })
 
   it("returns zeros for bad input", () => {
@@ -63,9 +65,10 @@ describe("computeTargetDims", () => {
 
   it("clamps the budget at the internal ceilings", () => {
     // Ridiculous budgets should not produce a multi-megapixel grid —
-    // the module caps at 800 × 800.
+    // the module caps at 400 × 200 (≈ 200 × 100 cells after the 2×2
+    // supersample divide).
     const r = computeTargetDims(10_000, 10_000, 10_000, 10_000)
-    expect(r.cols).toBeLessThanOrEqual(800)
-    expect(r.pixelRows).toBeLessThanOrEqual(800)
+    expect(r.cols).toBeLessThanOrEqual(400)
+    expect(r.pixelRows).toBeLessThanOrEqual(200)
   })
 })

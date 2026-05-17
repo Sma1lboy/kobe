@@ -4,10 +4,16 @@
  * Approach: shell out to `ffmpeg` to decode the image and resize it to
  * fit a target pixel grid, then return raw RGBA bytes. The MediaBody
  * hands the buffer to `PixelImageRenderable`, which calls opentui's
- * native `drawSuperSampleBuffer` — the Zig backend picks the best
- * available pixel protocol (sixel / kitty / iTerm) and falls back to
- * supersampled half/quadrant blocks where the terminal can't render
- * raw pixels.
+ * native `drawSuperSampleBuffer`.
+ *
+ * Cell mapping: opentui's `drawSuperSampleBuffer` is hard-coded in the
+ * Zig backend to 2 pixels per cell in both axes — it picks one of the
+ * 16 quadrant block glyphs (U+2596..U+259F + half-blocks) per cell,
+ * assigning fg/bg from the 4 sub-pixels. So our pixel buffer must be
+ * exactly `cellCols * 2` wide × `cellRows * 2` tall; anything denser
+ * just makes the image render at a larger cell footprint than we
+ * declared. Real sixel / kitty graphics would need a separate code
+ * path that opentui doesn't expose today.
  *
  * Why ffmpeg and not a JS decoder:
  *   - Already installed on the user's box (we checked).
@@ -24,20 +30,17 @@
 import { spawn } from "node:child_process"
 
 /**
- * How many pixels we ask ffmpeg to scale into per terminal cell.
- * `drawSuperSampleBuffer` accepts a high-resolution pixel buffer and
- * the Zig backend picks the densest cell representation the terminal
- * supports — sixel / kitty on modern terminals, quadrant / half-block
- * fallback otherwise. Asking for 4×8 pixels per cell gives the backend
- * enough resolution to look sharp on a sixel terminal without burning
- * memory; older terminals downsample internally.
+ * Pixels per terminal cell — must match the Zig backend's hard-coded
+ * quadrant supersample ratio (2 × 2). Any other value will make the
+ * rendered image overflow the cell footprint claimed by the renderable
+ * by the same factor.
  */
-const PIXELS_PER_CELL_X = 4
-const PIXELS_PER_CELL_Y = 8
+const PIXELS_PER_CELL_X = 2
+const PIXELS_PER_CELL_Y = 2
 
 /** Hard ceilings on the resulting pixel grid — keep memory bounded. */
-const MAX_PIXEL_COLS = 800
-const MAX_PIXEL_ROWS = 800
+const MAX_PIXEL_COLS = 400
+const MAX_PIXEL_ROWS = 200
 
 export type DecodedImage = {
   /** Final image width in pixels. */
