@@ -25,7 +25,7 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 import { CreatePRButton } from "./create-pr-button"
 import { OpenWorktreeButton } from "./open-worktree-button"
 import { RcBridgeDialog } from "./rc-bridge-dialog"
-import { activeTaskTopBarLabel } from "./top-bar-helpers"
+import { activeTaskTopBarParts } from "./top-bar-helpers"
 import { UpdateDialog } from "./update-dialog"
 
 export function TopBar(props: {
@@ -58,6 +58,7 @@ export function TopBar(props: {
   const remoteOrch = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
   const rcBridge = props.orchestrator.rcBridgeSignal()
   const isBridgeOn = () => rcBridge().state === "running" || rcBridge().state === "starting"
+  const activeLabel = createMemo(() => activeTaskTopBarParts(props.activeTask()))
 
   async function confirmUpdate(): Promise<void> {
     const info = props.updateInfo()
@@ -155,10 +156,30 @@ export function TopBar(props: {
             </text>
           }
         >
-          <Show when={props.activeTask() !== undefined}>
-            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-              {activeTaskTopBarLabel(props.activeTask())}
-            </text>
+          <Show when={activeLabel()}>
+            {(label) => (
+              <box flexDirection="row" gap={1} justifyContent="center">
+                <Show when={label().repoName}>
+                  <text
+                    fg={label().branch ? theme.textMuted : theme.text}
+                    attributes={label().branch ? undefined : TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {label().repoName}
+                  </text>
+                </Show>
+                <Show when={label().repoName && label().branch}>
+                  <text fg={theme.textMuted} wrapMode="none">
+                    /
+                  </text>
+                </Show>
+                <Show when={label().branch}>
+                  <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+                    {label().branch}
+                  </text>
+                </Show>
+              </box>
+            )}
           </Show>
         </Show>
       </box>

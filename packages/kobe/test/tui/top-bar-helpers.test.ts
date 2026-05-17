@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { activeTaskSessionId, activeTaskTopBarLabel } from "../../src/tui/component/top-bar-helpers"
+import { activeTaskSessionId, activeTaskTopBarParts } from "../../src/tui/component/top-bar-helpers"
 import { type Task, toTaskId } from "../../src/types/task"
 
 function taskWithTabs(activeTabId: string): Task {
@@ -36,22 +36,23 @@ describe("activeTaskSessionId", () => {
   })
 })
 
-describe("activeTaskTopBarLabel", () => {
-  test("renders repo basename and branch for regular tasks", () => {
-    expect(activeTaskTopBarLabel(taskWithTabs("tab-a"))).toBe("repo / kobe/demo")
+describe("activeTaskTopBarParts", () => {
+  test("returns repo basename and branch for regular tasks", () => {
+    expect(activeTaskTopBarParts(taskWithTabs("tab-a"))).toEqual({ repoName: "repo", branch: "kobe/demo" })
   })
 
   test("handles trailing slashes in repo paths", () => {
-    expect(activeTaskTopBarLabel({ ...taskWithTabs("tab-a"), repo: "/Users/jacksonc/i/kobe/" })).toBe(
-      "kobe / kobe/demo",
-    )
+    expect(activeTaskTopBarParts({ ...taskWithTabs("tab-a"), repo: "/Users/jacksonc/i/kobe/" })).toEqual({
+      repoName: "kobe",
+      branch: "kobe/demo",
+    })
   })
 
   test("uses repo basename when branch is not allocated yet", () => {
-    expect(activeTaskTopBarLabel({ ...taskWithTabs("tab-a"), branch: "" })).toBe("repo")
+    expect(activeTaskTopBarParts({ ...taskWithTabs("tab-a"), branch: "" })).toEqual({ repoName: "repo", branch: "" })
   })
 
   test("returns null without an active task", () => {
-    expect(activeTaskTopBarLabel(undefined)).toBeNull()
+    expect(activeTaskTopBarParts(undefined)).toBeNull()
   })
 })
