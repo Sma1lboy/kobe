@@ -185,7 +185,7 @@ export function Chat(props: ChatProps) {
     const kobeEntries: ComposerSlashEntry[] = [
       {
         display: "/clear",
-        description: "Reset this chat tab (drops session, keeps history on disk)",
+        description: "Reset this chat tab (drops session, then pick a model for the new one)",
         source: "builtin",
         onSelect: () => {
           void send("/clear")
@@ -399,11 +399,19 @@ export function Chat(props: ChatProps) {
     return getIdentity(activeVendor()).inputPlaceholder
   })
 
-  async function chooseModel(): Promise<void> {
+  /**
+   * Open the model picker for the active tab.
+   *
+   * `forceVendorUnlock` skips the active-session vendor lock — used by
+   * the `/clear` path, which has just dropped the session but whose
+   * `sessionId: null` update arrives over the socket asynchronously, so
+   * `activeTabHasSession()` may still read stale `true` at call time.
+   */
+  async function chooseModel(forceVendorUnlock = false): Promise<void> {
     const id = props.taskId()
     if (!id) return
     const tabId = activeTabId() ?? undefined
-    const lockedVendor = activeTabHasSession() ? activeVendor() : undefined
+    const lockedVendor = !forceVendorUnlock && activeTabHasSession() ? activeVendor() : undefined
     const result = await ModelPicker.show(dialog, modelId(), modelEffort(), activeVendor(), lockedVendor)
     if (result === undefined) return
     await props.orchestrator.setModel(id, result.id, tabId, result.effort, result.vendor).catch((err: unknown) => {
@@ -622,7 +630,9 @@ export function Chat(props: ChatProps) {
         await props.orchestrator.clearTab(taskId, tabId)
       } catch (err) {
         patchActiveState((s) => pushSystemError(s, `/clear failed: ${stringifyErr(err)}`))
+        return
       }
+      await chooseModel(true)
       return
     }
 
