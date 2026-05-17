@@ -62,6 +62,7 @@ import {
   setActiveMode,
   setActiveScroll,
 } from "./state"
+import { renderSvgAsSixel } from "./svg-render"
 import { splitTokensByLine, tokenizeXml } from "./xml-highlight"
 
 /** Public props — matches the contract in the brief verbatim. */
@@ -234,6 +235,16 @@ export function Preview(props: PreviewProps) {
       return
     }
 
+    // SVG on sixel-capable terminals: rasterize via rsvg-convert and
+    // feed the PNG into the existing chafa-sixel pipeline. Mirrors how
+    // VSCode shows SVG as a rendered image rather than source text.
+    // Falls through to the XML highlight path below when sixel isn't
+    // supported, rsvg-convert is missing, or rendering fails.
+    if (mediaKind.kind === "svg" && key.mode === "file" && detectSixelSupport()) {
+      const ok = await loadSvgAsSixel(wt, key.path)
+      if (ok) return
+    }
+
     if (key.mode === "diff") {
       const base = props.diffBase()
       if (!base) {
@@ -273,6 +284,34 @@ export function Preview(props: PreviewProps) {
       return
     }
     setContent({ kind: "lines", lines: splitLines(r.text), mode: "file" })
+  }
+
+  /**
+   * Convert an SVG to a raster sixel and push a media snapshot so the
+   * preview pane renders it like a normal image instead of dropping
+   * to the XML highlight view. Returns false on any failure so the
+   * caller can fall back to the syntax-coloured source.
+   */
+  async function loadSvgAsSixel(wt: string, relPath: string): Promise<boolean> {
+    const s = await statFile(wt, relPath)
+    if (!s.ok) return false
+    const { maxCols, maxRows } = computeImageBudget()
+    const sixel = await renderSvgAsSixel(s.absPath, maxCols, maxRows)
+    if (!sixel) return false
+    const sixelCells = sixelPixelsToCells(sixel.pixelWidth, sixel.pixelHeight, maxCols, maxRows)
+    setContent({
+      kind: "media",
+      media: {
+        relPath,
+        absPath: s.absPath,
+        kind: { kind: "svg" },
+        size: s.size,
+        mtime: s.mtime,
+        sixel: sixel.bytes,
+        sixelCells,
+      },
+    })
+    return true
   }
 
   /**
