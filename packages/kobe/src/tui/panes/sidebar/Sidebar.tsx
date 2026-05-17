@@ -301,7 +301,10 @@ export function Sidebar(props: SidebarProps) {
   // the cost is one signal write per 100ms and Solid only re-renders
   // the rows whose badge derivation actually reads `spinnerFrame()`.
   const [spinnerFrame, setSpinnerFrame] = createSignal(0)
-  const spinnerInterval = setInterval(() => setSpinnerFrame((n) => (n + 1) % IN_PROGRESS_SPINNER.length), SPINNER_FRAME_MS)
+  const spinnerInterval = setInterval(
+    () => setSpinnerFrame((n) => (n + 1) % IN_PROGRESS_SPINNER.length),
+    SPINNER_FRAME_MS,
+  )
   onCleanup(() => clearInterval(spinnerInterval))
 
   // Filtered, flat row list for the active view. Recomputes only when
