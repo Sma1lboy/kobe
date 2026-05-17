@@ -46,7 +46,7 @@ import { type ChafaGrid, renderImageAsSixel, renderImageWithChafa } from "./chaf
 import type { ContentState, SixelAnimationContent } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
-import { renderAnimatedGifAsSixel } from "./gif-frames"
+import { renderAnimatedGifAsSixel, renderFirstGifFrameAsSixel } from "./gif-frames"
 import { computeImageBudget, sixelPixelsToCells } from "./image-budget"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
@@ -401,10 +401,19 @@ export function Preview(props: PreviewProps) {
     }
 
     const { maxCols, maxRows } = computeImageBudget()
-    // GIFs go through the multi-frame sixel path; a 1-frame GIF (yes,
-    // it's a thing) falls through to the static sixel below so
-    // MediaBody doesn't spin up a pointless animation timer.
+    // GIFs go through a progressive two-stage render so the user sees
+    // a still preview almost immediately (~700 ms first-frame ffmpeg +
+    // chafa) instead of waiting on the full multi-frame extraction
+    // (~3 s for 45 frames). Stage 1 pushes the first frame as a
+    // static sixel snapshot; stage 2 swaps it for the animation when
+    // every frame is ready. A 1-frame GIF (yes, that's a thing) just
+    // skips stage 2 and falls through to the regular static path.
     if (mediaKind.kind === "image" && mediaKind.format === "gif" && detectSixelSupport()) {
+      const first = await renderFirstGifFrameAsSixel(s.absPath, maxCols, maxRows)
+      if (first) {
+        const firstCells = sixelPixelsToCells(first.pixelWidth, first.pixelHeight, maxCols, maxRows)
+        pushSixel(dims as ImageDims, first.bytes, firstCells)
+      }
       const seq = await renderAnimatedGifAsSixel(s.absPath, maxCols, maxRows)
       if (seq && seq.frames.length > 1) {
         const sixelCells = sixelPixelsToCells(seq.pixelWidth, seq.pixelHeight, maxCols, maxRows)
@@ -415,6 +424,10 @@ export function Preview(props: PreviewProps) {
         })
         return
       }
+      // If we pushed the first frame and animation extraction failed
+      // (or only had one frame), keep the static snapshot as the
+      // final state and skip the regular sixel fallback below.
+      if (first) return
     }
     // Sixel-capable terminals get a real-pixel render; everyone else
     // falls back to chafa's character grid. We try sixel first and

@@ -21,7 +21,7 @@ import { spawn } from "node:child_process"
 import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { renderImageAsSixel } from "./chafa-render"
+import { type SixelResult, renderImageAsSixel } from "./chafa-render"
 
 /** Hard ceiling on animated-image frame count — keeps memory bounded. */
 const MAX_FRAMES = 60
@@ -34,6 +34,30 @@ export type SixelAnimation = {
   /** Shared pixel dimensions for every frame — determined from frame 0. */
   readonly pixelWidth: number
   readonly pixelHeight: number
+}
+
+/**
+ * Quick first-frame render — ffmpeg pulls a single PNG into a tmpdir
+ * and chafa turns it into a sixel buffer. Used as a fast-path so the
+ * GIF appears on screen in ~700ms while the full animation extraction
+ * runs in the background; the caller upgrades to the animation
+ * snapshot when that completes.
+ */
+export async function renderFirstGifFrameAsSixel(
+  absPath: string,
+  maxCols: number,
+  maxRows: number,
+): Promise<SixelResult | null> {
+  if (maxCols <= 0 || maxRows <= 0) return null
+  const dir = await mkdtemp(join(tmpdir(), "kobe-gif1-"))
+  const pngPath = join(dir, "frame_0001.png")
+  try {
+    const ok = await runFfmpegFrames(absPath, dir, 1, [])
+    if (!ok) return null
+    return await renderImageAsSixel(pngPath, maxCols, maxRows)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
 }
 
 export async function renderAnimatedGifAsSixel(
