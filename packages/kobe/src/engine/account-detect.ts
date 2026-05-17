@@ -1,9 +1,9 @@
 /**
- * Read-only account detection for the two engines kobe drives:
- * `claude` (Anthropic) and `codex` (OpenAI).
+ * Read-only account detection for the engines kobe drives:
+ * `claude` (Anthropic), `codex` (OpenAI), and `gemini` (Google).
  *
  * The settings dialog's "Accounts" section calls these to show "is
- * `claude` / `codex` installed?" and "is there a local account?".
+ * `claude` / `codex` / `gemini` installed?" and "is there a local account?".
  * Future work (codex sub-login flows etc.) layers on top — the read
  * path stays the same, only the action set grows.
  *
@@ -22,6 +22,12 @@
  *         carries `email` and `https://api.openai.com/auth.chatgpt_plan_type`.
  *       - API-key login → `OPENAI_API_KEY` is a non-null string.
  *     Verified against the live file on Jackson's machine.
+ *
+ *   - **gemini**: `~/.gemini/oauth_creds.json` for Google login,
+ *     `GEMINI_API_KEY` for AI Studio API keys, and Vertex/ADC
+ *     environment variables for Vertex AI. The Gemini CLI docs describe
+ *     these three auth modes; local Google login caches credentials for
+ *     future sessions.
  *
  * The functions are pure — fs + env + binary discovery are injected
  * via {@link DetectDeps}, so tests pin every path and the production
@@ -42,6 +48,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local/binary"
 import { CodexBinaryNotFoundError, findCodexBinary } from "./codex-local/binary"
+import { GeminiBinaryNotFoundError, findGeminiBinary } from "./gemini-local/binary"
 
 export type ClaudeAccount =
   | {
@@ -54,6 +61,12 @@ export type ClaudeAccount =
   | { kind: "none" }
 
 export type CodexAccount = { kind: "chatgpt"; email: string; plan?: string } | { kind: "apikey" } | { kind: "none" }
+
+export type GeminiAccount =
+  | { kind: "google"; email?: string; authType?: string }
+  | { kind: "apikey" }
+  | { kind: "vertex"; project?: string; location?: string }
+  | { kind: "none" }
 
 export type BinaryStatus = { found: true; path: string } | { found: false; error: string }
 
@@ -71,6 +84,7 @@ export interface DetectDeps {
   home(): string
   findClaudeBinary(): Promise<string>
   findCodexBinary(): Promise<string>
+  findGeminiBinary(): Promise<string>
 }
 
 const defaultDeps: DetectDeps = {
@@ -97,6 +111,9 @@ const defaultDeps: DetectDeps = {
   findCodexBinary() {
     return findCodexBinary()
   },
+  findGeminiBinary() {
+    return findGeminiBinary()
+  },
 }
 
 /** Resolve the path to claude-code's global config (`~/.claude.json` by default). */
@@ -111,6 +128,16 @@ export function codexAuthPath(env: (k: string) => string | undefined, home: stri
   const override = env("CODEX_HOME")?.trim()
   const dir = override ?? path.join(home, ".codex")
   return path.join(dir, "auth.json")
+}
+
+/** Resolve the path to Gemini CLI's OAuth credential cache. */
+export function geminiOauthCredsPath(home: string): string {
+  return path.join(home, ".gemini", "oauth_creds.json")
+}
+
+/** Resolve the path to Gemini CLI's user settings file. */
+export function geminiSettingsPath(home: string): string {
+  return path.join(home, ".gemini", "settings.json")
 }
 
 /**
@@ -141,7 +168,11 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
     const p = await probe()
     return { found: true, path: p }
   } catch (err) {
-    if (err instanceof ClaudeBinaryNotFoundError || err instanceof CodexBinaryNotFoundError) {
+    if (
+      err instanceof ClaudeBinaryNotFoundError ||
+      err instanceof CodexBinaryNotFoundError ||
+      err instanceof GeminiBinaryNotFoundError
+    ) {
       return { found: false, error: "not found on PATH" }
     }
     return { found: false, error: err instanceof Error ? err.message : String(err) }
@@ -244,4 +275,101 @@ export async function detectCodexAccount(deps: DetectDeps = defaultDeps): Promis
     return { binary, account: { kind: "apikey" } }
   }
   return { binary, account: { kind: "none" } }
+}
+
+export async function detectGeminiAccount(deps: DetectDeps = defaultDeps): Promise<EngineAccountStatus<GeminiAccount>> {
+  const binary = await probeBinary(() => deps.findGeminiBinary())
+
+  const apiKey = deps.env("GEMINI_API_KEY")?.trim()
+  if (apiKey) return { binary, account: { kind: "apikey" } }
+
+  const useVertex = deps.env("GOOGLE_GENAI_USE_VERTEXAI")?.trim().toLowerCase()
+  const vertexProject = deps.env("GOOGLE_CLOUD_PROJECT")?.trim()
+  const vertexLocation = deps.env("GOOGLE_CLOUD_LOCATION")?.trim()
+  const vertexApiKey = deps.env("GOOGLE_API_KEY")?.trim()
+  const adcPath = deps.env("GOOGLE_APPLICATION_CREDENTIALS")?.trim()
+  if (useVertex === "true" || useVertex === "1" || vertexApiKey || adcPath) {
+    return {
+      binary,
+      account: {
+        kind: "vertex",
+        project: vertexProject || undefined,
+        location: vertexLocation || undefined,
+      },
+    }
+  }
+
+  let authType: string | undefined
+  const settingsPath = geminiSettingsPath(deps.home())
+  try {
+    const settingsRaw = deps.readFile(settingsPath)
+    if (settingsRaw !== null) {
+      const settings = JSON.parse(settingsRaw) as unknown
+      if (isRecord(settings)) {
+        const security = settings.security
+        const auth =
+          isRecord(security) && isRecord(security.auth)
+            ? security.auth
+            : isRecord(settings.auth)
+              ? settings.auth
+              : settings
+        const selectedType =
+          (isRecord(auth) && typeof auth.selectedType === "string" && auth.selectedType) ||
+          (typeof settings.selectedAuthType === "string" && settings.selectedAuthType)
+        if (selectedType) authType = selectedType
+      }
+    }
+  } catch {
+    // Settings are useful metadata, not the auth source. Credential
+    // parse/read errors below still surface as accountError.
+  }
+
+  const credsPath = geminiOauthCredsPath(deps.home())
+  let raw: string | null
+  try {
+    raw = deps.readFile(credsPath)
+  } catch (err) {
+    return {
+      binary,
+      account: { kind: "none" },
+      accountError: `read ${credsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+  if (raw === null) return { binary, account: { kind: "none" } }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (err) {
+    return {
+      binary,
+      account: { kind: "none" },
+      accountError: `parse ${credsPath}: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  const obj = isRecord(parsed) ? parsed : {}
+  const idToken = typeof obj.id_token === "string" ? obj.id_token : undefined
+  if (idToken) {
+    const payload = decodeJwtPayload(idToken)
+    if (!payload) {
+      return {
+        binary,
+        account: { kind: "none" },
+        accountError: "gemini id_token: malformed JWT",
+      }
+    }
+    const email = typeof payload.email === "string" ? payload.email : undefined
+    return { binary, account: { kind: "google", email, authType } }
+  }
+
+  const accessToken = typeof obj.access_token === "string" ? obj.access_token : undefined
+  const refreshToken = typeof obj.refresh_token === "string" ? obj.refresh_token : undefined
+  if (accessToken || refreshToken) return { binary, account: { kind: "google", authType } }
+
+  return { binary, account: { kind: "none" } }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v)
 }

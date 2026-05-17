@@ -422,7 +422,7 @@ test("approval — ExitPlanMode click-through approves + emits the synthetic res
   // prompt is actually visible to the user as a normal user-row. This
   // is the load-bearing assertion: it proves user.inject fired with
   // the right text, which is what the model would see on `--resume`.
-  await kobe.waitFor((s) => s.includes("Plan approved. Please proceed"), 5_000)
+  await kobe.waitFor((s) => s.replace(/\s+/g, "").includes("Pleaseproceedwiththeimplementationasoutlined"), 5_000)
 
   await kobe.exit()
 }, 60_000)
