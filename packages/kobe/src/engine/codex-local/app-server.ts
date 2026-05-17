@@ -54,6 +54,11 @@ export function spawnCodexAppServerTurn(opts: SpawnCodexAppServerTurnOpts): Spaw
     cwd: opts.cwd,
     env: { ...process.env, ...(opts.env ?? {}) },
     stdio: ["pipe", "pipe", "pipe"],
+    // Own process group so the shared `SessionRegistry.kill()` group
+    // signal reaches the app-server's children. Same rationale as the
+    // `codex exec` path in `spawn.ts` and the claude path — `stop()`
+    // is engine-agnostic and must reap the whole tree everywhere.
+    detached: true,
   }) as ChildProcessWithoutNullStreams
 
   const rpc = new AppServerRpc(proc, opts)
