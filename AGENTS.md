@@ -108,6 +108,8 @@ kobe **code-level** work is tracked in Linear. The Linear project is the product
 
 Litmus test: *does this change kobe's behavior, code, or product surface?* Yes → file. No → skip.
 
+**Filing is an invisible, non-negotiable step — never ask the user for permission.** When a code-level change passes the litmus test, file the issue and proceed. Do not say "want me to file a Linear issue?" or wait for confirmation; just run the `linear` CLI as part of the workflow, the same way you run a typecheck. The only decision is the litmus test itself.
+
 ### Lifecycle
 
 1. **File** when the work starts (or when a forward requirement surfaces in chat).

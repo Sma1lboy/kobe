@@ -186,10 +186,19 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     })
     if (result === undefined) return
     try {
+      // Do NOT pass `prompt` here. createTask forwards its whole input
+      // to the daemon's `task.spawn` RPC, and `task.spawn` fire-and-
+      // forget-runs the task the moment a prompt is present — with the
+      // task's DEFAULT model/vendor, since quick-fork seeds neither.
+      // That run races the explicit, correctly-configured runTask below
+      // (two concurrent first-allocations → two `git worktree add` on
+      // one task → daemon crash). The prompt is dispatched once, after
+      // setModel, via the runTask call at the end of this block —
+      // exactly how openNewTaskFlow sequences it.
       const created = await orchestrator.createTask({
         repo: source.repo,
         baseRef,
-        prompt: result.prompt,
+        title: result.prompt,
       })
       // Apply chosen model+effort/permission to the new task's default
       // tab before dispatching the run so the engine spawn uses the
