@@ -505,7 +505,7 @@ export function FileTree(props: FileTreeProps) {
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `1` / `2` / `3` switch from the keyboard. */}
-      <box flexDirection="row" gap={2} paddingBottom={1} flexShrink={0}>
+      <box flexDirection="row" gap={2} paddingBottom={0} flexShrink={0}>
         <For each={TABS}>
           {(t) => {
             const isActive = () => tab() === t
@@ -521,6 +521,16 @@ export function FileTree(props: FileTreeProps) {
             )
           }}
         </For>
+      </box>
+      {/* Hint row. Shows the most-used file-tree keybindings as a
+         compact muted line right under the tabs — analogous to the
+         "f file · d diff · ctrl+w close" strip in the preview pane.
+         Highlights `o` so users discover the OS-default-app opener
+         without having to remember it from the help dialog. */}
+      <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+        <text fg={theme.textMuted} wrapMode="none">
+          enter open · o open externally · r refresh
+        </text>
       </box>
 
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
