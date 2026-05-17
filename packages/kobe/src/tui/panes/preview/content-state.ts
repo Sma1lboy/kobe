@@ -26,6 +26,12 @@ import type { ImageDims, MediaKind } from "./media"
 import type { PreviewMode } from "./state"
 import type { XmlToken } from "./xml-highlight"
 
+export type SixelAnimationContent = {
+  readonly frames: readonly Buffer[]
+  readonly frameDelayMs: number
+  readonly sixelCells: { readonly cols: number; readonly rows: number }
+}
+
 /**
  * Snapshot of one media file's metadata, plus an optional rendered
  * character grid (still or animated) for inline-renderable types. We
@@ -60,11 +66,14 @@ export type MediaContent = {
    * time so the renderable can claim the right number of cells.
    */
   readonly sixelCells?: { readonly cols: number; readonly rows: number }
-  /** Animated frames + frame timing (animated GIFs). */
-  readonly animation?: {
-    readonly frames: readonly ChafaGrid[]
-    readonly frameDelayMs: number
-  }
+  /**
+   * Animated GIF frames. We render each frame as sixel so animations
+   * match the static-image path in size + quality (the old
+   * chafa-symbols grid path produced visibly different cell footprints
+   * and lower fidelity, which read as the image "popping in" at the
+   * wrong size when an animation started).
+   */
+  readonly animation?: SixelAnimationContent
 }
 
 export type ContentState =

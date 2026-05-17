@@ -43,10 +43,10 @@ import { Body } from "./body/Body"
 import { Header } from "./body/Header"
 import { TabBar } from "./body/TabBar"
 import { type ChafaGrid, renderImageAsSixel, renderImageWithChafa } from "./chafa-render"
-import type { ContentState } from "./content-state"
+import type { ContentState, SixelAnimationContent } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
-import { renderAnimatedGifWithChafa } from "./gif-frames"
+import { renderAnimatedGifAsSixel } from "./gif-frames"
 import { computeImageBudget, sixelPixelsToCells } from "./image-budget"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
@@ -338,10 +338,7 @@ export function Preview(props: PreviewProps) {
         },
       })
     }
-    const pushAnimation = (
-      probedDims: ImageDims,
-      animation: { frames: readonly ChafaGrid[]; frameDelayMs: number },
-    ) => {
+    const pushAnimation = (probedDims: ImageDims, animation: SixelAnimationContent) => {
       if (!stillActive()) return
       setContent({
         kind: "media",
@@ -358,13 +355,18 @@ export function Preview(props: PreviewProps) {
     }
 
     const { maxCols, maxRows } = computeImageBudget()
-    // GIFs go through the multi-frame path; a 1-frame GIF (yes, it's a
-    // thing) falls through to the static render below so MediaBody
-    // doesn't spin up a pointless animation timer.
-    if (mediaKind.kind === "image" && mediaKind.format === "gif") {
-      const seq = await renderAnimatedGifWithChafa(s.absPath, maxCols, maxRows)
+    // GIFs go through the multi-frame sixel path; a 1-frame GIF (yes,
+    // it's a thing) falls through to the static sixel below so
+    // MediaBody doesn't spin up a pointless animation timer.
+    if (mediaKind.kind === "image" && mediaKind.format === "gif" && detectSixelSupport()) {
+      const seq = await renderAnimatedGifAsSixel(s.absPath, maxCols, maxRows)
       if (seq && seq.frames.length > 1) {
-        pushAnimation(dims as ImageDims, seq)
+        const sixelCells = sixelPixelsToCells(seq.pixelWidth, seq.pixelHeight, maxCols, maxRows)
+        pushAnimation(dims as ImageDims, {
+          frames: seq.frames,
+          frameDelayMs: seq.frameDelayMs,
+          sixelCells,
+        })
         return
       }
     }

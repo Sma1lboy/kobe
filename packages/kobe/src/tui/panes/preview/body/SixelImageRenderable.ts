@@ -110,6 +110,34 @@ export class SixelImageRenderable extends Renderable {
     })
     this._lastEmitted = { x, y, w, h, sixel }
   }
+
+  /**
+   * When the renderable is removed from the tree (tab change, switch to
+   * a non-image file), overwrite the previously-painted sixel region
+   * with spaces so the host terminal evicts the pixels we wrote outside
+   * opentui's framebuffer. Without this, a sixel image lingers visually
+   * underneath whatever opentui renders next — the colored remnant the
+   * user sees as a "rainbow line" when switching from an image to an
+   * MP3 metadata card.
+   */
+  protected override destroySelf(): void {
+    const last = this._lastEmitted
+    if (last) {
+      const blank = " ".repeat(Math.max(1, last.w))
+      const chunks: string[] = ["\x1b7"]
+      for (let r = 0; r < last.h; r += 1) {
+        chunks.push(`\x1b[${last.y + 1 + r};${last.x + 1}H${blank}`)
+      }
+      chunks.push("\x1b8")
+      try {
+        process.stdout.write(chunks.join(""))
+      } catch {
+        // stdout might be closed during shutdown — swallow so we
+        // don't crash the renderer on teardown races.
+      }
+    }
+    super.destroySelf()
+  }
 }
 
 extend({ sixel_image: SixelImageRenderable })

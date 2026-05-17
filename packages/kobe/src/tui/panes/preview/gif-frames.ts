@@ -1,14 +1,16 @@
 /**
- * Render an animated GIF as a sequence of chafa-rendered character
- * grids. We shell out to ffmpeg to extract each frame as a PNG into a
- * scratch directory, run chafa on each in sequence, and clean up.
+ * Render an animated GIF as a sequence of sixel frames. We shell out
+ * to ffmpeg to extract each frame as a PNG into a scratch directory,
+ * run chafa --format=sixels on each in sequence, and clean up.
  *
- * Why per-frame PNGs rather than streaming raw RGBA into chafa:
- *   - chafa reads files; piping a concatenated PNG stream through stdin
- *     would still need us to split frames at the JS layer, which is
- *     more error-prone than letting ffmpeg own the splitting.
- *   - The scratch tmpdir is removed in a `finally` block so a partial
- *     failure (chafa crash on frame N) still cleans up.
+ * Why sixel per frame and not the chafa-symbols character grid:
+ *   - The static-image path uses sixel for pixel-perfect rendering;
+ *     keeping animated GIFs on the symbols path made them look
+ *     dramatically different (lower quality + larger cell footprint)
+ *     than the static preview right next to them.
+ *   - At ~10 fps the per-frame sixel write is ~10–100 KB of stdout
+ *     traffic, which the host terminal handles comfortably for a
+ *     short animation.
  *
  * Cap: {@link MAX_FRAMES} frames; longer animations are decimated by
  * letting ffmpeg sample at a matching fps. The MediaBody flip timer
@@ -19,18 +21,26 @@ import { spawn } from "node:child_process"
 import { mkdtemp, readdir, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { type ChafaGrid, renderImageWithChafa } from "./chafa-render"
+import { renderImageAsSixel } from "./chafa-render"
 
 /** Hard ceiling on animated-image frame count — keeps memory bounded. */
 const MAX_FRAMES = 60
 /** Lower bound on per-frame delay — anything faster looks like a stutter. */
 const MIN_FRAME_DELAY_MS = 33
 
-export async function renderAnimatedGifWithChafa(
+export type SixelAnimation = {
+  readonly frames: readonly Buffer[]
+  readonly frameDelayMs: number
+  /** Shared pixel dimensions for every frame — determined from frame 0. */
+  readonly pixelWidth: number
+  readonly pixelHeight: number
+}
+
+export async function renderAnimatedGifAsSixel(
   absPath: string,
   maxCols: number,
   maxRows: number,
-): Promise<{ frames: readonly ChafaGrid[]; frameDelayMs: number } | null> {
+): Promise<SixelAnimation | null> {
   if (maxCols <= 0 || maxRows <= 0) return null
   const timing = await probeGifTiming(absPath)
   if (!timing) return null
@@ -50,23 +60,26 @@ export async function renderAnimatedGifWithChafa(
     if (!ok) return null
     const files = (await readdir(dir)).filter((f) => f.endsWith(".png")).sort()
     if (files.length === 0) return null
-    const frames: ChafaGrid[] = []
+    const frames: Buffer[] = []
+    let pixelWidth = 0
+    let pixelHeight = 0
     for (const f of files) {
-      const grid = await renderImageWithChafa(join(dir, f), maxCols, maxRows)
-      if (!grid) return null
-      frames.push(grid)
+      const sixel = await renderImageAsSixel(join(dir, f), maxCols, maxRows)
+      if (!sixel) return null
+      if (pixelWidth === 0) {
+        pixelWidth = sixel.pixelWidth
+        pixelHeight = sixel.pixelHeight
+      }
+      frames.push(sixel.bytes)
     }
-    return { frames, frameDelayMs: Math.max(MIN_FRAME_DELAY_MS, effectiveDelay) }
+    return { frames, frameDelayMs: Math.max(MIN_FRAME_DELAY_MS, effectiveDelay), pixelWidth, pixelHeight }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
 }
 
 /**
- * Probe the GIF for total frame count and mean per-frame delay. Mirrors
- * the previous `probeFrameTiming` in `image-render.ts` — kept inline
- * here so the chafa pipeline doesn't reach back into a module we're
- * about to delete.
+ * Probe the GIF for total frame count and mean per-frame delay.
  */
 async function probeGifTiming(absPath: string): Promise<{ frameCount: number; frameDelayMs: number } | null> {
   return new Promise((resolve) => {

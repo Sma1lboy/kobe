@@ -20,6 +20,8 @@ import type { ContentState, MediaContent } from "../content-state"
 import { describeMediaKind, formatBytes, formatMtime } from "../format"
 import "./SixelImageRenderable"
 
+type SixelView = { sixel: Buffer; cells: { cols: number; rows: number } } | null
+
 export function MediaBody(props: { content: Accessor<ContentState> }) {
   const { theme } = useTheme()
   const media = createMemo<MediaContent | null>(() => {
@@ -82,14 +84,25 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
             },
           ),
         )
-        const currentGrid = createMemo<ChafaGrid | null>(() => {
+        // Both static images and animated GIFs land here as sixel —
+        // animated swaps the buffer each tick, static uses a single
+        // buffer that never changes. The renderable's diff guard
+        // keeps the per-frame stdout cost to one cursor + sixel write.
+        const currentSixel = createMemo<SixelView>(() => {
           const info = m()
-          if (info.animation) {
+          if (info.animation && info.animation.frames.length > 0) {
             const idx = frameIdx() % info.animation.frames.length
-            return info.animation.frames[idx]
+            return { sixel: info.animation.frames[idx], cells: info.animation.sixelCells }
           }
-          return info.grid ?? null
+          if (info.sixel && info.sixelCells) {
+            return { sixel: info.sixel, cells: info.sixelCells }
+          }
+          return null
         })
+        // Static-image character grid fallback for terminals that don't
+        // speak sixel. Animation always uses sixel (we won't enter the
+        // GIF chafa-symbols path anymore), so this is image-only.
+        const fallbackGrid = createMemo<ChafaGrid | null>(() => m().grid ?? null)
         return (
           <box paddingTop={1} paddingLeft={1} paddingRight={1} flexDirection="column">
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
@@ -97,18 +110,14 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
               <Show when={gridSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
             </text>
             <Show
-              when={m().sixel && m().sixelCells}
-              fallback={<Show when={currentGrid()}>{(grid) => <ChafaGridView grid={grid()} />}</Show>}
+              when={currentSixel()}
+              fallback={<Show when={fallbackGrid()}>{(grid) => <ChafaGridView grid={grid()} />}</Show>}
             >
-              {(_anchor) => {
-                const sixel = createMemo(() => m().sixel as Buffer)
-                const cells = createMemo(() => m().sixelCells as { cols: number; rows: number })
-                return (
-                  <box paddingTop={3} flexDirection="column" alignItems="center">
-                    <sixel_image sixel={sixel()} width={cells().cols} height={cells().rows} />
-                  </box>
-                )
-              }}
+              {(view) => (
+                <box paddingTop={3} flexDirection="column" alignItems="center">
+                  <sixel_image sixel={view().sixel} width={view().cells.cols} height={view().cells.rows} />
+                </box>
+              )}
             </Show>
             <Show when={!previewReady()}>
               <box paddingTop={1} flexDirection="column">
