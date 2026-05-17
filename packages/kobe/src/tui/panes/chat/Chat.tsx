@@ -396,16 +396,18 @@ export function Chat(props: ChatProps) {
   /**
    * Open the model picker for the active tab.
    *
-   * `forceVendorUnlock` skips the active-session vendor lock — used by
-   * the `/clear` path, which has just dropped the session but whose
-   * `sessionId: null` update arrives over the socket asynchronously, so
-   * `activeTabHasSession()` may still read stale `true` at call time.
+   * `forceVendorLock` pins the picker to the active tab's vendor even
+   * when no session is live — used by the `/clear` path. `/clear` is a
+   * reset of the chat tab, not an engine switch: the user should pick a
+   * model for the *same* engine, not jump to a different vendor. The
+   * session has just been dropped (so the default `activeTabHasSession`
+   * gate would unlock the vendor), hence the explicit force.
    */
-  async function chooseModel(forceVendorUnlock = false): Promise<void> {
+  async function chooseModel(forceVendorLock = false): Promise<void> {
     const id = props.taskId()
     if (!id) return
     const tabId = activeTabId() ?? undefined
-    const lockedVendor = !forceVendorUnlock && activeTabHasSession() ? activeVendor() : undefined
+    const lockedVendor = forceVendorLock || activeTabHasSession() ? activeVendor() : undefined
     const result = await ModelPicker.show(dialog, modelId(), modelEffort(), activeVendor(), lockedVendor)
     if (result === undefined) return
     await props.orchestrator.setModel(id, result.id, tabId, result.effort, result.vendor).catch((err: unknown) => {
