@@ -1,7 +1,18 @@
 /**
  * Render an animated GIF as a sequence of sixel frames. We shell out
- * to ffmpeg to extract each frame as a PNG into a scratch directory,
- * run chafa --format=sixels on each in sequence, and clean up.
+ * to ffmpeg to extract every frame as a PNG into a scratch directory,
+ * then run chafa --format=sixels on the resulting files with a
+ * {@link CHAFA_PARALLELISM}-way concurrency pool, and clean up the
+ * tmpdir afterwards.
+ *
+ * Two-stage progressive loading is wired in `Preview.tsx`:
+ *   1. {@link renderFirstGifFrameAsSixel} — single-frame ffmpeg + chafa
+ *      runs in ~700 ms and is pushed as a static `MediaContent.sixel`
+ *      so the GIF appears on screen quickly.
+ *   2. {@link renderAnimatedGifAsSixel} — full frame extraction +
+ *      parallel encoding (~1 s for a 45-frame GIF on a typical
+ *      4-core laptop) replaces the static snapshot with the full
+ *      animation buffer array.
  *
  * Why sixel per frame and not the chafa-symbols character grid:
  *   - The static-image path uses sixel for pixel-perfect rendering;

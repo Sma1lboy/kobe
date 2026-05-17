@@ -1,15 +1,24 @@
 /**
  * Render a `media` ContentState — metadata card plus, when available,
- * an inline image rendered via chafa into a colored character grid.
- * Animated GIFs flip frames on a timer.
+ * an inline image. Two rendering paths share this component:
+ *   - **sixel** (preferred): MediaContent carries raw escape bytes that
+ *     `<sixel_image>` writes directly to stdout outside opentui's
+ *     framebuffer. Static images and animated GIFs both ride this
+ *     path; animations swap the bytes prop on the renderable each
+ *     frame so the cell footprint stays constant.
+ *   - **chafa symbols** (fallback): MediaContent carries a ChafaGrid
+ *     of `{char, fg, bg}` cells rendered through normal text spans.
+ *     Used when the host terminal doesn't speak sixel.
  *
  * UX flow (VSCode-style collapse):
- *   - When `grid` / `animation` is set, the four-line Type/Size/Modified
- *     table collapses into a one-line muted subtitle on the path row.
+ *   - When the image is ready (sixel / grid / animation), the four-line
+ *     Type/Size/Modified table collapses into a one-line muted
+ *     subtitle on the path row.
  *   - When the file kind can't be previewed (PDF / video / audio /
  *     archive), or chafa hasn't finished yet, the full table renders
  *     with an absolute-path row and a "Preview not supported for X.
- *     Open externally." hint.
+ *     Open externally." hint. The file-tree pane's `o` key triggers
+ *     the OS-default-app open.
  */
 
 import { RGBA, TextAttributes } from "@opentui/core"

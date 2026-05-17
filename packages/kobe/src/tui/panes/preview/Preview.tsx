@@ -13,17 +13,24 @@
  *
  * This file is intentionally the *shell* — every sub-piece lives in a
  * sibling module:
- *   - `body/Header.tsx`     — path + mode badge bar
- *   - `body/TabBar.tsx`     — internal tab strip
- *   - `body/Body.tsx`       — Switch dispatcher over ContentState
- *   - `body/MediaBody.tsx`  — metadata card + inline chafa grid
+ *   - `body/Header.tsx`              — path + mode badge bar
+ *   - `body/TabBar.tsx`              — internal tab strip
+ *   - `body/Body.tsx`                — Switch dispatcher over ContentState
+ *   - `body/MediaBody.tsx`           — metadata card + inline sixel / chafa grid
+ *   - `body/SixelImageRenderable.ts` — custom Renderable that writes
+ *                                      sixel escapes outside opentui's
+ *                                      framebuffer
  *   - `body/XmlBody.tsx`, `body/LinesBody.tsx`, `body/ErrorBody.tsx`
- *   - `content-state.ts`    — ContentState + MediaContent types
- *   - `chafa-render.ts`     — chafa subprocess + ANSI parser → ChafaGrid
- *   - `gif-frames.ts`       — ffmpeg frame extraction + chafa-per-frame
- *   - `error-summary.ts`    — summarizePreviewError, looksBinary
- *   - `image-budget.ts`     — terminal-size-driven render budget
- *   - `format.ts`           — describeMediaKind / formatMtime / formatBytes
+ *   - `content-state.ts`             — ContentState + MediaContent types
+ *   - `chafa-render.ts`              — chafa subprocess (symbols + sixel)
+ *                                      and ANSI parser for the symbols path
+ *   - `gif-frames.ts`                — ffmpeg frame extraction + parallel
+ *                                      chafa-sixel per frame
+ *   - `svg-render.ts`                — rsvg-convert SVG → PNG → sixel
+ *   - `sixel-capability.ts`          — env-var-based sixel terminal detect
+ *   - `error-summary.ts`             — summarizePreviewError, looksBinary
+ *   - `image-budget.ts`              — terminal-size-driven render budget
+ *   - `format.ts`                    — describeMediaKind / formatMtime / formatBytes
  *
  * Imperative API: parent passes an `onOpen(api)` callback. We invoke it
  * once at mount with `{ open(path), close(path) }`. The parent (Stream H

@@ -1,31 +1,33 @@
 /**
- * Render an image into a colored character grid by shelling out to
- * `chafa` and parsing its ANSI output.
+ * Drive `chafa` for the two image rendering modes the preview pane
+ * supports: the **symbols** path (UTF-8 block / sextant / braille
+ * character art) and the **sixels** path (raw pixel escapes for
+ * Windows Terminal v1.22+, kitty, iTerm2, xterm, mlterm, WezTerm).
  *
- * Why chafa over the previous `drawSuperSampleBuffer` (quadrant) path:
- *   - opentui's super-sample renderer is hard-coded to 2×2 quadrant
- *     blocks — 4 sub-pixel colors per cell, fixed character set, and
- *     no terminal-graphics-protocol fallback (sixel / kitty / iTerm).
- *     The result was too coarse to read at preview sizes.
- *   - chafa picks from sextants (2×3), half-blocks, quadrants, dotted
- *     fills, and braille at the user's discretion, with proper
- *     dithering and perceptual color space — the typical "ANSI art"
- *     output is dramatically sharper for the same cell footprint.
- *   - chafa is one apt/winget install away on every platform we care
- *     about (Ubuntu, Debian, Arch, macOS via brew, Windows via winget).
- *     We probe at runtime and fall back to the metadata card on
- *     `command not found` — same shape as the ffmpeg gate.
+ * `renderImageWithChafa(absPath, maxCols, maxRows)` runs
+ * `--format=symbols` and parses chafa's ANSI output via
+ * {@link parseChafaOutput} into a {@link ChafaGrid} of `{char, fg, bg}`
+ * cells. The grid is rendered through opentui's regular text pipeline
+ * and is the fallback for terminals without sixel.
  *
- * Output discipline: we ask chafa for `--format=symbols --colors=full
- * -O 0` so each cell carries an explicit `\x1b[38;…;48;…m<glyph>\x1b[0m`
- * triple — easy to parse byte-by-byte, no optimization tricks like
- * skipping resets between same-color runs. Each line ends with `\n`.
+ * `renderImageAsSixel(absPath, maxCols, maxRows)` runs
+ * `--format=sixels --font-ratio=1/1` and returns the raw escape bytes
+ * plus the sixel raster's pixel dimensions (parsed from the
+ * `"Pan;Pad;Ph;Pv` raster attributes). The caller writes those bytes
+ * to stdout outside opentui's framebuffer via `SixelImageRenderable`.
  *
+ * `chafaAvailable()` probes once per process — both rendering modes
+ * gate on it so missing chafa falls back to the metadata card with
+ * the same shape as the ffmpeg gate.
+ *
+ * Output discipline for the symbols path: we ask chafa for
+ * `--colors=full -O 0` so each cell carries an explicit
+ * `\x1b[38;…;48;…m<glyph>\x1b[0m` triple — easy to parse byte-by-byte,
+ * no optimization tricks like skipping resets between same-color runs.
  * The parser walks UTF-8 bytes, tracks fg / bg / reverse state via CSI
  * SGR params, and emits one `ChafaCell` per visible grapheme. The
  * `\x1b[7m` reverse flag is collapsed at emit time (we swap fg ↔ bg);
- * chafa uses it for "solid color" cells where the glyph is a space and
- * fg fills the cell after the swap.
+ * chafa uses it for "solid color" cells where the glyph is a space.
  */
 
 import { spawn } from "node:child_process"
