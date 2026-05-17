@@ -16,17 +16,6 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.5.25] - 2026-05-17
 
-### Changed
-
-- **Sidebar task rows are legible at a glance** — a distinct glyph per status (`✓` done, `◐` in review, `○` backlog, `⊘` canceled, `✕` error), a rotating braille spinner while a task's engine is live (falling back to a static `●` when in progress but idle), and `+N` / `−N` diff counts split into green / red spans. All badges drawn bold (#58).
-
-### Fixed
-
-- **The daemon no longer dies silently on a stray async error** — it now runs with a crash net (`unhandledRejection` / `uncaughtException` handlers) that logs the failure and keeps serving, instead of any unhandled rejection from a fire-and-forget call instantly terminating the process with no trace. The detached daemon's stdout/stderr are redirected to `<KOBE_HOME>/.kobe/daemon.log` (was `/dev/null`), and fire-and-forget failures are tagged with their subsystem so the log points straight at the failing area (KOB-193).
-- **Tasks stop auto-marking themselves done** — a clean turn end flipped `task.status` to `done`, so the active sidebar filled up with tasks marked done. Turn end now rests at `in_progress`; `done` is reserved for an explicit archive. Legacy rows mismarked `done` self-heal to `in_progress` on load (#58).
-
-## [0.5.24] - 2026-05-17
-
 ### Added
 
 - Background-tasks manager — double-press `ctrl+b` to open a dialog listing every chat session running out of view across all tasks, with the run/needs-input state for each; press enter to jump straight to a session or `x` to interrupt it. A status-bar indicator shows the background count, and a one-line readout above the chat composer names the background runs as you type. Self-hides when nothing is running unattended. Mirrors Claude Code's background-task model and `ctrl+b` double-press.
@@ -34,10 +23,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Sidebar task rows are legible at a glance** — a distinct glyph per status (`✓` done, `◐` in review, `○` backlog, `⊘` canceled, `✕` error), a rotating braille spinner while a task's engine is live (falling back to a static `●` when in progress but idle), and `+N` / `−N` diff counts split into green / red spans. All badges drawn bold (#58).
 - **Queue edit control is a single-letter `[e]` chip** — the queued-prompt row's edit control was the spelled-out word `[edit]` while the send-now and cancel controls beside it were single-glyph chips; all three now share the same bracket-chip shape (KOB-182).
 
 ### Fixed
 
+- **The daemon no longer dies silently on a stray async error** — it now runs with a crash net (`unhandledRejection` / `uncaughtException` handlers) that logs the failure and keeps serving, instead of any unhandled rejection from a fire-and-forget call instantly terminating the process with no trace. The detached daemon's stdout/stderr are redirected to `<KOBE_HOME>/.kobe/daemon.log` (was `/dev/null`), and fire-and-forget failures are tagged with their subsystem so the log points straight at the failing area (KOB-193).
+- **Tasks stop auto-marking themselves done** — a clean turn end flipped `task.status` to `done`, so the active sidebar filled up with tasks marked done. Turn end now rests at `in_progress`; `done` is reserved for an explicit archive. Legacy rows mismarked `done` self-heal to `in_progress` on load (#58).
 - **Esc / interrupt now reaps the whole engine process tree** — engine subprocesses (`claude` and `codex`) spawn detached so the stop path signals the whole process group, killing the subagent and tool/sandbox children that a PID-only kill used to leave running. The registry slot is also freed synchronously, so a prompt sent right after an interrupt no longer collides with `SessionRegistry: duplicate sessionId` (KOB-178).
 - **`/clear` model picker stays on the current engine** — `/clear` resets the chat tab; it is not an engine switch. The post-clear model picker now pins to the active tab's vendor instead of letting you pick a different engine's model (KOB-178).
 - **Changelog dialog no longer garbles release notes** — GitHub release bodies arrive with CRLF line endings; the markdown parser now normalizes them so stray carriage returns stop rendering as garbage glyphs, and the trailing "Full release" link gains bottom padding so it no longer sits flush against the dialog border (KOB-179).
