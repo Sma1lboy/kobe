@@ -24,25 +24,53 @@
  * SIGKILL) still end the process.
  */
 
+/** Coerce an arbitrary thrown / rejected value into an Error so the
+ *  log always has something stack-shaped to print. */
+function toError(err: unknown): Error {
+  if (err instanceof Error) return err
+  let text: string
+  try {
+    text = typeof err === "string" ? err : JSON.stringify(err)
+  } catch {
+    text = String(err)
+  }
+  return new Error(text)
+}
+
 /** Render one crash-log line: ISO timestamp, kind, and full stack. */
 export function formatCrashEntry(
   kind: "uncaughtException" | "unhandledRejection",
   err: unknown,
   now: Date = new Date(),
 ): string {
-  let e: Error
-  if (err instanceof Error) {
-    e = err
-  } else {
-    let text: string
-    try {
-      text = typeof err === "string" ? err : JSON.stringify(err)
-    } catch {
-      text = String(err)
-    }
-    e = new Error(text)
-  }
+  const e = toError(err)
   return `[${now.toISOString()}] daemon ${kind}: ${e.stack ?? `${e.name}: ${e.message}`}\n`
+}
+
+/**
+ * Render a daemon error line tagged with the subsystem that caught it.
+ *
+ * Crash handlers ({@link formatCrashEntry}) are the last-resort net —
+ * they fire for whatever escaped, with no idea which part of the daemon
+ * was at fault. A `subsystem` tag (`plan-usage-poller`, `rc-bridge`,
+ * `daemon-shutdown`, …) attached at the catch site means a glance at
+ * `daemon.log` points straight at the failing area instead of just a
+ * raw stack.
+ */
+export function formatDaemonError(subsystem: string, err: unknown, now: Date = new Date()): string {
+  const e = toError(err)
+  return `[${now.toISOString()}] daemon error [${subsystem}]: ${e.stack ?? `${e.name}: ${e.message}`}\n`
+}
+
+/**
+ * Log a tagged daemon error to stderr — captured in `daemon.log` once
+ * the daemon is spawned with the log redirect. Use this in the `.catch`
+ * of any fire-and-forget (`void someAsync()`) daemon call so a failure
+ * is pinned to its subsystem rather than surfacing as an anonymous
+ * `unhandledRejection`.
+ */
+export function logDaemonError(subsystem: string, err: unknown): void {
+  process.stderr.write(formatDaemonError(subsystem, err))
 }
 
 let onRejection: ((reason: unknown) => void) | undefined

@@ -12,6 +12,7 @@
 
 import { fetchPlanUsage } from "../engine/claude-code-local/plan-usage.ts"
 import type { PlanUsage } from "../types/plan-usage.ts"
+import { logDaemonError } from "./crash-log.ts"
 
 const DEFAULT_INTERVAL_MS = 60_000
 
@@ -47,6 +48,13 @@ export function createPlanUsagePoller(options: PlanUsagePollerOptions): PlanUsag
         last = usage
         options.onUpdate(usage)
       }
+    } catch (err) {
+      // A poll failure (network, token read, claude API hiccup) is
+      // best-effort — keep the last snapshot and try again next tick.
+      // Catch HERE so the failure is logged against `plan-usage-poller`
+      // instead of escaping `void tick()` as an anonymous unhandled
+      // rejection that the crash net can only label generically.
+      logDaemonError("plan-usage-poller", err)
     } finally {
       inflight = false
     }

@@ -6,6 +6,7 @@ import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task, VendorId } from "../types/task.ts"
+import { logDaemonError } from "./crash-log.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
 import {
@@ -156,7 +157,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   async function stopSoon(): Promise<void> {
     await options.onStop?.()
     setTimeout(() => {
-      void serverApi.close()
+      serverApi.close().catch((err) => logDaemonError("daemon-shutdown", err))
     }, 0).unref()
   }
 

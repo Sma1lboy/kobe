@@ -41,6 +41,28 @@ describe("plan-usage-poller", () => {
     expect(poller.current()).toBe(null)
   })
 
+  it("survives a rejecting fetcher — refresh resolves, last snapshot kept", async () => {
+    // Regression: `tick()` had no catch, so a rejecting `fetcher`
+    // (network / token-read failure on the real poller) escaped
+    // `void tick()` as an unhandled rejection and killed the daemon.
+    // It must now swallow + log instead.
+    const seen: PlanUsage[] = []
+    let calls = 0
+    const poller = createPlanUsagePoller({
+      intervalMs: 60_000,
+      fetcher: async () => {
+        calls++
+        if (calls === 2) throw new Error("network down")
+        return snapshot(7)
+      },
+      onUpdate: (u) => seen.push(u),
+    })
+    await poller.refresh() // ok → snapshot(7)
+    await expect(poller.refresh()).resolves.toBeUndefined() // rejects internally, must not throw
+    expect(poller.current()?.fiveHour?.utilization).toBe(7) // last good snapshot retained
+    expect(seen).toHaveLength(1)
+  })
+
   it("does not overlap in-flight ticks", async () => {
     let inFlight = 0
     let maxConcurrent = 0

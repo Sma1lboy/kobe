@@ -12,8 +12,14 @@
  * listeners are never triggered.
  */
 
-import { formatCrashEntry, installDaemonCrashHandlers, resetDaemonCrashHandlersForTest } from "@/daemon/crash-log"
-import { afterEach, describe, expect, test } from "vitest"
+import {
+  formatCrashEntry,
+  formatDaemonError,
+  installDaemonCrashHandlers,
+  logDaemonError,
+  resetDaemonCrashHandlersForTest,
+} from "@/daemon/crash-log"
+import { afterEach, describe, expect, test, vi } from "vitest"
 
 afterEach(() => {
   resetDaemonCrashHandlersForTest()
@@ -39,6 +45,35 @@ describe("formatCrashEntry", () => {
     const circular: Record<string, unknown> = {}
     circular.self = circular
     expect(() => formatCrashEntry("unhandledRejection", circular)).not.toThrow()
+  })
+})
+
+describe("formatDaemonError", () => {
+  test("tags the line with the subsystem so daemon.log points at the failing area", () => {
+    const at = new Date("2026-05-17T12:00:00.000Z")
+    const line = formatDaemonError("plan-usage-poller", new Error("fetch failed"), at)
+    expect(line).toContain("2026-05-17T12:00:00.000Z")
+    expect(line).toContain("daemon error [plan-usage-poller]")
+    expect(line).toContain("fetch failed")
+    expect(line.endsWith("\n")).toBe(true)
+  })
+
+  test("coerces a non-Error reason into printable text", () => {
+    const line = formatDaemonError("rc-bridge", { code: "EPIPE" })
+    expect(line).toContain("daemon error [rc-bridge]")
+    expect(line).toContain("EPIPE")
+  })
+
+  test("logDaemonError writes the tagged line to stderr", () => {
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true)
+    try {
+      logDaemonError("daemon-shutdown", new Error("close hung"))
+      const written = spy.mock.calls.map((c) => String(c[0])).join("")
+      expect(written).toContain("daemon error [daemon-shutdown]")
+      expect(written).toContain("close hung")
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 
