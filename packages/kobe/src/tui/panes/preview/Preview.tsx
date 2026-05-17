@@ -133,6 +133,13 @@ export function Preview(props: PreviewProps) {
     const base = props.diffBase()
     const wt = props.worktreePath()
     if (!base || !wt) return
+    // Diff auto-upgrade only makes sense for code-ish files where a
+    // unified text diff carries information. Media types (image,
+    // video, pdf, audio, archive) go through the metadata card in
+    // either mode, and SVG is more useful as syntax-highlighted XML
+    // than as a text diff of its source. Stay in file mode for these.
+    const mediaKind = detectMediaKind(relPath)
+    if (mediaKind.kind !== "text") return
     void isPathChanged(wt, relPath).then((changed) => {
       if (!changed) return
       // Only flip if the user is still looking at this tab in default
