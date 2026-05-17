@@ -59,6 +59,7 @@ export {
   enqueuePrompt,
   queueIsFull,
   removeFromQueue,
+  setQueuePaused,
   updateQueueItem,
 } from "./queue.ts"
 
@@ -260,6 +261,15 @@ export interface ChatState {
    */
   readonly queue: readonly QueuedPrompt[]
   /**
+   * When true, the chat shell does NOT auto-drain {@link queue} as
+   * turns end — queued items sit until the user resumes (or promotes
+   * one with the per-row "send now" action, which bypasses the
+   * pause). Toggled from the composer's queue panel. Per-tab and
+   * survives remounts alongside the queue itself; resets to false on
+   * `/clear` and tab close.
+   */
+  readonly queuePaused: boolean
+  /**
    * Completed `!shell` interactions waiting to be injected into the
    * next regular user prompt as `<bash-input>` / `<bash-stdout>` /
    * `<bash-stderr>` XML. FIFO; drained on the next non-bash submit.
@@ -277,6 +287,7 @@ export function createInitialState(): ChatState {
     isStreaming: false,
     error: null,
     queue: [],
+    queuePaused: false,
   }
 }
 

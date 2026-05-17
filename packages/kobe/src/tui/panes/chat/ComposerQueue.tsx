@@ -15,6 +15,14 @@ const QUEUE_VISIBLE_CAP = 4
 
 export interface ComposerQueueProps {
   readonly queue: readonly ComposerQueuedItem[]
+  /**
+   * Whether auto-drain is paused. When true the panel swaps the
+   * head-row hint to `(paused)` and offers a resume toggle; the
+   * parent skips draining queued items as turns end.
+   */
+  readonly paused?: boolean
+  /** Toggle the queue-paused flag (pause / resume). */
+  readonly onTogglePause?: () => void
   readonly editingQueueId?: Accessor<string | null>
   readonly onEditQueued?: (id: string) => void
   readonly onSendQueuedNow?: (id: string) => void
@@ -43,8 +51,8 @@ export function ComposerQueue(props: ComposerQueueProps) {
                   <text fg={isEditing() ? theme.primary : theme.textMuted} attributes={TextAttributes.BOLD}>
                     ○
                   </text>
-                  <text fg={theme.textMuted} wrapMode="none">
-                    queued{idx() === 0 ? " (next)" : ""}:
+                  <text fg={props.paused ? theme.warning : theme.textMuted} wrapMode="none">
+                    queued{idx() === 0 ? (props.paused ? " (paused)" : " (next)") : ""}:
                   </text>
                   <Show when={entry.kind === "bash"}>
                     <text fg={theme.warning} wrapMode="none">
@@ -84,6 +92,22 @@ export function ComposerQueue(props: ComposerQueueProps) {
               +
             </text>
             <text fg={theme.textMuted}>{`… ${props.queue.length - QUEUE_VISIBLE_CAP} more queued`}</text>
+          </box>
+        </Show>
+        {/* Queue-level pause toggle. Deliberately the lowest-priority
+            affordance in the panel — a single muted row beneath the
+            queued items — so it never competes with the per-row
+            [edit]/[↑]/[x] actions. Reads `[resume]` in warning tone
+            while paused so the held state stays visible. */}
+        <Show when={props.onTogglePause}>
+          <box flexDirection="row" paddingTop={props.queue.length > QUEUE_VISIBLE_CAP ? 0 : 1}>
+            <text
+              fg={props.paused ? theme.warning : theme.textMuted}
+              attributes={props.paused ? TextAttributes.BOLD : undefined}
+              onMouseUp={() => props.onTogglePause?.()}
+            >
+              {props.paused ? "[resume queue] auto-drain paused" : "[pause queue]"}
+            </text>
           </box>
         </Show>
       </box>

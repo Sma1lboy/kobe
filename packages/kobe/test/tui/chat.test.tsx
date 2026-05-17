@@ -44,6 +44,7 @@ import {
   removeFromQueue,
   reset,
   setMessagesFromHistory,
+  setQueuePaused,
   updateQueueItem,
 } from "../../src/tui/panes/chat/store.ts"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "../../src/tui/panes/chat/tool-banners.ts"
@@ -199,6 +200,28 @@ describe("queue reducers", () => {
     const next = applyEvent(s, { type: "done" }, FIXED_TS)
     expect(next.isStreaming).toBe(false)
     expect(next.queue).toEqual(s.queue) // queue intact — drain happens at the chat-shell layer
+  })
+
+  test("createInitialState starts with queuePaused false", () => {
+    expect(createInitialState().queuePaused).toBe(false)
+  })
+
+  test("setQueuePaused flips the flag and leaves the queue + messages alone", () => {
+    let s = pushUser(createInitialState(), "user", FIXED_TS)
+    s = enqueuePrompt(s, "q1", FIXED_TS)
+    const paused = setQueuePaused(s, true)
+    expect(paused.queuePaused).toBe(true)
+    expect(paused.queue).toEqual(s.queue)
+    expect(paused.messages).toEqual(s.messages)
+    const resumed = setQueuePaused(paused, false)
+    expect(resumed.queuePaused).toBe(false)
+  })
+
+  test("setQueuePaused is identity-stable when the flag already holds the value", () => {
+    const s = createInitialState()
+    expect(setQueuePaused(s, false)).toBe(s)
+    const paused = setQueuePaused(s, true)
+    expect(setQueuePaused(paused, true)).toBe(paused)
   })
 })
 

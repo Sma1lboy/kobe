@@ -47,6 +47,8 @@ export interface ComposerViewProps {
   readonly slashWindow: DropdownWindow<ComposerSlashEntry>
   readonly slashCursor: number
   readonly queue: readonly QueuedComposerItem[]
+  readonly queuePaused: boolean
+  readonly onToggleQueuePause?: () => void
   readonly editingQueueId?: () => string | null
   readonly onEditQueued?: (id: string) => void
   readonly onSendQueuedNow?: (id: string) => void
@@ -99,6 +101,8 @@ export function ComposerView(props: ComposerViewProps) {
         >
           <ComposerQueue
             queue={props.queue}
+            paused={props.queuePaused}
+            onTogglePause={props.onToggleQueuePause}
             editingQueueId={props.editingQueueId}
             onEditQueued={props.onEditQueued}
             onSendQueuedNow={props.onSendQueuedNow}
