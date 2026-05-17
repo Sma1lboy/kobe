@@ -1,11 +1,13 @@
 /**
- * Half-block image rendering for the preview pane (KOB-14, slice 2).
+ * Pixel image decoding for the preview pane.
  *
  * Approach: shell out to `ffmpeg` to decode the image and resize it to
- * fit a target character grid, then return raw RGB bytes. The MediaBody
- * renderer turns each pair of pixel rows into one TUI row of `▀` (upper
- * half-block) characters where `fg` is the top pixel and `bg` is the
- * bottom pixel.
+ * fit a target pixel grid, then return raw RGBA bytes. The MediaBody
+ * hands the buffer to `PixelImageRenderable`, which calls opentui's
+ * native `drawSuperSampleBuffer` — the Zig backend picks the best
+ * available pixel protocol (sixel / kitty / iTerm) and falls back to
+ * supersampled half/quadrant blocks where the terminal can't render
+ * raw pixels.
  *
  * Why ffmpeg and not a JS decoder:
  *   - Already installed on the user's box (we checked).
@@ -14,37 +16,36 @@
  *   - Pure-JS alternatives (jimp, sharp) add hundreds of KB to MB of
  *     deps for a feature that's already gated on a binary we trust.
  *
- * Why half-block and not sixel / kitty / iTerm protocols:
- *   - opentui owns the screen buffer. Writing raw graphics escapes
- *     inside its frame races with the repaint loop — the image would
- *     vanish on every keystroke until we hooked into the lifecycle.
- *   - Half-blocks render through opentui's native `<text fg bg>` cells
- *     so the image becomes part of the renderable tree like any other
- *     widget. No bypass needed.
- *   - Works in every terminal that supports 24-bit color, not just
- *     WT 1.22+ / kitty / iTerm.
- *
  * Failure modes are absorbed: missing ffmpeg, decode error, or an
  * unparseable image returns null. The caller falls back to the
- * metadata card from slice 1.
+ * metadata card.
  */
 
 import { spawn } from "node:child_process"
 
-/** Aspect-ratio fudge factor — terminal cells are ~2× tall as wide. */
-const CELL_ASPECT = 2
+/**
+ * How many pixels we ask ffmpeg to scale into per terminal cell.
+ * `drawSuperSampleBuffer` accepts a high-resolution pixel buffer and
+ * the Zig backend picks the densest cell representation the terminal
+ * supports — sixel / kitty on modern terminals, quadrant / half-block
+ * fallback otherwise. Asking for 4×8 pixels per cell gives the backend
+ * enough resolution to look sharp on a sixel terminal without burning
+ * memory; older terminals downsample internally.
+ */
+const PIXELS_PER_CELL_X = 4
+const PIXELS_PER_CELL_Y = 8
 
-/** Hard ceilings — keep one preview from blowing through CPU + memory. */
-const MAX_COLS = 200
-const MAX_ROWS = 100
+/** Hard ceilings on the resulting pixel grid — keep memory bounded. */
+const MAX_PIXEL_COLS = 800
+const MAX_PIXEL_ROWS = 800
 
 export type DecodedImage = {
-  /** Final image width in pixels (also character columns in the rendered output). */
+  /** Final image width in pixels. */
   readonly cols: number
-  /** Final image height in pixels (always `rows * 2`, since each char holds 2 pixels). */
+  /** Final image height in pixels. */
   readonly pixelRows: number
-  /** Tightly packed RGB bytes — cols * pixelRows * 3 of them. */
-  readonly rgb: Uint8Array
+  /** Tightly packed RGBA bytes — cols * pixelRows * 4 of them. */
+  readonly rgba: Uint8Array
 }
 
 /**
@@ -70,13 +71,18 @@ const MAX_FRAMES = 60
 const MIN_FRAME_DELAY_MS = 33
 
 /**
- * Pick output dimensions that fit `(maxCols, maxRows)` character cells
- * while preserving the source aspect ratio (taking the 2:1 cell aspect
- * into account so the rendered image isn't squished vertically).
+ * Pick output dimensions in *pixels* that fit `(maxCols, maxRows)`
+ * character cells while preserving the source aspect ratio.
  *
- * `maxRows` is the TUI row budget; we double it to get the available
- * pixel rows, then scale uniformly. The returned `pixelRows` is always
- * even — the half-block renderer pairs them up.
+ * We oversample each cell by `(PIXELS_PER_CELL_X, PIXELS_PER_CELL_Y)`
+ * so the Zig backend has real pixels to feed into sixel / kitty
+ * graphics protocols. Output is clamped to {@link MAX_PIXEL_COLS} /
+ * {@link MAX_PIXEL_ROWS} so a single preview can't blow through
+ * memory.
+ *
+ * The `cols` field here is *pixel columns* (not character columns) —
+ * the renderable lays itself out in cells using
+ * `cols / PIXELS_PER_CELL_X` and `pixelRows / PIXELS_PER_CELL_Y`.
  */
 export function computeTargetDims(
   srcWidth: number,
@@ -85,18 +91,21 @@ export function computeTargetDims(
   maxRows: number,
 ): { cols: number; pixelRows: number } {
   if (srcWidth <= 0 || srcHeight <= 0) return { cols: 0, pixelRows: 0 }
-  const cols = Math.max(1, Math.min(maxCols, MAX_COLS))
-  const pxRowsBudget = Math.max(2, Math.min(maxRows, MAX_ROWS) * CELL_ASPECT)
-  // Scale uniformly; each "cell pixel" is 1 col wide and 1 image-pixel tall.
-  const scaleW = cols / srcWidth
+  const pxColsBudget = Math.max(PIXELS_PER_CELL_X, Math.min(maxCols * PIXELS_PER_CELL_X, MAX_PIXEL_COLS))
+  const pxRowsBudget = Math.max(PIXELS_PER_CELL_Y, Math.min(maxRows * PIXELS_PER_CELL_Y, MAX_PIXEL_ROWS))
+  const scaleW = pxColsBudget / srcWidth
   const scaleH = pxRowsBudget / srcHeight
   const scale = Math.min(scaleW, scaleH)
-  const fittedCols = Math.max(1, Math.floor(srcWidth * scale))
-  const rawPxRows = Math.max(2, Math.floor(srcHeight * scale))
-  // Force even pixel rows so the half-block pairing is clean.
-  const pixelRows = rawPxRows - (rawPxRows % 2)
-  return { cols: fittedCols, pixelRows: Math.max(2, pixelRows) }
+  const rawCols = Math.max(1, Math.floor(srcWidth * scale))
+  const rawRows = Math.max(1, Math.floor(srcHeight * scale))
+  // Snap to the cell grid so layout integer-math stays clean.
+  const cols = Math.max(PIXELS_PER_CELL_X, rawCols - (rawCols % PIXELS_PER_CELL_X))
+  const pixelRows = Math.max(PIXELS_PER_CELL_Y, rawRows - (rawRows % PIXELS_PER_CELL_Y))
+  return { cols, pixelRows }
 }
+
+/** Pixel-per-cell factors, so renderers can convert pixel dims back to cells. */
+export const PIXELS_PER_CELL = { x: PIXELS_PER_CELL_X, y: PIXELS_PER_CELL_Y } as const
 
 type ProbedFfmpeg = { available: boolean }
 let probed: ProbedFfmpeg | null = null
@@ -124,17 +133,8 @@ export function _resetFfmpegProbeCache(): void {
 }
 
 /**
- * Decode `absPath` to RGB bytes at the chosen target size. Returns null
- * on any failure — the caller renders the metadata card fallback.
- *
- * `targetCols` and `targetPxRows` come from {@link computeTargetDims}.
- * We pass them verbatim into ffmpeg's `scale=W:H` filter, so the output
- * stream is exactly `cols * pixelRows * 3` bytes — no padding, no
- * variable-length frames, easy to slice.
- */
-/**
  * Run ffmpeg with the supplied argv (which must already specify the
- * input, any seek flags, the `scale` filter, `rgb24` pixel format, and
+ * input, any seek flags, the `scale` filter, the pixel format, and
  * `-f rawvideo -` as the destination) and read exactly `expectedBytes`
  * of stdout. Returns null on any deviation: spawn failure, undersized
  * output, oversized output (we kill the process), or non-zero exit.
@@ -172,6 +172,15 @@ function runFfmpegRawvideo(args: readonly string[], expectedBytes: number): Prom
   })
 }
 
+/**
+ * Decode `absPath` to RGBA bytes at the chosen target size. Returns
+ * `null` on any failure — the caller renders the metadata card fallback.
+ *
+ * `targetCols` and `targetPxRows` come from {@link computeTargetDims}.
+ * We pass them verbatim into ffmpeg's `scale=W:H` filter, so the output
+ * stream is exactly `cols * pixelRows * 4` bytes — no padding, no
+ * variable-length frames, easy to slice.
+ */
 export async function decodeImage(
   absPath: string,
   targetCols: number,
@@ -189,17 +198,17 @@ export async function decodeImage(
     "-frames:v",
     "1",
     "-pix_fmt",
-    "rgb24",
+    "rgba",
     "-f",
     "rawvideo",
     "-",
   ]
-  const buf = await runFfmpegRawvideo(args, targetCols * targetPxRows * 3)
+  const buf = await runFfmpegRawvideo(args, targetCols * targetPxRows * 4)
   if (!buf) return null
   return {
     cols: targetCols,
     pixelRows: targetPxRows,
-    rgb: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+    rgba: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
   }
 }
 
@@ -262,13 +271,14 @@ export async function probeFrameTiming(absPath: string): Promise<{ frameCount: n
 
 /**
  * Decode every frame of `absPath` (typically an animated GIF) into a
- * fixed-size pixel grid. The output stream is `frameCount` × `cols` ×
- * `pxRows` × 3 bytes; we slice it into per-frame `Uint8Array`s.
+ * fixed-size RGBA pixel grid. The output stream is `frameCount` ×
+ * `cols` × `pxRows` × 4 bytes; we slice it into per-frame
+ * `Uint8Array`s.
  *
- * If `frameCount * cols * pxRows * 3` would exceed the memory cap we
- * leave the result at MAX_FRAMES frames by letting ffmpeg sample at a
- * matching fps via `-vf "fps=…"`. The MediaBody timer cycles through
- * whatever count we end up with at `frameDelayMs` cadence.
+ * If `frameCount` exceeds {@link MAX_FRAMES} we cap by letting ffmpeg
+ * sample at a matching fps via `-vf "fps=…"`. The MediaBody timer
+ * cycles through whatever count we end up with at `frameDelayMs`
+ * cadence.
  */
 export async function decodeAnimatedImage(
   absPath: string,
@@ -301,12 +311,12 @@ export async function decodeAnimatedImage(
     "-frames:v",
     String(cappedFrames),
     "-pix_fmt",
-    "rgb24",
+    "rgba",
     "-f",
     "rawvideo",
     "-",
   ]
-  const frameBytes = targetCols * targetPxRows * 3
+  const frameBytes = targetCols * targetPxRows * 4
   const buf = await runFfmpegRawvideo(args, frameBytes * cappedFrames)
   if (!buf) return null
   const frames: Uint8Array[] = []

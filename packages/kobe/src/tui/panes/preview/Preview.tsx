@@ -17,8 +17,9 @@
  *   - `body/TabBar.tsx`     — internal tab strip
  *   - `body/Body.tsx`       — Switch dispatcher over ContentState
  *   - `body/MediaBody.tsx`  — metadata card + inline image
- *   - `body/HalfBlockImage.tsx`, `body/XmlBody.tsx`,
- *     `body/LinesBody.tsx`, `body/ErrorBody.tsx`
+ *   - `body/PixelImageRenderable.ts` — custom renderable that paints
+ *     the decoded RGBA buffer via `drawSuperSampleBuffer`
+ *   - `body/XmlBody.tsx`, `body/LinesBody.tsx`, `body/ErrorBody.tsx`
  *   - `content-state.ts`    — ContentState + MediaContent types
  *   - `error-summary.ts`    — summarizePreviewError, looksBinary
  *   - `image-budget.ts`     — terminal-size-driven render budget

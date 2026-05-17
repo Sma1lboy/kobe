@@ -1,8 +1,9 @@
 /**
  * Render a `media` ContentState — metadata card plus, when available,
- * an inline half-block image. Animated GIFs flip frames on a timer.
+ * an inline true-pixel image painted through `PixelImageRenderable`.
+ * Animated GIFs flip frames on a timer.
  *
- * UX flow (KOB-14, VSCode-style collapse):
+ * UX flow (VSCode-style collapse):
  *   - When `decoded` / `animation` is set, the four-line Type/Size/Modified
  *     table collapses into a one-line muted subtitle on the path row.
  *   - When the file kind can't be previewed (PDF / video / audio /
@@ -16,8 +17,8 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, o
 import { useTheme } from "../../../context/theme"
 import type { ContentState, MediaContent } from "../content-state"
 import { describeMediaKind, formatBytes, formatMtime } from "../format"
-import type { DecodedImage } from "../image-render"
-import { HalfBlockImage } from "./HalfBlockImage"
+import { type DecodedImage, PIXELS_PER_CELL } from "../image-render"
+import "./PixelImageRenderable"
 
 export function MediaBody(props: { content: Accessor<ContentState> }) {
   const { theme } = useTheme()
@@ -89,7 +90,7 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
             return {
               cols: info.animation.cols,
               pixelRows: info.animation.pixelRows,
-              rgb: info.animation.frames[idx],
+              rgba: info.animation.frames[idx],
             }
           }
           return info.decoded ?? null
@@ -101,11 +102,25 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
               <Show when={decodedSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
             </text>
             <Show when={currentDecoded()}>
-              {(decoded) => (
-                <box paddingTop={1} flexDirection="column">
-                  <HalfBlockImage decoded={decoded()} />
-                </box>
-              )}
+              {(decoded) => {
+                // Pixel buffer dims are multiples of PIXELS_PER_CELL.{x,y};
+                // converting back gives the cell footprint the renderable
+                // needs to claim in the layout. We pin both width and height
+                // so flex doesn't compress the image.
+                const cellCols = createMemo(() => Math.ceil(decoded().cols / PIXELS_PER_CELL.x))
+                const cellRows = createMemo(() => Math.ceil(decoded().pixelRows / PIXELS_PER_CELL.y))
+                return (
+                  <box paddingTop={1} flexDirection="column">
+                    <pixel_image
+                      pixels={decoded().rgba}
+                      pixelCols={decoded().cols}
+                      pixelRows={decoded().pixelRows}
+                      width={cellCols()}
+                      height={cellRows()}
+                    />
+                  </box>
+                )
+              }}
             </Show>
             <Show when={!previewReady()}>
               <box paddingTop={1} flexDirection="column">
