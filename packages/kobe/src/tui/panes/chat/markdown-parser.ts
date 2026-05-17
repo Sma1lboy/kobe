@@ -127,7 +127,12 @@ function extractTask(text: string): { checked: boolean; rest: string } | null {
  * Blank lines separate paragraphs.
  */
 export function parseBlocks(src: string): Block[] {
-  const lines = src.split("\n")
+  // Normalize CRLF / lone CR first. GitHub release bodies (the update
+  // dialog's "What's new" source) come back with `\r\n` endings; a
+  // stray `\r` left on a line renders as a garbage glyph in opentui's
+  // text layer. Strip it once here so every block/inline pass downstream
+  // sees clean `\n`-delimited text.
+  const lines = src.replace(/\r\n?/g, "\n").split("\n")
   const blocks: Block[] = []
   let i = 0
   while (i < lines.length) {

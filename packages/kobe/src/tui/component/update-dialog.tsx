@@ -53,7 +53,7 @@ export function UpdateDialog(props: UpdateDialogProps): JSXElement {
   const fallbackUrl = () => releasePageUrl(selectedVersion())
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       {/* Title row + esc dismiss. */}
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
