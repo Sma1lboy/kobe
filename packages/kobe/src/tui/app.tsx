@@ -47,7 +47,6 @@ import { ResizableEdge } from "./component/resizable-edge"
 import { StatusBar } from "./component/status-bar"
 import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
-import { activeTaskRepoBranchLabel } from "./component/top-bar-helpers"
 import { CommandPaletteProvider, useCommandPalette } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
@@ -620,7 +619,7 @@ function Shell(props: AppDeps) {
           <PaneHeader
             title="WORKSPACE"
             ordinal="j"
-            subtitle={activeTaskRepoBranchLabel(activeTask())}
+            subtitle={activeTask()?.title ?? "no task"}
             asideRight={workspaceAsideRight()}
             focused={focusedPane() === "workspace"}
           />
