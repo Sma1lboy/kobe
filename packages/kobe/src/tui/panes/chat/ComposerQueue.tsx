@@ -56,8 +56,13 @@ export function ComposerQueue(props: ComposerQueueProps) {
                   </box>
                 </box>
                 <Show when={isPrompt}>
+                  {/* Single-letter chip — consistent with the `[↑]` send-now
+                      and `[x]` cancel chips on the same row. Pure ASCII so it
+                      renders identically everywhere (the `✎` pencil dingbat
+                      rendered thin/ugly across terminals); `e` mirrors `x`'s
+                      letter-mnemonic shape. */}
                   <text fg={theme.primary} attributes={TextAttributes.BOLD} onMouseUp={onRowEdit}>
-                    [edit]
+                    [e]
                   </text>
                 </Show>
                 <text
