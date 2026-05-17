@@ -10,6 +10,7 @@ import { composerKeyBindings } from "./composer/keybindings"
 import type { MentionMatch } from "./composer/mention"
 import type { PreviewablePathRef } from "./composer/path-preview"
 import { resolvePlaceholder } from "./composer/placeholder"
+import { formatSlashDescription } from "./composer/slash-description"
 
 const COMPOSER_MAX_LINES = 8
 const COMPOSER_MIN_LINES = 1
@@ -269,6 +270,7 @@ function SlashDropdown(props: {
           {(entry, i) => {
             const absoluteIndex = () => props.window.start + i()
             const active = () => absoluteIndex() === props.cursor
+            const description = () => formatSlashDescription(entry.description)
             return (
               <box flexDirection="row" gap={2}>
                 <text
@@ -284,9 +286,9 @@ function SlashDropdown(props: {
                     user
                   </text>
                 </Show>
-                <Show when={entry.description}>
+                <Show when={description()}>
                   <text fg={theme.textMuted} wrapMode="none">
-                    {entry.description}
+                    {description()}
                   </text>
                 </Show>
               </box>
