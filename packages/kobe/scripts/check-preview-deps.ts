@@ -32,7 +32,8 @@ const DEPS: readonly Dep[] = [
 ]
 
 const INSTALL_HINTS: Readonly<Record<string, string>> = {
-  linux: "sudo apt install chafa ffmpeg librsvg2-bin   # Debian/Ubuntu\n  sudo dnf install chafa ffmpeg librsvg2-tools  # Fedora\n  sudo pacman -S chafa ffmpeg librsvg          # Arch",
+  linux:
+    "sudo apt install chafa ffmpeg librsvg2-bin   # Debian/Ubuntu\n  sudo dnf install chafa ffmpeg librsvg2-tools  # Fedora\n  sudo pacman -S chafa ffmpeg librsvg          # Arch",
   darwin: "brew install chafa ffmpeg librsvg",
   win32: "winget install hpjansson.chafa\n  winget install Gyan.FFmpeg\n  winget install GNOME.Librsvg  # optional",
 }
@@ -56,9 +57,7 @@ const C = {
 
 async function main(): Promise<void> {
   if (process.env.CI || process.env.KOBE_SKIP_DEP_CHECK === "1") return
-  const results = await Promise.all(
-    DEPS.map(async (d) => ({ ...d, present: await hasBin(d.bin, d.versionArg) })),
-  )
+  const results = await Promise.all(DEPS.map(async (d) => ({ ...d, present: await hasBin(d.bin, d.versionArg) })))
   const missing = results.filter((r) => !r.present)
   if (missing.length === 0) return
 
