@@ -182,20 +182,36 @@ export function Chat(props: ChatProps) {
   const patchActiveState = session.patchActiveState
   const patchStateForTab = session.patchStateForTab
 
+  const tasksAcc = props.orchestrator.tasksSignal()
+  const activeCommandScope = createMemo(() => {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    const task = taskId ? tasksAcc().find((t) => t.id === taskId) : undefined
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    return {
+      taskId,
+      tabId,
+      vendor: tab?.vendor ?? task?.vendor ?? "claude",
+    }
+  })
+  let commandRequestSeq = 0
+
   createEffect(
-    on(
-      () => ({ taskId: props.taskId(), tabId: activeTabId() }),
-      ({ taskId, tabId }) => {
-        if (!taskId || !tabId) {
-          setEngineCommands([])
-          return
-        }
-        props.orchestrator
-          .listCommandsForTab(taskId, tabId)
-          .then(setEngineCommands)
-          .catch(() => setEngineCommands([]))
-      },
-    ),
+    on(activeCommandScope, ({ taskId, tabId }) => {
+      const seq = ++commandRequestSeq
+      if (!taskId || !tabId) {
+        setEngineCommands([])
+        return
+      }
+      props.orchestrator
+        .listCommandsForTab(taskId, tabId)
+        .then((commands) => {
+          if (seq === commandRequestSeq) setEngineCommands(commands)
+        })
+        .catch(() => {
+          if (seq === commandRequestSeq) setEngineCommands([])
+        })
+    }),
   )
 
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
@@ -214,8 +230,6 @@ export function Chat(props: ChatProps) {
     const present = activeState().queue.some((q) => q.id === id)
     if (!present) setEditingQueueId(null)
   })
-
-  const tasksAcc = props.orchestrator.tasksSignal()
 
   // Active task's repo root (the worktree's parent project, NOT the
   // worktree itself). Threaded to Composer for KOB-157 persistence —

@@ -18,6 +18,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Make chat slash commands engine-owned: Claude tabs keep Claude Code commands/skills, while Codex tabs surface Codex skills with Codex-compatible `$skill` invocation.
 - Keep chat slash command names visible before truncating descriptions so long Codex skill summaries do not crowd the composer.
+- Refresh chat slash commands when an unstarted tab switches engines so Codex and Claude command lists do not stick across model changes.
 - Hide the chat topbar session id label so internal engine ids no longer show in normal use.
 
 ## [0.5.3] - 2026-05-16
