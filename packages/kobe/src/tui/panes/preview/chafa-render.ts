@@ -110,25 +110,69 @@ export async function renderImageWithChafa(
   return parseChafaOutput(out)
 }
 
+export type SixelResult = {
+  /** Raw sixel escape bytes — ready to write at the target cursor position. */
+  readonly bytes: Buffer
+  /** Image pixel dimensions extracted from the sixel raster attributes. */
+  readonly pixelWidth: number
+  readonly pixelHeight: number
+}
+
+/**
+ * Sixel raster attributes follow the DCS Pq with the format
+ * `"Pan;Pad;Ph;Pv` (US ASCII `"` then 4 decimal params separated by
+ * `;`). Pan/Pad are the pixel aspect numerator / denominator (rarely
+ * used); Ph and Pv are the image's pixel width and height. We grab
+ * Ph/Pv so the renderable can convert to a WT-cell footprint using
+ * an assumed cell pixel size.
+ */
+function parseSixelRasterDims(buf: Buffer): { pixelWidth: number; pixelHeight: number } | null {
+  // Find DCS Pq — `\x1bP...q` — then look for the raster attr starting
+  // with `"`. Search a short window (a few hundred bytes is plenty).
+  const window = buf.subarray(0, Math.min(512, buf.length)).toString("latin1")
+  const dcsIdx = window.indexOf("\x1bP")
+  if (dcsIdx < 0) return null
+  const qIdx = window.indexOf("q", dcsIdx)
+  if (qIdx < 0) return null
+  const rest = window.slice(qIdx + 1)
+  const m = rest.match(/^"(\d+);(\d+);(\d+);(\d+)/)
+  if (!m) return null
+  const pixelWidth = Number.parseInt(m[3], 10)
+  const pixelHeight = Number.parseInt(m[4], 10)
+  if (!Number.isFinite(pixelWidth) || !Number.isFinite(pixelHeight)) return null
+  return { pixelWidth, pixelHeight }
+}
+
 /**
  * Render `absPath` as a sixel escape sequence sized to fit within
- * `maxCols` × `maxRows` cells. Returns the raw bytes — the caller is
- * responsible for writing them to stdout at the right cursor position
- * and at the right point in opentui's render cycle (see
- * `SixelImageRenderable`). Returns `null` on any failure.
+ * `maxCols` × `maxRows` cells. Returns the raw bytes plus the image's
+ * actual pixel dimensions (extracted from the sixel raster attributes)
+ * so the caller can compute the WT-cell footprint accurately. Returns
+ * `null` on any failure.
  *
  * Sixel resolution is pixels per cell, so the upper-bound cell area
  * translates to a far higher pixel count than the symbols path —
  * Windows Terminal v1.22+, kitty, xterm, mlterm, and iTerm2 all
  * render real pixels for this content.
  */
-export async function renderImageAsSixel(absPath: string, maxCols: number, maxRows: number): Promise<Buffer | null> {
+export async function renderImageAsSixel(
+  absPath: string,
+  maxCols: number,
+  maxRows: number,
+): Promise<SixelResult | null> {
   if (maxCols <= 0 || maxRows <= 0) return null
   if (!(await chafaAvailable())) return null
   const args = [
     "--format=sixels",
     "--colors=full",
     "--color-space=din99d",
+    // For sixel output, chafa's default --font-ratio=1/2 inserts an
+    // unwanted vertical squash: sixel pixels render at 1:1 screen
+    // pixels (not cell-relative), so the cell-aspect compensation
+    // chafa applies for symbols mode is wrong here and makes images
+    // look ~2x flatter than the source. Force 1/1 so the output's
+    // aspect matches the input.
+    "--font-ratio=1/1",
     `--size=${maxCols}x${maxRows}`,
     "-w",
     "9",
@@ -136,7 +180,9 @@ export async function renderImageAsSixel(absPath: string, maxCols: number, maxRo
   ]
   const out = await runChafa(args)
   if (!out || out.length === 0) return null
-  return out
+  const dims = parseSixelRasterDims(out)
+  if (!dims) return null
+  return { bytes: out, pixelWidth: dims.pixelWidth, pixelHeight: dims.pixelHeight }
 }
 
 function runChafa(args: readonly string[]): Promise<Buffer | null> {

@@ -29,41 +29,31 @@ export function computeImageBudget(): { maxCols: number; maxRows: number } {
 }
 
 /**
- * chafa's default font ratio is `1/2` — it assumes each terminal cell
- * is twice as tall as wide. Windows Terminal, kitty, iTerm2, GNOME
- * Terminal all default to fonts near this ratio. If the user runs a
- * very different font we'd want to detect it via CSI 14 t, but that
- * pulls in a stdin handshake that fights opentui's own init — punt
- * for now.
+ * Approximate Windows Terminal Cascadia Mono cell pixel size at the
+ * default font size. Real terminals vary (kitty / iTerm at different
+ * font sizes can be ~8×16 to ~14×30), but a fixed assumption gives a
+ * far better cell-footprint prediction than chafa's default font-ratio
+ * 1/2 (which translates to a square 8×8 cell internally for sixel
+ * sizing). Querying CSI 14 t at runtime would be more accurate but
+ * fights opentui's own startup handshake.
  */
-const CHAFA_FONT_RATIO = 0.5
+const ASSUMED_CELL_PX_W = 10
+const ASSUMED_CELL_PX_H = 22
 
 /**
- * Predict the cell footprint chafa will actually fill when handed an
- * image of `dims` pixels at a `(maxCols × maxRows)` cell budget.
- *
- * chafa preserves the source aspect ratio, so it shrinks one axis to
- * fit. The reverse calculation: convert the cell budget into a
- * font-ratio-aware pixel rectangle, scale-fit the source into that
- * rectangle, then convert back to cells. Used by the sixel path so
- * the renderable claims only the cells the rendered image occupies,
- * not the full budget rectangle (which would surround the image with
- * a too-large black margin).
+ * Convert chafa's sixel pixel output to the WT-cell footprint the
+ * rendered image will occupy. The pixel dims come from the sixel
+ * raster attributes; we divide by the assumed cell pixel size and
+ * clamp to the budget so the renderable doesn't claim more cells
+ * than the preview pane reserved.
  */
-export function fitImageToBudget(
-  dims: { width: number; height: number },
+export function sixelPixelsToCells(
+  pixelWidth: number,
+  pixelHeight: number,
   maxCols: number,
   maxRows: number,
 ): { cols: number; rows: number } {
-  if (dims.width <= 0 || dims.height <= 0) return { cols: maxCols, rows: maxRows }
-  // Pixel rectangle implied by the cell budget (1 cell-width = 1 unit,
-  // 1 cell-height = 1 / CHAFA_FONT_RATIO units).
-  const budgetWidth = maxCols
-  const budgetHeight = maxRows / CHAFA_FONT_RATIO
-  const scale = Math.min(budgetWidth / dims.width, budgetHeight / dims.height)
-  const fittedWidth = dims.width * scale
-  const fittedHeight = dims.height * scale
-  const cols = Math.max(1, Math.min(maxCols, Math.ceil(fittedWidth)))
-  const rows = Math.max(1, Math.min(maxRows, Math.ceil(fittedHeight * CHAFA_FONT_RATIO)))
+  const cols = Math.max(1, Math.min(maxCols, Math.ceil(pixelWidth / ASSUMED_CELL_PX_W)))
+  const rows = Math.max(1, Math.min(maxRows, Math.ceil(pixelHeight / ASSUMED_CELL_PX_H)))
   return { cols, rows }
 }

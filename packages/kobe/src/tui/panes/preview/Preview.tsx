@@ -47,7 +47,7 @@ import type { ContentState } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
 import { renderAnimatedGifWithChafa } from "./gif-frames"
-import { computeImageBudget, fitImageToBudget } from "./image-budget"
+import { computeImageBudget, sixelPixelsToCells } from "./image-budget"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
 import { detectSixelSupport } from "./sixel-capability"
@@ -374,14 +374,14 @@ export function Preview(props: PreviewProps) {
     if (detectSixelSupport()) {
       const sixel = await renderImageAsSixel(s.absPath, maxCols, maxRows)
       if (sixel) {
-        // chafa preserves aspect ratio, so the rendered image
-        // typically fills only one axis of the (maxCols × maxRows)
-        // budget. Predict the actual cell footprint from the image's
-        // known dimensions + chafa's default 1:2 font-ratio so the
-        // SixelImageRenderable's black background matches the image
-        // area instead of the full budget rectangle.
-        const sixelCells = fitImageToBudget(dims, maxCols, maxRows)
-        pushSixel(dims as ImageDims, sixel, sixelCells)
+        // chafa's sixel output uses absolute pixels; the WT-cell
+        // footprint depends on the host terminal's cell pixel size.
+        // We trust the raster attrs (Ph/Pv) chafa wrote and convert
+        // using a typical-Cascadia-Mono cell size — the renderable
+        // claims that many cells so its black background matches the
+        // pixel image exactly, not the over-estimated cell budget.
+        const sixelCells = sixelPixelsToCells(sixel.pixelWidth, sixel.pixelHeight, maxCols, maxRows)
+        pushSixel(dims as ImageDims, sixel.bytes, sixelCells)
         return
       }
     }
