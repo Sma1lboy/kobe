@@ -33,6 +33,21 @@ You need two things on `PATH`:
 - [**Bun**](https://bun.sh) ≥ 1.0 — kobe's renderer is opentui, which uses Bun-FFI.
 - [**`claude`** CLI](https://docs.anthropic.com/en/docs/claude-code) — the engine kobe drives. Run `claude --version` to confirm it's installed and signed in.
 
+Optional but recommended (preview pane shows graceful fallbacks otherwise):
+
+- **`chafa`** ≥ 1.8 + **`ffmpeg`** / **`ffprobe`** — image preview (sixel + character grid + animated GIF). Without these, image files show a metadata card with a "preview not supported" hint.
+- **`rsvg-convert`** (`librsvg2-bin`) — SVG → rasterized image preview. Without it, SVGs fall back to syntax-highlighted XML source.
+
+| Platform | Install command |
+|---|---|
+| Debian / Ubuntu | `sudo apt install chafa ffmpeg librsvg2-bin` |
+| Fedora | `sudo dnf install chafa ffmpeg librsvg2-tools` |
+| Arch | `sudo pacman -S chafa ffmpeg librsvg` |
+| macOS | `brew install chafa ffmpeg librsvg` |
+| Windows | `winget install hpjansson.chafa Gyan.FFmpeg` |
+
+`bun install` runs a postinstall check and prints any missing pieces with the install command. Set `KOBE_SKIP_DEP_CHECK=1` to silence it in CI.
+
 Then:
 
 ```bash

@@ -37,6 +37,7 @@
     "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon test/orchestrator/bridge.test.ts --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
     "test:behavior": "KOBE_INCLUDE_BEHAVIOR=1 vitest run test/behavior --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
     "lint": "biome check .",
+    "postinstall": "bun run scripts/check-preview-deps.ts || true",
     "prepublishOnly": "bun run typecheck && bun run build"
   },
   "//": "biome.json + bunfig.toml live at the monorepo root since they apply repo-wide; bun.lock also lives at root (workspace-shared).",
