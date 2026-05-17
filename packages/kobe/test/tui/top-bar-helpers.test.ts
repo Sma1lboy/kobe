@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { activeTaskSessionId } from "../../src/tui/component/top-bar-helpers"
+import { activeTaskSessionId, activeTaskTopBarParts } from "../../src/tui/component/top-bar-helpers"
 import { type Task, toTaskId } from "../../src/types/task"
 
 function taskWithTabs(activeTabId: string): Task {
@@ -33,5 +33,26 @@ describe("activeTaskSessionId", () => {
 
   test("does not fall back to the legacy task session id when the active tab is missing", () => {
     expect(activeTaskSessionId(taskWithTabs("missing"), "missing")).toBeNull()
+  })
+})
+
+describe("activeTaskTopBarParts", () => {
+  test("returns repo basename and branch for regular tasks", () => {
+    expect(activeTaskTopBarParts(taskWithTabs("tab-a"))).toEqual({ repoName: "repo", branch: "kobe/demo" })
+  })
+
+  test("handles trailing slashes in repo paths", () => {
+    expect(activeTaskTopBarParts({ ...taskWithTabs("tab-a"), repo: "/Users/jacksonc/i/kobe/" })).toEqual({
+      repoName: "kobe",
+      branch: "kobe/demo",
+    })
+  })
+
+  test("uses repo basename when branch is not allocated yet", () => {
+    expect(activeTaskTopBarParts({ ...taskWithTabs("tab-a"), branch: "" })).toEqual({ repoName: "repo", branch: "" })
+  })
+
+  test("returns null without an active task", () => {
+    expect(activeTaskTopBarParts(undefined)).toBeNull()
   })
 })
