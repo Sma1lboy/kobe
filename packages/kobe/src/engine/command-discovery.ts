@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises"
+import { readFile, readdir, realpath, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -41,10 +41,9 @@ async function isDir(path: string): Promise<boolean> {
 }
 
 export function extractFrontmatterField(content: string, key: string): string | null {
-  if (!content.startsWith("---")) return null
-  const end = content.slice(3).indexOf("---")
-  if (end < 0) return null
-  const frontmatter = content.slice(3, 3 + end)
+  const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)
+  if (!match) return null
+  const frontmatter = match[1]
   const lines = frontmatter.split("\n")
   const prefix = `${key}:`
   for (let i = 0; i < lines.length; i++) {
@@ -107,7 +106,11 @@ export async function readSkillDoc(skillMd: string, fallbackName: string): Promi
   }
 }
 
-export async function scanSkillRoot(root: string): Promise<readonly SkillDoc[]> {
+export async function scanSkillRoot(root: string, visited: Set<string> = new Set()): Promise<readonly SkillDoc[]> {
+  const canonicalRoot = await realpath(root).catch(() => root)
+  if (visited.has(canonicalRoot)) return []
+  visited.add(canonicalRoot)
+
   const entries = await safeReaddir(root)
   const out: SkillDoc[] = []
   for (const entry of entries) {
@@ -115,7 +118,7 @@ export async function scanSkillRoot(root: string): Promise<readonly SkillDoc[]> 
     const sub = join(root, entry)
     if (!(await isDir(sub))) continue
     if (entry === ".system") {
-      out.push(...(await scanSkillRoot(sub)))
+      out.push(...(await scanSkillRoot(sub, visited)))
       continue
     }
     const skill = await readSkillDoc(join(sub, "SKILL.md"), entry)

@@ -3,6 +3,7 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { ClaudeCodeLocal } from "@/engine/claude-code-local"
 import { CodexLocal } from "@/engine/codex-local"
+import { extractFrontmatterField, scanSkillRoot } from "@/engine/command-discovery"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 let tmpRoot: string
@@ -49,6 +50,26 @@ function writeClaudeCommand(root: string, name: string, description: string): vo
 }
 
 describe("engine-owned command discovery", () => {
+  test("frontmatter parsing anchors the closing delimiter to its own line", () => {
+    const content = ["---", "name: dashed", "description: keep --- inside scalar", "---", "# Body"].join("\n")
+
+    expect(extractFrontmatterField(content, "description")).toBe("keep --- inside scalar")
+  })
+
+  test("skill root scanning skips .system symlink cycles", async () => {
+    const root = path.join(tmpRoot, "skills")
+    writeSkill(root, "alpha", "alpha", "Alpha skill")
+    fs.symlinkSync(root, path.join(root, ".system"), "dir")
+
+    await expect(scanSkillRoot(root)).resolves.toEqual([
+      {
+        name: "alpha",
+        description: "Alpha skill",
+        path: path.join(root, "alpha", "SKILL.md"),
+      },
+    ])
+  })
+
   test("Claude returns built-ins plus .claude project/user commands and skills", async () => {
     writeClaudeCommand(fakeHome, "deploy", "global deploy")
     writeSkill(fakeWorktree, ".claude/skills/autoplan", "autoplan", "project plan")
