@@ -540,6 +540,16 @@ function coerceTask(value: unknown): Task | null {
   const activeTab = finalTabs.find((t) => t.id === finalActive) ?? finalTabs[0]
   const aliasSessionId = activeTab?.sessionId ?? legacySessionId
 
+  // Self-heal pre-fix rows. Old kobe builds auto-flipped `status` to
+  // `"done"` on every clean turn end, leaving the active sidebar full
+  // of tasks whose status was `done` but `archived` was still false.
+  // `done` is now reserved for user-driven archive — heal those rows
+  // back to `in_progress` on load so the sidebar's ✓ glyph only ever
+  // means "user archived this as complete." Archived `done` rows are
+  // left alone (that's the legitimate use of the status).
+  const archived = typeof v.archived === "boolean" ? v.archived : false
+  const healedStatus: TaskStatus = v.status === "done" && !archived ? "in_progress" : v.status
+
   return {
     id: toTaskId(v.id),
     title: v.title,
@@ -549,11 +559,11 @@ function coerceTask(value: unknown): Task | null {
     sessionId: aliasSessionId,
     tabs: finalTabs,
     activeTabId: finalActive,
-    status: v.status,
+    status: healedStatus,
     // Wave 4.5: `archived` is a new field. Records written before its
     // introduction don't have it; default to false (i.e. "active /
     // working session"). The user can archive them with `a`.
-    archived: typeof v.archived === "boolean" ? v.archived : false,
+    archived,
     // User-pinned float-to-top flag. Defaults to false on records
     // written before the field existed. Persist as boolean so toggling
     // off and reloading clears the row from the pinned subsection.

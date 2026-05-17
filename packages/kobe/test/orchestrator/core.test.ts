@@ -525,7 +525,7 @@ describe("Orchestrator.runTask", () => {
     await orch._waitForPumpsIdle()
   })
 
-  test("scripted assistant.delta + done → status transitions to done", async () => {
+  test("scripted assistant.delta + done → status stays in_progress between turns", async () => {
     const fake = new FakeAIEngine()
     const { orch, store } = await buildOrchestrator(fake)
     const t = await orch.createTask({ repo, title: "happy", prompt: "" })
@@ -549,7 +549,10 @@ describe("Orchestrator.runTask", () => {
     expect(types).toContain("assistant.delta")
     expect(types).toContain("done")
 
-    expect(store.get(t.id)?.status).toBe("done")
+    // A clean `done` event is per-turn, not lifecycle. The task stays
+    // in_progress (resting state for active tasks); `status === "done"`
+    // is reserved for user-driven archiveTask.
+    expect(store.get(t.id)?.status).toBe("in_progress")
   })
 
   test("error event transitions task to error status", async () => {

@@ -594,6 +594,7 @@ function Shell(props: AppDeps) {
           <Sidebar
             width={sidebarWidth}
             tasks={tasksAcc}
+            chatRunState={chatRunStateAcc}
             onSelect={(id: string) => {
               setSelectedId(id)
               // Selecting a task usually means "I want to look at it" —

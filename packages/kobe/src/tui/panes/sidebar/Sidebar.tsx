@@ -53,6 +53,7 @@ import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
+import type { ChatRunState } from "../../../orchestrator/core"
 import { SIDEBAR_WIDTH } from "../../component/sidebar"
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
@@ -107,6 +108,18 @@ export type SidebarProps = {
    * at runtime. Reactive — changing the accessor's value reflows immediately.
    */
   width?: Accessor<number>
+  /**
+   * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
+   * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
+   * spinner animates only when a row's task has at least one tab in
+   * the `"running"` state — i.e. an actual live engine handle — so
+   * interrupting a turn (which kills the handle but keeps
+   * `task.status === "in_progress"` because the *task* is still
+   * active) immediately stops the dots. Optional so embedders that
+   * don't have the orchestrator handy can still mount the sidebar
+   * (the spinner falls back to a static "active" badge).
+   */
+  chatRunState?: Accessor<ReadonlyMap<string, ChatRunState>>
 }
 
 /**
@@ -114,19 +127,38 @@ export type SidebarProps = {
  * with the theme colour resolved at render time; storing the *tone* (not
  * the resolved RGBA) keeps badges reactive to theme switches.
  *
+ * Each status now uses a *distinct* glyph so the row is readable without
+ * relying on colour alone — teammate feedback was that the old
+ * dot-on-dot-on-half-dot set wasn't legible. `in_progress` is special:
+ * its glyph is the empty string here and the renderer substitutes the
+ * current frame of {@link IN_PROGRESS_SPINNER} (rotating braille) so an
+ * active task visibly *moves*.
+ *
  * Per-task hint only — no grouping reads from this map.
  */
 const STATUS_BADGE: Record<
   TaskStatus,
   { glyph: string; tone: "success" | "warning" | "primary" | "textMuted" | "error" }
 > = {
-  done: { glyph: "●", tone: "success" },
+  done: { glyph: "✓", tone: "success" },
   in_review: { glyph: "◐", tone: "warning" },
-  in_progress: { glyph: "●", tone: "primary" },
+  in_progress: { glyph: "", tone: "primary" },
   backlog: { glyph: "○", tone: "textMuted" },
-  canceled: { glyph: "✕", tone: "textMuted" },
+  canceled: { glyph: "⊘", tone: "textMuted" },
   error: { glyph: "✕", tone: "error" },
 }
+
+/**
+ * Braille spinner frames for the `in_progress` row badge. Standard
+ * dots-rotating cycle (the same one npm / yarn / most CLI loaders use),
+ * picked because it reads as motion in a *single cell* — drop-in for the
+ * one-cell badge slot. Sub-pixel-style rotation makes "active" obvious
+ * without enlarging the row.
+ */
+const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
+/** Spinner tick (ms). 100ms matches the standard CLI loader cadence. */
+const SPINNER_FRAME_MS = 100
 
 /**
  * Tab labels for the view switcher. Order matches the `SidebarView`
@@ -262,6 +294,18 @@ export function Sidebar(props: SidebarProps) {
   // Using `onCleanup` would require importing it; setInterval against
   // process lifetime is acceptable for a per-app-singleton pane.
   void branchInterval
+
+  // Spinner frame tick for `in_progress` row badges. Single shared
+  // counter so every running task animates in lockstep (reads as one
+  // "system pulse" rather than a noisy mismatched twitch). Always on —
+  // the cost is one signal write per 100ms and Solid only re-renders
+  // the rows whose badge derivation actually reads `spinnerFrame()`.
+  const [spinnerFrame, setSpinnerFrame] = createSignal(0)
+  const spinnerInterval = setInterval(
+    () => setSpinnerFrame((n) => (n + 1) % IN_PROGRESS_SPINNER.length),
+    SPINNER_FRAME_MS,
+  )
+  onCleanup(() => clearInterval(spinnerInterval))
 
   // Filtered, flat row list for the active view. Recomputes only when
   // the upstream tasks accessor, the view, or the search query
@@ -491,18 +535,32 @@ export function Sidebar(props: SidebarProps) {
               // Per-row "uncommitted changes" file counts, rendered on
               // the right edge as `+N −M`. Keyed on the same `branchTick`
               // so we only shell out at the established 2s cadence.
-              // Empty string when the worktree is clean — the renderer
-              // skips the chip entirely. Applies to both main and regular
-              // rows: on a main row a non-zero count is just as useful as
-              // on a worktree row, and the repo's branch label still has
-              // room next to it inside the 42-cell sidebar.
-              const changesLabel = createMemo(() => {
+              // Empty when the worktree is clean — the renderer skips
+              // the chip entirely. Returned as a struct (not a joined
+              // string) so the renderer can colour `+N` with
+              // `theme.success` and `−N` with `theme.error`, matching
+              // the FileTree pane's per-file `+/−` badges.
+              const changes = createMemo(() => {
                 branchTick()
-                const { added, deleted } = readWorktreeChanges(task.worktreePath)
-                const parts: string[] = []
-                if (added > 0) parts.push(`+${added}`)
-                if (deleted > 0) parts.push(`−${deleted}`)
-                return parts.join(" ")
+                return readWorktreeChanges(task.worktreePath)
+              })
+              // "Is this task actually streaming a turn right now?"
+              // True only when the orchestrator holds a live engine
+              // handle for at least one of this task's tabs. Decouples
+              // the *animated* spinner from `task.status` — the user's
+              // mental model is "the dots should stop when I press
+              // esc", but `task.status === "in_progress"` only flips
+              // when the lifecycle ends (done / canceled / error /
+              // archived), not when the current turn aborts. Without
+              // this check the spinner kept spinning post-interrupt.
+              const isLive = createMemo(() => {
+                const map = props.chatRunState?.()
+                if (!map) return false
+                const prefix = `${task.id}:`
+                for (const [key, state] of map) {
+                  if (state === "running" && key.startsWith(prefix)) return true
+                }
+                return false
               })
               const titleText = isMain ? repoBasename(task.repo) : task.title
               return (
@@ -514,8 +572,18 @@ export function Sidebar(props: SidebarProps) {
                   backgroundColor={isCursor() ? theme.primary : isSelected() ? theme.backgroundElement : undefined}
                   onMouseUp={() => props.onSelect(task.id)}
                 >
-                  <text fg={isCursor() ? theme.selectedListItemText : badgeColor()} wrapMode="none">
-                    {isMain ? "★" : badge.glyph}
+                  <text
+                    fg={isCursor() ? theme.selectedListItemText : badgeColor()}
+                    attributes={TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    {isMain
+                      ? "★"
+                      : task.status === "in_progress"
+                        ? isLive()
+                          ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0])
+                          : "●"
+                        : badge.glyph}
                   </text>
                   <text
                     fg={isCursor() ? theme.selectedListItemText : theme.text}
@@ -536,10 +604,21 @@ export function Sidebar(props: SidebarProps) {
                       edges line up across rows (what the eye tracks) and
                       so short chips sit closer to the row's right side
                       rather than crowding the title. */}
-                  <box width={CHANGES_COLUMN_WIDTH} flexShrink={0} flexDirection="row" justifyContent="flex-end">
-                    <Show when={changesLabel().length > 0}>
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                        {changesLabel()}
+                  <box
+                    width={CHANGES_COLUMN_WIDTH}
+                    flexShrink={0}
+                    flexDirection="row"
+                    justifyContent="flex-end"
+                    gap={1}
+                  >
+                    <Show when={changes().added > 0}>
+                      <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
+                        +{changes().added}
+                      </text>
+                    </Show>
+                    <Show when={changes().deleted > 0}>
+                      <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
+                        −{changes().deleted}
                       </text>
                     </Show>
                   </box>

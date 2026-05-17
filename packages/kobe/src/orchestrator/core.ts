@@ -1060,16 +1060,27 @@ export class Orchestrator {
     this.pumps.delete(key)
     this.bumpRunState()
 
-    const terminal = terminalEvent?.type === "error" ? "error" : terminalEvent ? "done" : null
-    if (terminal && !killedForInput) {
-      // Only flip the task's status to a terminal value when ALL its
-      // tabs have stopped. With multi-tab, a single tab finishing
-      // doesn't mean the task is done — the user may still have other
-      // tabs streaming.
+    // Only `error` is a lifecycle-terminal status — it means the
+    // engine crashed and the task needs user attention. A clean `done`
+    // event is NOT a lifecycle terminal: it just means "this turn
+    // finished, waiting for the next prompt." The task stays
+    // `in_progress` between turns; whether the engine is *currently*
+    // streaming is a separate live signal owned by ChatRunState
+    // (see {@link chatRunStateSignal}). `status: "done"` is reserved
+    // for user-driven archiving via {@link archiveTask}.
+    //
+    // Historically this code also flipped to `status: "done"` on every
+    // clean turn, which made `done` the implicit resting state of every
+    // active task — confusing because the sidebar now renders `done`
+    // with a distinct ✓ glyph instead of the old shared `●`.
+    if (terminalEvent?.type === "error" && !killedForInput) {
+      // Only flip when ALL the task's tabs have stopped. With multi-tab,
+      // a single tab erroring doesn't end the task — other tabs may
+      // still be streaming productively.
       const stillLive = Array.from(this.handles.keys()).some((k) => k.startsWith(`${taskId}:`))
       if (!stillLive) {
         try {
-          await this.store.update(taskId, { status: terminal === "done" ? "done" : "error" })
+          await this.store.update(taskId, { status: "error" })
         } catch {
           /* store may have been cleared in tests; ignore */
         }
