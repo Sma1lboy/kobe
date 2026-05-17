@@ -48,6 +48,15 @@ Three flavours of `bun run dev:*` cover the spectrum from production-style state
 
 Each gets its own daemon socket + pidfile under its respective `KOBE_HOME_DIR`, so all three can coexist. `defaultDaemonSocketPath` honours an explicit `KOBE_HOME_DIR` ahead of `XDG_RUNTIME_DIR`.
 
+### Daemon logs & crash net
+
+The daemon is a long-lived background process. Two pieces of infrastructure keep it debuggable instead of "dying silently" (KOB-193):
+
+- **Crash net** — `installDaemonCrashHandlers()` ([`src/daemon/crash-log.ts`](./packages/kobe/src/daemon/crash-log.ts)) registers `unhandledRejection` / `uncaughtException` handlers in the daemon process. A stray async rejection is **logged, not fatal** — the daemon keeps serving. Without this, any `void someAsync()` that rejected terminated the whole daemon (Node/Bun default).
+- **Log file** — the detached daemon's stdout/stderr are redirected to `<KOBE_HOME>/.kobe/daemon.log` (`daemon-<pid>.log` for a TUI-owned daemon), not `/dev/null`. **When a daemon problem is reported, read that log first** — it carries the stack and a `[subsystem]` tag.
+
+When adding a fire-and-forget daemon call (`void someAsync()`), attach `.catch((err) => logDaemonError("<subsystem>", err))` so a failure is pinned to its subsystem (`[plan-usage-poller]`, `[daemon-shutdown]`, …) instead of surfacing as an anonymous rejection. Crash handlers are installed only in the real daemon process (`cli/daemon-cmd.ts` `start` branch) — never from code shared with the TUI or tests, since they mutate global `process` state.
+
 ## Reference repos — clone before development
 
 kobe is built by deliberately copying ideas (and sometimes code) from reference projects. New devs / agents must have these refs cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.
