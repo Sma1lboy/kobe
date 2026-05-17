@@ -87,9 +87,19 @@ export async function renderImageWithChafa(
   const args = [
     "--format=symbols",
     "--colors=full",
-    "--symbols=block+border+space+sextant+half+quad",
+    // No `border`: line glyphs (─│╭╮) produce directional artifacts
+    // that read as "mosaic" on photographic images. Stick to symbols
+    // that subdivide the cell into colored regions (block / quad /
+    // half / sextant for bulk fill, stipple / braille for texture
+    // gradients).
+    "--symbols=block+space+quad+half+sextant+stipple+dot+braille",
     "--color-space=din99d",
     "--fill=none",
+    // -w 9 = "work as hard as possible" — chafa explores more symbol
+    // candidates per cell. Worth the few extra ms for a one-shot
+    // preview decode.
+    "-w",
+    "9",
     `--size=${maxCols}x${maxRows}`,
     "-O",
     "0",
