@@ -14,9 +14,24 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.24] - 2026-05-17
+
 ### Added
 
 - Background-tasks manager — double-press `ctrl+b` to open a dialog listing every chat session running out of view across all tasks, with the run/needs-input state for each; press enter to jump straight to a session or `x` to interrupt it. A status-bar indicator shows the background count, and a one-line readout above the chat composer names the background runs as you type. Self-hides when nothing is running unattended. Mirrors Claude Code's background-task model and `ctrl+b` double-press.
+- **Pausable chat queue** — a low-priority `[pause queue]` / `[resume queue]` toggle in the composer queue panel holds auto-drain, so queued prompts wait until you resume instead of firing as each turn ends (KOB-189/190).
+
+### Changed
+
+- **Queue edit control is a single-letter `[e]` chip** — the queued-prompt row's edit control was the spelled-out word `[edit]` while the send-now and cancel controls beside it were single-glyph chips; all three now share the same bracket-chip shape (KOB-182).
+
+### Fixed
+
+- **Esc / interrupt now reaps the whole engine process tree** — engine subprocesses (`claude` and `codex`) spawn detached so the stop path signals the whole process group, killing the subagent and tool/sandbox children that a PID-only kill used to leave running. The registry slot is also freed synchronously, so a prompt sent right after an interrupt no longer collides with `SessionRegistry: duplicate sessionId` (KOB-178).
+- **`/clear` model picker stays on the current engine** — `/clear` resets the chat tab; it is not an engine switch. The post-clear model picker now pins to the active tab's vendor instead of letting you pick a different engine's model (KOB-178).
+- **Changelog dialog no longer garbles release notes** — GitHub release bodies arrive with CRLF line endings; the markdown parser now normalizes them so stray carriage returns stop rendering as garbage glyphs, and the trailing "Full release" link gains bottom padding so it no longer sits flush against the dialog border (KOB-179).
+- **Message list stops twitching during streaming** — the transcript reconciles its render items by reference, so an `assistant.delta` or tool event re-renders only the rows that changed instead of rebuilding every visible row (KOB-185).
+- **Queued chat prompt no longer escapes mid-question** — a resume-turn lock closes the window where the queue drained between an input picker resolving and the resume turn starting. PR / local-merge injection is guarded against a busy tab, and send-now no longer drops a queued prompt while a question or approval is still pending (KOB-186).
 
 ## [0.5.23] - 2026-05-17
 
