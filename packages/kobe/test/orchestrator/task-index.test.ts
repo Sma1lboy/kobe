@@ -193,7 +193,7 @@ describe("TaskIndexStore — subscribe", () => {
               branch: "kobe/preloaded",
               worktreePath: "/r/wt",
               sessionId: null,
-              status: "done",
+              status: "in_review",
               createdAt: "2026-05-08T00:00:00.000Z",
               updatedAt: "2026-05-08T00:00:00.000Z",
             },
@@ -211,7 +211,57 @@ describe("TaskIndexStore — subscribe", () => {
     expect(calls).toEqual([])
     await store.load()
     expect(calls.at(-1)).toBe(1)
-    expect(store.get("01HZB000000000000000000000")?.status).toBe("done")
+    expect(store.get("01HZB000000000000000000000")?.status).toBe("in_review")
+  })
+
+  test("self-heal: legacy `status:done && archived:false` rows load as in_progress; archived done rows stay done", async () => {
+    // Old kobe builds auto-flipped status to "done" on every clean
+    // turn, leaving active-sidebar tasks marked done. Now `done` is
+    // archive-only, and pre-existing rows should heal back to
+    // in_progress on load — but only when archived is false. A
+    // legitimately-archived done row stays done.
+    await mkdir(join(homeDir, ".kobe"), { recursive: true })
+    await writeFile(
+      join(homeDir, ".kobe", "tasks.json"),
+      JSON.stringify(
+        {
+          version: 2,
+          tasks: [
+            {
+              id: "01HZB000000000000000000001",
+              title: "stale-done-active",
+              repo: "/r",
+              branch: "kobe/a",
+              worktreePath: "/r/a",
+              sessionId: null,
+              status: "done",
+              archived: false,
+              createdAt: "2026-05-08T00:00:00.000Z",
+              updatedAt: "2026-05-08T00:00:00.000Z",
+            },
+            {
+              id: "01HZB000000000000000000002",
+              title: "real-archived-done",
+              repo: "/r",
+              branch: "kobe/b",
+              worktreePath: "/r/b",
+              sessionId: null,
+              status: "done",
+              archived: true,
+              createdAt: "2026-05-08T00:00:00.000Z",
+              updatedAt: "2026-05-08T00:00:00.000Z",
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    )
+
+    const store = new TaskIndexStore({ homeDir })
+    await store.load()
+    expect(store.get("01HZB000000000000000000001")?.status).toBe("in_progress")
+    expect(store.get("01HZB000000000000000000002")?.status).toBe("done")
   })
 
   test("unsubscribe stops further notifications without affecting other listeners", async () => {

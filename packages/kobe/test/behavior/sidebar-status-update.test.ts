@@ -139,7 +139,7 @@ afterEach(async () => {
   }
 })
 
-test("sidebar keeps a task under its repo header across a backlog → done transition", async () => {
+test("sidebar badge updates as the task moves backlog → in_progress and the engine idles", async () => {
   // ---- fixtures -------------------------------------------------
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-sidebar-status-"))
   homeDir = path.join(tmpRoot, "home")
@@ -190,12 +190,13 @@ test("sidebar keeps a task under its repo header across a backlog → done trans
   expect(initialScreen).toContain("status-transition")
 
   // ---- assert the badge flipped after the transition ----
-  // The orchestrator's pump sees the scripted `done` event, calls
-  // `store.update(id, { status: "done" })`, and the store fires its
-  // change listener which feeds the orchestrator's task signal. The
-  // sidebar's badge mapping switches the row's glyph from `○` to `●`
-  // (success tone). The row stays in the active view (archived flag
-  // hasn't moved).
+  // runTask flips status backlog → in_progress (sidebar glyph: spinner
+  // when the engine is live, then a static `●` once the scripted
+  // `done` event lands and the orchestrator's engine handle is torn
+  // down). `done` is no longer auto-written on clean turn end — that
+  // semantic moved to user-driven archive only — so the row stays
+  // `in_progress` here and the glyph we wait for is the static `●`
+  // idle marker, which still matches the regex below.
   await kobe.waitFor((s) => bufferContains(s, /●\s*\S*status-transition/), 20_000)
   const doneScreen = await kobe.capture()
   expect(bufferContains(doneScreen, /●\s*\S*status-transition/)).toBe(true)
