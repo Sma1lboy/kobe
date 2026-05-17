@@ -21,17 +21,17 @@
  *   - `xml`     — token stream for syntax-highlighted SVG / XML.
  */
 
-import type { DecodedImage, DecodedImageSequence } from "./image-render"
+import type { ChafaGrid } from "./chafa-render"
 import type { ImageDims, MediaKind } from "./media"
 import type { PreviewMode } from "./state"
 import type { XmlToken } from "./xml-highlight"
 
 /**
- * Snapshot of one media file's metadata, plus an optional decoded
- * pixel grid (still or animated) for inline-renderable types. We
- * always populate everything we can on the first push so the
- * metadata card has something to show immediately; the decoded
- * frames flow in later via a second `setContent`.
+ * Snapshot of one media file's metadata, plus an optional rendered
+ * character grid (still or animated) for inline-renderable types. We
+ * always populate everything we can on the first push so the metadata
+ * card has something to show immediately; chafa-rendered grids flow
+ * in later via a second `setContent`.
  */
 export type MediaContent = {
   readonly relPath: string
@@ -46,9 +46,13 @@ export type MediaContent = {
   readonly size: number
   readonly mtime: Date
   readonly dims?: ImageDims
-  readonly decoded?: DecodedImage
-  /** Animated frames for GIFs; if set, MediaBody flips through them on a timer. */
-  readonly animation?: DecodedImageSequence
+  /** Static-image preview rendered by chafa into a character grid. */
+  readonly grid?: ChafaGrid
+  /** Animated frames + frame timing (animated GIFs). */
+  readonly animation?: {
+    readonly frames: readonly ChafaGrid[]
+    readonly frameDelayMs: number
+  }
 }
 
 export type ContentState =

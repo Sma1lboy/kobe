@@ -1,24 +1,23 @@
 /**
  * Render a `media` ContentState — metadata card plus, when available,
- * an inline true-pixel image painted through `PixelImageRenderable`.
+ * an inline image rendered via chafa into a colored character grid.
  * Animated GIFs flip frames on a timer.
  *
  * UX flow (VSCode-style collapse):
- *   - When `decoded` / `animation` is set, the four-line Type/Size/Modified
+ *   - When `grid` / `animation` is set, the four-line Type/Size/Modified
  *     table collapses into a one-line muted subtitle on the path row.
  *   - When the file kind can't be previewed (PDF / video / audio /
- *     archive), or decode hasn't finished yet, the full table renders
+ *     archive), or chafa hasn't finished yet, the full table renders
  *     with an absolute-path row and a "Preview not supported for X.
  *     Open externally." hint.
  */
 
-import { TextAttributes } from "@opentui/core"
+import { RGBA, TextAttributes } from "@opentui/core"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../../context/theme"
+import type { ChafaCell, ChafaGrid, ChafaRGB } from "../chafa-render"
 import type { ContentState, MediaContent } from "../content-state"
 import { describeMediaKind, formatBytes, formatMtime } from "../format"
-import { type DecodedImage, PIXELS_PER_CELL } from "../image-render"
-import "./PixelImageRenderable"
 
 export function MediaBody(props: { content: Accessor<ContentState> }) {
   const { theme } = useTheme()
@@ -31,10 +30,9 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
       {(m) => {
         // `m` is a Solid accessor; we read it through createMemo so each
         // derived field re-tracks when the underlying MediaContent flips
-        // (e.g. metadata-only snapshot → metadata+decoded snapshot after
-        // ffmpeg returns). Reading `m()` once at the top of the function
-        // would freeze the values on first paint and the half-block
-        // image would never appear.
+        // (e.g. metadata-only snapshot → metadata+grid snapshot after
+        // chafa returns). Reading `m()` once at the top of the function
+        // would freeze the values on first paint.
         const lines = createMemo<readonly (readonly [string, string])[]>(() => {
           const info = m()
           return [
@@ -46,9 +44,9 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
         })
         const previewReady = createMemo(() => {
           const info = m()
-          return info.decoded != null || info.animation != null
+          return info.grid != null || info.animation != null
         })
-        const decodedSubtitle = createMemo(() => {
+        const gridSubtitle = createMemo(() => {
           const info = m()
           if (!previewReady()) return null
           const parts: string[] = []
@@ -83,45 +81,21 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
             },
           ),
         )
-        const currentDecoded = createMemo<DecodedImage | null>(() => {
+        const currentGrid = createMemo<ChafaGrid | null>(() => {
           const info = m()
           if (info.animation) {
             const idx = frameIdx() % info.animation.frames.length
-            return {
-              cols: info.animation.cols,
-              pixelRows: info.animation.pixelRows,
-              rgba: info.animation.frames[idx],
-            }
+            return info.animation.frames[idx]
           }
-          return info.decoded ?? null
+          return info.grid ?? null
         })
         return (
           <box paddingTop={1} paddingLeft={1} paddingRight={1} flexDirection="column">
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
               {m().relPath}
-              <Show when={decodedSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
+              <Show when={gridSubtitle()}>{(sub) => <span style={{ fg: theme.textMuted }}> · {sub()}</span>}</Show>
             </text>
-            <Show when={currentDecoded()}>
-              {(decoded) => {
-                // Pixel buffer dims are multiples of PIXELS_PER_CELL.{x,y};
-                // converting back gives the cell footprint the renderable
-                // needs to claim in the layout. We pin both width and height
-                // so flex doesn't compress the image.
-                const cellCols = createMemo(() => Math.ceil(decoded().cols / PIXELS_PER_CELL.x))
-                const cellRows = createMemo(() => Math.ceil(decoded().pixelRows / PIXELS_PER_CELL.y))
-                return (
-                  <box paddingTop={1} flexDirection="column">
-                    <pixel_image
-                      pixels={decoded().rgba}
-                      pixelCols={decoded().cols}
-                      pixelRows={decoded().pixelRows}
-                      width={cellCols()}
-                      height={cellRows()}
-                    />
-                  </box>
-                )
-              }}
-            </Show>
+            <Show when={currentGrid()}>{(grid) => <ChafaGridView grid={grid()} />}</Show>
             <Show when={!previewReady()}>
               <box paddingTop={1} flexDirection="column">
                 <For each={lines()}>
@@ -163,4 +137,57 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
       }}
     </Show>
   )
+}
+
+/**
+ * Render one chafa-produced character grid. Adjacent cells sharing the
+ * same (fg, bg) pair are coalesced into a single `<span>` so we don't
+ * pay a JSX node per cell on flat-color regions.
+ */
+function ChafaGridView(props: { grid: ChafaGrid }) {
+  type Run = { text: string; fg: RGBA; bg: RGBA }
+  const rows = createMemo<Run[][]>(() => {
+    const g = props.grid
+    const out: Run[][] = []
+    for (const row of g.cells) {
+      const merged: Run[] = []
+      let cur: Run | null = null
+      let curKey = ""
+      for (const cell of row) {
+        const key = keyOf(cell)
+        if (cur && key === curKey) {
+          cur.text += cell.char
+          continue
+        }
+        cur = {
+          text: cell.char,
+          fg: rgbaOf(cell.fg),
+          bg: rgbaOf(cell.bg),
+        }
+        curKey = key
+        merged.push(cur)
+      }
+      out.push(merged)
+    }
+    return out
+  })
+  return (
+    <box paddingTop={1} flexDirection="column">
+      <For each={rows()}>
+        {(row) => (
+          <text wrapMode="none">
+            <For each={row}>{(run) => <span style={{ fg: run.fg, bg: run.bg }}>{run.text}</span>}</For>
+          </text>
+        )}
+      </For>
+    </box>
+  )
+}
+
+function keyOf(cell: ChafaCell): string {
+  return `${cell.fg.r},${cell.fg.g},${cell.fg.b}_${cell.bg.r},${cell.bg.g},${cell.bg.b}`
+}
+
+function rgbaOf(c: ChafaRGB): RGBA {
+  return RGBA.fromInts(c.r, c.g, c.b, 255)
 }

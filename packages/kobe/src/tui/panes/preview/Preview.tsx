@@ -16,11 +16,11 @@
  *   - `body/Header.tsx`     — path + mode badge bar
  *   - `body/TabBar.tsx`     — internal tab strip
  *   - `body/Body.tsx`       — Switch dispatcher over ContentState
- *   - `body/MediaBody.tsx`  — metadata card + inline image
- *   - `body/PixelImageRenderable.ts` — custom renderable that paints
- *     the decoded RGBA buffer via `drawSuperSampleBuffer`
+ *   - `body/MediaBody.tsx`  — metadata card + inline chafa grid
  *   - `body/XmlBody.tsx`, `body/LinesBody.tsx`, `body/ErrorBody.tsx`
  *   - `content-state.ts`    — ContentState + MediaContent types
+ *   - `chafa-render.ts`     — chafa subprocess + ANSI parser → ChafaGrid
+ *   - `gif-frames.ts`       — ffmpeg frame extraction + chafa-per-frame
  *   - `error-summary.ts`    — summarizePreviewError, looksBinary
  *   - `image-budget.ts`     — terminal-size-driven render budget
  *   - `format.ts`           — describeMediaKind / formatMtime / formatBytes
@@ -42,18 +42,12 @@ import { type Accessor, Show, createEffect, createMemo, createSignal, on, onMoun
 import { Body } from "./body/Body"
 import { Header } from "./body/Header"
 import { TabBar } from "./body/TabBar"
+import { type ChafaGrid, renderImageWithChafa } from "./chafa-render"
 import type { ContentState } from "./content-state"
 import { isPathChanged, readDiff, readFile, readHeaderBytes, splitLines, statFile } from "./diff"
 import { looksBinary, summarizePreviewError } from "./error-summary"
+import { renderAnimatedGifWithChafa } from "./gif-frames"
 import { computeImageBudget } from "./image-budget"
-import {
-  type DecodedImage,
-  type DecodedImageSequence,
-  computeTargetDims,
-  decodeAnimatedImage,
-  decodeImage,
-  probeFrameTiming,
-} from "./image-render"
 import { usePreviewBindings } from "./keys"
 import { type ImageDims, detectMediaKind, parseImageHeader } from "./media"
 import {
@@ -312,7 +306,7 @@ export function Preview(props: PreviewProps) {
       const cur = active()
       return cur != null && cur.path === relPath
     }
-    const pushDecoded = (probedDims: ImageDims, decoded: DecodedImage) => {
+    const pushGrid = (probedDims: ImageDims, grid: ChafaGrid) => {
       if (!stillActive()) return
       setContent({
         kind: "media",
@@ -323,11 +317,14 @@ export function Preview(props: PreviewProps) {
           size: s.size,
           mtime: s.mtime,
           dims: probedDims,
-          decoded,
+          grid,
         },
       })
     }
-    const pushAnimation = (probedDims: ImageDims, animation: DecodedImageSequence) => {
+    const pushAnimation = (
+      probedDims: ImageDims,
+      animation: { frames: readonly ChafaGrid[]; frameDelayMs: number },
+    ) => {
       if (!stillActive()) return
       setContent({
         kind: "media",
@@ -343,30 +340,19 @@ export function Preview(props: PreviewProps) {
       })
     }
 
-    const budget = computeImageBudget()
-    const target = computeTargetDims(dims.width, dims.height, budget.maxCols, budget.maxRows)
-    // GIFs go through the multi-frame decoder. We probe timing first
-    // to decide between animated and still rendering; a 1-frame GIF
-    // (yes, it's a thing) falls through to the static decodeImage
-    // path so MediaBody doesn't spin up a pointless animation timer.
+    const { maxCols, maxRows } = computeImageBudget()
+    // GIFs go through the multi-frame path; a 1-frame GIF (yes, it's a
+    // thing) falls through to the static render below so MediaBody
+    // doesn't spin up a pointless animation timer.
     if (mediaKind.kind === "image" && mediaKind.format === "gif") {
-      const timing = await probeFrameTiming(s.absPath)
-      if (timing && timing.frameCount > 1) {
-        const seq = await decodeAnimatedImage(
-          s.absPath,
-          target.cols,
-          target.pixelRows,
-          timing.frameCount,
-          timing.frameDelayMs,
-        )
-        if (seq) {
-          pushAnimation(dims as ImageDims, seq)
-          return
-        }
+      const seq = await renderAnimatedGifWithChafa(s.absPath, maxCols, maxRows)
+      if (seq && seq.frames.length > 1) {
+        pushAnimation(dims as ImageDims, seq)
+        return
       }
     }
-    const still = await decodeImage(s.absPath, target.cols, target.pixelRows)
-    if (still) pushDecoded(dims as ImageDims, still)
+    const grid = await renderImageWithChafa(s.absPath, maxCols, maxRows)
+    if (grid) pushGrid(dims as ImageDims, grid)
   }
 
   // Pane-local key bindings.
