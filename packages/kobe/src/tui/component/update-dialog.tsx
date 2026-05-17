@@ -1,15 +1,14 @@
 /**
- * Update-available dialog — shown when the user clicks the
- * `↑ vX.Y.Z available` chip in the TopBar.
+ * Release / update dialog — shown when the user clicks the version or
+ * update chip in the TopBar.
  *
  * Renders three sections:
- *   1. Header with current → latest version arrow.
- *   2. Update command (one-liner; user copies it themselves —
- *      no auto-update per the original "暂时不提供更新api" decision).
- *   3. "What's new" — the GitHub release body for the latest tag,
- *      rendered through kobe's Markdown component so it looks like
- *      the chat does. Falls back to a "see release notes" link when
- *      the GitHub API is unreachable.
+ *   1. Header with current / latest version state.
+ *   2. Optional update action and command when npm reports an update.
+ *   3. Recent version chips so up-to-date users can still inspect
+ *      previous changelogs from the same surface.
+ *   4. "What's new" — the GitHub release body for the selected tag,
+ *      rendered through kobe's Markdown component.
  *
  * Closing: `esc` is handled by the DialogProvider's binding stack
  * (same pattern as HelpDialog). Clicking the `esc` chip in the corner
@@ -17,77 +16,117 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { type JSXElement, Match, Show, Switch, createResource } from "solid-js"
+import { For, type JSXElement, Match, Show, Switch, createMemo, createResource, createSignal } from "solid-js"
 import {
   type ReleaseNotes,
   UPDATE_COMMAND,
   type UpdateInfo,
   fetchReleaseNotes,
+  fetchReleaseSummaries,
   recommendedGlobalInstallCommand,
   releasePageUrl,
 } from "../../version.ts"
 import { useTheme } from "../context/theme"
 import { Markdown } from "../panes/chat/Markdown"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { defaultReleaseDialogVersion, releaseDialogTitle, releaseDialogVersionChoices } from "./update-dialog-helpers"
 
 export type UpdateDialogProps = {
   info: UpdateInfo
+  onUpdate?: () => void
 }
 
 export function UpdateDialog(props: UpdateDialogProps): JSXElement {
   const dialog = useDialog()
   const { theme } = useTheme()
 
-  // Fetch release notes for the *latest* version (what the user
-  // would get after running the install command). Resource state:
+  const [selectedVersion, setSelectedVersion] = createSignal(defaultReleaseDialogVersion(props.info))
+  const [releaseSummaries] = createResource(() => fetchReleaseSummaries())
+  const versionChoices = createMemo(() => releaseDialogVersionChoices(props.info, releaseSummaries() ?? []))
+
+  // Fetch release notes for the selected version. Resource state:
   //   - undefined while loading
   //   - null when the fetch failed (offline / 404 / etc.)
   //   - ReleaseNotes on success
-  const [notes] = createResource<ReleaseNotes | null>(() => fetchReleaseNotes(props.info.latest))
+  const [notes] = createResource<ReleaseNotes | null, string>(selectedVersion, fetchReleaseNotes)
 
-  const fallbackUrl = () => releasePageUrl(props.info.latest)
+  const fallbackUrl = () => releasePageUrl(selectedVersion())
 
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
       {/* Title row + esc dismiss. */}
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Update available
+          {releaseDialogTitle(props.info)}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
           esc
         </text>
       </box>
 
-      {/* Version transition. */}
+      {/* Version state. */}
       <box flexDirection="row" gap={1}>
         <text fg={theme.textMuted}>v{props.info.current}</text>
-        <text fg={theme.textMuted}>→</text>
-        <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-          v{props.info.latest}
-        </text>
+        <Show
+          when={props.info.hasUpdate}
+          fallback={
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              up to date
+            </text>
+          }
+        >
+          <text fg={theme.textMuted}>→</text>
+          <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+            v{props.info.latest}
+          </text>
+        </Show>
       </box>
 
-      {/* Update command — rendered as a "code block" with a copy hint.
-          We don't auto-copy because OSC52 isn't available everywhere,
-          and the visible string is short enough to select with the
-          terminal's own selection. */}
-      <box gap={0}>
-        <text fg={theme.textMuted}>Run this to update:</text>
-        <box paddingLeft={2}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-            {UPDATE_COMMAND}
-          </text>
+      <Show when={props.info.hasUpdate}>
+        {/* Update action + command. The button delegates to TopBar so the
+            renderer teardown and process exit stay in one place. */}
+        <box gap={0}>
+          <box flexDirection="row" gap={1}>
+            <text fg={theme.warning} attributes={TextAttributes.BOLD} onMouseUp={props.onUpdate}>
+              [Update]
+            </text>
+            <text fg={theme.textMuted}>or run:</text>
+          </box>
+          <box paddingLeft={2}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              {UPDATE_COMMAND}
+            </text>
+          </box>
+          <box paddingLeft={2}>
+            <text fg={theme.textMuted}>Manual fallback: {recommendedGlobalInstallCommand()}</text>
+          </box>
         </box>
-        <box paddingLeft={2}>
-          <text fg={theme.textMuted}>Manual fallback: {recommendedGlobalInstallCommand()}</text>
+      </Show>
+
+      <box gap={0}>
+        <text fg={theme.textMuted}>Versions:</text>
+        <box flexDirection="row" gap={1} paddingLeft={2}>
+          <For each={versionChoices()}>
+            {(version) => {
+              const selected = () => version === selectedVersion()
+              return (
+                <text
+                  fg={selected() ? theme.accent : theme.textMuted}
+                  attributes={selected() ? TextAttributes.BOLD : undefined}
+                  onMouseUp={() => setSelectedVersion(version)}
+                >
+                  v{version}
+                </text>
+              )
+            }}
+          </For>
         </box>
       </box>
 
       {/* What's new — GitHub release body, falling back through resource
           states so the dialog never just "hangs" looking empty. */}
       <box gap={0}>
-        <text fg={theme.textMuted}>What's new:</text>
+        <text fg={theme.textMuted}>What's new in v{selectedVersion()}:</text>
         <box paddingLeft={2} paddingTop={1}>
           <Switch>
             <Match when={notes.loading}>
@@ -122,6 +161,6 @@ export function UpdateDialog(props: UpdateDialogProps): JSXElement {
  * Convenience opener — pushes the dialog onto the dialog stack.
  * Mirrors `HelpDialog.show()` / `DialogConfirm.show()`.
  */
-UpdateDialog.show = (dialog: DialogContext, info: UpdateInfo): void => {
-  dialog.replace(() => <UpdateDialog info={info} />)
+UpdateDialog.show = (dialog: DialogContext, info: UpdateInfo, onUpdate?: () => void): void => {
+  dialog.replace(() => <UpdateDialog info={info} onUpdate={onUpdate} />)
 }

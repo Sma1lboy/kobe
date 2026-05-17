@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { checkLatestVersion } from "../src/version.ts"
+import { checkLatestVersion, fetchReleaseSummaries } from "../src/version.ts"
 
 const ORIGINAL_KOBE_DEV = process.env.KOBE_DEV
 
@@ -36,5 +36,47 @@ describe("checkLatestVersion", () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("fetchReleaseSummaries", () => {
+  beforeEach(() => {
+    Reflect.deleteProperty(process.env, "KOBE_DEV")
+  })
+
+  afterEach(() => {
+    if (ORIGINAL_KOBE_DEV === undefined) {
+      Reflect.deleteProperty(process.env, "KOBE_DEV")
+    } else {
+      process.env.KOBE_DEV = ORIGINAL_KOBE_DEV
+    }
+    vi.unstubAllGlobals()
+  })
+
+  it("normalizes GitHub release tags into plain semver versions", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify([
+          { tag_name: "v0.5.23", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.23" },
+          { tag_name: "not-a-version", html_url: "https://example.test/bad" },
+          { tag_name: "v0.5.22", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.22" },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await expect(fetchReleaseSummaries()).resolves.toEqual([
+      { version: "0.5.23", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.23" },
+      { version: "0.5.22", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.22" },
+    ])
+  })
+
+  it("falls back to an empty list on API failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("nope", { status: 500 })),
+    )
+    await expect(fetchReleaseSummaries()).resolves.toEqual([])
   })
 })

@@ -157,6 +157,19 @@ export type ReleaseNotes = {
   version: string
 }
 
+export type ReleaseSummary = {
+  /** Version without the leading `v` tag prefix. */
+  version: string
+  /** Browser URL for the release page on GitHub. */
+  url: string
+}
+
+function versionFromTagName(tagName: unknown): string | null {
+  if (typeof tagName !== "string") return null
+  const match = tagName.match(/^v(\d+\.\d+\.\d+)$/)
+  return match?.[1] ?? null
+}
+
 /**
  * Pull the GitHub release body for `vX.Y.Z`. Anonymous request to the
  * REST API — rate limit is 60/hr/IP for unauthenticated traffic, well
@@ -187,6 +200,42 @@ export async function fetchReleaseNotes(version: string): Promise<ReleaseNotes |
     return { body: body.body, url: body.html_url, version }
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Fetch recent GitHub releases for the version picker in the release
+ * dialog. The release body is intentionally omitted; selecting a row
+ * still goes through {@link fetchReleaseNotes} so one dialog open does
+ * not spend API budget downloading every changelog body.
+ */
+export async function fetchReleaseSummaries(limit = 12): Promise<ReleaseSummary[]> {
+  const slug = repoSlug()
+  if (!slug) return []
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://api.github.com/repos/${slug}/releases?per_page=${limit}`, {
+      signal: ctrl.signal,
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+      },
+    })
+    if (!res.ok) return []
+    const body = (await res.json()) as { tag_name?: unknown; html_url?: unknown }[]
+    if (!Array.isArray(body)) return []
+    return body
+      .map((release) => {
+        const version = versionFromTagName(release.tag_name)
+        if (!version || typeof release.html_url !== "string") return null
+        return { version, url: release.html_url }
+      })
+      .filter((release): release is ReleaseSummary => release !== null)
+  } catch {
+    return []
   } finally {
     clearTimeout(timer)
   }

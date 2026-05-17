@@ -17,7 +17,7 @@ import { type Accessor, Show, createMemo } from "solid-js"
 import pkg from "../../../package.json" with { type: "json" }
 import { type KobeOrchestrator, RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import type { Task } from "../../types/task.ts"
-import { UPDATE_COMMAND, type UpdateInfo } from "../../version.ts"
+import { CURRENT_VERSION, UPDATE_COMMAND, type UpdateInfo } from "../../version.ts"
 import { useTheme } from "../context/theme"
 import type { WorktreeOpener } from "../lib/worktree-opener"
 import { useDialog } from "../ui/dialog"
@@ -59,6 +59,14 @@ export function TopBar(props: {
   const rcBridge = props.orchestrator.rcBridgeSignal()
   const isBridgeOn = () => rcBridge().state === "running" || rcBridge().state === "starting"
   const activeLabel = createMemo(() => activeTaskTopBarParts(props.activeTask()))
+  const releaseInfo = (): UpdateInfo =>
+    props.updateInfo() ?? { current: CURRENT_VERSION, latest: CURRENT_VERSION, hasUpdate: false }
+
+  function openReleaseDialog(): void {
+    UpdateDialog.show(dialog, releaseInfo(), () => {
+      void confirmUpdate()
+    })
+  }
 
   async function confirmUpdate(): Promise<void> {
     const info = props.updateInfo()
@@ -97,30 +105,20 @@ export function TopBar(props: {
         <text fg={theme.primary} attributes={TextAttributes.BOLD}>
           KobeCode
         </text>
-        <text fg={theme.textMuted}>v{pkg.version}</text>
+        <text fg={theme.textMuted} onMouseUp={openReleaseDialog}>
+          v{pkg.version}
+        </text>
         {/* Update controls. `[Update]` performs the self-update after
-            confirming and leaving alt-screen; the version chip opens
-            the UpdateDialog with the install command + release notes.
-            Only renders when the npm-registry check found a newer
-            published version. Suppressed entirely in dev mode
+            the release dialog now; that dialog owns the install action
+            and changelog browsing so update/version/release notes are
+            one surface. Only renders when the npm-registry check found
+            a newer published version. Suppressed entirely in dev mode
             (KOBE_DEV=1, set by `bun run dev`). */}
         <Show when={props.updateInfo()?.hasUpdate}>
-          <text
-            fg={theme.warning}
-            attributes={TextAttributes.BOLD}
-            onMouseUp={() => {
-              void confirmUpdate()
-            }}
-          >
+          <text fg={theme.warning} attributes={TextAttributes.BOLD} onMouseUp={openReleaseDialog}>
             [Update]
           </text>
-          <text
-            fg={theme.warning}
-            onMouseUp={() => {
-              const info = props.updateInfo()
-              if (info) UpdateDialog.show(dialog, info)
-            }}
-          >
+          <text fg={theme.warning} onMouseUp={openReleaseDialog}>
             ↑ v{props.updateInfo()?.latest} available!
           </text>
         </Show>
