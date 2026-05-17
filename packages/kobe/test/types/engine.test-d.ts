@@ -115,6 +115,7 @@ describe("AIEngine", () => {
       | "readHistory"
       | "deleteHistory"
       | "listSessions"
+      | "listCommands"
       | "stop"
     >()
   })

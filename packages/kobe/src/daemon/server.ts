@@ -377,6 +377,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const sessions = await orch.listSessions(requireString(payload, "taskId"))
         return { sessions }
       }
+      case "chat.commands": {
+        const commands = await orch.listCommandsForTab(
+          requireString(payload, "taskId"),
+          requireString(payload, "tabId"),
+        )
+        return { commands }
+      }
       case "chat.session.open": {
         const taskId = requireString(payload, "taskId")
         const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {

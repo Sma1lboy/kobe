@@ -51,6 +51,7 @@ import type {
 } from "@/types/engine"
 import { findClaudeBinary } from "./binary"
 import { claudeCapabilities, claudeIdentity } from "./capabilities"
+import { listClaudeCommands } from "./commands"
 import {
   appendInterruptedUserPrompt,
   deleteHistory as deleteHistoryImpl,
@@ -154,6 +155,10 @@ export class ClaudeCodeLocal implements AIEngine {
 
   async listSessions(cwd: string): Promise<SessionMeta[]> {
     return listSessionsForCwd(cwd)
+  }
+
+  async listCommands(opts?: { cwd?: string }) {
+    return listClaudeCommands(opts?.cwd)
   }
 
   async stop(handle: SessionHandle): Promise<void> {
