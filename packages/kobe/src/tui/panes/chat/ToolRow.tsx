@@ -18,9 +18,10 @@ import {
   formatWriteDiff,
 } from "./edit-diff"
 import { BLACK_CIRCLE, RESULT_PREFIX } from "./message-figures"
-import type { ChatRow } from "./store"
+import type { ChatRow, ToolChildRow } from "./store"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "./tool-banners"
-import { lookupToolMeta } from "./tool-registry"
+import { type ToolCounts, summarizeToolRun } from "./tool-fold"
+import { classifyTool, lookupToolMeta } from "./tool-registry"
 
 /**
  * One-line input preview for tool-call banners. Mirrors
@@ -97,12 +98,16 @@ export function ToolRow(props: {
   const isMultiEdit = () => meta().body === "multi-edit-diff"
   const isBash = () => meta().banner === "bash"
   const isReadGrepGlob = () => meta().banner === "read-grep-glob"
+  const isSubagent = () => meta().body === "subagent"
   /** Tools whose banner replaces the generic `tool(arg-preview)` chip. */
   const usesCustomBanner = () => meta().banner !== "default" || meta().body !== "default"
   /** Tools whose body renders inline so the generic preview/expanded
    *  blocks below should be suppressed. */
   const usesCustomBody = () =>
-    meta().body === "edit-diff" || meta().body === "multi-edit-diff" || meta().body === "bash-output"
+    meta().body === "edit-diff" ||
+    meta().body === "multi-edit-diff" ||
+    meta().body === "bash-output" ||
+    meta().body === "subagent"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -121,24 +126,31 @@ export function ToolRow(props: {
         </text>
         <box flexGrow={1}>
           <Show
-            when={isReadGrepGlob()}
+            when={isSubagent()}
             fallback={
               <Show
-                when={isBash()}
+                when={isReadGrepGlob()}
                 fallback={
-                  <text fg={theme.text}>
-                    <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
-                    <Show when={!usesCustomBanner()}>
-                      <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
-                    </Show>
-                  </text>
+                  <Show
+                    when={isBash()}
+                    fallback={
+                      <text fg={theme.text}>
+                        <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
+                        <Show when={!usesCustomBanner()}>
+                          <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
+                        </Show>
+                      </text>
+                    }
+                  >
+                    <BashBanner row={r()} />
+                  </Show>
                 }
               >
-                <BashBanner row={r()} />
+                <ReadGrepGlobBanner row={r()} />
               </Show>
             }
           >
-            <ReadGrepGlobBanner row={r()} />
+            <SubagentBanner row={r()} />
           </Show>
         </box>
       </box>
@@ -161,6 +173,12 @@ export function ToolRow(props: {
           Bash calls (no output to render yet) and for empty output. */}
       <Show when={isBash() && r().done}>
         <BashOutputBlock output={r().output} expanded={props.expanded} onToggle={props.onToggle} />
+      </Show>
+      {/* Subagent (Agent/Task) — nested tool-step progress. Collapsed:
+          a one-line "Searching 2 patterns, reading 3 files…" summary.
+          Expanded: the per-step list. */}
+      <Show when={isSubagent()}>
+        <SubagentBody row={r()} expanded={props.expanded} onToggle={props.onToggle} />
       </Show>
       {/* Result preview — collapsed view shows one indented line.
           Suppressed for tools with custom bodies (Edit/Write/MultiEdit/
@@ -428,5 +446,108 @@ function ReadGrepGlobBanner(props: { row: Extract<ChatRow, { kind: "tool" }> }) 
         <span style={{ fg: theme.textMuted }}>{` ${summary()}`}</span>
       </Show>
     </text>
+  )
+}
+
+/**
+ * Pull the human-readable description out of an Agent/Task tool input.
+ * Claude's Task tool takes `{ description, prompt, subagent_type }`;
+ * `description` is the short label the parent agent gave the subagent.
+ */
+function subagentDescription(input: unknown): string {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    const d = (input as Record<string, unknown>).description
+    if (typeof d === "string" && d.trim().length > 0) return d.trim()
+  }
+  return ""
+}
+
+/**
+ * Banner for an Agent/Task (subagent) tool row — bold tool name plus
+ * the dim `(description)` the parent gave the subagent. Mirrors the
+ * `ReadGrepGlobBanner` shape so all the "named activity" rows read the
+ * same.
+ */
+function SubagentBanner(props: { row: Extract<ChatRow, { kind: "tool" }> }) {
+  const { theme } = useTheme()
+  const desc = () => subagentDescription(props.row.input)
+  return (
+    <text fg={theme.text} wrapMode="none">
+      <span style={{ attributes: TextAttributes.BOLD }}>{props.row.name}</span>
+      <Show when={desc().length > 0}>
+        <span style={{ fg: theme.textMuted }}>{` (${desc()})`}</span>
+      </Show>
+    </text>
+  )
+}
+
+/**
+ * Body for an Agent/Task (subagent) tool row — shows the subagent's
+ * nested tool steps (collected on `row.children` from `parentId`-tagged
+ * engine events). This is the "watch the subagent work" surface: kobe
+ * deliberately does NOT flatten the subagent's Read/Grep/Bash calls
+ * into the parent transcript (that's noise), so this nested block is
+ * the only place they appear.
+ *
+ *   - Collapsed: one dim progress line — `Searching 2 patterns, reading
+ *     3 files` while in flight, `Searched …, read …` once the subagent
+ *     finishes. Reuses `summarizeToolRun`, the same summary the
+ *     top-level tool-fold uses, so the vocabulary is consistent.
+ *   - Expanded: the per-step list, each step a `● name(args)` line with
+ *     a running/done glyph.
+ */
+function SubagentBody(props: {
+  row: Extract<ChatRow, { kind: "tool" }>
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { theme } = useTheme()
+  const children = (): readonly ToolChildRow[] => props.row.children ?? []
+  const counts = (): ToolCounts => {
+    const c: ToolCounts = { search: 0, read: 0, list: 0, bash: 0, other: 0 }
+    for (const ch of children()) c[classifyTool(ch.name)]++
+    return c
+  }
+  const anyInFlight = () => children().some((ch) => !ch.done)
+  const summary = (): string => {
+    if (children().length === 0) return props.row.done ? "No tool steps" : "Starting…"
+    return summarizeToolRun(counts(), anyInFlight())
+  }
+  return (
+    <box paddingLeft={2} flexDirection="column" onMouseUp={() => props.onToggle()}>
+      <Show when={!props.expanded}>
+        <text fg={theme.textMuted} wrapMode="none">
+          {RESULT_PREFIX}
+          {summary()}
+        </text>
+      </Show>
+      <Show when={props.expanded}>
+        <Show
+          when={children().length > 0}
+          fallback={
+            <text fg={theme.textMuted} wrapMode="none">
+              {RESULT_PREFIX}
+              {summary()}
+            </text>
+          }
+        >
+          <For each={children()}>
+            {(ch) => (
+              <box flexDirection="row" gap={1}>
+                <text fg={ch.done ? theme.success : theme.warning} attributes={TextAttributes.BOLD}>
+                  {ch.done ? BLACK_CIRCLE : "✻"}
+                </text>
+                <box flexGrow={1}>
+                  <text fg={theme.text} wrapMode="none">
+                    <span style={{ attributes: TextAttributes.BOLD }}>{ch.name}</span>
+                    <span style={{ fg: theme.textMuted }}>{`(${previewToolInput(ch.input)})`}</span>
+                  </text>
+                </box>
+              </box>
+            )}
+          </For>
+        </Show>
+      </Show>
+    </box>
   )
 }

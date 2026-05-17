@@ -681,6 +681,44 @@ describe("applyEvent — tool.start / tool.result", () => {
     expect(s.messages[0]).toMatchObject({ done: false, input: 1 })
     expect(s.messages[1]).toMatchObject({ done: true, input: 2, output: "for-2" })
   })
+
+  test("tool.start carries the engine id onto the row as toolUseId", () => {
+    const s = applyEvent(
+      createInitialState(),
+      { type: "tool.start", name: "Agent", input: {}, id: "toolu_p" },
+      FIXED_TS,
+    )
+    expect(s.messages[0]).toMatchObject({ kind: "tool", name: "Agent", toolUseId: "toolu_p" })
+  })
+})
+
+describe("applyEvent — subagent nesting (parentId)", () => {
+  test("a parentId tool.start nests under the matching Agent row, not the top level", () => {
+    let s = createInitialState()
+    s = applyEvent(s, { type: "tool.start", name: "Agent", input: {}, id: "toolu_p" }, FIXED_TS)
+    s = applyEvent(s, { type: "tool.start", name: "Read", input: { path: "a" }, parentId: "toolu_p" }, FIXED_TS)
+    // Still one top-level row — the child did not append to the transcript.
+    expect(s.messages).toHaveLength(1)
+    const parent = s.messages[0] as Extract<(typeof s.messages)[number], { kind: "tool" }>
+    expect(parent.children).toHaveLength(1)
+    expect(parent.children?.[0]).toMatchObject({ name: "Read", done: false })
+  })
+
+  test("a parentId tool.result patches the matching child step", () => {
+    let s = createInitialState()
+    s = applyEvent(s, { type: "tool.start", name: "Agent", input: {}, id: "toolu_p" }, FIXED_TS)
+    s = applyEvent(s, { type: "tool.start", name: "Grep", input: { pattern: "x" }, parentId: "toolu_p" }, FIXED_TS)
+    s = applyEvent(s, { type: "tool.result", name: "Grep", output: "3 matches", parentId: "toolu_p" }, FIXED_TS)
+    const parent = s.messages[0] as Extract<(typeof s.messages)[number], { kind: "tool" }>
+    expect(parent.children?.[0]).toMatchObject({ name: "Grep", done: true, output: "3 matches" })
+  })
+
+  test("a parentId event with no matching Agent row is dropped, never flattened (grandchild guard)", () => {
+    let s = createInitialState()
+    s = applyEvent(s, { type: "tool.start", name: "Read", input: {}, parentId: "toolu_unknown" }, FIXED_TS)
+    s = applyEvent(s, { type: "tool.result", name: "Read", output: "x", parentId: "toolu_unknown" }, FIXED_TS)
+    expect(s.messages).toHaveLength(0)
+  })
 })
 
 describe("applyEvent — reasoning.delta", () => {

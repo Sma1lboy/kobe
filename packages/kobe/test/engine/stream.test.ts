@@ -90,7 +90,7 @@ describe("parseStreamJson", () => {
       ),
     )
     expect(events).toEqual([
-      { type: "tool.start", name: "Read", input: { path: "foo" } },
+      { type: "tool.start", name: "Read", input: { path: "foo" }, id: "tu_1" },
       { type: "tool.result", name: "Read", output: "file contents" },
       { type: "done" },
     ])
@@ -206,13 +206,15 @@ describe("parseStreamJson", () => {
     expect(events).toEqual([{ type: "done" }])
   })
 
-  it("filters subagent events by parent_tool_use_id so internal Glob/Read banners don't leak into the parent transcript", async () => {
+  it("surfaces subagent tool steps tagged with parentId, but not the subagent's prose", async () => {
     // Real shape captured from `claude -p ... --output-format stream-json`
     // with the Agent tool. Parent's Agent tool_use has parent_tool_use_id:
     // null. The subagent's own assistant tool_use (Glob) and user
     // tool_result both carry parent_tool_use_id: <parent's Agent id>.
-    // The parser must drop the subagent blocks; only the parent's Agent
-    // tool.start / tool.result should reach the chat.
+    // The parser surfaces the subagent's *tool steps* tagged with
+    // `parentId` (so the chat nests them under the Agent row) but drops
+    // the subagent's text/prose — only tool activity, not internal
+    // reasoning, reaches the parent.
     const parentAgentId = "toolu_018ZVWhh"
     const events = await collect(
       parseStreamJson(
@@ -271,7 +273,18 @@ describe("parseStreamJson", () => {
         type: "tool.start",
         name: "Agent",
         input: { description: "find md files", subagent_type: "Explore", prompt: "find" },
+        id: parentAgentId,
       },
+      // subagent Glob — surfaced, tagged with the parent Agent's id.
+      {
+        type: "tool.start",
+        name: "Glob",
+        input: { pattern: "*.md" },
+        id: "toolu_glob",
+        parentId: parentAgentId,
+      },
+      { type: "tool.result", name: "Glob", output: "a.md\nb.md", parentId: parentAgentId },
+      // subagent's `user` text block ("find md files") is NOT emitted.
       { type: "tool.result", name: "Agent", output: "found 2 .md files" },
       { type: "done" },
     ])

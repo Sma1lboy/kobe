@@ -51,8 +51,17 @@ export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob"
  *   - `bash-output` — stdout/stderr block under the Bash banner.
  *   - `read-grep-glob` — banner already carries the summary; expanded
  *     view shows the raw output dump but no input block.
+ *   - `subagent` — Agent/Task invocation. Body renders the subagent's
+ *     nested tool steps (collected on the row's `children`): a
+ *     collapsed progress summary, expandable to the per-step list.
  */
-export type ToolBodyStrategy = "default" | "edit-diff" | "multi-edit-diff" | "bash-output" | "read-grep-glob"
+export type ToolBodyStrategy =
+  | "default"
+  | "edit-diff"
+  | "multi-edit-diff"
+  | "bash-output"
+  | "read-grep-glob"
+  | "subagent"
 
 export interface ToolMeta {
   readonly bucket: ToolBucket
@@ -78,6 +87,11 @@ const claudeRegistry: Readonly<Record<string, ToolMeta>> = {
   Grep: { bucket: "search", banner: "read-grep-glob", body: "read-grep-glob" },
   Glob: { bucket: "list", banner: "read-grep-glob", body: "read-grep-glob" },
   LS: { bucket: "list", banner: "default", body: "default" },
+  // Subagent invocation. Claude Code names the tool `Task`; older
+  // builds / docs also use `Agent` — register both so either spelling
+  // gets the nested-steps body.
+  Task: { bucket: "other", banner: "default", body: "subagent" },
+  Agent: { bucket: "other", banner: "default", body: "subagent" },
 }
 
 const registries: Readonly<Record<VendorId, Readonly<Record<string, ToolMeta>>>> = {
@@ -104,4 +118,16 @@ export function lookupToolMeta(name: string, vendor: VendorId = "claude"): ToolM
 /** Convenience alias kept for `groupRenderItems` (the fold-summary call site). */
 export function classifyTool(name: string, vendor: VendorId = "claude"): ToolBucket {
   return lookupToolMeta(name, vendor).bucket
+}
+
+/**
+ * True for Agent/Task tools that own nested subagent steps. The chat's
+ * tool-fold groups consecutive tool rows into a single summary; a
+ * subagent row carries its own progress UI and must stay un-folded, so
+ * `groupRenderItems` treats it as a fold boundary. Lives here (not as a
+ * literal name check in `tool-fold`) to keep vendor strings in the
+ * registry.
+ */
+export function isSubagentTool(name: string, vendor: VendorId = "claude"): boolean {
+  return lookupToolMeta(name, vendor).body === "subagent"
 }

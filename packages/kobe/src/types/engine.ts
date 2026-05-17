@@ -264,10 +264,29 @@ export type EngineEvent =
   | { readonly type: "assistant.delta"; readonly text: string }
   /** Streaming chunk of model reasoning / summary text. Empty chunks are ignored by the UI. */
   | { readonly type: "reasoning.delta"; readonly text: string }
-  /** A tool call has begun. `input` is the parsed tool args (engine-shaped). */
-  | { readonly type: "tool.start"; readonly name: string; readonly input: unknown }
-  /** A tool call completed. `output` is the parsed tool result. */
-  | { readonly type: "tool.result"; readonly name: string; readonly output: unknown }
+  /**
+   * A tool call has begun. `input` is the parsed tool args (engine-shaped).
+   *
+   * `id` is the engine's tool_use id when known (the live Claude path
+   * always has it; history replay does not plumb it here). `parentId`,
+   * when set, means this call is a *subagent's internal step* — the
+   * engine ran it inside an Agent/Task tool whose own id equals
+   * `parentId`. The chat nests these under the parent Agent row instead
+   * of appending them to the top-level transcript.
+   */
+  | {
+      readonly type: "tool.start"
+      readonly name: string
+      readonly input: unknown
+      readonly id?: string
+      readonly parentId?: string
+    }
+  /**
+   * A tool call completed. `output` is the parsed tool result.
+   * `parentId` carries the same subagent-nesting meaning as on
+   * {@link EngineEvent} `tool.start`.
+   */
+  | { readonly type: "tool.result"; readonly name: string; readonly output: unknown; readonly parentId?: string }
   /**
    * Token usage report; emitted at least once per turn (typically on the
    * terminal `result` frame). Optional cache fields mirror Anthropic's API
