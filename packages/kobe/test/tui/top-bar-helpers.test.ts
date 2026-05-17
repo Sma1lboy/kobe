@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { activeTaskSessionId } from "../../src/tui/component/top-bar-helpers"
+import { activeTaskRepoBranchLabel, activeTaskSessionId } from "../../src/tui/component/top-bar-helpers"
 import { type Task, toTaskId } from "../../src/types/task"
 
 function taskWithTabs(activeTabId: string): Task {
@@ -33,5 +33,25 @@ describe("activeTaskSessionId", () => {
 
   test("does not fall back to the legacy task session id when the active tab is missing", () => {
     expect(activeTaskSessionId(taskWithTabs("missing"), "missing")).toBeNull()
+  })
+})
+
+describe("activeTaskRepoBranchLabel", () => {
+  test("renders repo basename and branch for regular tasks", () => {
+    expect(activeTaskRepoBranchLabel(taskWithTabs("tab-a"))).toBe("repo / kobe/demo")
+  })
+
+  test("handles trailing slashes in repo paths", () => {
+    expect(activeTaskRepoBranchLabel({ ...taskWithTabs("tab-a"), repo: "/Users/jacksonc/i/kobe/" })).toBe(
+      "kobe / kobe/demo",
+    )
+  })
+
+  test("omits the slash when branch is not allocated yet", () => {
+    expect(activeTaskRepoBranchLabel({ ...taskWithTabs("tab-a"), branch: "" })).toBe("repo")
+  })
+
+  test("returns no task without an active task", () => {
+    expect(activeTaskRepoBranchLabel(undefined)).toBe("no task")
   })
 })
