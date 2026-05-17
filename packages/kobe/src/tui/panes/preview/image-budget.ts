@@ -18,13 +18,21 @@ const SIDEBAR_RESERVED_COLS = 42
 const FILETREE_RESERVED_COLS = 38
 const PANE_PADDING_COLS = 6
 const PANE_HEADROOM_ROWS = 14
+/**
+ * Fraction of the preview pane's vertical real-estate we hand to the
+ * image. Going higher than ~0.75 starts to crowd the path subtitle and
+ * any future metadata bar; staying at 0.5 (the original setting) made
+ * the rendered sixel feel tiny on terminals where the workspace pane
+ * has lots of free rows.
+ */
+const IMAGE_HEIGHT_FRACTION = 0.75
 
 export function computeImageBudget(): { maxCols: number; maxRows: number } {
   const out = process.stdout as { columns?: number; rows?: number }
   const termCols = typeof out.columns === "number" && out.columns > 0 ? out.columns : 120
   const termRows = typeof out.rows === "number" && out.rows > 0 ? out.rows : 40
   const maxCols = Math.max(20, termCols - SIDEBAR_RESERVED_COLS - FILETREE_RESERVED_COLS - PANE_PADDING_COLS)
-  const maxRows = Math.max(10, Math.floor((termRows - PANE_HEADROOM_ROWS) / 2))
+  const maxRows = Math.max(10, Math.floor((termRows - PANE_HEADROOM_ROWS) * IMAGE_HEIGHT_FRACTION))
   return { maxCols, maxRows }
 }
 
