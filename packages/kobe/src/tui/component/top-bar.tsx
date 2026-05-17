@@ -4,10 +4,7 @@
  * right PR button width.
  *
  *   - Left:   `KobeCode vX.Y.Z` + optional `↑ update available` chip.
- *   - Center: active task's branch name (no "Repo <name>" prefix —
- *             kobe spans many repos so a single repo label in the
- *             topbar is misleading; the active branch alone is the
- *             useful per-task signal).
+ *   - Center: active task's repo basename + branch (`repo / branch`).
  *   - Right:  CreatePRButton.
  *
  * Extracted from `src/tui/app.tsx` during the Shell refactor.
@@ -28,6 +25,7 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 import { CreatePRButton } from "./create-pr-button"
 import { OpenWorktreeButton } from "./open-worktree-button"
 import { RcBridgeDialog } from "./rc-bridge-dialog"
+import { activeTaskTopBarLabel } from "./top-bar-helpers"
 import { UpdateDialog } from "./update-dialog"
 
 export function TopBar(props: {
@@ -159,7 +157,7 @@ export function TopBar(props: {
         >
           <Show when={props.activeTask() !== undefined}>
             <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-              {props.activeTask()?.branch}
+              {activeTaskTopBarLabel(props.activeTask())}
             </text>
           </Show>
         </Show>
