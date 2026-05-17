@@ -123,9 +123,16 @@ export class SixelImageRenderable extends Renderable {
   protected override destroySelf(): void {
     const last = this._lastEmitted
     if (last) {
+      // Save cursor + SGR, force default attributes (otherwise spaces
+      // inherit whatever bg opentui last wrote — a highlighted tab,
+      // a theme tint — and the cleared region reads as a coloured
+      // bar instead of true background). One extra row below covers
+      // sub-cell pixel overflow when the host font isn't exactly the
+      // assumed 22-pixel cell height.
       const blank = " ".repeat(Math.max(1, last.w))
-      const chunks: string[] = ["\x1b7"]
-      for (let r = 0; r < last.h; r += 1) {
+      const chunks: string[] = ["\x1b7\x1b[0m"]
+      const rows = last.h + 1
+      for (let r = 0; r < rows; r += 1) {
         chunks.push(`\x1b[${last.y + 1 + r};${last.x + 1}H${blank}`)
       }
       chunks.push("\x1b8")
