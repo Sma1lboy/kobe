@@ -104,7 +104,7 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
                 const sixel = createMemo(() => m().sixel as Buffer)
                 const cells = createMemo(() => m().sixelCells as { cols: number; rows: number })
                 return (
-                  <box paddingTop={1} flexDirection="column">
+                  <box paddingTop={1} flexDirection="column" alignItems="center">
                     <sixel_image sixel={sixel()} width={cells().cols} height={cells().rows} />
                   </box>
                 )
