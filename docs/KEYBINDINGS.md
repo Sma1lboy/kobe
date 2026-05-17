@@ -58,7 +58,7 @@ site — they should agree.
 | `esc`            | dialog dismiss vs chat interrupt        | `DialogProvider` registers a higher-priority `escape` binding while a dialog is open; dialog pop wins. With no dialog and chat focused while streaming, `chat.interrupt` cancels the turn. Idle ESC is a no-op so the composer doesn't lose focus mid-edit. |
 | `ctrl+c`         | copy selection vs double-tap quit       | Selection-aware. With text selected → copy via OSC52 + clear. Else first press arms a 1.5s quit window; second press in window = quit. Both behaviours live in `useKobeKeybindings`. `cmd+c` is a synonym for terminals that forward Cmd-chords (Kitty, Ghostty, iTerm2 with "Send Modifier Keys") so the chord doesn't get silently swallowed there. |
 | `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
-| `ctrl+b`         | tmux prefix key / background-tasks dialog | Global "open background tasks" (`tasks.background`, KOB-187). Modifier-prefixed so it can't collide with composer typing. **tmux caveat:** `ctrl+b` is tmux's default prefix — tmux users press it twice (`ctrl+b ctrl+b`) to forward it. No status-bar hint: the self-hiding `BackgroundTasksIndicator` chip carries the affordance only when something is running out of view. |
+| `ctrl+b`         | tmux prefix key / background-tasks dialog | Global "open background tasks" (`tasks.background`, KOB-187). Modifier-prefixed so it can't collide with composer typing. **Double-press** (800ms window, claude-code parity) — first press arms + shows a hint, second opens the dialog. **tmux caveat:** `ctrl+b` is tmux's default prefix — tmux users press it twice for tmux first. No status-bar hint row: the self-hiding `BackgroundTasksIndicator` chip carries the affordance only when something is running out of view (or the chord is armed). |
 | `tab`            | pane cycle vs textarea focus actions    | `useKobeKeybindings` no-ops `tab` when workspace has focus so the composer's own tab handling (slash completion, indent) wins.                                                      |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
 | `ctrl+[` / `ctrl+]` | chat tab cycle vs new-task dialog sub-tab cycle | Dialog-local handler wins while the New Task dialog is open. App-level workspace bindings are gated `enabled: dialog.stack.length === 0`, so the dialog's `useBindings` registration intercepts the chord first and toggles between the "For Existing" and "For New Repo" sub-tabs. Closing the dialog restores the chat-tab cycle. |
@@ -219,5 +219,12 @@ The background-tasks manager (sessions running out of view) is opened with `ctrl
   `[ctrl+b]` affordance only when there's something to open.
 - **tmux caveat** — `ctrl+b` is tmux's default prefix key. tmux users press it twice
   (`ctrl+b ctrl+b`) to forward it to kobe, same as claude-code documents for its own chord.
+- **Double-press** — the dialog opens on the *second* `ctrl+b` inside an 800ms window,
+  mirroring claude-code's `useDoublePress` (`refs/claude-code/src/hooks/useDoublePress.ts`).
+  The first press arms the chord and `BackgroundTasksIndicator` swaps to a "press ctrl+b
+  again" hint; the window expires silently if the second press never comes. The arm state
+  lives in `pressBackgroundTasksChord` (`context/keybindings.ts`), next to the analogous
+  `ctrl+c` arm-then-quit machinery.
 
-Decision: KOB-187. See `context/keybindings.ts` (`tasks.background`) and `app-keymap.tsx` §4.
+Decision: KOB-187. See `context/keybindings.ts` (`tasks.background` + `pressBackgroundTasksChord`)
+and `app-keymap.tsx` §4.

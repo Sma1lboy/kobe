@@ -37,7 +37,7 @@ import type { KobeOrchestrator } from "../client/remote-orchestrator.ts"
 import type { Task } from "../types/task.ts"
 import { SettingsDialog } from "./component/settings-dialog"
 import type { PaneId } from "./context/focus"
-import { bindByIds } from "./context/keybindings"
+import { bindByIds, pressBackgroundTasksChord } from "./context/keybindings"
 import type { KVContext } from "./context/kv"
 import { useBindings } from "./lib/keymap"
 import type { DialogContext } from "./ui/dialog"
@@ -200,7 +200,11 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
       "settings.open": () => {
         void SettingsDialog.show(dialog, deps.kv, deps.orchestrator)
       },
-      "tasks.background": () => deps.openBackgroundTasks(),
+      // Double-press gate: first ctrl+b arms (the indicator shows a
+      // "press again" hint), second within 800ms opens the dialog.
+      "tasks.background": () => {
+        if (pressBackgroundTasksChord() === "fire") deps.openBackgroundTasks()
+      },
     }),
   }))
 

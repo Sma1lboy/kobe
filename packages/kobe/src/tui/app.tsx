@@ -41,6 +41,7 @@ import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
 import { BackgroundTasksDialog } from "./component/background-tasks-dialog"
 import { BackgroundTasksIndicator } from "./component/background-tasks-indicator"
+import { computeBackgroundRows } from "./component/background-tasks-parts"
 import { CenterTabStrip } from "./component/center-tab-strip"
 import { HelpDialog } from "./component/help-dialog"
 import { PaneHeader } from "./component/pane-header"
@@ -515,6 +516,11 @@ function Shell(props: AppDeps) {
     })
   }
 
+  // Background sessions running out of view — projected once here and
+  // shared by the status-bar indicator and the chat composer's
+  // background-runs line. Excludes the currently-visible tab.
+  const backgroundRows = createMemo(() => computeBackgroundRows(chatRunStateAcc(), tasksAcc(), visibleTabKey()))
+
   useAppKeymap({
     dialog,
     focusedPane,
@@ -693,6 +699,8 @@ function Shell(props: AppDeps) {
                 onQuickForkRequest={() => {
                   void quickForkActiveTask()
                 }}
+                backgroundRows={backgroundRows}
+                onOpenBackgroundTasks={openBackgroundTasks}
               />
             </Show>
           </box>
