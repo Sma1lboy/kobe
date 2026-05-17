@@ -277,17 +277,18 @@ function SlashDropdown(props: {
                   fg={active() ? theme.primary : theme.text}
                   attributes={active() ? TextAttributes.BOLD : undefined}
                   wrapMode="none"
+                  flexShrink={0}
                 >
                   {active() ? "▸ " : "  "}
                   {entry.display}
                 </text>
                 <Show when={entry.source === "user"}>
-                  <text fg={theme.textMuted} wrapMode="none">
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={0}>
                     user
                   </text>
                 </Show>
                 <Show when={description()}>
-                  <text fg={theme.textMuted} wrapMode="none">
+                  <text fg={theme.textMuted} wrapMode="none" flexShrink={1}>
                     {description()}
                   </text>
                 </Show>

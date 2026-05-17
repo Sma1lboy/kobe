@@ -92,6 +92,11 @@ test("Codex slash dropdown shows Codex skills instead of Claude built-ins", asyn
   const initResult = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (initResult.status !== 0) throw new Error(`repo-init.sh failed: ${initResult.stderr}\n${initResult.stdout}`)
 
+  writeCodexSkill(
+    codexHome,
+    "office-hours",
+    "Brainstorm and pressure-test product ideas with a deliberately long Codex skill description",
+  )
   writeCodexSkill(codexHome, "review-helper", "Review code with Codex")
   seedCodexTask(homeDir, repo)
 
@@ -101,7 +106,7 @@ test("Codex slash dropdown shows Codex skills instead of Claude built-ins", asyn
       CODEX_HOME: codexHome,
       KOBE_HOME_DIR: homeDir,
     },
-    cols: 120,
+    cols: 80,
     rows: 30,
     settleMs: 150,
   })
@@ -112,7 +117,7 @@ test("Codex slash dropdown shows Codex skills instead of Claude built-ins", asyn
   await kobe.typeText("/")
   const screen = await kobe.waitFor((s) => s.includes("/review-helper"), 10_000)
 
-  expect(screen).toContain("/review-helper")
-  expect(screen).toContain("Review code with Codex")
+  expect(screen).toContain("/office-hours  user")
+  expect(screen).toContain("/review-helper  user")
   expect(screen).not.toContain("/compact")
 }, 30_000)
