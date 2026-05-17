@@ -52,6 +52,8 @@ export type FileTreeBindingsOpts = {
   currentTab: Accessor<FileTreeTab>
   /** Activate the row under the cursor (calls `onOpenFile` upstream). */
   openCurrent: () => void
+  /** Hand the current row off to the OS default app (audio, video, PDF). */
+  openExternal: () => void
   /** Force a reload of the current tab's data. */
   refresh: () => void
   /** `l` — expand current dir / descend into it / open file. */
@@ -87,6 +89,7 @@ export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
         if (next) opts.setTab(next)
       },
       "files.open": () => opts.openCurrent(),
+      "files.openExternal": () => opts.openExternal(),
       "files.refresh": () => opts.refresh(),
     }),
   }))

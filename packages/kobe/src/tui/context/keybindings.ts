@@ -663,6 +663,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Refresh",
     hint: { keys: "r", label: "refresh" },
   },
+  {
+    id: "files.openExternal",
+    scope: "files",
+    keys: ["o"],
+    category: "Files",
+    description: "Open file in system default app (audio / video / pdf preview)",
+    hint: { keys: "o", label: "open external" },
+  },
 
   // ─── Terminal ─────────────────────────────────────────────────────────
   {

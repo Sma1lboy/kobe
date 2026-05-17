@@ -64,6 +64,7 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, o
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
+import { openExternally } from "./open-external"
 
 /**
  * Default width of the pane in terminal cells. Paired with the
@@ -453,6 +454,17 @@ export function FileTree(props: FileTreeProps) {
   function refresh(): void {
     setRefreshTick((n) => n + 1)
   }
+  function openExternal(): void {
+    const r = rows()
+    const i = cursorIndex()
+    if (i < 0 || i >= r.length) return
+    const row = r[i]
+    if (!row || row.kind === "dir") return
+    const wt = props.worktreePath()
+    if (!wt) return
+    const absPath = `${wt}/${row.path}`
+    openExternally(absPath)
+  }
 
   useFileTreeBindings({
     focused: focusedAccessor,
@@ -461,6 +473,7 @@ export function FileTree(props: FileTreeProps) {
     setTab: (t) => setTab(t),
     currentTab: tab,
     openCurrent,
+    openExternal,
     refresh,
     expandOrDescend,
     collapseOrParent,
@@ -492,7 +505,7 @@ export function FileTree(props: FileTreeProps) {
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `1` / `2` / `3` switch from the keyboard. */}
-      <box flexDirection="row" gap={2} paddingBottom={1} flexShrink={0}>
+      <box flexDirection="row" gap={2} paddingBottom={0} flexShrink={0}>
         <For each={TABS}>
           {(t) => {
             const isActive = () => tab() === t
@@ -508,6 +521,16 @@ export function FileTree(props: FileTreeProps) {
             )
           }}
         </For>
+      </box>
+      {/* Hint row. Shows the most-used file-tree keybindings as a
+         compact muted line right under the tabs — analogous to the
+         "f file · d diff · ctrl+w close" strip in the preview pane.
+         Highlights `o` so users discover the OS-default-app opener
+         without having to remember it from the help dialog. */}
+      <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+        <text fg={theme.textMuted} wrapMode="none">
+          enter open · o open externally · r refresh
+        </text>
       </box>
 
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
