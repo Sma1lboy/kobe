@@ -14,18 +14,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.23] - 2026-05-17
+
 ### Changed
 
 - Hide the chat topbar session id label so internal engine ids no longer show in normal use.
-
-### Fixed
-
-- Show Gemini CLI login state in Settings → Accounts, including Google OAuth, Gemini API key, and Vertex AI environment auth modes.
-
-## [0.5.3] - 2026-05-16
-
-### Changed
-
 - **Rename chat tab moves from `Ctrl+R` to `F2`** — `Ctrl+R` is the shell-readline / Claude Code reverse-i-search convention, claimed in this release by the new cross-task prompt-history palette (KOB-154). Rename tab gets `F2` instead — the cross-OS / cross-IDE rename chord. Same workspace scope, same behavior, just a different key (KOB-156).
 - **Breaking: `kobed` is gone — daemon lifecycle moved to `kobe daemon ...`** — the standalone `kobed` binary was merged into the single `kobe` binary as part of the CLI surface unification (KOB-134/KOB-136). Use `kobe daemon start|stop|status|restart` from now on. The npm package no longer publishes a `kobed` bin and the release tarballs no longer include a separate `kobed` executable. Update any scripts or aliases that invoke `kobed` directly.
 - **Gemini model choices are explicit instead of auto-routed aliases** — the Gemini picker now offers `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, and `gemini-2.5-pro`, with `gemini-3.1-pro-preview` as the fallback default, so coding sessions do not silently drift through Gemini CLI's `auto` routing (KOB-155).
@@ -45,6 +38,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Show Gemini CLI login state in Settings → Accounts, including Google OAuth, Gemini API key, and Vertex AI environment auth modes.
 - **Up-arrow history recall restores bash mode for `!`-prefixed entries** — recalling a previous `!cmd` submission now flips the composer back into bash mode and strips the `!` prefix, mirroring how the entry was originally submitted. Previously the `!` came back as literal text and the user had to re-trigger bash mode by hand (KOB-151).
 - **Slash command Tab completion works across terminal Tab event shapes** — the chat composer now treats both named `tab` events and raw `\t` sequences as autocomplete Tab, so highlighted slash commands and file mentions complete instead of falling through to textarea/default focus behavior (KOB-139).
 - **Started chat tabs stay bound to their engine** — once a chat tab has a Claude Code or Codex session, the model picker keeps other-engine models visible but disabled with a new-chat-required hint, and the orchestrator rejects cross-engine retargeting so history/resume data cannot cross vendors (KOB-128).
