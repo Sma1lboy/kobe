@@ -44,17 +44,35 @@ const BLACK = RGBA.fromInts(0, 0, 0, 255)
 export interface SixelImageOptions extends RenderableOptions<SixelImageRenderable> {
   /** Raw sixel escape sequence — typically the bytes captured from `chafa --format=sixels`. */
   sixel: Buffer
+  /**
+   * Background color used when filling the renderable's cell area with
+   * blank cells (both during paint and on destroy cleanup). Should
+   * match the surrounding pane background so the cleared region after
+   * tab change visually blends into the rest of the preview pane
+   * instead of reading as a distinct dark/coloured bar. Defaults to
+   * pure black if not supplied.
+   */
+  clearBg?: RGBA
 }
 
 type EmissionState = { x: number; y: number; w: number; h: number; sixel: Buffer } | null
 
 export class SixelImageRenderable extends Renderable {
   private _sixel: Buffer
+  private _clearBg: RGBA
   private _lastEmitted: EmissionState = null
 
   constructor(ctx: RenderContext, options: SixelImageOptions) {
     super(ctx, options)
     this._sixel = options.sixel
+    this._clearBg = options.clearBg ?? BLACK
+  }
+
+  set clearBg(value: RGBA) {
+    this._clearBg = value
+  }
+  get clearBg(): RGBA {
+    return this._clearBg
   }
 
   set sixel(value: Buffer) {
@@ -75,13 +93,17 @@ export class SixelImageRenderable extends Renderable {
     const h = this._heightValue
     if (w <= 0 || h <= 0 || this._sixel.length === 0) return
 
-    // Fill our cell footprint with a constant black background. The
-    // sameness is load-bearing — opentui's diff-based flush won't emit
-    // anything for our region on subsequent frames, leaving the sixel
-    // pixels we paint via stdout intact.
+    // Fill our cell footprint with a constant background matching the
+    // surrounding pane. Sameness is load-bearing — opentui's diff-based
+    // flush won't emit anything for our region on subsequent frames,
+    // leaving the sixel pixels we paint via stdout intact. Painting in
+    // the pane background colour (rather than pure black) means the
+    // unmount transition writes cells that visually match the rest of
+    // the preview, instead of leaving a dark rectangle behind.
+    const bg = this._clearBg
     for (let row = 0; row < h; row += 1) {
       for (let col = 0; col < w; col += 1) {
-        buffer.setCell(x + col, y + row, " ", BLACK, BLACK, 0)
+        buffer.setCell(x + col, y + row, " ", bg, bg, 0)
       }
     }
 
@@ -123,14 +145,17 @@ export class SixelImageRenderable extends Renderable {
   protected override destroySelf(): void {
     const last = this._lastEmitted
     if (last) {
-      // Save cursor + SGR, force default attributes (otherwise spaces
-      // inherit whatever bg opentui last wrote — a highlighted tab,
-      // a theme tint — and the cleared region reads as a coloured
-      // bar instead of true background). One extra row below covers
-      // sub-cell pixel overflow when the host font isn't exactly the
-      // assumed 22-pixel cell height.
+      // Write spaces with an explicit bg matching the pane so the
+      // cleared region blends in (default SGR would render as the
+      // terminal's hard-coded default bg, which is usually slightly
+      // off from kobe's theme and reads as a dark bar). Save/restore
+      // brackets the writes so opentui's next frame keeps its prior
+      // SGR state. One extra row below covers sub-cell pixel overflow
+      // when the host font isn't exactly the assumed 22-px cell height.
+      const bg = this._clearBg
+      const bgEsc = `\x1b[48;2;${Math.round(bg.r * 255)};${Math.round(bg.g * 255)};${Math.round(bg.b * 255)}m`
       const blank = " ".repeat(Math.max(1, last.w))
-      const chunks: string[] = ["\x1b7\x1b[0m"]
+      const chunks: string[] = ["\x1b7", bgEsc]
       const rows = last.h + 1
       for (let r = 0; r < rows; r += 1) {
         chunks.push(`\x1b[${last.y + 1 + r};${last.x + 1}H${blank}`)

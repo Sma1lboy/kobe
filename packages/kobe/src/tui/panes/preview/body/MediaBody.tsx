@@ -115,7 +115,12 @@ export function MediaBody(props: { content: Accessor<ContentState> }) {
             >
               {(view) => (
                 <box paddingTop={3} flexDirection="column" alignItems="center">
-                  <sixel_image sixel={view().sixel} width={view().cells.cols} height={view().cells.rows} />
+                  <sixel_image
+                    sixel={view().sixel}
+                    width={view().cells.cols}
+                    height={view().cells.rows}
+                    clearBg={theme.background}
+                  />
                 </box>
               )}
             </Show>
