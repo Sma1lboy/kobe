@@ -89,6 +89,17 @@ export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? home
   return join(homeDir, ".kobe", "daemon.pid")
 }
 
+/**
+ * Log file the daemon's stdout/stderr is redirected into when it is
+ * spawned as a detached background child. Without this the daemon ran
+ * with `stdio: "ignore"`, so a crash (uncaught exception / unhandled
+ * rejection) left no trace at all — the daemon just vanished. Keep the
+ * file next to the socket + pidfile under `<home>/.kobe/`.
+ */
+export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".kobe", "daemon.log")
+}
+
 export function fallbackTestSocketPath(name: string): string {
   const dir = process.platform === "darwin" ? "/tmp" : tmpdir()
   return join(dir, `${name}-${process.pid}.sock`)

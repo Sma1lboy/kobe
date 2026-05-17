@@ -11,6 +11,7 @@ import { unlink } from "node:fs/promises"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { KobeDaemonClient } from "../client/index.ts"
 import { createKobeCore } from "../core/index.ts"
+import { installDaemonCrashHandlers } from "../daemon/crash-log.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile, startDaemonServer } from "../daemon/server.ts"
 
@@ -113,6 +114,13 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     console.error("usage: kobe daemon start|stop|status|restart")
     process.exit(2)
   }
+
+  // We ARE the daemon process from here on. Install the crash net
+  // before doing any work so a stray rejection during startup (or any
+  // time after) is logged to daemon.log instead of silently killing
+  // the daemon. Safe here because this branch only runs in the spawned
+  // daemon process, never in the TUI or tests.
+  installDaemonCrashHandlers()
 
   const core = await createKobeCore()
   const server = await startDaemonServer(core.orchestrator, {

@@ -166,10 +166,16 @@ export class SessionRegistry {
  * group. We attempt the group signal first and fall back to a direct
  * `proc.kill()` if the group send fails (e.g. the leader already
  * exited, the child was not spawned detached, or `pid` is gone).
+ *
+ * The `pid > 1` guard is load-bearing: `process.kill(-0, …)` would
+ * signal *our own* process group (it would kill the daemon), and
+ * `process.kill(-1, …)` signals every process the user owns. A real
+ * spawned child never has pid 0/1, but a guard here is cheap insurance
+ * against ever turning an interrupt into a daemon suicide.
  */
 function signalTree(proc: ChildProcess, signal: "SIGTERM" | "SIGKILL"): void {
   const pid = proc.pid
-  if (typeof pid === "number") {
+  if (typeof pid === "number" && pid > 1) {
     try {
       process.kill(-pid, signal)
       return

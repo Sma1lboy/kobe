@@ -1,13 +1,43 @@
-import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { type StdioOptions, spawn } from "node:child_process"
+import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
 import { unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
+import { defaultDaemonLogPath, defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
 import { KobeDaemonClient } from "./index.ts"
 
 const DAEMON_START_ARGS = ["daemon", "start"] as const
+
+/**
+ * Spawn the detached daemon child with stdout/stderr appended to
+ * `logPath`, so a crash leaves a trace. Previously the daemon ran with
+ * `stdio: "ignore"` and any crash output went to `/dev/null` — the
+ * daemon just vanished. Falls back to `"ignore"` if the log file can't
+ * be opened (never block the daemon from starting over a log file).
+ * The parent closes its copy of the fd after the fork; the child keeps
+ * its own.
+ */
+function spawnDetachedDaemon(command: string, args: readonly string[], env: NodeJS.ProcessEnv, logPath: string): void {
+  let stdio: StdioOptions = "ignore"
+  let logFd: number | undefined
+  try {
+    mkdirSync(dirname(logPath), { recursive: true })
+    logFd = openSync(logPath, "a")
+    stdio = ["ignore", logFd, logFd]
+  } catch {
+    stdio = "ignore"
+  }
+  const child = spawn(command, [...args], { detached: true, stdio, env })
+  child.unref()
+  if (logFd !== undefined) {
+    try {
+      closeSync(logFd)
+    } catch {
+      /* parent's copy only — child holds its own dup */
+    }
+  }
+}
 
 export interface OwnedDaemonClient {
   readonly client: KobeDaemonClient
@@ -31,12 +61,7 @@ export async function ensureDaemonReachable(): Promise<string> {
   if (await testCanConnect(socketPath)) return socketPath
 
   const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
-  const child = spawn(command, args, {
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
-  })
-  child.unref()
+  spawnDetachedDaemon(command, args, process.env, defaultDaemonLogPath())
 
   const deadline = Date.now() + 5000
   let lastErr: unknown
@@ -105,12 +130,10 @@ export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: st
     KOBE_DAEMON_SOCKET_PATH: socketPath,
     KOBE_DAEMON_PID_PATH: pidPath,
   }
-  const child = spawn(command, args, {
-    detached: true,
-    stdio: "ignore",
-    env,
-  })
-  child.unref()
+  // Owned daemon logs sit next to its per-TUI pidfile:
+  // `<home>/.kobe/daemon-<tui pid>.log`.
+  const logPath = pidPath.replace(/\.pid$/, ".log")
+  spawnDetachedDaemon(command, args, env, logPath)
 
   const deadline = Date.now() + 5000
   while (Date.now() < deadline) {

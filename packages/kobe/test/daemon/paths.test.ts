@@ -11,7 +11,13 @@
 
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
-import { defaultDaemonPidPath, defaultDaemonSocketPath, fitSocketPath, shortHomeTag } from "@/daemon/paths"
+import {
+  defaultDaemonLogPath,
+  defaultDaemonPidPath,
+  defaultDaemonSocketPath,
+  fitSocketPath,
+  shortHomeTag,
+} from "@/daemon/paths"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {
@@ -96,6 +102,22 @@ describe("defaultDaemonPidPath", () => {
 
   test("falls back to $HOME/.kobe/daemon.pid", () => {
     expect(defaultDaemonPidPath()).toBe(join(homedir(), ".kobe", "daemon.pid"))
+  })
+})
+
+describe("defaultDaemonLogPath", () => {
+  test("uses KOBE_HOME_DIR when set", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/from-env"
+    expect(defaultDaemonLogPath()).toBe("/tmp/from-env/.kobe/daemon.log")
+  })
+
+  test("falls back to $HOME/.kobe/daemon.log", () => {
+    expect(defaultDaemonLogPath()).toBe(join(homedir(), ".kobe", "daemon.log"))
+  })
+
+  test("sits next to the socket + pidfile under the same .kobe dir", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/from-env"
+    expect(defaultDaemonLogPath()).toBe(defaultDaemonPidPath().replace(/\.pid$/, ".log"))
   })
 })
 
