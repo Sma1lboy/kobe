@@ -4,6 +4,7 @@ import { type ChatRunState, type Orchestrator, type Unsubscribe, chatRunStateKey
 import { InMemoryPendingInputBroker } from "../orchestrator/pending-input-broker.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import type {
+  EngineCommandEntry,
   Message,
   ModelEffortLevel,
   OrchestratorEvent,
@@ -369,6 +370,11 @@ export class RemoteOrchestrator {
   async listSessions(taskId: string): Promise<SessionMeta[]> {
     const res = await this.client.request<{ sessions: SessionMeta[] }>("chat.sessions", { taskId })
     return res.sessions
+  }
+
+  async listCommandsForTab(taskId: string, tabId: string): Promise<readonly EngineCommandEntry[]> {
+    const res = await this.client.request<{ commands: EngineCommandEntry[] }>("chat.commands", { taskId, tabId })
+    return res.commands
   }
 
   async openSessionInTab(

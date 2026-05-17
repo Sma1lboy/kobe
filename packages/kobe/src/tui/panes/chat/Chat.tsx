@@ -41,7 +41,7 @@ import { getCapabilities, getIdentity, modelLabelFor } from "@/engine/registry"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
-import type { PermissionMode, UserInputResponse } from "../../../types/engine.ts"
+import type { EngineCommandEntry, PermissionMode, UserInputResponse } from "../../../types/engine.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
@@ -49,9 +49,7 @@ import { ChatView } from "./ChatView"
 import type { ComposerSlashEntry } from "./Composer"
 import { estimateContextTokensFromRows, stringifyErr } from "./chat-utils"
 import { ModelPicker } from "./composer/ModelPicker"
-import { BUILTIN_CLAUDE_SLASHES, type BuiltinSlash } from "./composer/builtin-slashes"
 import { permissionModeLabel } from "./composer/permission-mode"
-import { loadUserSlashes } from "./composer/user-slashes"
 import { formatContextUsageCompact } from "./context-meter"
 import { answerQuestionWithFreeText, pendingInputPaneState } from "./pending-input-pane-state"
 import {
@@ -134,50 +132,16 @@ export function Chat(props: ChatProps) {
   const { theme } = useTheme()
   const dialog = useDialog()
 
-  // Slash-command list. Two sources, merged on every task switch:
-  //
-  //   1. Built-ins — from refs/claude-code/src/commands/, baked into
-  //      ./composer/builtin-slashes.ts via scripts/extract-claude-code-commands.mjs.
-  //      Filtered to commands that actually run in `claude -p`.
-  //   2. User-defined — `<worktree>/.claude/{commands,skills}/` plus
-  //      `~/.claude/{commands,skills}/`, scanned at runtime by
-  //      loadUserSlashes() (ported from vibe-kanban's
-  //      slash_commands.rs). Project entries shadow global ones; user
-  //      entries shadow built-ins on name collision.
-  //
-  // We don't add kobe-specific slashes here — keyboard shortcuts
-  // (n / d / a) own the orchestrator verbs so the slash menu stays
-  // the pure claude-code surface.
-  const [userSlashes, setUserSlashes] = createSignal<readonly BuiltinSlash[]>([])
-  createEffect(
-    on(
-      () => props.taskId(),
-      (taskId) => {
-        const task = taskId ? props.orchestrator.getTask(taskId) : undefined
-        const wt = task?.worktreePath || undefined
-        loadUserSlashes(wt)
-          .then(setUserSlashes)
-          .catch(() => setUserSlashes([]))
-      },
-    ),
-  )
+  const [engineCommands, setEngineCommands] = createSignal<readonly EngineCommandEntry[]>([])
 
   const slashes = createMemo<readonly ComposerSlashEntry[]>(() => {
-    // User overrides built-in on name collision. We track origin
-    // alongside the entry so the dropdown can surface a "user" tag —
-    // a name collision where the user shadowed a built-in counts as
-    // a user entry (their definition is what runs).
-    type Tagged = { entry: BuiltinSlash; source: "builtin" | "user" }
-    const map = new Map<string, Tagged>()
-    for (const e of BUILTIN_CLAUDE_SLASHES) map.set(e.name, { entry: e, source: "builtin" })
-    for (const e of userSlashes()) map.set(e.name, { entry: e, source: "user" })
-    const claudeEntries: ComposerSlashEntry[] = [...map.values()].map(({ entry, source }) => ({
-      display: `/${entry.name}`,
-      description: entry.description || undefined,
-      aliases: entry.aliases?.map((a) => `/${a}`),
-      source,
+    const engineEntries: ComposerSlashEntry[] = engineCommands().map((entry) => ({
+      display: entry.display,
+      description: entry.description,
+      aliases: entry.aliases ? [...entry.aliases] : undefined,
+      source: entry.source === "builtin" ? "builtin" : "user",
       onSelect: () => {
-        void send(`/${entry.name}`)
+        void send(entry.submitText ?? entry.display)
       },
     }))
     // kobe-side slashes are short-circuited in `send()` rather than
@@ -193,7 +157,7 @@ export function Chat(props: ChatProps) {
         },
       },
     ]
-    return [...kobeEntries, ...claudeEntries].sort((a, b) => a.display.localeCompare(b.display))
+    return [...kobeEntries, ...engineEntries].sort((a, b) => a.display.localeCompare(b.display))
   })
 
   // Per-ChatTab state + subscription lifecycle live in
@@ -219,6 +183,38 @@ export function Chat(props: ChatProps) {
   const patchActiveState = session.patchActiveState
   const patchStateForTab = session.patchStateForTab
 
+  const tasksAcc = props.orchestrator.tasksSignal()
+  const activeCommandScope = createMemo(() => {
+    const taskId = props.taskId()
+    const tabId = activeTabId()
+    const task = taskId ? tasksAcc().find((t) => t.id === taskId) : undefined
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    return {
+      taskId,
+      tabId,
+      vendor: tab?.vendor ?? task?.vendor ?? "claude",
+    }
+  })
+  let commandRequestSeq = 0
+
+  createEffect(
+    on(activeCommandScope, ({ taskId, tabId }) => {
+      const seq = ++commandRequestSeq
+      if (!taskId || !tabId) {
+        setEngineCommands([])
+        return
+      }
+      props.orchestrator
+        .listCommandsForTab(taskId, tabId)
+        .then((commands) => {
+          if (seq === commandRequestSeq) setEngineCommands(commands)
+        })
+        .catch(() => {
+          if (seq === commandRequestSeq) setEngineCommands([])
+        })
+    }),
+  )
+
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
   // Id of the queue entry currently being edited via click-to-edit.
@@ -235,8 +231,6 @@ export function Chat(props: ChatProps) {
     const present = activeState().queue.some((q) => q.id === id)
     if (!present) setEditingQueueId(null)
   })
-
-  const tasksAcc = props.orchestrator.tasksSignal()
 
   // Active task's repo root (the worktree's parent project, NOT the
   // worktree itself). Threaded to Composer for KOB-157 persistence —

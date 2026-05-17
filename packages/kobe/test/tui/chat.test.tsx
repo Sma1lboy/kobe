@@ -15,6 +15,7 @@
 
 import { describe, expect, test } from "vitest"
 import { BASH_OUTPUT_COLLAPSED_CAP, readBashInput, splitBashOutput } from "../../src/tui/panes/chat/bash-render.ts"
+import { formatSlashDescription } from "../../src/tui/panes/chat/composer/slash-description.ts"
 import {
   COLLAPSED_LINE_CAP,
   capLines,
@@ -51,6 +52,26 @@ import { summarizeGlob, summarizeGrep, summarizeRead } from "../../src/tui/panes
 import type { EngineEvent, Message } from "../../src/types/engine.ts"
 
 const FIXED_TS = "2026-05-09T00:00:00.000Z"
+
+describe("formatSlashDescription", () => {
+  test("collapses whitespace into one display line", () => {
+    expect(formatSlashDescription("  first line\n\nsecond\tline  ")).toBe("first line second line")
+  })
+
+  test("truncates long descriptions for the slash dropdown", () => {
+    const out = formatSlashDescription(
+      "This description is intentionally long because Codex skills can carry full workflow instructions in frontmatter",
+    )
+
+    expect(out).toBe("This description is intentionally long because Codex skills can carry...")
+    expect(out?.length).toBeLessThanOrEqual(72)
+  })
+
+  test("hides empty descriptions", () => {
+    expect(formatSlashDescription(undefined)).toBeUndefined()
+    expect(formatSlashDescription(" \n\t ")).toBeUndefined()
+  })
+})
 
 describe("createInitialState", () => {
   test("returns empty messages, not streaming, no error, empty queue", () => {
