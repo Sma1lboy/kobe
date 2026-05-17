@@ -17,8 +17,10 @@ import {
   type ClaudeAccount,
   type CodexAccount,
   type EngineAccountStatus,
+  type GeminiAccount,
   detectClaudeAccount,
   detectCodexAccount,
+  detectGeminiAccount,
 } from "../../engine/account-detect"
 import { CODEX_BACKEND_KV_KEY, type CodexBackend } from "../../engine/codex-local/app-server"
 import type { KVContext } from "../context/kv"
@@ -74,6 +76,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const hasDaemon = hasRestartableDaemon(props.orchestrator)
   const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
+  const [geminiStatus, setGeminiStatus] = createSignal<EngineAccountStatus<GeminiAccount> | null>(null)
 
   onMount(() => {
     void detectClaudeAccount()
@@ -89,6 +92,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
         // eslint-disable-next-line no-console
         console.error("kobe: detectCodexAccount threw:", err)
         setCodexStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
+      })
+    void detectGeminiAccount()
+      .then(setGeminiStatus)
+      .catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("kobe: detectGeminiAccount threw:", err)
+        setGeminiStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
       })
   })
 
@@ -261,7 +271,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
             />
           </Show>
           <Show when={section() === "accounts"}>
-            <AccountsSettingsSection claudeStatus={claudeStatus} codexStatus={codexStatus} />
+            <AccountsSettingsSection
+              claudeStatus={claudeStatus}
+              codexStatus={codexStatus}
+              geminiStatus={geminiStatus}
+            />
           </Show>
           <Show when={section() === "codex"}>
             <CodexSettingsSection

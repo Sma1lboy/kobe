@@ -1,6 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
-import type { ClaudeAccount, CodexAccount, EngineAccountStatus } from "../../../engine/account-detect"
+import type { ClaudeAccount, CodexAccount, EngineAccountStatus, GeminiAccount } from "../../../engine/account-detect"
 import type { CodexBackend } from "../../../engine/codex-local/app-server"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import {
@@ -241,6 +241,7 @@ export function GeneralSettingsSection(
 export function AccountsSettingsSection(props: {
   claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
   codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>
+  geminiStatus: Accessor<EngineAccountStatus<GeminiAccount> | null>
 }) {
   const { theme } = useTheme()
   return (
@@ -314,6 +315,53 @@ export function AccountsSettingsSection(props: {
                   )
                 }
                 if (a.kind === "apikey") return <text fg={theme.success}>● API key configured</text>
+                return <text fg={theme.textMuted}>○ Not logged in</text>
+              })()}
+              <Show when={s().accountError}>
+                {(err) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`! ${err()}`}
+                  </text>
+                )}
+              </Show>
+            </box>
+          )}
+        </Show>
+      </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          gemini
+        </text>
+        <Show when={props.geminiStatus() === null}>
+          <text fg={theme.textMuted}>Checking…</text>
+        </Show>
+        <Show when={props.geminiStatus()}>
+          {(s) => (
+            <box flexDirection="column" gap={0}>
+              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                {s().binary.found
+                  ? `Binary: ${(s().binary as { path: string }).path}`
+                  : `Binary: ${(s().binary as { error: string }).error}`}
+              </text>
+              {(() => {
+                const a = s().account
+                if (a.kind === "google") {
+                  const tail = a.authType ? ` (${a.authType})` : ""
+                  return (
+                    <text fg={theme.success} wrapMode="word">
+                      {`● Google login${a.email ? `: ${a.email}` : ""}${tail}`}
+                    </text>
+                  )
+                }
+                if (a.kind === "apikey") return <text fg={theme.success}>● Gemini API key configured</text>
+                if (a.kind === "vertex") {
+                  const tail = [a.project, a.location].filter((x): x is string => !!x).join(" · ")
+                  return (
+                    <text fg={theme.success} wrapMode="word">
+                      {`● Vertex AI configured${tail ? ` (${tail})` : ""}`}
+                    </text>
+                  )
+                }
                 return <text fg={theme.textMuted}>○ Not logged in</text>
               })()}
               <Show when={s().accountError}>

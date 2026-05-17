@@ -19,9 +19,13 @@ import {
   codexAuthPath,
   detectClaudeAccount,
   detectCodexAccount,
+  detectGeminiAccount,
+  geminiOauthCredsPath,
+  geminiSettingsPath,
 } from "@/engine/account-detect"
 import { ClaudeBinaryNotFoundError } from "@/engine/claude-code-local/binary"
 import { CodexBinaryNotFoundError } from "@/engine/codex-local/binary"
+import { GeminiBinaryNotFoundError } from "@/engine/gemini-local/binary"
 import { describe, expect, it } from "vitest"
 
 function makeDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
@@ -31,6 +35,7 @@ function makeDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
     home: () => "/home/user",
     findClaudeBinary: async () => "/usr/local/bin/claude",
     findCodexBinary: async () => "/usr/local/bin/codex",
+    findGeminiBinary: async () => "/usr/local/bin/gemini",
     ...overrides,
   }
 }
@@ -63,6 +68,13 @@ describe("codexAuthPath", () => {
     expect(codexAuthPath((k) => (k === "CODEX_HOME" ? "/elsewhere/codex" : undefined), "/home/user")).toBe(
       "/elsewhere/codex/auth.json",
     )
+  })
+})
+
+describe("gemini auth paths", () => {
+  it("uses ~/.gemini/oauth_creds.json and ~/.gemini/settings.json", () => {
+    expect(geminiOauthCredsPath("/home/user")).toBe("/home/user/.gemini/oauth_creds.json")
+    expect(geminiSettingsPath("/home/user")).toBe("/home/user/.gemini/settings.json")
   })
 })
 
@@ -233,5 +245,103 @@ describe("detectCodexAccount", () => {
       }),
     )
     expect(observed).toBe("/elsewhere/auth.json")
+  })
+})
+
+describe("detectGeminiAccount", () => {
+  it("reports binary path + 'none' when no credential file or env auth exists", async () => {
+    const r = await detectGeminiAccount(makeDeps())
+    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/gemini" })
+    expect(r.account).toEqual({ kind: "none" })
+    expect(r.accountError).toBeUndefined()
+  })
+
+  it("decodes Google login email from oauth_creds id_token and includes selected auth type", async () => {
+    const idToken = makeJwt({ email: "jane@example.com", email_verified: true })
+    const r = await detectGeminiAccount(
+      makeDeps({
+        readFile: (p) => {
+          if (p === "/home/user/.gemini/settings.json") {
+            return JSON.stringify({ security: { auth: { selectedType: "oauth-personal" } } })
+          }
+          if (p === "/home/user/.gemini/oauth_creds.json") {
+            return JSON.stringify({ id_token: idToken, token_type: "Bearer" })
+          }
+          return null
+        },
+      }),
+    )
+    expect(r.account).toEqual({ kind: "google", email: "jane@example.com", authType: "oauth-personal" })
+  })
+
+  it("supports legacy selectedAuthType settings", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        readFile: (p) => {
+          if (p === "/home/user/.gemini/settings.json") return JSON.stringify({ selectedAuthType: "oauth-personal" })
+          if (p === "/home/user/.gemini/oauth_creds.json") return JSON.stringify({ refresh_token: "refresh" })
+          return null
+        },
+      }),
+    )
+    expect(r.account).toEqual({ kind: "google", authType: "oauth-personal" })
+  })
+
+  it("prefers GEMINI_API_KEY env auth before cached OAuth", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        env: (k) => (k === "GEMINI_API_KEY" ? "test-key" : undefined),
+        readFile: () => JSON.stringify({ id_token: makeJwt({ email: "jane@example.com" }) }),
+      }),
+    )
+    expect(r.account).toEqual({ kind: "apikey" })
+  })
+
+  it("reports Vertex AI env auth", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        env: (k) =>
+          ({
+            GOOGLE_GENAI_USE_VERTEXAI: "true",
+            GOOGLE_CLOUD_PROJECT: "my-project",
+            GOOGLE_CLOUD_LOCATION: "us-central1",
+          })[k],
+      }),
+    )
+    expect(r.account).toEqual({ kind: "vertex", project: "my-project", location: "us-central1" })
+  })
+
+  it("surfaces malformed Gemini JWT as accountError", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        readFile: (p) => (p.endsWith("oauth_creds.json") ? JSON.stringify({ id_token: "not-a-jwt" }) : null),
+      }),
+    )
+    expect(r.account).toEqual({ kind: "none" })
+    expect(r.accountError).toMatch(/gemini id_token/)
+  })
+
+  it("surfaces JSON parse errors", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        readFile: (p) => (p.endsWith("oauth_creds.json") ? "{ not json" : null),
+      }),
+    )
+    expect(r.account).toEqual({ kind: "none" })
+    expect(r.accountError).toMatch(/parse .*oauth_creds\.json/)
+  })
+
+  it("reports binary not-found cleanly without losing account detection", async () => {
+    const r = await detectGeminiAccount(
+      makeDeps({
+        findGeminiBinary: async () => {
+          throw new GeminiBinaryNotFoundError(["/nowhere"])
+        },
+        readFile: (p) =>
+          p.endsWith("oauth_creds.json") ? JSON.stringify({ id_token: makeJwt({ email: "jane@example.com" }) }) : null,
+      }),
+    )
+    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
+    expect(r.account).toEqual({ kind: "google", email: "jane@example.com", authType: undefined })
   })
 })

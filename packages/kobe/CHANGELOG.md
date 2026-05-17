@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - Hide the chat topbar session id label so internal engine ids no longer show in normal use.
 
+### Fixed
+
+- Show Gemini CLI login state in Settings → Accounts, including Google OAuth, Gemini API key, and Vertex AI environment auth modes.
+
 ## [0.5.3] - 2026-05-16
 
 ### Changed
