@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { activeTaskSessionId, formatSessionIdLabel } from "../../src/tui/component/top-bar-helpers"
+import { activeTaskSessionId } from "../../src/tui/component/top-bar-helpers"
 import { type Task, toTaskId } from "../../src/types/task"
 
 function taskWithTabs(activeTabId: string): Task {
@@ -21,21 +21,6 @@ function taskWithTabs(activeTabId: string): Task {
     updatedAt: "2026-05-12T00:00:00.000Z",
   }
 }
-
-describe("formatSessionIdLabel", () => {
-  test("returns null before a session exists", () => {
-    expect(formatSessionIdLabel(null)).toBeNull()
-    expect(formatSessionIdLabel(undefined)).toBeNull()
-  })
-
-  test("keeps long ids intact so the current session is copyable", () => {
-    expect(formatSessionIdLabel("1234567890abcdef")).toBe("sid 1234567890abcdef")
-  })
-
-  test("keeps short ids intact", () => {
-    expect(formatSessionIdLabel("fake-1")).toBe("sid fake-1")
-  })
-})
 
 describe("activeTaskSessionId", () => {
   test("uses the active chat tab session id", () => {

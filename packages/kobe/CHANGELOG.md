@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Hide the chat topbar session id label so internal engine ids no longer show in normal use.
+
 ## [0.5.3] - 2026-05-16
 
 ### Changed

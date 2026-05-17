@@ -27,7 +27,7 @@ afterEach(async () => {
   tmpRoot = null
 })
 
-test("top bar shows the active chat tab session id", async () => {
+test("top bar hides the active chat tab session id", async () => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-topbar-sid-"))
   const homeDir = path.join(tmpRoot, "home")
   const repo = path.join(tmpRoot, "repo")
@@ -72,7 +72,7 @@ test("top bar shows the active chat tab session id", async () => {
     rows: 30,
   })
 
-  const screen = await kobe.waitFor((s) => s.includes("sid fake-1"), 10_000)
+  const screen = await kobe.waitFor((s) => s.includes("kobe/session-id"), 10_000)
   expect(screen).toContain("kobe/session-id")
-  expect(screen).toContain("sid fake-1")
+  expect(screen).not.toContain("sid fake-1")
 })

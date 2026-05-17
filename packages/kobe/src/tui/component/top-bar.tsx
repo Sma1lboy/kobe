@@ -28,7 +28,6 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 import { CreatePRButton } from "./create-pr-button"
 import { OpenWorktreeButton } from "./open-worktree-button"
 import { RcBridgeDialog } from "./rc-bridge-dialog"
-import { activeTaskSessionId, formatSessionIdLabel } from "./top-bar-helpers"
 import { UpdateDialog } from "./update-dialog"
 
 export function TopBar(props: {
@@ -61,9 +60,6 @@ export function TopBar(props: {
   const remoteOrch = props.orchestrator instanceof RemoteOrchestrator ? props.orchestrator : null
   const rcBridge = props.orchestrator.rcBridgeSignal()
   const isBridgeOn = () => rcBridge().state === "running" || rcBridge().state === "starting"
-  const sessionIdLabel = createMemo(() =>
-    formatSessionIdLabel(activeTaskSessionId(props.activeTask(), props.activeChatTabId?.())),
-  )
 
   async function confirmUpdate(): Promise<void> {
     const info = props.updateInfo()
@@ -162,18 +158,9 @@ export function TopBar(props: {
           }
         >
           <Show when={props.activeTask() !== undefined}>
-            <box flexDirection="row" gap={2} justifyContent="center">
-              <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-                {props.activeTask()?.branch}
-              </text>
-              <Show when={sessionIdLabel()}>
-                {(label) => (
-                  <text fg={theme.textMuted} wrapMode="none">
-                    {label()}
-                  </text>
-                )}
-              </Show>
-            </box>
+            <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+              {props.activeTask()?.branch}
+            </text>
           </Show>
         </Show>
       </box>
