@@ -162,7 +162,7 @@ export type ChatRow =
        * (Agent/Task) invocation. Populated live from `tool.start` /
        * `tool.result` events carrying a `parentId` equal to this row's
        * `toolUseId`. Absent for ordinary (non-subagent) tool rows and
-       * for history-hydrated rows (replay nesting is a follow-up —
+       * for history-hydrated rows (replay nesting is KOB-177 —
        * subagents persist to a separate JSONL the history reader
        * doesn't load).
        */

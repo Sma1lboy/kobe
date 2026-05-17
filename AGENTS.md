@@ -210,6 +210,7 @@ The engine adapter is the source of truth for **agent/product identity, capabili
 - Model catalogs and context-window math come from `EngineCapabilities`, keyed by the task's vendor when available. Do not infer a task's vendor solely from a model id unless the task has no vendor.
 - Persisted history is returned as an engine-owned `EngineHistory` (`messages` + `usageMetrics`). Claude Code may derive this from `~/.claude/projects/*.jsonl`; Codex may derive it from `~/.codex/sessions/**/rollout-*.jsonl`; callers should not know either format.
 - Token usage, context usage, and speed are engine-normalized data. The TUI may format `usageMetrics` for display, but it should not parse vendor transcript files or reconstruct speed from chat timestamps.
+- Subagent (Agent/Task) steps are engine-owned **nested** data, not transcript noise. The engine tags a subagent's internal tool events with a `parentId` (`EngineEvent.tool.start` / `tool.result`); the chat nests them under the parent Agent row's `children` rather than flattening them into the top-level transcript. A subagent's prose / `system` / terminal `result` are NOT surfaced — only its tool steps. kobe nests one level: deeper (grand-child) subagent steps are dropped at the parser, never mis-attached. History-replay nesting is KOB-177.
 - If a new pane needs engine-specific data, extend the engine contract first. Do not thread ad hoc vendor checks through TUI or orchestrator code.
 
 ### Diagrams in `docs/`: use Mermaid
