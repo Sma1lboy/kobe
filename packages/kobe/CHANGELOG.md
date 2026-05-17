@@ -14,6 +14,17 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.25] - 2026-05-17
+
+### Changed
+
+- **Sidebar task rows are legible at a glance** — a distinct glyph per status (`✓` done, `◐` in review, `○` backlog, `⊘` canceled, `✕` error), a rotating braille spinner while a task's engine is live (falling back to a static `●` when in progress but idle), and `+N` / `−N` diff counts split into green / red spans. All badges drawn bold (#58).
+
+### Fixed
+
+- **The daemon no longer dies silently on a stray async error** — it now runs with a crash net (`unhandledRejection` / `uncaughtException` handlers) that logs the failure and keeps serving, instead of any unhandled rejection from a fire-and-forget call instantly terminating the process with no trace. The detached daemon's stdout/stderr are redirected to `<KOBE_HOME>/.kobe/daemon.log` (was `/dev/null`), and fire-and-forget failures are tagged with their subsystem so the log points straight at the failing area (KOB-193).
+- **Tasks stop auto-marking themselves done** — a clean turn end flipped `task.status` to `done`, so the active sidebar filled up with tasks marked done. Turn end now rests at `in_progress`; `done` is reserved for an explicit archive. Legacy rows mismarked `done` self-heal to `in_progress` on load (#58).
+
 ## [0.5.24] - 2026-05-17
 
 ### Added
