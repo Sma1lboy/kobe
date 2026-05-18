@@ -283,17 +283,12 @@ export function Sidebar(props: SidebarProps) {
   // Tick that busts each main row's branch-name memo on a fixed
   // interval. Cheap (one signal write per tick); the actual git call
   // only happens when a row is visible and re-renders. We deliberately
-  // don't tear down the interval on focus loss — sidebar can be off-
-  // screen briefly during pane focus changes and we still want the
-  // branch labels to be fresh when it comes back. Disposed via
-  // setInterval's process-lifetime when kobe exits.
+  // do NOT register onCleanup here — sidebar can be off-screen briefly
+  // during pane focus changes and we still want branch labels to be
+  // fresh when it comes back. The interval lives for the process lifetime
+  // (kobe's app shell never unmounts the sidebar in normal use).
   const [branchTick, setBranchTick] = createSignal(0)
-  const branchInterval = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
-  // Stop the interval if Solid disposes this component (rare in
-  // practice — sidebar lives for the lifetime of the app shell).
-  // Using `onCleanup` would require importing it; setInterval against
-  // process lifetime is acceptable for a per-app-singleton pane.
-  void branchInterval
+  void setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
 
   // Spinner frame tick for `in_progress` row badges. Single shared
   // counter so every running task animates in lockstep (reads as one
