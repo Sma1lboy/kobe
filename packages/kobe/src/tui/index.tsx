@@ -1,26 +1,12 @@
 /**
  * kobe TUI bootstrap.
  *
- * Wave 2 Stream E: this file used to render a themed banner with a stub
- * sidebar (Foundation 0.2 scaffolding). It now delegates to `app.tsx`,
- * which wires the Orchestrator + Sidebar + chat placeholder for the G2
- * end-to-end demo. The banner shell below (`Banner`, `Shell`) is kept
- * for reference (CLAUDE.md hard rule: no deletion) but is no longer the
- * mount target.
+ * Thin entry point — delegates immediately to `app.tsx`, which owns the
+ * full 5-pane layout, orchestrator wiring, and keybindings.
  *
- * Default theme is `tokyonight` — matches agent-deck's Tokyo Night palette
- * (Stream D resolved decision in PLAN.md). Switch via `theme.set("nord")`
- * once a runtime config is wired (Wave 4-ish).
- *
- * Global keybindings (registered by `useKobeKeybindings`):
- *   - `cmd+k` / `ctrl+k` — open the command palette
- *   - `?` — open the help dialog (full bindings table)
- *   - `tab` / `shift+tab` — focus next/prev pane (no-op until Wave 3)
- *   - `q` — confirm-quit
- *   - `esc` — universal close-top-dialog
- *
- * Pane-local bindings (composer, sidebar nav, palette arrows) register
- * themselves inside their components — this file only owns globals.
+ * The `Banner`/`Shell`/`App` functions below are Phase 0 scaffolding kept
+ * per the no-deletion rule but are never mounted. `startTui` calls
+ * `startApp` directly.
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -36,7 +22,7 @@ import { SyncProvider } from "./context/sync"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { DialogProvider, useDialog } from "./ui/dialog"
 
-/** Default theme name. Picked at boot; runtime override lands in a later stream. */
+/** Dead — kept with the unused Banner/Shell below. Real default is in app.tsx. */
 const DEFAULT_THEME = "tokyonight"
 
 const KOBE_BANNER = ["k o b e", "─────────"]
@@ -91,7 +77,7 @@ function Shell() {
     <box flexDirection="row" flexGrow={1}>
       <Sidebar
         title="kobe"
-        emptyMessage="No tasks yet. Wave 2 Stream F will populate this pane."
+        emptyMessage="No tasks yet."
         footer={
           <text fg={theme.textMuted}>
             <span style={{ fg: theme.success }}>•</span> ready

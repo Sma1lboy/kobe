@@ -1,16 +1,9 @@
 /**
- * Sidebar primitive.
+ * Sidebar primitive — Phase 0.2 scaffolding, kept per no-deletion rule.
  *
- * Adapted from `refs/opencode/packages/opencode/src/cli/cmd/tui/routes/session/sidebar.tsx`.
- * The opencode version reads from `useSync` (sessions, workspace info,
- * version metadata) and exposes plugin slots via `TuiPluginRuntime.Slot`. We
- * drop both: kobe doesn't have a plugin runtime in 0.2, and the sync store is
- * an empty stub. The sidebar here is a layout shell — fixed 42-char width,
- * scrollable body, footer — with a small `entries` API the future task list
- * (Wave 2 Stream F) will plug into.
- *
- * This is intentionally not the final task-grouped sidebar. It's the layout
- * frame so the lifted shell renders something sidebar-shaped on day 0.2.
+ * The real task sidebar lives in `panes/sidebar/Sidebar.tsx`. This file
+ * is only imported by the dead `index.tsx` shell (Banner/Shell) and by
+ * `panes/sidebar/Sidebar.tsx` for the `SIDEBAR_WIDTH` constant.
  */
 
 import { TextAttributes } from "@opentui/core"
@@ -54,7 +47,7 @@ export function Sidebar(props: SidebarProps) {
     <box
       backgroundColor={theme.backgroundPanel}
       width={SIDEBAR_WIDTH}
-      height="100%"
+      flexGrow={1}
       paddingTop={1}
       paddingBottom={1}
       paddingLeft={2}

@@ -24,8 +24,7 @@
  *     (gitignore respected). Flat list of paths, alphabetically sorted.
  *   - `Changes`: `git status --porcelain`, with a single-char status
  *     prefix coloured per the theme tokens.
- *   - `Checks`: placeholder ("No checks yet (Wave 4)") — Stream K owns
- *     the real implementation.
+ *   - `Checks`: placeholder — CI/test integration not yet implemented.
  *
  * State lives where it lives (DESIGN.md §2.5): files come from disk via
  * git, not from a separate cache. We re-fetch on:
@@ -567,7 +566,7 @@ export function FileTree(props: FileTreeProps) {
 
         <Show when={props.worktreePath() != null && error() == null && tab() === "checks"}>
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>(no checks yet — wave 4)</text>
+            <text fg={theme.textMuted}>(checks not yet implemented)</text>
           </box>
         </Show>
 
