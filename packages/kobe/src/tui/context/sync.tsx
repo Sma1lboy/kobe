@@ -3,14 +3,11 @@
  *
  * Opencode's `useSync` is the reactive mirror of its server state — sessions,
  * messages, agents, providers, MCP, LSP, vcs, etc. — all populated by SDK
- * calls and event subscriptions. None of that exists in kobe; the orchestrator
- * (Wave 1 Stream E) will publish its own `Task`/`Message` reactive store
- * later.
- *
- * We keep `useSync` as a no-op shim so any lifted component that imports
- * `@tui/context/sync` typechecks and renders. Every accessor returns an
- * empty array / undefined / "complete" — the equivalent of "nothing
- * happening, but loading is done."
+ * calls and event subscriptions. kobe's orchestrator uses its own reactive
+ * pattern instead; this shim exists so any lifted opencode component that
+ * imports `@tui/context/sync` typechecks and renders without modification.
+ * Every accessor returns an empty array / undefined / "complete" — the
+ * equivalent of "nothing happening, but loading is done."
  */
 
 import { createSimpleContext } from "./helper"

@@ -439,8 +439,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {}
       }
       case "merge.local.request": {
-        await orch.requestLocalMerge(requireString(payload, "taskId"))
-        const task = orch.getTask(requireString(payload, "taskId"))
+        const taskId = requireString(payload, "taskId")
+        await orch.requestLocalMerge(taskId)
+        const task = orch.getTask(taskId)
         if (task) {
           broadcastTaskUpdated(orch, clients, task.id)
           broadcast(clients, {
