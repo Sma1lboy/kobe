@@ -5,11 +5,11 @@
  * (resolved: worktree root is `<repo>/.claude/worktrees/<task-id>/`,
  * shared namespace with Claude Code's own agent-spawn worktrees).
  *
- * The orchestrator depends on this interface; Stream B (Wave 1) will
- * ship `GitWorktreeManager` against it. The orchestrator must never
- * shell out to `git worktree` directly — always go through this seam,
- * so error handling, dirty detection, and path conventions live in
- * exactly one place.
+ * The orchestrator depends on this interface; `GitWorktreeManager` is
+ * the production implementation. The orchestrator must never shell out
+ * to `git worktree` directly — always go through this seam, so error
+ * handling, dirty detection, and path conventions live in exactly one
+ * place.
  */
 
 /**

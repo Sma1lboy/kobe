@@ -23,8 +23,7 @@
  *   - Mouse-driven focus changes happen on pane wrappers in app.tsx
  *     itself — having the setter in context means the wrapper code can
  *     just call into the context without app.tsx growing more closures.
- *   - Future panes (Wave 4: PR button, checks, etc.) get focus support
- *     "for free" by reading the context.
+ *   - New panes get focus support "for free" by reading the context.
  *
  * The context only owns focus. Other global state (composer drafts,
  * task selection, etc.) stays where it is — focus is special because
