@@ -308,6 +308,8 @@ export function Sidebar(props: SidebarProps) {
   // we don't keep filtering against stale query text after esc-cancel.
   const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
   const flatIds = createMemo(() => flattenIds(rows()))
+  // Total unfiltered count for the active view — used to show "N/total" in search mode.
+  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "")).length)
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
@@ -459,6 +461,12 @@ export function Sidebar(props: SidebarProps) {
               fuzzy filter
             </text>
           </Show>
+          <Show when={searchQuery().length > 0}>
+            <text fg={theme.textMuted} wrapMode="none">
+              {" "}
+              {flatIds().length}/{totalRows()}
+            </text>
+          </Show>
         </box>
       </Show>
 
@@ -501,8 +509,25 @@ export function Sidebar(props: SidebarProps) {
               const isSelected = () => task.id === props.selectedId()
               const isMain = task.kind === "main"
               const badge = STATUS_BADGE[task.status]
+              // "Is this task actually streaming a turn right now?"
+              // True when the orchestrator holds a live engine handle for
+              // ANY of this task's tabs — covers multi-tab tasks where the
+              // running tab is not the active one. Spinner fires on isLive,
+              // not on task.status, so it stops immediately on interrupt
+              // (the handle drops) without waiting for the lifecycle to settle.
+              const isLive = createMemo(() => {
+                const map = props.chatRunState?.()
+                if (!map) return false
+                const prefix = `${task.id}:`
+                for (const [key, state] of map) {
+                  if (state === "running" && key.startsWith(prefix)) return true
+                }
+                return false
+              })
               const badgeColor = () => {
                 if (isMain) return theme.primary
+                // Any live tab → use primary (spinner) colour.
+                if (isLive()) return theme.primary
                 switch (badge.tone) {
                   case "success":
                     return theme.success
@@ -539,24 +564,6 @@ export function Sidebar(props: SidebarProps) {
                 branchTick()
                 return readWorktreeChanges(task.worktreePath)
               })
-              // "Is this task actually streaming a turn right now?"
-              // True only when the orchestrator holds a live engine
-              // handle for at least one of this task's tabs. Decouples
-              // the *animated* spinner from `task.status` — the user's
-              // mental model is "the dots should stop when I press
-              // esc", but `task.status === "in_progress"` only flips
-              // when the lifecycle ends (done / canceled / error /
-              // archived), not when the current turn aborts. Without
-              // this check the spinner kept spinning post-interrupt.
-              const isLive = createMemo(() => {
-                const map = props.chatRunState?.()
-                if (!map) return false
-                const prefix = `${task.id}:`
-                for (const [key, state] of map) {
-                  if (state === "running" && key.startsWith(prefix)) return true
-                }
-                return false
-              })
               const titleText = isMain ? repoBasename(task.repo) : task.title
               return (
                 <box
@@ -574,11 +581,11 @@ export function Sidebar(props: SidebarProps) {
                   >
                     {isMain
                       ? "★"
-                      : task.status === "in_progress"
-                        ? isLive()
-                          ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0])
-                          : "●"
-                        : badge.glyph}
+                      : isLive()
+                        ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0])
+                        : task.status === "in_progress"
+                          ? "●"
+                          : badge.glyph}
                   </text>
                   <text
                     fg={isCursor() ? theme.selectedListItemText : theme.text}
@@ -643,7 +650,7 @@ export function Sidebar(props: SidebarProps) {
             <box paddingTop={1} paddingLeft={1}>
               <text fg={theme.textMuted}>
                 {searchMode() && searchQuery().trim().length > 0
-                  ? "No matching tasks."
+                  ? "No matching tasks — esc to clear."
                   : view() === "active"
                     ? "No active tasks."
                     : "No archived tasks."}

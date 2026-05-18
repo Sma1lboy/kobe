@@ -33,10 +33,10 @@ import { useBindings } from "../../lib/keymap"
 /** Tab identifiers — kept here so `keys.ts` doesn't import from the
  * component file (which would create a circular import once `FileTree.tsx`
  * imports the hook from here). */
-export type FileTreeTab = "all" | "changes" | "checks"
+export type FileTreeTab = "all" | "changes"
 
 /** Tab order for `[`/`]` cycling. Same source-order as the visible chips. */
-export const TAB_ORDER: readonly FileTreeTab[] = ["all", "changes", "checks"]
+export const TAB_ORDER: readonly FileTreeTab[] = ["all", "changes"]
 
 export type FileTreeBindingsOpts = {
   /** Whether the pane should respond to keys. Default `() => true`. */

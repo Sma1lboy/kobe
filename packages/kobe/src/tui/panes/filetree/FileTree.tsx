@@ -6,7 +6,7 @@
  * filtering/scoping:
  *
  *   ┌────────────────────────────────────────┐
- *   │  All   Changes   Checks                │  ← tabs (1/2/3)
+ *   │  All   Changes                         │  ← tabs ([/])
  *   ├────────────────────────────────────────┤
  *   │  .prettierrc                            │
  *   │  bun.lock                               │
@@ -142,7 +142,7 @@ function statusToken(s: FileStatus): "warning" | "success" | "error" | "textMute
  * The tabs in render order. `as const` so TypeScript keeps the
  * literal-tuple narrowing for downstream `.map()` callers.
  */
-const TABS = ["all", "changes", "checks"] as const satisfies readonly FileTreeTab[]
+const TABS = ["all", "changes"] as const satisfies readonly FileTreeTab[]
 
 /**
  * Boil a raw `git ls-files` / `git status` error down to a single
@@ -167,7 +167,6 @@ export function summarizeGitError(raw: string): string {
 const TAB_LABEL: Record<FileTreeTab, string> = {
   all: "All",
   changes: "Changes",
-  checks: "Checks",
 }
 
 export function FileTree(props: FileTreeProps) {
@@ -220,7 +219,6 @@ export function FileTree(props: FileTreeProps) {
         if (seq !== fetchSeq || props.worktreePath() !== path) return
         setChanges(entries)
       }
-      // `checks` has no data to fetch in v1.
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       if (seq === fetchSeq && props.worktreePath() === path) setError(message)
@@ -346,7 +344,6 @@ export function FileTree(props: FileTreeProps) {
         deleted: e.deleted,
       }))
     }
-    // checks tab — no rows in v1
     return []
   })
 
@@ -526,11 +523,23 @@ export function FileTree(props: FileTreeProps) {
          "f file · d diff · ctrl+w close" strip in the preview pane.
          Highlights `o` so users discover the OS-default-app opener
          without having to remember it from the help dialog. */}
-      <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+      <box flexDirection="row" paddingBottom={0} flexShrink={0}>
         <text fg={theme.textMuted} wrapMode="none">
           enter open · o open externally · r refresh
         </text>
       </box>
+      {/* Status legend — only shown on the Changes tab so users can
+         decode single-char git status codes without leaving the TUI. */}
+      <Show when={tab() === "changes"}>
+        <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+          <text fg={theme.textMuted} wrapMode="none">
+            M modified · A added · D deleted · ? untracked
+          </text>
+        </box>
+      </Show>
+      <Show when={tab() !== "changes"}>
+        <box flexDirection="row" paddingBottom={1} flexShrink={0} />
+      </Show>
 
       {/* Body: scrollable list. Scrollbar styled subtle — track blends
          into the panel bg, thumb is muted text color. */}
@@ -564,17 +573,10 @@ export function FileTree(props: FileTreeProps) {
           </box>
         </Show>
 
-        <Show when={props.worktreePath() != null && error() == null && tab() === "checks"}>
-          <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>(checks not yet implemented)</text>
-          </box>
-        </Show>
-
         <Show
           when={
             props.worktreePath() != null &&
             error() == null &&
-            tab() !== "checks" &&
             rows().length === 0 &&
             ((tab() === "all" && allFiles() != null) || (tab() === "changes" && changes() != null))
           }

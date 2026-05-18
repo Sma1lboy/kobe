@@ -550,6 +550,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
+    hint: { keys: "ctrl+t", label: "new tab" },
   },
   {
     // KOB-74. Quick-fork: from a focused chat tab, spin up a child
@@ -593,6 +594,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+w"],
     category: "Workspace",
     description: "Close chat tab",
+    hint: { keys: "ctrl+w", label: "close tab" },
   },
   {
     // Rename the active chat tab. F2 is the cross-OS / cross-IDE
@@ -703,16 +705,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "enter", label: "open" },
   },
   {
-    // `[` / `]` cycle the All / Changes / Checks tabs. Single-digit
-    // 1/2/3 used to be the chord but it conflicted with composer
-    // typing once focus crossed panes, and the bracket pair matches
+    // `[` / `]` cycle the All / Changes tabs. Bracket pair matches
     // the sidebar's Working/Archives view-switcher so the muscle
     // memory is consistent across panes.
     id: "files.tab",
     scope: "files",
     keys: ["[", "]"],
     category: "Files",
-    description: "Switch tab (cycle All / Changes / Checks)",
+    description: "Switch tab (cycle All / Changes)",
     hint: { keys: "[/]", label: "tab" },
   },
   {
