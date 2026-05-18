@@ -69,7 +69,7 @@ export async function refreshPRStatus(task: Task): Promise<TaskPRStatus | undefi
   if (!json) {
     return {
       provider: "github",
-      lifecycle: task.prStatus?.provider === "github" ? task.prStatus.lifecycle : "creating",
+      lifecycle: "creating",
       checkState: "unknown",
       lastCheckedAt: new Date().toISOString(),
       lastError: "No GitHub PR found for this branch yet.",

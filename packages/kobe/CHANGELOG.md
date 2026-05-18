@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- **PR status lifecycle resets to "creating" when no GitHub PR is found** — previously, when `gh pr view` returned no data (PR deleted or closed without merging), the lifecycle field was preserved from the previous poll, leaving the merge button incorrectly enabled. It now resets to `"creating"` so the button returns to its default "open PR" state.
+- **Gemini `listCommands()` now matches the `AIEngine` interface signature** — the Gemini adapter was missing the `opts?: EngineCommandDiscoveryOpts` parameter, which meant cwd-scoped command discovery hints were silently ignored.
 - **`/clear` no longer opens a model picker** — `/clear` is a conversation reset; after clearing, the session is dropped so the vendor lock lifts automatically and the user can freely switch engines via the manual model picker on the next turn. The automatic post-clear model picker popup is removed entirely.
 - **deleteTask no longer leaks engine handles when pauseTask fails** — the fallback cleanup path in the delete-task error branch now calls the same `stopAllTabsForTask` helper used everywhere else, which iterates composite `taskId:tabId` handle keys; the previous code passed a bare `taskId` that matched no key and left stale handles in the map.
 - **Vendor validation error now includes the invalid value** — passing an unrecognized vendor string to daemon API calls now reports `"vendor 'xyz' is not a supported vendor (expected: claude, codex, gemini)"` instead of the opaque `"vendor must be a supported vendor"`.
