@@ -230,6 +230,14 @@ export type ChatRow =
       readonly done: boolean
       readonly ts: string
     }
+  /**
+   * 1-3 sentence "while you were away" recap, synthesized by the
+   * orchestrator's `generateRecap` (small-fast model). Renders as a
+   * dim row — separate from `system` so it can have its own glyph
+   * and so the row count predicates can tell recap rows apart from
+   * lifecycle-info ones. Not persisted to the engine's session JSONL.
+   */
+  | { readonly kind: "recap"; readonly text: string; readonly ts: string }
 
 export interface ChatState {
   /** All messages in chronological order. Render in array order. */
@@ -559,6 +567,16 @@ export function applyEvent(
       // the tab's sessionId server-side so the next runTask spawns a
       // new Claude session instead of resuming the old one.
       return createInitialState()
+    case "recap":
+      // 1-3 sentence "while you were away" recap. Synthesized by the
+      // orchestrator's `generateRecap` via the small-fast model. Not
+      // persisted to the engine's session JSONL — purely a transient
+      // chat affordance like `system.info`. The row stays in scrollback
+      // so the user can scroll back to it.
+      return {
+        ...state,
+        messages: capMessages([...state.messages, { kind: "recap", text: ev.text, ts: nowIso }], nowIso),
+      }
     case "user_input.request": {
       // Subprocess has exited (the tool runs to completion in -p mode
       // and just leaves a marker), so streaming flips off — the

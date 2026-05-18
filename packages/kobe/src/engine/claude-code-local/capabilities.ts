@@ -20,6 +20,7 @@ export const claudeCapabilities: EngineCapabilities = {
   ],
   defaultModelId: resolveClaudeDefaultModelId,
   contextWindowFor: claudeContextWindowFor,
+  smallFastModelId: () => "claude-haiku-4-5-20251001",
 }
 
 export const claudeIdentity: EngineIdentity = {

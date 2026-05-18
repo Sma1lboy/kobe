@@ -409,6 +409,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         )
         return {}
       }
+      case "chat.recap": {
+        await orch.generateRecap(requireString(payload, "taskId"), optionalString(payload, "tabId"))
+        return {}
+      }
       case "chat.input.pending": {
         return { pending: orch.peekPendingInput(requireString(payload, "taskId")) }
       }

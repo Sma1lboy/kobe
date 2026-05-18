@@ -878,6 +878,27 @@ describe("applyEvent — user.inject", () => {
   })
 })
 
+describe("applyEvent — recap", () => {
+  test("appends a recap row and leaves isStreaming unchanged (idle case)", () => {
+    let s = applyEvent(createInitialState(), { type: "assistant.delta", text: "previous turn" }, FIXED_TS)
+    s = applyEvent(s, { type: "done" }, FIXED_TS)
+    expect(s.isStreaming).toBe(false)
+    s = applyEvent(s, { type: "recap", text: "Refactoring auth. Next: rate limiter." }, FIXED_TS)
+    expect(s.messages.map((r) => r.kind)).toEqual(["assistant", "recap"])
+    const recap = s.messages[1]
+    if (recap?.kind !== "recap") throw new Error("type narrowing")
+    expect(recap.text).toBe("Refactoring auth. Next: rate limiter.")
+    expect(s.isStreaming).toBe(false)
+  })
+
+  test("recap does not touch isStreaming or error when a turn is mid-flight", () => {
+    const start: ChatState = { ...createInitialState(), isStreaming: true, error: "stale" }
+    const s = applyEvent(start, { type: "recap", text: "Status." }, FIXED_TS)
+    expect(s.isStreaming).toBe(true)
+    expect(s.error).toBe("stale")
+  })
+})
+
 describe("applyEvent — purity", () => {
   test("does not mutate input state", () => {
     const start = createInitialState()

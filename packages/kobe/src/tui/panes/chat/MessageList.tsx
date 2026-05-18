@@ -46,7 +46,7 @@
 
 import { type Accessor, For, Show, createMemo } from "solid-js"
 import { useTheme } from "../../context/theme"
-import { AssistantRow, BashRow, ReasoningRow, SystemRow, UserRow } from "./MessageRows"
+import { AssistantRow, BashRow, ReasoningRow, RecapRow, SystemRow, UserRow } from "./MessageRows"
 import { ToolRow } from "./ToolRow"
 import { ApprovalRow, QuestionRow } from "./UserInputRows"
 import type { ChatRow } from "./store"
@@ -211,6 +211,7 @@ export function MessageList(props: MessageListProps) {
           if (row.kind === "assistant") return <AssistantRow text={row.text} />
           if (row.kind === "reasoning") return <ReasoningRow text={row.text} />
           if (row.kind === "system") return <SystemRow text={row.text} />
+          if (row.kind === "recap") return <RecapRow text={row.text} />
           if (row.kind === "bash") return <BashRow row={row} />
           if (row.kind === "approval") {
             return <ApprovalRow row={row} onApprove={(approve) => props.onApprove?.(row.requestId, approve)} />
