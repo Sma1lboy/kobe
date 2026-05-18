@@ -173,14 +173,17 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
     // `kind: "main"` rows have `branch === ""` (the live branch is
     // resolved at display time, not stored). Read HEAD directly from
     // the worktreePath (which equals the repo root for main rows) so
-    // the fork starts at the same commit the user is actively on.
-    const baseRef =
+    // the fork starts at the same commit the user is actively on. This
+    // value seeds the dialog's branch picker; the user may override
+    // it (KOB-203) — `result.baseRef` is the value we actually fork
+    // from below.
+    const inheritedBaseRef =
       source.branch && source.branch.length > 0
         ? source.branch
         : (getCurrentBranch(source.worktreePath || source.repo) ?? "main")
     const result = await QuickForkDialog.show(dialog, {
       repo: source.repo,
-      baseRef,
+      baseRef: inheritedBaseRef,
       modelId: inheritedModel,
       effort: inheritedEffort,
     })
@@ -197,7 +200,7 @@ export function useTaskActions(deps: TaskActionsDeps): TaskActions {
       // exactly how openNewTaskFlow sequences it.
       const created = await orchestrator.createTask({
         repo: source.repo,
-        baseRef,
+        baseRef: result.baseRef,
         title: result.prompt,
       })
       // Apply chosen model+effort/permission to the new task's default
