@@ -861,12 +861,12 @@ export class Orchestrator {
         await this.pauseTask(task.id)
       } catch (err) {
         // The engine may already be torn down (a `done` event arrived
-        // mid-flight). Log and proceed — the user's intent is to
-        // discard, not to babysit the engine state.
+        // mid-flight). Force-clear all composite-key handles for this
+        // task so the map stays consistent; stopAllTabsForTask is
+        // best-effort and calls bumpRunState() internally.
         // eslint-disable-next-line no-console
         console.error(`[kobe orchestrator] deleteTask: pauseTask failed for ${task.id}:`, err)
-        this.handles.delete(task.id)
-        this.bumpRunState()
+        await this.stopAllTabsForTask(task.id)
       }
     }
 

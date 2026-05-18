@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **`/clear` no longer opens a model picker** — `/clear` is a conversation reset; after clearing, the session is dropped so the vendor lock lifts automatically and the user can freely switch engines via the manual model picker on the next turn. The automatic post-clear model picker popup is removed entirely.
+- **deleteTask no longer leaks engine handles when pauseTask fails** — the fallback cleanup path in the delete-task error branch now calls the same `stopAllTabsForTask` helper used everywhere else, which iterates composite `taskId:tabId` handle keys; the previous code passed a bare `taskId` that matched no key and left stale handles in the map.
+- **Vendor validation error now includes the invalid value** — passing an unrecognized vendor string to daemon API calls now reports `"vendor 'xyz' is not a supported vendor (expected: claude, codex, gemini)"` instead of the opaque `"vendor must be a supported vendor"`.
+
 ## [0.5.25] - 2026-05-17
 
 ### Added
