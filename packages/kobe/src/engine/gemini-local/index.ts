@@ -2,6 +2,8 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process"
 import type {
   AIEngine,
   EngineCapabilities,
+  EngineCommandDiscoveryOpts,
+  EngineCommandEntry,
   EngineEvent,
   EngineHistory,
   EngineIdentity,
@@ -87,7 +89,7 @@ export class GeminiLocal implements AIEngine {
     return listSessionsForCwd(cwd)
   }
 
-  async listCommands() {
+  async listCommands(_opts?: EngineCommandDiscoveryOpts): Promise<readonly EngineCommandEntry[]> {
     return []
   }
 
