@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- **`/recap` slash command** — type `/recap` (or pick it from the slash dropdown) to get a dim 1-3 sentence "while you were away" summary of the current chat tab: high-level task plus concrete next step, no status reports or commit recaps. Generated via the active engine's small-fast model (haiku 4.5 for Claude, gpt-5.4-mini for Codex, Gemini 3 Flash for Gemini); the recap row is purely a chat affordance and is never written to the engine's session JSONL (KOB-205).
+- **`/recap` slash command + auto-recap on tab re-entry** — type `/recap` (or pick it from the slash dropdown) to get a dim 1-3 sentence "while you were away" summary of the current chat tab: high-level task plus concrete next step, no status reports or commit recaps. Coming back to a tab you left ≥ 5 minutes ago and that picked up new messages while you were gone now auto-fires the same recap (skipped mid-stream so the row never lands on top of a half-finished assistant turn). Generated via the active engine's small-fast model (haiku 4.5 for Claude, gpt-5.4-mini for Codex, Gemini 3 Flash for Gemini); the recap row is purely a chat affordance and is never written to the engine's session JSONL (KOB-205).
 
 ## [0.5.26] - 2026-05-17
 

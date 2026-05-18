@@ -110,6 +110,56 @@ export interface ChatSessionHandle {
 const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
 const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
 
+/**
+ * Auto-recap bookkeeping. Module-scoped for the same reason
+ * `statesByTab` is — these maps have to survive Chat remounts AND
+ * the task-switch tear-down so "I left tab X 7 minutes ago" remains
+ * truthful across visits to other tasks. Not exported; only the
+ * effect below reads/writes them. Pruned alongside the rest of
+ * per-tab state in `syncTabSubs` when a tab closes.
+ *
+ * Heuristic:
+ *   - on tab switch, snapshot the OUTGOING tab's
+ *     (now, messages.length) into the maps
+ *   - on tab switch, INCOMING tab triggers a recap iff (a) we have a
+ *     prior snapshot, (b) ≥ `RECAP_AUTO_TRIGGER_MS` have elapsed
+ *     since that snapshot, (c) the live message count is strictly
+ *     greater than the snapshot (something happened while we were
+ *     away), and (d) the tab is not currently streaming (a recap row
+ *     mid-stream is jarring; the user can manual `/recap` instead)
+ *   - either way, refresh the snapshot on entry so the next round
+ *     measures from "now"
+ *
+ * Why module-scoped: a hook-local signal would wipe these on every
+ * Chat unmount (file preview swap) and every task switch, which would
+ * silently make the auto-trigger window restart and the dirty signal
+ * vanish. The same lifetime rationale as `statesByTab` applies.
+ */
+export const RECAP_AUTO_TRIGGER_MS = 5 * 60_000
+const lastViewedAt = new Map<string, number>()
+const lastMessageCountAtView = new Map<string, number>()
+
+/**
+ * Pure decision function for "should we auto-fire a recap as the user
+ * re-enters this tab?" Lifted out of the Solid effect so it has
+ * vitest coverage without a render harness. The effect just feeds
+ * snapshots into this and runs the orchestrator call when it returns
+ * true.
+ */
+export function shouldAutoRecap(input: {
+  readonly seenAt: number | undefined
+  readonly now: number
+  readonly snapshotMessageCount: number
+  readonly liveMessageCount: number
+  readonly isStreaming: boolean
+}): boolean {
+  if (input.seenAt === undefined) return false
+  if (input.now - input.seenAt < RECAP_AUTO_TRIGGER_MS) return false
+  if (input.liveMessageCount <= input.snapshotMessageCount) return false
+  if (input.isStreaming) return false
+  return true
+}
+
 export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   const { orchestrator, onTaskReset } = opts
 
@@ -268,6 +318,8 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         next.delete(tabId)
         return next
       })
+      lastViewedAt.delete(tabId)
+      lastMessageCountAtView.delete(tabId)
     }
   }
 
@@ -336,6 +388,61 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       }
     }
     syncTabSubs(id, live.tabs)
+  })
+
+  // Auto-trigger recap on tab re-entry. Watches `activeTabId` and
+  // fires `orchestrator.generateRecap` whenever the user returns to a
+  // tab they left ≥ `RECAP_AUTO_TRIGGER_MS` ago AND the tab's message
+  // count grew while they were away. The orchestrator's
+  // `generateRecap` is fire-and-forget and self-no-ops when the tab
+  // has no sessionId / empty transcript, so we can call it
+  // unconditionally and let the orchestrator be the gatekeeper.
+  //
+  // `prevActiveTabId` is closure-scoped (per useChatSession instance)
+  // because the comparison is "did this Chat instance see a switch
+  // just now"; the *measurement* (when / how many messages) is what
+  // belongs at module scope and lives in the maps above. A first-ever
+  // mount with `prev === null` deliberately does NOT fire — the user
+  // didn't "leave" anything yet.
+  let prevActiveTabIdForRecap: string | null = null
+  createEffect(() => {
+    const incoming = activeTabId()
+    const prev = prevActiveTabIdForRecap
+    const states = statesByTab()
+
+    if (prev !== null && prev !== incoming) {
+      // Snapshot the outgoing tab. We deliberately don't gate on
+      // sessionId here — recording the snapshot is cheap; the recap
+      // call later will no-op for sessionless tabs.
+      lastViewedAt.set(prev, Date.now())
+      lastMessageCountAtView.set(prev, states.get(prev)?.messages.length ?? 0)
+    }
+
+    if (incoming !== null && incoming !== prev) {
+      const seenAt = lastViewedAt.get(incoming)
+      const snapshotCount = lastMessageCountAtView.get(incoming) ?? 0
+      const incomingState = states.get(incoming)
+      const liveCount = incomingState?.messages.length ?? 0
+      const taskId = opts.taskId()
+      if (
+        taskId &&
+        shouldAutoRecap({
+          seenAt,
+          now: Date.now(),
+          snapshotMessageCount: snapshotCount,
+          liveMessageCount: liveCount,
+          isStreaming: incomingState?.isStreaming ?? false,
+        })
+      ) {
+        void orchestrator.generateRecap(taskId, incoming).catch(() => {})
+      }
+      // Refresh on entry so a quick second visit doesn't retrigger
+      // and so the next "while away" window measures from now.
+      lastViewedAt.set(incoming, Date.now())
+      lastMessageCountAtView.set(incoming, liveCount)
+    }
+
+    prevActiveTabIdForRecap = incoming
   })
 
   onCleanup(() => {
