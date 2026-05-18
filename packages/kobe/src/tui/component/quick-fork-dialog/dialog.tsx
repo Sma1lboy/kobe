@@ -374,12 +374,6 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
     ],
   }))
 
-  const repoLabel = () => {
-    const trimmed = props.repo.replace(/\/+$/, "")
-    const last = trimmed.split("/").filter(Boolean).pop()
-    return last ?? props.repo
-  }
-
   return (
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
@@ -390,19 +384,19 @@ export function QuickForkDialogView(props: QuickForkDialogProps) {
           esc
         </text>
       </box>
+      {/* Breadcrumb-style summary `kobe > <branch>`. The branch segment
+          tracks the user's selection — `props.baseRef` is the initial
+          value, but if the user picks a different branch in the picker
+          below the summary follows so the header stays truthful. */}
       <box flexDirection="row" gap={1}>
         <text fg={theme.textMuted} wrapMode="none">
-          Forking from
+          kobe
+        </text>
+        <text fg={theme.textMuted} wrapMode="none">
+          {">"}
         </text>
         <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-          {repoLabel()}
-        </text>
-        {/* Top-line summary tracks the user's branch selection — the
-            inherited `props.baseRef` is the initial value, but if the
-            user picks a different branch in the picker below the
-            summary follows so the header stays truthful. */}
-        <text fg={theme.textMuted} wrapMode="none">
-          ({baseRef() || props.baseRef})
+          {baseRef() || props.baseRef || DEFAULT_BASE_REF}
         </text>
       </box>
 
