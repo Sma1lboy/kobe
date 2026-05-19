@@ -31,7 +31,14 @@ import { spawnSync as nodeSpawnSync } from "node:child_process"
 import { execSync } from "node:child_process"
 import pkg from "../../package.json" with { type: "json" }
 import { buildBindKeyArgs } from "./keybindings.ts"
-import { DEFAULT_PLACEHOLDERS, type LayoutStep, type PaneLabel, buildLayoutSteps } from "./layout.ts"
+import {
+  DEFAULT_PLACEHOLDERS,
+  type LayoutStep,
+  type PaneLabel,
+  buildLayoutSteps,
+  panePaneCommand,
+  shellPaneCommand,
+} from "./layout.ts"
 import { buildStatusLineCommands } from "./status-line.ts"
 
 const TMUX_SESSION_PREFIX = "kobe-"
@@ -63,7 +70,22 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
   const sessionName = generateSessionName()
   const branch = readCurrentBranch()
   const version = pkg.version
-  const steps = buildLayoutSteps({ sessionName, placeholders: DEFAULT_PLACEHOLDERS })
+  // Sprint-4: sidebar / tab-strip / files panes run `kobe pane <name>`
+  // subprocesses that subscribe to the daemon and render task state.
+  // Shell becomes a real interactive shell. Chat stays on the
+  // `tail -f` placeholder until the engine subprocess wires in
+  // (sprint-5).
+  const kobeBin = process.env.KOBE_BIN && process.env.KOBE_BIN.length > 0 ? process.env.KOBE_BIN : "kobe"
+  const steps = buildLayoutSteps({
+    sessionName,
+    placeholders: DEFAULT_PLACEHOLDERS,
+    paneCommands: {
+      sidebar: panePaneCommand("sidebar", kobeBin),
+      tabStrip: panePaneCommand("tab-strip", kobeBin),
+      files: panePaneCommand("files", kobeBin),
+      shell: shellPaneCommand(process.env.SHELL),
+    },
+  })
   const statusCmds = buildStatusLineCommands(sessionName, { version, branch, pr: "none" })
 
   const paneIds = new Map<PaneLabel, string>()
@@ -88,7 +110,6 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
   // installed via a one-shot `tmux bind-key ...` call; a single
   // failing binding is logged but does NOT abort bootstrap — losing
   // one chord beats refusing to launch the session.
-  const kobeBin = process.env.KOBE_BIN && process.env.KOBE_BIN.length > 0 ? process.env.KOBE_BIN : "kobe"
   const bindArgvs = buildBindKeyArgs({ session: sessionName, kobeBin })
   for (const argv of bindArgvs) {
     const result = nodeSpawnSync("tmux", [...argv], {

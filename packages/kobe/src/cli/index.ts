@@ -117,6 +117,11 @@ async function main(): Promise<void> {
     await runRpcSubcommand(rest)
     return
   }
+  if (subcommand === "pane") {
+    const { runPaneSubcommand } = await import("./pane.ts")
+    await runPaneSubcommand(rest)
+    return
+  }
   if (subcommand === "skill") {
     const { runSkillSubcommand } = await import("./skill-cmd.ts")
     await runSkillSubcommand(rest)
