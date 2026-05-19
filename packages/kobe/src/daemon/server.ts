@@ -6,6 +6,7 @@ import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
 import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task, VendorId } from "../types/task.ts"
+import { type ActiveState, createActiveState } from "./active-state.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
@@ -36,6 +37,11 @@ export interface DaemonServerOptions {
    * the real `claude remote-control` subprocess.
    */
   readonly rcBridge?: RcBridge
+  /**
+   * Override the daemon-wide active-task state. Tests inject a pre-seeded
+   * instance; production lets the daemon create a fresh `createActiveState()`.
+   */
+  readonly activeState?: ActiveState
 }
 
 export interface DaemonServer {
@@ -112,6 +118,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // happens on `rcBridge.start`; constructing the manager is free.
   const rcBridge = options.rcBridge ?? createRcBridge()
   rcBridge.onChange((status) => broadcast(clients, { type: "event", name: "rcBridge.changed", payload: { status } }))
+
+  // Daemon-wide foregrounded task. Drives the tmux pane subprocesses
+  // (which render whatever task the user currently has focused) and the
+  // M-n / M-p task-cycling chords. Broadcast on every change so each
+  // pane re-renders without polling.
+  const activeState = options.activeState ?? createActiveState()
+  activeState.onChange((activeTaskId) =>
+    broadcast(clients, { type: "event", name: "active.changed", payload: { activeTaskId } }),
+  )
 
   const serverApi: DaemonServer = {
     socketPath,
@@ -191,6 +206,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           runState,
           planUsage: planUsagePoller.current(),
           rcBridge: rcBridge.status(),
+          activeTaskId: activeState.get(),
         }
       }
       case "daemon.status":
@@ -278,6 +294,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId)
         for (const c of clients) unsubscribeClientFromTask(c, taskId)
+        // Clear active if the deleted task was the foregrounded one —
+        // pane subprocesses then re-render their "no active task" branch
+        // instead of hanging onto a stale id.
+        if (activeState.get() === taskId) activeState.set(null)
         broadcast(clients, { type: "event", name: "task.deleted", payload: { taskId } })
         return {}
       }
@@ -546,22 +566,69 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "rcBridge.status": {
         return { status: rcBridge.status() }
       }
-      case "rpc.switchTask":
-      case "rpc.switchTab":
-      case "rpc.newTab":
-      case "rpc.closeTab":
-      case "rpc.nextTask":
+      case "rpc.switchTask": {
+        const id = requireString(payload, "id")
+        const task = orch.getTask(id)
+        if (!task) throw new Error(`unknown task: ${id}`)
+        activeState.set(id)
+        return { ok: true, activeTaskId: id }
+      }
+      case "rpc.nextTask": {
+        const ids = orch
+          .listTasks()
+          .filter((t) => !t.archived)
+          .map((t) => t.id)
+        activeState.next(ids)
+        return { ok: true, activeTaskId: activeState.get() }
+      }
       case "rpc.prevTask": {
-        // Sprint 3 stubs — wire to real task/tab state in sprint 4.
-        // Today the request is just acknowledged + logged so the tmux
-        // chord bindings can already round-trip through the daemon.
-        const rpcPayload: Record<string, string> = {}
-        const id = optionalString(payload, "id")
-        if (id) rpcPayload.id = id
-        const tabId = optionalString(payload, "tabId")
-        if (tabId) rpcPayload.tabId = tabId
-        console.log(`[rpc] ${req.name} ${JSON.stringify(rpcPayload)}`)
-        return { ok: true, name: req.name, payload: rpcPayload }
+        const ids = orch
+          .listTasks()
+          .filter((t) => !t.archived)
+          .map((t) => t.id)
+        activeState.prev(ids)
+        return { ok: true, activeTaskId: activeState.get() }
+      }
+      case "rpc.newTab": {
+        const activeTaskId = activeState.get()
+        if (activeTaskId === null) throw new Error("no active task")
+        const newTab = await orch.createTab(activeTaskId)
+        await orch.setActiveTab(activeTaskId, newTab.id)
+        // Subscribe every attached client to the new tab's event bus
+        // (mirrors chat.tab.create — without this the spawning side
+        // sees the tab but never receives chat.delta for it).
+        for (const c of clients) subscribeClientToTab(orch, c, activeTaskId, newTab.id)
+        broadcastTaskUpdated(orch, clients, activeTaskId)
+        return { ok: true, tabId: newTab.id }
+      }
+      case "rpc.closeTab": {
+        const activeTaskId = activeState.get()
+        if (activeTaskId === null) throw new Error("no active task")
+        const task = orch.getTask(activeTaskId)
+        if (!task) throw new Error(`unknown task: ${activeTaskId}`)
+        if (task.tabs.length < 2) return { ok: true, skipped: "only-one-tab" }
+        const nextActive = await orch.closeTab(activeTaskId, task.activeTabId)
+        broadcastTaskUpdated(orch, clients, activeTaskId)
+        return { ok: true, nextActive }
+      }
+      case "rpc.switchTab": {
+        const activeTaskId = activeState.get()
+        if (activeTaskId === null) throw new Error("no active task")
+        const task = orch.getTask(activeTaskId)
+        if (!task) throw new Error(`unknown task: ${activeTaskId}`)
+        const tabIdArg = requireString(payload, "tabId")
+        let resolvedId: string
+        if (/^\d+$/.test(tabIdArg)) {
+          const idx = Number(tabIdArg) - 1
+          const tab = task.tabs[idx]
+          if (!tab) return { ok: true, skipped: "out-of-range" }
+          resolvedId = tab.id
+        } else {
+          resolvedId = tabIdArg
+        }
+        await orch.setActiveTab(activeTaskId, resolvedId)
+        broadcastTaskUpdated(orch, clients, activeTaskId)
+        return { ok: true, tabId: resolvedId }
       }
       default:
         throw new Error(`unknown daemon request: ${req.name satisfies never}`)

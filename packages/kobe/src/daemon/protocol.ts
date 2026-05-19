@@ -70,6 +70,7 @@ export type DaemonEventName =
   | "engine.status"
   | "plan.usage"
   | "rcBridge.changed"
+  | "active.changed"
   | "daemon.stopping"
 
 export interface DaemonError {

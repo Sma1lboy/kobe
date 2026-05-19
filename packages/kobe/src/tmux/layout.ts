@@ -48,10 +48,27 @@ export interface LayoutPlaceholders {
   readonly shell: string
 }
 
+/**
+ * Optional override map for the actual shell command each pane runs.
+ * When a field is set, it wins over the {@link LayoutPlaceholders}
+ * `tail -f` fallback. Sprint-4 wires `sidebar` / `tabStrip` / `files`
+ * to `kobe pane <name>` subprocesses and `shell` to a real interactive
+ * shell; `chat` keeps the placeholder until sprint-5 plugs the engine
+ * subprocess in.
+ */
+export interface LayoutPaneCommands {
+  readonly sidebar?: string
+  readonly tabStrip?: string
+  readonly chat?: string
+  readonly files?: string
+  readonly shell?: string
+}
+
 export interface LayoutOptions {
   readonly sessionName: string
   readonly windowName?: string
   readonly placeholders: LayoutPlaceholders
+  readonly paneCommands?: LayoutPaneCommands
 }
 
 export const DEFAULT_PLACEHOLDERS: LayoutPlaceholders = {
@@ -76,16 +93,40 @@ export function placeholderShellCommand(label: string): string {
   return `printf '%s\\n' '${safeLabel}'; exec tail -f /dev/null`
 }
 
+/**
+ * Compose the shell command that boots a single kobe pane subprocess.
+ * `exec` drops the intermediate shell so tmux sees one process per pane.
+ */
+export function panePaneCommand(paneName: string, kobeBin: string): string {
+  return `exec ${kobeBin} pane ${paneName}`
+}
+
+/**
+ * Compose the shell command for the embedded terminal pane. Defaults
+ * to bash because POSIX hosts always have it; `$SHELL` is preferred
+ * when the caller passes it through.
+ */
+export function shellPaneCommand(shell?: string): string {
+  return `exec ${shell && shell.length > 0 ? shell : "bash"}`
+}
+
 export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
   const windowName = opts.windowName ?? "kobe"
   const ph = opts.placeholders
+  const pc = opts.paneCommands ?? {}
+  // Each pane's actual command: explicit override > placeholder fallback.
+  const sidebarCmd = pc.sidebar ?? placeholderShellCommand(ph.sidebar)
+  const tabStripCmd = pc.tabStrip ?? placeholderShellCommand(ph.tabStrip)
+  const chatCmd = pc.chat ?? placeholderShellCommand(ph.chat)
+  const filesCmd = pc.files ?? placeholderShellCommand(ph.files)
+  const shellCmd = pc.shell ?? placeholderShellCommand(ph.shell)
   return [
     {
       kind: "new-session",
       name: "sidebar",
       sessionName: opts.sessionName,
       windowName,
-      command: placeholderShellCommand(ph.sidebar),
+      command: sidebarCmd,
     },
     // Carve the right ~75% out of the sidebar pane. The sidebar keeps
     // the left 25%; the new pane will become the tab-strip (resized
@@ -96,7 +137,7 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       targetLabel: "sidebar",
       direction: "h",
       size: "75%",
-      command: placeholderShellCommand(ph.tabStrip),
+      command: tabStripCmd,
     },
     // Peel the right column (files+shell) off the middle band. The
     // new pane takes the rightmost 33% of the current tab-strip pane.
@@ -106,7 +147,7 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       targetLabel: "tab-strip",
       direction: "h",
       size: "33%",
-      command: placeholderShellCommand(ph.files),
+      command: filesCmd,
     },
     // Drop chat below the tab-strip. New pane gets 99% of the
     // column's height; the tab-strip keeps the rest, then the
@@ -117,7 +158,7 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       targetLabel: "tab-strip",
       direction: "v",
       size: "99%",
-      command: placeholderShellCommand(ph.chat),
+      command: chatCmd,
     },
     { kind: "resize", targetLabel: "tab-strip", heightRows: 1 },
     // Split the right column vertically. Files keep the top half;
@@ -128,7 +169,7 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       targetLabel: "files",
       direction: "v",
       size: "50%",
-      command: placeholderShellCommand(ph.shell),
+      command: shellCmd,
     },
     // Default focus on chat so the user lands where typing matters.
     { kind: "select", targetLabel: "chat" },
