@@ -74,10 +74,10 @@ export type TerminalProps = {
   focused?: Accessor<boolean>
   /**
    * Override the embedded process argv. When set the pane runs this
-   * command instead of an interactive shell — e.g. `["claude"]` for an
-   * interactive Claude Code session. Resolved from `KOBE_TERMINAL_COMMAND`
-   * at the app shell; static for the session, so a plain array (not an
-   * accessor) is enough.
+   * command instead of an interactive shell — e.g. `["claude"]` to
+   * make this a PTY view of an interactive Claude Code session (the
+   * chat pane's `KOBE_CHAT_ENGINE=interactive` mode). Static for the
+   * session, so a plain array (not an accessor) is enough.
    */
   command?: readonly string[]
   /**
