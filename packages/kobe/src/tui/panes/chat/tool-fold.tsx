@@ -1,18 +1,22 @@
 import { TextAttributes } from "@opentui/core"
 import { useTheme } from "../../context/theme"
 import type { ChatRow } from "./store"
-import { classifyTool, isSubagentTool } from "./tool-registry"
+import { classifyTool, isSubagentTool, isTodoSnapshotTool } from "./tool-registry"
 
 export type ToolCounts = { search: number; read: number; list: number; bash: number; other: number }
 
 /**
  * A tool row is foldable into the "Searched N…, read M…" summary unless
- * it is a subagent (Agent/Task) row — those carry their own nested
- * progress UI and must render standalone. Non-tool rows are never
- * foldable.
+ * it is a subagent (Agent/Task) row or a task-snapshot row (TodoWrite /
+ * TaskList) — both carry their own per-row UI (nested step list /
+ * inline checklist) and must render standalone. `TaskCreate /
+ * TaskUpdate / TaskGet` carry their own per-row banner but no list body,
+ * so they remain foldable (a burst of `TaskUpdate`s rolls up into the
+ * "Used N other tools" chip). Non-tool rows are never foldable.
  */
 function isFoldableTool(row: ChatRow | undefined): boolean {
-  return row?.kind === "tool" && !isSubagentTool(row.name)
+  if (row?.kind !== "tool") return false
+  return !isSubagentTool(row.name) && !isTodoSnapshotTool(row.name)
 }
 
 export type MessageRenderItem =

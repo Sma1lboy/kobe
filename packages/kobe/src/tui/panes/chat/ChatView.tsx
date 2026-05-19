@@ -1,5 +1,5 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
-import type { Accessor } from "solid-js"
+import { type Accessor, createMemo } from "solid-js"
 import { Show } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
 import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
@@ -8,7 +8,9 @@ import { BackgroundRunsLine } from "./BackgroundRunsLine"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
+import { TodoStatusLine } from "./TodoStatusLine"
 import type { ChatRow, QueuedPrompt } from "./store"
+import { computeRoundedSnapshots } from "./todo-render"
 
 export interface ChatViewProps {
   readonly theme: Theme
@@ -67,6 +69,13 @@ export interface ChatViewProps {
 
 export function ChatView(props: ChatViewProps) {
   const theme = props.theme
+  // Cross-row "rounded" snapshots — `Map<rowIndex, items[]>` where each
+  // entry is the slice of the snapshot row's items that belong to its
+  // round (older rounds filtered out). Computed once here and threaded
+  // into MessageList (for inline ToolRow rendering) and TodoStatusLine
+  // (for the composer-pinned panel) so both surfaces agree on what
+  // counts as "this round" without duplicating the scan.
+  const roundedSnapshots = createMemo(() => computeRoundedSnapshots(props.messages))
   return (
     <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
       <Show when={!props.hasTaskId}>
@@ -88,6 +97,7 @@ export function ChatView(props: ChatViewProps) {
           <box paddingRight={1} gap={0}>
             <MessageList
               messages={props.messages}
+              roundedSnapshots={roundedSnapshots()}
               expandedToolIndex={props.expandedToolIndex}
               onToggleTool={props.onToggleTool}
               expandedFoldStartIndex={props.expandedFoldStartIndex}
@@ -98,12 +108,21 @@ export function ChatView(props: ChatViewProps) {
               onClaimComposerFocus={props.onClaimComposerFocus}
               chatFocused={props.chatFocused}
             />
+            {/* Loading spinner + todo panel live **inside** the scrollbox
+                so they flow with the transcript instead of being pinned
+                above the composer. They land right after the last
+                message row, scroll with the chat, and disappear when
+                their visibility predicates flip — matches Claude Code
+                where the spinner + `TaskListV2` block scrolls with the
+                conversation rather than docking to the input bar. */}
+            <Show when={props.showThinking && props.hasTaskId}>
+              <Loading startedAt={props.loadingStartedAt} responseChars={props.currentTurnChars} />
+            </Show>
+            <Show when={props.hasTaskId}>
+              <TodoStatusLine messages={props.messages} roundedSnapshots={roundedSnapshots()} />
+            </Show>
           </box>
         </scrollbox>
-      </Show>
-
-      <Show when={props.showThinking && props.hasTaskId}>
-        <Loading startedAt={props.loadingStartedAt} responseChars={props.currentTurnChars} />
       </Show>
 
       <Show when={props.error}>
