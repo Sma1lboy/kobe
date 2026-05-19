@@ -8,7 +8,7 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For, type JSXElement, Show } from "solid-js"
+import { For, Show } from "solid-js"
 import { useFocus } from "../context/focus"
 import { KobeKeymap, useCtrlCArmed } from "../context/keybindings"
 import { useTheme } from "../context/theme"
@@ -32,13 +32,7 @@ function Hotkey(props: { keys: string; label: string }) {
   )
 }
 
-/**
- * `indicator` — an optional element rendered in the right column ahead
- * of the always-on global hotkeys. The background-tasks indicator
- * (`BackgroundTasksIndicator`) is wired through here so it self-hides
- * when nothing is running out of view.
- */
-export function StatusBar(props: { indicator?: JSXElement } = {}) {
+export function StatusBar() {
   const { theme } = useTheme()
   const focus = useFocus()
   const ctrlCArmed = useCtrlCArmed()
@@ -80,7 +74,6 @@ export function StatusBar(props: { indicator?: JSXElement } = {}) {
           the LEFT column when sidebar is focused, so the right column
           is just for cross-pane reminders now.) */}
       <box flexDirection="row" gap={2} flexShrink={0}>
-        {props.indicator}
         <For each={rightHints}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
         <Show when={ctrlCArmed()}>
           <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">

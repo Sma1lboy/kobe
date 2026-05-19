@@ -37,7 +37,7 @@ import type { KobeOrchestrator } from "../client/remote-orchestrator.ts"
 import type { Task } from "../types/task.ts"
 import { SettingsDialog } from "./component/settings-dialog"
 import type { PaneId } from "./context/focus"
-import { bindByIds, pressBackgroundTasksChord } from "./context/keybindings"
+import { bindByIds } from "./context/keybindings"
 import type { KVContext } from "./context/kv"
 import { useBindings } from "./lib/keymap"
 import type { DialogContext } from "./ui/dialog"
@@ -72,8 +72,6 @@ export type AppKeymapDeps = {
   focusHjklTargets: Record<string, PaneId>
   /** Open the new-task dialog flow (defined in app.tsx — uses kv, orchestrator, etc.). */
   openNewTaskFlow: () => Promise<void> | void
-  /** Open the background-tasks manager dialog (defined in app.tsx — needs run-state + selection). */
-  openBackgroundTasks: () => void
   /** KV store + orchestrator handle for the settings dialog. */
   kv: KVContext
   orchestrator: KobeOrchestrator
@@ -191,19 +189,14 @@ export function useAppKeymap(deps: AppKeymapDeps): void {
   }))
 
   /* ----- 4. Global modifier-prefixed chords ----- */
-  // `ctrl+,` (settings.open), `ctrl+b` (tasks.background) are modifier
-  // chords — safe to leave global since they can't collide with typing.
+  // `ctrl+,` (settings.open) is modifier-prefixed — safe to leave global
+  // since it can't collide with typing.
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: bindByIds({
       "task.openEditor": deps.openActiveTaskInEditor,
       "settings.open": () => {
         void SettingsDialog.show(dialog, deps.kv, deps.orchestrator)
-      },
-      // Double-press gate: first ctrl+b arms (the indicator shows a
-      // "press again" hint), second within 800ms opens the dialog.
-      "tasks.background": () => {
-        if (pressBackgroundTasksChord() === "fire") deps.openBackgroundTasks()
       },
     }),
   }))

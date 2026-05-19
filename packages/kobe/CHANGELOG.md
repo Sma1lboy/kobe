@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Removed
+
+- **Background-tasks manager (ctrl+b) removed** — the double-press `ctrl+b` dialog, the status-bar background-count chip, and the one-line "running in background" readout above the composer are all gone, along with their supporting machinery. The feature mirrored Claude Code's background-task model, but kobe spawns `claude -p` per turn and exits the engine process at the end of each turn, so the cross-turn `run_in_background` semantics the surface implied don't actually hold — a queued prompt or `BashOutput` poll on the next turn cannot reach a shell handle that lived in the previous (now-exited) `claude -p` invocation. The surface was advertising a guarantee the architecture cannot keep, so it's been pulled.
+
 ## [0.5.26] - 2026-05-17
 
 ### Fixed

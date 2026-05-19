@@ -2,9 +2,7 @@ import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import type { Accessor } from "solid-js"
 import { Show } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
-import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
 import type { Theme } from "../../context/theme"
-import { BackgroundRunsLine } from "./BackgroundRunsLine"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
@@ -55,14 +53,6 @@ export interface ChatViewProps {
   readonly editingQueueId: Accessor<string | null>
   readonly taskLabelForHistoryKey?: (historyKey: string) => string | undefined
   readonly currentProjectRoot?: Accessor<string | undefined>
-  /**
-   * Agent sessions running out of view (running / awaiting_input,
-   * excluding this tab). Rendered as a one-line readout above the
-   * composer — kobe's analogue of claude-code's `BackgroundTaskStatus`.
-   */
-  readonly backgroundRows?: Accessor<readonly BackgroundTaskRow[]>
-  /** Open the background-tasks dialog (from the background-runs line). */
-  readonly onOpenBackgroundTasks?: () => void
 }
 
 export function ChatView(props: ChatViewProps) {
@@ -127,10 +117,6 @@ export function ChatView(props: ChatViewProps) {
             </text>
           </box>
         )}
-      </Show>
-
-      <Show when={props.hasTaskId && props.backgroundRows && props.onOpenBackgroundTasks}>
-        <BackgroundRunsLine rows={props.backgroundRows!} onActivate={props.onOpenBackgroundTasks!} />
       </Show>
 
       <Show when={props.showComposer}>
