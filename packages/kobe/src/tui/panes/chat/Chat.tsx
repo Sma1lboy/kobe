@@ -46,8 +46,9 @@ import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
-import { ChatView } from "./ChatView"
+import { type ChatPaneMode, ChatView } from "./ChatView"
 import type { ComposerSlashEntry } from "./Composer"
+import { computeAgentRows } from "./agents-view-parts"
 import { estimateContextTokensFromRows, stringifyErr } from "./chat-utils"
 import { ModelPicker } from "./composer/ModelPicker"
 import { permissionModeLabel } from "./composer/permission-mode"
@@ -227,6 +228,38 @@ export function Chat(props: ChatProps) {
 
   const [expandedToolIndex, setExpandedToolIndex] = createSignal<number | null>(null)
   const [expandedFoldStartIndex, setExpandedFoldStartIndex] = createSignal<number | null>(null)
+  // Agents-mode toggle (KOB-209). Single signal — task switches keep
+  // whichever mode the user last picked; this matches their muscle
+  // memory ("I was in Agents on the last task, I expect Agents here").
+  const [chatMode, setChatMode] = createSignal<ChatPaneMode>("chat")
+  const runStateAcc = props.orchestrator.chatRunStateSignal()
+  // Tabs the user just spawned via Agents mode but whose daemon-side
+  // run-state hasn't been broadcast back yet. Lets the card flip to
+  // RUNNING immediately on submit instead of sitting in IDLE for the
+  // engine cold-start window. Cleared per-tab the moment the real
+  // run-state entry lands.
+  const [optimisticRunning, setOptimisticRunning] = createSignal<ReadonlySet<string>>(new Set())
+  createEffect(() => {
+    const live = runStateAcc()
+    const taskId = props.taskId()
+    if (!taskId) return
+    const cur = optimisticRunning()
+    if (cur.size === 0) return
+    let changed = false
+    const next = new Set(cur)
+    for (const tabId of cur) {
+      if (live.has(`${taskId}:${tabId}`)) {
+        next.delete(tabId)
+        changed = true
+      }
+    }
+    if (changed) setOptimisticRunning(next)
+  })
+  const agentRows = createMemo(() => {
+    const taskId = props.taskId()
+    if (!taskId) return []
+    return computeAgentRows(taskId, tabs(), runStateAcc(), statesByTab(), activeTabId(), optimisticRunning())
+  })
   // Id of the queue entry currently being edited via click-to-edit.
   // Chat-scoped (not per-tab) — switching tabs implicitly resets via
   // the createEffect below that watches the active tab's queue.
@@ -923,7 +956,70 @@ export function Chat(props: ChatProps) {
     setExpandedFoldStartIndex((cur) => (cur === startIndex ? null : startIndex))
   }
 
+  /**
+   * Spawn a new ChatTab in the current task and dispatch `text` against
+   * it (KOB-209). Used as the Agents-mode submit path: each submit
+   * starts a fresh agent rather than appending to the active session.
+   * Stays in Agents mode so the user sees the new card appear under
+   * `running`. Clicking a card afterwards flips back to Chat.
+   */
+  async function spawnAgent(text: string): Promise<void> {
+    const taskId = props.taskId()
+    if (!taskId) return
+    if (isCanceled() || isArchived()) return
+    let newTabId: string | null = null
+    try {
+      const tab = await props.orchestrator.createTab(taskId)
+      newTabId = tab.id
+      setActiveTabIdLocal(tab.id)
+      setExpandedToolIndex(null)
+      setExpandedFoldStartIndex(null)
+      void props.orchestrator.setActiveTab(taskId, tab.id)
+      setDraft("")
+      // Mark optimistically running BEFORE awaiting runTask so the
+      // card paints green immediately. The effect above strips this
+      // tabId from the set the instant the daemon's real run-state
+      // broadcast lands. On runTask failure we drop the optimistic
+      // entry below so the card doesn't stay green forever.
+      setOptimisticRunning((prev) => {
+        const next = new Set(prev)
+        next.add(tab.id)
+        return next
+      })
+      await props.orchestrator.runTask(taskId, text, tab.id)
+    } catch (err) {
+      if (newTabId) {
+        setOptimisticRunning((prev) => {
+          if (!prev.has(newTabId!)) return prev
+          const next = new Set(prev)
+          next.delete(newTabId!)
+          return next
+        })
+      }
+      patchActiveState((s) => pushSystemError(s, `spawn agent failed: ${stringifyErr(err)}`))
+    }
+  }
+
+  /**
+   * Select a tab from the Agents-mode list and flip back to Chat. The
+   * tab switch mirrors the chip-strip / numeric jump paths so subs and
+   * scroll anchors land in the expected state.
+   */
+  function selectAgentTab(tabId: string): void {
+    setActiveTabIdLocal(tabId)
+    setExpandedToolIndex(null)
+    setExpandedFoldStartIndex(null)
+    const taskId = props.taskId()
+    if (taskId) void props.orchestrator.setActiveTab(taskId, tabId)
+    setChatMode("chat")
+  }
+
   function handleComposerSubmit(trimmed: string, mode: "auto" | "steer" = "auto"): void {
+    if (chatMode() === "agents") {
+      if (trimmed.length === 0) return
+      void spawnAgent(trimmed)
+      return
+    }
     // Click-to-edit commit: when a queue entry is being edited, the
     // composer's submit replaces that entry's text in place instead
     // of dispatching a new prompt. Empty trimmed text deletes the
@@ -1042,6 +1138,10 @@ export function Chat(props: ChatProps) {
       currentProjectRoot={currentProjectRoot}
       backgroundRows={props.backgroundRows}
       onOpenBackgroundTasks={props.onOpenBackgroundTasks}
+      chatMode={chatMode}
+      onSetChatMode={setChatMode}
+      agentRows={agentRows}
+      onSelectAgentTab={selectAgentTab}
     />
   )
 }

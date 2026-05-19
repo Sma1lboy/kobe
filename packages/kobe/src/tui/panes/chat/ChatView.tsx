@@ -4,11 +4,15 @@ import { Show } from "solid-js"
 import type { PermissionMode } from "../../../types/engine"
 import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
 import type { Theme } from "../../context/theme"
+import { AgentsView } from "./AgentsView"
+import type { AgentRow } from "./agents-view-parts"
 import { BackgroundRunsLine } from "./BackgroundRunsLine"
 import { Composer, type ComposerSlashEntry } from "./Composer"
 import { Loading } from "./Loading"
 import { MessageList } from "./MessageList"
 import type { ChatRow, QueuedPrompt } from "./store"
+
+export type ChatPaneMode = "chat" | "agents"
 
 export interface ChatViewProps {
   readonly theme: Theme
@@ -63,10 +67,24 @@ export interface ChatViewProps {
   readonly backgroundRows?: Accessor<readonly BackgroundTaskRow[]>
   /** Open the background-tasks dialog (from the background-runs line). */
   readonly onOpenBackgroundTasks?: () => void
+  /**
+   * Agents-mode toggle state + handlers (KOB-209). The chip row above
+   * the body switches between Chat (normal transcript) and Agents
+   * (per-task tab overview). Composer stays mounted in both modes —
+   * in Agents mode submit spawns a new tab.
+   */
+  readonly chatMode: Accessor<ChatPaneMode>
+  readonly onSetChatMode: (mode: ChatPaneMode) => void
+  /** Projected Agents-mode rows. Only consumed when chatMode === "agents". */
+  readonly agentRows: Accessor<readonly AgentRow[]>
+  /** Click a card in Agents mode — selects that tab + flips back to Chat. */
+  readonly onSelectAgentTab: (tabId: string) => void
 }
 
 export function ChatView(props: ChatViewProps) {
   const theme = props.theme
+  const inChat = () => props.chatMode() === "chat"
+  const inAgents = () => props.chatMode() === "agents"
   return (
     <box flexGrow={1} flexDirection="column" paddingLeft={1} paddingRight={1}>
       <Show when={!props.hasTaskId}>
@@ -76,6 +94,15 @@ export function ChatView(props: ChatViewProps) {
       </Show>
 
       <Show when={props.hasTaskId}>
+        <ModeChipRow
+          theme={theme}
+          mode={props.chatMode}
+          agentCount={() => props.agentRows().length}
+          onSelect={props.onSetChatMode}
+        />
+      </Show>
+
+      <Show when={props.hasTaskId && inChat()}>
         <scrollbox
           ref={props.setScrollRef}
           flexGrow={1}
@@ -102,7 +129,11 @@ export function ChatView(props: ChatViewProps) {
         </scrollbox>
       </Show>
 
-      <Show when={props.showThinking && props.hasTaskId}>
+      <Show when={props.hasTaskId && inAgents()}>
+        <AgentsView theme={theme} rows={props.agentRows} onSelectTab={props.onSelectAgentTab} />
+      </Show>
+
+      <Show when={props.showThinking && props.hasTaskId && inChat()}>
         <Loading startedAt={props.loadingStartedAt} responseChars={props.currentTurnChars} />
       </Show>
 
@@ -129,11 +160,11 @@ export function ChatView(props: ChatViewProps) {
         )}
       </Show>
 
-      <Show when={props.hasTaskId && props.backgroundRows && props.onOpenBackgroundTasks}>
+      <Show when={props.hasTaskId && inChat() && props.backgroundRows && props.onOpenBackgroundTasks}>
         <BackgroundRunsLine rows={props.backgroundRows!} onActivate={props.onOpenBackgroundTasks!} />
       </Show>
 
-      <Show when={props.showComposer}>
+      <Show when={props.showComposer || inAgents()}>
         <Composer
           draft={props.draft}
           onDraftChange={props.onDraftChange}
@@ -164,6 +195,55 @@ export function ChatView(props: ChatViewProps) {
           currentProjectRoot={props.currentProjectRoot}
         />
       </Show>
+    </box>
+  )
+}
+
+/**
+ * Mode switcher (KOB-209) — text-only `view: › Chat   Agents (N)`
+ * row above the body. Deliberately *not* a chip-fill style: the chat
+ * tab strip directly above (center-tab-strip) already uses solid-fill
+ * chips, and stacking two chip rows looked like a single tab bar. A
+ * leading `view:` label + `›` active marker reads as a view selector
+ * instead of "more tabs". No keybinding — click only for MVP.
+ */
+function ModeChipRow(props: {
+  theme: Theme
+  mode: Accessor<ChatPaneMode>
+  agentCount: Accessor<number>
+  onSelect: (mode: ChatPaneMode) => void
+}) {
+  const theme = props.theme
+  return (
+    <box flexDirection="row" gap={2} flexShrink={0} paddingTop={1} paddingBottom={1} paddingLeft={1}>
+      <text fg={theme.textMuted} wrapMode="none">
+        view:
+      </text>
+      <ModeLink theme={theme} active={props.mode() === "chat"} label="Chat" onSelect={() => props.onSelect("chat")} />
+      <ModeLink
+        theme={theme}
+        active={props.mode() === "agents"}
+        label={`Agents (${props.agentCount()})`}
+        onSelect={() => props.onSelect("agents")}
+      />
+    </box>
+  )
+}
+
+function ModeLink(props: { theme: Theme; active: boolean; label: string; onSelect: () => void }) {
+  const theme = props.theme
+  return (
+    <box flexDirection="row" gap={0} onMouseUp={() => props.onSelect()}>
+      <text fg={props.active ? theme.accent : theme.textMuted} wrapMode="none">
+        {props.active ? "› " : "  "}
+      </text>
+      <text
+        fg={props.active ? theme.accent : theme.textMuted}
+        attributes={props.active ? TextAttributes.BOLD : undefined}
+        wrapMode="none"
+      >
+        {props.label}
+      </text>
     </box>
   )
 }
