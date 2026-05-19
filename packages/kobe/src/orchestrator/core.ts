@@ -620,13 +620,32 @@ export class Orchestrator {
   async generateRecap(id: TaskId | string, tabId?: string): Promise<void> {
     const task = this.requireTask(id)
     const tab = this.resolveTab(task, tabId)
-    if (!tab.sessionId) return
+    // Each no-op below dispatches a `system.info` row so the user
+    // sees WHY a manual `/recap` produced nothing — silent returns
+    // here make the slash feel broken on first try (typical: typing
+    // `/recap` on a fresh tab before sending any prompt). The auto
+    // path skips when in-flight or already-recapped; those branches
+    // intentionally don't notify (the row would be noise on a tab
+    // the user isn't watching).
+    if (!tab.sessionId) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: "(/recap unavailable — send a prompt first to start a session)",
+      })
+      return
+    }
     const engine = this.engineForTab(task, tab)
     const messages: readonly Message[] = await engine
       .readHistory(tab.sessionId)
       .then((h) => h.messages)
       .catch(() => [])
-    if (messages.length === 0) return
+    if (messages.length === 0) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: "(/recap unavailable — no transcript yet)",
+      })
+      return
+    }
     const model = engine.capabilities.smallFastModelId?.() ?? engine.capabilities.defaultModelId()
     const ctx: MetadataSuggestionContext = {
       engine,
@@ -635,7 +654,13 @@ export class Orchestrator {
       permissionMode: task.permissionMode,
     }
     const text = await this.metadataSuggester.suggestRecap(messages, ctx)
-    if (!text) return
+    if (!text) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: `(/recap failed — engine returned no summary; model="${model}")`,
+      })
+      return
+    }
     this.dispatchEvent(task.id, tab.id, { type: "recap", text })
   }
 
