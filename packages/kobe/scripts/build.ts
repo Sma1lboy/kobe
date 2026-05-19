@@ -19,7 +19,7 @@
  * `dist`, so this is the only mirror needed for npm publish.
  */
 
-import { chmod, cp } from "node:fs/promises"
+import { chmod, cp, mkdir } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
@@ -53,5 +53,11 @@ for (const file of OUT_FILES) await chmod(file, 0o755)
 // `kobe skill install` resolves the bundled SKILL.md via `dist/share/`
 // when running from an installed npm package.
 await cp("./share", "./dist/share", { recursive: true })
+
+// The interactive-claude PTY host (KOB-208) is a `.cjs` Node script the
+// bundler can't inline — it runs as its own process. Mirror it into
+// `dist/share/` so `HostClient` resolves it post-bundle.
+await mkdir("./dist/share/interactive-claude", { recursive: true })
+await cp("./src/engine/interactive-claude/pty-host.cjs", "./dist/share/interactive-claude/pty-host.cjs")
 
 console.log(`built ${OUT_FILES.join(", ")} + dist/share/`)
