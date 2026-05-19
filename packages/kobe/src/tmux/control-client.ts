@@ -61,6 +61,12 @@ export interface SplitWindowOptions {
   readonly size?: string | number
   readonly command?: string
   readonly detached?: boolean
+  /**
+   * When set, runs `split-window -P -F <printFormat>` so the response
+   * body carries the new pane's id (or any other tmux format string).
+   * Used by `PaneStashAdapter` to recover `%N` ids for the stash map.
+   */
+  readonly printFormat?: string
 }
 
 export interface BreakPaneOptions {
@@ -74,6 +80,13 @@ export interface JoinPaneOptions {
   readonly target: string
   readonly horizontal?: boolean
   readonly size?: string | number
+}
+
+export interface SwapPaneOptions {
+  readonly source: string
+  readonly target: string
+  /** `-d`: stay on the currently focused pane after the swap. */
+  readonly detached?: boolean
 }
 
 export interface SelectLayoutOptions {
@@ -259,6 +272,7 @@ export class TmuxControlClient extends EventEmitter {
     else if (opts.direction === "v") argv.push("-v")
     if (opts.size !== undefined) argv.push("-l", String(opts.size))
     if (opts.detached) argv.push("-d")
+    if (opts.printFormat) argv.push("-P", "-F", opts.printFormat)
     if (opts.target) argv.push("-t", opts.target)
     if (opts.command) argv.push(opts.command)
     return this.send(...argv)
@@ -276,6 +290,13 @@ export class TmuxControlClient extends EventEmitter {
     const argv: string[] = ["join-pane"]
     if (opts.horizontal) argv.push("-h")
     if (opts.size !== undefined) argv.push("-l", String(opts.size))
+    argv.push("-s", opts.source, "-t", opts.target)
+    return this.send(...argv)
+  }
+
+  swapPane(opts: SwapPaneOptions): Promise<string[]> {
+    const argv: string[] = ["swap-pane"]
+    if (opts.detached) argv.push("-d")
     argv.push("-s", opts.source, "-t", opts.target)
     return this.send(...argv)
   }
