@@ -118,47 +118,6 @@ function disarmCtrlC(): void {
   setCtrlCArmed(false)
 }
 
-/**
- * Ctrl+B double-press machinery. Mirrors claude-code's `useDoublePress`
- * (`refs/claude-code/src/hooks/useDoublePress.ts` — an 800ms window:
- * first press shows a hint, second press within the window fires) and
- * kobe's own ctrl+c arm-then-quit pattern above. Module-level signal
- * because the chord is registered in `app-keymap.tsx` while the
- * "press ctrl+b again" hint is rendered by `BackgroundTasksIndicator`
- * in the status bar — two components, one shared armed flag.
- */
-const BG_TASKS_DOUBLE_PRESS_MS = 800
-const [bgTasksArmed, setBgTasksArmed] = createSignal(false)
-let bgTasksArmTimer: ReturnType<typeof setTimeout> | null = null
-
-/** Read the "Ctrl+B is armed for the second press" flag. Reactive accessor. */
-export function useBackgroundTasksArmed(): Accessor<boolean> {
-  return bgTasksArmed
-}
-
-/**
- * Register one Ctrl+B press. Returns `"fire"` when this is the second
- * press inside the 800ms window (the caller should open the
- * background-tasks dialog) and `"armed"` on the first press (the caller
- * shows the indicator's "press ctrl+b again" hint and waits).
- */
-export function pressBackgroundTasksChord(): "armed" | "fire" {
-  if (bgTasksArmTimer !== null) {
-    clearTimeout(bgTasksArmTimer)
-    bgTasksArmTimer = null
-  }
-  if (bgTasksArmed()) {
-    setBgTasksArmed(false)
-    return "fire"
-  }
-  setBgTasksArmed(true)
-  bgTasksArmTimer = setTimeout(() => {
-    bgTasksArmTimer = null
-    setBgTasksArmed(false)
-  }, BG_TASKS_DOUBLE_PRESS_MS)
-  return "armed"
-}
-
 /** A single binding row. */
 export type KobeBinding = {
   /** Stable identifier (tests + future settings persistence key off this). */
@@ -229,25 +188,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+o"],
     category: "Global",
     description: "Open active task worktree in editor",
-  },
-  {
-    // Background-tasks manager. `ctrl+b` mirrors claude-code's
-    // background chord (`refs/claude-code` `task:background`). Global +
-    // modifier-prefixed → compliant with docs/KEYBINDINGS.md (globals
-    // MUST be modifier-prefixed). No status-bar hint: the
-    // `BackgroundTasksIndicator` chip carries the affordance and only
-    // appears when something is actually running out of view, so a
-    // permanent right-column hint would just be idle clutter.
-    // Double-press: like claude-code's `useDoublePress`, the dialog
-    // opens on the SECOND ctrl+b inside an 800ms window — the first
-    // press arms + shows a hint (see `pressBackgroundTasksChord`).
-    // tmux caveat: `ctrl+b` is tmux's default prefix key — tmux users
-    // press it twice for tmux, then the double-press is on top of that.
-    id: "tasks.background",
-    scope: "global",
-    keys: ["ctrl+b"],
-    category: "Global",
-    description: "Open background tasks (double-press ctrl+b)",
   },
   {
     id: "settings.open",

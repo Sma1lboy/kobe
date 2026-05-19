@@ -39,9 +39,6 @@ import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
-import { BackgroundTasksDialog } from "./component/background-tasks-dialog"
-import { BackgroundTasksIndicator } from "./component/background-tasks-indicator"
-import { computeBackgroundRows } from "./component/background-tasks-parts"
 import { CenterTabStrip } from "./component/center-tab-strip"
 import { HelpDialog } from "./component/help-dialog"
 import { PaneHeader } from "./component/pane-header"
@@ -481,10 +478,9 @@ function Shell(props: AppDeps) {
   // means the workspace is on chat AND this is the active chat tab in
   // the active task. The focused-pane is irrelevant: even if the user
   // is currently typing in the sidebar, the chat tab they last looked
-  // at is still on screen. Consumed by both the completion-notification
-  // suppressor (don't toast a "done" the user can plainly see) and the
-  // background-tasks surface (the visible tab is never "background").
-  // We don't gate on the parent terminal having focus either — host
+  // at is still on screen. Consumed by the completion-notification
+  // suppressor (don't toast a "done" the user can plainly see). We
+  // don't gate on the parent terminal having focus either — host
   // focus isn't reliably observable from a TUI.
   const visibleTabKey = createMemo<string | null>(() => {
     const taskId = selectedId()
@@ -494,33 +490,6 @@ function Shell(props: AppDeps) {
     return chatRunStateKey(taskId, tabId)
   })
 
-  // Background-tasks manager opener. Wired to the global `ctrl+b`
-  // chord and to the status-bar indicator's click target. Mirrors the
-  // `openNewTaskFlow` pattern — a dialog-opening verb closing over the
-  // reactive accessors it needs.
-  const openBackgroundTasks = (): void => {
-    BackgroundTasksDialog.show(dialog, {
-      runState: chatRunStateAcc,
-      tasks: tasksAcc,
-      visibleTabKey,
-      onJump: (taskId, tabId) => {
-        // Persist the active tab before switching tasks so the chat
-        // pane lands on the background tab, not the task's prior one.
-        void props.orchestrator.setActiveTab(taskId, tabId)
-        setSelectedId(taskId)
-        setFocusedPane("workspace")
-      },
-      onInterrupt: (taskId, tabId) => {
-        void props.orchestrator.interruptTask(taskId, tabId)
-      },
-    })
-  }
-
-  // Background sessions running out of view — projected once here and
-  // shared by the status-bar indicator and the chat composer's
-  // background-runs line. Excludes the currently-visible tab.
-  const backgroundRows = createMemo(() => computeBackgroundRows(chatRunStateAcc(), tasksAcc(), visibleTabKey()))
-
   useAppKeymap({
     dialog,
     focusedPane,
@@ -529,7 +498,6 @@ function Shell(props: AppDeps) {
     resizeStep: RESIZE_STEP,
     focusHjklTargets: FOCUS_HJKL_TARGETS,
     openNewTaskFlow,
-    openBackgroundTasks,
     kv,
     orchestrator: props.orchestrator,
     renderer,
@@ -700,8 +668,6 @@ function Shell(props: AppDeps) {
                 onQuickForkRequest={() => {
                   void quickForkActiveTask()
                 }}
-                backgroundRows={backgroundRows}
-                onOpenBackgroundTasks={openBackgroundTasks}
               />
             </Show>
           </box>
@@ -754,16 +720,7 @@ function Shell(props: AppDeps) {
           </box>
         </box>
       </box>
-      <StatusBar
-        indicator={
-          <BackgroundTasksIndicator
-            runState={chatRunStateAcc}
-            tasks={tasksAcc}
-            visibleTabKey={visibleTabKey}
-            onActivate={openBackgroundTasks}
-          />
-        }
-      />
+      <StatusBar />
       {/* Bottom-right transient toasts for background-tab completions
           and approval requests. Sits on its own position="absolute"
           layer above the panes but below the dialog backdrop. */}
