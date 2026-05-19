@@ -1,92 +1,61 @@
 /**
- * Unit tests for the auto-recap decision predicate exported from
- * `use-chat-session.ts`. The predicate is pure; the surrounding Solid
- * effect just calls `orchestrator.generateRecap` when it returns true.
- *
- * The conditions under test (mirroring the comment block above the
- * effect):
- *   - never fires on first-ever entry to a tab (no prior `seenAt`)
- *   - waits at least `RECAP_AUTO_TRIGGER_MS` since we left
- *   - requires the message count to have grown while we were away
- *   - skips when the tab is currently streaming (manual `/recap`
- *     still works mid-stream; the auto path defers)
+ * Unit tests for the auto-recap predicate exported from
+ * `use-chat-session.ts`. The Solid effect that arms / cancels the
+ * timer is itself a thin wrapper; the only branching logic that
+ * benefits from headless coverage is `hasRecapSinceLastUserTurn`,
+ * which mirrors Claude Code's `hasSummarySinceLastUserTurn`
+ * (`refs/claude-code/src/hooks/useAwaySummary.ts:16-23`) and decides
+ * whether to skip the recap when one is already pinned to the
+ * current user-turn window.
  */
 
 import { describe, expect, test } from "vitest"
-import { RECAP_AUTO_TRIGGER_MS, shouldAutoRecap } from "../../src/tui/panes/chat/use-chat-session.ts"
+import type { ChatRow } from "../../src/tui/panes/chat/store.ts"
+import { hasRecapSinceLastUserTurn } from "../../src/tui/panes/chat/use-chat-session.ts"
 
-const NOW = 1_700_000_000_000
+const TS = "2026-05-18T10:00:00.000Z"
 
-describe("shouldAutoRecap", () => {
-  test("first-ever tab entry (no seenAt) → no auto recap", () => {
+function user(text: string): ChatRow {
+  return { kind: "user", text, ts: TS }
+}
+function assistant(text: string): ChatRow {
+  return { kind: "assistant", text, ts: TS }
+}
+function recap(text: string): ChatRow {
+  return { kind: "recap", text, ts: TS }
+}
+function system(text: string): ChatRow {
+  return { kind: "system", text, ts: TS }
+}
+
+describe("hasRecapSinceLastUserTurn", () => {
+  test("empty transcript → false", () => {
+    expect(hasRecapSinceLastUserTurn([])).toBe(false)
+  })
+
+  test("transcript with no recap row → false", () => {
+    expect(hasRecapSinceLastUserTurn([user("hi"), assistant("hello")])).toBe(false)
+  })
+
+  test("recap is the last row → true", () => {
+    expect(hasRecapSinceLastUserTurn([user("hi"), assistant("hello"), recap("recap text")])).toBe(true)
+  })
+
+  test("recap appears before the last user message → false", () => {
+    // user sent something new after the recap landed — the recap is
+    // stale; another one is allowed.
     expect(
-      shouldAutoRecap({
-        seenAt: undefined,
-        now: NOW,
-        snapshotMessageCount: 0,
-        liveMessageCount: 5,
-        isStreaming: false,
-      }),
+      hasRecapSinceLastUserTurn([user("first"), assistant("ok"), recap("recap"), user("second"), assistant("ok2")]),
     ).toBe(false)
   })
 
-  test("returns within the cooldown window → no auto recap", () => {
-    expect(
-      shouldAutoRecap({
-        seenAt: NOW - 60_000, // 1 minute ago
-        now: NOW,
-        snapshotMessageCount: 1,
-        liveMessageCount: 10,
-        isStreaming: false,
-      }),
-    ).toBe(false)
+  test("ignores non-user / non-recap rows between the recap and the tail", () => {
+    // system + assistant rows can sit AFTER the recap without making
+    // it stale — only a user row resets the window.
+    expect(hasRecapSinceLastUserTurn([user("hi"), recap("recap"), assistant("more"), system("info")])).toBe(true)
   })
 
-  test("returns after the cooldown but nothing changed → no auto recap", () => {
-    expect(
-      shouldAutoRecap({
-        seenAt: NOW - (RECAP_AUTO_TRIGGER_MS + 1000),
-        now: NOW,
-        snapshotMessageCount: 7,
-        liveMessageCount: 7,
-        isStreaming: false,
-      }),
-    ).toBe(false)
-  })
-
-  test("returns after the cooldown and message count grew → auto recap", () => {
-    expect(
-      shouldAutoRecap({
-        seenAt: NOW - (RECAP_AUTO_TRIGGER_MS + 1000),
-        now: NOW,
-        snapshotMessageCount: 3,
-        liveMessageCount: 14,
-        isStreaming: false,
-      }),
-    ).toBe(true)
-  })
-
-  test("tab is currently streaming → no auto recap (manual /recap can still fire)", () => {
-    expect(
-      shouldAutoRecap({
-        seenAt: NOW - (RECAP_AUTO_TRIGGER_MS + 1000),
-        now: NOW,
-        snapshotMessageCount: 3,
-        liveMessageCount: 14,
-        isStreaming: true,
-      }),
-    ).toBe(false)
-  })
-
-  test("returns exactly at the cooldown threshold → auto recap (boundary inclusive)", () => {
-    expect(
-      shouldAutoRecap({
-        seenAt: NOW - RECAP_AUTO_TRIGGER_MS,
-        now: NOW,
-        snapshotMessageCount: 0,
-        liveMessageCount: 1,
-        isStreaming: false,
-      }),
-    ).toBe(true)
+  test("multiple recaps without an intervening user message still report true", () => {
+    expect(hasRecapSinceLastUserTurn([user("hi"), assistant("ok"), recap("a"), recap("b")])).toBe(true)
   })
 })
