@@ -118,6 +118,13 @@ async function main(): Promise<void> {
     return
   }
 
+  // First-run: drop the kobe skill into ~/.claude/skills/kobe/ if it's
+  // not there. Silently no-ops when the file already exists or
+  // KOBE_NO_SKILL_AUTOINSTALL=1. Subcommands above have already
+  // returned, so this only fires on a real TUI launch (`kobe`).
+  const { ensureSkillInstalled } = await import("./skill-cmd.ts")
+  await ensureSkillInstalled()
+
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid
   // at startup.

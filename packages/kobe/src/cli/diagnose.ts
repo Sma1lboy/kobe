@@ -345,7 +345,12 @@ export async function buildDiagnoseReport(): Promise<string> {
   try {
     const probe = probeInstalledSkill()
     lines.push(formatKv("path:", probe.path))
-    lines.push(formatKv("installed:", probe.installed ? "yes" : "no (run `kobe skill install`)"))
+    lines.push(
+      formatKv(
+        "installed:",
+        probe.installed ? "yes" : "no (run `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`)",
+      ),
+    )
   } catch (err) {
     lines.push(formatKv("status:", `(unavailable: ${(err as Error).message})`))
   }

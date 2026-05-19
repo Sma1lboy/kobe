@@ -10,6 +10,20 @@ Each task lives in its own git worktree with its own agent session.
 When the user asks for parallel exploration, fan out by spawning kobe
 tasks instead of doing N attempts sequentially in one chat.
 
+## Install (prereq)
+
+This skill teaches Claude Code when to call the `kobe` binary's CLI
+verbs. The binary itself is a separate install:
+
+```bash
+npm i -g @sma1lboy/kobe       # or bun / pnpm / yarn add -g
+```
+
+Without the binary on `$PATH`, the commands below fail with
+`command not found`. This skill targets kobe's `main` branch — pair it
+with the latest `@sma1lboy/kobe` from npm so the `kobe api ...` verbs
+and their flags stay in sync.
+
 The daemon must already be running. The TUI auto-starts it; if not, run
 `kobe daemon start` once.
 
