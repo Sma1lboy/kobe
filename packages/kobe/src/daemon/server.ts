@@ -546,6 +546,23 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "rcBridge.status": {
         return { status: rcBridge.status() }
       }
+      case "rpc.switchTask":
+      case "rpc.switchTab":
+      case "rpc.newTab":
+      case "rpc.closeTab":
+      case "rpc.nextTask":
+      case "rpc.prevTask": {
+        // Sprint 3 stubs — wire to real task/tab state in sprint 4.
+        // Today the request is just acknowledged + logged so the tmux
+        // chord bindings can already round-trip through the daemon.
+        const rpcPayload: Record<string, string> = {}
+        const id = optionalString(payload, "id")
+        if (id) rpcPayload.id = id
+        const tabId = optionalString(payload, "tabId")
+        if (tabId) rpcPayload.tabId = tabId
+        console.log(`[rpc] ${req.name} ${JSON.stringify(rpcPayload)}`)
+        return { ok: true, name: req.name, payload: rpcPayload }
+      }
       default:
         throw new Error(`unknown daemon request: ${req.name satisfies never}`)
     }
