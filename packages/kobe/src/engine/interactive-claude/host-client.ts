@@ -66,11 +66,26 @@ function resolveHostScript(): string {
 }
 
 /**
+ * The surface `InteractiveClaudeEngine` depends on. {@link HostClient}
+ * is the production impl; tests inject a fake so the engine's
+ * turn-completion logic can be exercised without a real Node child +
+ * `node-pty` + `claude`.
+ */
+export interface InteractiveHost {
+  on(listener: (ev: HostEvent) => void): () => void
+  onSession(): Promise<{ sessionId: string; jsonlPath: string }>
+  isAlive(): boolean
+  start(opts: HostStartOpts): Promise<void>
+  sendPrompt(text: string): void
+  stop(): void
+}
+
+/**
  * A live connection to one PTY host child. One host == one interactive
  * `claude` session. Construct, {@link start} it, await {@link onSession},
  * then {@link sendPrompt} per turn. {@link stop} kills the host.
  */
-export class HostClient {
+export class HostClient implements InteractiveHost {
   private child: ChildProcessWithoutNullStreams | null = null
   private stdoutBuf = ""
   private readonly listeners = new Set<(ev: HostEvent) => void>()

@@ -67,17 +67,36 @@ import {
 } from "../claude-code-local/history"
 import { listSessionsForCwd } from "../claude-code-local/sessions"
 import { recordToEvents } from "./events"
-import { HostClient } from "./host-client"
+import { HostClient, type InteractiveHost } from "./host-client"
 import { TranscriptTail, transcriptSize } from "./transcript-tail"
 
 /** Tunable timing knobs. Defaults are production-correct. */
 export interface InteractiveClaudeOpts {
   readonly binaryPathResolver?: () => Promise<string>
   /**
+   * Factory for the PTY host. Defaults to a real {@link HostClient};
+   * tests inject a fake so turn-completion logic runs without a Node
+   * child / `node-pty` / a real `claude`.
+   */
+  readonly hostFactory?: () => InteractiveHost
+  /**
+   * Settle delay (ms) after a transcript record carrying a terminal
+   * `stop_reason` (end_turn / stop_sequence / max_tokens).
+   *
+   * claude-code persists one JSONL record *per content block* — a
+   * `thinking` block and a `text` block of the same assistant message
+   * are separate records that BOTH carry the message's `stop_reason`.
+   * Closing the turn on the first terminal record would drop every
+   * later block of the same message (the visible reply text). So a
+   * terminal record instead (re)arms this short timer; any further
+   * record resets it; when it fires the turn is done. Default 1800.
+   */
+  readonly settleMs?: number
+  /**
    * Quiet period (ms) with no new transcript records, after the
-   * assistant has replied, before the turn is treated as done. This is
-   * the fallback when `stop_reason` is missing; `stop_reason: "end_turn"`
-   * ends the turn immediately. Default 8000.
+   * assistant has replied, before the turn is treated as done. The
+   * fallback for a transcript that never carries a `stop_reason` at
+   * all. Default 8000.
    */
   readonly quietMs?: number
   /**
@@ -94,6 +113,7 @@ interface RunState {
   waiters: Array<() => void>
   closed: boolean
   sawAssistant: boolean
+  settleTimer: ReturnType<typeof setTimeout> | null
   quietTimer: ReturnType<typeof setTimeout> | null
   hardTimer: ReturnType<typeof setTimeout> | null
 }
@@ -102,14 +122,25 @@ interface RunState {
 interface InteractiveSession {
   readonly sessionId: string
   readonly cwd: string
-  readonly host: HostClient
+  readonly host: InteractiveHost
   tail: TranscriptTail | null
   run: RunState
 }
 
 function newRun(): RunState {
-  return { queue: [], waiters: [], closed: false, sawAssistant: false, quietTimer: null, hardTimer: null }
+  return {
+    queue: [],
+    waiters: [],
+    closed: false,
+    sawAssistant: false,
+    settleTimer: null,
+    quietTimer: null,
+    hardTimer: null,
+  }
 }
+
+/** Terminal `stop_reason` values — the assistant message is complete. */
+const TERMINAL_STOP_REASONS = new Set(["end_turn", "stop_sequence", "max_tokens"])
 
 function projectsDir(): string {
   return path.join(homedir(), ".claude", "projects")
@@ -121,18 +152,22 @@ export class InteractiveClaudeEngine implements AIEngine {
 
   private readonly sessions = new Map<string, InteractiveSession>()
   private readonly binaryPathResolver: () => Promise<string>
+  private readonly hostFactory: () => InteractiveHost
+  private readonly settleMs: number
   private readonly quietMs: number
   private readonly noResponseMs: number
 
   constructor(opts: InteractiveClaudeOpts = {}) {
     this.binaryPathResolver = opts.binaryPathResolver ?? findClaudeBinary
+    this.hostFactory = opts.hostFactory ?? (() => new HostClient())
+    this.settleMs = opts.settleMs ?? 1_800
     this.quietMs = opts.quietMs ?? 8_000
     this.noResponseMs = opts.noResponseMs ?? 150_000
   }
 
   async spawn(cwd: string, prompt: string, opts?: SpawnOpts): Promise<SessionHandle> {
     const claudeBin = await this.binaryPathResolver()
-    const host = new HostClient()
+    const host = this.hostFactory()
     await host.start({
       claudeBin,
       cwd,
@@ -159,9 +194,11 @@ export class InteractiveClaudeEngine implements AIEngine {
     // the new run picks up records appended after this prompt.
     const live = this.sessions.get(sessionId)
     if (live?.host.isAlive()) {
-      this.closeRun(live, { type: "done" }, /* onlyIfOpen */ true)
+      // Close the prior turn's run (clears its timers) before swapping
+      // in a fresh one, so a stale timer can't close the new run.
+      this.closeRun(live.run, { type: "done" }, /* onlyIfOpen */ true)
       live.run = newRun()
-      this.armTimers(live)
+      this.armTimers(live.run)
       live.host.sendPrompt(prompt)
       return { sessionId, cwd }
     }
@@ -172,7 +209,7 @@ export class InteractiveClaudeEngine implements AIEngine {
     const claudeBin = await this.binaryPathResolver()
     const jsonlPath = path.join(projectsDir(), encodeCwd(cwd), `${sessionId}.jsonl`)
     const startOffset = await transcriptSize(jsonlPath)
-    const host = new HostClient()
+    const host = this.hostFactory()
     await host.start({
       claudeBin,
       cwd,
@@ -234,7 +271,7 @@ export class InteractiveClaudeEngine implements AIEngine {
     session.tail?.stop()
     session.host.stop()
     // Terminate any in-flight stream so the consumer's `for await` ends.
-    this.closeRun(session, { type: "done" }, /* onlyIfOpen */ true)
+    this.closeRun(session.run, { type: "done" }, /* onlyIfOpen */ true)
     this.sessions.delete(handle.sessionId)
   }
 
@@ -244,7 +281,7 @@ export class InteractiveClaudeEngine implements AIEngine {
   private attach(args: {
     sessionId: string
     cwd: string
-    host: HostClient
+    host: InteractiveHost
     jsonlPath: string
     startOffset: number
   }): SessionHandle {
@@ -260,9 +297,9 @@ export class InteractiveClaudeEngine implements AIEngine {
     // A host that dies mid-turn must fail the open run, not hang it.
     args.host.on((ev) => {
       if (ev.type === "exit") {
-        this.closeRun(session, { type: "error", message: "interactive claude session ended" }, true)
+        this.closeRun(session.run, { type: "error", message: "interactive claude session ended" }, true)
       } else if (ev.type === "error") {
-        this.closeRun(session, { type: "error", message: `interactive claude host: ${ev.message}` }, true)
+        this.closeRun(session.run, { type: "error", message: `interactive claude host: ${ev.message}` }, true)
       }
     })
 
@@ -272,7 +309,7 @@ export class InteractiveClaudeEngine implements AIEngine {
       onRecord: (record) => this.onRecord(session, record),
     })
     session.tail.start()
-    this.armTimers(session)
+    this.armTimers(session.run)
     return { sessionId: args.sessionId, cwd: args.cwd }
   }
 
@@ -290,50 +327,66 @@ export class InteractiveClaudeEngine implements AIEngine {
     if (mapped.events.length > 0) this.notify(run)
 
     // Any record activity resets the quiet-period fallback timer.
-    this.resetQuietTimer(session)
+    this.resetQuietTimer(run)
 
-    // Authoritative completion signal: the assistant ended its turn.
-    // `tool_use` means more records follow — keep the run open.
-    if (mapped.role === "assistant" && mapped.stopReason && mapped.stopReason !== "tool_use") {
-      this.closeRun(session, { type: "done" }, true)
+    // Completion: an assistant record carrying a terminal `stop_reason`.
+    // It is NOT closed immediately — claude-code persists one record per
+    // content block, so a thinking record and the text record of the
+    // same message both carry `end_turn`. Arm a short settle timer that
+    // every later record resets; the run closes once it expires.
+    // `tool_use` is non-terminal — more records follow.
+    if (mapped.role === "assistant" && mapped.stopReason && TERMINAL_STOP_REASONS.has(mapped.stopReason)) {
+      this.armSettleTimer(run)
     }
   }
 
   /** Arm the no-response ceiling for a freshly started turn. */
-  private armTimers(session: InteractiveSession): void {
-    const run = session.run
+  private armTimers(run: RunState): void {
     run.hardTimer = setTimeout(() => {
       if (!run.sawAssistant) {
-        this.closeRun(session, { type: "error", message: "interactive claude produced no response" }, true)
+        this.closeRun(run, { type: "error", message: "interactive claude produced no response" }, true)
       }
     }, this.noResponseMs)
     run.hardTimer.unref?.()
   }
 
   /**
+   * (Re)arm the settle timer. Fires `done` once the transcript has been
+   * quiet for `settleMs` after a record with a terminal `stop_reason` —
+   * collapsing a multi-block assistant message (separate thinking/text
+   * records) into a single turn completion.
+   */
+  private armSettleTimer(run: RunState): void {
+    if (run.settleTimer) clearTimeout(run.settleTimer)
+    run.settleTimer = setTimeout(() => this.closeRun(run, { type: "done" }, true), this.settleMs)
+    run.settleTimer.unref?.()
+  }
+
+  /**
    * (Re)arm the quiet-period timer. Fires `done` only once the assistant
    * has produced at least one record and the transcript has then been
-   * silent for `quietMs` — the fallback for a missing `stop_reason`.
+   * silent for `quietMs` — the fallback for a transcript that never
+   * carries a `stop_reason` at all.
    */
-  private resetQuietTimer(session: InteractiveSession): void {
-    const run = session.run
+  private resetQuietTimer(run: RunState): void {
     if (run.quietTimer) clearTimeout(run.quietTimer)
     run.quietTimer = setTimeout(() => {
-      if (run.sawAssistant) this.closeRun(session, { type: "done" }, true)
+      if (run.sawAssistant) this.closeRun(run, { type: "done" }, true)
     }, this.quietMs)
     run.quietTimer.unref?.()
   }
 
   /** Push a terminal event, clear timers, and wake any stream consumer. */
-  private closeRun(session: InteractiveSession, terminal: EngineEvent, onlyIfOpen: boolean): void {
-    const run = session.run
+  private closeRun(run: RunState, terminal: EngineEvent, onlyIfOpen: boolean): void {
     if (run.closed) {
       if (!onlyIfOpen) run.queue.push(terminal)
       return
     }
     run.closed = true
+    if (run.settleTimer) clearTimeout(run.settleTimer)
     if (run.quietTimer) clearTimeout(run.quietTimer)
     if (run.hardTimer) clearTimeout(run.hardTimer)
+    run.settleTimer = null
     run.quietTimer = null
     run.hardTimer = null
     run.queue.push(terminal)
