@@ -19,6 +19,7 @@
  * `probeInstalledSkill()` is preserved for `kobe diagnose`.
  */
 
+import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
@@ -30,6 +31,56 @@ const NPX_HINT = "npx skills add Sma1lboy/kobe --skill kobe --agent claude-code"
 function resolveInstallTarget(): string {
   const home = process.env.HOME ?? homedir()
   return join(home, SKILL_REL_PATH)
+}
+
+/**
+ * First-run helper: if no SKILL.md exists at the canonical target
+ * (`~/.claude/skills/kobe/SKILL.md`), shell out to
+ *
+ *     npx --yes skills add Sma1lboy/kobe --skill kobe --agent claude-code
+ *
+ * so users don't have to remember the command after `npm i -g
+ * @sma1lboy/kobe`. Invoked from the TUI launch path before Solid mounts.
+ *
+ * Design choices:
+ *  - **Never clobber.** If the target file exists with any content
+ *    (user-customized, older bundled version, etc.) we leave it alone.
+ *    Explicit `npx skills add --force` / manual editing is the user's
+ *    call; first-run auto-install is opt-in only when the file is
+ *    absent.
+ *  - **Inherit stdio.** A first launch already incurs the npx
+ *    download/cache step; showing the user the actual progress is
+ *    less surprising than a silent ~10s hang.
+ *  - **Fire-and-fail-silently.** If `npx` is missing on PATH or the
+ *    fetch fails (offline, GitHub rate-limit), proceed to the TUI.
+ *    `kobe diagnose` will surface "skill: installed: no" so the user
+ *    can re-run the command manually.
+ *  - **Escape hatch.** `KOBE_NO_SKILL_AUTOINSTALL=1` skips the probe
+ *    entirely — useful in CI, sandboxes, or for users who deliberately
+ *    don't want kobe touching `~/.claude/skills/`.
+ */
+export async function ensureSkillInstalled(): Promise<void> {
+  if (process.env.KOBE_NO_SKILL_AUTOINSTALL === "1") return
+  const target = resolveInstallTarget()
+  if (existsSync(target)) return
+
+  console.error(
+    "kobe: first-run setup — installing skill via `npx skills add`. " +
+      "Press Ctrl+C to skip (set KOBE_NO_SKILL_AUTOINSTALL=1 to opt out long-term).",
+  )
+
+  await new Promise<void>((resolve) => {
+    const proc = spawn(
+      "npx",
+      ["--yes", "skills", "add", "Sma1lboy/kobe", "--skill", "kobe", "--agent", "claude-code"],
+      { stdio: "inherit" },
+    )
+    // Any failure mode — npx missing, fetch fails, non-zero exit — falls
+    // through. The user can re-run the command manually; we don't block
+    // TUI startup over it.
+    proc.on("error", () => resolve())
+    proc.on("exit", () => resolve())
+  })
 }
 
 async function runInstall(): Promise<void> {
