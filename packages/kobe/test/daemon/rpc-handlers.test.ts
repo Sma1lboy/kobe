@@ -10,6 +10,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { KobeDaemonClient } from "../../src/client/index.ts"
+import type { DaemonPaneStashAdapter } from "../../src/daemon/server.ts"
 import { fallbackTestSocketPath } from "../../src/daemon/paths.ts"
 import { startDaemonServer } from "../../src/daemon/server.ts"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
@@ -287,6 +288,101 @@ describe("daemon rpc.* handlers", () => {
       const result = await client.request<{ ok: boolean; skipped?: string }>("rpc.switchTab", { tabId: "9" })
       expect(result.ok).toBe(true)
       expect(result.skipped).toBe("out-of-range")
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
+  test("rpc verbs call the pane-stash adapter when present", async () => {
+    const calls: { method: string; args: unknown[] }[] = []
+    let nextPaneId = 100
+    const adapter: DaemonPaneStashAdapter = {
+      async ensureSpawnedForTab(taskId, tabId, command) {
+        calls.push({ method: "ensureSpawnedForTab", args: [taskId, tabId, command] })
+        return `%${nextPaneId++}`
+      },
+      async swapToChat(taskId, tabId) {
+        calls.push({ method: "swapToChat", args: [taskId, tabId] })
+      },
+      async killForTab(taskId, tabId) {
+        calls.push({ method: "killForTab", args: [taskId, tabId] })
+      },
+    }
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, {
+      socketPath,
+      pidPath,
+      homeDir,
+      paneStashAdapter: adapter,
+      resolveChatPaneCommand: (taskId, tabId) => `exec claude --task ${taskId} --tab ${tabId}`,
+    })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      const spawned = await client.request<{ taskId: string }>("task.spawn", { repo, title: "adapter" })
+      const taskBefore = orch.getTask(spawned.taskId)
+      if (!taskBefore) throw new Error("missing task after spawn")
+      const tab1 = taskBefore.activeTabId
+      // 1. rpc.switchTask → swap to the current active tab.
+      await client.request("rpc.switchTask", { id: spawned.taskId })
+      // 2. rpc.newTab → ensureSpawnedForTab + swapToChat for the new tab.
+      const newTab = await client.request<{ tabId: string }>("rpc.newTab")
+      // 3. rpc.switchTab back to tab1.
+      await client.request("rpc.switchTab", { tabId: tab1 })
+      // 4. rpc.closeTab — closes the currently-active tab (= tab1), then
+      //    swaps to next + kills tab1's pane.
+      await client.request("rpc.closeTab")
+
+      const swapCalls = calls.filter((c) => c.method === "swapToChat")
+      const ensureCalls = calls.filter((c) => c.method === "ensureSpawnedForTab")
+      const killCalls = calls.filter((c) => c.method === "killForTab")
+
+      // rpc.switchTask + rpc.newTab + rpc.switchTab + rpc.closeTab = 4 swaps.
+      expect(swapCalls).toHaveLength(4)
+      expect(swapCalls[0]?.args).toEqual([spawned.taskId, tab1])
+      expect(swapCalls[1]?.args).toEqual([spawned.taskId, newTab.tabId])
+      expect(swapCalls[2]?.args).toEqual([spawned.taskId, tab1])
+      // After closeTab, the orchestrator moves active to the next tab; we
+      // don't assert the specific id, just that swap was driven for it.
+      expect(swapCalls[3]?.args[0]).toBe(spawned.taskId)
+      expect(swapCalls[3]?.args[1]).toBe(newTab.tabId)
+
+      // rpc.newTab triggered exactly one ensureSpawnedForTab for the new tab.
+      expect(ensureCalls).toHaveLength(1)
+      expect(ensureCalls[0]?.args).toEqual([
+        spawned.taskId,
+        newTab.tabId,
+        `exec claude --task ${spawned.taskId} --tab ${newTab.tabId}`,
+      ])
+
+      // rpc.closeTab triggered exactly one killForTab for the closed tab.
+      expect(killCalls).toHaveLength(1)
+      expect(killCalls[0]?.args).toEqual([spawned.taskId, tab1])
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
+  test("rpc verbs are silent no-ops when the pane-stash adapter is absent", async () => {
+    // Regression: production daemons (sprint-5 default) construct no
+    // adapter. The rpc verbs must still succeed and mutate orchestrator
+    // state without throwing or hanging on a missing adapter.
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, { socketPath, pidPath, homeDir })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      const spawned = await client.request<{ taskId: string }>("task.spawn", { repo, title: "no-adapter" })
+      await client.request("rpc.switchTask", { id: spawned.taskId })
+      await client.request("rpc.newTab")
+      await client.request("rpc.closeTab")
+      // Orchestrator state intact even without the adapter.
+      const after = orch.getTask(spawned.taskId)
+      expect(after?.tabs).toHaveLength(1)
     } finally {
       client.close()
       await server.close()

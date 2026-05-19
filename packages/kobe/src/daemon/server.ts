@@ -8,6 +8,17 @@ import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } 
 import type { Task, VendorId } from "../types/task.ts"
 import { type ActiveState, createActiveState } from "./active-state.ts"
 import { logDaemonError } from "./crash-log.ts"
+/**
+ * Minimal contract the daemon needs from a pane-stash adapter. The
+ * production wiring (sprint-6) plugs in a real `PaneStashAdapter`;
+ * tests pass a recording spy. Kept as an interface so neither side has
+ * to import the implementation just to satisfy a type check.
+ */
+export interface DaemonPaneStashAdapter {
+  ensureSpawnedForTab(taskId: string, tabId: string, command: string): Promise<string>
+  swapToChat(taskId: string, tabId: string): Promise<void>
+  killForTab(taskId: string, tabId: string): Promise<void>
+}
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
 import {
@@ -42,6 +53,27 @@ export interface DaemonServerOptions {
    * instance; production lets the daemon create a fresh `createActiveState()`.
    */
   readonly activeState?: ActiveState
+  /**
+   * Optional tmux pane-stash adapter (sprint-5). When present, the
+   * rpc.* verbs that mutate (task, tab) state also drive the visible
+   * chat-pane swap: `rpc.newTab` ensures a stash pane and swaps to it,
+   * `rpc.closeTab` kills the stash pane (after first swapping away if
+   * it was displayed), `rpc.switchTab` / `rpc.switchTask` /
+   * `rpc.nextTask` / `rpc.prevTask` swap to the resolved tab.
+   *
+   * When omitted (current production path — bootstrap doesn't construct
+   * one yet), all swap/spawn/kill calls are skipped silently. Sprint-6
+   * wires the bootstrap → daemon `tmux.attach` rpc that supplies a real
+   * adapter.
+   */
+  readonly paneStashAdapter?: DaemonPaneStashAdapter
+  /**
+   * Resolves the shell command to run for a `(task, tab)` claude pane.
+   * Only consulted when `paneStashAdapter` is present. Defaults to a
+   * placeholder that prints + sleeps — sprint-6 swaps in the real
+   * `buildClaudeShellCommand` + session-id sniff plumbing.
+   */
+  readonly resolveChatPaneCommand?: (taskId: string, tabId: string) => string | null
 }
 
 export interface DaemonServer {
@@ -127,6 +159,40 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   activeState.onChange((activeTaskId) =>
     broadcast(clients, { type: "event", name: "active.changed", payload: { activeTaskId } }),
   )
+
+  // Optional tmux pane-stash adapter (sprint-5). When absent, all
+  // chat-pane swap/spawn/kill ops below become no-ops. See
+  // `DaemonServerOptions.paneStashAdapter` for the wiring contract.
+  const paneStashAdapter = options.paneStashAdapter ?? null
+  const resolvePaneCommand = options.resolveChatPaneCommand ?? null
+
+  /**
+   * Fire-and-forget swap to the (taskId, tab) pair. Best-effort: a
+   * tmux failure is logged but never bubbles up to the rpc caller —
+   * rpc verbs should still mutate orchestrator state even if the
+   * visible swap drifts.
+   */
+  function safeSwap(taskId: string, tabId: string): void {
+    if (!paneStashAdapter) return
+    void paneStashAdapter.swapToChat(taskId, tabId).catch((err) => logDaemonError("pane-stash-swap", err))
+  }
+
+  /** Best-effort ensure+swap for a new tab — same crash-isolation policy as `safeSwap`. */
+  function safeEnsureAndSwap(taskId: string, tabId: string): void {
+    if (!paneStashAdapter) return
+    const cmd = resolvePaneCommand?.(taskId, tabId)
+    if (!cmd) return
+    void paneStashAdapter
+      .ensureSpawnedForTab(taskId, tabId, cmd)
+      .then(() => paneStashAdapter.swapToChat(taskId, tabId))
+      .catch((err) => logDaemonError("pane-stash-spawn", err))
+  }
+
+  /** Best-effort kill of a stash pane after a tab close. */
+  function safeKill(taskId: string, tabId: string): void {
+    if (!paneStashAdapter) return
+    void paneStashAdapter.killForTab(taskId, tabId).catch((err) => logDaemonError("pane-stash-kill", err))
+  }
 
   const serverApi: DaemonServer = {
     socketPath,
@@ -571,6 +637,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const task = orch.getTask(id)
         if (!task) throw new Error(`unknown task: ${id}`)
         activeState.set(id)
+        // Bring the active tab's chat pane into the slot. We pull the
+        // tab id off the task — the orchestrator owns "what tab is
+        // active within task X" while activeState only tracks "which
+        // task is foregrounded". Best-effort: tmux failure shouldn't
+        // mask the state change to the rpc caller.
+        safeSwap(id, task.activeTabId)
         return { ok: true, activeTaskId: id }
       }
       case "rpc.nextTask": {
@@ -579,7 +651,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           .filter((t) => !t.archived)
           .map((t) => t.id)
         activeState.next(ids)
-        return { ok: true, activeTaskId: activeState.get() }
+        const nextId = activeState.get()
+        if (nextId) {
+          const t = orch.getTask(nextId)
+          if (t) safeSwap(nextId, t.activeTabId)
+        }
+        return { ok: true, activeTaskId: nextId }
       }
       case "rpc.prevTask": {
         const ids = orch
@@ -587,7 +664,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           .filter((t) => !t.archived)
           .map((t) => t.id)
         activeState.prev(ids)
-        return { ok: true, activeTaskId: activeState.get() }
+        const nextId = activeState.get()
+        if (nextId) {
+          const t = orch.getTask(nextId)
+          if (t) safeSwap(nextId, t.activeTabId)
+        }
+        return { ok: true, activeTaskId: nextId }
       }
       case "rpc.newTab": {
         const activeTaskId = activeState.get()
@@ -599,6 +681,8 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // sees the tab but never receives chat.delta for it).
         for (const c of clients) subscribeClientToTab(orch, c, activeTaskId, newTab.id)
         broadcastTaskUpdated(orch, clients, activeTaskId)
+        // Spawn a fresh stash pane for the new tab + swap it in.
+        safeEnsureAndSwap(activeTaskId, newTab.id)
         return { ok: true, tabId: newTab.id }
       }
       case "rpc.closeTab": {
@@ -607,8 +691,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const task = orch.getTask(activeTaskId)
         if (!task) throw new Error(`unknown task: ${activeTaskId}`)
         if (task.tabs.length < 2) return { ok: true, skipped: "only-one-tab" }
-        const nextActive = await orch.closeTab(activeTaskId, task.activeTabId)
+        const closingTabId = task.activeTabId
+        const nextActive = await orch.closeTab(activeTaskId, closingTabId)
         broadcastTaskUpdated(orch, clients, activeTaskId)
+        // The orchestrator has already moved active focus to `nextActive`.
+        // Swap to it first (so the closing tab's pane is no longer in
+        // the chat slot), then kill the closing tab's stash pane.
+        if (nextActive) safeSwap(activeTaskId, nextActive)
+        safeKill(activeTaskId, closingTabId)
         return { ok: true, nextActive }
       }
       case "rpc.switchTab": {
@@ -628,6 +718,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
         await orch.setActiveTab(activeTaskId, resolvedId)
         broadcastTaskUpdated(orch, clients, activeTaskId)
+        safeSwap(activeTaskId, resolvedId)
         return { ok: true, tabId: resolvedId }
       }
       default:
