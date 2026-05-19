@@ -37,7 +37,6 @@ import { NullMetadataSuggester } from "../orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import type { ChatTab } from "../types/task.ts"
-import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { useAppKeymap } from "./app-keymap"
 import { CenterTabStrip } from "./component/center-tab-strip"
 import { HelpDialog } from "./component/help-dialog"
@@ -46,7 +45,6 @@ import { RcBridgeDialog } from "./component/rc-bridge-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
 import { StatusBar } from "./component/status-bar"
 import { ToastOverlay } from "./component/toast-overlay"
-import { TopBar } from "./component/top-bar"
 import { CommandPaletteProvider, useCommandPalette } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { useKobeKeybindings } from "./context/keybindings"
@@ -96,9 +94,10 @@ export type AppDeps = {
   onQuit?: () => Promise<void>
 }
 
-// PaneHeader / StatusBar / TopBar moved to `./component/*.tsx` — they
-// are pure rendering and don't share state with Shell. The `Hotkey`
-// chip helper moved alongside StatusBar (it's only used there).
+// PaneHeader / StatusBar moved to `./component/*.tsx` — they are pure
+// rendering and don't share state with Shell. The `Hotkey` chip helper
+// moved alongside StatusBar (it's only used there). TopBar removed in
+// KOB-213; its chips now live in the tmux status line.
 
 function Shell(props: AppDeps) {
   const themeCtx = useTheme()
@@ -139,25 +138,11 @@ function Shell(props: AppDeps) {
   const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
 
   // Remote-control bridge (KOB-62) — accessor declared up here so
-  // anyone above-the-fold (TopBar) can read it. The palette command
-  // that opens the dialog is registered further down in Shell, after
-  // `activeTask` / `activeChatTabIdAcc` exist — the dialog binds the
-  // bridge to the focused tab so claude.ai sees the right worktree.
+  // palette commands further down can read it. The palette command
+  // that opens the dialog is registered after `activeTask` /
+  // `activeChatTabIdAcc` exist — the dialog binds the bridge to the
+  // focused tab so claude.ai sees the right worktree.
   const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
-
-  // Background npm-registry version check. Runs on every TUI launch so
-  // freshly published versions show up in the topbar immediately. The
-  // request has a 3s timeout; failures are silent, the chip just doesn't render.
-  const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
-  onMount(() => {
-    void checkLatestVersion()
-      .then((info) => {
-        if (info) setUpdateInfo(info)
-      })
-      .catch(() => {
-        /* swallow — version check is best-effort */
-      })
-  })
 
   const activeTask = createMemo(() => {
     const id = selectedId()
@@ -538,13 +523,10 @@ function Shell(props: AppDeps) {
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <TopBar
-        orchestrator={props.orchestrator}
-        activeTask={activeTask}
-        activeChatTabId={activeChatTabIdAcc}
-        updateInfo={updateInfo}
-        worktreeOpener={worktreeOpener}
-      />
+      {/* In-process TopBar removed in KOB-213 — version/branch/PR chip
+          now lives in the tmux status line set by `src/tmux/`. When
+          KOBE_TMUX=0 falls back to this in-process TUI, no top bar
+          renders (intentional for the transition). */}
       <box flexDirection="row" flexGrow={1}>
         {/* Left: task sidebar. Click anywhere on the sidebar pane to
             focus it. The right edge is a separate <ResizableEdge /> that

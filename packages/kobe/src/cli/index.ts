@@ -125,6 +125,13 @@ async function main(): Promise<void> {
   const { ensureSkillInstalled } = await import("./skill-cmd.ts")
   await ensureSkillInstalled()
 
+  // KOB-213: when launched outside tmux, spawn a fresh tmux session
+  // with the 5-pane skeleton and attach. Returns (so we fall through
+  // to the in-process TUI) when $TMUX is set, KOBE_TMUX=0, stdin is
+  // non-TTY, or tmux is missing.
+  const { maybeBootstrapTmux } = await import("../tmux/bootstrap.ts")
+  await maybeBootstrapTmux()
+
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add` / `kobe diagnose`) don't pull in opentui/solid
   // at startup.
