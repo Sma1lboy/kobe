@@ -69,11 +69,16 @@ import { bootstrapHistory } from "./panes/chat/composer/history"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { Terminal } from "./panes/terminal"
+import { Terminal, terminalCommandFromEnv } from "./panes/terminal"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
+
+// User-reachable switch (KOB-208): `KOBE_TERMINAL_COMMAND=claude` makes
+// the terminal pane run an interactive `claude` session instead of a
+// login shell. Resolved once — the env var is static for the process.
+const TERMINAL_COMMAND = terminalCommandFromEnv()
 
 // Engine selection + fake-engine HTTP side-channel moved to
 // `./engine-bootstrap.ts`. The side-channel is test-only — production
@@ -715,7 +720,12 @@ function Shell(props: AppDeps) {
               focused={focusedPane() === "terminal"}
             />
             <box flexGrow={1}>
-              <Terminal cwd={worktreePathAcc} taskId={taskIdNullAcc} focused={isFocused("terminal")} />
+              <Terminal
+                cwd={worktreePathAcc}
+                taskId={taskIdNullAcc}
+                focused={isFocused("terminal")}
+                command={TERMINAL_COMMAND}
+              />
             </box>
           </box>
         </box>

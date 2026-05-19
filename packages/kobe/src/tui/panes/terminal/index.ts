@@ -31,5 +31,6 @@ export {
   type TaskPtyLike,
   type TaskPtyOpts,
   createTaskPty,
+  terminalCommandFromEnv,
 } from "./pty"
 export { PtyRegistry, type PtyFactory, type AcquireOpts } from "./registry"

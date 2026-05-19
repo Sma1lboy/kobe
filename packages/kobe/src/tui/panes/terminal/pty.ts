@@ -30,6 +30,14 @@ export type TaskPtyOpts = {
   rows?: number
   /** Override `$SHELL`. Defaults to `process.env.SHELL` or `/bin/bash`. */
   shell?: string
+  /**
+   * Override the spawned process argv. When set, the PTY runs this
+   * command instead of an interactive shell — e.g. `["claude"]` to
+   * embed an interactive Claude Code session in the terminal pane.
+   * The first element is the executable; the rest are its arguments.
+   * When unset (or empty) the PTY falls back to the user's shell.
+   */
+  command?: readonly string[]
 }
 
 /** Listener for new pane snapshots. Receives the full buffer. */
@@ -61,6 +69,35 @@ const XTERM_COLOR_MODE_RGB = 3 << 24
 
 function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
+}
+
+/**
+ * Resolve the argv a `TaskPty` should spawn. Honours an explicit
+ * `command` override (the `["claude"]` interactive-engine path) and
+ * otherwise falls back to a single-element shell argv.
+ */
+function resolveArgv(opts: TaskPtyOpts): string[] {
+  if (opts.command && opts.command.length > 0) return [...opts.command]
+  return [opts.shell ?? defaultShell()]
+}
+
+/**
+ * The argv the terminal pane should run, derived from the
+ * `KOBE_TERMINAL_COMMAND` environment variable. This is the
+ * user-reachable switch for embedding an interactive `claude` session
+ * in the terminal pane instead of a login shell:
+ *
+ *   KOBE_TERMINAL_COMMAND=claude   # interactive Claude Code
+ *
+ * The value is split on whitespace into an argv. Returns `undefined`
+ * when the variable is unset or empty, so the pane keeps its default
+ * shell behaviour.
+ */
+export function terminalCommandFromEnv(): readonly string[] | undefined {
+  const raw = process.env.KOBE_TERMINAL_COMMAND?.trim()
+  if (!raw) return undefined
+  const argv = raw.split(/\s+/).filter((part) => part.length > 0)
+  return argv.length > 0 ? argv : undefined
 }
 
 type XtermCellLike = {
@@ -233,8 +270,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
     })
 
-    const shell = opts.shell ?? defaultShell()
-    this.proc = Bun.spawn([shell], {
+    this.proc = Bun.spawn(resolveArgv(opts), {
       cwd: opts.cwd,
       env: {
         ...process.env,
@@ -327,8 +363,46 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }, 16)
   }
 
+  /**
+   * Is xterm currently mid-`?2026` synchronized-output block? Apps that
+   * paint atomically (interactive `claude` opens ~45 of these per
+   * prompt) write a frame in two halves; snapshotting between them
+   * renders a torn intermediate state. We skip the refresh while the
+   * mode is set — the closing `?2026l` is itself a write that re-queues
+   * a refresh once the frame is whole.
+   */
+  private inSynchronizedOutput(): boolean {
+    try {
+      return this.term.modes.synchronizedOutputMode === true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Has the app hidden the cursor via `?25l`? Streaming `claude` hides
+   * the cursor while it paints; an unconditional inverse cursor cell on
+   * top of that looks like a stray glyph. xterm tracks this on its
+   * core service — not surfaced through the public typings, hence the
+   * narrow internal reach.
+   */
+  private cursorHidden(): boolean {
+    try {
+      const core = (
+        this.term as unknown as {
+          _core?: { coreService?: { isCursorHidden?: boolean } }
+        }
+      )._core
+      return core?.coreService?.isCursorHidden === true
+    } catch {
+      return false
+    }
+  }
+
   private refreshSnapshot(): void {
     if (this._killed) return
+    // Don't snapshot a half-painted frame — wait for the sync block to close.
+    if (this.inSynchronizedOutput()) return
     const active = this.term.buffer.active
     const rows: string[] = []
     const cursorY = active.baseY + active.cursorY
@@ -339,7 +413,10 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       rows.push(line ? xtermLineToAnsi(line, minLast) : "")
     }
     this.buffer = rows.join("\n")
-    this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY - start }
+    // A hidden cursor (`?25l`) reports as null so the pane draws no
+    // inverse cursor cell — same contract as a backend that can't
+    // report a cursor at all.
+    this.cursor = this.cursorHidden() ? null : { x: active.cursorX, y: active.baseY + active.cursorY - start }
     for (const cb of this.listeners) {
       try {
         cb(this.buffer, this.cursor)
@@ -388,10 +465,13 @@ export class PipeTaskPty implements TaskPtyLike {
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
 
-    const shell = opts.shell ?? defaultShell()
     // Do not pass `-i`: interactive shells expect a controlling TTY for
     // job control and can suspend the host TUI when backed only by pipes.
-    this.proc = spawn(shell, [], {
+    // A `command` override (e.g. `["claude"]`) carries its own argv.
+    const argv = resolveArgv(opts)
+    const exe = argv[0] ?? defaultShell()
+    const args = argv.slice(1)
+    this.proc = spawn(exe, args, {
       cwd: opts.cwd,
       env: {
         ...process.env,

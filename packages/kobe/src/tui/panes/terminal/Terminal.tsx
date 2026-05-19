@@ -73,6 +73,14 @@ export type TerminalProps = {
   taskId: Accessor<string | null>
   focused?: Accessor<boolean>
   /**
+   * Override the embedded process argv. When set the pane runs this
+   * command instead of an interactive shell — e.g. `["claude"]` for an
+   * interactive Claude Code session. Resolved from `KOBE_TERMINAL_COMMAND`
+   * at the app shell; static for the session, so a plain array (not an
+   * accessor) is enough.
+   */
+  command?: readonly string[]
+  /**
    * Optional registry override (tests inject a mock-backed registry).
    * Production usage relies on a single module-level registry below;
    * the orchestrator reaches into it via the exported helper.
@@ -211,7 +219,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       const reg = registry()
       let handle: TaskPty
       try {
-        handle = reg.acquire(taskId, cwd, geometry)
+        handle = reg.acquire(taskId, cwd, { ...geometry, command: props.command })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         setAcquireError(message)
@@ -297,7 +305,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       // mid-confirm switch invalidates the operation.
       if (props.taskId() !== taskIdAtClick || props.cwd() !== cwdAtClick) return
       try {
-        const fresh = reg.reset(taskIdAtClick, cwdAtClick, geometryAtClick)
+        const fresh = reg.reset(taskIdAtClick, cwdAtClick, { ...geometryAtClick, command: props.command })
         setPty(fresh)
         setSnapshot("")
         setCursor(null)
