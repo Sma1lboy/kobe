@@ -3,6 +3,7 @@ name: linear
 description: Manage issues, projects, labels, cycles in Linear via the schpet/linear-cli (`linear` binary). Use when the user wants to read, create, update, or comment on Linear tickets. Do NOT use the Linear MCP server — this skill is the replacement.
 metadata:
   short-description: Manage Linear via the linear CLI
+  internal: true
 ---
 
 # Linear (CLI-based)
