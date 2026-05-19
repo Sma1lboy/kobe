@@ -348,9 +348,7 @@ export async function buildDiagnoseReport(): Promise<string> {
     lines.push(
       formatKv(
         "installed:",
-        probe.installed
-          ? "yes"
-          : "no (run `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`)",
+        probe.installed ? "yes" : "no (run `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`)",
       ),
     )
   } catch (err) {

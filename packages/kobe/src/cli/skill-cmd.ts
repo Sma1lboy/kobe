@@ -85,10 +85,12 @@ export async function ensureSkillInstalled(): Promise<void> {
 
 async function runInstall(): Promise<void> {
   console.error(
-    `kobe skill install is deprecated as of v0.6.\n` +
-      `The skill is now distributed via the Vercel Labs agent-skills CLI:\n` +
-      `\n  ${NPX_HINT}\n\n` +
-      `See https://github.com/vercel-labs/skills for the install tool.`,
+    `kobe skill install is deprecated as of v0.6.
+The skill is now distributed via the Vercel Labs agent-skills CLI:
+
+  ${NPX_HINT}
+
+See https://github.com/vercel-labs/skills for the install tool.`,
   )
   process.exit(2)
 }
