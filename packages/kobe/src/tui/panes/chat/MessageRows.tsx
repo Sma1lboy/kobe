@@ -272,3 +272,33 @@ export function SystemRow(props: { text: string }) {
     </box>
   )
 }
+
+/**
+ * "While you were away" recap row. Mirrors Claude Code's
+ * `SystemTextMessage` `away_summary` branch
+ * (`refs/claude-code/src/components/messages/SystemTextMessage.tsx:69-96`):
+ * dim `※` reference mark + dim body. The leading "Recap:" label is
+ * kobe-specific — Claude Code only has one summary kind in its UI,
+ * but kobe also fires `SystemRow` for lifecycle notes, so the label
+ * disambiguates the row at a glance.
+ */
+export function RecapRow(props: { text: string }) {
+  const { theme } = useTheme()
+  return (
+    <box paddingTop={1} flexDirection="row" gap={1}>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+        {REFERENCE_MARK}
+      </text>
+      <box flexGrow={1} flexDirection="row" gap={1}>
+        <text fg={theme.textMuted} attributes={TextAttributes.BOLD | TextAttributes.DIM}>
+          Recap:
+        </text>
+        <box flexGrow={1}>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM}>
+            {props.text}
+          </text>
+        </box>
+      </box>
+    </box>
+  )
+}

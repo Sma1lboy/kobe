@@ -17,6 +17,7 @@ export const codexCapabilities: EngineCapabilities = {
   ],
   defaultModelId: resolveCodexDefaultModelId,
   contextWindowFor: codexContextWindowFor,
+  smallFastModelId: () => "gpt-5.4-mini",
 }
 
 export const codexIdentity: EngineIdentity = {

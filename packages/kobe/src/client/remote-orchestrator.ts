@@ -288,6 +288,16 @@ export class RemoteOrchestrator {
     this.markRunState(taskId, tabId ?? this.getTask(taskId)?.activeTabId, "running")
   }
 
+  /**
+   * Ask the daemon to generate a "while you were away" recap for
+   * `(taskId, tabId)`. Fire-and-forget: the RPC resolves once the
+   * daemon has dispatched (or skipped) the `RecapEvent`, so every
+   * attached TUI sees the row in lockstep via the `chat.event` bus.
+   */
+  async generateRecap(taskId: string, tabId?: string): Promise<void> {
+    await this.client.request("chat.recap", { taskId, tabId })
+  }
+
   async setArchived(taskId: string, archived?: boolean): Promise<void> {
     await this.client.request("task.archive", { taskId, archived })
   }

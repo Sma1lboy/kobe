@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **`/recap` slash command + auto-recap after leaving a tab** — type `/recap` (or pick it from the slash dropdown) to get a dim 1-3 sentence "while you were away" summary of the current chat tab: high-level task plus concrete next step, no status reports or commit recaps. Leaving a tab also arms a one-shot 5-minute timer that fires the same recap if you don't return in time — so the row is already waiting at the tail of the chat the next time you look. The timer skips at fire time if the tab is mid-turn or already has a recap since the last user message; returning to the tab before 5 minutes cancels it. Mirrors Claude Code's blur-timer pattern (`hooks/useAwaySummary.ts`). Generated via the active engine's small-fast model (haiku 4.5 for Claude, gpt-5.4-mini for Codex, Gemini 3 Flash for Gemini); the recap row is purely a chat affordance and is never written to the engine's session JSONL (KOB-205).
+
 ### Removed
 
 - **Background-tasks manager (ctrl+b) removed** — the double-press `ctrl+b` dialog, the status-bar background-count chip, and the one-line "running in background" readout above the composer are all gone, along with their supporting machinery. The feature mirrored Claude Code's background-task model, but kobe spawns `claude -p` per turn and exits the engine process at the end of each turn, so the cross-turn `run_in_background` semantics the surface implied don't actually hold — a queued prompt or `BashOutput` poll on the next turn cannot reach a shell handle that lived in the previous (now-exited) `claude -p` invocation. The surface was advertising a guarantee the architecture cannot keep, so it's been pulled.

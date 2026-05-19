@@ -156,6 +156,14 @@ export function Chat(props: ChatProps) {
           void send("/clear")
         },
       },
+      {
+        display: "/recap",
+        description: "1-3 sentence recap of this tab — high-level task + next step",
+        source: "builtin",
+        onSelect: () => {
+          void send("/recap")
+        },
+      },
     ]
     return [...kobeEntries, ...engineEntries].sort((a, b) => a.display.localeCompare(b.display))
   })
@@ -645,6 +653,20 @@ export function Chat(props: ChatProps) {
       } catch (err) {
         patchActiveState((s) => pushSystemError(s, `/clear failed: ${stringifyErr(err)}`))
         return
+      }
+      return
+    }
+
+    // kobe-side slash short-circuit: `/recap` asks the orchestrator
+    // to synthesize a "while you were away" summary via the
+    // small-fast model and dispatch it as a `RecapEvent`. Same
+    // direct-typed-Enter coverage rationale as `/clear`.
+    if (text === "/recap") {
+      setDraft("")
+      try {
+        await props.orchestrator.generateRecap(taskId, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `/recap failed: ${stringifyErr(err)}`))
       }
       return
     }

@@ -50,7 +50,14 @@ import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import { chatRunStateKey } from "../../../orchestrator/core.ts"
 import type { OrchestratorEvent } from "../../../types/engine.ts"
 import type { ChatTab, Task, TaskStatus } from "../../../types/task.ts"
-import { type ChatState, applyEvent, createInitialState, pushSystemError, setMessagesFromHistory } from "./store"
+import {
+  type ChatRow,
+  type ChatState,
+  applyEvent,
+  createInitialState,
+  pushSystemError,
+  setMessagesFromHistory,
+} from "./store"
 
 export interface UseChatSessionOptions {
   /** Solid accessor for the active task id (undefined when none selected). */
@@ -109,6 +116,44 @@ export interface ChatSessionHandle {
 // (`unsub() + delete tabId from both maps`).
 const [draftsByTab, setDraftsByTab] = createSignal<Map<string, string>>(new Map())
 const [statesByTab, setStatesByTab] = createSignal<Map<string, ChatState>>(new Map())
+
+/**
+ * Auto-recap timer bookkeeping. Module-scoped for the same reason
+ * `statesByTab` is — timers must survive Chat remounts AND the
+ * task-switch tear-down. If you leave a tab and the timer was
+ * hook-local, every transient Chat unmount (file preview swap, task
+ * switch) would cancel the pending recap silently.
+ *
+ * Mirrors `refs/claude-code/src/hooks/useAwaySummary.ts:96` —
+ * `setTimeout(BLUR_DELAY_MS)` on leave (one-shot), `clearTimeout` on
+ * return. There is no "re-entry triggers recap" logic in Claude Code;
+ * the timer itself does all the work, and the recap row lands at the
+ * tail of the chat regardless of whether the user is currently
+ * watching it.
+ *
+ * Closing a tab clears its timer in `syncTabSubs` below.
+ */
+export const RECAP_AUTO_TRIGGER_MS = 5 * 60_000
+const recapTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+/**
+ * Walks chat history backwards. Returns true iff a `recap` row
+ * appears before any `user` row — i.e. the tab already has a recap
+ * for the "since the last user prompt" window. Lifted out for vitest
+ * coverage; the timer callback uses it to skip a redundant second
+ * recap when the user has been away for a long stretch without
+ * sending a new prompt. Mirrors Claude Code's
+ * `hasSummarySinceLastUserTurn` in `useAwaySummary.ts:16-23`.
+ */
+export function hasRecapSinceLastUserTurn(messages: readonly ChatRow[]): boolean {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const r = messages[i]
+    if (r === undefined) continue
+    if (r.kind === "user") return false
+    if (r.kind === "recap") return true
+  }
+  return false
+}
 
 export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
   const { orchestrator, onTaskReset } = opts
@@ -268,6 +313,11 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         next.delete(tabId)
         return next
       })
+      const pendingTimer = recapTimers.get(tabId)
+      if (pendingTimer) {
+        clearTimeout(pendingTimer)
+        recapTimers.delete(tabId)
+      }
     }
   }
 
@@ -336,6 +386,63 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
       }
     }
     syncTabSubs(id, live.tabs)
+  })
+
+  // Auto-trigger recap when the user leaves a tab and stays away ≥
+  // `RECAP_AUTO_TRIGGER_MS`. Mirrors Claude Code's blur-timer pattern
+  // (`refs/claude-code/src/hooks/useAwaySummary.ts:92-103`): the leave
+  // arms a single one-shot timer; a return cancels it; the recap row
+  // lands at the tail of the LEFT tab regardless of whether the user
+  // is back yet, so it's already waiting next time they look.
+  //
+  // The timer callback also checks two skip conditions at fire time
+  // (not at arm time, because they can flip while the user is away):
+  //   - tab is streaming → skip (a recap on top of a half-finished
+  //     assistant turn is jarring; manual `/recap` still works)
+  //   - tab already has a recap since the last user message → skip
+  //     (don't pile recaps on top of each other if the user has been
+  //     away for an hour without typing anything new)
+  //
+  // `prevActiveTabIdForRecap` is closure-scoped: the question this
+  // effect answers is "did THIS Chat instance just see a tab switch."
+  // First-ever mount with `prev === null` arms no timer — the user
+  // didn't "leave" anything yet.
+  let prevActiveTabIdForRecap: string | null = null
+  createEffect(() => {
+    const incoming = activeTabId()
+    const prev = prevActiveTabIdForRecap
+
+    // Returning to a tab cancels any pending recap timer for it.
+    if (incoming !== null && incoming !== prev) {
+      const t = recapTimers.get(incoming)
+      if (t) {
+        clearTimeout(t)
+        recapTimers.delete(incoming)
+      }
+    }
+
+    // Leaving a tab arms a one-shot recap timer for the tab we just left.
+    if (prev !== null && prev !== incoming) {
+      const leftTabId = prev
+      const existing = recapTimers.get(leftTabId)
+      if (existing) clearTimeout(existing)
+      const timer = setTimeout(() => {
+        recapTimers.delete(leftTabId)
+        // Look up the owning task at fire time so a tab/task that's
+        // been deleted in the interim silently no-ops.
+        const owningTask = orchestrator
+          .tasksSignal()()
+          .find((t) => t.tabs.some((tb) => tb.id === leftTabId))
+        if (!owningTask) return
+        const liveState = statesByTab().get(leftTabId)
+        if (liveState?.isStreaming) return
+        if (hasRecapSinceLastUserTurn(liveState?.messages ?? [])) return
+        void orchestrator.generateRecap(owningTask.id, leftTabId).catch(() => {})
+      }, RECAP_AUTO_TRIGGER_MS)
+      recapTimers.set(leftTabId, timer)
+    }
+
+    prevActiveTabIdForRecap = incoming
   })
 
   onCleanup(() => {
