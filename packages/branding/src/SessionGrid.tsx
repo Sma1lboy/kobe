@@ -1,34 +1,28 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "./colors"
 
-// Session Grid — multi-session parallel showcase
-// Three sessions run concurrently. Each card scrolls through realistic
-// Claude Code output (tool calls, diffs, bash results). A sliding window
-// keeps the last MAX_VISIBLE lines in view so the card never sits empty.
+// Session Grid v2 — macOS terminal window style
+// Each session is a terminal window with proper chrome: traffic lights,
+// title bar, scrolling content. Lines fill from the top naturally.
 // Duration: 270 frames (9 s).
 
-const MAX_VISIBLE = 11  // lines shown at once — older ones scroll off
+const MAX_VISIBLE = 13
 
-type Line = { text: string; color?: string; kind?: "tool" | "diff-add" | "diff-del" | "ok" | "muted" | "code" }
+type Line = {
+  text: string
+  color?: string
+}
 
-function line(text: string, kind?: Line["kind"]): Line {
-  const colorMap: Record<NonNullable<Line["kind"]>, string> = {
-    tool:     colors.cyan,
-    "diff-add": colors.green,
-    "diff-del": colors.red,
-    ok:       colors.green,
-    muted:    colors.muted,
-    code:     colors.magenta,
-  }
-  return { text, color: kind ? colorMap[kind] : colors.fg, kind }
+function t(text: string, color?: string): Line {
+  return { text, color }
 }
 
 type Session = {
   title: string
   branch: string
-  statusColor: string
+  dotColor: string     // terminal window accent
   startFrame: number
-  interval: number   // frames per line
+  interval: number
   lines: Line[]
 }
 
@@ -36,84 +30,91 @@ const SESSIONS: Session[] = [
   {
     title: "fix login redirect",
     branch: "feat/login-fix",
-    statusColor: colors.green,
-    startFrame: 8,
-    interval: 9,
+    dotColor: colors.green,
+    startFrame: 6,
+    interval: 8,
     lines: [
-      line("▸ read_file src/auth/session.ts", "tool"),
-      line("  148 lines", "muted"),
-      line("▸ read_file src/routes/login.ts", "tool"),
-      line("  62 lines", "muted"),
-      line("Found it — missing await on line 42."),
-      line("▸ edit src/auth/session.ts", "tool"),
-      line("  42: - const s = getSession(req)", "diff-del"),
-      line("  42: + const s = await getSession(req)", "diff-add"),
-      line("  ✓ saved", "ok"),
-      line("▸ bash: bun test auth", "tool"),
-      line("  bun test v1.1.21", "muted"),
-      line("  auth/session.test.ts", "muted"),
-      line("  ✓ 14/14 tests passed", "ok"),
-      line(""),
-      line("Fixed. The getSession call was not"),
-      line("awaited — caused redirect to fire"),
-      line("before session was established."),
+      t("$ read src/auth/session.ts", colors.cyan),
+      t("  148 lines"),
+      t("$ read src/routes/login.ts", colors.cyan),
+      t("  62 lines"),
+      t(""),
+      t("Found it. Missing await on line 42.", colors.yellow),
+      t(""),
+      t("$ edit src/auth/session.ts", colors.cyan),
+      t("  42: - const s = getSession(req)", colors.red),
+      t("  42: + const s = await getSession(req)", colors.green),
+      t("  ✓ saved", colors.green),
+      t(""),
+      t("$ bun test src/auth", colors.cyan),
+      t("  bun test v1.1.21", colors.muted),
+      t("  auth/session.test.ts", colors.muted),
+      t("  ✓ 14 / 14 tests passed", colors.green),
+      t(""),
+      t("Done. getSession was not awaited —", colors.fg),
+      t("redirect fired before session existed.", colors.fg),
     ],
   },
   {
     title: "refactor auth service",
     branch: "feat/auth-refactor",
-    statusColor: colors.blue,
-    startFrame: 18,
-    interval: 11,
+    dotColor: colors.blue,
+    startFrame: 16,
+    interval: 10,
     lines: [
-      line("▸ bash: find src/auth -name '*.ts'", "tool"),
-      line("  src/auth/jwt.ts", "muted"),
-      line("  src/auth/session.ts", "muted"),
-      line("  src/auth/middleware.ts", "muted"),
-      line("▸ read_file src/auth/jwt.ts", "tool"),
-      line("  89 lines", "muted"),
-      line("Creating barrel export."),
-      line("▸ write_file src/auth/index.ts", "tool"),
-      line("  export * from './jwt'", "code"),
-      line("  export * from './session'", "code"),
-      line("  export * from './middleware'", "code"),
-      line("  ✓ written", "ok"),
-      line("▸ bash: grep -r 'from.*auth/'", "tool"),
-      line("  8 import sites found", "muted"),
-      line("▸ edit src/routes/login.ts", "tool"),
-      line("  - from '../auth/jwt'", "diff-del"),
-      line("  + from '../auth'", "diff-add"),
-      line("▸ bash: bun tsc --noEmit", "tool"),
-      line("  ✓ no errors", "ok"),
+      t("$ find src/auth -name '*.ts'", colors.cyan),
+      t("  src/auth/jwt.ts"),
+      t("  src/auth/session.ts"),
+      t("  src/auth/middleware.ts"),
+      t(""),
+      t("$ read src/auth/jwt.ts", colors.cyan),
+      t("  89 lines"),
+      t(""),
+      t("Creating barrel export.", colors.yellow),
+      t(""),
+      t("$ write src/auth/index.ts", colors.cyan),
+      t("  export * from './jwt'", colors.magenta),
+      t("  export * from './session'", colors.magenta),
+      t("  export * from './middleware'", colors.magenta),
+      t("  ✓ written", colors.green),
+      t(""),
+      t("$ grep -r \"from.*auth/\" src/routes", colors.cyan),
+      t("  8 import sites → updating…", colors.muted),
+      t("  ✓ 8 files patched", colors.green),
+      t(""),
+      t("$ bun tsc --noEmit", colors.cyan),
+      t("  ✓ no errors", colors.green),
     ],
   },
   {
     title: "migrate to fastify",
     branch: "feat/fastify",
-    statusColor: colors.magenta,
-    startFrame: 28,
-    interval: 10,
+    dotColor: colors.magenta,
+    startFrame: 26,
+    interval: 9,
     lines: [
-      line("▸ read_file src/server/index.ts", "tool"),
-      line("  201 lines — express setup", "muted"),
-      line("▸ bash: bun add fastify", "tool"),
-      line("  + fastify@4.28.0", "ok"),
-      line("▸ bash: bun remove express", "tool"),
-      line("  - express@4.18.3", "diff-del"),
-      line("Rewriting server entry point."),
-      line("▸ write_file src/server/index.ts", "tool"),
-      line("  import fastify from 'fastify'", "code"),
-      line("  const app = fastify({ logger: true })", "code"),
-      line("  ✓ written", "ok"),
-      line("▸ bash: find src/routes -name '*.ts'", "tool"),
-      line("  8 route files", "muted"),
-      line("Migrating express Router → fastify plugin…"),
-      line("▸ edit src/routes/login.ts", "tool"),
-      line("  - router.post('/login',…)", "diff-del"),
-      line("  + app.post('/login',…)", "diff-add"),
-      line("  [+7 more files patched]", "muted"),
-      line("▸ bash: bun run build", "tool"),
-      line("  ✓ build succeeded in 1.4s", "ok"),
+      t("$ read src/server/index.ts", colors.cyan),
+      t("  201 lines  (express)"),
+      t(""),
+      t("$ bun add fastify", colors.cyan),
+      t("  + fastify@4.28.0", colors.green),
+      t("$ bun remove express", colors.cyan),
+      t("  - express@4.18.3", colors.red),
+      t(""),
+      t("Rewriting server entry point.", colors.yellow),
+      t(""),
+      t("$ write src/server/index.ts", colors.cyan),
+      t("  import fastify from 'fastify'", colors.magenta),
+      t("  const app = fastify({ logger: true })", colors.magenta),
+      t("  ✓ written", colors.green),
+      t(""),
+      t("$ find src/routes -name '*.ts'", colors.cyan),
+      t("  8 route files"),
+      t("  patching router.X → app.X …", colors.muted),
+      t("  ✓ 8 files patched", colors.green),
+      t(""),
+      t("$ bun run build", colors.cyan),
+      t("  ✓ built in 1.4 s", colors.green),
     ],
   },
 ]
@@ -123,54 +124,57 @@ export const SessionGrid: React.FC = () => {
   const { fps } = useVideoConfig()
 
   const headerSp = spring({ frame, fps, config: { damping: 16, stiffness: 120 } })
-  const headerOpacity = interpolate(headerSp, [0, 1], [0, 1])
 
-  const tagStart = 220
-  const tagSp = spring({ frame: frame - tagStart, fps, config: { damping: 16, stiffness: 120 } })
-  const tagOpacity = interpolate(tagSp, [0, 1], [0, 1])
-  const tagY = interpolate(tagSp, [0, 1], [10, 0])
+  const tagSp = spring({ frame: frame - 225, fps, config: { damping: 16, stiffness: 120 } })
+  const tagOp = interpolate(tagSp, [0, 1], [0, 1])
+  const tagY  = interpolate(tagSp, [0, 1], [10, 0])
 
   return (
     <AbsoluteFill
-      style={{ backgroundColor: colors.bg, fontFamily: monoStack, flexDirection: "column", padding: "0 28px" }}
+      style={{
+        backgroundColor: "#0D0D0C",   // slightly darker than colors.bg for contrast
+        fontFamily: monoStack,
+        flexDirection: "column",
+        padding: "12px 20px 10px",
+      }}
     >
-      {/* Header */}
+      {/* Top label */}
       <div
         style={{
-          height: 48,
+          height: 36,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           gap: 10,
-          opacity: headerOpacity,
+          opacity: interpolate(headerSp, [0, 1], [0, 1]),
           flexShrink: 0,
         }}
       >
-        <span style={{ color: colors.blue, fontSize: 17, fontWeight: 700 }}>kobe</span>
-        <span style={{ color: colors.border }}>·</span>
+        <span style={{ color: colors.blue, fontSize: 16, fontWeight: 700, letterSpacing: 0.5 }}>kobe</span>
+        <span style={{ color: "#444", fontSize: 14 }}>·</span>
         <span style={{ color: colors.muted, fontSize: 13 }}>3 sessions in flight</span>
       </div>
 
-      {/* Cards */}
-      <div style={{ flex: 1, display: "flex", gap: 14, paddingBottom: 12, minHeight: 0 }}>
+      {/* Windows row */}
+      <div style={{ flex: 1, display: "flex", gap: 12, minHeight: 0 }}>
         {SESSIONS.map((s, i) => (
-          <SessionCard key={s.title} session={s} frame={frame} fps={fps} index={i} />
+          <TerminalWindow key={s.title} session={s} frame={frame} fps={fps} index={i} />
         ))}
       </div>
 
       {/* Tagline */}
       <div
         style={{
-          height: 48,
+          height: 36,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          opacity: tagOpacity,
+          opacity: tagOp,
           transform: `translateY(${tagY}px)`,
           flexShrink: 0,
         }}
       >
-        <span style={{ color: colors.muted, fontSize: 14, letterSpacing: 3 }}>
+        <span style={{ color: "#555", fontSize: 13, letterSpacing: 3 }}>
           MANY SESSIONS.{"  "}ONE SCREEN.
         </span>
       </div>
@@ -178,7 +182,7 @@ export const SessionGrid: React.FC = () => {
   )
 }
 
-function SessionCard({
+function TerminalWindow({
   session,
   frame,
   fps,
@@ -188,24 +192,19 @@ function SessionCard({
   fps: number
   index: number
 }) {
-  const cardSp = spring({ frame: frame - session.startFrame, fps, config: { damping: 16, stiffness: 130 } })
-  const cardOpacity = interpolate(cardSp, [0, 1], [0, 1])
-  const cardY = interpolate(cardSp, [0, 1], [20, 0])
+  const winSp = spring({ frame: frame - session.startFrame, fps, config: { damping: 15, stiffness: 120 } })
+  const winOp = interpolate(winSp, [0, 1], [0, 1])
+  const winY  = interpolate(winSp, [0, 1], [24, 0])
 
-  const contentStart = session.startFrame + 12
+  const contentStart = session.startFrame + 10
   const linesVisible = Math.max(0, Math.floor((frame - contentStart) / session.interval))
-  const isDone = linesVisible >= session.lines.length
+  const isDone  = linesVisible >= session.lines.length
 
-  // Sliding window: always show the last MAX_VISIBLE lines
-  const sliceEnd = Math.min(linesVisible, session.lines.length)
+  const sliceEnd   = Math.min(linesVisible, session.lines.length)
   const sliceStart = Math.max(0, sliceEnd - MAX_VISIBLE)
-  const visibleLines = session.lines.slice(sliceStart, sliceEnd)
+  const visible    = session.lines.slice(sliceStart, sliceEnd)
 
-  const cursorOn = Math.floor(frame / 8) % 2 === 0
-
-  // Status label
-  const statusLabel = isDone ? "done" : "running"
-  const statusColor = isDone ? colors.muted : session.statusColor
+  const cursorOn = Math.floor(frame / 7) % 2 === 0
 
   return (
     <div
@@ -213,82 +212,135 @@ function SessionCard({
         flex: 1,
         display: "flex",
         flexDirection: "column",
-        background: colors.panel,
-        border: `1px solid ${isDone ? colors.border : session.statusColor + "44"}`,
-        borderRadius: 8,
+        borderRadius: 10,
         overflow: "hidden",
-        opacity: cardOpacity,
-        transform: `translateY(${cardY}px)`,
-        transition: "border-color 0.3s",
+        opacity: winOp,
+        transform: `translateY(${winY}px)`,
+        // macOS terminal window shadow
+        boxShadow: `
+          0 0 0 1px rgba(255,255,255,0.08),
+          0 2px 4px rgba(0,0,0,0.4),
+          0 8px 24px rgba(0,0,0,0.5)
+        `,
       }}
     >
-      {/* Card header */}
+      {/* Title bar */}
       <div
         style={{
-          padding: "9px 13px",
-          borderBottom: `1px solid ${colors.border}`,
+          height: 34,
+          background: "linear-gradient(to bottom, #2C2C2E, #252523)",
+          borderBottom: "1px solid rgba(0,0,0,0.4)",
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 12,
+          paddingRight: 12,
+          gap: 7,
+          flexShrink: 0,
+          position: "relative",
+        }}
+      >
+        {/* Traffic lights */}
+        <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#FF5F57", flexShrink: 0 }} />
+        <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#FEBC2E", flexShrink: 0 }} />
+        <span style={{ width: 12, height: 12, borderRadius: "50%", background: "#28C840", flexShrink: 0 }} />
+
+        {/* Title */}
+        <span
+          style={{
+            position: "absolute",
+            left: 0, right: 0,
+            textAlign: "center",
+            color: "rgba(255,255,255,0.55)",
+            fontSize: 12,
+            fontFamily: monoStack,
+            letterSpacing: 0.2,
+            pointerEvents: "none",
+          }}
+        >
+          {session.title}
+        </span>
+      </div>
+
+      {/* Branch bar */}
+      <div
+        style={{
+          height: 24,
+          background: "#1A1A18",
+          borderBottom: "1px solid rgba(255,255,255,0.04)",
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 12,
+          gap: 6,
           flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span
-            style={{
-              width: 8, height: 8, borderRadius: "50%",
-              background: statusColor, flexShrink: 0,
-              boxShadow: isDone ? "none" : `0 0 6px ${session.statusColor}`,
-            }}
-          />
-          <span style={{ color: colors.fg, fontSize: 13, fontWeight: 700, flex: 1 }}>
-            {session.title}
-          </span>
-          <span style={{ color: statusColor, fontSize: 11 }}>{statusLabel}</span>
-        </div>
-        <div style={{ color: colors.muted, fontSize: 11, paddingLeft: 15, marginTop: 3 }}>
-          ⎇{"  "}{session.branch}
-        </div>
+        <span style={{ color: session.dotColor, fontSize: 10 }}>⎇</span>
+        <span style={{ color: "#555", fontSize: 11 }}>{session.branch}</span>
+        <span
+          style={{
+            marginLeft: "auto",
+            marginRight: 10,
+            fontSize: 10,
+            color: isDone ? "#555" : session.dotColor,
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          {!isDone && (
+            <span
+              style={{
+                width: 6, height: 6, borderRadius: "50%",
+                background: session.dotColor,
+                display: "inline-block",
+                boxShadow: `0 0 5px ${session.dotColor}`,
+              }}
+            />
+          )}
+          {isDone ? "done" : "running"}
+        </span>
       </div>
 
-      {/* Content — scrolling window */}
+      {/* Terminal content */}
       <div
         style={{
           flex: 1,
-          padding: "9px 13px",
-          fontSize: 11.5,
+          background: "#111110",
+          padding: "10px 14px 10px",
+          fontSize: 12,
           lineHeight: 1.65,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          justifyContent: "flex-end",  // anchor to bottom so new lines push up
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column" }}>
-          {/* Fade indicator when older lines have scrolled out */}
-          {sliceStart > 0 && (
-            <div style={{ color: colors.border, fontSize: 10, marginBottom: 4, letterSpacing: 1 }}>
-              ↑ {sliceStart} earlier lines
-            </div>
-          )}
-          {visibleLines.map((ln, li) => (
-            <div
-              key={sliceStart + li}
-              style={{ color: ln.color ?? colors.fg, whiteSpace: "pre", minHeight: "1.65em" }}
-            >
-              {ln.text || " "}
-            </div>
-          ))}
-          {/* Streaming cursor */}
-          {!isDone && linesVisible > 0 && (
-            <div style={{ color: session.statusColor, opacity: cursorOn ? 1 : 0, minHeight: "1.65em" }}>
-              ▌
-            </div>
-          )}
-          {/* Done checkmark */}
-          {isDone && (
-            <div style={{ color: colors.green, fontSize: 11, marginTop: 6, opacity: 0.7 }}>
-              ✓ complete
-            </div>
-          )}
-        </div>
+        {sliceStart > 0 && (
+          <div style={{ color: "#333", fontSize: 10, marginBottom: 4 }}>
+            ↑ {sliceStart} earlier lines
+          </div>
+        )}
+        {visible.map((ln, li) => (
+          <div
+            key={sliceStart + li}
+            style={{
+              color: ln.color ?? colors.fg,
+              whiteSpace: "pre",
+              minHeight: "1.65em",
+            }}
+          >
+            {ln.text || " "}
+          </div>
+        ))}
+        {!isDone && linesVisible > 0 && (
+          <div style={{ color: session.dotColor, opacity: cursorOn ? 1 : 0, minHeight: "1.65em" }}>
+            ▌
+          </div>
+        )}
+        {isDone && (
+          <div style={{ color: "#3A3A38", fontSize: 11, marginTop: 8 }}>
+            — session complete —
+          </div>
+        )}
       </div>
     </div>
   )
