@@ -25,6 +25,7 @@
 
 ## Active Follow-Ups
 
+- **tmux skeleton (KOB-213, in flight)** — `kobe` now auto-spawns a `kobe-<id>` tmux session with a 5-pane placeholder layout (panes echo + `tail -f /dev/null`), and the in-process TopBar is gone (tmux `status-left`/`status-right` carry version + branch + `PR:none`). The in-process TUI remains reachable via `KOBE_TMUX=0 bun run dev` (or the new `dev:notmux` script) while subsequent sprints wire `claude`, the daemon, and live status updates into the panes.
 - Architecture cleanup remains valuable. Biggest files by current line count: `src/orchestrator/core.ts`, `src/tui/panes/chat/MessageList.tsx`, `src/tui/panes/chat/Composer.tsx`, `src/tui/panes/chat/Chat.tsx`, and `src/tui/panes/chat/store.ts`.
 - Prefer extracting deep Modules around real concepts, not line-count slicing. Good candidates: pending user-input lifecycle, PR request flow, chat queue editing, and chat row rendering.
 - Behavior tests are local-only and slower/flakier than CI. CI runs typecheck, unit/socket tests, and build; use `bun run test:behavior` when the change is user-visible TUI behavior.
