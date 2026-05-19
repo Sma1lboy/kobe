@@ -602,6 +602,68 @@ export class Orchestrator {
     await this.runTask(task.id, prompt, mergeTab.id)
   }
 
+  /**
+   * Generate a 1-3 sentence "while you were away" recap for `(taskId, tabId)`
+   * and dispatch it as a {@link RecapEvent} on the per-tab subscriber bus.
+   *
+   * Fire-and-forget: never throws. A no-op when the tab has no
+   * persisted `sessionId` yet, when the transcript is empty, or when
+   * the small-fast engine call fails / times out (the recap is a
+   * polish, not a correctness affordance). Multi-attach safe — the
+   * dispatch reaches every subscribed TUI in lockstep.
+   *
+   * Concurrency: a {@link RecapEvent} is in-memory only (no JSONL
+   * write), so back-to-back `generateRecap` calls just produce two
+   * recap rows. The composer-side `/recap` slash already guards
+   * against accidental double-fire by clearing the input.
+   */
+  async generateRecap(id: TaskId | string, tabId?: string): Promise<void> {
+    const task = this.requireTask(id)
+    const tab = this.resolveTab(task, tabId)
+    // Each no-op below dispatches a `system.info` row so the user
+    // sees WHY a manual `/recap` produced nothing — silent returns
+    // here make the slash feel broken on first try (typical: typing
+    // `/recap` on a fresh tab before sending any prompt). The auto
+    // path skips when in-flight or already-recapped; those branches
+    // intentionally don't notify (the row would be noise on a tab
+    // the user isn't watching).
+    if (!tab.sessionId) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: "(/recap unavailable — send a prompt first to start a session)",
+      })
+      return
+    }
+    const engine = this.engineForTab(task, tab)
+    const messages: readonly Message[] = await engine
+      .readHistory(tab.sessionId)
+      .then((h) => h.messages)
+      .catch(() => [])
+    if (messages.length === 0) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: "(/recap unavailable — no transcript yet)",
+      })
+      return
+    }
+    const model = engine.capabilities.smallFastModelId?.() ?? engine.capabilities.defaultModelId()
+    const ctx: MetadataSuggestionContext = {
+      engine,
+      cwd: task.worktreePath || task.repo,
+      model,
+      permissionMode: task.permissionMode,
+    }
+    const text = await this.metadataSuggester.suggestRecap(messages, ctx)
+    if (!text) {
+      this.dispatchEvent(task.id, tab.id, {
+        type: "system.info",
+        text: `(/recap failed — engine returned no summary; model="${model}")`,
+      })
+      return
+    }
+    this.dispatchEvent(task.id, tab.id, { type: "recap", text })
+  }
+
   async respondToInput(id: TaskId | string, requestId: string, response: UserInputResponse): Promise<void> {
     const task = this.requireTask(id)
     const resolved = this.pendingInputBroker.resolve(task.id, requestId)

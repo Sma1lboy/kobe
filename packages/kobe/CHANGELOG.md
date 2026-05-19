@@ -14,6 +14,26 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.27] - 2026-05-18
+
+### Added
+
+- **Claude Code task checklists render inline** — `TodoWrite` and the v2 `TaskCreate / TaskUpdate / TaskList / TaskGet` tool calls no longer dump raw JSON into the chat; they render as a Claude-Code-style checklist with `✓` done / `◼` in-progress / `◻` open glyphs, completed rows dim+strikethrough, in-progress bold, and a per-round banner (`▶ TaskList · 3 todos · ✓1 ◼1 ◻1`) that expands on click. A `TodoStatusLine` panel flows inside the scrollbox next to the thinking spinner and hides itself 5s after a round goes all-done. v2's whole-store snapshots are rounded client-side so previously-completed tasks don't bleed back into later rows (KOB-204).
+- **`/recap` slash command + auto-recap after leaving a tab** — type `/recap` (or pick it from the slash dropdown) to get a dim 1-3 sentence "while you were away" summary of the current chat tab: high-level task plus concrete next step, no status reports or commit recaps. Leaving a tab also arms a one-shot 5-minute timer that fires the same recap if you don't return in time — so the row is already waiting at the tail of the chat the next time you look. The timer skips at fire time if the tab is mid-turn or already has a recap since the last user message; returning to the tab before 5 minutes cancels it. Mirrors Claude Code's blur-timer pattern (`hooks/useAwaySummary.ts`). Generated via the active engine's small-fast model (haiku 4.5 for Claude, gpt-5.4-mini for Codex, Gemini 3 Flash for Gemini); the recap row is purely a chat affordance and is never written to the engine's session JSONL (KOB-205).
+- **Quick-Fork dialog picks the base branch** — the `ctrl+f` Quick-Fork dialog now has a Branch region between Model and Prompt that defaults to the source task's current branch and lets you fuzzy-pick any local branch instead. Tab cycles Model → Branch → Prompt, ↑/↓ navigates the branch list, and the dialog header tracks the live selection (`Forking from <repo> (<baseRef>)`) so the chosen ref flows through to `orchestrator.createTask` (KOB-203).
+
+### Changed
+
+- **Sidebar search shows a match count** — typing in the sidebar search now displays `N/total` next to the cursor (e.g. `/auth █ 3/12`) so you can see how aggressively the query is filtering, and the empty-result text changed from "No matching tasks." to "No matching tasks — esc to clear." for a clearer escape affordance.
+- **Sidebar spinner fires whenever any chat tab is live** — the row spinner now keys off `isLive()` for any of the task's tabs instead of `task.status === "in_progress"`, so a non-active tab that is mid-stream is no longer invisible from the sidebar.
+- **Changes tab now shows a git status legend** — switching the FileTree to the Changes tab renders a compact legend (`M modified · A added · D deleted · ? untracked`) so glyph meanings are obvious without leaving the pane; the All tab stays uncluttered.
+- **Status bar surfaces new chat-tab hints** — `ctrl+t` (new tab) and `ctrl+w` (close tab) now have `hint` entries that appear in the status bar's Chat column when the workspace pane is focused, and the `files.tab` description reads "cycle All / Changes" to match the simplified tab set.
+
+### Removed
+
+- **`ctrl+b` background-tasks manager is gone** — the double-press `ctrl+b` dialog, the status-bar background-count chip, and the one-line "running in background" readout above the composer are all gone, along with their supporting machinery. The feature mirrored Claude Code's background-task model, but kobe spawns `claude -p` per turn and exits the engine process at the end of each turn, so the cross-turn `run_in_background` semantics the surface implied don't actually hold — a queued prompt or `BashOutput` poll on the next turn cannot reach a shell handle that lived in the previous (now-exited) `claude -p` invocation. The surface was advertising a guarantee the architecture cannot keep, so it's been pulled. `ctrl+b` is unassigned again (KOB-206).
+- **FileTree "Checks" tab removed** — it was a dead-end placeholder with no data source. `[` / `]` now cycles between All and Changes only.
+
 ## [0.5.26] - 2026-05-17
 
 ### Fixed

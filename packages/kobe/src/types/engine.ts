@@ -80,6 +80,14 @@ export interface EngineCapabilities {
    * window at runtime through usage telemetry.
    */
   contextWindowFor(modelId: string): number
+  /**
+   * The vendor's "small / fast / cheap" model id, used by metadata-only
+   * one-shots like recap that don't need the user's pinned full-power
+   * model. Returns `undefined` when the vendor has no faster alternative
+   * — callers fall back to {@link defaultModelId}. Optional so unknown
+   * adapters keep compiling.
+   */
+  smallFastModelId?(): string | undefined
 }
 
 /**
@@ -494,6 +502,19 @@ export type ChatTabClearedEvent = {
 }
 
 /**
+ * 1-3 sentence "while you were away" recap surfaced as a dim row in
+ * chat. Generated on-demand by `Orchestrator.generateRecap` via the
+ * small-fast model (analogous to Claude Code's `await away_summary`).
+ * Engines never emit this; it lives only on the orchestrator's
+ * per-(task, tab) bus. Not persisted to the engine's session JSONL —
+ * the recap is a transient affordance, like `system.info`.
+ */
+export type RecapEvent = {
+  readonly type: "recap"
+  readonly text: string
+}
+
+/**
  * Anything dispatched on the orchestrator's per-task subscriber bus.
  * UI subscribers (chat) consume this wider type; engine impls produce
  * only the {@link EngineEvent} subset.
@@ -505,6 +526,7 @@ export type OrchestratorEvent =
   | UserInputResolvedEvent
   | SystemInfoEvent
   | ChatTabClearedEvent
+  | RecapEvent
 
 /**
  * The single seam between kobe and "the thing running tasks."
