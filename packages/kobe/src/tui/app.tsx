@@ -69,16 +69,27 @@ import { bootstrapHistory } from "./panes/chat/composer/history"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { Terminal, terminalCommandFromEnv } from "./panes/terminal"
+import { PtyRegistry, Terminal } from "./panes/terminal"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
 
-// User-reachable switch (KOB-208): `KOBE_TERMINAL_COMMAND=claude` makes
-// the terminal pane run an interactive `claude` session instead of a
-// login shell. Resolved once — the env var is static for the process.
-const TERMINAL_COMMAND = terminalCommandFromEnv()
+// User-reachable switch (KOB-208): `KOBE_CHAT_ENGINE=interactive` turns
+// the workspace chat content pane into an embedded interactive `claude`
+// session — the chat pane runs claude's native UI in a PTY instead of
+// rendering kobe's own stream-json message list + composer. Resolved
+// once; the env var is static for the process.
+const CHAT_INTERACTIVE = process.env.KOBE_CHAT_ENGINE === "interactive"
+
+// argv for the chat pane's interactive-claude PTY.
+const CHAT_CLAUDE_COMMAND: readonly string[] = ["claude"]
+
+// The chat pane's interactive-claude PTYs live in their own registry,
+// keyed by task id. A dedicated registry (not `getDefaultPtyRegistry()`)
+// keeps them from colliding with the bottom terminal pane's shell PTY,
+// which keys the SAME task id in the default registry.
+const chatClaudeRegistry = new PtyRegistry()
 
 // Engine selection + fake-engine HTTP side-channel moved to
 // `./engine-bootstrap.ts`. The side-channel is test-only — production
@@ -658,22 +669,43 @@ function Shell(props: AppDeps) {
                 />
               }
             >
-              <Chat
-                orchestrator={props.orchestrator}
-                taskId={taskIdAcc}
-                title={activeTitleAcc}
-                pendingPrompt={pendingPromptForActive}
-                onPendingPromptConsumed={() => setPendingPrompt(null)}
-                focused={isFocused("workspace")}
-                onContextMeter={(label) => setWorkspaceContextAside(label)}
-                onRenameTabRequest={(tabId: string) => {
-                  void confirmRenameChatTab(tabId)
-                }}
-                onOpenFilePath={openFileInCenter}
-                onQuickForkRequest={() => {
-                  void quickForkActiveTask()
-                }}
-              />
+              {/* Interactive-claude mode (KOB-208): the chat content
+                  pane mounts an embedded `claude` PTY — claude's native
+                  UI — instead of kobe's stream-json message list +
+                  composer. The PTY widget is `<Terminal>`, reused with
+                  a `["claude"]` command override and its own registry.
+                  Keystrokes route to the PTY whenever the workspace
+                  pane owns focus; interactive claude has its own input
+                  box, so kobe's composer is not involved. */}
+              <Show
+                when={CHAT_INTERACTIVE}
+                fallback={
+                  <Chat
+                    orchestrator={props.orchestrator}
+                    taskId={taskIdAcc}
+                    title={activeTitleAcc}
+                    pendingPrompt={pendingPromptForActive}
+                    onPendingPromptConsumed={() => setPendingPrompt(null)}
+                    focused={isFocused("workspace")}
+                    onContextMeter={(label) => setWorkspaceContextAside(label)}
+                    onRenameTabRequest={(tabId: string) => {
+                      void confirmRenameChatTab(tabId)
+                    }}
+                    onOpenFilePath={openFileInCenter}
+                    onQuickForkRequest={() => {
+                      void quickForkActiveTask()
+                    }}
+                  />
+                }
+              >
+                <Terminal
+                  cwd={worktreePathAcc}
+                  taskId={taskIdNullAcc}
+                  focused={isFocused("workspace")}
+                  command={CHAT_CLAUDE_COMMAND}
+                  registry={chatClaudeRegistry}
+                />
+              </Show>
             </Show>
           </box>
         </box>
@@ -720,12 +752,7 @@ function Shell(props: AppDeps) {
               focused={focusedPane() === "terminal"}
             />
             <box flexGrow={1}>
-              <Terminal
-                cwd={worktreePathAcc}
-                taskId={taskIdNullAcc}
-                focused={isFocused("terminal")}
-                command={TERMINAL_COMMAND}
-              />
+              <Terminal cwd={worktreePathAcc} taskId={taskIdNullAcc} focused={isFocused("terminal")} />
             </box>
           </box>
         </box>

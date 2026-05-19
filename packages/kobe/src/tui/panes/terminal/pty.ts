@@ -73,31 +73,13 @@ function defaultShell(): string {
 
 /**
  * Resolve the argv a `TaskPty` should spawn. Honours an explicit
- * `command` override (the `["claude"]` interactive-engine path) and
- * otherwise falls back to a single-element shell argv.
+ * `command` override (the `["claude"]` interactive-engine path used by
+ * the chat pane) and otherwise falls back to a single-element shell
+ * argv — the terminal pane's default.
  */
 function resolveArgv(opts: TaskPtyOpts): string[] {
   if (opts.command && opts.command.length > 0) return [...opts.command]
   return [opts.shell ?? defaultShell()]
-}
-
-/**
- * The argv the terminal pane should run, derived from the
- * `KOBE_TERMINAL_COMMAND` environment variable. This is the
- * user-reachable switch for embedding an interactive `claude` session
- * in the terminal pane instead of a login shell:
- *
- *   KOBE_TERMINAL_COMMAND=claude   # interactive Claude Code
- *
- * The value is split on whitespace into an argv. Returns `undefined`
- * when the variable is unset or empty, so the pane keeps its default
- * shell behaviour.
- */
-export function terminalCommandFromEnv(): readonly string[] | undefined {
-  const raw = process.env.KOBE_TERMINAL_COMMAND?.trim()
-  if (!raw) return undefined
-  const argv = raw.split(/\s+/).filter((part) => part.length > 0)
-  return argv.length > 0 ? argv : undefined
 }
 
 type XtermCellLike = {
