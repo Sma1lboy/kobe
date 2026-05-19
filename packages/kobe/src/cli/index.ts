@@ -112,6 +112,11 @@ async function main(): Promise<void> {
     await runApiSubcommand(rest)
     return
   }
+  if (subcommand === "rpc") {
+    const { runRpcSubcommand } = await import("./rpc.ts")
+    await runRpcSubcommand(rest)
+    return
+  }
   if (subcommand === "skill") {
     const { runSkillSubcommand } = await import("./skill-cmd.ts")
     await runSkillSubcommand(rest)

@@ -30,6 +30,7 @@
 import { spawnSync as nodeSpawnSync } from "node:child_process"
 import { execSync } from "node:child_process"
 import pkg from "../../package.json" with { type: "json" }
+import { buildBindKeyArgs } from "./keybindings.ts"
 import { DEFAULT_PLACEHOLDERS, type LayoutStep, type PaneLabel, buildLayoutSteps } from "./layout.ts"
 import { buildStatusLineCommands } from "./status-line.ts"
 
@@ -79,6 +80,24 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
       process.stderr.write(`kobe: tmux status command failed: ${cmd.join(" ")}${stderr ? ` (${stderr})` : ""}\n`)
       tryKillSession(sessionName)
       process.exit(1)
+    }
+  }
+
+  // Install the root-table key chords (M-1..9 switch tab, M-t new-tab,
+  // M-w close-tab, M-n/p next/prev task, M-h/j/k/l pane nav). Each is
+  // installed via a one-shot `tmux bind-key ...` call; a single
+  // failing binding is logged but does NOT abort bootstrap — losing
+  // one chord beats refusing to launch the session.
+  const kobeBin = process.env.KOBE_BIN && process.env.KOBE_BIN.length > 0 ? process.env.KOBE_BIN : "kobe"
+  const bindArgvs = buildBindKeyArgs({ session: sessionName, kobeBin })
+  for (const argv of bindArgvs) {
+    const result = nodeSpawnSync("tmux", [...argv], {
+      stdio: ["ignore", "ignore", "pipe"],
+      encoding: "utf8",
+    })
+    if (result.status !== 0) {
+      const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
+      process.stderr.write(`kobe: tmux bind-key failed: ${argv.join(" ")}${stderr ? ` (${stderr})` : ""}\n`)
     }
   }
 
