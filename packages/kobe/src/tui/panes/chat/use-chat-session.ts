@@ -430,7 +430,9 @@ export function useChatSession(opts: UseChatSessionOptions): ChatSessionHandle {
         recapTimers.delete(leftTabId)
         // Look up the owning task at fire time so a tab/task that's
         // been deleted in the interim silently no-ops.
-        const owningTask = orchestrator.tasksSignal()().find((t) => t.tabs.some((tb) => tb.id === leftTabId))
+        const owningTask = orchestrator
+          .tasksSignal()()
+          .find((t) => t.tabs.some((tb) => tb.id === leftTabId))
         if (!owningTask) return
         const liveState = statesByTab().get(leftTabId)
         if (liveState?.isStreaming) return

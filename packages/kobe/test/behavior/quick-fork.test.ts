@@ -237,12 +237,13 @@ test("ctrl+f from a focused chat tab forks a child task seeded with the inherite
   await kobe.sendKeys("\x1b[102;5u")
   await kobe.waitFor((s) => s.includes("Fork task"), 10_000)
   const dialogScreen = await kobe.capture()
-  // The dialog must surface the inherited summary — the repo basename
-  // and the current branch (`main` from repo-init.sh).
+  // The dialog must surface the inherited summary as the
+  // `<repo> > <branch>` breadcrumb. Repo basename = `fork-fixture`
+  // (from REPO_INIT), baseRef defaults to `main` from repo-init.sh.
   expect(dialogScreen).toContain("Fork task")
-  expect(dialogScreen).toContain("Forking from")
   expect(dialogScreen).toContain("fork-fixture")
-  expect(dialogScreen).toContain("(main)")
+  expect(dialogScreen).toContain(">")
+  expect(dialogScreen).toContain("main")
 
   // Settle so the dialog's <input> has focus before we start typing.
   await new Promise((r) => setTimeout(r, 250))

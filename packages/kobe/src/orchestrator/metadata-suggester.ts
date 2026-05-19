@@ -316,7 +316,8 @@ function renderRecapTranscript(history: readonly Message[]): string | null {
     }
     const cleaned = text.trim()
     if (!cleaned) continue
-    const capped = cleaned.length > RECAP_PER_MESSAGE_CHAR_CAP ? `${cleaned.slice(0, RECAP_PER_MESSAGE_CHAR_CAP)}…` : cleaned
+    const capped =
+      cleaned.length > RECAP_PER_MESSAGE_CHAR_CAP ? `${cleaned.slice(0, RECAP_PER_MESSAGE_CHAR_CAP)}…` : cleaned
     lines.push(`${m.role}: ${capped}`)
   }
   if (lines.length === 0) return null

@@ -38,8 +38,12 @@ export type ToolBucket = "search" | "read" | "list" | "bash" | "other"
  *   - `bash` — multi-line banner showing `$ <command>` (see `BashBanner`).
  *   - `read-grep-glob` — banner shows the target / pattern (see
  *     `ReadGrepGlobBanner`).
+ *   - `task-action` — Claude Code v2 TaskCreate / TaskUpdate / TaskGet.
+ *     One-line summary derived from input/output (e.g.
+ *     `TaskCreate · "Run tests"`, `TaskUpdate · #42 · pending → in_progress`).
+ *     Body falls back to `default` (collapsed preview + expand for full JSON).
  */
-export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob"
+export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob" | "task-action"
 
 /**
  * Render strategy for a tool's body (what comes under the banner).
@@ -54,6 +58,12 @@ export type ToolBannerStrategy = "default" | "bash" | "read-grep-glob"
  *   - `subagent` — Agent/Task invocation. Body renders the subagent's
  *     nested tool steps (collected on the row's `children`): a
  *     collapsed progress summary, expandable to the per-step list.
+ *   - `todo-snapshot` — Claude Code's task-tracking "full snapshot" tools
+ *     (v1 `TodoWrite`'s input + v2 `TaskList`'s output). Banner shows a
+ *     status-count chip; the most-recent snapshot in the transcript
+ *     renders the full checkbox list, earlier ones collapse to the chip
+ *     alone (click to expand). Driven by `MessageList`'s `isLatestTodo`
+ *     prop.
  */
 export type ToolBodyStrategy =
   | "default"
@@ -62,6 +72,7 @@ export type ToolBodyStrategy =
   | "bash-output"
   | "read-grep-glob"
   | "subagent"
+  | "todo-snapshot"
 
 export interface ToolMeta {
   readonly bucket: ToolBucket
@@ -92,6 +103,19 @@ const claudeRegistry: Readonly<Record<string, ToolMeta>> = {
   // gets the nested-steps body.
   Task: { bucket: "other", banner: "default", body: "subagent" },
   Agent: { bucket: "other", banner: "default", body: "subagent" },
+  // TodoWrite (v1) — Claude Code hides this in its own Ink TUI; we
+  // render the checklist inline so the user can watch the agent's plan
+  // evolve.
+  TodoWrite: { bucket: "other", banner: "default", body: "todo-snapshot" },
+  // Task v2 — replaced TodoWrite in modern Claude Code builds (Todo v2
+  // growthbook flag). `TaskList` returns the full snapshot in its
+  // *output*, so it gets the same snapshot-style body as TodoWrite.
+  // `TaskCreate / TaskUpdate / TaskGet` are per-item actions: a custom
+  // one-line banner that surfaces the operation is enough.
+  TaskList: { bucket: "other", banner: "default", body: "todo-snapshot" },
+  TaskCreate: { bucket: "other", banner: "task-action", body: "default" },
+  TaskUpdate: { bucket: "other", banner: "task-action", body: "default" },
+  TaskGet: { bucket: "other", banner: "task-action", body: "default" },
 }
 
 const registries: Readonly<Record<VendorId, Readonly<Record<string, ToolMeta>>>> = {
@@ -130,4 +154,15 @@ export function classifyTool(name: string, vendor: VendorId = "claude"): ToolBuc
  */
 export function isSubagentTool(name: string, vendor: VendorId = "claude"): boolean {
   return lookupToolMeta(name, vendor).body === "subagent"
+}
+
+/**
+ * True for task-tracking "full snapshot" tools (`TodoWrite` v1 input,
+ * `TaskList` v2 output) that render an inline checklist. Like subagent
+ * rows, these own a per-row UI (latest-vs-collapsed) and must not be
+ * folded into the generic "Used N other tools" summary —
+ * `groupRenderItems` treats them as a fold boundary.
+ */
+export function isTodoSnapshotTool(name: string, vendor: VendorId = "claude"): boolean {
+  return lookupToolMeta(name, vendor).body === "todo-snapshot"
 }

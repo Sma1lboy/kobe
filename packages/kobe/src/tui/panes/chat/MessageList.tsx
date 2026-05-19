@@ -50,6 +50,7 @@ import { AssistantRow, BashRow, ReasoningRow, RecapRow, SystemRow, UserRow } fro
 import { ToolRow } from "./ToolRow"
 import { ApprovalRow, QuestionRow } from "./UserInputRows"
 import type { ChatRow } from "./store"
+import type { SnapshotItem } from "./todo-render"
 import { type MessageRenderItem, ToolFoldRow, groupRenderItems, summarizeToolRun } from "./tool-fold"
 import { classifyTool } from "./tool-registry"
 
@@ -72,6 +73,15 @@ function foldItemsEqual(a: FoldItem, b: FoldItem): boolean {
 export interface MessageListProps {
   /** Chronological list of chat rows. Render in array order. */
   messages: readonly ChatRow[]
+  /**
+   * Per-row "rounded" snapshot items — `Map<rowIndex, items[]>` keyed
+   * by the snapshot row's index in `messages`. Threaded down to
+   * `ToolRow` so its `TodoSnapshotBanner / TodoSnapshotBody` show only
+   * this round's tasks (the previous round's completed tasks have
+   * already been baselined out of the slice). Computed once at the
+   * `ChatView` level — see {@link computeRoundedSnapshots}.
+   */
+  roundedSnapshots: ReadonlyMap<number, readonly SnapshotItem[]>
   /** Index of the tool row currently shown expanded, or null. */
   expandedToolIndex: number | null
   /** Toggle the expand/collapse state for the tool at `index`. */
@@ -232,6 +242,7 @@ export function MessageList(props: MessageListProps) {
               row={row}
               index={i}
               expanded={props.expandedToolIndex === i}
+              roundedItems={props.roundedSnapshots.get(i)}
               onToggle={() => props.onToggleTool(i)}
             />
           )
