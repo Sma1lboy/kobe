@@ -10,6 +10,7 @@
  * plain-text render code into the Bun runtime graph.
  */
 
+import { appendFileSync } from "node:fs"
 import { type Accessor, type Setter, createSignal } from "solid-js"
 import type { DaemonEventHandler } from "../../../client/index.ts"
 import type { DaemonEventName, DaemonRequestName, SerializedTask } from "../../../daemon/protocol.ts"
@@ -70,11 +71,21 @@ export function createPaneSignals(initial: HelloPayload, client?: PaneSubprocess
     return tasks().find((t) => t.id === id) ?? null
   }
   const dispatchRpc = (name: DaemonRequestName, payload?: unknown): void => {
-    // Log every dispatch to stderr so KOBE_PANE_DEBUG=1 (the user setting
-    // it via the tmux pane env) makes click events visible — handy when
-    // debugging "why doesn't clicking the sidebar do anything".
+    // Append every dispatch to /tmp/kobe-pane-debug.log when
+    // KOBE_PANE_DEBUG=1 — stderr would intermix with the opentui render
+    // output on the same tmux pane tty, so a separate file is the only
+    // way to actually see what's happening when debugging clicks.
     if (process.env.KOBE_PANE_DEBUG === "1") {
-      process.stderr.write(`[pane-dispatch] ${name} ${JSON.stringify(payload ?? {})}\n`)
+      try {
+        const pid = process.pid
+        const ts = new Date().toISOString()
+        appendFileSync(
+          "/tmp/kobe-pane-debug.log",
+          `${ts} [pid=${pid}] dispatch ${name} ${JSON.stringify(payload ?? {})}\n`,
+        )
+      } catch {
+        /* best-effort; never crash the renderer over a debug log */
+      }
     }
     if (!client) return
     void client.request(name, payload).catch((err: unknown) => {
