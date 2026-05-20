@@ -52,22 +52,30 @@ export function TabStripPane(props: { signals: PaneSignals }) {
             <For each={tabs()}>
               {(tab) => {
                 const isActive = () => tab.id === activeTabId()
-                // Mirror FileTree TAB-strip pattern: handler directly on
-                // the <text>, no wrapper <box>. FileTree's tabs are known
-                // to click reliably under tmux.
                 const dispatch = () => {
                   if (isActive()) return
                   props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
                 }
+                // Wrap each chip in a <box> that paints a background so
+                // opentui's native hitTest actually registers the chip
+                // area — without a painted background hitTest skips the
+                // renderable and the click goes nowhere. Mirror the
+                // pattern used in SidebarPane rows.
                 return (
-                  <text
-                    fg={isActive() ? theme.primary : theme.textMuted}
-                    attributes={isActive() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
+                  <box
+                    backgroundColor={isActive() ? theme.primary : theme.background}
+                    flexShrink={0}
                     onMouseUp={dispatch}
                   >
-                    {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
-                  </text>
+                    <text
+                      fg={isActive() ? theme.selectedListItemText : theme.textMuted}
+                      attributes={isActive() ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      onMouseUp={dispatch}
+                    >
+                      {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
+                    </text>
+                  </box>
                 )
               }}
             </For>

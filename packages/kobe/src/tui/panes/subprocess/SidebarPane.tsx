@@ -74,7 +74,16 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                 <box
                   paddingLeft={1}
                   paddingRight={1}
-                  backgroundColor={isActive() ? theme.primary : undefined}
+                  // Always render a solid background (theme.background for
+                  // inactive rows, theme.primary for active). opentui's
+                  // native hitTest only registers renderables that paint
+                  // pixels at the cursor position — transparent boxes
+                  // (backgroundColor=undefined) are invisible to hitTest,
+                  // so click would fall through to either the inner text
+                  // or to the parent column and never trigger the row's
+                  // onMouseUp. Giving every row a background opts every
+                  // row into the hit-test surface.
+                  backgroundColor={isActive() ? theme.primary : theme.background}
                   flexShrink={0}
                   onMouseUp={dispatch}
                 >
@@ -82,6 +91,7 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                     fg={isActive() ? theme.selectedListItemText : theme.text}
                     attributes={isActive() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
+                    onMouseUp={dispatch}
                   >
                     {`${marker} ${task.title}`}
                   </text>
