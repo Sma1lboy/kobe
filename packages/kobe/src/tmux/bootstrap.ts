@@ -30,6 +30,7 @@
 import { spawnSync as nodeSpawnSync } from "node:child_process"
 import { execSync } from "node:child_process"
 import pkg from "../../package.json" with { type: "json" }
+import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { buildBindKeyArgs } from "./keybindings.ts"
 import {
   DEFAULT_PLACEHOLDERS,
@@ -37,6 +38,7 @@ import {
   type PaneLabel,
   buildLayoutSteps,
   panePaneCommand,
+  placeholderShellCommand,
   shellPaneCommand,
 } from "./layout.ts"
 import { buildStatusLineCommands } from "./status-line.ts"
@@ -61,9 +63,7 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
     return { bootstrapped: false, reason: "non-tty" }
   }
   if (!isTmuxAvailable()) {
-    process.stderr.write(
-      "kobe: tmux not found on PATH; falling back to in-process TUI. Set KOBE_TMUX=0 to silence.\n",
-    )
+    process.stderr.write("kobe: tmux not found on PATH; falling back to in-process TUI. Set KOBE_TMUX=0 to silence.\n")
     return { bootstrapped: false, reason: "tmux-missing" }
   }
 
@@ -122,6 +122,19 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
     }
   }
 
+  // Sprint-6 (KOB-218): create the hidden stash window + tell the daemon
+  // about (session, stash window, chat slot id, saved layout) so future
+  // rpc.* verbs can swap per-(task,tab) claude panes into the chat slot.
+  // Failures degrade gracefully — without `tmux.attach`, the chat slot
+  // keeps its placeholder and the rpc.* verbs become no-ops, but the rest
+  // of the TUI still works.
+  const chatSlotPaneId = paneIds.get("chat")
+  if (chatSlotPaneId) {
+    await attachDaemonToTmux(sessionName, chatSlotPaneId, kobeBin)
+  } else {
+    process.stderr.write("kobe: tmux bootstrap missing chat pane id; daemon swap disabled\n")
+  }
+
   process.stderr.write(`kobe: tmux session ${sessionName} ready (branch=${branch}, version=${version}).\n`)
   process.stderr.write(`kobe: detach with Ctrl-B d; kill with 'tmux kill-session -t ${sessionName}'.\n`)
 
@@ -132,6 +145,82 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
   const attach = nodeSpawnSync("tmux", ["attach-session", "-t", sessionName], { stdio: "inherit" })
   const code = attach.status ?? (attach.signal ? 130 : 0)
   process.exit(code)
+}
+
+/**
+ * Bring up the stash window, snapshot the saved layout, then connect to
+ * (or start) the daemon and fire `tmux.attach`. All failures are caught
+ * and logged — losing the daemon swap is a degraded mode (chat slot
+ * keeps its placeholder), not a fatal bootstrap error.
+ */
+async function attachDaemonToTmux(sessionName: string, chatSlotPaneId: string, kobeBin: string): Promise<void> {
+  let stashWindow = ""
+  let savedLayout = ""
+  try {
+    // 1. Hidden stash window. One placeholder pane to begin with — the
+    //    adapter will `split-window` into this window to spawn per-tab
+    //    claude panes. `-d` keeps it detached so we don't lose focus on
+    //    the main `kobe` window.
+    stashWindow = `${sessionName}:stash`
+    const newWindowResult = nodeSpawnSync(
+      "tmux",
+      ["new-window", "-d", "-t", sessionName, "-n", "stash", placeholderShellCommand("stash-init")],
+      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+    )
+    if (newWindowResult.status !== 0) {
+      const stderr = typeof newWindowResult.stderr === "string" ? newWindowResult.stderr.trim() : ""
+      process.stderr.write(`kobe: tmux new-window stash failed${stderr ? `: ${stderr}` : ""}\n`)
+      return
+    }
+
+    // 2. Snapshot the visible layout BEFORE any swap. `swap-pane` can
+    //    drift sibling pane sizes; the daemon adapter restores this
+    //    string via `select-layout` after every swap.
+    const layoutResult = nodeSpawnSync(
+      "tmux",
+      ["display-message", "-p", "-t", `${sessionName}:kobe`, "#{window_visible_layout}"],
+      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+    )
+    if (layoutResult.status !== 0) {
+      const stderr = typeof layoutResult.stderr === "string" ? layoutResult.stderr.trim() : ""
+      process.stderr.write(`kobe: tmux display-message saved layout failed${stderr ? `: ${stderr}` : ""}\n`)
+      return
+    }
+    savedLayout = typeof layoutResult.stdout === "string" ? layoutResult.stdout.trim() : ""
+    if (!savedLayout) {
+      process.stderr.write("kobe: empty saved layout; daemon swap disabled\n")
+      return
+    }
+  } catch (err) {
+    process.stderr.write(`kobe: tmux stash setup threw ${describeErr(err)}; daemon swap disabled\n`)
+    return
+  }
+
+  // 3. Spawn (or connect) the daemon and hand it the wiring. The 5s
+  //    timeout inside connectOrStartDaemon means a daemon startup
+  //    failure surfaces here as a rejection rather than hanging
+  //    bootstrap forever.
+  try {
+    const client = await connectOrStartDaemon()
+    try {
+      await client.request("tmux.attach", {
+        session: sessionName,
+        stashWindow,
+        chatSlotPaneId,
+        savedLayout,
+        kobeBin,
+      })
+    } finally {
+      client.close()
+    }
+  } catch (err) {
+    process.stderr.write(`kobe: tmux.attach to daemon failed ${describeErr(err)}; degraded mode\n`)
+  }
+}
+
+function describeErr(err: unknown): string {
+  if (err instanceof Error) return `(${err.message})`
+  return `(${String(err)})`
 }
 
 function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>): void {

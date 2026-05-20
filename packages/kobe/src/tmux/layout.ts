@@ -74,7 +74,10 @@ export interface LayoutOptions {
 export const DEFAULT_PLACEHOLDERS: LayoutPlaceholders = {
   sidebar: "[sidebar] tasks — placeholder (KOB-213)",
   tabStrip: "[tab-strip] tabs — placeholder",
-  chat: "[chat] claude TUI — placeholder",
+  // Sprint-6: chat slot is empty until the daemon swaps a per-(task,tab)
+  // claude pane in. Bootstrap fires `tmux.attach` immediately after the
+  // layout is built; the swap follows whenever an active task exists.
+  chat: "[chat] no active task — press M-t to start a new tab",
   files: "[files] file tree — placeholder",
   shell: "[shell] terminal — placeholder",
 }
