@@ -49,11 +49,8 @@ export async function mountSolidPane(name: SolidPaneName, signals: PaneSignals):
     backgroundColor: "transparent",
     externalOutputMode: "passthrough",
     exitOnCtrlC: false,
-    // Mouse must be enabled at the renderer level so opentui emits
-    // `\x1b[?1000h` to the terminal. Without this, tmux's `set -g mouse on`
-    // alone isn't enough — tmux forwards clicks to the focused pane only
-    // when the pane's app has actually announced mouse-mode support.
-    // sidebar/tab-strip click handlers stay dead silent otherwise.
-    useMouse: true,
+    // useMouse defaults to true in opentui 0.2.4 — we don't need to set
+    // it. tmux's `set -g mouse on` (buildPaneStyleCommands) does the
+    // forwarding side.
   })
 }

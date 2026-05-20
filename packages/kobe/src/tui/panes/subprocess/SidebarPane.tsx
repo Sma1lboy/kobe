@@ -61,6 +61,17 @@ export function SidebarPane(props: { signals: PaneSignals }) {
             {(task) => {
               const isActive = () => props.signals.activeTaskId() === task.id
               const marker = markerFor(task)
+              // Opentui's hit-test fires the handler on the leaf renderable
+              // under the cursor — putting onMouseDown on the outer <box>
+              // alone never received clicks because the <text> children
+              // captured the hit first and didn't bubble. We mirror the
+              // handler on every child for now (worker note: opentui-solid
+              // 0.2.x has no event bubble path). Click still has one
+              // semantic action: dispatch switch-task.
+              const dispatch = () => {
+                if (isActive()) return
+                props.signals.dispatchRpc("rpc.switchTask", { id: task.id })
+              }
               return (
                 <box
                   flexDirection="row"
@@ -69,18 +80,20 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                   gap={1}
                   backgroundColor={isActive() ? theme.primary : undefined}
                   flexShrink={0}
-                  onMouseDown={() => {
-                    if (isActive()) return
-                    props.signals.dispatchRpc("rpc.switchTask", { id: task.id })
-                  }}
+                  onMouseDown={dispatch}
                 >
-                  <text fg={isActive() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                  <text
+                    fg={isActive() ? theme.selectedListItemText : theme.textMuted}
+                    wrapMode="none"
+                    onMouseDown={dispatch}
+                  >
                     {marker}
                   </text>
                   <text
                     fg={isActive() ? theme.selectedListItemText : theme.text}
                     attributes={isActive() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
+                    onMouseDown={dispatch}
                   >
                     {task.title}
                   </text>

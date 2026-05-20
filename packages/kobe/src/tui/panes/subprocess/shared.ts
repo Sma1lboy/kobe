@@ -70,6 +70,12 @@ export function createPaneSignals(initial: HelloPayload, client?: PaneSubprocess
     return tasks().find((t) => t.id === id) ?? null
   }
   const dispatchRpc = (name: DaemonRequestName, payload?: unknown): void => {
+    // Log every dispatch to stderr so KOBE_PANE_DEBUG=1 (the user setting
+    // it via the tmux pane env) makes click events visible — handy when
+    // debugging "why doesn't clicking the sidebar do anything".
+    if (process.env.KOBE_PANE_DEBUG === "1") {
+      process.stderr.write(`[pane-dispatch] ${name} ${JSON.stringify(payload ?? {})}\n`)
+    }
     if (!client) return
     void client.request(name, payload).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err)

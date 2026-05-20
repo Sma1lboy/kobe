@@ -52,19 +52,20 @@ export function TabStripPane(props: { signals: PaneSignals }) {
             <For each={tabs()}>
               {(tab) => {
                 const isActive = () => tab.id === activeTabId()
+                // See SidebarPane comment: opentui-solid 0.2.x doesn't
+                // bubble mouse events, so we mirror the handler on the
+                // leaf <text> as well as the <box> wrapper.
+                const dispatch = () => {
+                  if (isActive()) return
+                  props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
+                }
                 return (
-                  <box
-                    flexDirection="row"
-                    flexShrink={0}
-                    onMouseDown={() => {
-                      if (isActive()) return
-                      props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
-                    }}
-                  >
+                  <box flexDirection="row" flexShrink={0} onMouseDown={dispatch}>
                     <text
                       fg={isActive() ? theme.primary : theme.textMuted}
                       attributes={isActive() ? TextAttributes.BOLD : undefined}
                       wrapMode="none"
+                      onMouseDown={dispatch}
                     >
                       {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
                     </text>
