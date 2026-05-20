@@ -41,6 +41,7 @@ import {
   placeholderShellCommand,
   shellPaneCommand,
 } from "./layout.ts"
+import { buildPaneStyleCommands } from "./pane-style.ts"
 import { buildStatusLineCommands } from "./status-line.ts"
 
 const TMUX_SESSION_PREFIX = "kobe-"
@@ -87,19 +88,20 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
     },
   })
   const statusCmds = buildStatusLineCommands(sessionName, { version, branch, pr: "none" })
+  const paneStyleCmds = buildPaneStyleCommands(sessionName)
 
   const paneIds = new Map<PaneLabel, string>()
   for (const step of steps) {
     runLayoutStep(step, paneIds)
   }
-  for (const cmd of statusCmds) {
+  for (const cmd of [...statusCmds, ...paneStyleCmds]) {
     const result = nodeSpawnSync("tmux", [...cmd], {
       stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",
     })
     if (result.status !== 0) {
       const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
-      process.stderr.write(`kobe: tmux status command failed: ${cmd.join(" ")}${stderr ? ` (${stderr})` : ""}\n`)
+      process.stderr.write(`kobe: tmux style command failed: ${cmd.join(" ")}${stderr ? ` (${stderr})` : ""}\n`)
       tryKillSession(sessionName)
       process.exit(1)
     }

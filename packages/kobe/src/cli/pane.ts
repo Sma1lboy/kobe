@@ -1,24 +1,23 @@
 /**
- * `kobe pane <name>` — short-lived (or rather: long-lived) CLI process
- * that mounts a single tmux pane. Each pane subprocess connects to the
- * daemon, snapshots state via `hello`, then subscribes to task / active
- * events and re-renders on every change.
+ * `kobe pane <name>` — long-lived CLI process that mounts a single
+ * tmux pane. Each pane subprocess connects to the daemon, snapshots
+ * state via `hello`, subscribes to task / active events, and renders.
  *
- * Sprint-4 scope: rendering is plain text (no opentui). The pane writes
- * one line to stdout per state, with an ANSI clear-screen-and-home prefix
- * so subsequent renders replace the previous line in place. The real
- * opentui-rendered pane UIs land in sprints 5/6.
+ * Sprint-8: production path now mounts a real `@opentui/solid` Solid
+ * app per pane (sidebar / tab-strip / files); the `status` pane and the
+ * `--once` smoke path stay on plain-text stdout so unit tests don't
+ * have to spin up the opentui renderer.
  *
  * Pane names:
- *   sidebar     — task list summary
- *   tab-strip   — chat-tab strip for the active task
- *   files       — worktree path for the active task
- *   status      — short status line (task count + active id)
+ *   sidebar     — task list with status markers + active highlight
+ *   tab-strip   — chat-tab chips for the active task
+ *   files       — file tree of the active task's worktree
+ *   status      — short status line (task count + active id), plain text
  *
  * Flags:
- *   --once   render once after the initial `hello`, then exit 0. Used by
- *            tests and smoke checks; the production tmux pane never
- *            passes this and stays running.
+ *   --once   render one plain-text frame after the initial `hello`,
+ *            then exit 0. Used by tests and smoke checks; the
+ *            production tmux pane never passes this and stays running.
  */
 
 import { KobeDaemonClient } from "../client/index.ts"
@@ -191,10 +190,14 @@ export async function runPane(argv: readonly string[], options: RunPaneOptions =
     options.onRender?.(line)
   }
 
+  let helloPayload: HelloPayload
   try {
-    const hello = await client.request<HelloPayload>("hello", { clientId: `pane:${parsed.name}`, version: "pane" })
-    for (const task of hello.tasks) tasksById.set(task.id, task)
-    activeTaskId = hello.activeTaskId
+    helloPayload = await client.request<HelloPayload>("hello", {
+      clientId: `pane:${parsed.name}`,
+      version: "pane",
+    })
+    for (const task of helloPayload.tasks) tasksById.set(task.id, task)
+    activeTaskId = helloPayload.activeTaskId
     render()
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -207,7 +210,16 @@ export async function runPane(argv: readonly string[], options: RunPaneOptions =
     return { exitCode: 0 }
   }
 
-  // Subscribe to the four event names that affect any pane's render.
+  // Solid render path — sidebar / tab-strip / files mount real opentui
+  // components. The `status` pane stays on the plain-text re-render
+  // loop below; it's small, not user-facing in tmux (the tmux
+  // status-line owns the real status), and keeping it text-only saves
+  // a renderer per session.
+  if (parsed.name === "sidebar" || parsed.name === "tab-strip" || parsed.name === "files") {
+    return await runSolidPane(parsed.name, client, helloPayload)
+  }
+
+  // Plain-text re-render loop (used today by the `status` pane).
   client.on("task.created", (frame) => {
     const payload = frame.payload as TaskCreatedPayload
     tasksById.set(payload.task.id, payload.task)
@@ -237,6 +249,38 @@ export async function runPane(argv: readonly string[], options: RunPaneOptions =
       resolve({ exitCode: 0 })
     })
   })
+}
+
+/**
+ * Solid render path — mounts an opentui-rendered Solid app for the
+ * sidebar / tab-strip / files panes. Late dynamic imports keep
+ * `@opentui/solid` out of the static graph of the `--once` smoke
+ * path (tests under Node hit only the plain-text branch above).
+ */
+async function runSolidPane(
+  name: "sidebar" | "tab-strip" | "files",
+  client: PaneClient,
+  hello: HelloPayload,
+): Promise<RunPaneResult> {
+  const { createPaneSignals, subscribePaneSignals } = await import("../tui/panes/subprocess/shared.ts")
+  const { mountSolidPane } = await import("../tui/panes/subprocess/host.tsx")
+  const signals = createPaneSignals(hello)
+  // Subscribe BEFORE render so any event arriving during the renderer's
+  // async mount lands in the signal store (Solid re-renders on next tick).
+  subscribePaneSignals(client as unknown as Parameters<typeof subscribePaneSignals>[0], signals)
+
+  // Exit cleanly on daemon shutdown — process.exit beats trying to
+  // tear down the renderer from outside its render() promise, and
+  // tmux respawns the pane subprocess automatically when the daemon
+  // comes back.
+  client.on("daemon.stopping", () => {
+    client.close()
+    process.exit(0)
+  })
+
+  await mountSolidPane(name, signals)
+  client.close()
+  return { exitCode: 0 }
 }
 
 export async function runPaneSubcommand(argv: readonly string[]): Promise<void> {

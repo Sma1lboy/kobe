@@ -139,75 +139,177 @@ read the ref before deciding to deviate further.
 
 ---
 
-## 3. The 5-pane layout
+## 3. The tmux orchestrator layout
 
-The Conductor screenshot grammar lives in `src/tui/app.tsx`. Layout is
-flex-first per the CLAUDE.md hard rule — only the sidebar's width and the
-horizontal splitter heights are stateful, and even those use `flexGrow={1}`
-on the right rail to absorb the remainder.
+> Live as of sprint-8 (KOB-213 closeout). The pre-tmux in-process
+> Solid 5-pane layout is gone — `src/tui/app.tsx` is now a small
+> "tmux mode required" fallback page; the real product is the tmux
+> session kobe spawns at startup.
+>
+> Renderable copies of the four diagrams below — same content, one
+> file you can paste into a deck or PR description — live at
+> [`architecture-diagrams.md`](./architecture-diagrams.md).
 
-### Top-level structure
+When `kobe` is launched outside an existing `$TMUX` and stdio is a
+TTY, [`maybeBootstrapTmux`](../packages/kobe/src/tmux/bootstrap.ts)
+spawns a fresh tmux session, builds the 5-pane main window plus a
+hidden `stash` window, applies the status-line + pane-border styles,
+and finally `tmux attach-session`'s into it. Each pane in the main
+window runs a separate process: `kobe pane sidebar|tab-strip|files`
+(Solid-rendered subprocesses), `kobe pane status` (plain-text
+fallback line), a real interactive `$SHELL` for the bottom pane, and
+a placeholder pane that the daemon swaps per-(task, tab) `claude`
+panes into.
 
+### Tmux session tree
+
+The session owns two windows. The main `kobe` window is what the
+user sees on attach; the hidden `stash` window holds spawned but
+not-currently-displayed claude panes. The daemon's pane-stash
+adapter (`src/daemon/pane-stash-adapter.ts`) shuttles panes between
+the stash window and the chat slot in the main window via
+`swap-pane`.
+
+```mermaid
+graph TD
+  Session["tmux session<br/>kobe-&lt;short-id&gt;"]
+  Session --> MainW["window: kobe<br/>(attached)"]
+  Session --> StashW["window: stash<br/>(hidden, -d)"]
+  MainW --> P1["sidebar pane<br/>kobe pane sidebar"]
+  MainW --> P2["tab-strip pane<br/>kobe pane tab-strip"]
+  MainW --> P3["chat slot<br/>(claude swapped in)"]
+  MainW --> P4["files pane<br/>kobe pane files"]
+  MainW --> P5["shell pane<br/>interactive $SHELL"]
+  StashW --> S1["stashed claude<br/>task A, tab 1"]
+  StashW --> S2["stashed claude<br/>task B, tab 1"]
+  StashW --> S3["…"]
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│ TopBar — version, repo/branch, Create PR button, update chip       │
-├──────────┬──────────────────────────────┬──────────────────────────┤
-│ Sidebar  │ WORKSPACE                    │ FILES                    │
-│  (1)     │  CenterTabStrip [chat][file] │  (3)                     │
-│          │  ┌─────────────────────────┐ │                          │
-│          │  │  Chat | Preview         │ ├──────────────────────────┤
-│          │  │  (chat owns the slot    │ │ TERMINAL                 │
-│          │  │   when chat tab active) │ │  (4)                     │
-│          │  └─────────────────────────┘ │                          │
-├──────────┴──────────────────────────────┴──────────────────────────┤
-│ StatusBar — keybinding hints + active task                         │
-└────────────────────────────────────────────────────────────────────┘
-   ^pane 1               ^pane 2 (workspace)             ^panes 3+4
+
+### 5-pane main-window layout
+
+Top row carries the tab-strip across the whole window; bottom row
+carries an interactive shell. Sidebar, chat, and files take the
+middle row, with the chat slot owning the centre `flexGrow={1}`
+share — this is the only pane that swaps content; sidebar / files /
+shell stay put for the lifetime of the session.
+
+```mermaid
+graph TB
+  subgraph mainwindow["main window — flex grammar"]
+    direction TB
+    TS["tab-strip (top, full width)"]
+    subgraph middle["middle row"]
+      direction LR
+      SB["sidebar<br/>(left, ~42 cells)"]
+      CH["chat slot<br/>(centre, flexGrow=1)"]
+      FT["files<br/>(right, ~38 cells)"]
+    end
+    SH["shell (bottom, full width)"]
+    TS --> middle
+    middle --> SH
+  end
 ```
 
-Wire-up (in `src/tui/app.tsx`, function `Shell`):
+### Communication architecture
 
-- Sidebar render: `src/tui/app.tsx:1561`
-- Workspace tabs: `src/tui/app.tsx:1616`
-- Chat ↔ Preview switch (chat tab vs file tab): `src/tui/app.tsx:1628`
-- File tree render: `src/tui/app.tsx:1675`
-- Terminal render: `src/tui/app.tsx:1699`
-- Resizable splitters: `<ResizableEdge>` between each pair, see
-  `src/tui/component/resizable-edge.tsx`.
+Every pane subprocess is a thin daemon client. The daemon is the
+single owner of orchestrator state — task list, active task, chat
+tabs, engine handles, pane-stash bookkeeping. Pane subprocesses
+seed via `hello`, react to broadcast events, and dispatch user
+intent through `rpc.*` request frames. Engine traffic
+(`claude` / `codex` subprocesses) flows through the same daemon,
+not through the pane subprocesses directly.
 
-### Pane sources
+```mermaid
+sequenceDiagram
+  participant TUI as tmux client (user)
+  participant Pane as kobe pane &lt;name&gt;
+  participant Daemon as kobe daemon
+  participant Orch as Orchestrator
+  participant Engine as claude / codex
+  Pane->>Daemon: connect (unix socket)
+  Pane->>Daemon: hello
+  Daemon-->>Pane: tasks + activeTaskId
+  TUI->>Daemon: rpc.newTab (via tmux bind-key)
+  Daemon->>Orch: createTab
+  Orch->>Engine: spawn (cwd, prompt)
+  Engine-->>Orch: stream-json events
+  Orch-->>Daemon: task.updated
+  Daemon-->>Pane: task.updated (broadcast)
+  Pane->>Pane: signal update → Solid re-render
+```
 
-| Pane | Source dir | Notes |
-|---|---|---|
-| Sidebar | `src/tui/panes/sidebar/` | Working / Archives split, repo-grouped, `[d]` delete + `[a]` archive + `[r]` rename + `[n]` new (sidebar focus) |
-| Chat | `src/tui/panes/chat/` | Multi-tab per task; `Composer.tsx` + `MessageList.tsx`; pure-data store at `store.ts` |
-| File tree | `src/tui/panes/filetree/` | `git ls-files`-driven, three top tabs (All / Changes / Checks) |
-| Preview | `src/tui/panes/preview/` | Multi-tab (one per opened file); File / Diff modes |
-| Terminal | `src/tui/panes/terminal/` | Bun native PTY per task, rendered through `@xterm/headless`; pipe backend is fallback only |
+### Pane-swap flow (rpc.newTab)
 
-### Focus + keymap routing
+The shape of every active-state mutation: an `rpc.*` request hits
+the daemon, the orchestrator allocates the engine session, the
+pane-stash adapter spawns a new claude pane in the stash window,
+swaps it into the chat slot, restores the saved window layout, and
+sniffs the new claude session id from `~/.claude/projects/`. The
+saved-layout restore is load-bearing because `swap-pane` can drift
+sibling sizes when the source and target panes have different
+parents.
 
-Focus is a single signal: `src/tui/context/focus.tsx`. `useFocus()` exposes
-`focused()`, `setFocused(pane)`, `is(pane)`, `cycle(±1)`. The four pane ids
-are `"sidebar" | "workspace" | "files" | "terminal"`.
+```mermaid
+sequenceDiagram
+  participant User
+  participant Tmux as tmux key-table
+  participant Daemon
+  participant Adapter as paneStashAdapter
+  participant Stash as stash window
+  participant Chat as chat slot
+  User->>Tmux: M-t
+  Tmux->>Daemon: rpc.newTab (via kobe rpc CLI)
+  Daemon->>Adapter: ensureSpawnedForTab(task, tab)
+  Adapter->>Stash: split-window 'cd ... && exec claude'
+  Stash-->>Adapter: %paneId
+  Adapter->>Chat: swap-pane (chat slot ↔ new pane)
+  Adapter->>Chat: select-layout (savedLayout)
+  Adapter->>Adapter: sniffNewSessionId (~/.claude/projects/...)
+  Adapter-->>Daemon: sessionId
+  Daemon->>Daemon: orchestrator.setTabSessionId
+  Daemon-->>User: task.updated (broadcast → all panes refresh)
+```
 
-Three rules govern key handling:
+### Source pointers
 
-1. **Modifier-prefixed keys (`ctrl+1`..`ctrl+4`, `ctrl+n`, `ctrl+k`,
-   `ctrl+q`) are always-on** — they never collide with composer typing.
-   See `src/tui/context/keybindings.ts:170-201`.
-2. **Single-letter global shortcuts (`?`, `q`, `tab`) are gated on
-   "no input is focused"** — `useKobeKeybindings({ inputFocused })`
-   reads the focus signal and omits these registrations whenever the
-   workspace pane (which contains the chat composer) is focused.
-3. **Pane-local bindings (`j/k` in sidebar, `enter`/`shift+enter` in
-   composer) register inside the pane component** via
-   `useBindings()` from `src/tui/lib/keymap.tsx`, scoped to that
-   component's lifetime. The pane gates them on `useFocus().is(...)`.
+| Concern | File |
+|---|---|
+| tmux bootstrap (`maybeBootstrapTmux`) | `src/tmux/bootstrap.ts` |
+| Layout step builder + placeholder commands | `src/tmux/layout.ts` |
+| Pane-border + active-border styling | `src/tmux/pane-style.ts` |
+| Status-line content (`status-left` / `status-right`) | `src/tmux/status-line.ts` |
+| Root-table key chords (`M-1..9`, `M-t`, `M-w`, `M-n/p`, `M-h/j/k/l`) | `src/tmux/keybindings.ts` |
+| `kobe pane <name>` CLI dispatcher (plain-text + Solid paths) | `src/cli/pane.ts` |
+| Solid pane subprocesses (sidebar / tab-strip / files) | `src/tui/panes/subprocess/` |
+| `kobe rpc <verb>` CLI used by tmux bind-keys | `src/cli/rpc.ts` |
+| Daemon RPC handlers (incl. `tmux.attach`, `rpc.*`) | `src/daemon/rpc-handler.ts` |
+| Pane-stash state machine (pure) | `src/tmux/pane-stash.ts` |
+| Pane-stash adapter (wraps `TmuxControlClient`) | `src/daemon/pane-stash-adapter.ts` |
+| Claude spawn shell command + session-id sniff | `src/tmux/claude-spawn.ts` |
+| Fallback page (KOBE_TMUX=0 / non-tty / no tmux) | `src/tui/app.tsx` |
 
-The keybinding registry itself is a stack — dialogs push their own group on
-top so `escape` / `enter` apply to the dialog while it's open, not the
-underlying pane. See `src/tui/ui/dialog.tsx` for the dialog stack.
+### Escape hatches
+
+| Trigger | What happens |
+|---|---|
+| `$TMUX` already set | Bootstrap returns early (`reason: "already-in-tmux"`); fallback page mounts under the existing tmux. |
+| `KOBE_TMUX=0` | Bootstrap returns early; same fallback path. Used by `dev:notmux`. |
+| stdin / stdout non-TTY (CI, piped) | Bootstrap returns early (non-interactive launches can't attach). |
+| `tmux` missing on PATH | Bootstrap warns once, returns early; fallback page mounts. |
+
+### Where the in-process pane code lives now
+
+The pre-sprint-7 in-process panes still exist as Solid components
+under `src/tui/panes/{sidebar,filetree,...}/` — they typecheck and
+compile, but only `filetree/` is currently mounted (reused by the
+files pane subprocess via `src/tui/panes/subprocess/FilesPane.tsx`).
+The heavy `sidebar/Sidebar.tsx` and the chat / preview / terminal
+components are dormant: the simpler `SidebarPane.tsx` /
+`TabStripPane.tsx` in `src/tui/panes/subprocess/` are what tmux
+mounts today. Future "rich sidebar" work can hoist the heavy
+component into the daemon-RPC world rather than rewriting from
+scratch.
 
 ---
 

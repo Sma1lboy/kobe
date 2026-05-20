@@ -1,7 +1,14 @@
 # Handoff — kobe
 
-> Current as of 2026-05-13, after `@sma1lboy/kobe@0.5.22`.
+> Current as of 2026-05-19, after sprint-8 (KOB-213 closeout).
 > Keep this file short. Durable rules live in `AGENTS.md`; shipped behavior lives in `packages/kobe/CHANGELOG.md`; architecture detail lives in `docs/ARCHITECTURE.md`.
+
+## Recent session — sprint-8 (KOB-213 closeout)
+
+- `kobe pane sidebar|tab-strip|files` now mounts an `@opentui/solid` Solid app in each tmux pane subprocess instead of the sprint-4 plain-text stdout. New source: `src/tui/panes/subprocess/{SidebarPane,TabStripPane,FilesPane,host,shared}` ; `cli/pane.ts` dispatches the Solid path for those three and keeps the plain-text path for `status` and for `--once` (unit-test smoke). `<FileTree>` is reused as-is with a no-op `onOpenFile`.
+- Visual tuning: `tmux/pane-style.ts` (new) turns `pane-border-status` off and styles `pane-border-style fg=colour240` / `pane-active-border-style fg=colour114`. `tmux/status-line.ts` now uses `fg=colour250,bg=colour234` with a green-accented `v<version>` chip on the left and neutral `<branch> · PR:<pr>` on the right.
+- Docs: `docs/ARCHITECTURE.md` §3 rewritten to describe the tmux orchestrator (was "the in-process 5-pane layout") with four mermaid diagrams — session tree, 5-pane layout, communication architecture, pane-swap flow. New `docs/architecture-diagrams.md` collects renderable copies. Cross-linked.
+- `KOBE_TMUX=0` escape hatch confirmed unchanged: `maybeBootstrapTmux` returns early with `reason: "KOBE_TMUX=0"` (and similarly for `$TMUX`, non-tty, missing tmux) — caller proceeds to `startTui` which mounts the fallback "tmux mode required" page.
 
 ## Read First
 
