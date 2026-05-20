@@ -1,13 +1,20 @@
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
+import { homedir } from "node:os"
 import { dirname } from "node:path"
+import { findClaudeBinary } from "../engine/claude-code-local/binary.ts"
+import { encodeCwd } from "../engine/claude-code-local/history.ts"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
 import { resolveRepoRoot } from "../state/repos.ts"
+import { buildClaudeShellCommand, sniffNewSessionId } from "../tmux/claude-spawn.ts"
+import { type TmuxControlClient, spawnControlClient } from "../tmux/control-client.ts"
+import { createPaneStash } from "../tmux/pane-stash.ts"
 import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { type ActiveState, createActiveState } from "./active-state.ts"
 import { logDaemonError } from "./crash-log.ts"
+import { PaneStashAdapter } from "./pane-stash-adapter.ts"
 /**
  * Minimal contract the daemon needs from a pane-stash adapter. The
  * production wiring (sprint-6) plugs in a real `PaneStashAdapter`;
@@ -160,11 +167,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     broadcast(clients, { type: "event", name: "active.changed", payload: { activeTaskId } }),
   )
 
-  // Optional tmux pane-stash adapter (sprint-5). When absent, all
-  // chat-pane swap/spawn/kill ops below become no-ops. See
-  // `DaemonServerOptions.paneStashAdapter` for the wiring contract.
-  const paneStashAdapter = options.paneStashAdapter ?? null
-  const resolvePaneCommand = options.resolveChatPaneCommand ?? null
+  // Optional tmux pane-stash adapter — installed either via
+  // `options.paneStashAdapter` (tests + back-compat) or replaced at
+  // runtime by the `tmux.attach` rpc verb (sprint-6 production path).
+  // Mutable so a daemon that booted before bootstrap finished can still
+  // pick up the adapter when `tmux.attach` arrives.
+  let paneStashAdapter: DaemonPaneStashAdapter | null = options.paneStashAdapter ?? null
+  let resolvePaneCommand: ((taskId: string, tabId: string) => string | null) | null =
+    options.resolveChatPaneCommand ?? null
+  // Held so `serverApi.close()` can detach the tmux subprocess cleanly
+  // on daemon shutdown. Null until `tmux.attach` runs.
+  let tmuxClient: TmuxControlClient | null = null
 
   /**
    * Fire-and-forget swap to the (taskId, tab) pair. Best-effort: a
@@ -173,25 +186,56 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
    * visible swap drifts.
    */
   function safeSwap(taskId: string, tabId: string): void {
-    if (!paneStashAdapter) return
-    void paneStashAdapter.swapToChat(taskId, tabId).catch((err) => logDaemonError("pane-stash-swap", err))
+    const adapter = paneStashAdapter
+    if (!adapter) return
+    void adapter.swapToChat(taskId, tabId).catch((err) => logDaemonError("pane-stash-swap", err))
   }
 
-  /** Best-effort ensure+swap for a new tab — same crash-isolation policy as `safeSwap`. */
+  /**
+   * Best-effort ensure+swap for a new tab — same crash-isolation policy
+   * as `safeSwap`. After a successful spawn for a tab that has no
+   * persisted sessionId, sniff the new `<sid>.jsonl` Claude Code writes
+   * to `~/.claude/projects/<encoded-cwd>/` and persist it on the tab so
+   * subsequent ensures resume the same session (`claude --resume <sid>`).
+   */
   function safeEnsureAndSwap(taskId: string, tabId: string): void {
-    if (!paneStashAdapter) return
+    const adapter = paneStashAdapter
+    if (!adapter) return
     const cmd = resolvePaneCommand?.(taskId, tabId)
     if (!cmd) return
-    void paneStashAdapter
-      .ensureSpawnedForTab(taskId, tabId, cmd)
-      .then(() => paneStashAdapter.swapToChat(taskId, tabId))
-      .catch((err) => logDaemonError("pane-stash-spawn", err))
+    const task = orch.getTask(taskId)
+    const tab = task?.tabs.find((t) => t.id === tabId)
+    const cwd = task?.worktreePath ?? null
+    const shouldSniff = Boolean(cwd) && !tab?.sessionId
+    const projectDir = cwd ? `${homedir()}/.claude/projects/${encodeCwd(cwd)}` : null
+    const beforeSnapshot = shouldSniff && projectDir ? safeListDir(projectDir) : Promise.resolve<string[]>([])
+    void (async () => {
+      const before = new Set(await beforeSnapshot)
+      await adapter.ensureSpawnedForTab(taskId, tabId, cmd)
+      await adapter.swapToChat(taskId, tabId)
+      if (!shouldSniff || !cwd) return
+      const sid = await pollForSessionId(cwd, before)
+      if (sid) {
+        try {
+          await orch.setTabSessionId(taskId, tabId, sid)
+          broadcastTaskUpdated(orch, clients, taskId)
+        } catch (err) {
+          logDaemonError("pane-stash-session-persist", err)
+        }
+      } else {
+        logDaemonError(
+          "pane-stash-session-sniff",
+          new Error(`sniffNewSessionId timed out for task ${taskId} tab ${tabId} cwd ${cwd}`),
+        )
+      }
+    })().catch((err) => logDaemonError("pane-stash-spawn", err))
   }
 
   /** Best-effort kill of a stash pane after a tab close. */
   function safeKill(taskId: string, tabId: string): void {
-    if (!paneStashAdapter) return
-    void paneStashAdapter.killForTab(taskId, tabId).catch((err) => logDaemonError("pane-stash-kill", err))
+    const adapter = paneStashAdapter
+    if (!adapter) return
+    void adapter.killForTab(taskId, tabId).catch((err) => logDaemonError("pane-stash-kill", err))
   }
 
   const serverApi: DaemonServer = {
@@ -208,6 +252,21 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await rcBridge.stop()
       } catch {
         /* best-effort — daemon shutdown should never block on bridge teardown */
+      }
+      // Detach the tmux control client (sprint-6) before the socket so
+      // the orphaned tmux subprocess gets a graceful `detach-client`
+      // rather than a TCP-style RST on parent exit. Failures are logged
+      // but never block shutdown. The `tmuxClient = null` happens
+      // BEFORE the close so the on("close") listener doesn't mistake
+      // this graceful shutdown for an unexpected crash.
+      if (tmuxClient) {
+        const client = tmuxClient
+        tmuxClient = null
+        try {
+          await client.close()
+        } catch (err) {
+          logDaemonError("tmux-client-close", err)
+        }
       }
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       // End attached client sockets BEFORE closing the server. server.close()
@@ -701,6 +760,74 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         safeKill(activeTaskId, closingTabId)
         return { ok: true, nextActive }
       }
+      case "tmux.attach": {
+        const session = requireString(payload, "session")
+        const stashWindow = requireString(payload, "stashWindow")
+        const chatSlotPaneId = requireString(payload, "chatSlotPaneId")
+        const savedLayout = requireString(payload, "savedLayout")
+        // Spawn the control client + bind the pure pane-stash state
+        // machine to the just-built layout. Both replace any previously
+        // installed instances; sprint-6 doesn't expect re-attach in
+        // production, but tests and a future "kobe attach" verb may
+        // call this more than once per daemon lifetime.
+        if (tmuxClient) {
+          // Null the holder BEFORE closing so the `on("close")` listener
+          // skips the "unexpected exit" branch (see the listener below).
+          const prev = tmuxClient
+          tmuxClient = null
+          try {
+            await prev.close()
+          } catch (err) {
+            logDaemonError("tmux-client-replace", err)
+          }
+        }
+        const client = await spawnControlClient({ session })
+        client.on("close", (info: unknown) => {
+          // Only log unexpected exits. `serverApi.close` and the
+          // re-attach branch above explicitly null `tmuxClient` before
+          // tearing the subprocess down — those teardowns shouldn't
+          // surface as errors. Logging unexpected exits surfaces
+          // mid-session tmux deaths (someone ran `tmux kill-server`,
+          // OOM, etc.) that would otherwise silently break swaps.
+          if (tmuxClient === client) {
+            logDaemonError(
+              "tmux-client-exit",
+              new Error(`tmux control client closed unexpectedly: ${JSON.stringify(info)}`),
+            )
+            tmuxClient = null
+          }
+        })
+        tmuxClient = client
+        const stash = createPaneStash()
+        stash.attach({ stashWindow, chatSlotPaneId, savedLayout })
+        const adapter = new PaneStashAdapter({ stash, client })
+        paneStashAdapter = adapter
+        // Resolve + cache the claude binary once. Tabs that haven't
+        // been spawned yet will call `buildClaudeShellCommand` against
+        // this; resumed tabs pass their persisted sessionId through.
+        const binaryPath = await findClaudeBinary()
+        resolvePaneCommand = (taskId, tabId) => {
+          const task = orch.getTask(taskId)
+          if (!task) return null
+          const tab = task.tabs.find((t) => t.id === tabId)
+          if (!tab) return null
+          return buildClaudeShellCommand({
+            binaryPath,
+            cwd: task.worktreePath,
+            resumeSessionId: tab.sessionId ?? undefined,
+          })
+        }
+        // If the user already had an active task in flight before this
+        // attach (daemon-survives-bootstrap restart, mostly a future-
+        // proofing case for now), re-bridge the chat slot so the visible
+        // pane matches state.
+        const activeId = activeState.get()
+        if (activeId) {
+          const t = orch.getTask(activeId)
+          if (t) safeEnsureAndSwap(activeId, t.activeTabId)
+        }
+        return { ok: true }
+      }
       case "rpc.switchTab": {
         const activeTaskId = activeState.get()
         if (activeTaskId === null) throw new Error("no active task")
@@ -935,6 +1062,48 @@ function normalizeTaskIds(value: unknown): "all" | string[] {
   if (value === undefined || value === null || value === "all") return "all"
   if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value
   throw new Error("taskIds must be 'all' or string[]")
+}
+
+/**
+ * List a directory, returning an empty array if the directory does not
+ * yet exist. Used as the pre-spawn snapshot for the Claude Code
+ * session-id sniff — a tab spawning into a worktree that has never run
+ * `claude` before will have no `~/.claude/projects/<encoded-cwd>/` at
+ * all, and that's a successful "no prior sessions" result, not an error.
+ */
+async function safeListDir(dir: string): Promise<string[]> {
+  try {
+    return await readdir(dir)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Poll `sniffNewSessionId` until a new `<sid>.jsonl` appears in the
+ * worktree's claude project dir or the budget runs out. Defaults match
+ * the sprint-6 brief (500ms interval, 5s budget — claude usually
+ * writes the JSONL within ~1s of first prompt). Returns null on
+ * timeout so the caller can log a warning and move on.
+ */
+async function pollForSessionId(
+  cwd: string,
+  before: ReadonlySet<string>,
+  intervalMs = 500,
+  timeoutMs = 5000,
+): Promise<string | null> {
+  const deps = {
+    encodeCwd,
+    list: safeListDir,
+    homedir,
+  }
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const sid = await sniffNewSessionId(cwd, before, deps)
+    if (sid) return sid
+    await new Promise<void>((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return null
 }
 
 function requireUserInputResponse(value: unknown): UserInputResponse {

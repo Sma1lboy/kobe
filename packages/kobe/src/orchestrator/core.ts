@@ -882,6 +882,26 @@ export class Orchestrator {
   }
 
   /**
+   * Persist a tab's claude-allocated sessionId after a successful sniff
+   * (see {@link buildClaudeShellCommand} + {@link sniffNewSessionId}).
+   * Sprint-6 wiring: the daemon spawns a pane running `claude` in the
+   * tab's worktree, then diffs `~/.claude/projects/<encoded-cwd>/` to
+   * recover the newly created `<sessionId>.jsonl` filename. This setter
+   * stores that id on the tab so subsequent ensures resume the existing
+   * session (`claude --resume <sid>`) instead of starting fresh.
+   *
+   * No-op if the tab is missing (race with a tab close) or the
+   * sessionId is unchanged.
+   */
+  async setTabSessionId(id: TaskId | string, tabId: string, sessionId: string): Promise<void> {
+    const task = this.requireTask(id)
+    const tab = task.tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.sessionId === sessionId) return
+    await updateChatTab(this.store, task.id, tabId, { sessionId })
+  }
+
+  /**
    * Fully delete a task: stop the engine, remove the worktree files,
    * remove the persisted chat history (Claude Code's JSONL session
    * file), and remove the task entry from the index.

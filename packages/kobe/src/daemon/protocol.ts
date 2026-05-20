@@ -58,6 +58,7 @@ export type DaemonRequestName =
   | "rpc.closeTab"
   | "rpc.nextTask"
   | "rpc.prevTask"
+  | "tmux.attach"
 
 export type DaemonEventName =
   | "task.created"
