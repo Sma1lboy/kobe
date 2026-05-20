@@ -61,41 +61,29 @@ export function SidebarPane(props: { signals: PaneSignals }) {
             {(task) => {
               const isActive = () => props.signals.activeTaskId() === task.id
               const marker = markerFor(task)
-              // Opentui's hit-test fires the handler on the leaf renderable
-              // under the cursor — putting onMouseDown on the outer <box>
-              // alone never received clicks because the <text> children
-              // captured the hit first and didn't bubble. We mirror the
-              // handler on every child for now (worker note: opentui-solid
-              // 0.2.x has no event bubble path). Click still has one
-              // semantic action: dispatch switch-task.
+              // Mirror FileTree's dir/file row pattern exactly: a single
+              // <text> inside a <box> with handler on the box. Earlier
+              // attempt used flexDirection="row" + gap + two <text>
+              // children — opentui-solid hit-test apparently treats this
+              // differently and clicks landed nowhere visible.
               const dispatch = () => {
                 if (isActive()) return
                 props.signals.dispatchRpc("rpc.switchTask", { id: task.id })
               }
               return (
                 <box
-                  flexDirection="row"
                   paddingLeft={1}
                   paddingRight={1}
-                  gap={1}
                   backgroundColor={isActive() ? theme.primary : undefined}
                   flexShrink={0}
                   onMouseUp={dispatch}
                 >
                   <text
-                    fg={isActive() ? theme.selectedListItemText : theme.textMuted}
-                    wrapMode="none"
-                    onMouseUp={dispatch}
-                  >
-                    {marker}
-                  </text>
-                  <text
                     fg={isActive() ? theme.selectedListItemText : theme.text}
                     attributes={isActive() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
-                    onMouseUp={dispatch}
                   >
-                    {task.title}
+                    {`${marker} ${task.title}`}
                   </text>
                 </box>
               )

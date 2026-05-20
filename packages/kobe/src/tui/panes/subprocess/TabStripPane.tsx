@@ -52,24 +52,22 @@ export function TabStripPane(props: { signals: PaneSignals }) {
             <For each={tabs()}>
               {(tab) => {
                 const isActive = () => tab.id === activeTabId()
-                // See SidebarPane comment: opentui-solid 0.2.x doesn't
-                // bubble mouse events, so we mirror the handler on the
-                // leaf <text> as well as the <box> wrapper.
+                // Mirror FileTree TAB-strip pattern: handler directly on
+                // the <text>, no wrapper <box>. FileTree's tabs are known
+                // to click reliably under tmux.
                 const dispatch = () => {
                   if (isActive()) return
                   props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
                 }
                 return (
-                  <box flexDirection="row" flexShrink={0} onMouseUp={dispatch}>
-                    <text
-                      fg={isActive() ? theme.primary : theme.textMuted}
-                      attributes={isActive() ? TextAttributes.BOLD : undefined}
-                      wrapMode="none"
-                      onMouseUp={dispatch}
-                    >
-                      {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
-                    </text>
-                  </box>
+                  <text
+                    fg={isActive() ? theme.primary : theme.textMuted}
+                    attributes={isActive() ? TextAttributes.BOLD : undefined}
+                    wrapMode="none"
+                    onMouseUp={dispatch}
+                  >
+                    {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
+                  </text>
                 )
               }}
             </For>
