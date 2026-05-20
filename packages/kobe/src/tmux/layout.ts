@@ -152,15 +152,17 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       size: "33%",
       command: filesCmd,
     },
-    // Drop chat below the tab-strip. New pane gets 99% of the
-    // column's height; the tab-strip keeps the rest, then the
-    // resize step below clamps it to exactly 1 row.
+    // Drop chat below the tab-strip. New pane gets 90% of the
+    // column's height; tab-strip keeps ~10% (must stay >= 1 row,
+    // otherwise tmux GC's the pane and the next resize step can't
+    // find it). The resize step below then clamps tab-strip to
+    // exactly 1 row.
     {
       kind: "split",
       name: "chat",
       targetLabel: "tab-strip",
       direction: "v",
-      size: "99%",
+      size: "90%",
       command: chatCmd,
     },
     { kind: "resize", targetLabel: "tab-strip", heightRows: 1 },

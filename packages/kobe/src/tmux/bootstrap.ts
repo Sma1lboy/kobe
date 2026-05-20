@@ -92,7 +92,7 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
 
   const paneIds = new Map<PaneLabel, string>()
   for (const step of steps) {
-    runLayoutStep(step, paneIds)
+    runLayoutStep(step, paneIds, sessionName)
   }
   for (const cmd of [...statusCmds, ...paneStyleCmds]) {
     const result = nodeSpawnSync("tmux", [...cmd], {
@@ -225,7 +225,7 @@ function describeErr(err: unknown): string {
   return `(${String(err)})`
 }
 
-function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>): void {
+function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>, sessionName?: string): void {
   if (step.kind === "new-session") {
     const args = [
       "new-session",
@@ -265,13 +265,13 @@ function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>): void 
   if (step.kind === "resize") {
     const target = paneIds.get(step.targetLabel)
     if (!target) throw new Error(`kobe.tmux: unknown target pane '${step.targetLabel}' at resize`)
-    runOrFail("tmux", ["resize-pane", "-t", target, "-y", String(step.heightRows)])
+    runOrFail("tmux", ["resize-pane", "-t", target, "-y", String(step.heightRows)], sessionName)
     return
   }
   if (step.kind === "select") {
     const target = paneIds.get(step.targetLabel)
     if (!target) throw new Error(`kobe.tmux: unknown target pane '${step.targetLabel}' at select`)
-    runOrFail("tmux", ["select-pane", "-t", target])
+    runOrFail("tmux", ["select-pane", "-t", target], sessionName)
     return
   }
 }
@@ -295,7 +295,7 @@ function runCapturePaneId(bin: string, args: readonly string[], sessionToCleanup
   return id
 }
 
-function runOrFail(bin: string, args: readonly string[]): void {
+function runOrFail(bin: string, args: readonly string[], sessionToCleanup?: string): void {
   const result = nodeSpawnSync(bin, [...args], {
     stdio: ["ignore", "ignore", "pipe"],
     encoding: "utf8",
@@ -303,6 +303,7 @@ function runOrFail(bin: string, args: readonly string[]): void {
   if (result.status !== 0) {
     const stderr = typeof result.stderr === "string" ? result.stderr.trim() : ""
     process.stderr.write(`kobe: tmux ${args.join(" ")} failed${stderr ? `: ${stderr}` : ""}\n`)
+    if (sessionToCleanup) tryKillSession(sessionToCleanup)
     process.exit(1)
   }
 }
