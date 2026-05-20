@@ -325,33 +325,47 @@ describe("daemon rpc.* handlers", () => {
       const taskBefore = orch.getTask(spawned.taskId)
       if (!taskBefore) throw new Error("missing task after spawn")
       const tab1 = taskBefore.activeTabId
-      // 1. rpc.switchTask → swap to the current active tab.
+      // Sprint-7 (KOB-219): every active-state mutation goes through
+      // safeEnsureAndSwap so a never-spawned sibling tab gets spawned
+      // + sniffed on demand instead of swap-into-nothing.
+      // 1. rpc.switchTask → ensure + swap for the current active tab.
       await client.request("rpc.switchTask", { id: spawned.taskId })
-      // 2. rpc.newTab → ensureSpawnedForTab + swapToChat for the new tab.
+      // 2. rpc.newTab → ensure + swap for the new tab.
       const newTab = await client.request<{ tabId: string }>("rpc.newTab")
-      // 3. rpc.switchTab back to tab1.
+      // 3. rpc.switchTab back to tab1 → ensure + swap.
       await client.request("rpc.switchTab", { tabId: tab1 })
       // 4. rpc.closeTab — closes the currently-active tab (= tab1), then
-      //    swaps to next + kills tab1's pane.
+      //    ensure+swaps to next + kills tab1's pane.
       await client.request("rpc.closeTab")
 
       const swapCalls = calls.filter((c) => c.method === "swapToChat")
       const ensureCalls = calls.filter((c) => c.method === "ensureSpawnedForTab")
       const killCalls = calls.filter((c) => c.method === "killForTab")
 
-      // rpc.switchTask + rpc.newTab + rpc.switchTab + rpc.closeTab = 4 swaps.
+      // Each of the four transitions is an ensure + swap pair.
       expect(swapCalls).toHaveLength(4)
+      expect(ensureCalls).toHaveLength(4)
       expect(swapCalls[0]?.args).toEqual([spawned.taskId, tab1])
-      expect(swapCalls[1]?.args).toEqual([spawned.taskId, newTab.tabId])
-      expect(swapCalls[2]?.args).toEqual([spawned.taskId, tab1])
-      // After closeTab, the orchestrator moves active to the next tab; we
-      // don't assert the specific id, just that swap was driven for it.
-      expect(swapCalls[3]?.args[0]).toBe(spawned.taskId)
-      expect(swapCalls[3]?.args[1]).toBe(newTab.tabId)
-
-      // rpc.newTab triggered exactly one ensureSpawnedForTab for the new tab.
-      expect(ensureCalls).toHaveLength(1)
       expect(ensureCalls[0]?.args).toEqual([
+        spawned.taskId,
+        tab1,
+        `exec claude --task ${spawned.taskId} --tab ${tab1}`,
+      ])
+      expect(swapCalls[1]?.args).toEqual([spawned.taskId, newTab.tabId])
+      expect(ensureCalls[1]?.args).toEqual([
+        spawned.taskId,
+        newTab.tabId,
+        `exec claude --task ${spawned.taskId} --tab ${newTab.tabId}`,
+      ])
+      expect(swapCalls[2]?.args).toEqual([spawned.taskId, tab1])
+      expect(ensureCalls[2]?.args).toEqual([
+        spawned.taskId,
+        tab1,
+        `exec claude --task ${spawned.taskId} --tab ${tab1}`,
+      ])
+      // After closeTab the orchestrator moves active to newTab.
+      expect(swapCalls[3]?.args).toEqual([spawned.taskId, newTab.tabId])
+      expect(ensureCalls[3]?.args).toEqual([
         spawned.taskId,
         newTab.tabId,
         `exec claude --task ${spawned.taskId} --tab ${newTab.tabId}`,
@@ -360,6 +374,81 @@ describe("daemon rpc.* handlers", () => {
       // rpc.closeTab triggered exactly one killForTab for the closed tab.
       expect(killCalls).toHaveLength(1)
       expect(killCalls[0]?.args).toEqual([spawned.taskId, tab1])
+    } finally {
+      client.close()
+      await server.close()
+      orch.dispose()
+    }
+  })
+
+  test("rpc.switchTab to a never-spawned sibling tab spawns it on demand (KOB-219)", async () => {
+    // Sprint-6 used safeSwap for rpc.switchTab, which skipped the
+    // ensure-and-spawn machinery — switching to a sibling tab whose
+    // pane had never been spawned was a logged no-op. Sprint-7 routes
+    // every active-state mutation through safeEnsureAndSwap so the
+    // missing pane gets spawned + sniffed on demand.
+    const calls: { method: string; args: unknown[] }[] = []
+    const seenEnsures = new Set<string>()
+    let nextPaneId = 200
+    const adapter: DaemonPaneStashAdapter = {
+      async ensureSpawnedForTab(taskId, tabId, command) {
+        calls.push({ method: "ensureSpawnedForTab", args: [taskId, tabId, command] })
+        seenEnsures.add(`${taskId}:${tabId}`)
+        return `%${nextPaneId++}`
+      },
+      async swapToChat(taskId, tabId) {
+        calls.push({ method: "swapToChat", args: [taskId, tabId] })
+      },
+      async killForTab(taskId, tabId) {
+        calls.push({ method: "killForTab", args: [taskId, tabId] })
+      },
+    }
+    const orch = await buildOrchestrator()
+    const server = await startDaemonServer(orch, {
+      socketPath,
+      pidPath,
+      homeDir,
+      paneStashAdapter: adapter,
+      resolveChatPaneCommand: (taskId, tabId) => `exec claude --task ${taskId} --tab ${tabId}`,
+    })
+    const client = new KobeDaemonClient(socketPath)
+    try {
+      await client.connect()
+      const spawned = await client.request<{ taskId: string }>("task.spawn", { repo, title: "ensure-on-switch" })
+      const taskBefore = orch.getTask(spawned.taskId)
+      if (!taskBefore) throw new Error("missing task after spawn")
+      const tab1 = taskBefore.activeTabId
+      // Create a second tab via chat.tab.create (NOT rpc.newTab) so the
+      // adapter never sees an ensure for tab2 during the create itself.
+      const created = await client.request<{ tab: { id: string } }>("chat.tab.create", { taskId: spawned.taskId })
+      const tab2 = created.tab.id
+      // Set active to the new task so rpc.switchTab has a target.
+      await client.request("rpc.switchTask", { id: spawned.taskId })
+      // Snapshot how many ensures fired up to here — switchTask routes
+      // through safeEnsureAndSwap too. tab2 has not been ensured yet.
+      const ensuresBefore = calls.filter(
+        (c) => c.method === "ensureSpawnedForTab" && (c.args as string[])[1] === tab2,
+      ).length
+      expect(ensuresBefore).toBe(0)
+
+      // Switch to tab2 — the never-spawned sibling. Sprint-7 must
+      // spawn its pane on demand before the swap.
+      await client.request("rpc.switchTab", { tabId: tab2 })
+
+      const ensuresForTab2 = calls.filter(
+        (c) => c.method === "ensureSpawnedForTab" && (c.args as string[])[1] === tab2,
+      )
+      const swapsForTab2 = calls.filter((c) => c.method === "swapToChat" && (c.args as string[])[1] === tab2)
+      expect(ensuresForTab2).toHaveLength(1)
+      expect(ensuresForTab2[0]?.args).toEqual([
+        spawned.taskId,
+        tab2,
+        `exec claude --task ${spawned.taskId} --tab ${tab2}`,
+      ])
+      // The ensure runs before the swap (same ordered chain inside
+      // safeEnsureAndSwap), so the swap also fires for tab2.
+      expect(swapsForTab2).toHaveLength(1)
+      void tab1
     } finally {
       client.close()
       await server.close()
