@@ -53,13 +53,22 @@ export function TabStripPane(props: { signals: PaneSignals }) {
               {(tab) => {
                 const isActive = () => tab.id === activeTabId()
                 return (
-                  <text
-                    fg={isActive() ? theme.primary : theme.textMuted}
-                    attributes={isActive() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
+                  <box
+                    flexDirection="row"
+                    flexShrink={0}
+                    onMouseDown={() => {
+                      if (isActive()) return
+                      props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
+                    }}
                   >
-                    {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
-                  </text>
+                    <text
+                      fg={isActive() ? theme.primary : theme.textMuted}
+                      attributes={isActive() ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                    >
+                      {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
+                    </text>
+                  </box>
                 )
               }}
             </For>

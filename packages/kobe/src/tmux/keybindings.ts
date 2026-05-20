@@ -53,6 +53,9 @@ export const DEFAULT_KEYBINDINGS: readonly KeybindingDef[] = [
   }),
   { label: "new-tab", key: "M-t", action: { kind: "rpc", verb: "new-tab", args: [] } },
   { label: "close-tab", key: "M-w", action: { kind: "rpc", verb: "close-tab", args: [] } },
+  // M-N (Shift+Alt+n) creates a new task. We pick Shift+Alt rather than
+  // bare M-n so it doesn't collide with `next-task` (M-n) below.
+  { label: "new-task", key: "M-N", action: { kind: "rpc", verb: "new-task", args: [] } },
   { label: "next-task", key: "M-n", action: { kind: "rpc", verb: "next-task", args: [] } },
   { label: "prev-task", key: "M-p", action: { kind: "rpc", verb: "prev-task", args: [] } },
   { label: "pane-left", key: "M-h", action: { kind: "select-pane", direction: "L" } },

@@ -98,6 +98,8 @@ export function routeVerb(verb: string, positional: readonly string[]): RouteRes
       if (!tabId) throw new RpcError("switch-tab requires <id|index>", "MISSING_ARG")
       return { name: "rpc.switchTab", payload: { tabId } }
     }
+    case "new-task":
+      return { name: "rpc.newTask", payload: {} }
     case "new-tab":
       return { name: "rpc.newTab", payload: {} }
     case "close-tab":
@@ -114,6 +116,7 @@ export function routeVerb(verb: string, positional: readonly string[]): RouteRes
 export const RPC_VERBS = [
   "switch-task",
   "switch-tab",
+  "new-task",
   "new-tab",
   "close-tab",
   "next-task",

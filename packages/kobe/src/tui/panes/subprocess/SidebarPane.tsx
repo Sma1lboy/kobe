@@ -47,9 +47,14 @@ export function SidebarPane(props: { signals: PaneSignals }) {
         <Show
           when={props.signals.tasks().length > 0}
           fallback={
-            <text fg={theme.textMuted} wrapMode="word">
-              no tasks — press M-t in main pane to create
-            </text>
+            <box flexDirection="column" gap={1}>
+              <text fg={theme.textMuted} wrapMode="word">
+                no tasks yet
+              </text>
+              <text fg={theme.textMuted} wrapMode="word">
+                press M-N (Shift+Alt+n) to create your first task
+              </text>
+            </box>
           }
         >
           <For each={props.signals.tasks() as readonly { id: string; title: string; kind: string; status: string }[]}>
@@ -64,6 +69,10 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                   gap={1}
                   backgroundColor={isActive() ? theme.primary : undefined}
                   flexShrink={0}
+                  onMouseDown={() => {
+                    if (isActive()) return
+                    props.signals.dispatchRpc("rpc.switchTask", { id: task.id })
+                  }}
                 >
                   <text fg={isActive() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                     {marker}

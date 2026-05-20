@@ -264,7 +264,11 @@ async function runSolidPane(
 ): Promise<RunPaneResult> {
   const { createPaneSignals, subscribePaneSignals } = await import("../tui/panes/subprocess/shared.ts")
   const { mountSolidPane } = await import("../tui/panes/subprocess/host.tsx")
-  const signals = createPaneSignals(hello)
+  // Pass the daemon client into the signal store so mouse-click handlers
+  // in SidebarPane / TabStripPane can dispatch fire-and-forget RPCs
+  // (switch-task / switch-tab / new-task) without each component knowing
+  // about the client.
+  const signals = createPaneSignals(hello, client as unknown as Parameters<typeof createPaneSignals>[1])
   // Subscribe BEFORE render so any event arriving during the renderer's
   // async mount lands in the signal store (Solid re-renders on next tick).
   subscribePaneSignals(client as unknown as Parameters<typeof subscribePaneSignals>[0], signals)

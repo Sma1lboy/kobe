@@ -51,9 +51,17 @@ export interface PaneSignals {
   setActiveTaskId: Setter<string | null>
   /** Accessor for the active task lookup. Returns null when no task is active. */
   activeTask: Accessor<SerializedTask | null>
+  /**
+   * Fire-and-forget RPC dispatch. Components use this to translate
+   * mouse clicks into daemon actions (switch-task, switch-tab, new-task,
+   * etc) without each component needing to know about the client. Wraps
+   * any client error to a console.error so a failed click never crashes
+   * the renderer. No-op when no client is bound (test default).
+   */
+  dispatchRpc: (name: DaemonRequestName, payload?: unknown) => void
 }
 
-export function createPaneSignals(initial: HelloPayload): PaneSignals {
+export function createPaneSignals(initial: HelloPayload, client?: PaneSubprocessClient): PaneSignals {
   const [tasks, setTasks] = createSignal<readonly SerializedTask[]>(initial.tasks)
   const [activeTaskId, setActiveTaskId] = createSignal<string | null>(initial.activeTaskId)
   const activeTask = (): SerializedTask | null => {
@@ -61,7 +69,14 @@ export function createPaneSignals(initial: HelloPayload): PaneSignals {
     if (id == null) return null
     return tasks().find((t) => t.id === id) ?? null
   }
-  return { tasks, activeTaskId, setTasks, setActiveTaskId, activeTask }
+  const dispatchRpc = (name: DaemonRequestName, payload?: unknown): void => {
+    if (!client) return
+    void client.request(name, payload).catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[pane] rpc ${name} failed: ${msg}`)
+    })
+  }
+  return { tasks, activeTaskId, setTasks, setActiveTaskId, activeTask, dispatchRpc }
 }
 
 /** Wire daemon events into the signal store. Returns no-op; subscribers

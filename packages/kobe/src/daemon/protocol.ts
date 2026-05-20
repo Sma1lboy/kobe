@@ -52,6 +52,7 @@ export type DaemonRequestName =
   | "rcBridge.start"
   | "rcBridge.stop"
   | "rcBridge.status"
+  | "rpc.newTask"
   | "rpc.switchTask"
   | "rpc.switchTab"
   | "rpc.newTab"

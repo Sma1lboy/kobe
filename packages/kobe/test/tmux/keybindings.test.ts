@@ -56,8 +56,16 @@ describe("DEFAULT_KEYBINDINGS", () => {
     })
   })
 
-  it("has exactly the documented binding count (9 tabs + 4 pane nav + 4 task/tab actions)", () => {
-    expect(DEFAULT_KEYBINDINGS.length).toBe(9 + 4 + 4)
+  it("has exactly the documented binding count (9 tabs + 4 task/tab actions + 1 new-task + 4 pane nav)", () => {
+    expect(DEFAULT_KEYBINDINGS.length).toBe(9 + 4 + 1 + 4)
+  })
+
+  it("M-N triggers rpc new-task (uppercase N to avoid colliding with M-n next-task)", () => {
+    expect(DEFAULT_KEYBINDINGS.find((b) => b.key === "M-N")?.action).toEqual({
+      kind: "rpc",
+      verb: "new-task",
+      args: [],
+    })
   })
 })
 
@@ -210,6 +218,15 @@ describe("buildBindKeyArgs", () => {
           "M-w",
           "run-shell",
           "kobe rpc close-tab --no-wait",
+        ],
+        [
+          "bind-key",
+          "-n",
+          "-T",
+          "root",
+          "M-N",
+          "run-shell",
+          "kobe rpc new-task --no-wait",
         ],
         [
           "bind-key",

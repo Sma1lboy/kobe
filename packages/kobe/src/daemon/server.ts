@@ -686,6 +686,26 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "rcBridge.status": {
         return { status: rcBridge.status() }
       }
+      case "rpc.newTask": {
+        // M-N from the tmux root key table lands here. We accept an
+        // optional `repo` override but default to the daemon's cwd —
+        // that's the project root the user launched `kobe` from.
+        const repo = optionalString(payload, "repo") ?? process.cwd()
+        const title = optionalString(payload, "title")
+        const prompt = optionalString(payload, "prompt")
+        const task = await orch.createTask({
+          repo,
+          ...(title !== undefined ? { title } : {}),
+          ...(prompt !== undefined ? { prompt } : {}),
+        })
+        for (const c of clients) subscribeClientToTask(orch, c, task)
+        broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
+        // Make the freshly created task active so the user can immediately
+        // press M-t to spawn the first chat tab (or `Alt+t` etc).
+        activeState.set(task.id)
+        safeEnsureAndSwap(task.id, task.activeTabId)
+        return { ok: true, taskId: task.id }
+      }
       case "rpc.switchTask": {
         const id = requireString(payload, "id")
         const task = orch.getTask(id)
