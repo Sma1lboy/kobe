@@ -60,12 +60,12 @@ export function TabStripPane(props: { signals: PaneSignals }) {
                   props.signals.dispatchRpc("rpc.switchTab", { tabId: tab.id })
                 }
                 return (
-                  <box flexDirection="row" flexShrink={0} onMouseDown={dispatch}>
+                  <box flexDirection="row" flexShrink={0} onMouseUp={dispatch}>
                     <text
                       fg={isActive() ? theme.primary : theme.textMuted}
                       attributes={isActive() ? TextAttributes.BOLD : undefined}
                       wrapMode="none"
-                      onMouseDown={dispatch}
+                      onMouseUp={dispatch}
                     >
                       {isActive() ? `[${tabLabel(tab)}]` : ` ${tabLabel(tab)} `}
                     </text>

@@ -80,12 +80,12 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                   gap={1}
                   backgroundColor={isActive() ? theme.primary : undefined}
                   flexShrink={0}
-                  onMouseDown={dispatch}
+                  onMouseUp={dispatch}
                 >
                   <text
                     fg={isActive() ? theme.selectedListItemText : theme.textMuted}
                     wrapMode="none"
-                    onMouseDown={dispatch}
+                    onMouseUp={dispatch}
                   >
                     {marker}
                   </text>
@@ -93,7 +93,7 @@ export function SidebarPane(props: { signals: PaneSignals }) {
                     fg={isActive() ? theme.selectedListItemText : theme.text}
                     attributes={isActive() ? TextAttributes.BOLD : undefined}
                     wrapMode="none"
-                    onMouseDown={dispatch}
+                    onMouseUp={dispatch}
                   >
                     {task.title}
                   </text>
