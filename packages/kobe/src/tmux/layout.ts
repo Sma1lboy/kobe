@@ -36,6 +36,11 @@ export type LayoutStep =
       readonly direction: "h" | "v"
       readonly size: string
       readonly command: string
+      /** If true, pass `-b` to split-window so the new pane is placed
+       *  to the LEFT (for -h) or ABOVE (for -v) the target. Default false
+       *  = new pane to the right/below.
+       */
+      readonly before?: boolean
     }
   | { readonly kind: "resize"; readonly targetLabel: PaneLabel; readonly heightRows: number }
   | { readonly kind: "select"; readonly targetLabel: PaneLabel }
@@ -131,41 +136,44 @@ export function buildLayoutSteps(opts: LayoutOptions): LayoutStep[] {
       windowName,
       command: sidebarCmd,
     },
-    // Carve the right ~75% out of the sidebar pane. The sidebar keeps
-    // the left 25%; the new pane will become the tab-strip (resized
-    // down to 1 row below).
+    // Carve the right ~75% out of the sidebar pane → middle column.
+    // Initially we put the chat command here; later (in step 3 below)
+    // we split a 1-row tab-strip OFF THE TOP of this pane so the
+    // middle column ends up tab-strip-on-top + chat-below. Doing it
+    // this way (tab-strip born at exactly 1 row via `-b -l 1`) is
+    // robust to small terminals — the older approach split chat off
+    // tab-strip with size "90%" and tmux would GC the sub-1-row
+    // remainder, breaking the layout build.
     {
       kind: "split",
-      name: "tab-strip",
+      name: "chat",
       targetLabel: "sidebar",
       direction: "h",
       size: "75%",
-      command: tabStripCmd,
+      command: chatCmd,
     },
     // Peel the right column (files+shell) off the middle band. The
-    // new pane takes the rightmost 33% of the current tab-strip pane.
+    // new pane takes the rightmost 33% of the chat pane.
     {
       kind: "split",
       name: "files",
-      targetLabel: "tab-strip",
+      targetLabel: "chat",
       direction: "h",
       size: "33%",
       command: filesCmd,
     },
-    // Drop chat below the tab-strip. New pane gets 90% of the
-    // column's height; tab-strip keeps ~10% (must stay >= 1 row,
-    // otherwise tmux GC's the pane and the next resize step can't
-    // find it). The resize step below then clamps tab-strip to
-    // exactly 1 row.
+    // Spawn the tab-strip ABOVE chat at exactly 1 row (`-b -l 1`).
+    // No follow-up resize needed; tab-strip is correctly sized from
+    // birth and chat takes the rest of the column.
     {
       kind: "split",
-      name: "chat",
-      targetLabel: "tab-strip",
+      name: "tab-strip",
+      targetLabel: "chat",
       direction: "v",
-      size: "90%",
-      command: chatCmd,
+      size: "1",
+      before: true,
+      command: tabStripCmd,
     },
-    { kind: "resize", targetLabel: "tab-strip", heightRows: 1 },
     // Split the right column vertically. Files keep the top half;
     // new pane (shell) takes the bottom half.
     {

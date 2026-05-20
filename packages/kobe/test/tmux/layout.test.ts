@@ -70,15 +70,14 @@ describe("buildLayoutSteps", () => {
     expect(chat && chat.kind === "split" && chat.command).toBe(placeholderShellCommand(DEFAULT_PLACEHOLDERS.chat))
   })
 
-  it("emits the canonical 7-step skeleton", () => {
+  it("emits the canonical 6-step skeleton (tab-strip born as 1-row pane via -b -l 1)", () => {
     const steps = buildLayoutSteps({ sessionName: "kobe-test", placeholders: DEFAULT_PLACEHOLDERS })
     expect(steps.map((s) => ({ kind: s.kind, name: "name" in s ? s.name : undefined })))
       .toEqual([
         { kind: "new-session", name: "sidebar" },
-        { kind: "split", name: "tab-strip" },
-        { kind: "split", name: "files" },
         { kind: "split", name: "chat" },
-        { kind: "resize", name: undefined },
+        { kind: "split", name: "files" },
+        { kind: "split", name: "tab-strip" },
         { kind: "split", name: "shell" },
         { kind: "select", name: undefined },
       ])

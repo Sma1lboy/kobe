@@ -249,6 +249,7 @@ function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>, sessio
     const args = [
       "split-window",
       `-${step.direction}`,
+      ...(step.before ? ["-b"] : []),
       "-t",
       target,
       "-l",
@@ -258,7 +259,7 @@ function runLayoutStep(step: LayoutStep, paneIds: Map<PaneLabel, string>, sessio
       "#{pane_id}",
       step.command,
     ]
-    const out = runCapturePaneId("tmux", args)
+    const out = runCapturePaneId("tmux", args, sessionName)
     paneIds.set(step.name, out)
     return
   }
