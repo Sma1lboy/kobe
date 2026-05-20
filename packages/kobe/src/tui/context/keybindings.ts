@@ -219,58 +219,11 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Quit (with confirm)",
     hint: { keys: "q", label: "quit" },
   },
-  {
-    // Workspace-only "back to tasks" chord. Plain `q` (sidebar
-    // scope) actually quits; ctrl+q is the chord-form aliased to
-    // sidebar focus, mirroring esc / ctrl+1 in effect.
-    id: "focus.sidebar",
-    scope: "workspace",
-    keys: ["ctrl+q"],
-    category: "Workspace",
-    description: "Back to sidebar (tasks)",
-    hint: { keys: "ctrl+q", label: "tasks" },
-  },
 
   // ─── Navigation ───────────────────────────────────────────────────────
-  {
-    id: "focus.next",
-    scope: "global",
-    keys: ["tab"],
-    category: "Navigation",
-    description: "Focus next pane (Wave 3)",
-    hint: { keys: "tab", label: "cycle", pin: "right" },
-  },
-  {
-    id: "focus.prev",
-    scope: "global",
-    keys: ["shift+tab"],
-    category: "Navigation",
-    description: "Focus previous pane",
-  },
-  {
-    // `ctrl+hjkl` — vim-style direct pane focus. Reliable across
-    // every terminal (ctrl+letter maps to stable C0 control bytes,
-    // no CSI-u / kitty keyboard / iTerm quirks). The four chords
-    // map to the four panes by ordinal:
-    //   ctrl+h → 1 = sidebar (TASKS)
-    //   ctrl+j → 2 = workspace
-    //   ctrl+k → 3 = files
-    //   ctrl+l → 4 = terminal
-    // Why hjkl and not 1234? ctrl+digit needs CSI-u (which iTerm2
-    // doesn't fully support — ctrl+1 falls through to a bare `1`
-    // byte) and alt+digit gets eaten by macOS launchers like
-    // Raycast. ctrl+letter just works. The conflict with composer
-    // editing chords (ctrl+h=backspace etc.) is OK in practice
-    // because the user's intent when pressing ctrl+h is "switch
-    // pane," and once focus moves to sidebar the textarea has
-    // already lost focus.
-    id: "focus.numeric",
-    scope: "global",
-    keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
-    category: "Navigation",
-    description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
-    hint: { keys: "ctrl+hjkl", label: "focus", pin: "right" },
-  },
+  // Cross-pane focus (Tab cycling / Ctrl+hjkl jump / Ctrl+Q back-to-sidebar)
+  // was removed in sprint-7: tmux owns pane focus now via Alt+h/j/k/l →
+  // `select-pane` (see `src/tmux/keybindings.ts`).
   {
     id: "app.copy_or_quit",
     scope: "global",
@@ -785,15 +738,6 @@ export type KobeKeybindingsOpts = {
   /** Open the help dialog. Required — this hook owns the F1 binding. */
   onShowHelp: () => void
   /**
-   * Called when the user presses focus-next / focus-prev. Wave 3 wires
-   * real focus management; for v1 we accept no-ops so the keys are
-   * reserved and not stolen by deeper handlers.
-   */
-  onFocusNext?: () => void
-  onFocusPrev?: () => void
-  /** Whether tab / shift+tab pane cycling should be registered. */
-  focusCycleEnabled?: () => boolean
-  /**
    * Called after the user confirms quit. Defaults to `process.exit(0)`
    * which is correct in the production binary. Tests can pass a spy.
    */
@@ -836,10 +780,6 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       }
       process.exit(0)
     })
-  const onFocusNext = opts.onFocusNext ?? (() => {})
-  const onFocusPrev = opts.onFocusPrev ?? (() => {})
-  const focusCycleEnabled = opts.focusCycleEnabled ?? (() => true)
-
   // Auto-copy on selection finish.
   //
   // Why this exists at all: a TUI's mouse selection is opentui's, not the
@@ -921,13 +861,5 @@ export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
       }),
     ]
   })
-  const focusCycleBindings = createMemo<Binding[]>(() =>
-    bindByIds({
-      "focus.next": () => onFocusNext(),
-      "focus.prev": () => onFocusPrev(),
-    }),
-  )
-
   useBindings(() => ({ bindings: bindings() }))
-  useBindings(() => ({ enabled: focusCycleEnabled(), bindings: focusCycleBindings() }))
 }

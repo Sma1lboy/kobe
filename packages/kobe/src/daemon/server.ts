@@ -180,23 +180,18 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   let tmuxClient: TmuxControlClient | null = null
 
   /**
-   * Fire-and-forget swap to the (taskId, tab) pair. Best-effort: a
-   * tmux failure is logged but never bubbles up to the rpc caller —
-   * rpc verbs should still mutate orchestrator state even if the
-   * visible swap drifts.
-   */
-  function safeSwap(taskId: string, tabId: string): void {
-    const adapter = paneStashAdapter
-    if (!adapter) return
-    void adapter.swapToChat(taskId, tabId).catch((err) => logDaemonError("pane-stash-swap", err))
-  }
-
-  /**
-   * Best-effort ensure+swap for a new tab — same crash-isolation policy
-   * as `safeSwap`. After a successful spawn for a tab that has no
-   * persisted sessionId, sniff the new `<sid>.jsonl` Claude Code writes
-   * to `~/.claude/projects/<encoded-cwd>/` and persist it on the tab so
+   * Best-effort ensure-spawn + swap for a (task, tab) pair. After a
+   * successful spawn for a tab that has no persisted sessionId, sniff
+   * the new `<sid>.jsonl` Claude Code writes to
+   * `~/.claude/projects/<encoded-cwd>/` and persist it on the tab so
    * subsequent ensures resume the same session (`claude --resume <sid>`).
+   *
+   * Best-effort: tmux failures are logged but never bubble up to the
+   * rpc caller — rpc verbs should still mutate orchestrator state even
+   * if the visible swap drifts. Sprint-6 used a separate `safeSwap`
+   * path that skipped the ensure-and-spawn machinery; sprint-7 routes
+   * every active-state mutation through this so a never-spawned
+   * sibling tab gets spawned + sniffed on demand (KOB-219).
    */
   function safeEnsureAndSwap(taskId: string, tabId: string): void {
     const adapter = paneStashAdapter
@@ -696,12 +691,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const task = orch.getTask(id)
         if (!task) throw new Error(`unknown task: ${id}`)
         activeState.set(id)
-        // Bring the active tab's chat pane into the slot. We pull the
-        // tab id off the task — the orchestrator owns "what tab is
-        // active within task X" while activeState only tracks "which
-        // task is foregrounded". Best-effort: tmux failure shouldn't
-        // mask the state change to the rpc caller.
-        safeSwap(id, task.activeTabId)
+        // Ensure + swap so a never-spawned tab gets spawned + sniffed
+        // on demand, rather than swap-into-nothing (KOB-219). Sniff is
+        // skipped automatically when the tab already has a sessionId.
+        safeEnsureAndSwap(id, task.activeTabId)
         return { ok: true, activeTaskId: id }
       }
       case "rpc.nextTask": {
@@ -713,7 +706,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const nextId = activeState.get()
         if (nextId) {
           const t = orch.getTask(nextId)
-          if (t) safeSwap(nextId, t.activeTabId)
+          if (t) safeEnsureAndSwap(nextId, t.activeTabId)
         }
         return { ok: true, activeTaskId: nextId }
       }
@@ -726,7 +719,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const nextId = activeState.get()
         if (nextId) {
           const t = orch.getTask(nextId)
-          if (t) safeSwap(nextId, t.activeTabId)
+          if (t) safeEnsureAndSwap(nextId, t.activeTabId)
         }
         return { ok: true, activeTaskId: nextId }
       }
@@ -754,9 +747,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const nextActive = await orch.closeTab(activeTaskId, closingTabId)
         broadcastTaskUpdated(orch, clients, activeTaskId)
         // The orchestrator has already moved active focus to `nextActive`.
-        // Swap to it first (so the closing tab's pane is no longer in
-        // the chat slot), then kill the closing tab's stash pane.
-        if (nextActive) safeSwap(activeTaskId, nextActive)
+        // Route through safeEnsureAndSwap so a sibling tab that never
+        // had a stash pane spawned gets one on demand (KOB-219). Then
+        // kill the closing tab's stash pane.
+        if (nextActive) safeEnsureAndSwap(activeTaskId, nextActive)
         safeKill(activeTaskId, closingTabId)
         return { ok: true, nextActive }
       }
@@ -845,7 +839,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
         await orch.setActiveTab(activeTaskId, resolvedId)
         broadcastTaskUpdated(orch, clients, activeTaskId)
-        safeSwap(activeTaskId, resolvedId)
+        // Ensure + swap so a never-spawned sibling tab gets spawned +
+        // sniffed on demand (KOB-219).
+        safeEnsureAndSwap(activeTaskId, resolvedId)
         return { ok: true, tabId: resolvedId }
       }
       default:
