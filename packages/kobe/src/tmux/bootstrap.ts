@@ -91,8 +91,37 @@ export async function maybeBootstrapTmux(): Promise<MaybeBootstrapResult> {
   const paneStyleCmds = buildPaneStyleCommands(sessionName)
 
   const paneIds = new Map<PaneLabel, string>()
+  const debug = process.env.KOBE_LAYOUT_DEBUG === "1"
+  const debugLog = (label: string) => {
+    if (!debug) return
+    const snap = nodeSpawnSync(
+      "tmux",
+      ["list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index} #{pane_id} #{pane_width}x#{pane_height}"],
+      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+    )
+    const stdout = typeof snap.stdout === "string" ? snap.stdout : ""
+    const stderr = typeof snap.stderr === "string" ? snap.stderr : ""
+    const captured = Array.from(paneIds.entries())
+      .map(([n, id]) => `${n}=${id}`)
+      .join(" ")
+    process.stderr.write(
+      `[kobe-layout-debug] ${label}\n  captured: ${captured}\n  tmux panes:\n${
+        stdout
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => `    ${l}`)
+          .join("\n")
+      }${stderr ? `\n  tmux stderr: ${stderr.trim()}` : ""}\n`,
+    )
+  }
+  debugLog("before any step")
   for (const step of steps) {
+    const label = step.kind === "new-session" || step.kind === "split"
+      ? `${step.kind} ${"name" in step ? step.name : ""} (target=${"targetLabel" in step ? step.targetLabel : "-"})`
+      : `${step.kind} (target=${"targetLabel" in step ? step.targetLabel : "-"})`
+    debugLog(`BEFORE ${label}`)
     runLayoutStep(step, paneIds, sessionName)
+    debugLog(`AFTER ${label}`)
   }
   for (const cmd of [...statusCmds, ...paneStyleCmds]) {
     const result = nodeSpawnSync("tmux", [...cmd], {
