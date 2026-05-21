@@ -17,14 +17,17 @@ import {
   type DetectDeps,
   claudeGlobalConfigPath,
   codexAuthPath,
+  copilotConfigPath,
   detectClaudeAccount,
   detectCodexAccount,
+  detectCopilotAccount,
   detectGeminiAccount,
   geminiOauthCredsPath,
   geminiSettingsPath,
 } from "@/engine/account-detect"
 import { ClaudeBinaryNotFoundError } from "@/engine/claude-code-local/binary"
 import { CodexBinaryNotFoundError } from "@/engine/codex-local/binary"
+import { CopilotBinaryNotFoundError } from "@/engine/copilot-local/binary"
 import { GeminiBinaryNotFoundError } from "@/engine/gemini-local/binary"
 import { describe, expect, it } from "vitest"
 
@@ -36,6 +39,7 @@ function makeDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
     findClaudeBinary: async () => "/usr/local/bin/claude",
     findCodexBinary: async () => "/usr/local/bin/codex",
     findGeminiBinary: async () => "/usr/local/bin/gemini",
+    findCopilotBinary: async () => "/usr/local/bin/copilot",
     ...overrides,
   }
 }
@@ -75,6 +79,17 @@ describe("gemini auth paths", () => {
   it("uses ~/.gemini/oauth_creds.json and ~/.gemini/settings.json", () => {
     expect(geminiOauthCredsPath("/home/user")).toBe("/home/user/.gemini/oauth_creds.json")
     expect(geminiSettingsPath("/home/user")).toBe("/home/user/.gemini/settings.json")
+  })
+})
+
+describe("copilotConfigPath", () => {
+  it("defaults to ~/.copilot/config.json", () => {
+    expect(copilotConfigPath(() => undefined, "/home/user")).toBe("/home/user/.copilot/config.json")
+  })
+  it("honours COPILOT_HOME", () => {
+    expect(copilotConfigPath((k) => (k === "COPILOT_HOME" ? "/elsewhere/copilot" : undefined), "/home/user")).toBe(
+      "/elsewhere/copilot/config.json",
+    )
   })
 })
 
@@ -343,5 +358,48 @@ describe("detectGeminiAccount", () => {
     )
     expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
     expect(r.account).toEqual({ kind: "google", email: "jane@example.com", authType: undefined })
+  })
+})
+
+describe("detectCopilotAccount", () => {
+  it("reports 'none' when no token env or config file exists", async () => {
+    const r = await detectCopilotAccount(makeDeps())
+    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/copilot" })
+    expect(r.account).toEqual({ kind: "none" })
+  })
+
+  it("reports token auth by precedence", async () => {
+    const r = await detectCopilotAccount(
+      makeDeps({
+        env: (k) => (k === "GH_TOKEN" ? "gho_test" : undefined),
+      }),
+    )
+    expect(r.account).toEqual({ kind: "token", source: "GH_TOKEN" })
+  })
+
+  it("detects an OAuth-style config without exposing token material", async () => {
+    const r = await detectCopilotAccount(
+      makeDeps({
+        readFile: () => JSON.stringify({ auth: { access_token: "secret" }, selectedUser: "octo" }),
+      }),
+    )
+    expect(r.account).toEqual({ kind: "oauth" })
+  })
+
+  it("surfaces JSON parse errors", async () => {
+    const r = await detectCopilotAccount(makeDeps({ readFile: () => "{ not json" }))
+    expect(r.account).toEqual({ kind: "none" })
+    expect(r.accountError).toMatch(/parse .*config\.json/)
+  })
+
+  it("reports binary not-found cleanly", async () => {
+    const r = await detectCopilotAccount(
+      makeDeps({
+        findCopilotBinary: async () => {
+          throw new CopilotBinaryNotFoundError(["/nowhere"])
+        },
+      }),
+    )
+    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
   })
 })

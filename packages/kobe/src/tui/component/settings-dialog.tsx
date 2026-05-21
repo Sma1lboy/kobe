@@ -16,10 +16,12 @@ import type { KobeOrchestrator } from "../../client/remote-orchestrator"
 import {
   type ClaudeAccount,
   type CodexAccount,
+  type CopilotAccount,
   type EngineAccountStatus,
   type GeminiAccount,
   detectClaudeAccount,
   detectCodexAccount,
+  detectCopilotAccount,
   detectGeminiAccount,
 } from "../../engine/account-detect"
 import { CODEX_BACKEND_KV_KEY, type CodexBackend } from "../../engine/codex-local/app-server"
@@ -77,6 +79,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
   const [geminiStatus, setGeminiStatus] = createSignal<EngineAccountStatus<GeminiAccount> | null>(null)
+  const [copilotStatus, setCopilotStatus] = createSignal<EngineAccountStatus<CopilotAccount> | null>(null)
 
   onMount(() => {
     void detectClaudeAccount()
@@ -99,6 +102,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
         // eslint-disable-next-line no-console
         console.error("kobe: detectGeminiAccount threw:", err)
         setGeminiStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
+      })
+    void detectCopilotAccount()
+      .then(setCopilotStatus)
+      .catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("kobe: detectCopilotAccount threw:", err)
+        setCopilotStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
       })
   })
 
@@ -275,6 +285,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               claudeStatus={claudeStatus}
               codexStatus={codexStatus}
               geminiStatus={geminiStatus}
+              copilotStatus={copilotStatus}
             />
           </Show>
           <Show when={section() === "codex"}>
