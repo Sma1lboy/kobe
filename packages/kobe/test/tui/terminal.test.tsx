@@ -20,8 +20,15 @@
 import type { KeyEvent } from "@opentui/core"
 import { afterEach, describe, expect, test } from "vitest"
 import { keyEventToShellBytes } from "../../src/tui/panes/terminal/keys-pure"
-import { MockTaskPty, type TaskPty } from "../../src/tui/panes/terminal/pty"
+import { MockTaskPty, type TaskPty, type TerminalRow } from "../../src/tui/panes/terminal/pty"
 import { PtyRegistry } from "../../src/tui/panes/terminal/registry"
+
+/**
+ * The PTY backends emit structured rows (one `Chunk[]` per row), not a
+ * plain string. Project them back to text for readable assertions —
+ * mirrors how a row reconstructs the line it was built from.
+ */
+const plain = (rows: readonly TerminalRow[]): string => rows.map((r) => r.map((c) => c.text).join("")).join("\n")
 
 /* --------------------------------------------------------------------- */
 /*  Helpers                                                               */
@@ -53,37 +60,37 @@ describe("MockTaskPty", () => {
 
   test("feed() pushes synthetic output to onData listeners", () => {
     const pty = new MockTaskPty({ taskId: "t1", cwd: "/tmp" })
-    const got: string[] = []
+    const got: (readonly TerminalRow[])[] = []
     pty.onData((s) => got.push(s))
     pty.feed("first\n")
     pty.feed("second\n")
     // Listeners receive the full buffer each tick (matches the pipe backend).
-    expect(got).toEqual(["first\n", "first\nsecond\n"])
+    expect(got.map(plain)).toEqual(["first\n", "first\nsecond\n"])
   })
 
   test("onData receives current buffer on subscribe if non-empty", () => {
     const pty = new MockTaskPty({ taskId: "t1", cwd: "/tmp" })
     pty.feed("preexisting\n")
-    const got: string[] = []
+    const got: (readonly TerminalRow[])[] = []
     pty.onData((s) => got.push(s))
-    expect(got).toEqual(["preexisting\n"])
+    expect(got.map(plain)).toEqual(["preexisting\n"])
   })
 
   test("onData unsubscribe stops further notifications", () => {
     const pty = new MockTaskPty({ taskId: "t1", cwd: "/tmp" })
-    const got: string[] = []
+    const got: (readonly TerminalRow[])[] = []
     const unsub = pty.onData((s) => got.push(s))
     pty.feed("a")
     unsub()
     pty.feed("b")
-    expect(got).toEqual(["a"])
+    expect(got.map(plain)).toEqual(["a"])
   })
 
   test("capture() returns the current buffer", () => {
     const pty = new MockTaskPty({ taskId: "t1", cwd: "/tmp" })
     pty.feed("line one\n")
     pty.feed("line two\n")
-    expect(pty.capture()).toBe("line one\nline two\n")
+    expect(plain(pty.capture())).toBe("line one\nline two\n")
   })
 
   test("resize() updates geometry", () => {

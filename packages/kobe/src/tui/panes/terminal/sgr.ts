@@ -74,7 +74,7 @@ export const EMPTY_STYLE: Style = Object.freeze({
  * pull opentui's full module graph into the test runtime (see file
  * top-of-comment for why we keep this file opentui-free).
  */
-function ansi256ToRgb(index: number): RGB {
+export function ansi256ToRgb(index: number): RGB {
   if (index < 0) return [0, 0, 0]
   if (index < 16) return SYSTEM_PALETTE[index] ?? [0, 0, 0]
   if (index < 232) {
@@ -328,7 +328,14 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
  * which `applySgr` treats as a reset — same as `\x1b[0m`.
  */
 function sgrParamsFromRaw(raw: string): string[] {
-  const body = raw.replace(/^(?:\x1b\[|\x9b)/, "").replace(/m$/, "")
+  // String slicing rather than a regex: the CSI introducers are control
+  // characters (ESC 0x1b, 1-byte CSI 0x9b), which a regex literal can't
+  // carry under our lint rules. Strip the introducer + trailing `m`.
+  let body = raw
+  if (body.charCodeAt(0) === 0x1b)
+    body = body.slice(2) // ESC `[`
+  else if (body.charCodeAt(0) === 0x9b) body = body.slice(1) // 1-byte CSI
+  if (body.endsWith("m")) body = body.slice(0, -1)
   return body.split(";")
 }
 

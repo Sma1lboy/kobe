@@ -29,9 +29,10 @@
  * explicit: clicking focuses the pane, that's all — no mouse-passthrough
  * to the shell.
  *
- * Output rendering: the backend gives us full snapshots, not deltas.
- * The snapshot is fed through `./sgr.ts` which returns one chunk-list
- * per row. We then flatten those rows into a single `StyledText` (with
+ * Output rendering: the backend gives us full snapshots, not deltas,
+ * and each snapshot is already one chunk-list per row (the Bun backend
+ * builds these straight from xterm's cells; KOB-224). We flatten those
+ * rows into a single `StyledText` (with
  * `\n` between rows) and render via ONE `<text>` element — opentui
  * composes the per-cell fg/bg/attrs. Why one `<text>` instead of one per row:
  * per-row `<text>` inside a flex column shifted the body's
@@ -40,8 +41,8 @@
  * body's screenY pinned to the row right under the header, which is
  * what the cursor positioning math assumes.
  *
- * Scrollback / viewport: we keep the latest snapshot in a Solid
- * signal, parse it into chunks, and slice to the visible window.
+ * Scrollback / viewport: we keep the latest snapshot rows in a Solid
+ * signal and slice to the visible window.
  * `ctrl+pgup`/`ctrl+pgdown` shift a `scrollOffset` signal; when
  * offset is 0 we follow the bottom (so new output is always visible
  * by default).
@@ -57,9 +58,9 @@ import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
 import { DialogConfirm } from "../../ui/dialog-confirm"
 import { useTerminalBindings } from "./keys"
-import type { CursorPos, TaskPty } from "./pty"
+import type { CursorPos, TaskPty, TerminalRow } from "./pty"
 import { PtyRegistry } from "./registry"
-import { ATTR, type Chunk, parseAnsiSnapshot } from "./sgr"
+import { ATTR, type Chunk } from "./sgr"
 import { rowsToStyledText } from "./sgr-to-text-chunk"
 
 /* --------------------------------------------------------------------- */
@@ -190,8 +191,10 @@ export function Terminal(props: TerminalProps): JSXElement {
   // Solid scheduler and the pane renders blank with no hint as to why.
   const [acquireError, setAcquireError] = createSignal<string | null>(null)
 
-  // Latest plain-text snapshot from the PTY.
-  const [snapshot, setSnapshot] = createSignal<string>("")
+  // Latest structured snapshot from the PTY: one style-run list per row,
+  // already opentui-ready. The Bun backend builds these straight from
+  // xterm's cells; there is no ANSI string to re-parse (KOB-224).
+  const [snapshot, setSnapshot] = createSignal<readonly TerminalRow[]>([])
 
   // Latest cursor position from the PTY (null when backend can't report).
   const [cursor, setCursor] = createSignal<CursorPos | null>(null)
@@ -209,7 +212,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     on([props.cwd, props.taskId, bodyGeometryReady], ([cwd, taskId, geometryReady]) => {
       if (!cwd || !taskId || !geometryReady) {
         setPty(null)
-        setSnapshot("")
+        setSnapshot([])
         setCursor(null)
         setAcquireError(null)
         return
@@ -224,7 +227,7 @@ export function Terminal(props: TerminalProps): JSXElement {
         const message = err instanceof Error ? err.message : String(err)
         setAcquireError(message)
         setPty(null)
-        setSnapshot("")
+        setSnapshot([])
         setCursor(null)
         return
       }
@@ -257,7 +260,7 @@ export function Terminal(props: TerminalProps): JSXElement {
     // for one tick.
     try {
       const initial = handle.capture()
-      if (initial) setSnapshot(initial)
+      if (initial.length > 0) setSnapshot(initial)
       setCursor(handle.captureCursor())
     } catch {
       /* capture can fail on a freshly-spawned shell; ignore */
@@ -307,7 +310,7 @@ export function Terminal(props: TerminalProps): JSXElement {
       try {
         const fresh = reg.reset(taskIdAtClick, cwdAtClick, { ...geometryAtClick, command: props.command })
         setPty(fresh)
-        setSnapshot("")
+        setSnapshot([])
         setCursor(null)
         setScrollOffset(0)
       } catch (err) {
@@ -336,11 +339,11 @@ export function Terminal(props: TerminalProps): JSXElement {
 
   /* --------- view ---------- */
 
-  // Parse the snapshot (text + SGR escapes) into one chunk-list per
-  // row. Memoized on `snapshot()`, so a cursor-only update doesn't
-  // re-parse the (unchanged) text. Empty rows are preserved so the
-  // Cursor-capable backends report y coordinates against this array.
-  const parsedRows = createMemo(() => parseAnsiSnapshot(snapshot()))
+  // The snapshot is already one chunk-list per row (the PTY backend
+  // hands us structured rows, not an ANSI string). Empty rows are
+  // preserved so cursor-capable backends report y coordinates against
+  // this array.
+  const parsedRows = snapshot
 
   // Rows visible after applying scroll offset. offset 0 means
   // follow-bottom: render only the last body-height rows, not the
