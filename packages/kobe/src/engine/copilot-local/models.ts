@@ -21,12 +21,6 @@ export const COPILOT_MODELS: readonly ModelChoice[] = [
   },
   {
     vendor: "copilot",
-    id: "gpt-5.3-codex",
-    label: "GPT-5.3 Codex",
-    hint: "deeper coding",
-  },
-  {
-    vendor: "copilot",
     id: "claude-sonnet-4.5",
     label: "Claude Sonnet 4.5",
     hint: "Copilot-hosted",
@@ -38,6 +32,14 @@ export const COPILOT_MODELS: readonly ModelChoice[] = [
     hint: "quick answers",
   },
 ]
+
+const COPILOT_SELECTABLE_MODEL_IDS = new Set(COPILOT_MODELS.map((m) => m.id))
+
+export function normalizeCopilotCliModel(modelId: string | undefined): string | undefined {
+  const trimmed = modelId?.trim()
+  if (!trimmed || trimmed === "auto") return undefined
+  return COPILOT_SELECTABLE_MODEL_IDS.has(trimmed) ? trimmed : undefined
+}
 
 export function copilotContextWindowFor(_modelId: string): number {
   return 0

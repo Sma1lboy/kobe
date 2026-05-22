@@ -1,5 +1,7 @@
 import { findCopilotBinary } from "@/engine/copilot-local/binary"
 import { parseEvents, parseWorkspaceYaml } from "@/engine/copilot-local/history"
+import { COPILOT_MODELS } from "@/engine/copilot-local/models"
+import { resolveCopilotDefaultModelId } from "@/engine/copilot-local/settings"
 import { buildArgs } from "@/engine/copilot-local/spawn"
 import { copilotUsageToSnapshot, parseCopilotJson } from "@/engine/copilot-local/stream"
 import { describe, expect, it } from "vitest"
@@ -56,6 +58,26 @@ describe("copilot spawn args", () => {
     expect(args).toContain("plan")
     expect(args).toContain("--effort")
     expect(args).toContain("high")
+  })
+
+  it("does not pass unavailable legacy Copilot model ids", () => {
+    expect(
+      buildArgs({
+        binaryPath: "copilot",
+        cwd: "/repo",
+        prompt: "hello",
+        model: "gpt-5.3-codex",
+        permissionMode: "default",
+      }),
+    ).not.toContain("--model")
+  })
+
+  it("keeps unavailable Copilot plan-gated models out of the picker catalog", () => {
+    expect(COPILOT_MODELS.map((m) => m.id)).not.toContain("gpt-5.3-codex")
+  })
+
+  it("lets the Copilot CLI own configured default model resolution", () => {
+    expect(resolveCopilotDefaultModelId({ COPILOT_MODEL: "gpt-5.3-codex" })).toBe("auto")
   })
 })
 
