@@ -69,27 +69,22 @@ import { bootstrapHistory } from "./panes/chat/composer/history"
 import { FileTree } from "./panes/filetree"
 import { Preview, type PreviewApi } from "./panes/preview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { PtyRegistry, Terminal } from "./panes/terminal"
+import { Terminal } from "./panes/terminal"
+import { ClaudeLauncher } from "./panes/terminal/fullscreen"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
 
-// User-reachable switch (KOB-208): `KOBE_CHAT_ENGINE=interactive` turns
-// the workspace chat content pane into an embedded interactive `claude`
-// session — the chat pane runs claude's native UI in a PTY instead of
-// rendering kobe's own stream-json message list + composer. Resolved
-// once; the env var is static for the process.
+// User-reachable switch (KOB-208 / KOB-225): `KOBE_CHAT_ENGINE=interactive`
+// turns the workspace chat content pane into a launcher for an interactive
+// `claude` session. Entering hands the whole terminal to claude (agent-deck
+// style full-screen takeover) rather than emulating + recompositing it in a
+// pane, which was laggy. Resolved once; the env var is static.
 const CHAT_INTERACTIVE = process.env.KOBE_CHAT_ENGINE === "interactive"
 
-// argv for the chat pane's interactive-claude PTY.
+// argv the chat pane hands off to on enter.
 const CHAT_CLAUDE_COMMAND: readonly string[] = ["claude"]
-
-// The chat pane's interactive-claude PTYs live in their own registry,
-// keyed by task id. A dedicated registry (not `getDefaultPtyRegistry()`)
-// keeps them from colliding with the bottom terminal pane's shell PTY,
-// which keys the SAME task id in the default registry.
-const chatClaudeRegistry = new PtyRegistry()
 
 // Engine selection + fake-engine HTTP side-channel moved to
 // `./engine-bootstrap.ts`. The side-channel is test-only — production
@@ -669,14 +664,11 @@ function Shell(props: AppDeps) {
                 />
               }
             >
-              {/* Interactive-claude mode (KOB-208): the chat content
-                  pane mounts an embedded `claude` PTY — claude's native
-                  UI — instead of kobe's stream-json message list +
-                  composer. The PTY widget is `<Terminal>`, reused with
-                  a `["claude"]` command override and its own registry.
-                  Keystrokes route to the PTY whenever the workspace
-                  pane owns focus; interactive claude has its own input
-                  box, so kobe's composer is not involved. */}
+              {/* Interactive-claude mode (KOB-208 / KOB-225): the chat
+                  content pane becomes a launcher instead of kobe's
+                  stream-json message list + composer. Entering hands the
+                  whole terminal to claude full-screen (agent-deck style)
+                  — emulating + recompositing it in a pane was laggy. */}
               <Show
                 when={CHAT_INTERACTIVE}
                 fallback={
@@ -698,13 +690,7 @@ function Shell(props: AppDeps) {
                   />
                 }
               >
-                <Terminal
-                  cwd={worktreePathAcc}
-                  taskId={taskIdNullAcc}
-                  focused={isFocused("workspace")}
-                  command={CHAT_CLAUDE_COMMAND}
-                  registry={chatClaudeRegistry}
-                />
+                <ClaudeLauncher cwd={worktreePathAcc} command={CHAT_CLAUDE_COMMAND} focused={isFocused("workspace")} />
               </Show>
             </Show>
           </box>
