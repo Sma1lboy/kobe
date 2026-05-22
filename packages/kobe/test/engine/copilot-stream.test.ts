@@ -145,6 +145,41 @@ describe("copilot JSON stream parser", () => {
     if (events[0]?.type !== "error") throw new Error("expected error event")
     expect(events[0].message).toContain("copilot JSON parse failed")
   })
+
+  it("captures session id from the final result event when session.start is absent", async () => {
+    let sessionId = ""
+    const events = []
+    for await (const ev of parseCopilotJson(
+      lineSource([
+        JSON.stringify({ type: "assistant.message", data: { messageId: "m-1", content: "done" } }),
+        JSON.stringify({
+          type: "result",
+          sessionId: "sid-from-result",
+          exitCode: 0,
+        }),
+      ]),
+      {
+        onSessionId: (sid) => {
+          sessionId = sid
+        },
+      },
+    )) {
+      events.push(ev)
+    }
+
+    expect(sessionId).toBe("sid-from-result")
+    expect(events).toEqual([{ type: "assistant.delta", text: "done" }, { type: "done" }])
+  })
+
+  it("does not duplicate final assistant messages after streamed deltas", async () => {
+    const events = await collect([
+      JSON.stringify({ type: "assistant.message_delta", data: { deltaContent: "ok" } }),
+      JSON.stringify({ type: "assistant.message", data: { messageId: "m-1", content: "ok" } }),
+      JSON.stringify({ type: "result", sessionId: "sid-1", exitCode: 0 }),
+    ])
+
+    expect(events).toEqual([{ type: "assistant.delta", text: "ok" }, { type: "done" }])
+  })
 })
 
 describe("copilot history helpers", () => {

@@ -12,6 +12,7 @@ export async function* parseCopilotJson(
 ): AsyncIterable<EngineEvent> {
   const completedMessages = new Set<string>()
   const toolNameById = new Map<string, string>()
+  let sawAssistantDelta = false
 
   for await (const rawLine of lines) {
     const line = rawLine.trim()
@@ -36,7 +37,10 @@ export async function* parseCopilotJson(
       case "assistant.message_delta": {
         const data = objectData(msg)
         const text = typeof data?.deltaContent === "string" ? data.deltaContent : ""
-        if (text) yield { type: "assistant.delta", text }
+        if (text) {
+          sawAssistantDelta = true
+          yield { type: "assistant.delta", text }
+        }
         break
       }
       case "assistant.message": {
@@ -47,6 +51,7 @@ export async function* parseCopilotJson(
           if (completedMessages.has(messageId)) break
           completedMessages.add(messageId)
         }
+        if (sawAssistantDelta) break
         if (content) yield { type: "assistant.delta", text: content }
         break
       }
@@ -74,9 +79,12 @@ export async function* parseCopilotJson(
         break
       }
       case "result": {
-        const usage = copilotUsageToSnapshot(objectData(msg)?.usage)
+        const data = objectData(msg)
+        const sid = typeof data?.sessionId === "string" ? data.sessionId : undefined
+        if (sid) opts.onSessionId?.(sid)
+        const usage = copilotUsageToSnapshot(data?.usage)
         if (usage) yield { type: "usage", ...usage }
-        const exitCode = objectData(msg)?.exitCode
+        const exitCode = data?.exitCode
         if (typeof exitCode === "number" && exitCode !== 0) {
           yield { type: "error", message: `copilot exited with code ${exitCode}` }
           return

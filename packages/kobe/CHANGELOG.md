@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Fixed
 
 - **Copilot startup no longer fails on plan-gated Codex model ids** — removes `gpt-5.3-codex` from kobe's Copilot picker and lets the Copilot CLI own `COPILOT_MODEL` / `~/.copilot/settings.json` default resolution instead of echoing those values back as a hard `--model` flag (KOB-222).
+- **Copilot result-only sessions now attach correctly** — handles Copilot CLI runs that omit `session.start` and only report `sessionId` on the final `result` event, and avoids duplicate final assistant messages after streamed deltas (KOB-223).
 
 ## [0.5.26] - 2026-05-17
 
