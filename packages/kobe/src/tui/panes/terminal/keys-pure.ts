@@ -99,6 +99,12 @@ export const RESERVED_GLOBAL_CHORDS: readonly string[] = [
   // Pane cycle (focus.prev). focus.next is bare `tab` and stays passthrough
   // so shell completion works; users get out via shift+tab or ctrl+hjkl.
   "shift+tab",
+  // Workspace → sidebar jump (app-keymap WORKSPACE_SCOPED). When the chat
+  // content pane runs interactive `claude` it is focused as `workspace`,
+  // and `ctrl+q` is the user's way back to the tasks list. Without
+  // reserving it the pane forwarder sent `\x11` (XON) to claude and the
+  // global jump never fired (KOB-208 interactive mode).
+  "ctrl+q",
   // Help / palette / settings.
   "f1",
   "ctrl+p",
