@@ -252,6 +252,23 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
     })
 
+    // Reply channel: xterm emits responses to the program's terminal
+    // queries (Primary DA `\x1b[c`, cursor-position report `\x1b[6n`,
+    // status DSR, etc.) via `onData`. These MUST flow back to the
+    // child's stdin — an interactive app like `claude` queries the
+    // terminal on startup to detect its type/capabilities and to sync
+    // its cursor model. Dropping the replies left claude on a fallback
+    // path whose relative cursor-move + erase-to-EOL redraw landed on
+    // the wrong rows, half-erasing its input-box rule (KOB-208).
+    this.term.onData((data) => {
+      if (this._killed) return
+      try {
+        this.proc.terminal?.write(data)
+      } catch {
+        /* best effort — child may have exited */
+      }
+    })
+
     this.proc = Bun.spawn(resolveArgv(opts), {
       cwd: opts.cwd,
       env: {
