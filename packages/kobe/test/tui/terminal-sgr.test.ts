@@ -123,6 +123,29 @@ describe("parseAnsiLine — colors", () => {
     const { chunks } = parseAnsiLine(`${ESC}48;2;10;20;30mbg${ESC}0m`)
     expect(chunks[0]?.bg).toEqual([10, 20, 30])
   })
+
+  // Regression: the terminal pane re-serializes xterm cells as
+  // `\x1b[0;38;2;R;G;B…m` — the true-color introducer is ALWAYS chained
+  // behind a leading `0` reset (and possibly bold etc.). The underlying
+  // tokenizer injects a phantom ITU colorspace id only for a *bare*
+  // single color escape, so a chained introducer must still land the
+  // RGB triple exactly. Before the fix this shifted to [120,92,0].
+  test("true-color fg chained behind a reset keeps exact RGB", () => {
+    const { chunks } = parseAnsiLine(`${ESC}0;38;2;204;120;92mx${ESC}0m`)
+    expect(chunks[0]?.fg).toEqual([204, 120, 92])
+  })
+
+  test("true-color fg chained behind bold keeps exact RGB", () => {
+    const { chunks } = parseAnsiLine(`${ESC}1;38;2;204;120;92mx${ESC}0m`)
+    expect(chunks[0]?.fg).toEqual([204, 120, 92])
+    expect((chunks[0]?.attributes ?? 0) & ATTR.BOLD).toBeTruthy()
+  })
+
+  test("two true-colors in one escape (fg then bg) both land", () => {
+    const { chunks } = parseAnsiLine(`${ESC}38;2;1;2;3;48;2;4;5;6mx${ESC}0m`)
+    expect(chunks[0]?.fg).toEqual([1, 2, 3])
+    expect(chunks[0]?.bg).toEqual([4, 5, 6])
+  })
 })
 
 describe("parseAnsiLine — style transitions", () => {
