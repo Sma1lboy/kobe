@@ -349,8 +349,14 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   private onTerminalData(data: string | Uint8Array): void {
     if (this._killed) return
-    const chunk = typeof data === "string" ? data : Buffer.from(data).toString("utf8")
-    this.term.write(chunk, () => this.queueRefresh())
+    // Hand raw bytes straight to xterm. Its parser keeps a streaming
+    // UTF-8 decoder across `write` calls, so a multi-byte glyph
+    // (box-drawing `─`, claude's status icons) split across a PTY chunk
+    // boundary is reassembled correctly. Decoding each chunk to a UTF-8
+    // string here instead corrupted any glyph straddling a boundary:
+    // claude's full-width input-box rule rendered with gaps and its
+    // relative-cursor redraw landed on the wrong row (KOB-208).
+    this.term.write(data, () => this.queueRefresh())
   }
 
   private queueRefresh(): void {
