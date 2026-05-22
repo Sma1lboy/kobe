@@ -22,15 +22,16 @@
 
 import type { CliRenderer } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { type Accessor, type JSXElement, createSignal } from "solid-js"
+import { type Accessor, type JSXElement, Show, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
+import { attachArgv, ensureSession, tmuxAvailable, tmuxSessionName } from "./tmux"
 
 export type FullscreenRunOpts = {
   /** The opentui renderer to suspend/resume around the handover. */
   renderer: CliRenderer
-  /** Working directory for the child (the task's worktree). */
-  cwd: string
+  /** Working directory for the child. Omit to inherit kobe's cwd. */
+  cwd?: string
   /** argv to run, e.g. `["claude"]`. First element is the executable. */
   command: readonly string[]
   /** Extra env merged over `process.env`. */
@@ -63,9 +64,11 @@ export async function runFullscreen(opts: FullscreenRunOpts): Promise<number | n
 }
 
 export type ClaudeLauncherProps = {
+  /** Stable task id — keys the persistent tmux session. Null = no task. */
+  taskId: Accessor<string | null>
   /** Worktree the claude session runs in. Null = no task selected. */
   cwd: Accessor<string | null>
-  /** argv to hand off to (the chat pane passes `["claude"]`). */
+  /** argv the tmux session runs (the chat pane passes `["claude"]`). */
   command: readonly string[]
   /** Whether the workspace pane currently owns focus (gates the chord). */
   focused: Accessor<boolean>
@@ -73,23 +76,38 @@ export type ClaudeLauncherProps = {
 
 /**
  * Launcher view for the chat pane's interactive-claude mode. `⏎` while
- * the pane is focused hands the terminal to claude full-screen; when
- * claude exits the user lands back here.
+ * the pane is focused attaches the terminal to the task's tmux session
+ * full-screen (creating it on first enter); the session persists across
+ * detach (Ctrl+Q / Ctrl+B D) and kobe restarts. When the user detaches
+ * or claude exits they land back here.
  */
 export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   const { theme } = useTheme()
   const renderer = useRenderer()
   const [running, setRunning] = createSignal(false)
+  const [error, setError] = createSignal<string | null>(null)
 
   const enter = (): void => {
+    const taskId = props.taskId()
     const cwd = props.cwd()
-    if (!cwd || running()) return
+    if (!taskId || !cwd || running()) return
     setRunning(true)
-    void runFullscreen({ renderer, cwd, command: props.command }).finally(() => setRunning(false))
+    setError(null)
+    void (async () => {
+      if (!(await tmuxAvailable())) {
+        setError("tmux not found on PATH — install tmux to use interactive mode")
+        return
+      }
+      const name = tmuxSessionName(taskId)
+      await ensureSession({ name, cwd, command: props.command })
+      await runFullscreen({ renderer, command: attachArgv(name) })
+    })()
+      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+      .finally(() => setRunning(false))
   }
 
   useBindings(() => ({
-    enabled: props.focused() && !running() && props.cwd() !== null,
+    enabled: props.focused() && !running() && props.taskId() !== null,
     bindings: [
       { key: "return", cmd: enter },
       { key: "enter", cmd: enter },
@@ -99,8 +117,11 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   return (
     <box flexGrow={1} flexDirection="column" alignItems="center" justifyContent="center" gap={1}>
       <text fg={theme.text}>Claude session</text>
-      <text fg={theme.textMuted}>{props.cwd() ? "press ⏎ to enter — full screen" : "(no task selected)"}</text>
-      <text fg={theme.textMuted}>exit claude (ctrl+c / /exit) to come back</text>
+      <text fg={theme.textMuted}>{props.taskId() ? "press ⏎ to enter — full screen" : "(no task selected)"}</text>
+      <text fg={theme.textMuted}>ctrl+q (or ctrl+b d) detaches — the session keeps running</text>
+      <Show when={error()}>
+        <text fg={theme.error}>{error()}</text>
+      </Show>
     </box>
   )
 }

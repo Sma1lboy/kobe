@@ -690,7 +690,12 @@ function Shell(props: AppDeps) {
                   />
                 }
               >
-                <ClaudeLauncher cwd={worktreePathAcc} command={CHAT_CLAUDE_COMMAND} focused={isFocused("workspace")} />
+                <ClaudeLauncher
+                  taskId={taskIdNullAcc}
+                  cwd={worktreePathAcc}
+                  command={CHAT_CLAUDE_COMMAND}
+                  focused={isFocused("workspace")}
+                />
               </Show>
             </Show>
           </box>
