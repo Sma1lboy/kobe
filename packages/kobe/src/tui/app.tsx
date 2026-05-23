@@ -45,6 +45,7 @@ import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { ClaudeLauncher } from "./panes/terminal/fullscreen"
+import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
@@ -187,6 +188,13 @@ function Shell(props: AppDeps) {
     if (ok !== true) return
     await props.orchestrator.deleteTask(taskId).catch((err: unknown) => {
       console.error("[kobe] delete failed:", err)
+    })
+    // Tear down the tmux session for this task so a re-created task
+    // with the same id (theoretically possible across kobe restarts
+    // if the user crafted a manifest) doesn't attach into the dead
+    // task's stale claude pane.
+    await killSession(tmuxSessionName(taskId)).catch((err: unknown) => {
+      console.error("[kobe] kill tmux session failed:", err)
     })
     // Drop selection if we just deleted the selected task.
     if (selectedId() === taskId) {
