@@ -43,6 +43,8 @@ import { loadUserThemes } from "./context/theme/loader"
 import { useBindings } from "./lib/keymap"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useThemePersistence } from "./lib/use-theme-persistence"
+import { CostDashboard } from "./panes/monitor/CostDashboard"
+import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { ClaudeLauncher } from "./panes/terminal/fullscreen"
 import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
@@ -133,6 +135,15 @@ function Shell(props: AppDeps) {
     process.exit(0)
   }
 
+  // Workspace view mode: "preview" (live capture-pane + ⏎ to enter)
+  // or "dashboard" (cost table). Toggle with `d` when workspace focused
+  // or `ctrl+d` globally. Defaults to preview so a fresh user sees
+  // what their task is doing.
+  const [view, setView] = createSignal<"preview" | "dashboard">("preview")
+  const toggleDashboard = (): void => {
+    setView((v) => (v === "dashboard" ? "preview" : "dashboard"))
+  }
+
   // Sidebar callbacks.
   async function newTask(): Promise<void> {
     const repos = getSavedRepos()
@@ -206,12 +217,14 @@ function Shell(props: AppDeps) {
 
   // Global keybindings — minimal in v0.6 (no chat composer, so most
   // chords moved with the chat pane). `q` quits, `n` new task,
-  // `tab`/`shift+tab` cycle pane focus, `ctrl+1..3` jump to pane.
+  // `tab`/`shift+tab` cycle pane focus, `ctrl+1..2` jump to pane,
+  // `ctrl+d` toggles cost dashboard.
   useBindings(() => ({
     enabled: true,
     bindings: [
       { key: "ctrl+1", cmd: () => setFocused("sidebar") },
       { key: "ctrl+2", cmd: () => setFocused("workspace") },
+      { key: "ctrl+d", cmd: toggleDashboard },
       { key: "tab", cmd: () => cycleFocus(+1) },
       { key: "shift+tab", cmd: () => cycleFocus(-1) },
     ],
@@ -244,6 +257,7 @@ function Shell(props: AppDeps) {
           if (id) void renameTask(id)
         },
       },
+      { key: "d", cmd: toggleDashboard },
     ],
   }))
 
@@ -291,22 +305,44 @@ function Shell(props: AppDeps) {
           onMouseUp={() => setFocused("workspace")}
           backgroundColor={theme.background}
         >
-          <PaneHeader title="WORKSPACE" ordinal="k" focused={focusedPane() === "workspace"} />
+          <PaneHeader
+            title={view() === "dashboard" ? "COST DASHBOARD" : "WORKSPACE"}
+            ordinal="k"
+            focused={focusedPane() === "workspace"}
+          />
           <Show
-            when={activeTask()}
+            when={view() === "dashboard"}
             fallback={
-              <box flexGrow={1} alignItems="center" justifyContent="center">
-                <text fg={theme.textMuted}>No task selected — press `n` in the sidebar to create one.</text>
-              </box>
+              <Show
+                when={activeTask()}
+                fallback={
+                  <box flexGrow={1} alignItems="center" justifyContent="center">
+                    <text fg={theme.textMuted}>No task selected — press `n` in the sidebar to create one.</text>
+                  </box>
+                }
+              >
+                {/* Top half: live capture-pane preview of the selected
+                  task's claude session. Bottom: the launcher with the
+                  ⏎ hint. The split is 70/30 — preview is the focus,
+                  launcher is a thin foot. */}
+                <box flexDirection="column" flexGrow={1}>
+                  <box flexGrow={7} flexShrink={1} flexBasis={0}>
+                    <LivePreview taskId={taskIdAcc} />
+                  </box>
+                  <box flexShrink={0} paddingTop={1} paddingBottom={1}>
+                    <ClaudeLauncher
+                      taskId={taskIdAcc}
+                      cwd={worktreePathAcc}
+                      command={CHAT_CLAUDE_COMMAND}
+                      focused={isFocused("workspace")}
+                      onEnsureWorktree={async (id) => props.orchestrator.ensureWorktree(id)}
+                    />
+                  </box>
+                </box>
+              </Show>
             }
           >
-            <ClaudeLauncher
-              taskId={taskIdAcc}
-              cwd={worktreePathAcc}
-              command={CHAT_CLAUDE_COMMAND}
-              focused={isFocused("workspace")}
-              onEnsureWorktree={async (id) => props.orchestrator.ensureWorktree(id)}
-            />
+            <CostDashboard tasks={tasksAcc} />
           </Show>
         </box>
       </box>
