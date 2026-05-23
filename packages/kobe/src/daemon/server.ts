@@ -1,23 +1,25 @@
+/**
+ * kobe daemon server (v0.6).
+ *
+ * v0.5 was a chat-stream broker on top of a Unix socket: clients
+ * subscribed to per-tab event buses, the daemon hosted the engine
+ * subprocess and forwarded `assistant.delta` / `tool.start` / etc.
+ * v0.6 has none of that — claude lives in tmux, so the daemon's
+ * only job is to be the single writer for the task index.
+ *
+ * The RPC surface is now: hello / daemon.status / daemon.stop +
+ * task CRUD + subscribe. Everything else (chat.*, pr.*, merge.*,
+ * rcBridge.*, plan-usage poll) is gone with the chat pane.
+ */
+
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
-import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
-import { resolveRepoRoot } from "../state/repos.ts"
-import type { Message, ModelEffortLevel, OrchestratorEvent, UserInputResponse } from "../types/engine.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import { type PlanUsagePoller, createPlanUsagePoller } from "./plan-usage-poller.ts"
-import {
-  DAEMON_PROTOCOL_VERSION,
-  frameToLine,
-  normalizeEventForWire,
-  serializeMessages,
-  serializeTask,
-} from "./protocol.ts"
-import type { DaemonFrame, SerializedHistoryPage } from "./protocol.ts"
-import { type RcBridge, createRcBridge } from "./rc-bridge.ts"
+import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 
 export interface DaemonServerOptions {
   readonly socketPath?: string
@@ -25,17 +27,6 @@ export interface DaemonServerOptions {
   readonly homeDir?: string
   readonly startedAt?: Date
   readonly onStop?: () => void | Promise<void>
-  /**
-   * Override the plan-usage poller. Tests inject a fake fetcher here so
-   * the daemon doesn't actually hit Anthropic's API.
-   */
-  readonly planUsagePoller?: PlanUsagePoller
-  /**
-   * Override the remote-control bridge manager (KOB-62). Tests pass a
-   * fake whose `start`/`stop` resolve synchronously without spawning
-   * the real `claude remote-control` subprocess.
-   */
-  readonly rcBridge?: RcBridge
 }
 
 export interface DaemonServer {
@@ -54,12 +45,8 @@ export interface DaemonClientConnection {
 type ClientState = DaemonClientConnection & {
   socket: Socket
   buffer: string
-  /**
-   * Active per-tab subscriptions for this client. Keyed by
-   * `${taskId}:${tabId}` so re-subscribing the same tab is a no-op
-   * (prevents the chat.tab.create dupe-subscribe leak — see #3).
-   */
-  subscriptions: Map<string, () => void>
+  /** True once the client has called `subscribe` (broadcast target). */
+  subscribed: boolean
 }
 
 export async function startDaemonServer(orch: Orchestrator, options: DaemonServerOptions = {}): Promise<DaemonServer> {
@@ -79,39 +66,32 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       connectedAt: new Date(),
       socket,
       buffer: "",
-      subscriptions: new Map(),
+      subscribed: false,
     }
     clients.add(client)
 
     socket.on("data", (chunk) => {
       client.buffer += chunk.toString("utf8")
-      drainClientBuffer(orch, serverApi, client)
+      drainClientBuffer(client)
     })
     socket.on("error", () => {})
     socket.on("close", () => {
-      for (const unsub of client.subscriptions.values()) unsub()
-      client.subscriptions.clear()
       clients.delete(client)
     })
   })
 
-  // Plan-usage poller — periodically refreshes claude plan utilization
-  // and broadcasts the snapshot to every attached client. Starts after
-  // `serverApi` is built so `broadcast` is in scope. The first tick
-  // fires immediately so `hello` responses can carry a fresh value
-  // shortly after daemon boot.
-  const planUsagePoller =
-    options.planUsagePoller ??
-    createPlanUsagePoller({
-      onUpdate: (usage) => broadcast(clients, { type: "event", name: "plan.usage", payload: { usage } }),
+  // Push every task-list change to subscribed clients as a snapshot.
+  // v0.5 sent per-task `task.updated` / `task.created` / `task.deleted`
+  // deltas; the new surface is small enough that re-sending the full
+  // list on every mutation is cheaper than computing the diff. The
+  // clients re-derive their delta locally.
+  const unsubscribeStore = orch.subscribeTasks((snapshot) => {
+    broadcast(clients, {
+      type: "event",
+      name: "task.snapshot",
+      payload: { tasks: snapshot.map(serializeTask) },
     })
-
-  // Remote-control bridge — off until the user enables it from settings.
-  // Each transition is broadcast so all attached TUIs repaint the chip
-  // and dialog at once. Spawning the real `claude remote-control` only
-  // happens on `rcBridge.start`; constructing the manager is free.
-  const rcBridge = options.rcBridge ?? createRcBridge()
-  rcBridge.onChange((status) => broadcast(clients, { type: "event", name: "rcBridge.changed", payload: { status } }))
+  })
 
   const serverApi: DaemonServer = {
     socketPath,
@@ -119,23 +99,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     startedAt,
     clients,
     async close() {
-      planUsagePoller.stop()
-      // Stop the bridge before the socket so claude.ai gets the proper
-      // environment-deregistration call and we don't leak an "online"
-      // worker on the cloud side after the daemon exits.
-      try {
-        await rcBridge.stop()
-      } catch {
-        /* best-effort — daemon shutdown should never block on bridge teardown */
-      }
+      unsubscribeStore()
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
-      // End attached client sockets BEFORE closing the server. server.close()
-      // waits for every active connection to drain — if we close it first,
-      // any TUI that doesn't disconnect on `daemon.stopping` will deadlock
-      // shutdown forever (this was the root cause of `kobe daemon restart` hangs).
       for (const client of Array.from(clients)) {
-        for (const unsub of client.subscriptions.values()) unsub()
-        client.subscriptions.clear()
         client.socket.destroy()
       }
       await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -143,7 +109,6 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       await unlink(pidPath).catch(() => {})
     },
   }
-  planUsagePoller.start()
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject)
@@ -165,32 +130,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     const payload = objectPayload(req.payload)
     switch (req.name) {
       case "hello": {
-        // Enrich the handshake so a fresh attach only needs `hello`
-        // then `subscribe` instead of `hello` → `task.list` → N×
-        // `chat.input.pending` round-trips. Old clients ignore the
-        // extra fields; the legacy `task.list` and `chat.input.pending`
-        // request handlers remain in place for backwards compat.
-        const tasks = orch.listTasks()
-        const pending: Record<string, ReturnType<typeof orch.peekPendingInput>> = {}
-        for (const task of tasks) {
-          const entries = orch.peekPendingInput(task.id)
-          if (entries.length > 0) pending[task.id] = entries
-        }
-        // Snapshot per-tab run state so a reconnecting TUI repaints
-        // the green/yellow status dot on already-streaming tabs
-        // immediately — without this the indicator disappears until
-        // the next chat.delta / engine.status / chat.event arrives.
-        const runState: Record<string, string> = {}
-        for (const [key, value] of orch.chatRunStateSignal()()) runState[key] = value
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
           daemonPid: process.pid,
           clientId: client.id,
-          tasks: tasks.map(serializeTask),
-          pending,
-          runState,
-          planUsage: planUsagePoller.current(),
-          rcBridge: rcBridge.status(),
+          tasks: orch.listTasks().map(serializeTask),
         }
       }
       case "daemon.status":
@@ -213,341 +157,76 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         if (!task) throw new Error(`task not found: ${taskId}`)
         return { task: serializeTask(task) }
       }
-      case "task.spawn": {
+      case "task.create": {
         const repo = requireString(payload, "repo")
-        const modelEffort = optionalModelEffort(payload, "modelEffort")
-        const vendor = optionalVendor(payload, "vendor")
-        const prompt = optionalString(payload, "prompt")
         const task = await orch.createTask({
           repo,
-          prompt,
           title: optionalString(payload, "title"),
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
-          model: optionalString(payload, "model"),
-          modelEffort,
-          vendor,
+          vendor: optionalVendor(payload, "vendor"),
         })
-        // Subscribe EVERY attached client to the new task's tabs, not
-        // just the spawning client. Otherwise other TUIs see task.created
-        // but never receive chat.delta / chat.event for the new task —
-        // multi-attach real-time sync silently breaks.
-        for (const c of clients) subscribeClientToTask(orch, c, task)
-        broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
-        // If the spawner provided a prompt, kick off the run as
-        // fire-and-forget so the RPC returns immediately. Without this
-        // an agent calling task.spawn (kobe api spawn-task) gets a task
-        // stuck in `backlog` with no worktree, no session, no chat —
-        // matches the older MCP bridge semantics (`spawn_task` always
-        // ran the task). The TUI's RemoteOrchestrator.spawnTask omits
-        // the prompt and uses a separate chat.send for the first
-        // message, so this branch is a no-op for it.
-        if (prompt) {
-          void orch.runTask(task.id, prompt).catch((err) => {
-            // Don't crash the daemon on a spawn-and-run that fails
-            // (worktree contention, engine missing, dirty repo). The
-            // task still exists; the user can retry from the TUI.
-            const msg = err instanceof Error ? err.message : String(err)
-            broadcast(clients, {
-              type: "event",
-              name: "engine.status",
-              payload: { taskId: task.id, tabId: task.activeTabId, status: "error", message: msg },
-            })
-          })
-        }
         return { taskId: task.id, task: serializeTask(task) }
       }
       case "task.archive": {
         const taskId = requireString(payload, "taskId")
-        const archived = optionalBoolean(payload, "archived")
-        await orch.setArchived(taskId, archived)
-        const task = orch.getTask(taskId)
-        if (task)
-          broadcast(clients, { type: "event", name: "task.updated", payload: { taskId, task: serializeTask(task) } })
+        await orch.setArchived(taskId, optionalBoolean(payload, "archived"))
         return {}
       }
       case "task.rename": {
         const taskId = requireString(payload, "taskId")
         await orch.setTitle(taskId, requireString(payload, "title"))
-        const task = orch.getTask(taskId)
-        if (task)
-          broadcast(clients, { type: "event", name: "task.updated", payload: { taskId, task: serializeTask(task) } })
         return {}
       }
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId)
-        for (const c of clients) unsubscribeClientFromTask(c, taskId)
-        broadcast(clients, { type: "event", name: "task.deleted", payload: { taskId } })
         return {}
       }
       case "task.pin": {
         const taskId = requireString(payload, "taskId")
         await orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
-        broadcastTaskUpdated(orch, clients, taskId)
         return {}
       }
-      case "task.permissionMode": {
+      case "task.status": {
         const taskId = requireString(payload, "taskId")
-        const mode = optionalString(payload, "mode")
-        if (mode !== undefined && mode !== "default" && mode !== "plan") throw new Error("mode must be default or plan")
-        await orch.setPermissionMode(taskId, mode)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "task.model": {
-        const taskId = requireString(payload, "taskId")
-        const modelEffort = optionalModelEffort(payload, "modelEffort")
-        const vendor = optionalVendor(payload, "vendor")
-        await orch.setModel(
-          taskId,
-          optionalString(payload, "model"),
-          optionalString(payload, "tabId"),
-          modelEffort,
-          vendor,
-        )
-        broadcastTaskUpdated(orch, clients, taskId)
+        const status = requireString(payload, "status")
+        if (
+          status !== "backlog" &&
+          status !== "in_progress" &&
+          status !== "in_review" &&
+          status !== "done" &&
+          status !== "canceled" &&
+          status !== "error"
+        ) {
+          throw new Error("status must be a TaskStatus")
+        }
+        await orch.setStatus(taskId, status)
         return {}
       }
       case "task.ensureMain": {
         const repo = requireString(payload, "repo")
-        // Snapshot the pre-call state so we can distinguish (a) fresh
-        // creation, (b) unarchive of a previously-removed-from-saved-
-        // repos main task, (c) idempotent no-op. Without this, the
-        // freshly-created or unarchived task never reaches other
-        // attached clients — RemoteOrchestrator's tasksSignal stays
-        // stale and the persisted lastSelectedTaskId can resolve to
-        // an "archived" main task that the sidebar / auto-select
-        // can't see. Mirrors the pattern used by every other task-
-        // mutating handler after the subscribeTasks broadcast was
-        // dropped.
-        const prior = orch.listTasks().find((t) => t.kind === "main" && t.repo === repo)
         const task = await orch.ensureMainTask(repo)
-        if (!prior) {
-          // Fresh main task — subscribe every attached client to its
-          // tabs (mirrors task.spawn) then broadcast task.created.
-          for (const c of clients) subscribeClientToTask(orch, c, task)
-          broadcast(clients, { type: "event", name: "task.created", payload: { task: serializeTask(task) } })
-        } else if (prior.archived && !task.archived) {
-          // Unarchive path inside ensureMainTask — broadcast as an
-          // update so sidebar buckets re-sort the row out of Archives.
-          broadcastTaskUpdated(orch, clients, task.id)
-        }
         return { task: serializeTask(task) }
       }
-      case "chat.tab.create": {
+      case "task.ensureWorktree": {
         const taskId = requireString(payload, "taskId")
-        const tab = await orch.createTab(taskId, { title: optionalString(payload, "title") })
-        // Subscribe EVERY client to JUST the new tab. Subscribing the
-        // whole task again would re-add a listener for every existing
-        // tab on every create — N tabs ⇒ N redundant callbacks per
-        // delta. Per-tab + dedupe (the Map key) prevents that leak.
-        for (const c of clients) subscribeClientToTab(orch, c, taskId, tab.id)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return { tab }
-      }
-      case "chat.tab.close": {
-        const taskId = requireString(payload, "taskId")
-        const nextActive = await orch.closeTab(taskId, requireString(payload, "tabId"))
-        broadcastTaskUpdated(orch, clients, taskId)
-        return { nextActive }
-      }
-      case "chat.tab.activate": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setActiveTab(taskId, requireString(payload, "tabId"))
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "chat.tab.rename": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setTabTitle(taskId, requireString(payload, "tabId"), requireString(payload, "title"))
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "chat.tab.clear": {
-        const taskId = requireString(payload, "taskId")
-        await orch.clearTab(taskId, requireString(payload, "tabId"))
-        // Broadcast the task delta too — `clearTab` dropped the tab's
-        // sessionId, so any attached TUI's tab list mirror needs the
-        // refresh to reflect the new "fresh tab" state alongside the
-        // `chat.tab.cleared` event that resets the reducer.
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "chat.sessions": {
-        const sessions = await orch.listSessions(requireString(payload, "taskId"))
-        return { sessions }
-      }
-      case "chat.commands": {
-        const commands = await orch.listCommandsForTab(
-          requireString(payload, "taskId"),
-          requireString(payload, "tabId"),
-        )
-        return { commands }
-      }
-      case "chat.session.open": {
-        const taskId = requireString(payload, "taskId")
-        const tabId = await orch.openSessionInTab(taskId, requireString(payload, "sessionId"), {
-          title: optionalString(payload, "title"),
-          vendor: optionalVendor(payload, "vendor"),
-        })
-        // openSessionInTab appends a new tab; subscribe every attached
-        // client to its event bus so live deltas reach them.
-        for (const c of clients) subscribeClientToTab(orch, c, taskId, tabId)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return { tabId }
-      }
-      case "chat.interrupt": {
-        await orch.interruptTask(requireString(payload, "taskId"), optionalString(payload, "tabId"))
-        return {}
-      }
-      case "chat.steer": {
-        await orch.steerTask(
-          requireString(payload, "taskId"),
-          requireString(payload, "text"),
-          optionalString(payload, "tabId"),
-        )
-        return {}
-      }
-      case "chat.recap": {
-        await orch.generateRecap(requireString(payload, "taskId"), optionalString(payload, "tabId"))
-        return {}
-      }
-      case "chat.input.pending": {
-        return { pending: orch.peekPendingInput(requireString(payload, "taskId")) }
-      }
-      case "chat.input.respond": {
-        await orch.respondToInput(
-          requireString(payload, "taskId"),
-          requireString(payload, "requestId"),
-          requireUserInputResponse(payload.response),
-        )
-        return {}
-      }
-      case "pr.request": {
-        const taskId = requireString(payload, "taskId")
-        await orch.requestPR(taskId)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "pr.status.refresh": {
-        const taskId = requireString(payload, "taskId")
-        await orch.refreshPRStatus(taskId)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "pr.merge.request": {
-        const taskId = requireString(payload, "taskId")
-        await orch.requestPRMerge(taskId)
-        broadcastTaskUpdated(orch, clients, taskId)
-        return {}
-      }
-      case "merge.local.request": {
-        const taskId = requireString(payload, "taskId")
-        await orch.requestLocalMerge(taskId)
-        const task = orch.getTask(taskId)
-        if (task) {
-          broadcastTaskUpdated(orch, clients, task.id)
-          broadcast(clients, {
-            type: "event",
-            name: "engine.status",
-            payload: { taskId: task.id, tabId: task.activeTabId, status: "running" },
-          })
-        }
-        return {}
-      }
-      case "chat.history": {
-        const taskId = requireString(payload, "taskId")
-        const sessionId = optionalString(payload, "sessionId")
-        const limit = optionalNumber(payload, "limit") ?? 50
-        const before = optionalString(payload, "before")
-        const result = await readTaskHistory(orch, taskId, sessionId, limit, before)
-        return {
-          messages: serializeMessages(result.messages),
-          ...(result.usageMetrics ? { usageMetrics: result.usageMetrics } : {}),
-          nextBefore: result.nextBefore,
-          hasMore: result.hasMore,
-        } satisfies SerializedHistoryPage
-      }
-      case "chat.send": {
-        const taskId = requireString(payload, "taskId")
-        const tabId = optionalString(payload, "tabId")
-        // Empty / undefined text is a legitimate "continue" / "resume"
-        // signal — runTask resumes the existing session without a new
-        // user prompt. Earlier code rejected empty text via
-        // requireString and the client smuggled a single space (" ") to
-        // dodge the check. Now the wire allows undefined.
-        const text = optionalString(payload, "text")
-        await orch.runTask(taskId, text, tabId)
-        // First-message runs allocate the worktree lazily inside
-        // `runTask`: empty `worktreePath` flips to the real path, and
-        // `branch` / `status` change too. Without this broadcast, the
-        // TUI's RemoteOrchestrator never learns — Files / Terminal
-        // panes key off `worktreePath` and stay stuck on the placeholder
-        // "no task" state forever. Symptoms: the user types "hi" in a
-        // fresh task, sees the worktree-allocated system.info row in
-        // chat, but the right column never lights up.
-        broadcastTaskUpdated(orch, clients, taskId)
-        const task = orch.getTask(taskId)
-        if (task)
-          broadcast(clients, {
-            type: "event",
-            name: "engine.status",
-            payload: { taskId, tabId: tabId ?? task.activeTabId, status: "running" },
-          })
-        return {}
+        const path = await orch.ensureWorktree(taskId)
+        return { worktreePath: path }
       }
       case "subscribe": {
-        const taskIds = normalizeTaskIds(payload.taskIds)
-        const tasks =
-          taskIds === "all"
-            ? orch.listTasks()
-            : taskIds.map((id) => orch.getTask(id)).filter((t): t is Task => Boolean(t))
-        for (const task of tasks) subscribeClientToTask(orch, client, task)
+        client.subscribed = true
+        // Send the current snapshot immediately so the client can
+        // hydrate without a separate `task.list` round trip.
+        writeFrame(client, {
+          type: "event",
+          name: "task.snapshot",
+          payload: { tasks: orch.listTasks().map(serializeTask) },
+        })
         return {}
       }
-      case "rcBridge.start": {
-        // Per-tab bridge: callers pass `taskId` so the bridge spawns
-        // with `cwd = task.worktreePath` and surfaces the tab's session
-        // id in the dialog (so the user can `/resume <sid>` in
-        // claude.ai to continue THIS conversation rather than start a
-        // fresh one). When `taskId` is omitted (legacy callers, palette
-        // command with no active task), we fall back to the git
-        // toplevel of the daemon's process cwd — claude.ai still gets
-        // a usable environment but bound to no specific session.
-        const taskId = optionalString(payload, "taskId")
-        const tabId = optionalString(payload, "tabId")
-        let cwd: string
-        let bound: { taskId: string; tabId: string; sessionId?: string | null; taskTitle?: string } | undefined
-        if (taskId) {
-          const task = orch.getTask(taskId)
-          if (!task) throw new Error(`rcBridge.start: unknown taskId ${taskId}`)
-          const resolvedTabId = tabId ?? task.activeTabId
-          const tab = task.tabs.find((t) => t.id === resolvedTabId)
-          if (!tab) throw new Error(`rcBridge.start: unknown tabId ${resolvedTabId} on task ${taskId}`)
-          cwd = task.worktreePath
-          bound = {
-            taskId: task.id,
-            tabId: tab.id,
-            sessionId: tab.sessionId,
-            taskTitle: task.title,
-          }
-        } else {
-          cwd = optionalString(payload, "cwd") ?? resolveRepoRoot(process.cwd())
-        }
-        if (!cwd) throw new Error("rcBridge.start requires a non-empty cwd")
-        const status = await rcBridge.start({ cwd, bound })
-        return { status }
-      }
-      case "rcBridge.stop": {
-        const status = await rcBridge.stop()
-        return { status }
-      }
-      case "rcBridge.status": {
-        return { status: rcBridge.status() }
-      }
       default:
-        throw new Error(`unknown daemon request: ${req.name satisfies never}`)
+        throw new Error(`unknown daemon request: ${(req as { name: string }).name}`)
     }
   }
 
@@ -568,7 +247,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     }
   }
 
-  function drainClientBuffer(orch: Orchestrator, _server: DaemonServer, client: ClientState): void {
+  function drainClientBuffer(client: ClientState): void {
     let nl = client.buffer.indexOf("\n")
     while (nl !== -1) {
       const line = client.buffer.slice(0, nl)
@@ -603,100 +282,15 @@ export async function readPidFile(pidPath: string): Promise<number | null> {
   }
 }
 
-function subscribeClientToTask(orch: Orchestrator, client: ClientState, task: Task): void {
-  for (const tab of task.tabs) subscribeClientToTab(orch, client, task.id, tab.id)
-}
-
-function subscribeClientToTab(orch: Orchestrator, client: ClientState, taskId: string, tabId: string): void {
-  const key = `${taskId}:${tabId}`
-  if (client.subscriptions.has(key)) return
-  const unsub = orch.subscribeEvents(
-    taskId,
-    (ev: OrchestratorEvent) => writeFrame(client, normalizeEventForWire(taskId, tabId, ev)),
-    tabId,
-  )
-  client.subscriptions.set(key, unsub)
-}
-
-/**
- * Fetch the post-mutation task from the orchestrator and broadcast it
- * as a `task.updated` delta to every attached client. Called by handlers
- * that change task fields (pin, permission mode, model, tab create /
- * close / activate / rename, session open) so RemoteOrchestrator
- * mirrors of the same task stay in sync — otherwise an optimistic
- * client-side update (e.g. Chat's `setActiveTabIdLocal`) gets reverted
- * by the next reactive read of the stale tasks signal.
- *
- * Silent if the task no longer exists (e.g. raced with a delete) —
- * the deletion broadcast handles that path.
- */
-function broadcastTaskUpdated(orch: Orchestrator, clients: ReadonlySet<ClientState>, taskId: string): void {
-  const task = orch.getTask(taskId)
-  if (!task) return
-  broadcast(clients, { type: "event", name: "task.updated", payload: { taskId, task: serializeTask(task) } })
-}
-
-function unsubscribeClientFromTask(client: ClientState, taskId: string): void {
-  const prefix = `${taskId}:`
-  for (const [key, unsub] of client.subscriptions) {
-    if (!key.startsWith(prefix)) continue
-    unsub()
-    client.subscriptions.delete(key)
-  }
-}
-
-interface TaskHistoryPage {
-  messages: Message[]
-  usageMetrics?: SessionUsageMetrics
-  /**
-   * Token the client passes back as `before` to fetch the previous
-   * page. `null` when this page already includes the oldest message
-   * (no further history) — caller stops paging.
-   */
-  nextBefore: string | null
-  hasMore: boolean
-}
-
-async function readTaskHistory(
-  orch: Orchestrator,
-  taskId: string,
-  /**
-   * Explicit session id requested by the client (per-tab history
-   * load). When omitted we fall back to the task's active-tab
-   * sessionId — convenient for callers that only know the taskId.
-   * Required for tab-switch correctness: Chat hydrates each tab's
-   * scrollback independently, so passing the right sessionId is the
-   * difference between "every tab shows the active tab's transcript"
-   * and "every tab shows its own."
-   */
-  requestedSessionId: string | undefined,
-  limit: number,
-  before?: string,
-): Promise<TaskHistoryPage> {
-  const task = orch.getTask(taskId)
-  const sessionId =
-    requestedSessionId ?? task?.tabs.find((t) => t.id === task.activeTabId)?.sessionId ?? task?.sessionId
-  if (!sessionId) return { messages: [], nextBefore: null, hasMore: false }
-  const { messages, usageMetrics } = await orch.readHistoryWithMetrics(sessionId)
-  const beforeIdx = before ? messages.findIndex((m) => `${m.timestamp}:${m.sessionId}` === before) : -1
-  const end = beforeIdx >= 0 ? beforeIdx : messages.length
-  const start = Math.max(0, end - limit)
-  const page = messages.slice(start, end)
-  const hasMore = start > 0
-  // Echo the oldest message's token so the client can paginate without
-  // having to know the wire format. Falls back to null when there are
-  // no messages OR when this page already covers the start.
-  const first = page[0]
-  const nextBefore = hasMore && first ? `${first.timestamp}:${first.sessionId}` : null
-  return { messages: page, ...(usageMetrics ? { usageMetrics } : {}), nextBefore, hasMore }
-}
-
 function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {
   client.socket.write(frameToLine(frame))
 }
 
 function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void {
-  for (const client of clients) writeFrame(client, frame)
+  for (const client of clients) {
+    if (!client.subscribed && frame.type === "event") continue
+    writeFrame(client, frame)
+  }
 }
 
 function objectPayload(payload: unknown): Record<string, unknown> {
@@ -717,31 +311,6 @@ function optionalString(payload: Record<string, unknown>, key: string): string |
   return value
 }
 
-function optionalModelEffort(payload: Record<string, unknown>, key: string): ModelEffortLevel | undefined {
-  const value = optionalString(payload, key)
-  if (
-    value !== undefined &&
-    value !== "none" &&
-    value !== "minimal" &&
-    value !== "low" &&
-    value !== "medium" &&
-    value !== "high" &&
-    value !== "xhigh" &&
-    value !== "max"
-  ) {
-    throw new Error(`${key} must be a supported effort level`)
-  }
-  return value
-}
-
-function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
-  const value = optionalString(payload, key)
-  if (value !== undefined && value !== "claude" && value !== "codex" && value !== "gemini") {
-    throw new Error(`${key} '${value}' is not a supported vendor (expected: claude, codex, gemini)`)
-  }
-  return value
-}
-
 function optionalBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
   const value = payload[key]
   if (value === undefined || value === null) return undefined
@@ -749,35 +318,10 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   return value
 }
 
-function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a number`)
+function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
+  const value = optionalString(payload, key)
+  if (value !== undefined && value !== "claude" && value !== "codex") {
+    throw new Error(`${key} '${value}' is not a supported vendor (expected: claude, codex)`)
+  }
   return value
-}
-
-function normalizeTaskIds(value: unknown): "all" | string[] {
-  if (value === undefined || value === null || value === "all") return "all"
-  if (Array.isArray(value) && value.every((v) => typeof v === "string")) return value
-  throw new Error("taskIds must be 'all' or string[]")
-}
-
-function requireUserInputResponse(value: unknown): UserInputResponse {
-  if (!value || typeof value !== "object") throw new Error("response is required")
-  const obj = value as Record<string, unknown>
-  if (obj.kind === "approve_plan") {
-    if (typeof obj.approve !== "boolean") throw new Error("response.approve must be a boolean")
-    return { kind: "approve_plan", approve: obj.approve }
-  }
-  if (obj.kind === "ask_question") {
-    if (!obj.answers || typeof obj.answers !== "object" || Array.isArray(obj.answers)) {
-      throw new Error("response.answers must be an object")
-    }
-    const answers: Record<string, string> = {}
-    for (const [key, answer] of Object.entries(obj.answers)) {
-      if (typeof answer === "string") answers[key] = answer
-    }
-    return { kind: "ask_question", answers }
-  }
-  throw new Error("response.kind must be approve_plan or ask_question")
 }

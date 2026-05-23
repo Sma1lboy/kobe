@@ -1,15 +1,13 @@
 /**
- * Engine vendor identifier.
+ * Engine vendor identifier (v0.6).
  *
- * One of the local CLI engines kobe can route chat tabs to:
- * `"claude"`, `"codex"`, or `"gemini"`.
+ * v0.5 supported `"claude" | "codex" | "gemini"` so the engine
+ * registry could route per-task. v0.6 drops gemini entirely (no
+ * interactive TUI equivalent worth wrapping) and keeps `"claude"`
+ * + `"codex"` only because their on-disk history JSONL is what the
+ * outer monitor reads for the live preview rail and cost dashboard.
  *
- * Where this surfaces:
- *   - `ModelChoice.vendor` so the composer picker can group / filter
- *   - Future `AIEngine` registry keyed by vendor (not built yet)
- *
- * Persisted `Task.model` stays a free-form string id (e.g.
- * `"claude-opus-4-7[1m]"`, `"gpt-5-codex"`). The vendor is inferable
- * from the picker entry the user chose; we don't double-persist it.
+ * Per-task vendor is still recorded on Task so the monitor knows
+ * which history-reader to call.
  */
-export type VendorId = "claude" | "codex" | "gemini"
+export type VendorId = "claude" | "codex"

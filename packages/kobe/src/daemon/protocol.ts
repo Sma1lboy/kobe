@@ -1,8 +1,22 @@
-import type { SessionUsageMetrics } from "../session/usage-metrics.ts"
-import type { Message, OrchestratorEvent } from "../types/engine.ts"
+/**
+ * Daemon wire protocol (v0.6).
+ *
+ * v0.5's protocol was huge because the daemon hosted live chat
+ * streams: `chat.delta`, `chat.event`, `chat.complete`, pending-input
+ * brokers, plan-usage polling, rc-bridge state, etc. v0.6 collapses
+ * all of that — claude lives in tmux, so the daemon's only job is to
+ * be a single writer for the task index. The protocol shrinks to a
+ * task-CRUD + subscribe shape.
+ */
+
 import type { Task } from "../types/task.ts"
 
-export const DAEMON_PROTOCOL_VERSION = 1
+/**
+ * Bumped to 2 in v0.6 to signal the shape change. Older TUI clients
+ * that hello with version 1 are rejected by the server with a clear
+ * "daemon is v0.6, upgrade your TUI" error.
+ */
+export const DAEMON_PROTOCOL_VERSION = 2
 
 export type DaemonFrame =
   | { readonly type: "request"; readonly id: string; readonly name: DaemonRequestName; readonly payload?: unknown }
@@ -22,49 +36,16 @@ export type DaemonRequestName =
   | "subscribe"
   | "task.list"
   | "task.get"
-  | "task.spawn"
+  | "task.create"
   | "task.archive"
   | "task.rename"
   | "task.delete"
   | "task.pin"
-  | "task.permissionMode"
-  | "task.model"
+  | "task.status"
   | "task.ensureMain"
-  | "chat.tab.create"
-  | "chat.tab.close"
-  | "chat.tab.activate"
-  | "chat.tab.rename"
-  | "chat.tab.clear"
-  | "chat.sessions"
-  | "chat.commands"
-  | "chat.session.open"
-  | "chat.interrupt"
-  | "chat.steer"
-  | "chat.recap"
-  | "chat.input.pending"
-  | "chat.input.respond"
-  | "merge.local.request"
-  | "pr.request"
-  | "pr.status.refresh"
-  | "pr.merge.request"
-  | "chat.history"
-  | "chat.send"
-  | "rcBridge.start"
-  | "rcBridge.stop"
-  | "rcBridge.status"
+  | "task.ensureWorktree"
 
-export type DaemonEventName =
-  | "task.created"
-  | "task.updated"
-  | "task.deleted"
-  | "task.snapshot"
-  | "chat.delta"
-  | "chat.event"
-  | "chat.complete"
-  | "engine.status"
-  | "plan.usage"
-  | "rcBridge.changed"
-  | "daemon.stopping"
+export type DaemonEventName = "task.created" | "task.updated" | "task.deleted" | "task.snapshot" | "daemon.stopping"
 
 export interface DaemonError {
   readonly message: string
@@ -78,26 +59,13 @@ export interface SerializedTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind: "main" | "task"
-  readonly sessionId: string | null
-  readonly tabs: Task["tabs"]
-  readonly activeTabId: string
   readonly status: Task["status"]
   readonly archived: boolean
   readonly pinned: boolean
-  readonly permissionMode?: Task["permissionMode"]
-  readonly model?: string
-  readonly modelEffort?: Task["modelEffort"]
   readonly vendor?: Task["vendor"]
   readonly prStatus?: Task["prStatus"]
   readonly createdAt: string
   readonly updatedAt: string
-}
-
-export interface SerializedHistoryPage {
-  readonly messages: Message[]
-  readonly usageMetrics?: SessionUsageMetrics
-  readonly nextBefore: string | null
-  readonly hasMore: boolean
 }
 
 export function serializeTask(task: Task): SerializedTask {
@@ -108,52 +76,13 @@ export function serializeTask(task: Task): SerializedTask {
     branch: task.branch,
     worktreePath: task.worktreePath,
     kind: task.kind ?? "task",
-    sessionId: task.sessionId,
-    tabs: task.tabs,
-    activeTabId: task.activeTabId,
     status: task.status,
     archived: task.archived,
     pinned: task.pinned ?? false,
-    permissionMode: task.permissionMode,
-    model: task.model,
-    modelEffort: task.modelEffort,
     vendor: task.vendor,
     prStatus: task.prStatus,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
-  }
-}
-
-export function serializeMessages(messages: readonly Message[]): Message[] {
-  return messages.map((m) => ({ ...m }))
-}
-
-export function normalizeEventForWire(taskId: string, tabId: string, ev: OrchestratorEvent): DaemonFrame {
-  if (ev.type === "assistant.delta") {
-    return {
-      type: "event",
-      name: "chat.delta",
-      payload: { taskId, tabId, delta: ev.text },
-    }
-  }
-  if (ev.type === "done") {
-    return {
-      type: "event",
-      name: "chat.complete",
-      payload: { taskId, tabId },
-    }
-  }
-  if (ev.type === "error") {
-    return {
-      type: "event",
-      name: "engine.status",
-      payload: { taskId, tabId, status: "error", message: ev.message },
-    }
-  }
-  return {
-    type: "event",
-    name: "chat.event",
-    payload: { taskId, tabId, event: ev },
   }
 }
 

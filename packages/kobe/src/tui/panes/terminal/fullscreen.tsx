@@ -1,5 +1,5 @@
 /**
- * Full-terminal handover for interactive engines (KOB-225).
+ * Full-terminal handover for interactive engines (v0.6).
  *
  * The embedded-terminal model (xterm emulation + per-frame opentui
  * recomposite) can't keep up with a heavy-redraw TUI like interactive
@@ -15,9 +15,11 @@
  * await its exit, then resume + repaint. No PTY, no emulator, no
  * compositing while the child is in front.
  *
- * `ClaudeLauncher` is the in-pane entry point: it replaces the laggy
- * embedded `<Terminal>` in the chat content pane's interactive mode
- * with a "press ⏎ to enter" prompt, and runs the handover on submit.
+ * `ClaudeLauncher` is the in-pane entry point: a "press ⏎ to enter"
+ * splash that, on submit, ensures the task's worktree exists, then
+ * attaches to the task's persistent tmux session (creating it on
+ * first enter). Step B (KOB-228) extends `ensureSession` to pre-split
+ * the session into three panes (claude / Ops / shell).
  */
 
 import type { CliRenderer } from "@opentui/core"
@@ -39,9 +41,10 @@ export type FullscreenRunOpts = {
 }
 
 /**
- * Suspend the renderer, run `command` with the real TTY inherited, then
- * resume. Resolves with the child's exit code. Always resumes — even if
- * the spawn throws — so a failed launch never leaves kobe's UI dark.
+ * Suspend the renderer, run `command` with the real TTY inherited,
+ * then resume. Resolves with the child's exit code. Always resumes —
+ * even if the spawn throws — so a failed launch never leaves kobe's
+ * UI dark.
  */
 export async function runFullscreen(opts: FullscreenRunOpts): Promise<number | null> {
   const { renderer, cwd, command } = opts
@@ -66,20 +69,29 @@ export async function runFullscreen(opts: FullscreenRunOpts): Promise<number | n
 export type ClaudeLauncherProps = {
   /** Stable task id — keys the persistent tmux session. Null = no task. */
   taskId: Accessor<string | null>
-  /** Worktree the claude session runs in. Null = no task selected. */
+  /**
+   * Worktree the claude session runs in. May be empty (the task is in
+   * `backlog` with no allocated worktree yet); `onEnsureWorktree` is
+   * called on enter to materialise it.
+   */
   cwd: Accessor<string | null>
   /** argv the tmux session runs (the chat pane passes `["claude"]`). */
   command: readonly string[]
   /** Whether the workspace pane currently owns focus (gates the chord). */
   focused: Accessor<boolean>
+  /**
+   * Materialise the worktree for `taskId` if it doesn't exist yet. The
+   * orchestrator returns the absolute worktree path on success.
+   */
+  onEnsureWorktree: (taskId: string) => Promise<string>
 }
 
 /**
- * Launcher view for the chat pane's interactive-claude mode. `⏎` while
- * the pane is focused attaches the terminal to the task's tmux session
- * full-screen (creating it on first enter); the session persists across
- * detach (Ctrl+Q / Ctrl+B D) and kobe restarts. When the user detaches
- * or claude exits they land back here.
+ * Launcher view for the workspace pane. `⏎` while the pane is focused
+ * attaches the terminal to the task's tmux session full-screen
+ * (creating it on first enter); the session persists across detach
+ * (Ctrl+Q / Ctrl+B D) and kobe restarts. When the user detaches or
+ * claude exits they land back here.
  */
 export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   const { theme } = useTheme()
@@ -89,14 +101,24 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
 
   const enter = (): void => {
     const taskId = props.taskId()
-    const cwd = props.cwd()
-    if (!taskId || !cwd || running()) return
+    if (!taskId || running()) return
     setRunning(true)
     setError(null)
     void (async () => {
       if (!(await tmuxAvailable())) {
         setError("tmux not found on PATH — install tmux to use interactive mode")
         return
+      }
+      // Materialise the worktree on first enter. Idempotent: if the
+      // worktree already exists this returns the recorded path fast.
+      let cwd = props.cwd()
+      if (!cwd) {
+        try {
+          cwd = await props.onEnsureWorktree(taskId)
+        } catch (err) {
+          setError(`worktree allocation failed: ${err instanceof Error ? err.message : String(err)}`)
+          return
+        }
       }
       const name = tmuxSessionName(taskId)
       await ensureSession({ name, cwd, command: props.command })

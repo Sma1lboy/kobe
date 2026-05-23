@@ -1,27 +1,17 @@
+/**
+ * Public bootstrap for the kobe "core" — the orchestrator + worktree
+ * manager + task index, wired together with sensible defaults. v0.5
+ * had an engine port (and an MCP bridge that exposed it to spawned
+ * claude); both are gone in v0.6.
+ */
+
 import { homedir } from "node:os"
-import { buildDefaultEngines } from "../engine/default-engines.ts"
-import type { EngineMap } from "../engine/registry.ts"
-import { type BridgeHandles, startBridge } from "../orchestrator/bridge/index.ts"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import type { AIEngine } from "../types/engine.ts"
 
 export interface KobeCoreOptions {
   readonly homeDir?: string
-  /**
-   * Single-engine override (back-compat). When supplied, it replaces the
-   * default local engine map. Test fixtures use this to inject the
-   * FakeAIEngine.
-   */
-  readonly engine?: AIEngine
-  /**
-   * Per-vendor engine override. When supplied, replaces the default
-   * production map. If both `engine` and `engines`
-   * are passed, `engines` takes full precedence and `engine` is ignored.
-   */
-  readonly engines?: EngineMap
-  readonly startMcpBridge?: boolean
 }
 
 export interface KobeCore {
@@ -29,7 +19,6 @@ export interface KobeCore {
   readonly orchestrator: Orchestrator
   readonly store: TaskIndexStore
   readonly worktrees: GitWorktreeManager
-  readonly bridge: BridgeHandles | null
   close(): Promise<void>
 }
 
@@ -37,24 +26,15 @@ export async function createKobeCore(options: KobeCoreOptions = {}): Promise<Kob
   const homeDir = options.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
   const store = new TaskIndexStore({ homeDir })
   await store.load()
-
   const worktrees = new GitWorktreeManager()
-  // Production default: register every local vendor. Tests pass `options.engine`
-  // to swap in a FakeAIEngine and skip the production map.
-  const engines: EngineMap =
-    options.engines ??
-    (options.engine ? { [options.engine.capabilities.vendorId]: options.engine } : buildDefaultEngines())
-  const orchestrator = new Orchestrator({ engines, store, worktrees })
-  const bridge = options.startMcpBridge === false ? null : await startBridge(orchestrator, { homeDir })
+  const orchestrator = new Orchestrator({ store, worktrees })
 
   return {
     homeDir,
     orchestrator,
     store,
     worktrees,
-    bridge,
     async close() {
-      await bridge?.close()
       orchestrator.dispose()
     },
   }

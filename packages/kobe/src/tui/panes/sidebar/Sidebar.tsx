@@ -53,8 +53,18 @@ import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
-import type { ChatRunState } from "../../../orchestrator/core"
-import { SIDEBAR_WIDTH } from "../../component/sidebar"
+import { useTheme as _useTheme } from "../../context/theme"
+
+/**
+ * Legacy chat-run-state shape kept as an inert type so older
+ * callers don't break their imports. Always-empty in v0.6 — the
+ * spinner derives "in progress" from `Task.status` alone now.
+ */
+export type ChatRunState = "running" | "awaiting_input" | "idle"
+
+/** Default sidebar width — `42` matches opencode / agent-deck convention. */
+const SIDEBAR_WIDTH = 42
+void _useTheme
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
 import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"

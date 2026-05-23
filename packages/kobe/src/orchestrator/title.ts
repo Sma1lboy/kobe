@@ -1,4 +1,14 @@
-/** Title cap for `deriveTitleFromPrompt`. Short enough to fit in a 42-char sidebar with status badge prefix. */
+/**
+ * Title and branch derivation (v0.6).
+ *
+ * Used by the orchestrator's `createTask` when the user gives a title
+ * but no explicit branch — we derive a `kobe/<slug>-<id>` name.
+ * `deriveTitleFromPrompt` is kept for the rare case where we still
+ * accept a free-form prompt as a title source (e.g. external callers
+ * via the daemon RPC); v0.6 itself doesn't surface that path.
+ */
+
+/** Title cap. Short enough to fit in a 42-char sidebar with status prefix. */
 export const TITLE_CHAR_CAP = 40
 
 /**
