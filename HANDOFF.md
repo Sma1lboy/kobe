@@ -1,37 +1,33 @@
 # Handoff — kobe
 
-> Current as of 2026-05-13, after `@sma1lboy/kobe@0.5.22`.
-> Keep this file short. Durable rules live in `AGENTS.md`; shipped behavior lives in `packages/kobe/CHANGELOG.md`; architecture detail lives in `docs/ARCHITECTURE.md`.
+> Current as of 2026-05-22, after `@sma1lboy/kobe@0.6.0` (the v0.6 reshape).
+> Keep this file short. Durable rules live in `AGENTS.md`; shipped behavior
+> lives in `packages/kobe/CHANGELOG.md`; architecture detail lives in
+> `docs/ARCHITECTURE.md`.
 
 ## Read First
 
 1. `AGENTS.md` — operator manual, hard rules, reference repos, Linear workflow.
-2. `CONTEXT.md` — domain vocabulary: Task, Worktree, ChatTab, Session, Orchestrator, Daemon, TUI Client.
-3. `docs/DESIGN.md` — product philosophy and state ownership.
-4. `docs/ARCHITECTURE.md` — current source-tree map and ownership.
-5. `docs/HARNESS.md` — required self-test loop.
-6. `packages/kobe/CHANGELOG.md` — exact shipped feature list and current version.
+2. `docs/design/v2-tmux-handover.md` — the v0.6 reshape design doc.
+3. `packages/kobe/CHANGELOG.md` — full v0.6.0 section (what shipped, what's gone, what's reshaping in 0.6.x).
+4. `CONTEXT.md` — domain vocabulary (slowly being updated for the reshape; mention drift as you find it).
 
 ## Current State
 
-- Latest release: `0.5.22` on 2026-05-13.
-- Package version source of truth: `packages/kobe/package.json`.
-- Release notes source of truth: `packages/kobe/CHANGELOG.md`.
-- The default TUI launch uses a per-TUI owned daemon; `kobe --daemon` opts into the shared long-lived daemon and `kobe --single` spells the default explicitly.
-- Codex support defaults to the app-server backend, with the exec-stream path retained as fallback.
-- Chat tabs are per Task and preserve tab-scoped model configuration when new tabs are created.
-- Composer supports shell-command mode, queued prompt editing/retriggering, `@` file mentions, and path chips that open preview tabs.
-- Terminal pane uses Bun PTY + headless xterm and can reset the shell with F5.
+- Latest release: **`0.6.0` on 2026-05-22** — major product reshape, not a patch. See the CHANGELOG `[0.6.0]` section for the full story.
+- kobe is now a task-launcher + outer monitor that delegates interactive `claude` to a per-task tmux session (`tmux -L kobe`). Each session is pre-split: claude (left) | kobe-ops (upper right) | shell (lower right).
+- The 0.5 self-rendered chat surface is **gone** and not coming back; `claude` / `codex` inside the tmux pane already cover equivalent affordances. The CHANGELOG enumerates the deleted surface so future agents don't accidentally re-litigate it.
+- New workspace package: `packages/kobe-ops/` (`@sma1lboy/kobe-ops`). 0.6.0 ships the file watcher; the ops menu lands in 0.6.x.
 
 ## Active Follow-Ups
 
-- Architecture cleanup remains valuable. Biggest files by current line count: `src/orchestrator/core.ts`, `src/tui/panes/chat/MessageList.tsx`, `src/tui/panes/chat/Composer.tsx`, `src/tui/panes/chat/Chat.tsx`, and `src/tui/panes/chat/store.ts`.
-- Prefer extracting deep Modules around real concepts, not line-count slicing. Good candidates: pending user-input lifecycle, PR request flow, chat queue editing, and chat row rendering.
-- Behavior tests are local-only and slower/flakier than CI. CI runs typecheck, unit/socket tests, and build; use `bun run test:behavior` when the change is user-visible TUI behavior.
-- Release workflow currently emits a GitHub Actions Node 20 deprecation warning for `actions/checkout@v4` / `softprops/action-gh-release@v2`. It is not a release blocker today, but should be cleaned up before GitHub's Node 20 removal window.
+- **KOB-231** (`Step D 续`): cross-task search + batch actions on the outer monitor. Not in 0.6.0.
+- **KOB-232** (`0.6.x tracker`): quick-fork / create-PR / file-preview reshaped via the Ops pane (Quick-fork from sidebar, Create-PR + file preview from kobe-ops).
+- Architecture cleanup remains valuable. The slim orchestrator (`src/orchestrator/core.ts` is now ~280 lines) + slim daemon (`src/daemon/server.ts`) is the new baseline. If any old chat-driven helper survived the 0.6 cull, surface it and delete.
+- CI workflow still emits the Node 20 deprecation warning for `actions/checkout@v4` and `softprops/action-gh-release@v2`. Not a release blocker but worth cleaning before GitHub removes the runner.
 
 ## Recent Release Notes
 
-- `0.5.22`: daemon launch flags, composer path preview chips, queued prompt inline editing, Codex reasoning/history hydration fixes, and chat-tab model-effort preservation.
-- `0.5.21`: shell-command composer mode, terminal F5 reset, MCP bridge orphan cleanup.
-- `0.5.20`: single-point daemon default, Codex app-server backend default, reconnect fixes, and Codex context telemetry cleanup.
+- `0.6.0`: v0.5 chat surface deleted; tmux three-pane model (claude / kobe-ops / shell); outer monitor with live preview + cost dashboard; TaskIndex v3; daemon protocol v2; new `@sma1lboy/kobe-ops` package.
+- `0.5.27`: TodoWrite v1 + Task v2 checklists, `/recap` slash + auto-recap, Quick-Fork base branch picker, sidebar polish, removed `ctrl+b` background-tasks manager.
+- `0.5.26`: PR lifecycle stale-state fix, Gemini `listCommands` signature.

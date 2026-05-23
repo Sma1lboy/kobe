@@ -14,6 +14,38 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-22
+
+This is a **product reshape**, not a patch release. kobe is no longer a chat-stream renderer wrapped around `claude -p`; it is a task-launcher + outer monitor that delegates the whole interactive surface to tmux. The version bumps to `0.6.0` so the change is visible in `package.json`. The 0.5 line stays as-is for anyone who wants the self-rendered chat experience back.
+
+### Why
+
+Anthropic's 2026-06-15 billing change put `claude -p`, the Agent SDK, and every third-party programmatic caller on a separate \$200/month bucket; only **interactive** Claude Code stays on the regular subscription. kobe's v0.5 engine was the programmatic path, so heavy concurrent use ran straight into the \$200 cap. v0.6 drives interactive `claude` directly inside a tmux pane, so every token kobe spends is back on the subscription bucket.
+
+### How
+
+Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `@sma1lboy/kobe-ops` (companion CLI watching `git status` + worktree tree, refreshing every second; falls back to `lsd` / `eza` / `tree` / `ls` when the bin isn't on PATH), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
+
+### Removed (no longer in any form)
+
+The self-rendered chat surface and its supporting plumbing are gone. Not coming back. The following are deliberately removed and will **not** be re-added — `claude` / `codex` already provide them natively inside the tmux pane: the whole chat pane (composer, message list, tool-row renderers, TodoWrite checklist, AskUserQuestion / ExitPlanMode approval pickers, `@file` mentions, queued prompt editing, bash composer mode, `/recap`, context meter, model picker, resume-session picker, slash-command discovery, recap-on-tab-leave); the headless engine port and every vendor adapter's spawn / stream / registry path (only the binary-discovery + history-reader pieces of `claude-code-local` and `codex-local` survive — used by the cost dashboard, not by any live engine driver); the `gemini-local` adapter entirely (no interactive TUI equivalent worth wrapping); the Preview pane (file / diff viewer), the Terminal pane (Bun PTY), and the FileTree pane in the outer TUI (files + terminal live inside the tmux session now); the daemon's chat / PR / merge / plan-usage / rc-bridge RPCs (the wire protocol drops from 30+ methods to 13: task CRUD + `subscribe` + `task.ensureWorktree`); the whole behavior-test harness, the fake-engine HTTP side-channel, and every test that asserted on streamed event shapes; `kobe diagnose`, `kobe mcp-bridge`, `kobe api`, `kobe skill` (the MCP bridge in particular — kobe no longer hosts the engine, so there's nothing for spawned claude to call back into via MCP).
+
+### Kept (intent only — reshaped landing in 0.6.x)
+
+These were valuable v0.5 surfaces that don't survive in their old form but will be reimplemented in the new model (KOB-232 tracks): **quick-fork** — sidebar shortcut → pick base branch → new worktree + new tmux session; **create-PR** — Ops-pane shortcut → render `pr/instructions.ts` template → `tmux send-keys` into the claude pane; **file preview** — sub-mode inside the Ops pane (split top/bottom: file list + diff / cat).
+
+### New packages
+
+`@sma1lboy/kobe-ops` — companion CLI shipped as a Bun workspace. Lives in the right-hand "Ops" pane next to claude. 0.6.0 only ships the file watcher; the ops menu lands in 0.6.x.
+
+### Schema
+
+`TaskIndex` bumps to v3 — drops `tabs`, `activeTabId`, `sessionId`, `model`, `modelEffort`, `permissionMode`. Old v1 / v2 manifests are migrated on load by silently stripping the dropped fields; downgrading is not supported. Daemon protocol bumps to v2 — v1 clients are rejected with a clear "your kobe is v0.5, upgrade" error.
+
+### Thanks
+
+To Jackson for steering the pivot end-to-end — design doc, scope cuts, and the call to ship the reshape as a minor instead of stretching 0.5.
+
 ## [0.5.27] - 2026-05-18
 
 ### Added
