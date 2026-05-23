@@ -100,26 +100,58 @@ export interface EnsureSessionOpts {
   /** argv that pane 0 (the claude pane) runs. */
   readonly command: readonly string[]
   /**
-   * argv that pane 1 (the Ops pane) runs. Defaults to the file-tree
-   * watcher fallback used until {@link "@sma1lboy/kobe-ops"} (KOB-229)
-   * ships.
+   * argv that pane 1 (the Ops pane) runs. Defaults to
+   * `kobe-ops --task-id <taskId> --worktree <cwd>` (shipped as
+   * `@sma1lboy/kobe-ops` since v0.6.0); if the bin isn't on PATH we
+   * fall back to the inline git-status + tree watcher.
    */
   readonly opsCommand?: readonly string[]
+  /**
+   * Stable kobe task id — used to build the default `kobe-ops` argv
+   * and the `target-pane` selector. Optional so callers that supply
+   * their own `opsCommand` don't need to pass it.
+   */
+  readonly taskId?: string
 }
 
 /**
- * Default Ops pane content until KOB-229 lands. A loop that prints
- * the worktree's git status + a short tree once a second so the user
- * sees *something* informative in the upper-right pane out of the box.
- * Falls back to a friendly "lsd not installed" message if neither
- * `lsd` nor `eza` is on PATH.
+ * Resolve the default Ops pane argv. Prefers the shipped
+ * `@sma1lboy/kobe-ops` binary (KOB-229), falling back to an inline
+ * shell loop that prints `git status` + a tree if it's unavailable.
+ * The fallback is also used in dev when `kobe-ops` hasn't been linked
+ * into PATH yet.
  */
-function defaultOpsCommand(cwd: string): readonly string[] {
-  // The shell loop is a single tmux-pane command string: it must
-  // survive `split-window -- <cmd>` quoting and stay inside one
-  // process group. We pick `lsd` / `eza` at runtime; tmux runs this
-  // through `$SHELL -c` so the conditional works.
-  const script = `\
+function defaultOpsCommand(cwd: string, taskId: string | undefined): readonly string[] {
+  if (taskId) {
+    // `kobe-ops` is linked into node_modules/.bin as a workspace
+    // dependency of kobe; Bun automatically adds that directory to
+    // PATH for spawned subprocesses, so a bare `kobe-ops` invocation
+    // works in dev. Production installs see the same path via npm's
+    // bin shim. If the binary is missing the tmux pane exits
+    // immediately and the user sees an empty pane — `fallbackOpsCommand`
+    // covers that case via `sh -c` so the pane stays useful.
+    const target = `=${tmuxSessionNameFromTaskId(taskId)}:0.0`
+    return [
+      "sh",
+      "-c",
+      `kobe-ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(target)} ` +
+        `|| ${fallbackOpsScript(cwd)}`,
+    ]
+  }
+  return ["sh", "-c", fallbackOpsScript(cwd)]
+}
+
+function tmuxSessionNameFromTaskId(taskId: string): string {
+  return tmuxSessionName(taskId)
+}
+
+/**
+ * Plain shell-command string that prints `git status` + a tree on a
+ * loop. Used either directly (when no taskId is provided) or as the
+ * `||` fallback after `kobe-ops` fails to launch.
+ */
+function fallbackOpsScript(cwd: string): string {
+  return `\
 cd ${shellQuote(cwd)} && \
 while :; do \
   clear; \
@@ -137,7 +169,6 @@ while :; do \
   fi; \
   sleep 2; \
 done`
-  return ["sh", "-c", script]
 }
 
 /**
@@ -172,7 +203,7 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
-  const ops = opts.opsCommand ?? defaultOpsCommand(opts.cwd)
+  const ops = opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId)
 
   // Build the session in four steps:
   //   1. `new-session -d` — fresh detached session, pane 0 inherits cwd

@@ -121,7 +121,7 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
         }
       }
       const name = tmuxSessionName(taskId)
-      await ensureSession({ name, cwd, command: props.command })
+      await ensureSession({ name, cwd, command: props.command, taskId })
       await runFullscreen({ renderer, command: attachArgv(name) })
     })()
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
