@@ -14,7 +14,7 @@
  */
 
 import { homedir } from "node:os"
-import { render } from "@opentui/solid"
+import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createMemo, createSignal, onMount } from "solid-js"
 import {
   connectOrStartDaemon,
@@ -28,8 +28,12 @@ import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
+import { HelpDialog } from "./component/help-dialog"
+import { NewTaskDialog } from "./component/new-task-dialog"
 import { PaneHeader } from "./component/pane-header"
+import { RenameTaskDialog } from "./component/rename-task-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
+import { SettingsDialog } from "./component/settings-dialog"
 import { StatusBar } from "./component/status-bar"
 import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
@@ -69,6 +73,7 @@ function Shell(props: AppDeps) {
   const dialog = useDialog()
   const kv = useKV()
   const { setFocused, focused: focusedPane, is: isFocused } = useFocus()
+  const renderer = useRenderer()
 
   useThemePersistence(themeCtx, kv)
 
@@ -131,7 +136,19 @@ function Shell(props: AppDeps) {
       "quit",
     )
     if (ok !== true) return
-    await props.onQuit?.().catch(() => {})
+    forceExit()
+  }
+
+  // Hard exit path — bypass the confirm prompt. Used by Ctrl+C and the
+  // detached `process.exit` callers. We destroy the renderer first so
+  // the terminal isn't left in raw / alt-screen / mouse-tracking mode.
+  function forceExit(): void {
+    try {
+      renderer?.destroy()
+    } catch (err) {
+      console.error("kobe: renderer.destroy() failed during quit:", err)
+    }
+    void props.onQuit?.().catch(() => {})
     process.exit(0)
   }
 
@@ -157,10 +174,21 @@ function Shell(props: AppDeps) {
       )
       return
     }
-    const repo = repos[0]
-    if (!repo) return
-    const task = await props.orchestrator.createTask({ repo })
+    // Default to the active task's repo when one is selected so the
+    // common "spawn a sibling" flow doesn't make the user re-pick.
+    const defaultRepo = activeTask()?.repo ?? repos[0] ?? ""
+    const result = await NewTaskDialog.show(dialog, { repos, defaultRepo })
+    if (!result) return
+    const task = await props.orchestrator.createTask(result)
     selectTask(task.id)
+  }
+
+  async function openSettings(): Promise<void> {
+    await SettingsDialog.show(dialog)
+  }
+
+  async function openHelp(): Promise<void> {
+    await HelpDialog.show(dialog)
   }
 
   async function archiveTask(taskId: string): Promise<void> {
@@ -172,9 +200,8 @@ function Shell(props: AppDeps) {
   async function renameTask(taskId: string): Promise<void> {
     const task = props.orchestrator.getTask(taskId)
     if (!task) return
-    // Minimal rename: cycle "(new task)" → counter-suffix. v0.6.x will
-    // re-add an input dialog (KOB-232 / Ops pane companion).
-    const next = `${task.title} *`
+    const next = await RenameTaskDialog.show(dialog, task.title)
+    if (!next) return
     await props.orchestrator.setTitle(taskId, next).catch((err: unknown) => {
       console.error("[kobe] rename failed:", err)
     })
@@ -222,6 +249,11 @@ function Shell(props: AppDeps) {
   useBindings(() => ({
     enabled: true,
     bindings: [
+      // Force-exit on Ctrl+C — the v0.5 two-press-to-quit chord came
+      // with a wider keymap stack we tore down. Single-press immediate
+      // exit is fine for v0.6: every task's work is persisted in tmux,
+      // so Ctrl+C never loses anything.
+      { key: "ctrl+c", cmd: forceExit },
       { key: "ctrl+1", cmd: () => setFocused("sidebar") },
       { key: "ctrl+2", cmd: () => setFocused("workspace") },
       { key: "ctrl+d", cmd: toggleDashboard },
@@ -235,6 +267,9 @@ function Shell(props: AppDeps) {
     enabled: isFocused("sidebar")(),
     bindings: [
       { key: "n", cmd: () => void newTask() },
+      { key: "s", cmd: () => void openSettings() },
+      { key: "?", cmd: () => void openHelp() },
+      { key: "f1", cmd: () => void openHelp() },
       { key: "q", cmd: () => void quit() },
       {
         key: "d",
