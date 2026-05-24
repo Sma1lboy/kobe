@@ -15,12 +15,14 @@ import { type ProcessHandle, SessionRegistry } from "../claude-code-local/regist
 import { findCopilotBinary } from "./binary"
 import { copilotCapabilities, copilotIdentity } from "./capabilities"
 import { deleteHistory as deleteHistoryImpl, readHistoryWithMetrics as readHistoryImpl } from "./history"
-import { listSessionsForCwd } from "./sessions"
+import { findNewestSessionIdForCwdSince, listSessionsForCwd } from "./sessions"
 import { type SpawnedCopilot, spawnCopilotProcess } from "./spawn"
 import { parseCopilotJson, readLines } from "./stream"
 
 export interface CopilotLocalOpts {
   readonly binaryPathResolver?: () => Promise<string>
+  readonly sessionIdResolver?: (cwd: string, sinceMs: number) => Promise<string | undefined>
+  readonly sessionPollIntervalMs?: number
   readonly stopGraceMs?: number
 }
 
@@ -39,10 +41,14 @@ export class CopilotLocal implements AIEngine {
   private readonly registry = new SessionRegistry()
   private readonly running = new Map<string, RunningSession>()
   private readonly binaryPathResolver: () => Promise<string>
+  private readonly sessionIdResolver: (cwd: string, sinceMs: number) => Promise<string | undefined>
+  private readonly sessionPollIntervalMs: number
   private readonly stopGraceMs: number
 
   constructor(opts: CopilotLocalOpts = {}) {
     this.binaryPathResolver = opts.binaryPathResolver ?? findCopilotBinary
+    this.sessionIdResolver = opts.sessionIdResolver ?? findNewestSessionIdForCwdSince
+    this.sessionPollIntervalMs = opts.sessionPollIntervalMs ?? 100
     this.stopGraceMs = opts.stopGraceMs ?? 5_000
   }
 
@@ -111,6 +117,7 @@ export class CopilotLocal implements AIEngine {
     resumeSessionId?: string
   }): Promise<SessionHandle> {
     const binaryPath = await this.binaryPathResolver()
+    const startedAtMs = Date.now()
     const spawned = spawnCopilotProcess({
       binaryPath,
       cwd: args.cwd,
@@ -142,6 +149,7 @@ export class CopilotLocal implements AIEngine {
     const bind = (sessionId: string) => {
       if (bound) return
       bound = true
+      stopSessionDiscovery()
       session = {
         sessionId,
         cwd: args.cwd,
@@ -159,6 +167,37 @@ export class CopilotLocal implements AIEngine {
         prompt: args.prompt,
       } satisfies ProcessHandle)
       resolveHandle({ sessionId, cwd: args.cwd })
+    }
+
+    let discoveryTimer: ReturnType<typeof setInterval> | undefined
+    const stopSessionDiscovery = () => {
+      if (!discoveryTimer) return
+      clearInterval(discoveryTimer)
+      discoveryTimer = undefined
+    }
+    const discoverSessionId = async () => {
+      if (bound) return
+      const sid = await this.sessionIdResolver(args.cwd, startedAtMs - SESSION_DISCOVERY_CLOCK_SKEW_MS)
+      if (sid) bind(sid)
+    }
+
+    if (args.resumeSessionId) {
+      try {
+        bind(args.resumeSessionId)
+      } catch (err) {
+        try {
+          spawned.proc.kill("SIGKILL")
+        } catch {
+          /* process may already have exited */
+        }
+        rejectHandle(err)
+        throw err
+      }
+    } else {
+      discoveryTimer = setInterval(() => {
+        void discoverSessionId().catch(() => {})
+      }, this.sessionPollIntervalMs)
+      void discoverSessionId().catch(() => {})
     }
 
     const exitInfo: { code: number | null; signal: NodeJS.Signals | null; seen: boolean } = {
@@ -196,6 +235,7 @@ export class CopilotLocal implements AIEngine {
         })
         if (session) this.notify(session)
       } finally {
+        stopSessionDiscovery()
         await Promise.race([exitObserved, new Promise<void>((r) => setTimeout(r, PROCESS_EXIT_GRACE_MS))])
         if (session) {
           const lastEv = queue[queue.length - 1]
@@ -236,6 +276,7 @@ export class CopilotLocal implements AIEngine {
 
 const STDERR_TAIL_CAP = 4 * 1024
 const PROCESS_EXIT_GRACE_MS = 500
+const SESSION_DISCOVERY_CLOCK_SKEW_MS = 2_000
 
 function captureStderrTail(
   stream: NodeJS.ReadableStream | { on: ChildProcessWithoutNullStreams["stderr"]["on"] },

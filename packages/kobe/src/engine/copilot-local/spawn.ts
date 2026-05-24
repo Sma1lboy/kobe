@@ -1,4 +1,4 @@
-import type { ChildProcessWithoutNullStreams } from "node:child_process"
+import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "node:child_process"
 import { spawn } from "node:child_process"
 import type { Readable } from "node:stream"
 import type { ModelEffortLevel } from "@/types/engine"
@@ -25,11 +25,13 @@ export interface SpawnedCopilot {
 
 export function spawnCopilotProcess(opts: SpawnCopilotOpts): SpawnedCopilot {
   const args = buildArgs(opts)
-  const proc = spawn(opts.binaryPath, args, {
+  const command = buildSpawnCommand(opts.binaryPath, args)
+  const proc = spawn(command.file, command.args, {
     cwd: opts.cwd,
     env: { ...process.env, ...(opts.env ?? {}) },
     stdio: ["pipe", "pipe", "pipe"],
     detached: true,
+    ...command.options,
   }) as ChildProcessWithoutNullStreams
 
   try {
@@ -39,6 +41,26 @@ export function spawnCopilotProcess(opts: SpawnCopilotOpts): SpawnedCopilot {
   }
 
   return { proc, stdout: proc.stdout, stderr: proc.stderr, args }
+}
+
+export interface ProcessSpawnCommand {
+  readonly file: string
+  readonly args: readonly string[]
+  readonly options?: SpawnOptionsWithoutStdio
+}
+
+export function buildSpawnCommand(
+  binaryPath: string,
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): ProcessSpawnCommand {
+  if (platform === "win32" && /\.(?:cmd|bat)$/i.test(binaryPath)) {
+    return {
+      file: "cmd.exe",
+      args: ["/d", "/s", "/c", [binaryPath, ...args].map(quoteForCmd).join(" ")],
+    }
+  }
+  return { file: binaryPath, args }
 }
 
 export function buildArgs(opts: SpawnCopilotOpts): string[] {
@@ -62,4 +84,8 @@ export function buildArgs(opts: SpawnCopilotOpts): string[] {
   if (opts.extraArgs?.length) args.push(...opts.extraArgs)
   args.push("--prompt", opts.prompt)
   return args
+}
+
+function quoteForCmd(value: string): string {
+  return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`
 }

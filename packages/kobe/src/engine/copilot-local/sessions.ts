@@ -25,6 +25,25 @@ export async function listSessionsForCwd(cwd: string, deps?: CopilotHistoryDeps)
   return out
 }
 
+export async function findNewestSessionIdForCwdSince(
+  cwd: string,
+  sinceMs: number,
+  deps?: CopilotHistoryDeps,
+): Promise<string | undefined> {
+  const actualDeps = deps ?? defaultDeps
+  const normalized = path.resolve(cwd)
+  const matches: Array<{ sessionId: string; mtimeMs: number }> = []
+  for (const dir of await listSessionDirs(actualDeps)) {
+    const workspace = await readWorkspace(dir, actualDeps)
+    if (!workspace.id || !workspace.cwd || !samePath(workspace.cwd, normalized)) continue
+    const st = await actualDeps.stat(path.join(dir, "events.jsonl")).catch(() => null)
+    const mtimeMs = st?.mtimeMs ?? Date.parse(workspace.updatedAt ?? workspace.createdAt ?? "0")
+    if (Number.isFinite(mtimeMs) && mtimeMs >= sinceMs) matches.push({ sessionId: workspace.id, mtimeMs })
+  }
+  matches.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  return matches[0]?.sessionId
+}
+
 const defaultDeps: CopilotHistoryDeps = {
   copilotDir() {
     const override = process.env.COPILOT_HOME?.trim()
