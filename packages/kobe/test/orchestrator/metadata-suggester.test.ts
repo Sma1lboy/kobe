@@ -5,6 +5,7 @@ import type {
   AIEngine,
   EngineEvent,
   EngineHistory,
+  Message,
   SessionHandle,
   SessionMeta,
   SpawnOpts,
@@ -76,5 +77,66 @@ describe("MetadataSuggester", () => {
       permissionMode: "plan",
     })
     expect(engine.deleted).toEqual(["metadata-session"])
+  })
+
+  test("suggestRecap serializes transcript and returns sanitized 1-3 sentence body", async () => {
+    const engine = new OneShotEngine([
+      // Mimic a chatty model adding the kind of preamble haiku tends to add.
+      { type: "assistant.delta", text: "Recap: Refactoring the auth middleware. Next: hook up rate limiting." },
+      { type: "done" },
+    ])
+    const suggester = new MetadataSuggester()
+    const history: Message[] = [
+      {
+        role: "user",
+        blocks: [{ type: "text", text: "let's refactor the auth middleware" }],
+        timestamp: "2026-05-18T10:00:00Z",
+        sessionId: "s1",
+      },
+      {
+        role: "assistant",
+        blocks: [{ type: "text", text: "Moved session checks into MiddlewareGuard." }],
+        timestamp: "2026-05-18T10:05:00Z",
+        sessionId: "s1",
+      },
+    ]
+
+    const text = await suggester.suggestRecap(history, {
+      engine,
+      cwd: "/tmp/worktree",
+      model: "claude-haiku-4-5-20251001",
+    })
+
+    expect(text).toBe("Refactoring the auth middleware. Next: hook up rate limiting.")
+    expect(engine.spawns).toHaveLength(1)
+    const prompt = engine.spawns[0]?.prompt ?? ""
+    expect(prompt).toContain("user: let's refactor the auth middleware")
+    expect(prompt).toContain("assistant: Moved session checks into MiddlewareGuard.")
+    expect(prompt).toContain("1-3 short sentences")
+    expect(engine.deleted).toEqual(["metadata-session"])
+  })
+
+  test("suggestRecap returns null on empty transcript", async () => {
+    const engine = new OneShotEngine([])
+    const suggester = new MetadataSuggester()
+    const text = await suggester.suggestRecap([], { engine, cwd: "/tmp/x" })
+    expect(text).toBeNull()
+    expect(engine.spawns).toHaveLength(0)
+  })
+
+  test("suggestRecap returns null when transcript has only tool-call blocks", async () => {
+    const engine = new OneShotEngine([])
+    const suggester = new MetadataSuggester()
+    const history: Message[] = [
+      {
+        role: "assistant",
+        blocks: [{ type: "tool_call", callId: "c1", name: "Bash", input: { cmd: "ls" } }],
+        timestamp: "2026-05-18T10:00:00Z",
+        sessionId: "s1",
+      },
+    ]
+    const text = await suggester.suggestRecap(history, { engine, cwd: "/tmp/x" })
+    expect(text).toBeNull()
+    expect(engine.spawns).toHaveLength(0)
   })
 })

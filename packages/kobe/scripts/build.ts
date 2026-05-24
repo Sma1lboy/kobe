@@ -13,13 +13,13 @@
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
- * Sidecar assets: `share/skills/kobe/SKILL.md` is copied to
- * `dist/share/skills/kobe/SKILL.md` so `kobe skill install` (KOB-137)
- * can find it post-bundle. The `files` field in package.json includes
- * `dist`, so this is the only mirror needed for npm publish.
+ * Skill distribution moved out of npm in v0.6 — the SKILL.md now lives
+ * at `.agents/skills/kobe/SKILL.md` in the repo and ships via the
+ * Vercel Labs agent-skills CLI (`npx skills add Sma1lboy/kobe`), not in
+ * the npm tarball. Nothing to copy here anymore.
  */
 
-import { chmod, cp } from "node:fs/promises"
+import { chmod } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
@@ -49,9 +49,4 @@ if (!result.success) {
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
 
-// Mirror sidecar assets into dist/ so they ship in the npm tarball.
-// `kobe skill install` resolves the bundled SKILL.md via `dist/share/`
-// when running from an installed npm package.
-await cp("./share", "./dist/share", { recursive: true })
-
-console.log(`built ${OUT_FILES.join(", ")} + dist/share/`)
+console.log(`built ${OUT_FILES.join(", ")}`)

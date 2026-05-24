@@ -12,6 +12,7 @@ export const geminiCapabilities: EngineCapabilities = {
   ],
   defaultModelId: resolveGeminiDefaultModelId,
   contextWindowFor: geminiContextWindowFor,
+  smallFastModelId: () => "gemini-3-flash-preview",
 }
 
 export const geminiIdentity: EngineIdentity = {

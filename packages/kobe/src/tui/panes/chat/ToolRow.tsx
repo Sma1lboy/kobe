@@ -19,6 +19,16 @@ import {
 } from "./edit-diff"
 import { BLACK_CIRCLE, RESULT_PREFIX } from "./message-figures"
 import type { ChatRow, ToolChildRow } from "./store"
+import {
+  type SnapshotItem,
+  TODO_GLYPH,
+  type TaskStatus,
+  countTodos,
+  parseTaskCreateInput,
+  parseTaskUpdateInput,
+  parseTaskUpdateOutput,
+  summarizeTodos,
+} from "./todo-render"
 import { summarizeGlob, summarizeGrep, summarizeRead } from "./tool-banners"
 import { type ToolCounts, summarizeToolRun } from "./tool-fold"
 import { classifyTool, lookupToolMeta } from "./tool-registry"
@@ -84,12 +94,29 @@ export function ToolRow(props: {
   row: Extract<ChatRow, { kind: "tool" }>
   index: number
   expanded: boolean
+  /**
+   * "Rounded" snapshot items for this row — only the tasks that belong
+   * to *this round* (older rounds' completed tasks filtered out by the
+   * cross-row pass in {@link computeRoundedSnapshots}). `undefined` for
+   * non-snapshot tool rows and for rows the pass didn't visit yet.
+   */
+  roundedItems?: readonly SnapshotItem[]
   onToggle: () => void
 }) {
   const { theme } = useTheme()
   const r = () => props.row
-  const prefixGlyph = () => (r().done ? BLACK_CIRCLE : "✻")
-  const prefixColor = () => (r().done ? theme.success : theme.warning)
+  // Snapshot rows (TodoWrite/TaskList) get a green expand triangle as
+  // their prefix glyph instead of the usual ● / ✻ status dot — the
+  // row's body is collapsible, and the triangle is the standard "click
+  // to expand / collapse" affordance.
+  const prefixGlyph = () => {
+    if (isTodoSnapshot()) return props.expanded ? "▼" : "▶"
+    return r().done ? BLACK_CIRCLE : "✻"
+  }
+  const prefixColor = () => {
+    if (isTodoSnapshot()) return theme.success
+    return r().done ? theme.success : theme.warning
+  }
   // Render strategy comes from the per-vendor tool registry. The
   // string-literal name comparisons that used to live here moved to
   // `tool-registry.ts` so that adding a Codex tool only edits one place.
@@ -99,6 +126,8 @@ export function ToolRow(props: {
   const isBash = () => meta().banner === "bash"
   const isReadGrepGlob = () => meta().banner === "read-grep-glob"
   const isSubagent = () => meta().body === "subagent"
+  const isTodoSnapshot = () => meta().body === "todo-snapshot"
+  const isTaskAction = () => meta().banner === "task-action"
   /** Tools whose banner replaces the generic `tool(arg-preview)` chip. */
   const usesCustomBanner = () => meta().banner !== "default" || meta().body !== "default"
   /** Tools whose body renders inline so the generic preview/expanded
@@ -107,7 +136,8 @@ export function ToolRow(props: {
     meta().body === "edit-diff" ||
     meta().body === "multi-edit-diff" ||
     meta().body === "bash-output" ||
-    meta().body === "subagent"
+    meta().body === "subagent" ||
+    meta().body === "todo-snapshot"
   const diff = (): FormattedDiff | null => {
     if (r().name === "Edit") return formatEditDiff(r().input)
     if (r().name === "Write") return formatWriteDiff(r().input)
@@ -129,24 +159,38 @@ export function ToolRow(props: {
             when={isSubagent()}
             fallback={
               <Show
-                when={isReadGrepGlob()}
+                when={isTodoSnapshot()}
                 fallback={
                   <Show
-                    when={isBash()}
+                    when={isTaskAction()}
                     fallback={
-                      <text fg={theme.text}>
-                        <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
-                        <Show when={!usesCustomBanner()}>
-                          <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
-                        </Show>
-                      </text>
+                      <Show
+                        when={isReadGrepGlob()}
+                        fallback={
+                          <Show
+                            when={isBash()}
+                            fallback={
+                              <text fg={theme.text}>
+                                <span style={{ attributes: TextAttributes.BOLD }}>{r().name}</span>
+                                <Show when={!usesCustomBanner()}>
+                                  <span style={{ fg: theme.textMuted }}>({previewToolInput(r().input)})</span>
+                                </Show>
+                              </text>
+                            }
+                          >
+                            <BashBanner row={r()} />
+                          </Show>
+                        }
+                      >
+                        <ReadGrepGlobBanner row={r()} />
+                      </Show>
                     }
                   >
-                    <BashBanner row={r()} />
+                    <TaskActionBanner row={r()} />
                   </Show>
                 }
               >
-                <ReadGrepGlobBanner row={r()} />
+                <TodoSnapshotBanner items={props.roundedItems ?? []} name={r().name} />
               </Show>
             }
           >
@@ -179,6 +223,13 @@ export function ToolRow(props: {
           Expanded: the per-step list. */}
       <Show when={isSubagent()}>
         <SubagentBody row={r()} expanded={props.expanded} onToggle={props.onToggle} />
+      </Show>
+      {/* Task-snapshot tools (TodoWrite v1 / TaskList v2) — checklist
+          body. Always collapsed by default (panel above the composer is
+          the canonical "current plan" surface); click the banner to
+          expand and see the historical round snapshot. */}
+      <Show when={isTodoSnapshot()}>
+        <TodoSnapshotBody items={props.roundedItems ?? []} expanded={props.expanded} onToggle={props.onToggle} />
       </Show>
       {/* Result preview — collapsed view shows one indented line.
           Suppressed for tools with custom bodies (Edit/Write/MultiEdit/
@@ -549,5 +600,125 @@ function SubagentBody(props: {
         </Show>
       </Show>
     </box>
+  )
+}
+
+/**
+ * Banner for a task-snapshot row (TodoWrite v1 / TaskList v2) — bold
+ * tool name + dim status-count chip (`6 todos · ✓3 ◼1 ◻2`). The
+ * row-level prefix glyph (`▶`/`▼`, green) carries the expand
+ * affordance, so no inline chip is needed here. Reflects the
+ * **rounded** slice (this round only — see
+ * {@link computeRoundedSnapshots}) so the count matches the body's
+ * checklist when the user expands it.
+ */
+function TodoSnapshotBanner(props: { items: readonly SnapshotItem[]; name: string }) {
+  const { theme } = useTheme()
+  const summary = () => summarizeTodos(countTodos(props.items))
+  return (
+    <text fg={theme.text} wrapMode="none">
+      <span style={{ attributes: TextAttributes.BOLD }}>{props.name}</span>
+      <span style={{ fg: theme.textMuted }}>{` · ${summary()}`}</span>
+    </text>
+  )
+}
+
+/**
+ * Body for a task-snapshot row — the inline checklist. Default state
+ * is **collapsed** (banner only); the always-on `TodoStatusLine` above
+ * the composer is the canonical "current plan" surface, so listing the
+ * same tasks again inline right under the banner is pure redundancy.
+ * Click the banner to expand and see this round's snapshot (older
+ * rounds' completed items are already filtered out by the cross-row
+ * pass in {@link computeRoundedSnapshots}).
+ */
+function TodoSnapshotBody(props: { items: readonly SnapshotItem[]; expanded: boolean; onToggle: () => void }) {
+  const { theme } = useTheme()
+  const items = (): readonly SnapshotItem[] => props.items
+  const show = () => props.expanded
+  const colorFor = (status: TaskStatus) =>
+    status === "completed"
+      ? theme.success
+      : status === "in_progress"
+        ? theme.accent
+        : status === "deleted"
+          ? theme.error
+          : theme.textMuted
+  // Matches Claude Code's TaskListV2 attribute combo:
+  //   completed → dim + strikethrough; in_progress → bold; pending → plain.
+  const subjectAttrs = (status: TaskStatus) => {
+    if (status === "completed" || status === "deleted") return TextAttributes.DIM | TextAttributes.STRIKETHROUGH
+    if (status === "in_progress") return TextAttributes.BOLD
+    return TextAttributes.NONE
+  }
+  return (
+    <Show when={show() && items().length > 0}>
+      <box paddingLeft={2} flexDirection="column" onMouseUp={() => props.onToggle()}>
+        <For each={items()}>
+          {(t) => (
+            <box flexDirection="row" gap={1}>
+              <text fg={colorFor(t.status)} wrapMode="none">
+                {TODO_GLYPH[t.status]}
+              </text>
+              <box flexGrow={1}>
+                <text fg={t.status === "pending" ? theme.text : colorFor(t.status)} attributes={subjectAttrs(t.status)}>
+                  {t.displayText}
+                </text>
+              </box>
+            </box>
+          )}
+        </For>
+      </box>
+    </Show>
+  )
+}
+
+/**
+ * Banner for v2 task-action tools (`TaskCreate / TaskUpdate / TaskGet`).
+ * These are single-item operations against an internal task store, so
+ * the banner does the work — body falls back to the default collapsed
+ * preview / expanded-JSON renderer.
+ *
+ *   - `TaskCreate · "<subject>"` — taken from input.subject.
+ *   - `TaskUpdate · #<id> · <fromStatus → toStatus>` (status change),
+ *     `· updated: <fields>` (other fields), or `· deleted` (deleted
+ *     status). Falls back to `#<id>` if neither input nor output gives
+ *     enough information.
+ *   - `TaskGet · #<id>` — bare id chip.
+ */
+function TaskActionBanner(props: { row: Extract<ChatRow, { kind: "tool" }> }) {
+  const { theme } = useTheme()
+  const summary = (): string => {
+    const row = props.row
+    if (row.name === "TaskCreate") {
+      const input = parseTaskCreateInput(row.input)
+      return input ? `"${input.subject}"` : ""
+    }
+    if (row.name === "TaskUpdate") {
+      const input = parseTaskUpdateInput(row.input)
+      const output = parseTaskUpdateOutput(row.output)
+      const id = input?.taskId ?? output?.taskId ?? ""
+      const idChip = id ? `#${id}` : ""
+      if (output?.error) return `${idChip} · ${output.error}`
+      if (output?.statusChange) return `${idChip} · ${output.statusChange.from} → ${output.statusChange.to}`
+      if (input?.status === "deleted") return `${idChip} · deleted`
+      if (input?.status) return `${idChip} · → ${input.status}`
+      if (output?.updatedFields.length) return `${idChip} · updated: ${output.updatedFields.join(", ")}`
+      return idChip
+    }
+    if (row.name === "TaskGet") {
+      const input = row.input as { taskId?: unknown } | null
+      const id = input && typeof input === "object" && typeof input.taskId === "string" ? input.taskId : ""
+      return id ? `#${id}` : ""
+    }
+    return ""
+  }
+  return (
+    <text fg={theme.text} wrapMode="none">
+      <span style={{ attributes: TextAttributes.BOLD }}>{props.row.name}</span>
+      <Show when={summary().length > 0}>
+        <span style={{ fg: theme.textMuted }}>{` · ${summary()}`}</span>
+      </Show>
+    </text>
   )
 }

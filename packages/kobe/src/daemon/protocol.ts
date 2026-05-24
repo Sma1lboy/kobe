@@ -40,6 +40,7 @@ export type DaemonRequestName =
   | "chat.session.open"
   | "chat.interrupt"
   | "chat.steer"
+  | "chat.recap"
   | "chat.input.pending"
   | "chat.input.respond"
   | "merge.local.request"

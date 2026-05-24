@@ -42,7 +42,6 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { type Accessor, createEffect, createMemo, createSignal, on, onMount } from "solid-js"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator.ts"
 import type { EngineCommandEntry, PermissionMode, UserInputResponse } from "../../../types/engine.ts"
-import type { BackgroundTaskRow } from "../../component/background-tasks-parts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
@@ -127,15 +126,6 @@ export type ChatProps = {
    * orchestrator coupling — the parent already has those handles.
    */
   onQuickForkRequest?: () => void
-  /**
-   * Agent sessions running out of view, projected by app.tsx. Forwarded
-   * verbatim to {@link ChatView}, which renders them as a one-line
-   * readout above the composer (kobe's analogue of claude-code's
-   * `BackgroundTaskStatus`).
-   */
-  backgroundRows?: Accessor<readonly BackgroundTaskRow[]>
-  /** Open the background-tasks dialog (from the background-runs line). */
-  onOpenBackgroundTasks?: () => void
 }
 
 export function Chat(props: ChatProps) {
@@ -164,6 +154,14 @@ export function Chat(props: ChatProps) {
         source: "builtin",
         onSelect: () => {
           void send("/clear")
+        },
+      },
+      {
+        display: "/recap",
+        description: "1-3 sentence recap of this tab — high-level task + next step",
+        source: "builtin",
+        onSelect: () => {
+          void send("/recap")
         },
       },
     ]
@@ -659,6 +657,20 @@ export function Chat(props: ChatProps) {
       return
     }
 
+    // kobe-side slash short-circuit: `/recap` asks the orchestrator
+    // to synthesize a "while you were away" summary via the
+    // small-fast model and dispatch it as a `RecapEvent`. Same
+    // direct-typed-Enter coverage rationale as `/clear`.
+    if (text === "/recap") {
+      setDraft("")
+      try {
+        await props.orchestrator.generateRecap(taskId, tabId)
+      } catch (err) {
+        patchActiveState((s) => pushSystemError(s, `/recap failed: ${stringifyErr(err)}`))
+      }
+      return
+    }
+
     const streaming = activeState().isStreaming
 
     // Drain `!bash` context here for the IMMEDIATE-dispatch paths (idle
@@ -1040,8 +1052,6 @@ export function Chat(props: ChatProps) {
       editingQueueId={editingQueueId}
       taskLabelForHistoryKey={taskLabelForHistoryKey}
       currentProjectRoot={currentProjectRoot}
-      backgroundRows={props.backgroundRows}
-      onOpenBackgroundTasks={props.onOpenBackgroundTasks}
     />
   )
 }

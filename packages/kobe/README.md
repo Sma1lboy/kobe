@@ -253,15 +253,18 @@ If the daemon isn't running, `kobe api ...` exits 2 with
 
 ### Install the agent skill
 
-`kobe api` gives the *capability*. The bundled SKILL.md gives the model the
+`kobe api` gives the *capability*. The SKILL.md gives the model the
 *intent* — when to fan out, how to scope subtask prompts, how to read results
-back. Install it once:
+back. Install it via the [Vercel Labs agent-skills CLI](https://github.com/vercel-labs/skills):
 
 ```bash
-kobe skill install              # writes ~/.claude/skills/kobe/SKILL.md
-kobe skill install --yes        # overwrite an existing copy
-kobe skill uninstall            # remove it
+npx skills add Sma1lboy/kobe --skill kobe --agent claude-code
 ```
+
+The skill source lives at `.agents/skills/kobe/SKILL.md` in this repo,
+which is one of the directories `npx skills` scans by default. The
+agent-skills CLI fetches it directly from GitHub and writes it to
+`~/.claude/skills/kobe/SKILL.md`.
 
 After install, Claude Code automatically picks up the skill on its next launch.
 For project-level overrides, copy the file to `<repo>/.claude/skills/kobe/SKILL.md`
@@ -269,6 +272,10 @@ and customise — Claude Code's discovery order is project > user > none.
 
 `kobe diagnose` reports whether the skill is installed, which is the
 fastest way to confirm.
+
+> `kobe skill install` is deprecated as of v0.6 — use the `npx skills`
+> command above. `kobe skill uninstall` still works for cleaning up an
+> older copy.
 
 ## Coming later
 

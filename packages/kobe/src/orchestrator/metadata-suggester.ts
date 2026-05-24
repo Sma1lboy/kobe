@@ -27,7 +27,7 @@
  * completes so these suggestions do not clutter the user's history.
  */
 
-import type { AIEngine, ModelEffortLevel, PermissionMode, SessionHandle, SpawnOpts } from "../types/engine.ts"
+import type { AIEngine, Message, ModelEffortLevel, PermissionMode, SessionHandle, SpawnOpts } from "../types/engine.ts"
 
 /** How long we wait for the engine to reply before giving up on a suggestion. */
 const SUGGESTION_TIMEOUT_MS = 30_000
@@ -37,6 +37,19 @@ const MAX_SLUG_LEN = 32
 
 /** Hard cap on title length. Wider than the truncate-fallback's 40 since claude tends to be terser. */
 const MAX_TITLE_LEN = 60
+
+/**
+ * How many most-recent messages we hand to the recap one-shot. Mirrors
+ * Claude Code's `RECENT_MESSAGE_WINDOW = 30` (~15 turns) — plenty for
+ * "where we left off" and well under the small-fast model's context.
+ */
+const RECAP_MESSAGE_WINDOW = 30
+
+/** Per-message text cap when serializing the transcript into the recap prompt. */
+const RECAP_PER_MESSAGE_CHAR_CAP = 1200
+
+/** Hard cap on the recap output length, after sanitization. */
+const MAX_RECAP_LEN = 600
 
 /**
  * Builder for the prompt fed to the selected engine. Returns the full
@@ -94,6 +107,24 @@ export class MetadataSuggester {
    */
   async suggestTitle(prompt: string, context: MetadataSuggestionContext): Promise<string | null> {
     return this.runOneShot(buildTitleInstruction, sanitizeTitleText, prompt, context)
+  }
+
+  /**
+   * Suggest a 1-3 sentence "while you were away" recap from a chat
+   * transcript. Mirrors Claude Code's
+   * `services/awaySummary.ts` — last 30 messages, instruction asks for
+   * high-level task + concrete next step, no status reports / commit
+   * recaps. Caller picks the small-fast model via
+   * `context.model` (typically `engine.capabilities.smallFastModelId()`).
+   *
+   * Empty / single-row histories collapse to `null` so the recap row
+   * is only ever inserted when there's something to recap.
+   */
+  async suggestRecap(history: readonly Message[], context: MetadataSuggestionContext): Promise<string | null> {
+    if (history.length === 0) return null
+    const transcript = renderRecapTranscript(history)
+    if (!transcript) return null
+    return this.runOneShot(() => buildRecapInstruction(transcript), sanitizeRecapText, transcript, context)
   }
 
   /**
@@ -172,6 +203,10 @@ export class NullMetadataSuggester extends MetadataSuggester {
   }
 
   override async suggestTitle(_prompt: string): Promise<string | null> {
+    return null
+  }
+
+  override async suggestRecap(_history: readonly Message[]): Promise<string | null> {
     return null
   }
 }
@@ -259,6 +294,79 @@ function sanitizeKebabSlug(raw: string): string | null {
     .replace(/-+$/g, "")
 
   return cleaned.length > 0 ? cleaned : null
+}
+
+/**
+ * Serialize the last {@link RECAP_MESSAGE_WINDOW} messages into a
+ * `role: text` transcript fragment for the recap prompt. Only `text`
+ * blocks make it in — tool calls / results / thinking are too noisy
+ * for a 1-3 sentence summary. Per-message text is capped so a single
+ * runaway turn can't blow the small-fast model's prompt budget.
+ *
+ * Returns `null` when no message in the window contributed any text
+ * (e.g. a session that only ran tools).
+ */
+function renderRecapTranscript(history: readonly Message[]): string | null {
+  const window = history.slice(-RECAP_MESSAGE_WINDOW)
+  const lines: string[] = []
+  for (const m of window) {
+    let text = ""
+    for (const b of m.blocks) {
+      if (b.type === "text" && b.text) text += text ? `\n${b.text}` : b.text
+    }
+    const cleaned = text.trim()
+    if (!cleaned) continue
+    const capped =
+      cleaned.length > RECAP_PER_MESSAGE_CHAR_CAP ? `${cleaned.slice(0, RECAP_PER_MESSAGE_CHAR_CAP)}…` : cleaned
+    lines.push(`${m.role}: ${capped}`)
+  }
+  if (lines.length === 0) return null
+  return lines.join("\n\n")
+}
+
+function buildRecapInstruction(transcript: string): string {
+  // Mirrors `refs/claude-code/src/services/awaySummary.ts`'s prompt:
+  // 1-3 sentences, lead with the high-level task, then concrete next
+  // step, NO status reports / commit recaps. "Reply with ONLY the
+  // summary" is the same load-bearing line we use elsewhere — without
+  // it haiku-class models tend to prefix "Sure!".
+  return [
+    "The user stepped away and is coming back. Read the conversation transcript below and write a short recap.",
+    "Rules:",
+    "- Exactly 1-3 short sentences.",
+    "- Start by stating the high-level task — what is being built or debugged, not implementation details.",
+    "- Then state the concrete next step.",
+    "- Skip status reports and commit recaps.",
+    "- Reply with ONLY the recap sentences, no preamble, no quotes, no markdown.",
+    "",
+    "Transcript:",
+    transcript,
+    "",
+    "Recap:",
+  ].join("\n")
+}
+
+/**
+ * Recap text normalizer — strip wrapping quotes and a leading
+ * "Recap:"/"Summary:" the model sometimes adds despite the
+ * instruction, collapse whitespace, clamp to {@link MAX_RECAP_LEN}.
+ * Newlines are preserved (the renderer dim-wraps anyway), but tabs
+ * and repeated blank lines are normalized.
+ */
+function sanitizeRecapText(raw: string): string | null {
+  let cleaned = raw
+    .replace(/\t+/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+  if (!cleaned) return null
+  cleaned = cleaned
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/^(recap|summary)[:\s-]+/i, "")
+    .trim()
+  if (!cleaned) return null
+  if (cleaned.length > MAX_RECAP_LEN) cleaned = `${cleaned.slice(0, MAX_RECAP_LEN).trimEnd()}…`
+  return cleaned
 }
 
 /**

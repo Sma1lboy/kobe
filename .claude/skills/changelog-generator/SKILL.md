@@ -1,6 +1,8 @@
 ---
 name: changelog-generator
 description: Generate kobe CHANGELOG entries from git history. Drafts user-facing release notes for `packages/kobe/CHANGELOG.md` under `## [Unreleased]`. Use when the user asks for "changelog", "release notes", "what changed since last release", or before cutting a new version tag. Enforces kobe's no-soft-wrap rule so GitHub release pages render flowing text.
+metadata:
+  internal: true
 ---
 
 <!--
