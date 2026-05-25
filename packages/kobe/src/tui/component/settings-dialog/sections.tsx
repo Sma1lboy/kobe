@@ -1,6 +1,12 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
-import type { ClaudeAccount, CodexAccount, EngineAccountStatus, GeminiAccount } from "../../../engine/account-detect"
+import type {
+  ClaudeAccount,
+  CodexAccount,
+  CopilotAccount,
+  EngineAccountStatus,
+  GeminiAccount,
+} from "../../../engine/account-detect"
 import type { CodexBackend } from "../../../engine/codex-local/app-server"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import {
@@ -242,6 +248,7 @@ export function AccountsSettingsSection(props: {
   claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
   codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>
   geminiStatus: Accessor<EngineAccountStatus<GeminiAccount> | null>
+  copilotStatus: Accessor<EngineAccountStatus<CopilotAccount> | null>
 }) {
   const { theme } = useTheme()
   return (
@@ -315,6 +322,38 @@ export function AccountsSettingsSection(props: {
                   )
                 }
                 if (a.kind === "apikey") return <text fg={theme.success}>● API key configured</text>
+                return <text fg={theme.textMuted}>○ Not logged in</text>
+              })()}
+              <Show when={s().accountError}>
+                {(err) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`! ${err()}`}
+                  </text>
+                )}
+              </Show>
+            </box>
+          )}
+        </Show>
+      </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          copilot
+        </text>
+        <Show when={props.copilotStatus() === null}>
+          <text fg={theme.textMuted}>Checking…</text>
+        </Show>
+        <Show when={props.copilotStatus()}>
+          {(s) => (
+            <box flexDirection="column" gap={0}>
+              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                {s().binary.found
+                  ? `Binary: ${(s().binary as { path: string }).path}`
+                  : `Binary: ${(s().binary as { error: string }).error}`}
+              </text>
+              {(() => {
+                const a = s().account
+                if (a.kind === "token") return <text fg={theme.success}>{`● Token configured (${a.source})`}</text>
+                if (a.kind === "oauth") return <text fg={theme.success}>● Copilot login detected</text>
                 return <text fg={theme.textMuted}>○ Not logged in</text>
               })()}
               <Show when={s().accountError}>

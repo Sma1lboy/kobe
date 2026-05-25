@@ -122,6 +122,7 @@ const registries: Readonly<Record<VendorId, Readonly<Record<string, ToolMeta>>>>
   claude: claudeRegistry,
   codex: {},
   gemini: {},
+  copilot: {},
 }
 
 /**

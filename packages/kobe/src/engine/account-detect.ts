@@ -1,9 +1,9 @@
 /**
  * Read-only account detection for the engines kobe drives:
- * `claude` (Anthropic), `codex` (OpenAI), and `gemini` (Google).
+ * `claude` (Anthropic), `codex` (OpenAI), `gemini` (Google), and `copilot` (GitHub).
  *
  * The settings dialog's "Accounts" section calls these to show "is
- * `claude` / `codex` / `gemini` installed?" and "is there a local account?".
+ * `claude` / `codex` / `gemini` / `copilot` installed?" and "is there a local account?".
  * Future work (codex sub-login flows etc.) layers on top — the read
  * path stays the same, only the action set grows.
  *
@@ -48,6 +48,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local/binary"
 import { CodexBinaryNotFoundError, findCodexBinary } from "./codex-local/binary"
+import { CopilotBinaryNotFoundError, findCopilotBinary } from "./copilot-local/binary"
 import { GeminiBinaryNotFoundError, findGeminiBinary } from "./gemini-local/binary"
 
 export type ClaudeAccount =
@@ -68,6 +69,11 @@ export type GeminiAccount =
   | { kind: "vertex"; project?: string; location?: string }
   | { kind: "none" }
 
+export type CopilotAccount =
+  | { kind: "token"; source: "COPILOT_GITHUB_TOKEN" | "GH_TOKEN" | "GITHUB_TOKEN" }
+  | { kind: "oauth" }
+  | { kind: "none" }
+
 export type BinaryStatus = { found: true; path: string } | { found: false; error: string }
 
 export interface EngineAccountStatus<A> {
@@ -85,6 +91,7 @@ export interface DetectDeps {
   findClaudeBinary(): Promise<string>
   findCodexBinary(): Promise<string>
   findGeminiBinary(): Promise<string>
+  findCopilotBinary(): Promise<string>
 }
 
 const defaultDeps: DetectDeps = {
@@ -114,6 +121,9 @@ const defaultDeps: DetectDeps = {
   findGeminiBinary() {
     return findGeminiBinary()
   },
+  findCopilotBinary() {
+    return findCopilotBinary()
+  },
 }
 
 /** Resolve the path to claude-code's global config (`~/.claude.json` by default). */
@@ -138,6 +148,12 @@ export function geminiOauthCredsPath(home: string): string {
 /** Resolve the path to Gemini CLI's user settings file. */
 export function geminiSettingsPath(home: string): string {
   return path.join(home, ".gemini", "settings.json")
+}
+
+export function copilotConfigPath(env: (k: string) => string | undefined, home: string): string {
+  const override = env("COPILOT_HOME")?.trim()
+  const dir = override ?? path.join(home, ".copilot")
+  return path.join(dir, "config.json")
 }
 
 /**
@@ -171,7 +187,8 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
     if (
       err instanceof ClaudeBinaryNotFoundError ||
       err instanceof CodexBinaryNotFoundError ||
-      err instanceof GeminiBinaryNotFoundError
+      err instanceof GeminiBinaryNotFoundError ||
+      err instanceof CopilotBinaryNotFoundError
     ) {
       return { found: false, error: "not found on PATH" }
     }
@@ -370,6 +387,64 @@ export async function detectGeminiAccount(deps: DetectDeps = defaultDeps): Promi
   return { binary, account: { kind: "none" } }
 }
 
+export async function detectCopilotAccount(
+  deps: DetectDeps = defaultDeps,
+): Promise<EngineAccountStatus<CopilotAccount>> {
+  const binary = await probeBinary(() => deps.findCopilotBinary())
+  for (const source of ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const) {
+    if (deps.env(source)?.trim()) return { binary, account: { kind: "token", source } }
+  }
+
+  const configPath = copilotConfigPath(deps.env, deps.home())
+  let raw: string | null
+  try {
+    raw = deps.readFile(configPath)
+  } catch (err) {
+    return {
+      binary,
+      account: { kind: "none" },
+      accountError: `read ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+  if (raw === null) return { binary, account: { kind: "none" } }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (err) {
+    return {
+      binary,
+      account: { kind: "none" },
+      accountError: `parse ${configPath}: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  if (!isRecord(parsed)) return { binary, account: { kind: "none" } }
+  if (
+    hasStringDeep(parsed, [
+      "github_token",
+      "oauth_token",
+      "access_token",
+      "token",
+      "selectedUser",
+      "currentUser",
+      "user",
+    ])
+  ) {
+    return { binary, account: { kind: "oauth" } }
+  }
+  return { binary, account: { kind: "none" } }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
+function hasStringDeep(value: unknown, interestingKeys: readonly string[], depth = 0): boolean {
+  if (depth > 4 || !isRecord(value)) return false
+  for (const [key, entry] of Object.entries(value)) {
+    if (interestingKeys.includes(key) && typeof entry === "string" && entry.length > 0) return true
+    if (isRecord(entry) && hasStringDeep(entry, interestingKeys, depth + 1)) return true
+  }
+  return false
 }
