@@ -15,7 +15,13 @@ import { For, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../../context/theme"
 import { useBindings } from "../../../lib/keymap"
 import { type DialogContext, useDialog } from "../../../ui/dialog"
-import { type ModelPickerModelOption, modelPickerEffortOptions, modelPickerModelOptions } from "./model-picker-row"
+import {
+  type ModelPickerModelOption,
+  type ModelPickerProviderGroup,
+  modelPickerDefaultExpandedVendors,
+  modelPickerEffortOptions,
+  modelPickerProviderGroups,
+} from "./model-picker-row"
 
 export type ModelPickerResult = Pick<ModelChoice, "vendor" | "id" | "effort"> | undefined
 
@@ -32,9 +38,20 @@ function ModelPicker(props: ModelPickerProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
 
+  const seedVendor = props.currentVendor ?? props.lockedVendor ?? "claude"
+
   // Memoised so adding vendors later (codex) doesn't recompute on every
   // key event. The list is stable for the dialog's lifetime.
-  const models = createMemo(() => modelPickerModelOptions(allModels(), { lockedVendor: props.lockedVendor }))
+  const groups = createMemo(() =>
+    modelPickerProviderGroups(allModels(), {
+      lockedVendor: props.lockedVendor,
+      providerLabelFor: (vendor) => getCapabilities(vendor).label,
+    }),
+  )
+  const [expandedVendors, setExpandedVendors] = createSignal<ReadonlySet<VendorId>>(
+    modelPickerDefaultExpandedVendors(props.currentVendor, props.lockedVendor),
+  )
+  const rows = createMemo(() => visibleRows(groups(), expandedVendors()))
   const [selectedModel, setSelectedModel] = createSignal<ModelPickerModelOption | undefined>()
   const effortChoices = createMemo(() => {
     const model = selectedModel()
@@ -45,10 +62,9 @@ function ModelPicker(props: ModelPickerProps) {
   // re-confirms the existing choice without changing it. When unpinned,
   // seed on the active vendor's resolved default so the picker reflects
   // what the user is actually running.
-  const seedVendor = props.currentVendor ?? props.lockedVendor ?? "claude"
   const seed = props.current ?? getCapabilities(seedVendor).defaultModelId()
-  const initial = models().findIndex((m) => m.id === seed)
-  const [cursor, setCursor] = createSignal(nextEnabledIndex(models(), initial >= 0 ? initial : 0, 1))
+  const initial = rows().findIndex((row) => row.type === "model" && row.model.id === seed)
+  const [cursor, setCursor] = createSignal(nextEnabledRowIndex(rows(), initial >= 0 ? initial : 0, 1))
   const [effortCursor, setEffortCursor] = createSignal(0)
   const inEffortStep = () => selectedModel() !== undefined
 
@@ -63,7 +79,13 @@ function ModelPicker(props: ModelPickerProps) {
       commitEffort()
       return
     }
-    const model = models()[cursor()]
+    const row = rows()[cursor()]
+    if (!row) return
+    if (row.type === "provider") {
+      toggleProvider(row.vendor)
+      return
+    }
+    const model = row.model
     if (!model) return
     if (model.disabled) return
     const efforts = modelPickerEffortOptions(model)
@@ -89,42 +111,51 @@ function ModelPicker(props: ModelPickerProps) {
     setSelectedModel(undefined)
   }
 
+  function toggleProvider(vendor: VendorId): void {
+    setExpandedVendors((previous) => {
+      const next = new Set(previous)
+      if (next.has(vendor)) next.delete(vendor)
+      else next.add(vendor)
+      return next
+    })
+  }
+
   useBindings(() => ({
     bindings: [
       {
         key: "up",
         cmd: () => {
-          const n = inEffortStep() ? effortChoices().length : models().length
+          const n = inEffortStep() ? effortChoices().length : rows().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c - 1 + n) % n)
-          else setCursor((c) => nextEnabledIndex(models(), c - 1, -1))
+          else setCursor((c) => nextEnabledRowIndex(rows(), c - 1, -1))
         },
       },
       {
         key: "down",
         cmd: () => {
-          const n = inEffortStep() ? effortChoices().length : models().length
+          const n = inEffortStep() ? effortChoices().length : rows().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c + 1) % n)
-          else setCursor((c) => nextEnabledIndex(models(), c + 1, 1))
+          else setCursor((c) => nextEnabledRowIndex(rows(), c + 1, 1))
         },
       },
       {
         key: "k",
         cmd: () => {
-          const n = inEffortStep() ? effortChoices().length : models().length
+          const n = inEffortStep() ? effortChoices().length : rows().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c - 1 + n) % n)
-          else setCursor((c) => nextEnabledIndex(models(), c - 1, -1))
+          else setCursor((c) => nextEnabledRowIndex(rows(), c - 1, -1))
         },
       },
       {
         key: "j",
         cmd: () => {
-          const n = inEffortStep() ? effortChoices().length : models().length
+          const n = inEffortStep() ? effortChoices().length : rows().length
           if (n === 0) return
           if (inEffortStep()) setEffortCursor((c) => (c + 1) % n)
-          else setCursor((c) => nextEnabledIndex(models(), c + 1, 1))
+          else setCursor((c) => nextEnabledRowIndex(rows(), c + 1, 1))
         },
       },
       { key: "left", cmd: backToModels },
@@ -191,11 +222,13 @@ function ModelPicker(props: ModelPickerProps) {
         </box>
       ) : (
         <box flexDirection="column" paddingBottom={1}>
-          <For each={models()}>
-            {(model, i) => {
+          <For each={rows()}>
+            {(row, i) => {
               const active = () => i() === cursor()
-              const disabled = () => model.disabled === true
-              const hasEfforts = () => modelPickerEffortOptions(model).some((choice) => choice.effort !== undefined)
+              const disabled = () => row.type === "model" && row.model.disabled === true
+              const hasEfforts = () =>
+                row.type === "model" &&
+                modelPickerEffortOptions(row.model).some((choice) => choice.effort !== undefined)
               return (
                 <box
                   flexDirection="row"
@@ -204,7 +237,13 @@ function ModelPicker(props: ModelPickerProps) {
                   paddingRight={1}
                   backgroundColor={active() && !disabled() ? theme.primary : undefined}
                   onMouseUp={() => {
+                    if (row.type === "provider") {
+                      setCursor(i())
+                      toggleProvider(row.vendor)
+                      return
+                    }
                     if (disabled()) return
+                    const model = row.model
                     const efforts = modelPickerEffortOptions(model)
                     if (efforts.length <= 1 && efforts[0]?.effort === undefined) {
                       props.onPick({ vendor: model.vendor, id: model.id, effort: undefined })
@@ -216,33 +255,56 @@ function ModelPicker(props: ModelPickerProps) {
                     setInitialEffortCursor(model)
                   }}
                 >
-                  <text
-                    fg={
-                      active() && !disabled() ? theme.selectedListItemText : disabled() ? theme.textMuted : theme.text
-                    }
-                    attributes={active() && !disabled() ? TextAttributes.BOLD : undefined}
-                    wrapMode="none"
-                  >
-                    {active() ? "▸ " : "  "}
-                    {model.label}
-                  </text>
-                  <text fg={active() && !disabled() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                    {model.vendor}
-                  </text>
-                  {disabled() && model.disabledReason ? (
-                    <text fg={theme.textMuted} wrapMode="none">
-                      {model.disabledReason}
-                    </text>
-                  ) : hasEfforts() ? (
-                    <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                      effort…
-                    </text>
-                  ) : null}
-                  {model.hint ? (
-                    <text fg={active() && !disabled() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                      {model.hint}
-                    </text>
-                  ) : null}
+                  {row.type === "provider" ? (
+                    <>
+                      <text
+                        fg={active() ? theme.selectedListItemText : theme.text}
+                        attributes={TextAttributes.BOLD}
+                        wrapMode="none"
+                      >
+                        {active() ? "▸ " : "  "}
+                        {row.expanded ? "▾" : "▸"} {row.label}
+                      </text>
+                      <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                        {row.count} models
+                      </text>
+                    </>
+                  ) : (
+                    <>
+                      <text
+                        fg={
+                          active() && !disabled()
+                            ? theme.selectedListItemText
+                            : disabled()
+                              ? theme.textMuted
+                              : theme.text
+                        }
+                        attributes={active() && !disabled() ? TextAttributes.BOLD : undefined}
+                        wrapMode="none"
+                      >
+                        {active() ? "▸ " : "  "}
+                        {"  "}
+                        {row.model.label}
+                      </text>
+                      {disabled() && row.model.disabledReason ? (
+                        <text fg={theme.textMuted} wrapMode="none">
+                          {row.model.disabledReason}
+                        </text>
+                      ) : hasEfforts() ? (
+                        <text fg={active() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                          effort…
+                        </text>
+                      ) : null}
+                      {row.model.hint ? (
+                        <text
+                          fg={active() && !disabled() ? theme.selectedListItemText : theme.textMuted}
+                          wrapMode="none"
+                        >
+                          {row.model.hint}
+                        </text>
+                      ) : null}
+                    </>
+                  )}
                 </box>
               )
             }}
@@ -251,7 +313,9 @@ function ModelPicker(props: ModelPickerProps) {
       )}
       <box paddingBottom={1}>
         <text fg={theme.textMuted}>
-          {inEffortStep() ? "↑↓ pick · enter select · h back · esc cancel" : "↑↓ pick · enter select · esc cancel"}
+          {inEffortStep()
+            ? "↑↓ pick · enter select · h back · esc cancel"
+            : "↑↓ pick · enter select/toggle · esc cancel"}
         </text>
       </box>
     </box>
@@ -284,12 +348,47 @@ ModelPicker.show = (
 
 export { ModelPicker }
 
-function nextEnabledIndex(models: readonly ModelPickerModelOption[], start: number, step: 1 | -1): number {
-  if (models.length === 0) return 0
-  const normalized = ((start % models.length) + models.length) % models.length
-  for (let offset = 0; offset < models.length; offset++) {
-    const idx = (((normalized + offset * step) % models.length) + models.length) % models.length
-    if (!models[idx]?.disabled) return idx
+type ModelPickerVisibleRow =
+  | {
+      readonly type: "provider"
+      readonly vendor: VendorId
+      readonly label: string
+      readonly expanded: boolean
+      readonly count: number
+    }
+  | {
+      readonly type: "model"
+      readonly model: ModelPickerModelOption
+    }
+
+function visibleRows(
+  groups: readonly ModelPickerProviderGroup[],
+  expandedVendors: ReadonlySet<VendorId>,
+): readonly ModelPickerVisibleRow[] {
+  const rows: ModelPickerVisibleRow[] = []
+  for (const group of groups) {
+    const expanded = expandedVendors.has(group.vendor)
+    rows.push({
+      type: "provider",
+      vendor: group.vendor,
+      label: group.label,
+      expanded,
+      count: group.models.length,
+    })
+    if (expanded) {
+      for (const model of group.models) rows.push({ type: "model", model })
+    }
+  }
+  return rows
+}
+
+function nextEnabledRowIndex(rows: readonly ModelPickerVisibleRow[], start: number, step: 1 | -1): number {
+  if (rows.length === 0) return 0
+  const normalized = ((start % rows.length) + rows.length) % rows.length
+  for (let offset = 0; offset < rows.length; offset++) {
+    const idx = (((normalized + offset * step) % rows.length) + rows.length) % rows.length
+    const row = rows[idx]
+    if (row?.type === "provider" || !row?.model.disabled) return idx
   }
   return normalized
 }

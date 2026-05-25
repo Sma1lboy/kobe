@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest"
 import { modelLabelFor } from "../../src/engine/registry"
-import { modelPickerEffortOptions, modelPickerModelOptions } from "../../src/tui/panes/chat/composer/model-picker-row"
+import {
+  modelPickerDefaultExpandedVendors,
+  modelPickerEffortOptions,
+  modelPickerModelOptions,
+  modelPickerProviderGroups,
+} from "../../src/tui/panes/chat/composer/model-picker-row"
 import type { ModelChoice } from "../../src/types/engine"
 
 describe("model picker option helpers", () => {
@@ -78,6 +83,54 @@ describe("model picker option helpers", () => {
       expect.objectContaining({ id: "claude-opus-4-7", disabled: false, disabledReason: undefined }),
       expect.objectContaining({ id: "gpt-5.5", disabled: true, disabledReason: "new chat required" }),
     ])
+  })
+
+  test("groups model rows by provider using provider labels", () => {
+    const groups = modelPickerProviderGroups(
+      [
+        {
+          vendor: "claude",
+          id: "claude-opus-4-7",
+          label: "Opus 4.7",
+        },
+        {
+          vendor: "codex",
+          id: "gpt-5.5",
+          label: "GPT-5.5",
+        },
+        {
+          vendor: "codex",
+          id: "gpt-5.5",
+          effort: "xhigh",
+          label: "GPT-5.5 · xhigh",
+        },
+      ],
+      { providerLabels: { claude: "Claude Code", codex: "Codex" } },
+    )
+
+    expect(groups).toEqual([
+      expect.objectContaining({
+        vendor: "claude",
+        label: "Claude Code",
+        models: [expect.objectContaining({ id: "claude-opus-4-7" })],
+      }),
+      expect.objectContaining({
+        vendor: "codex",
+        label: "Codex",
+        models: [
+          expect.objectContaining({
+            id: "gpt-5.5",
+            choices: expect.arrayContaining([expect.objectContaining({ effort: "xhigh" })]),
+          }),
+        ],
+      }),
+    ])
+  })
+
+  test("defaults expansion to the current provider, then locked provider, then Claude", () => {
+    expect([...modelPickerDefaultExpandedVendors("codex", "claude")]).toEqual(["codex"])
+    expect([...modelPickerDefaultExpandedVendors(undefined, "gemini")]).toEqual(["gemini"])
+    expect([...modelPickerDefaultExpandedVendors(undefined, undefined)]).toEqual(["claude"])
   })
 
   test("composer model label includes the selected effort", () => {

@@ -18,6 +18,12 @@ export type ModelPickerEffortOption = {
   readonly hint?: string
 }
 
+export type ModelPickerProviderGroup = {
+  readonly vendor: VendorId
+  readonly label: string
+  readonly models: readonly ModelPickerModelOption[]
+}
+
 export function modelPickerModelOptions(
   choices: readonly ModelChoice[],
   opts: { lockedVendor?: VendorId } = {},
@@ -46,6 +52,36 @@ export function modelPickerModelOptions(
       choices: bucket,
     }
   })
+}
+
+export function modelPickerProviderGroups(
+  choices: readonly ModelChoice[],
+  opts: {
+    lockedVendor?: VendorId
+    providerLabels?: Partial<Record<VendorId, string>>
+    providerLabelFor?: (vendor: VendorId) => string
+  } = {},
+): readonly ModelPickerProviderGroup[] {
+  const models = modelPickerModelOptions(choices, { lockedVendor: opts.lockedVendor })
+  const byVendor = new Map<VendorId, ModelPickerModelOption[]>()
+  for (const model of models) {
+    const bucket = byVendor.get(model.vendor)
+    if (bucket) bucket.push(model)
+    else byVendor.set(model.vendor, [model])
+  }
+
+  return [...byVendor.entries()].map(([vendor, vendorModels]) => ({
+    vendor,
+    label: opts.providerLabelFor?.(vendor) ?? opts.providerLabels?.[vendor] ?? vendor,
+    models: vendorModels,
+  }))
+}
+
+export function modelPickerDefaultExpandedVendors(
+  currentVendor: VendorId | undefined,
+  lockedVendor: VendorId | undefined,
+): ReadonlySet<VendorId> {
+  return new Set([currentVendor ?? lockedVendor ?? "claude"])
 }
 
 export function modelPickerEffortOptions(model: ModelPickerModelOption): readonly ModelPickerEffortOption[] {
