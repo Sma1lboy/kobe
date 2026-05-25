@@ -497,7 +497,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
-    hint: { keys: "ctrl+t", label: "new tab", status: false },
+    hint: { keys: "ctrl+t", label: "new tab" },
   },
   {
     // KOB-74. Quick-fork: from a focused chat tab, spin up a child
@@ -517,7 +517,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+f"],
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
-    hint: { keys: "ctrl+f", label: "fork", status: false },
+    hint: { keys: "ctrl+f", label: "fork" },
   },
   {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing

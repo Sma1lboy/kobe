@@ -22,7 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
-- **Status bar shortcut hints are quieter** — the bottom footer now keeps Help visible while showing only the highest-value focused-pane actions; low-frequency, destructive, tab-management, and picker-specific shortcuts stay discoverable in Help instead of crowding small terminals (KOB-241).
+- **Status bar shortcut hints are quieter** — the bottom footer now keeps Help visible while showing only the highest-value focused-pane actions, including Chat's new-tab and fork shortcuts; low-frequency, destructive, and picker-specific shortcuts stay discoverable in Help instead of crowding small terminals (KOB-241, KOB-242).
 
 ### Fixed
 
