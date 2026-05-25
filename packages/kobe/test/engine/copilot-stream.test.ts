@@ -1,7 +1,6 @@
 import { findCopilotBinary } from "@/engine/copilot-local/binary"
 import { parseEvents, parseWorkspaceYaml } from "@/engine/copilot-local/history"
 import { COPILOT_MODELS } from "@/engine/copilot-local/models"
-import { findNewestSessionIdForCwdSince } from "@/engine/copilot-local/sessions"
 import { resolveCopilotDefaultModelId } from "@/engine/copilot-local/settings"
 import { buildArgs, buildSpawnCommand } from "@/engine/copilot-local/spawn"
 import { copilotUsageToSnapshot, parseCopilotJson } from "@/engine/copilot-local/stream"
@@ -45,20 +44,31 @@ describe("copilot spawn args", () => {
     ])
   })
 
-  it("passes resume id and plan mode", () => {
+  it("passes uuid session id and plan mode", () => {
     const args = buildArgs({
       binaryPath: "copilot",
       cwd: "/repo",
       prompt: "continue",
-      resumeSessionId: "session-1",
+      sessionId: "8970f69d-034e-4cb8-9d34-829ed0d2404d",
       permissionMode: "plan",
       modelEffort: "high",
     })
-    expect(args).toContain("--resume=session-1")
+    expect(args).toContain("--session-id=8970f69d-034e-4cb8-9d34-829ed0d2404d")
     expect(args).toContain("--mode")
     expect(args).toContain("plan")
     expect(args).toContain("--effort")
     expect(args).toContain("high")
+  })
+
+  it("falls back to resume for legacy non-uuid session ids", () => {
+    const args = buildArgs({
+      binaryPath: "copilot",
+      cwd: "/repo",
+      prompt: "continue",
+      sessionId: "session-name",
+    })
+
+    expect(args).toContain("--resume=session-name")
   })
 
   it("does not pass unavailable legacy Copilot model ids", () => {
@@ -249,28 +259,5 @@ describe("copilot history helpers", () => {
         currentTokens: 9,
       }),
     ).toEqual({ input_tokens: 5, output_tokens: 9, cache_read_input_tokens: 1, context_tokens: 9 })
-  })
-
-  it("finds the newest matching session id for early fresh-run binding", async () => {
-    const files = new Map<string, string>([
-      ["/copilot/session-state/old/workspace.yaml", "id: old-session\ncwd: /repo\nupdated_at: 2026-05-24T10:00:00Z\n"],
-      ["/copilot/session-state/new/workspace.yaml", "id: new-session\ncwd: /repo\nupdated_at: 2026-05-24T10:01:00Z\n"],
-      ["/copilot/session-state/other/workspace.yaml", "id: other-session\ncwd: /elsewhere\n"],
-    ])
-    const mtimes = new Map<string, number>([
-      ["/copilot/session-state/old/events.jsonl", 100],
-      ["/copilot/session-state/new/events.jsonl", 300],
-      ["/copilot/session-state/other/events.jsonl", 400],
-    ])
-
-    await expect(
-      findNewestSessionIdForCwdSince("/repo", 200, {
-        copilotDir: () => "/copilot",
-        readdir: async () => ["old", "new", "other"],
-        readFile: async (p) => files.get(p) ?? "",
-        stat: async (p) => ({ mtimeMs: mtimes.get(p) ?? 0 }),
-        rm: async () => {},
-      }),
-    ).resolves.toBe("new-session")
   })
 })

@@ -10,7 +10,7 @@ export interface SpawnCopilotOpts {
   readonly prompt: string
   readonly model?: string
   readonly modelEffort?: ModelEffortLevel
-  readonly resumeSessionId?: string
+  readonly sessionId?: string
   readonly permissionMode?: "default" | "plan"
   readonly env?: Readonly<Record<string, string>>
   readonly extraArgs?: readonly string[]
@@ -75,7 +75,7 @@ export function buildArgs(opts: SpawnCopilotOpts): string[] {
     "--no-remote",
     "--no-ask-user",
   ]
-  if (opts.resumeSessionId) args.push(`--resume=${opts.resumeSessionId}`)
+  if (opts.sessionId) args.push(sessionFlagFor(opts.sessionId))
   const model = normalizeCopilotCliModel(opts.model)
   if (model) args.push("--model", model)
   if (opts.modelEffort) args.push("--effort", opts.modelEffort)
@@ -88,4 +88,12 @@ export function buildArgs(opts: SpawnCopilotOpts): string[] {
 
 function quoteForCmd(value: string): string {
   return `"${value.replace(/"/g, '""').replace(/%/g, "%%")}"`
+}
+
+function sessionFlagFor(sessionId: string): string {
+  return isUuid(sessionId) ? `--session-id=${sessionId}` : `--resume=${sessionId}`
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
