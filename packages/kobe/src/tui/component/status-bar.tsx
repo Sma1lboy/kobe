@@ -49,14 +49,16 @@ export function StatusBar() {
     }
   }
   // Pane-local hints come from KobeKeymap by scope; only rows with a
-  // non-pinned `hint` and a `scope` matching the focused pane show up.
+  // status-enabled, non-pinned `hint` and a `scope` matching the focused pane
+  // show up. Help may still use `hint` rows that opt out of the footer.
   const leftHints = () =>
     KobeKeymap.filter((b) => {
-      if (!b.hint || b.hint.pin) return false
+      if (!b.hint || b.hint.pin || b.hint.status === false) return false
       return b.scope === focus.focused()
     })
-  // Right column = anything pinned right; order preserved from KobeKeymap.
-  const rightHints = KobeKeymap.filter((b) => b.hint?.pin === "right")
+  // Right column = status-enabled pinned hints; Help is the only permanent
+  // escape hatch in the compact footer.
+  const rightHints = KobeKeymap.filter((b) => b.hint?.pin === "right" && b.hint.status !== false)
 
   return (
     <box flexDirection="row" justifyContent="space-between" flexShrink={0} paddingLeft={1} paddingRight={1}>

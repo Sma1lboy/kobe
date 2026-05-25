@@ -20,10 +20,11 @@
  *     when a specific pane is focused. The pane that owns the scope
  *     calls `bindByIds(...)` with the same id → the chord(s) come from
  *     this table.
- *   - `hint` is purely cosmetic: how the status bar should label the
- *     chord. `hint.pin = "right"` keeps it in the always-visible right
- *     column; otherwise the hint shows only while its scope is focused.
- *     `hint == null` means the binding doesn't appear in the status bar.
+ *   - `hint` is cosmetic display metadata. Help uses it to print friendly
+ *     pseudo-chords (`j/k`, `ctrl+hjkl`, etc.). The status bar also uses it
+ *     unless `hint.status === false`. `hint.pin = "right"` keeps the hint
+ *     in the always-visible right column; otherwise the hint shows only while
+ *     its scope is focused. `hint == null` means no friendly display override.
  *   - `description` + `category` feed the help dialog (F1).
  *
  * Hint vs. chord:
@@ -81,6 +82,12 @@ export type KobeBindingHint = {
   keys: string
   /** Short verb/noun shown next to the chord (e.g. "nav", "delete"). */
   label: string
+  /**
+   * `false` keeps the friendly chord in Help while suppressing it from the
+   * bottom status bar. Use for low-frequency, destructive, or state-specific
+   * actions that should not crowd small terminals.
+   */
+  status?: false
   /**
    * `"right"` keeps the hint in the always-visible right column of the
    * status bar (global / cross-pane reminders like quit, help, new).
@@ -205,7 +212,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["s"],
     category: "Sidebar",
     description: "Open settings",
-    hint: { keys: "s", label: "settings" },
+    hint: { keys: "s", label: "settings", status: false },
   },
   {
     // Sidebar-only — single letter `q`. ctrl+q is reserved for
@@ -217,7 +224,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["q"],
     category: "Sidebar",
     description: "Quit (with confirm)",
-    hint: { keys: "q", label: "quit" },
+    hint: { keys: "q", label: "quit", status: false },
   },
   {
     // Workspace-only "back to tasks" chord. Plain `q` (sidebar
@@ -238,7 +245,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["tab"],
     category: "Navigation",
     description: "Focus next pane (Wave 3)",
-    hint: { keys: "tab", label: "cycle", pin: "right" },
+    hint: { keys: "tab", label: "cycle", pin: "right", status: false },
   },
   {
     id: "focus.prev",
@@ -269,7 +276,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l"],
     category: "Navigation",
     description: "Jump to pane (h=sidebar, j=workspace, k=files, l=terminal)",
-    hint: { keys: "ctrl+hjkl", label: "focus", pin: "right" },
+    hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
   },
   {
     id: "app.copy_or_quit",
@@ -345,7 +352,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["r"],
     category: "Sidebar",
     description: "Rename task",
-    hint: { keys: "r", label: "rename" },
+    hint: { keys: "r", label: "rename", status: false },
   },
   {
     id: "sidebar.archive",
@@ -353,7 +360,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["a"],
     category: "Sidebar",
     description: "Toggle archive",
-    hint: { keys: "a", label: "archive" },
+    hint: { keys: "a", label: "archive", status: false },
   },
   {
     id: "sidebar.localMerge",
@@ -361,7 +368,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["m"],
     category: "Sidebar",
     description: "Local merge task into parent repo (Shift+M)",
-    hint: { keys: "M", label: "merge" },
+    hint: { keys: "M", label: "merge", status: false },
   },
   {
     // Capital P pins / unpins a regular task. Lowercase `p` falls
@@ -375,7 +382,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["p"],
     category: "Sidebar",
     description: "Pin / unpin task at top (Shift+P)",
-    hint: { keys: "P", label: "pin" },
+    hint: { keys: "P", label: "pin", status: false },
   },
   {
     id: "sidebar.view",
@@ -383,7 +390,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["[", "]"],
     category: "Sidebar",
     description: "Switch view (Working session ↔ Archives)",
-    hint: { keys: "[/]", label: "view" },
+    hint: { keys: "[/]", label: "view", status: false },
   },
   {
     id: "sidebar.delete",
@@ -391,7 +398,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["d"],
     category: "Sidebar",
     description: "Delete task (with confirm)",
-    hint: { keys: "d", label: "delete" },
+    hint: { keys: "d", label: "delete", status: false },
   },
   {
     // `/`-search filter. Enters an inline search mode rendered at the
@@ -482,7 +489,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: [],
     category: "Workspace",
     description: "Steer (interrupt + send) — mid-stream only",
-    hint: { keys: "ctrl+enter", label: "steer" },
+    hint: { keys: "ctrl+enter", label: "steer", status: false },
   },
   {
     id: "chat.tab.new",
@@ -490,7 +497,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+t"],
     category: "Workspace",
     description: "New chat tab",
-    hint: { keys: "ctrl+t", label: "new tab" },
+    hint: { keys: "ctrl+t", label: "new tab", status: false },
   },
   {
     // KOB-74. Quick-fork: from a focused chat tab, spin up a child
@@ -510,7 +517,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+f"],
     category: "Workspace",
     description: "Quick-fork: create child task seeded with current repo/branch/model",
-    hint: { keys: "ctrl+f", label: "fork" },
+    hint: { keys: "ctrl+f", label: "fork", status: false },
   },
   {
     // Mirror of claude-code's `/resume` slash. Pops a picker listing
@@ -526,7 +533,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+y"],
     category: "Workspace",
     description: "Resume a prior session in this task's worktree",
-    hint: { keys: "ctrl+y", label: "resume" },
+    hint: { keys: "ctrl+y", label: "resume", status: false },
   },
   {
     id: "chat.tab.close",
@@ -534,7 +541,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+w"],
     category: "Workspace",
     description: "Close chat tab",
-    hint: { keys: "ctrl+w", label: "close tab" },
+    hint: { keys: "ctrl+w", label: "close tab", status: false },
   },
   {
     // Rename the active chat tab. F2 is the cross-OS / cross-IDE
@@ -548,7 +555,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["f2"],
     category: "Workspace",
     description: "Rename active chat tab",
-    hint: { keys: "f2", label: "rename tab" },
+    hint: { keys: "f2", label: "rename tab", status: false },
   },
   {
     // `ctrl+]` cycles forward, `ctrl+[` cycles backward — bracket
@@ -563,7 +570,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+]"],
     category: "Workspace",
     description: "Next chat tab",
-    hint: { keys: "ctrl+]", label: "next tab" },
+    hint: { keys: "ctrl+]", label: "next tab", status: false },
   },
   {
     id: "chat.tab.cycle-prev",
@@ -571,7 +578,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+["],
     category: "Workspace",
     description: "Previous chat tab",
-    hint: { keys: "ctrl+[", label: "prev tab" },
+    hint: { keys: "ctrl+[", label: "prev tab", status: false },
   },
   // AskUserQuestion picker bindings — only fire when a question card is
   // up (QuestionRow gates `enabled` on its own state). j/k/space/enter/
@@ -586,7 +593,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["j", "k", "down", "up"],
     category: "Workspace",
     description: "Move highlight in question picker",
-    hint: { keys: "j/k", label: "pick" },
+    hint: { keys: "j/k", label: "pick", status: false },
   },
   {
     id: "chat.question.toggle",
@@ -594,7 +601,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["space"],
     category: "Workspace",
     description: "Toggle highlighted option in question picker",
-    hint: { keys: "space", label: "toggle" },
+    hint: { keys: "space", label: "toggle", status: false },
   },
   {
     id: "chat.question.submit",
@@ -602,7 +609,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["return"],
     category: "Workspace",
     description: "Advance / submit question picker",
-    hint: { keys: "enter", label: "submit" },
+    hint: { keys: "enter", label: "submit", status: false },
   },
   {
     id: "chat.question.pick-number",
@@ -610,7 +617,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"],
     category: "Workspace",
     description: "Pick option by number in question picker",
-    hint: { keys: "1-9", label: "pick" },
+    hint: { keys: "1-9", label: "pick", status: false },
   },
 
   // ─── Files ────────────────────────────────────────────────────────────
@@ -653,7 +660,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["[", "]"],
     category: "Files",
     description: "Switch tab (cycle All / Changes)",
-    hint: { keys: "[/]", label: "tab" },
+    hint: { keys: "[/]", label: "tab", status: false },
   },
   {
     id: "files.refresh",
@@ -661,7 +668,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["r"],
     category: "Files",
     description: "Refresh",
-    hint: { keys: "r", label: "refresh" },
+    hint: { keys: "r", label: "refresh", status: false },
   },
   {
     id: "files.openExternal",
@@ -669,7 +676,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["o"],
     category: "Files",
     description: "Open file in system default app (audio / video / pdf preview)",
-    hint: { keys: "o", label: "open external" },
+    hint: { keys: "o", label: "open external", status: false },
   },
 
   // ─── Terminal ─────────────────────────────────────────────────────────
@@ -679,7 +686,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["ctrl+pageup"],
     category: "Terminal",
     description: "Scroll scrollback up",
-    hint: { keys: "ctrl+pgup", label: "scroll" },
+    hint: { keys: "ctrl+pgup", label: "scroll", status: false },
   },
   {
     id: "terminal.scroll-down",
@@ -743,7 +750,7 @@ export function chordsOf(id: string): readonly string[] {
   return findBinding(id)?.keys ?? []
 }
 
-/** All bindings whose `scope` matches (used by status-bar left column). */
+/** All bindings whose `scope` matches. */
 export function bindingsForScope(scope: KobeBindingScope): KobeBinding[] {
   return KobeKeymap.filter((b) => b.scope === scope)
 }
