@@ -57,8 +57,6 @@ describe("copilot spawn args", () => {
     expect(args).toContain("--session-id=8970f69d-034e-4cb8-9d34-829ed0d2404d")
     expect(args).toContain("--mode")
     expect(args).toContain("plan")
-    expect(args).toContain("--effort")
-    expect(args).toContain("high")
   })
 
   it("falls back to resume for legacy non-uuid session ids", () => {
@@ -90,6 +88,36 @@ describe("copilot spawn args", () => {
 
   it("lets the Copilot CLI own configured default model resolution", () => {
     expect(resolveCopilotDefaultModelId({ COPILOT_MODEL: "gpt-5.3-codex" })).toBe("auto")
+  })
+
+  it("does not pass reasoning effort when Copilot model is auto", () => {
+    const args = buildArgs({
+      binaryPath: "copilot",
+      cwd: "/repo",
+      prompt: "hello",
+      model: "auto",
+      modelEffort: "medium",
+      permissionMode: "default",
+    })
+
+    expect(args).not.toContain("--effort")
+    expect(args).not.toContain("medium")
+  })
+
+  it("does not pass reasoning effort for Copilot models without effort variants", () => {
+    const args = buildArgs({
+      binaryPath: "copilot",
+      cwd: "/repo",
+      prompt: "hello",
+      model: "claude-haiku-4.5",
+      modelEffort: "medium",
+      permissionMode: "default",
+    })
+
+    expect(args).toContain("--model")
+    expect(args).toContain("claude-haiku-4.5")
+    expect(args).not.toContain("--effort")
+    expect(args).not.toContain("medium")
   })
 
   it("launches Windows npm command shims through cmd.exe", () => {

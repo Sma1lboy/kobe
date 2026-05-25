@@ -2,7 +2,7 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from "n
 import { spawn } from "node:child_process"
 import type { Readable } from "node:stream"
 import type { ModelEffortLevel } from "@/types/engine"
-import { normalizeCopilotCliModel } from "./models"
+import { normalizeCopilotCliEffort, normalizeCopilotCliModel } from "./models"
 
 export interface SpawnCopilotOpts {
   readonly binaryPath: string
@@ -78,7 +78,8 @@ export function buildArgs(opts: SpawnCopilotOpts): string[] {
   if (opts.sessionId) args.push(sessionFlagFor(opts.sessionId))
   const model = normalizeCopilotCliModel(opts.model)
   if (model) args.push("--model", model)
-  if (opts.modelEffort) args.push("--effort", opts.modelEffort)
+  const effort = normalizeCopilotCliEffort(opts.model, opts.modelEffort)
+  if (effort) args.push("--effort", effort)
   if (opts.permissionMode === "plan") args.push("--mode", "plan")
   else args.push("--allow-all")
   if (opts.extraArgs?.length) args.push(...opts.extraArgs)

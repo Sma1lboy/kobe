@@ -1,4 +1,4 @@
-import type { ModelChoice } from "@/types/engine"
+import type { ModelChoice, ModelEffortLevel } from "@/types/engine"
 
 export const COPILOT_MODELS: readonly ModelChoice[] = [
   {
@@ -39,6 +39,16 @@ export function normalizeCopilotCliModel(modelId: string | undefined): string | 
   const trimmed = modelId?.trim()
   if (!trimmed || trimmed === "auto") return undefined
   return COPILOT_SELECTABLE_MODEL_IDS.has(trimmed) ? trimmed : undefined
+}
+
+export function normalizeCopilotCliEffort(
+  modelId: string | undefined,
+  effort: ModelEffortLevel | undefined,
+): ModelEffortLevel | undefined {
+  if (!effort) return undefined
+  const model = normalizeCopilotCliModel(modelId)
+  if (!model) return undefined
+  return COPILOT_MODELS.some((m) => m.id === model && m.effort === effort) ? effort : undefined
 }
 
 export function copilotContextWindowFor(_modelId: string): number {
