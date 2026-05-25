@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Copilot startup no longer fails on plan-gated Codex model ids** — removes `gpt-5.3-codex` from kobe's Copilot picker and lets the Copilot CLI own `COPILOT_MODEL` / `~/.copilot/settings.json` default resolution instead of echoing those values back as a hard `--model` flag (KOB-222).
 - **Copilot result-only sessions now attach correctly** — handles Copilot CLI runs that omit `session.start` and only report `sessionId` on the final `result` event, and avoids duplicate final assistant messages after streamed deltas (KOB-223).
 - **Copilot streams attach before the final result event** — fresh runs now start with a kobe-owned UUID via `copilot --session-id`, resume turns bind immediately to the known session id, and Windows npm `.cmd` / `.bat` shims launch through `cmd.exe` instead of failing after binary discovery (KOB-233).
+- **Copilot launch failures now surface after early binding** — process-level startup errors such as missing binaries or rejected shims are queued as visible engine errors even when kobe already created the session handle for live streaming (KOB-235).
 
 ## [0.5.28] - 2026-05-22
 

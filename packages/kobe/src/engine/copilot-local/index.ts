@@ -112,6 +112,11 @@ export class CopilotLocal implements AIEngine {
     resumeSessionId?: string
   }): Promise<SessionHandle> {
     const binaryPath = await this.binaryPathResolver()
+    // Copilot often reports its generated session id only in the final
+    // `result` event. kobe needs a real id before then so the TUI can
+    // start pumping output and interrupt live turns. `--session-id`
+    // is Copilot's supported way to let callers preselect that real id;
+    // Copilot still creates, owns, and persists the session under it.
     const sessionId = args.resumeSessionId ?? randomUUID()
     const spawned = spawnCopilotProcess({
       binaryPath,
@@ -136,10 +141,25 @@ export class CopilotLocal implements AIEngine {
     let bound = false
     let stderrTail = ""
     let terminalSeen = false
+    const failFromProcessError = (err: Error) => {
+      const ev: EngineEvent = { type: "error", message: `copilot process error: ${err.message}` }
+      terminalSeen = true
+      if (!bound) {
+        rejectHandle(err)
+        return
+      }
+      queue.push(ev)
+      if (!session) return
+      session.closed = true
+      this.notify(session)
+      this.registry.unregister(session.sessionId, spawned.proc)
+      if (this.running.get(session.sessionId) === session) this.running.delete(session.sessionId)
+    }
 
     captureStderrTail(spawned.stderr, (chunk) => {
       stderrTail = (stderrTail + chunk).slice(-STDERR_TAIL_CAP)
     })
+    spawned.proc.once("error", failFromProcessError)
 
     const bind = (sessionId: string) => {
       if (bound) return
@@ -233,10 +253,6 @@ export class CopilotLocal implements AIEngine {
         if (!bound) rejectHandle(new Error("copilot exited without emitting a session id"))
       }
     })()
-
-    spawned.proc.once("error", (err) => {
-      if (!bound) rejectHandle(err)
-    })
 
     return handlePromise
   }

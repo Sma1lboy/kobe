@@ -1,5 +1,6 @@
 import { findCopilotBinary } from "@/engine/copilot-local/binary"
 import { parseEvents, parseWorkspaceYaml } from "@/engine/copilot-local/history"
+import { CopilotLocal } from "@/engine/copilot-local/index"
 import { COPILOT_MODELS } from "@/engine/copilot-local/models"
 import { resolveCopilotDefaultModelId } from "@/engine/copilot-local/settings"
 import { buildArgs, buildSpawnCommand } from "@/engine/copilot-local/spawn"
@@ -120,6 +121,24 @@ describe("copilot binary discovery", () => {
         platform: () => "win32",
       }),
     ).resolves.toBe(existing)
+  })
+})
+
+describe("copilot local engine", () => {
+  it("surfaces child process spawn errors after early session binding", async () => {
+    const engine = new CopilotLocal({
+      binaryPathResolver: async () => "/definitely/missing/copilot",
+    })
+    const handle = await engine.spawn("/tmp", "hello", { permissionMode: "default" })
+    const events = []
+    for await (const ev of engine.stream(handle)) {
+      events.push(ev)
+      if (ev.type === "done" || ev.type === "error") break
+    }
+
+    expect(events[0]?.type).toBe("error")
+    if (events[0]?.type !== "error") throw new Error("expected error event")
+    expect(events[0].message).toContain("copilot process error")
   })
 })
 
