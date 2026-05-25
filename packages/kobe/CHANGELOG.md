@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.5.29] - 2026-05-25
+
 ### Added
 
 - **GitHub Copilot CLI can be selected as a local engine** — adds a first-class `copilot` adapter alongside Claude Code, Codex, and Gemini, with Copilot model choices, JSONL stream parsing, resume/history support from `~/.copilot/session-state`, full-access/plan-mode permission mapping, and Settings → Accounts detection for `copilot` login state (KOB-221).
@@ -22,6 +24,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **Skill distribution moved to `npx skills`** — the `kobe` skill now ships from `.agents/skills/kobe/` (a directory [`vercel-labs/skills`](https://github.com/vercel-labs/skills) scans by default) instead of being copied into the npm tarball under `share/skills/`. `kobe skill install` is now a deprecation shim that points you at `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`; `kobe skill uninstall` and `kobe diagnose`'s skill probe keep working for cleanup. Repo-internal skills (`linear`, `changelog-generator`) are flagged `internal: true` so the `npx skills add` discovery filter never installs codesfox/kobe-team tooling onto external users (KOB-210, KOB-211).
 - **Status bar shortcut hints are quieter** — the bottom footer now keeps Help visible while showing only the highest-value focused-pane actions, including Chat's new-tab and fork shortcuts; low-frequency, destructive, and picker-specific shortcuts stay discoverable in Help instead of crowding small terminals (KOB-241, KOB-242).
 
 ### Fixed
@@ -34,9 +37,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [0.5.28] - 2026-05-22
 
-### Changed
-
-- **Skill distribution moved to `npx skills`** — the `kobe` skill now ships from `.agents/skills/kobe/` (a directory [`vercel-labs/skills`](https://github.com/vercel-labs/skills) scans by default) instead of being copied into the npm tarball under `share/skills/`. `kobe skill install` is now a deprecation shim that points you at `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`; `kobe skill uninstall` and `kobe diagnose`'s skill probe keep working for cleanup. Repo-internal skills (`linear`, `changelog-generator`) are flagged `internal: true` so the `npx skills add` discovery filter never installs codesfox/kobe-team tooling onto external users (KOB-210, KOB-211).
+Release tag only. The publish workflow failed before npm publish and GitHub Release creation; the user-facing change is included in `0.5.29`.
 
 ## [0.5.27] - 2026-05-18
 
