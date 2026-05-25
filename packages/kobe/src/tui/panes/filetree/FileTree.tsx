@@ -518,16 +518,6 @@ export function FileTree(props: FileTreeProps) {
           }}
         </For>
       </box>
-      {/* Hint row. Shows the most-used file-tree keybindings as a
-         compact muted line right under the tabs — analogous to the
-         "f file · d diff · ctrl+w close" strip in the preview pane.
-         Highlights `o` so users discover the OS-default-app opener
-         without having to remember it from the help dialog. */}
-      <box flexDirection="row" paddingBottom={0} flexShrink={0}>
-        <text fg={theme.textMuted} wrapMode="none">
-          enter open · o open externally · r refresh
-        </text>
-      </box>
       {/* Status legend — only shown on the Changes tab so users can
          decode single-char git status codes without leaving the TUI. */}
       <Show when={tab() === "changes"}>
