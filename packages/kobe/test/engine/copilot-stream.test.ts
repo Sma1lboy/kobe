@@ -24,7 +24,7 @@ describe("copilot spawn args", () => {
         binaryPath: "copilot",
         cwd: "/repo",
         prompt: "hello",
-        model: "gpt-5-mini",
+        model: "gpt-5.5",
         permissionMode: "default",
       }),
     ).toEqual([
@@ -38,7 +38,7 @@ describe("copilot spawn args", () => {
       "--no-remote",
       "--no-ask-user",
       "--model",
-      "gpt-5-mini",
+      "gpt-5.5",
       "--allow-all",
       "--prompt",
       "hello",
@@ -86,6 +86,16 @@ describe("copilot spawn args", () => {
     expect(COPILOT_MODELS.map((m) => m.id)).not.toContain("gpt-5.3-codex")
   })
 
+  it("keeps retired Copilot models out of the picker catalog", () => {
+    expect(COPILOT_MODELS.map((m) => m.id)).not.toEqual(expect.arrayContaining(["gpt-5-mini", "claude-haiku-4.5"]))
+  })
+
+  it("includes current Copilot model picks", () => {
+    expect(COPILOT_MODELS.map((m) => m.id)).toEqual(
+      expect.arrayContaining(["auto", "gpt-5.5", "gpt-5.2", "claude-opus-4.7", "claude-sonnet-4.5"]),
+    )
+  })
+
   it("lets the Copilot CLI own configured default model resolution", () => {
     expect(resolveCopilotDefaultModelId({ COPILOT_MODEL: "gpt-5.3-codex" })).toBe("auto")
   })
@@ -109,13 +119,13 @@ describe("copilot spawn args", () => {
       binaryPath: "copilot",
       cwd: "/repo",
       prompt: "hello",
-      model: "claude-haiku-4.5",
+      model: "claude-opus-4.7",
       modelEffort: "medium",
       permissionMode: "default",
     })
 
     expect(args).toContain("--model")
-    expect(args).toContain("claude-haiku-4.5")
+    expect(args).toContain("claude-opus-4.7")
     expect(args).not.toContain("--effort")
     expect(args).not.toContain("medium")
   })
@@ -190,7 +200,7 @@ describe("copilot JSON stream parser", () => {
           type: "result",
           exitCode: 0,
           usage: {
-            modelMetrics: { "gpt-5-mini": { usage: { inputTokens: 10, outputTokens: 3, cacheReadTokens: 2 } } },
+            modelMetrics: { "gpt-5.5": { usage: { inputTokens: 10, outputTokens: 3, cacheReadTokens: 2 } } },
             currentTokens: 20,
           },
         }),
@@ -280,7 +290,7 @@ describe("copilot history helpers", () => {
         JSON.stringify({
           type: "session.shutdown",
           data: {
-            modelMetrics: { "gpt-5-mini": { usage: { inputTokens: 1, outputTokens: 2 } } },
+            modelMetrics: { "gpt-5.5": { usage: { inputTokens: 1, outputTokens: 2 } } },
             currentTokens: 3,
           },
         }),
@@ -300,8 +310,8 @@ describe("copilot history helpers", () => {
     expect(
       copilotUsageToSnapshot({
         modelMetrics: {
-          "gpt-5-mini": { usage: { inputTokens: 2, outputTokens: 4, cacheReadTokens: 1 } },
-          "claude-haiku-4.5": { usage: { inputTokens: 3, outputTokens: 5 } },
+          "gpt-5.5": { usage: { inputTokens: 2, outputTokens: 4, cacheReadTokens: 1 } },
+          "claude-opus-4.7": { usage: { inputTokens: 3, outputTokens: 5 } },
         },
         currentTokens: 9,
       }),

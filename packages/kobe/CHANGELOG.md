@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - **GitHub Copilot CLI can be selected as a local engine** — adds a first-class `copilot` adapter alongside Claude Code, Codex, and Gemini, with Copilot model choices, JSONL stream parsing, resume/history support from `~/.copilot/session-state`, full-access/plan-mode permission mapping, and Settings → Accounts detection for `copilot` login state (KOB-221).
+- **Copilot model picker now includes newer high-end choices** — adds GPT-5.5 and Claude Opus 4.7 to the Copilot catalog while removing GPT-5 mini and Claude Haiku 4.5 from the selectable allow-list (KOB-238).
 
 ### Fixed
 

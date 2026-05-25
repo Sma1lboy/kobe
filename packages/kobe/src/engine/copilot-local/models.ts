@@ -9,9 +9,9 @@ export const COPILOT_MODELS: readonly ModelChoice[] = [
   },
   {
     vendor: "copilot",
-    id: "gpt-5-mini",
-    label: "GPT-5 mini",
-    hint: "fast default",
+    id: "gpt-5.5",
+    label: "GPT-5.5",
+    hint: "latest coding",
   },
   {
     vendor: "copilot",
@@ -21,15 +21,15 @@ export const COPILOT_MODELS: readonly ModelChoice[] = [
   },
   {
     vendor: "copilot",
-    id: "claude-sonnet-4.5",
-    label: "Claude Sonnet 4.5",
+    id: "claude-opus-4.7",
+    label: "Claude Opus 4.7",
     hint: "Copilot-hosted",
   },
   {
     vendor: "copilot",
-    id: "claude-haiku-4.5",
-    label: "Claude Haiku 4.5",
-    hint: "quick answers",
+    id: "claude-sonnet-4.5",
+    label: "Claude Sonnet 4.5",
+    hint: "Copilot-hosted",
   },
 ]
 
