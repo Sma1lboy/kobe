@@ -75,6 +75,13 @@ export type SidebarProps = {
   tasks: Accessor<readonly Task[]>
   selectedId: Accessor<string | null>
   onSelect: (id: string) => void
+  /**
+   * Fires on keyboard `enter` (NOT on mouse click). v0.6 wires this
+   * to "open the selected task in the workspace + launch tmux";
+   * mouse click stays a plain highlight via {@link onSelect} so
+   * accidental clicks don't suspend the renderer.
+   */
+  onActivate?: (taskId: string) => void
   focused?: Accessor<boolean>
   onDeleteRequest?: (taskId: string) => void
   /**
@@ -389,7 +396,15 @@ export function Sidebar(props: SidebarProps) {
     cursorIndex,
     setCursorIndex,
     flatTaskIds: flatIds,
-    onSelect: (id) => props.onSelect(id),
+    onSelect: (id) => {
+      // Keyboard `enter` path. Always sync the highlight, and — if
+      // the host wired `onActivate` — fire it too so a single Enter
+      // opens the task (e.g. attaches to its tmux session). Mouse
+      // clicks still go through `props.onSelect` only via the
+      // per-row `onMouseUp`, so a stray click never auto-launches.
+      props.onSelect(id)
+      props.onActivate?.(id)
+    },
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
     onLocalMergeRequest: (id) => props.onLocalMergeRequest?.(id),

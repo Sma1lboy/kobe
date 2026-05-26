@@ -50,7 +50,7 @@ import { useThemePersistence } from "./lib/use-theme-persistence"
 import { CostDashboard } from "./panes/monitor/CostDashboard"
 import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { ClaudeLauncher } from "./panes/terminal/fullscreen"
+import { ClaudeLauncher, launchTaskTmux } from "./panes/terminal/fullscreen"
 import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
@@ -107,6 +107,33 @@ function Shell(props: AppDeps) {
   function selectTask(id: string): void {
     setSelectedId(id)
     kv.set("lastSelectedTaskId", id)
+  }
+
+  /**
+   * Enter the selected task's tmux session full-screen. Wired to:
+   *   - The sidebar's `onActivate` (Enter on a row).
+   *   - The ClaudeLauncher's own enter binding when the workspace
+   *     pane already has focus.
+   * Both paths converge here so a single keystroke ("press Enter
+   * to open the task") is the user-visible contract — the user
+   * never has to think about pane focus first.
+   */
+  async function enterTask(id: string): Promise<void> {
+    setSelectedId(id)
+    kv.set("lastSelectedTaskId", id)
+    setFocused("workspace")
+    const task = props.orchestrator.getTask(id)
+    if (!task) return
+    const res = await launchTaskTmux({
+      renderer,
+      taskId: id,
+      cwd: task.worktreePath || null,
+      command: CHAT_CLAUDE_COMMAND,
+      onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
+    })
+    if (res.kind === "error") {
+      console.error("[kobe] enterTask failed:", res.message)
+    }
   }
 
   // Background npm-registry check — best-effort, no spinner.
@@ -318,6 +345,7 @@ function Shell(props: AppDeps) {
             tasks={tasksAcc}
             selectedId={taskIdAcc}
             onSelect={selectTask}
+            onActivate={(id) => void enterTask(id)}
             focused={isFocused("sidebar")}
             onDeleteRequest={(id) => void deleteTask(id)}
             onArchiveRequest={(id) => void archiveTask(id)}

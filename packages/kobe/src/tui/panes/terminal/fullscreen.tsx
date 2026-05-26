@@ -66,6 +66,50 @@ export async function runFullscreen(opts: FullscreenRunOpts): Promise<number | n
   }
 }
 
+export type LaunchTaskTmuxOpts = {
+  /** opentui renderer — suspend/resume around the handover. */
+  renderer: CliRenderer
+  /** Stable task id — keys the persistent tmux session. */
+  taskId: string
+  /** Worktree the session runs in. Empty triggers `onEnsureWorktree`. */
+  cwd: string | null
+  /** argv for pane 0 (the claude pane). */
+  command: readonly string[]
+  /** Materialise the worktree on first enter. */
+  onEnsureWorktree: (taskId: string) => Promise<string>
+}
+
+export type LaunchTaskTmuxResult = { kind: "ok"; exitCode: number | null } | { kind: "error"; message: string }
+
+/**
+ * Lift the launcher's "ensure tmux available + worktree allocated +
+ * session created + attach" sequence so it can be triggered from
+ * outside the {@link ClaudeLauncher} component too (the sidebar fires
+ * it from Enter via `onActivate`, app.tsx wires both paths). Errors
+ * are returned, not thrown, so the caller decides whether to log /
+ * surface them.
+ */
+export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTaskTmuxResult> {
+  if (!(await tmuxAvailable())) {
+    return { kind: "error", message: "tmux not found on PATH — install tmux to use interactive mode" }
+  }
+  let cwd = opts.cwd
+  if (!cwd) {
+    try {
+      cwd = await opts.onEnsureWorktree(opts.taskId)
+    } catch (err) {
+      return {
+        kind: "error",
+        message: `worktree allocation failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+  }
+  const name = tmuxSessionName(opts.taskId)
+  await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId })
+  const exitCode = await runFullscreen({ renderer: opts.renderer, command: attachArgv(name) })
+  return { kind: "ok", exitCode }
+}
+
 export type ClaudeLauncherProps = {
   /** Stable task id — keys the persistent tmux session. Null = no task. */
   taskId: Accessor<string | null>
@@ -104,26 +148,16 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
     if (!taskId || running()) return
     setRunning(true)
     setError(null)
-    void (async () => {
-      if (!(await tmuxAvailable())) {
-        setError("tmux not found on PATH — install tmux to use interactive mode")
-        return
-      }
-      // Materialise the worktree on first enter. Idempotent: if the
-      // worktree already exists this returns the recorded path fast.
-      let cwd = props.cwd()
-      if (!cwd) {
-        try {
-          cwd = await props.onEnsureWorktree(taskId)
-        } catch (err) {
-          setError(`worktree allocation failed: ${err instanceof Error ? err.message : String(err)}`)
-          return
-        }
-      }
-      const name = tmuxSessionName(taskId)
-      await ensureSession({ name, cwd, command: props.command, taskId })
-      await runFullscreen({ renderer, command: attachArgv(name) })
-    })()
+    void launchTaskTmux({
+      renderer,
+      taskId,
+      cwd: props.cwd(),
+      command: props.command,
+      onEnsureWorktree: props.onEnsureWorktree,
+    })
+      .then((res) => {
+        if (res.kind === "error") setError(res.message)
+      })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setRunning(false))
   }
