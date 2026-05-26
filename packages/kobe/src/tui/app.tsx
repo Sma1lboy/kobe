@@ -177,18 +177,21 @@ function Shell(props: AppDeps) {
     // Default to the active task's repo when one is selected so the
     // common "spawn a sibling" flow doesn't make the user re-pick.
     const defaultRepo = activeTask()?.repo ?? repos[0] ?? ""
-    const result = await NewTaskDialog.show(dialog, { repos, defaultRepo })
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
     if (!result) return
-    const task = await props.orchestrator.createTask(result)
+    const task = await props.orchestrator.createTask({
+      repo: result.repo,
+      baseRef: result.baseRef,
+    })
     selectTask(task.id)
   }
 
-  async function openSettings(): Promise<void> {
-    await SettingsDialog.show(dialog)
+  function openSettings(): void {
+    void SettingsDialog.show(dialog, kv, props.orchestrator)
   }
 
-  async function openHelp(): Promise<void> {
-    await HelpDialog.show(dialog)
+  function openHelp(): void {
+    HelpDialog.show(dialog)
   }
 
   async function archiveTask(taskId: string): Promise<void> {
@@ -267,9 +270,9 @@ function Shell(props: AppDeps) {
     enabled: isFocused("sidebar")(),
     bindings: [
       { key: "n", cmd: () => void newTask() },
-      { key: "s", cmd: () => void openSettings() },
-      { key: "?", cmd: () => void openHelp() },
-      { key: "f1", cmd: () => void openHelp() },
+      { key: "s", cmd: () => openSettings() },
+      { key: "?", cmd: () => openHelp() },
+      { key: "f1", cmd: () => openHelp() },
       { key: "q", cmd: () => void quit() },
       {
         key: "d",

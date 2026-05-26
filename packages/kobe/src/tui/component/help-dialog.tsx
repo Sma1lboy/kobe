@@ -1,112 +1,149 @@
 /**
- * Help dialog (v0.6).
+ * Help dialog — shows kobe's current global keybindings and the bundled
+ * slash commands the composer recognises.
  *
- * Static chord cheat-sheet. v0.5's help was generated from KobeKeymap
- * — that registry shrank a lot in v0.6 and most of its remaining
- * machinery isn't wired here yet, so we just hand-list the chords
- * the app.tsx Shell actually binds.
+ * Reads the static `KobeKeymap` table from `context/keybindings.ts`. Groups
+ * by `category`. Each row prints the canonical chord (the first entry of
+ * `binding.keys`) plus the description; alternate chords are listed in a
+ * lighter color so users learn the bindings without losing the option to
+ * see what else triggers it.
+ *
+ * After the keybinding list comes a "Slash commands" section sourced from
+ * `BUILTIN_CLAUDE_SLASHES` — the static manifest of slashes that ship with
+ * claude-code. User-defined slashes (project + `~/.claude/{commands,skills}/`)
+ * are NOT listed here on purpose: they are async + worktree-scoped, and
+ * the dialog provider has no worktree handle. The composer's `/` dropdown
+ * is still the canonical place to discover and tab-complete every slash —
+ * the dialog footer hint nudges users there.
+ *
+ * Pane-local bindings are intentionally not listed here — they live in the
+ * pane that registers them and are surfaced by that pane's own help if it
+ * has one. This dialog is the global-bindings registry, no more.
+ *
+ * Closing: `esc` is handled by the DialogProvider stack (it's already
+ * registered higher on the binding stack than this component's bindings,
+ * so we don't need to re-register it). We DO register `?` so users can
+ * tap `?` again to dismiss while the help dialog is on top — a small
+ * ergonomic win that mirrors how vim and tmux behave. (Bare `?` is no
+ * longer a global open chord; F1 is. The dismiss-only binding is safe
+ * here because the help dialog has no input fields to collide with.)
  */
 
 import { TextAttributes } from "@opentui/core"
 import { For } from "solid-js"
+import { type KobeBinding, KobeKeymap } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 
-const SECTIONS: ReadonlyArray<{ heading: string; rows: ReadonlyArray<[string, string]> }> = [
-  {
-    heading: "Global",
-    rows: [
-      ["ctrl+c", "force quit"],
-      ["q", "quit (confirm)"],
-      ["?  /  F1", "this help"],
-      ["tab  /  shift+tab", "cycle pane focus"],
-      ["ctrl+1  /  ctrl+2", "jump to sidebar / workspace"],
-      ["ctrl+d", "toggle cost dashboard"],
-    ],
-  },
-  {
-    heading: "Sidebar",
-    rows: [
-      ["n", "new task"],
-      ["r", "rename task"],
-      ["a", "archive / unarchive"],
-      ["d", "delete task (confirm)"],
-      ["s", "settings"],
-      ["shift+P", "pin / unpin"],
-      ["j / k  or  ↑/↓", "move cursor"],
-    ],
-  },
-  {
-    heading: "Workspace",
-    rows: [
-      ["⏎  /  enter", "attach to task's tmux session"],
-      ["ctrl+q", "(inside tmux) detach back to kobe"],
-      ["ctrl+b d", "(inside tmux) tmux-native detach"],
-    ],
-  },
-]
+// v0.6 dropped the chat composer, so the "Slash commands" section
+// (which read `BUILTIN_CLAUDE_SLASHES` from the composer) is gone.
+// Users discover slashes natively inside the interactive `claude`
+// pane now. The dialog stays focused on kobe's own keybindings.
 
-export function HelpDialogView(props: { onClose: () => void }) {
+/** Sentinel string the behavior test asserts on. */
+export const HELP_DIALOG_TITLE = "kobe — keybindings"
+
+/**
+ * Group the flat keymap into categories in declaration order.
+ */
+function groupBindings(keymap: readonly KobeBinding[]): { category: string; rows: readonly KobeBinding[] }[] {
+  const groups = new Map<string, KobeBinding[]>()
+  const order: string[] = []
+  for (const b of keymap) {
+    if (!groups.has(b.category)) {
+      groups.set(b.category, [])
+      order.push(b.category)
+    }
+    groups.get(b.category)!.push(b)
+  }
+  return order.map((cat) => ({ category: cat, rows: groups.get(cat)! }))
+}
+
+export function HelpDialog() {
   const dialog = useDialog()
   const { theme } = useTheme()
+  const grouped = () => groupBindings(KobeKeymap)
 
+  // Press `?` again to dismiss (ergonomic mirror of vim/tmux help). esc
+  // is handled by the DialogProvider's own binding stack — don't re-bind.
   useBindings(() => ({
     bindings: [
       {
-        key: "return",
-        cmd: () => {
-          props.onClose()
-          dialog.clear()
-        },
+        key: "?",
+        cmd: () => dialog.clear(),
       },
     ],
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
+    <box paddingLeft={2} paddingRight={2} gap={1} flexShrink={1}>
+      <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Help
+          {HELP_DIALOG_TITLE}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => props.onClose()}>
+        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
           esc
         </text>
       </box>
-      <For each={SECTIONS}>
-        {(section) => (
-          <box flexDirection="column" gap={0}>
-            <text fg={theme.accent}>{section.heading}</text>
-            <For each={section.rows}>
-              {([chord, description]) => (
-                <box flexDirection="row" gap={2}>
-                  <text fg={theme.text}>{padRight(chord, 20)}</text>
-                  <text fg={theme.textMuted}>{description}</text>
-                </box>
-              )}
-            </For>
-          </box>
-        )}
-      </For>
-      <box paddingBottom={1}>
-        <text fg={theme.textMuted}>enter / esc close</text>
-      </box>
+      {/* Scroll the help body. The dialog wrapper no longer wraps every
+          modal in a scrollbox (it stretched short cards); long-content
+          dialogs handle their own overflow. flexShrink={1} lets this
+          shrink to fit the dialog's maxHeight, and the scrollbox
+          handles overflow with mouse wheel + arrow keys. */}
+      <scrollbox
+        flexShrink={1}
+        flexGrow={1}
+        stickyScroll={false}
+        verticalScrollbarOptions={{
+          trackOptions: { backgroundColor: theme.backgroundDialog, foregroundColor: theme.borderActive },
+        }}
+      >
+        <box paddingBottom={1} gap={1} paddingRight={1}>
+          <For each={grouped()}>
+            {(group) => (
+              <box gap={0}>
+                <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                  {group.category}
+                </text>
+                <For each={group.rows}>
+                  {(row) => {
+                    // Prefer hint.keys (the user-facing chord label, e.g.
+                    // "j/k" or "enter") when present; fall back to the
+                    // first registered chord. Bindings with no chord and
+                    // no hint (shouldn't happen in practice) show "—".
+                    const primary = row.hint?.keys ?? row.keys[0] ?? "—"
+                    const aliases = row.hint ? row.keys : row.keys.slice(1)
+                    return (
+                      <box flexDirection="row" gap={2} paddingLeft={1}>
+                        <box width={14}>
+                          <text fg={theme.primary}>{primary}</text>
+                        </box>
+                        <box flexGrow={1}>
+                          <text fg={theme.text}>{row.description}</text>
+                        </box>
+                        {aliases.length > 0 ? (
+                          <box>
+                            <text fg={theme.textMuted}>{`(${aliases.join(", ")})`}</text>
+                          </box>
+                        ) : null}
+                      </box>
+                    )
+                  }}
+                </For>
+              </box>
+            )}
+          </For>
+        </box>
+      </scrollbox>
     </box>
   )
 }
 
-function padRight(s: string, width: number): string {
-  return s.length >= width ? s : s + " ".repeat(width - s.length)
-}
-
-export const HelpDialog = {
-  show(dialog: DialogContext): Promise<void> {
-    return new Promise<void>((resolve) => {
-      dialog.replace(
-        () => <HelpDialogView onClose={() => resolve()} />,
-        () => resolve(),
-      )
-      dialog.setSize("medium")
-    })
-  },
+/**
+ * Convenience opener — pushes the help dialog onto the dialog stack.
+ * Used by the global `?` binding. Static for parity with `DialogConfirm.show`.
+ */
+HelpDialog.show = (dialog: DialogContext): void => {
+  dialog.replace(() => <HelpDialog />)
 }

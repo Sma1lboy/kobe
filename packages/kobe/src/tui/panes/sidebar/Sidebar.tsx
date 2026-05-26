@@ -480,8 +480,8 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* View switcher: tab strip with the active view bracketed +
-         emphasized. `[` / `]` toggles. */}
+      {/* View switcher: tab strip with the active view emphasized by
+          colour + bold, no brackets. `[` / `]` toggles. */}
       <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1}>
         <For each={VIEW_TABS}>
           {(tab) => {
@@ -493,7 +493,7 @@ export function Sidebar(props: SidebarProps) {
                 wrapMode="none"
                 onMouseUp={() => setView(tab.view)}
               >
-                {active() ? `[ ${tab.label} ]` : tab.label}
+                {tab.label}
               </text>
             )
           }}
