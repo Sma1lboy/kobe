@@ -90,10 +90,15 @@ function TasksShell(props: {
     const defaultRepo = cursorRepo ?? repos[0] ?? ""
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
     if (!result) return
+    let createdId: string | undefined
     try {
       const client = await connectOrStartDaemon()
       try {
-        await client.request("task.create", { repo: result.repo, baseRef: result.baseRef })
+        const res = await client.request<{ taskId: string }>("task.create", {
+          repo: result.repo,
+          baseRef: result.baseRef,
+        })
+        createdId = res.taskId
       } finally {
         client.close()
       }
@@ -102,6 +107,8 @@ function TasksShell(props: {
       return
     }
     await props.reload()
+    // Land the cursor on the new task so Enter / click enters it next.
+    if (createdId) setSelectedId(createdId)
   }
 
   // Gate on an empty dialog stack so typing "n" INTO a dialog field
@@ -113,18 +120,34 @@ function TasksShell(props: {
   }))
 
   // Enter / click on a task → switch this tmux client to that task's
-  // session. If the session isn't running yet we create it here —
-  // but ONLY when the task's worktree already exists on disk (every
-  // `main` task, and any worktree task that's been entered once). A
-  // backlog task whose worktree was never materialised needs `git
-  // worktree add`, which lives in the Orchestrator this standalone
-  // pane doesn't have — those stay a no-op and the user enters them
-  // from the outer monitor.
+  // session, creating it on demand. The full enter loop:
+  //   1. session running → just switch-client.
+  //   2. session gone but worktree on disk → ensureSession + switch.
+  //   3. backlog task, no worktree yet → materialise it via the daemon's
+  //      `task.ensureWorktree` RPC (git worktree add — only the
+  //      Orchestrator can do it), then ensureSession + switch.
+  // Step 3 closes the create→enter loop entirely inside the Tasks pane
+  // (a task you just made with `n` is enterable here, no detour through
+  // the outer monitor).
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
     if (!(await sessionExists(name))) {
-      const task = props.tasks().find((t) => t.id === id)
-      const cwd = task?.worktreePath
+      let cwd = props.tasks().find((t) => t.id === id)?.worktreePath
+      if (!cwd || !existsSync(cwd)) {
+        try {
+          const client = await connectOrStartDaemon()
+          try {
+            const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: id })
+            cwd = res.worktreePath
+          } finally {
+            client.close()
+          }
+        } catch (err) {
+          console.error("[kobe tasks] task.ensureWorktree failed:", err)
+          return
+        }
+        await props.reload()
+      }
       if (!cwd || !existsSync(cwd)) return
       await ensureSession({ name, cwd, command: ["claude"], taskId: id })
     }
