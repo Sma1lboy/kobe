@@ -73,6 +73,25 @@ done`
 }
 
 /**
+ * Shell command for the full-width preview window opened when the user
+ * activates a file in the Ops pane (KOB-233). Runs in a fresh tmux
+ * window so review gets the whole terminal width — far better for
+ * diffs than the narrow Ops pane.
+ *
+ * Behaviour: if the file differs from HEAD, show `git diff` through the
+ * user's diff pager (`delta`, else `less -R`); otherwise show the file
+ * content (`bat`, else `$PAGER`/`less`, else `cat`). When the pager
+ * quits (`q`), the command exits and tmux closes the window — back to
+ * the three-pane main window. We lean on the user's own tooling rather
+ * than re-implementing a viewer.
+ */
+export function previewWindowCommand(worktree: string, relPath: string): string {
+  const wt = shellQuote(worktree)
+  const file = shellQuote(relPath)
+  return `cd ${wt} && if ! git diff --quiet HEAD -- ${file} 2>/dev/null; then git diff HEAD -- ${file} | { delta --paging=always 2>/dev/null || less -R; }; else bat --style=plain --paging=always ${file} 2>/dev/null || \${PAGER:-less} ${file} 2>/dev/null || cat ${file}; fi`
+}
+
+/**
  * The Ops pane's shell command. Prefers `kobe ops` (the FileTree pane);
  * `|| fallback` keeps a useful git-status + tree watcher if that launch
  * fails. Returns a single `sh -c`-ready string.

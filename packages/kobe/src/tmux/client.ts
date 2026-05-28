@@ -130,6 +130,19 @@ export async function sendKeys(target: string, text: string): Promise<void> {
   await runTmux(["send-keys", "-t", target, text])
 }
 
+/**
+ * Open a new window in `session` running `command` (via tmux's own
+ * `sh -c`). Used for the full-width file/diff preview. `name` sets the
+ * window's status-bar label. When `command` exits (e.g. the pager
+ * quits), tmux closes the window and switches back to the previous one.
+ */
+export async function newWindow(session: string, opts: { cwd: string; command: string; name?: string }): Promise<void> {
+  const args = ["new-window", "-t", `=${session}`, "-c", opts.cwd]
+  if (opts.name) args.push("-n", opts.name)
+  args.push(opts.command)
+  await runTmux(args)
+}
+
 /** Kill a session (if any). */
 export async function killSession(name: string): Promise<void> {
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])

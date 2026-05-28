@@ -10,6 +10,7 @@ import {
   fallbackOpsScript,
   keepAlive,
   opsPaneCommand,
+  previewWindowCommand,
   shellQuote,
   shellQuoteArgv,
 } from "../../src/tmux/session-layout.ts"
@@ -74,6 +75,19 @@ describe("opsPaneCommand", () => {
     expect(noTask).toBe(fallbackOpsScript("/wt"))
     expect(noPane).toBe(fallbackOpsScript("/wt"))
     expect(noTask).not.toContain("kobe ops")
+  })
+})
+
+describe("previewWindowCommand", () => {
+  test("cd's into the worktree and branches diff-vs-content on git state", () => {
+    const cmd = previewWindowCommand("/my wt", "src/a b.ts")
+    expect(cmd).toContain("cd '/my wt'")
+    expect(cmd).toContain("git diff --quiet HEAD -- 'src/a b.ts'")
+    expect(cmd).toContain("git diff HEAD -- 'src/a b.ts'")
+    // diff path → user diff pager; content path → bat/less/cat
+    expect(cmd).toContain("delta --paging=always")
+    expect(cmd).toContain("bat --style=plain --paging=always 'src/a b.ts'")
+    expect(cmd).toContain("cat 'src/a b.ts'")
   })
 })
 
