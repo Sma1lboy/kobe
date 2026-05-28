@@ -291,9 +291,23 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   }
 
   // Server-scoped niceties — done after the session is alive so the
-  // server is definitely up. Both `-g` options are idempotent so
+  // server is definitely up. All `-g` options are idempotent so
   // calling them on every ensureSession is harmless.
-  await runTmux(["set-option", "-g", "status", "off"])
+  //
+  // Status bar: ON (KOB-233). v0.5/KOB-225 hid it because there was
+  // only one pane and it was pure noise. With three panes it's useful
+  // — it tells the user they're inside a kobe-managed tmux session,
+  // which pane/window is active, and how to get out. We explicitly
+  // set `on` (not just "leave default") so a server that an older
+  // kobe turned OFF flips back. Styled in kobe's claude-orange accent
+  // so it reads as intentional, not stock-tmux green.
+  await runTmux(["set-option", "-g", "status", "on"])
+  await runTmux(["set-option", "-g", "status-style", "bg=#cc785c,fg=#1a1a1a"])
+  await runTmux(["set-option", "-g", "status-left-length", "60"])
+  await runTmux(["set-option", "-g", "status-left", " #[bold]kobe#[default] ▸ #S "])
+  await runTmux(["set-option", "-g", "status-right-length", "60"])
+  await runTmux(["set-option", "-g", "status-right", " #[bold]ctrl+q#[default] detach → kobe "])
+  // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
   await runTmux(["bind-key", "-n", "C-q", "detach-client"])
 
   // Send commands by pane id. send-keys + Enter is cleaner than
