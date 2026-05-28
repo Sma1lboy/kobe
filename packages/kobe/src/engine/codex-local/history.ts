@@ -98,6 +98,59 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
   return undefined
 }
 
+/** UUID embedded at the tail of a `rollout-<ISO>-<UUID>.jsonl` filename. */
+const UUID_AT_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
+/** The `cwd` recorded on a rollout's `session_meta` line, or `""`. */
+function rolloutCwd(raw: string): string {
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    try {
+      const rec = JSON.parse(trimmed) as { type?: string; payload?: { cwd?: string } }
+      if (rec.type === "session_meta") return rec.payload?.cwd ?? ""
+    } catch {
+      // tolerate a malformed leading line
+    }
+    // session_meta is the first record; if the first JSON line isn't it,
+    // this rollout has no meta — stop probing.
+    return ""
+  }
+  return ""
+}
+
+/** Cap on rollout files probed by {@link listSessionIdsForWorktree}. */
+const MAX_WORKTREE_SCAN = 200
+
+/**
+ * Session UUIDs whose rollout `session_meta.cwd` equals `worktree`,
+ * oldest-first. The Codex analogue of claude-code's
+ * `listSessionFilesForWorktree` — Codex stores rollouts in a global
+ * date tree (not per-worktree dirs), so we scan newest-first (capped)
+ * and filter by the recorded cwd, then reverse to oldest-first so the
+ * caller sees the worktree's origin conversation first.
+ */
+export async function listSessionIdsForWorktree(worktree: string, deps: HistoryDeps = defaultDeps): Promise<string[]> {
+  if (!worktree) return []
+  const files = await listRolloutFiles(deps)
+  const matches: string[] = []
+  let scanned = 0
+  for (const file of files) {
+    if (scanned >= MAX_WORKTREE_SCAN) break
+    scanned++
+    let raw: string
+    try {
+      raw = await deps.readFile(file)
+    } catch {
+      continue
+    }
+    if (rolloutCwd(raw) !== worktree) continue
+    const id = path.basename(file).match(UUID_AT_END)?.[1]
+    if (id) matches.push(id)
+  }
+  return matches.reverse()
+}
+
 export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {
   return (await readHistoryWithMetrics(sessionId, deps)).messages as Message[]
 }

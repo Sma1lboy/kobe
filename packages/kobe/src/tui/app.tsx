@@ -144,7 +144,7 @@ function Shell(props: AppDeps) {
     const after = props.orchestrator.getTask(id)
     if (after && after.title === PLACEHOLDER_TASK_TITLE && after.worktreePath) {
       try {
-        const title = await deriveTitleFromSession(after.worktreePath)
+        const title = await deriveTitleFromSession(after.worktreePath, after.vendor)
         if (title) await props.orchestrator.setTitle(id, title)
       } catch (err) {
         console.error("[kobe] auto-title failed:", err)
