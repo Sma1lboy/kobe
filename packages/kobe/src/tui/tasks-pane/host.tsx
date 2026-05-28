@@ -316,13 +316,16 @@ function ShortcutHints() {
   const { theme } = useTheme()
   // Fixed-width key column so the labels line up — a terminal-grammar
   // legend column, not a proportional pane (allowed hardcode).
+  // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
+  // uppercase per the Mac shortcut convention (the binding is still the
+  // lowercase key — no shift implied).
   const HINTS: ReadonlyArray<{ k: string; label: string }> = [
-    { k: "↵", label: "open" },
-    { k: "n", label: "new task" },
-    { k: "r/b/v", label: "name / branch / engine" },
-    { k: "^hjkl", label: "move panes" },
-    { k: "^t", label: "new tab" },
-    { k: "^q", label: "monitor" },
+    { k: "⏎", label: "open" },
+    { k: "N", label: "new task" },
+    { k: "R/B/V", label: "name / branch / engine" },
+    { k: "⌃HJKL", label: "move panes" },
+    { k: "⌃T", label: "new tab" },
+    { k: "⌃Q", label: "monitor" },
   ]
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
