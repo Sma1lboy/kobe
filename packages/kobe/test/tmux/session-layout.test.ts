@@ -79,15 +79,26 @@ describe("opsPaneCommand", () => {
 })
 
 describe("previewWindowCommand", () => {
-  test("cd's into the worktree and branches diff-vs-content on git state", () => {
-    const cmd = previewWindowCommand("/my wt", "src/a b.ts")
-    expect(cmd).toContain("cd '/my wt'")
-    expect(cmd).toContain("git diff --quiet HEAD -- 'src/a b.ts'")
+  test("runs `kobe ops --preview <file>` (opentui diff/code) with a pager fallback", () => {
+    const cmd = previewWindowCommand({ worktree: "/my wt", relPath: "src/a b.ts", cliInvocation: ["kobe"] })
+    // primary: the syntax-highlighted opentui preview
+    expect(cmd).toContain("'kobe' ops --worktree '/my wt' --preview 'src/a b.ts'")
+    // fallback after `||`: the user's own pager
+    expect(cmd).toContain("|| {")
     expect(cmd).toContain("git diff HEAD -- 'src/a b.ts'")
-    // diff path → user diff pager; content path → bat/less/cat
     expect(cmd).toContain("delta --paging=always")
     expect(cmd).toContain("bat --style=plain --paging=always 'src/a b.ts'")
-    expect(cmd).toContain("cat 'src/a b.ts'")
+  })
+
+  test("dev (multi-token) cli invocation is each-element quoted", () => {
+    const cmd = previewWindowCommand({
+      worktree: "/wt",
+      relPath: "f.ts",
+      cliInvocation: ["/bin/bun", "--preload", "/abs/p.ts", "--conditions=browser", "/abs/cli.ts"],
+    })
+    expect(
+      cmd.startsWith("'/bin/bun' '--preload' '/abs/p.ts' '--conditions=browser' '/abs/cli.ts' ops --worktree"),
+    ).toBe(true)
   })
 })
 

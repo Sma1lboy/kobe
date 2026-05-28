@@ -75,20 +75,32 @@ done`
 /**
  * Shell command for the full-width preview window opened when the user
  * activates a file in the Ops pane (KOB-233). Runs in a fresh tmux
- * window so review gets the whole terminal width — far better for
- * diffs than the narrow Ops pane.
+ * window so review gets the whole terminal width.
  *
- * Behaviour: if the file differs from HEAD, show `git diff` through the
- * user's diff pager (`delta`, else `less -R`); otherwise show the file
- * content (`bat`, else `$PAGER`/`less`, else `cat`). When the pager
- * quits (`q`), the command exits and tmux closes the window — back to
- * the three-pane main window. We lean on the user's own tooling rather
- * than re-implementing a viewer.
+ * Primary path: `kobe ops --preview <rel>` — opentui's `<diff>` /
+ * `<code>` renderables give tree-sitter syntax highlighting + line
+ * numbers with zero external dependencies (the raw-`git diff | less`
+ * approach had no highlighting unless the user had `delta` installed).
+ * `q` in that view exits the process → tmux closes the window → back
+ * to the three-pane main window.
+ *
+ * `|| fallback`: if `kobe ops --preview` can't launch, drop to the
+ * user's own pager (`delta`/`less` for a diff, `bat`/`less` for
+ * content) so the window is never blank.
  */
-export function previewWindowCommand(worktree: string, relPath: string): string {
-  const wt = shellQuote(worktree)
-  const file = shellQuote(relPath)
-  return `cd ${wt} && if ! git diff --quiet HEAD -- ${file} 2>/dev/null; then git diff HEAD -- ${file} | { delta --paging=always 2>/dev/null || less -R; }; else bat --style=plain --paging=always ${file} 2>/dev/null || \${PAGER:-less} ${file} 2>/dev/null || cat ${file}; fi`
+export function previewWindowCommand(args: {
+  worktree: string
+  relPath: string
+  cliInvocation: readonly string[]
+}): string {
+  const wt = shellQuote(args.worktree)
+  const file = shellQuote(args.relPath)
+  const inv = args.cliInvocation.map(shellQuote).join(" ")
+  const fallback =
+    `cd ${wt} && if ! git diff --quiet HEAD -- ${file} 2>/dev/null; then ` +
+    `git diff HEAD -- ${file} | { delta --paging=always 2>/dev/null || less -R; }; ` +
+    `else bat --style=plain --paging=always ${file} 2>/dev/null || \${PAGER:-less} ${file} 2>/dev/null || cat ${file}; fi`
+  return `${inv} ops --worktree ${wt} --preview ${file} || { ${fallback}; }`
 }
 
 /**

@@ -31,9 +31,11 @@ interface OpsFlags {
   taskId?: string
   worktree?: string
   targetPane?: string
+  /** When set, render the full-width file preview for this rel path instead of the FileTree. */
+  preview?: string
 }
 
-/** Parse `--task-id` / `--worktree` / `--target-pane` for `kobe ops`. */
+/** Parse `kobe ops` flags. */
 function parseOpsFlags(argv: readonly string[]): OpsFlags {
   const flags: OpsFlags = {}
   for (let i = 0; i < argv.length; i++) {
@@ -48,6 +50,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--target-pane") {
       flags.targetPane = value
+      i++
+    } else if (flag === "--preview") {
+      flags.preview = value
       i++
     }
   }
@@ -92,6 +97,13 @@ async function main(): Promise<void> {
     if (!flags.worktree) {
       console.error("kobe ops: --worktree <path> is required")
       process.exit(2)
+    }
+    // `--preview <rel>` → full-width syntax-highlighted file/diff view
+    // (opentui `<diff>` / `<code>`). Otherwise the FileTree browser.
+    if (flags.preview) {
+      const { startOpsPreview } = await import("../tui/ops/host.tsx")
+      await startOpsPreview({ worktree: flags.worktree, relPath: flags.preview })
+      return
     }
     const { startOpsHost } = await import("../tui/ops/host.tsx")
     await startOpsHost({

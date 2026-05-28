@@ -4,14 +4,12 @@
  *
  * Reuses the v0.5 `FileTree` to browse the worktree. Activating a file
  * (enter / click) opens a **full-width preview window** — a fresh tmux
- * window running the user's diff/pager tooling (`git diff | delta`, or
- * `bat`/`less` for unchanged files). Reviewing a diff wants the whole
- * terminal width, which the narrow Ops pane can't give; a new window
- * does, and `q` in the pager closes it back to the three-pane layout.
- * We deliberately do NOT render a file viewer inside this pane —
- * shelling out to the user's tools is simpler and reviews better.
- *
- * `m` injects `@<path>` into the claude pane via `tmux send-keys`.
+ * window running `kobe ops --preview <file>`, which renders opentui's
+ * `<diff>` / `<code>` (tree-sitter syntax highlighting + line numbers,
+ * zero external deps). Reviewing a diff wants the whole terminal width,
+ * which the narrow Ops pane can't give; a new window does, and `q`
+ * closes it back to the three-pane layout. If that launch fails the
+ * window falls back to the user's own pager (`delta`/`bat`/`less`).
  *
  * Runs in its own OS process inside the tmux pane (separate opentui
  * render loop from the outer kobe TUI). It can't share the outer TUI's
@@ -19,12 +17,15 @@
  * `readPersistedUiPrefs` (read-only — the outer app owns `state.json`).
  */
 
+import { kobeCliInvocation } from "@/cli/invocation"
 import { newWindow, tmuxSessionName } from "@/tmux/client"
 import { previewWindowCommand } from "@/tmux/session-layout"
+import { SyntaxStyle } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { onMount } from "solid-js"
+import { Show, createResource, onMount } from "solid-js"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
+import { useBindings } from "../lib/keymap"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
 import { DialogProvider } from "../ui/dialog"
@@ -58,7 +59,7 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
   function openPreview(rel: string): void {
     void newWindow(tmuxSessionName(props.taskId), {
       cwd: props.worktree,
-      command: previewWindowCommand(props.worktree, rel),
+      command: previewWindowCommand({ worktree: props.worktree, relPath: rel, cliInvocation: kobeCliInvocation() }),
       name: basename(rel),
     })
   }
@@ -101,4 +102,187 @@ export async function startOpsHost(args: OpsHostArgs): Promise<void> {
     screenMode: "alternate-screen",
     useKittyKeyboard: {},
   })
+}
+
+/* ─── full-width preview window (`kobe ops --preview <rel>`) ─────────── */
+
+export interface OpsPreviewArgs {
+  readonly worktree: string
+  readonly relPath: string
+}
+
+/** Map a file extension to an opentui tree-sitter grammar name. */
+function filetypeOf(relPath: string): string | undefined {
+  const ext = relPath.slice(relPath.lastIndexOf(".") + 1).toLowerCase()
+  switch (ext) {
+    case "ts":
+    case "tsx":
+    case "mts":
+    case "cts":
+      return "typescript"
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+      return "javascript"
+    case "md":
+    case "markdown":
+      return "markdown"
+    default:
+      return undefined
+  }
+}
+
+async function gitDiff(worktree: string, relPath: string): Promise<string> {
+  try {
+    const proc = Bun.spawn(["git", "diff", "HEAD", "--", relPath], {
+      cwd: worktree,
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const text = await new Response(proc.stdout).text()
+    await proc.exited
+    return text
+  } catch {
+    return ""
+  }
+}
+
+async function readFileText(worktree: string, relPath: string): Promise<string> {
+  try {
+    return await Bun.file(`${worktree}/${relPath}`).text()
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * Build a tree-sitter SyntaxStyle from the active kobe theme.
+ * `SyntaxStyle.create()` is an EMPTY style — opentui parses the code
+ * into capture groups but renders them plain unless each scope has a
+ * registered colour. We map the nvim-treesitter capture names the
+ * bundled ts/js/markdown grammars emit (probed: keyword, string,
+ * comment, type, function, number, …) onto kobe's palette so the
+ * preview's highlighting matches the rest of the TUI.
+ */
+function buildSyntaxStyle(theme: ReturnType<typeof useTheme>["theme"]): SyntaxStyle {
+  const kw = { fg: theme.primary }
+  const str = { fg: theme.success }
+  const fn = { fg: theme.info }
+  const typ = { fg: theme.warning }
+  const num = { fg: theme.accent }
+  const com = { fg: theme.textMuted, italic: true }
+  const punct = { fg: theme.textMuted }
+  const txt = { fg: theme.text }
+  return SyntaxStyle.fromStyles({
+    keyword: kw,
+    "keyword.function": kw,
+    "keyword.return": kw,
+    "keyword.import": kw,
+    "keyword.exception": kw,
+    "keyword.conditional": kw,
+    "keyword.repeat": kw,
+    "keyword.operator": kw,
+    "keyword.modifier": kw,
+    "keyword.type": kw,
+    string: str,
+    "string.escape": str,
+    "string.regexp": str,
+    "string.special": str,
+    "character.special": str,
+    comment: com,
+    "comment.documentation": com,
+    function: fn,
+    "function.call": fn,
+    "function.method": fn,
+    "function.builtin": fn,
+    constructor: fn,
+    type: typ,
+    "type.builtin": typ,
+    constant: num,
+    "constant.builtin": num,
+    boolean: num,
+    number: num,
+    operator: punct,
+    "punctuation.bracket": punct,
+    "punctuation.delimiter": punct,
+    "punctuation.special": punct,
+    variable: txt,
+    "variable.member": txt,
+    "variable.parameter": txt,
+    "variable.builtin": num,
+    property: txt,
+    attribute: typ,
+    label: txt,
+    module: txt,
+  })
+}
+
+function PreviewScreen(props: OpsPreviewArgs) {
+  const { theme } = useTheme()
+  const style = buildSyntaxStyle(theme)
+  const filetype = filetypeOf(props.relPath)
+
+  const [data] = createResource(
+    () => props.relPath,
+    async (rel) => {
+      const diff = await gitDiff(props.worktree, rel)
+      if (diff.trim().length > 0) return { kind: "diff" as const, text: diff }
+      return { kind: "code" as const, text: await readFileText(props.worktree, rel) }
+    },
+  )
+
+  useBindings(() => ({
+    bindings: [
+      { key: "q", cmd: () => process.exit(0) },
+      { key: "escape", cmd: () => process.exit(0) },
+      { key: "ctrl+c", cmd: () => process.exit(0) },
+    ],
+  }))
+
+  return (
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
+        <text fg={theme.accent}>{props.relPath}</text>
+        <text fg={theme.textMuted}>{data()?.kind === "diff" ? "diff vs HEAD" : "file"}</text>
+        <text fg={theme.textMuted}>· q to close</text>
+      </box>
+      <box flexGrow={1}>
+        <Show when={data()} fallback={<text fg={theme.textMuted}>loading…</text>}>
+          {(d) => (
+            <Show
+              when={d().kind === "diff"}
+              fallback={<code content={d().text} filetype={filetype} syntaxStyle={style} />}
+            >
+              <diff diff={d().text} view="unified" filetype={filetype} syntaxStyle={style} showLineNumbers={true} />
+            </Show>
+          )}
+        </Show>
+      </box>
+    </box>
+  )
+}
+
+export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
+  for (const { name, theme } of loadUserThemes()) {
+    addTheme(name, theme)
+  }
+  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
+  await render(
+    () => (
+      <ThemeProvider mode="dark" theme={prefs.theme}>
+        <DialogProvider>
+          <PreviewScreen {...args} />
+        </DialogProvider>
+      </ThemeProvider>
+    ),
+    {
+      backgroundColor: "transparent",
+      externalOutputMode: "passthrough",
+      exitOnCtrlC: false,
+      screenMode: "alternate-screen",
+      useKittyKeyboard: {},
+    },
+  )
 }
