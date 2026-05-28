@@ -495,14 +495,14 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       <box gap={1} paddingTop={1} paddingBottom={1}>
         <box flexDirection="row" gap={2}>
           <text
-            fg={tab() === "existing" ? theme.info : theme.textMuted}
+            fg={tab() === "existing" ? theme.primary : theme.textMuted}
             attributes={tab() === "existing" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => switchToTab("existing")}
           >
             {tab() === "existing" ? "▸ For Existing" : "  For Existing"}
           </text>
           <text
-            fg={tab() === "clone" ? theme.info : theme.textMuted}
+            fg={tab() === "clone" ? theme.primary : theme.textMuted}
             attributes={tab() === "clone" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => switchToTab("clone")}
           >
@@ -517,11 +517,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           <For each={ALL_VENDORS}>
             {(v) => (
               <text
-                fg={vendor() === v ? theme.info : theme.textMuted}
+                fg={vendor() === v ? theme.primary : theme.textMuted}
                 attributes={vendor() === v ? TextAttributes.BOLD : undefined}
                 onMouseUp={() => setVendor(v)}
               >
-                {vendor() === v ? `▸ ${v}` : `  ${v}`}
+                {v}
               </text>
             )}
           </For>
