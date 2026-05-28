@@ -189,12 +189,17 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // tmux expands at fire time).
   const invStr = inv.map(shellQuote).join(" ")
   await runTmux(["bind-key", "-n", "C-t", "run-shell", `${invStr} new-chattab --session '#{session_name}'`])
-  // Ctrl+F = quick-create: focus the Tasks pane and open the new-task
-  // dialog there (the v0.5 quick-fork chord, KOB-74, reborn in the tmux
-  // world). `kobe quick-create` selects the tasks pane and injects `n`,
-  // so the dialog + its logic are exactly the Tasks pane's createTask —
-  // no separate code path.
-  await runTmux(["bind-key", "-n", "C-f", "run-shell", `${invStr} quick-create --session '#{session_name}'`])
+  // `<prefix> f` = quick-create: focus the Tasks pane and open the
+  // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
+  // the tmux world). `kobe quick-create` selects the tasks pane and
+  // injects `n`, so the dialog + its logic are exactly the Tasks pane's
+  // createTask — no separate code path. PREFIX-scoped (not no-prefix
+  // C-f): a no-prefix Ctrl+F was unusable — it shadows readline
+  // forward-char in the claude/shell panes and several apps grab it, so
+  // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
+  // two-key chord but conflict-free; the prefix is whatever the user's
+  // own tmux.conf sets (we load it on the `-L kobe` socket).
+  await runTmux(["bind-key", "f", "run-shell", `${invStr} quick-create --session '#{session_name}'`])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops

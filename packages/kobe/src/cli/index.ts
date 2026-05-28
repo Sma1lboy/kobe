@@ -8,6 +8,11 @@
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
  *   - `kobe update [target]`    Self-update (when packaged).
+ *   - `kobe kill-sessions`      Tear down kobe's tmux server (dev reset).
+ *
+ * Internal subcommands fired by tmux key bindings inside a task session
+ * (not meant for direct use): `new-chattab`, `quick-create`, `tasks`,
+ * `ops` — each takes the session/worktree as flags.
  *
  * v0.5 had `diagnose`, `mcp-bridge`, `api`, `skill`, and pane-host
  * test fixtures. All gone in v0.6 (no engine port to diagnose, no
@@ -104,6 +109,22 @@ async function main(): Promise<void> {
     }
     const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
     await newChatTab(session)
+    return
+  }
+  if (subcommand === "kill-sessions") {
+    // Dev/reset helper: tear down kobe's entire tmux server (all task
+    // sessions on the `-L kobe` socket). Use after changing Tasks-pane /
+    // Ops-pane / engine code so a long-lived session isn't still running
+    // an OLD version of those panes. Does NOT touch the user's own tmux
+    // (different socket) or the daemon (run `kobe daemon restart` for
+    // that). No-op when no kobe server is running.
+    const { runTmux, KOBE_TMUX_SOCKET } = await import("../tmux/client.ts")
+    const code = await runTmux(["kill-server"])
+    console.log(
+      code === 0
+        ? `kobe: killed all tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`
+        : `kobe: no tmux sessions to kill on the \`${KOBE_TMUX_SOCKET}\` socket`,
+    )
     return
   }
   if (subcommand === "quick-create") {

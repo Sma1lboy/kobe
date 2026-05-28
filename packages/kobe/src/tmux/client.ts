@@ -16,8 +16,21 @@
  * the fix lives in one place.
  */
 
-/** Dedicated tmux socket name — isolates kobe's server from the user's. */
-export const KOBE_TMUX_SOCKET = "kobe"
+/**
+ * Dedicated tmux socket name — isolates kobe's server from the user's,
+ * AND isolates kobe environments from each other.
+ *
+ * Read from `KOBE_TMUX_SOCKET` (default `kobe`). The dev scripts set a
+ * distinct value per environment (`dev:sandbox` → `kobe-sandbox`) so a
+ * sandbox session never shares a server with production: `kill-server`,
+ * `capture-pane`, and `list-sessions` are all naturally scoped to one
+ * environment. This mirrors the existing per-`KOBE_HOME_DIR` daemon
+ * socket isolation. Read once at module load — the env is fixed by the
+ * launching shell before the process (or any child it spawns, including
+ * the detached daemon and the tmux server's `run-shell` handlers, which
+ * inherit it) starts.
+ */
+export const KOBE_TMUX_SOCKET = process.env.KOBE_TMUX_SOCKET?.trim() || "kobe"
 
 /** Build a full `tmux -L kobe …` argv. */
 export function tmuxArgs(...args: string[]): string[] {
