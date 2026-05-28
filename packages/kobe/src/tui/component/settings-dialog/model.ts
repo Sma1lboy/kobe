@@ -6,16 +6,23 @@
  * modules that v0.6 deleted, so the dialog shrinks to General + Dev.
  */
 
+import { ALL_VENDORS } from "../../../types/vendor"
 import type { FocusAccentSlot } from "../../context/theme"
 
 export type NavLevel = "sidebar" | "body"
 
-export type SectionId = "general" | "dev"
+export type SectionId = "general" | "engines" | "dev"
 
 export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
+  { id: "engines", label: "Engines" },
   { id: "dev", label: "Dev" },
 ]
+
+/** One row per vendor — each edits that engine's launch command. */
+export function engineRowCount(): number {
+  return ALL_VENDORS.length
+}
 
 export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
   primary: "Primary (brand accent)",
@@ -38,6 +45,7 @@ export function bodyRowCount(
   hasDaemon: boolean,
 ): number {
   if (section === "general") return generalRowCount(themeCount, focusAccentCount)
+  if (section === "engines") return engineRowCount()
   if (section === "dev") return devRowCount(hasDaemon)
   return 0
 }

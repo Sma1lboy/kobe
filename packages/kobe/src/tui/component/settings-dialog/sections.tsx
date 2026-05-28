@@ -1,5 +1,7 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
+import { VENDOR_LABEL } from "../../../engine/interactive-command"
+import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import {
   FOCUS_ACCENT_LABEL,
@@ -227,6 +229,71 @@ export function GeneralSettingsSection(
             {props.soundEnabled() ? "[x]" : "[ ]"} Sound
           </text>
         </box>
+      </box>
+    </box>
+  )
+}
+
+export function EngineSettingsSection(
+  props: CursorSetters & {
+    level: Accessor<NavLevel>
+    bodyRow: Accessor<number>
+    vendors: readonly VendorId[]
+    /** Current launch command shown for a vendor (override or default). */
+    commandText: (vendor: VendorId) => string
+    /** Whether the shown command is the built-in default (dims it). */
+    isDefault: (vendor: VendorId) => boolean
+    /** Open the editor for a vendor's launch command. */
+    editEngine: (vendor: VendorId) => void
+  },
+) {
+  const { theme } = useTheme()
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        Launch command
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        The command each engine's task pane runs. Override it when your binary isn't on PATH as `claude` / `codex` (e.g.
+        it's `cl`) or to pass default flags. enter to edit · takes effect on the next task enter.
+      </text>
+      <box flexDirection="column" gap={0}>
+        <For each={props.vendors}>
+          {(vendor, i) => {
+            const isCursor = () => props.level() === "body" && props.bodyRow() === i()
+            return (
+              <box
+                flexDirection="row"
+                gap={1}
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={isCursor() ? theme.primary : undefined}
+                onMouseUp={() => {
+                  props.setLevel("body")
+                  props.setBodyRow(i())
+                  props.editEngine(vendor)
+                }}
+              >
+                <text
+                  fg={isCursor() ? theme.selectedListItemText : theme.text}
+                  attributes={TextAttributes.BOLD}
+                  wrapMode="none"
+                >
+                  {VENDOR_LABEL[vendor]}
+                </text>
+                <text
+                  fg={
+                    isCursor() ? theme.selectedListItemText : props.isDefault(vendor) ? theme.textMuted : theme.accent
+                  }
+                  wrapMode="none"
+                >
+                  {props.commandText(vendor)}
+                  {props.isDefault(vendor) ? "  (default)" : ""}
+                </text>
+              </box>
+            )
+          }}
+        </For>
       </box>
     </box>
   )

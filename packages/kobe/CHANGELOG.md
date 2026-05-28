@@ -30,6 +30,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **`@file` mention injection from the Ops pane** — pressing `a` on a file in the Ops pane types `@<path>` into the engine (claude/codex) pane via tmux send-keys (literal, no auto-submit — you decide when to send), with focus staying in the Ops pane so you can queue several. Enter still opens the full-width preview window. This wires the injection the 0.6.0 notes had promised (KOB-232).
 - **Switching a task's engine relaunches it in place on a multi-tab session** — cycling vendor (`v`) on a task with several Ctrl+T chat-tab windows now `respawn-pane`s the engine pane in each window (preserving the windows, their other panes, and pane ids) instead of killing the whole session, so sibling chat tabs survive the switch (KOB-232).
+- **Per-engine launch command is configurable** — Settings → Engines lets you override the command each vendor's task pane runs, so a Claude binary that isn't on PATH as `claude` (e.g. it's `cl`) or one that wants default flags (`claude --model …`) just works; quotes are honored for flag values with spaces. Stored in `state.json`; empty = the built-in default; takes effect on the next task enter (KOB-245).
 
 ## [0.6.0] - 2026-05-22
 

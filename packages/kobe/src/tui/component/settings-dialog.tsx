@@ -13,10 +13,14 @@ import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { Show, createMemo, createSignal } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator"
+import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
+import type { VendorId } from "../../types/task"
+import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
 import {
   type NavLevel,
@@ -28,7 +32,12 @@ import {
   toastRowIndex,
   transparentRowIndex,
 } from "./settings-dialog/model"
-import { DevSettingsSection, GeneralSettingsSection, SettingsSectionSidebar } from "./settings-dialog/sections"
+import {
+  DevSettingsSection,
+  EngineSettingsSection,
+  GeneralSettingsSection,
+  SettingsSectionSidebar,
+} from "./settings-dialog/sections"
 
 export type SettingsDialogProps = {
   kv: KVContext
@@ -95,6 +104,27 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
+  // Engines section: per-vendor launch command. Stored in the shared
+  // state.json under engineCommandKey via kv (reactive here; read
+  // cross-process by interactiveEngineCommand). Empty override = default.
+  function engineOverride(vendor: VendorId): string {
+    const v = props.kv.get(engineCommandKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
+  }
+  function engineCommandText(vendor: VendorId): string {
+    return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
+  }
+  function engineIsDefault(vendor: VendorId): boolean {
+    return engineOverride(vendor).length === 0
+  }
+  async function editEngine(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
+      dialogTitle: `${VENDOR_LABEL[vendor]} launch command`,
+    })
+    if (next === undefined) return
+    props.kv.set(engineCommandKey(vendor), next.trim())
+  }
+
   function enterBody(): void {
     if (level() !== "sidebar" || bodyRowCount() === 0) return
     setLevel("body")
@@ -149,6 +179,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
       }
       const name = themeNames()[bodyRow()]
       if (name) themeCtx.set(name)
+      return
+    }
+    if (section() === "engines") {
+      const vendor = ALL_VENDORS[bodyRow()]
+      if (vendor) void editEngine(vendor)
       return
     }
     if (section() === "dev") {
@@ -210,6 +245,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
               soundEnabled={soundEnabled}
               toggleToast={toggleToast}
               toggleSound={toggleSound}
+            />
+          </Show>
+          <Show when={section() === "engines"}>
+            <EngineSettingsSection
+              level={level}
+              bodyRow={bodyRow}
+              setLevel={setLevel}
+              setBodyRow={setBodyRow}
+              vendors={ALL_VENDORS}
+              commandText={engineCommandText}
+              isDefault={engineIsDefault}
+              editEngine={(v) => void editEngine(v)}
             />
           </Show>
           <Show when={section() === "dev"}>
