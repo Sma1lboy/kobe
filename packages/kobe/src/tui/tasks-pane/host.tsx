@@ -14,6 +14,9 @@
  *   - Rename: `r` renames the title (`task.rename` RPC); `b` renames the
  *     branch (`task.setBranch` RPC — `git branch -m` for a materialised
  *     worktree, else just recorded for the eventual ensureWorktree).
+ *   - Engine: `v` cycles the task's vendor (`task.setVendor` RPC). Takes
+ *     effect on next enter — ensureSession rebuilds the session when its
+ *     `@kobe_vendor` tag no longer matches, launching the new engine.
  *   - Create: `n` (or the footer "+ New task") opens the SAME
  *     NewTaskDialog as the outer app (repo picker + base branch + clone
  *     tab) and fires the daemon's `task.create` RPC — the first
@@ -39,6 +42,7 @@ import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
+import { nextVendor } from "../../types/vendor.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { FocusProvider } from "../context/focus"
@@ -192,6 +196,28 @@ function TasksShell(props: {
     }
   }
 
+  // Cycle the cursor task's engine vendor (claude ↔ codex ↔ …) via the
+  // `task.setVendor` RPC. Takes effect on the task's next enter:
+  // `ensureSession` rebuilds a session whose `@kobe_vendor` tag no longer
+  // matches, so the new tmux pane launches the new engine.
+  async function cycleVendor(id: string): Promise<void> {
+    const current = props.tasks().find((t) => t.id === id)
+    if (!current) return
+    const next = nextVendor(current.vendor ?? DEFAULT_TASK_VENDOR)
+    try {
+      const client = await connectOrStartDaemon()
+      try {
+        await client.request("task.setVendor", { taskId: id, vendor: next })
+      } finally {
+        client.close()
+      }
+    } catch (err) {
+      console.error("[kobe tasks] task.setVendor failed:", err)
+      return
+    }
+    await props.reload()
+  }
+
   // Gate on an empty dialog stack so a letter typed INTO a dialog field
   // doesn't re-fire the binding (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
@@ -204,6 +230,13 @@ function TasksShell(props: {
         cmd: () => {
           const id = selectedId()
           if (id) void renameBranch(id)
+        },
+      },
+      {
+        key: "v",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void cycleVendor(id)
         },
       },
     ],

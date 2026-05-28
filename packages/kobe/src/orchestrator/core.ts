@@ -283,6 +283,18 @@ export class Orchestrator {
     await this.store.update(task.id, { branch: trimmed })
   }
 
+  /**
+   * Change a task's engine vendor. Pure metadata — no git / tmux side
+   * effects here. The change takes effect on the task's next enter:
+   * `ensureSession` rebuilds a session whose `@kobe_vendor` tag no
+   * longer matches, so the new tmux pane launches the new engine.
+   */
+  async setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.vendor === vendor) return
+    await this.store.update(task.id, { vendor })
+  }
+
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     const task = this.requireTask(id)

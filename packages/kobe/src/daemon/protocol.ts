@@ -40,6 +40,7 @@ export type DaemonRequestName =
   | "task.archive"
   | "task.rename"
   | "task.setBranch"
+  | "task.setVendor"
   | "task.delete"
   | "task.pin"
   | "task.status"

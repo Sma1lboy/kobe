@@ -112,17 +112,21 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   if (await sessionExists(opts.name)) {
     const panes = await paneCount(opts.name)
     const taggedWorktree = await getSessionOption(opts.name, "@kobe_worktree")
-    // Reuse ONLY a healthy session whose worktree tag matches this
-    // task's cwd. Two failure modes this guards against (KOB-233):
+    const taggedVendor = await getSessionOption(opts.name, "@kobe_vendor")
+    // Reuse ONLY a healthy session that matches this task. Failure modes
+    // this guards against (KOB-233):
     //   - Wrong layout: fewer than the full 4 panes (tasks / claude /
     //     ops / shell) → legacy/broken, rebuild.
-    //   - Wrong PLACE: a session of the same name (`kobe-<taskId>`) but
-    //     a different / empty `@kobe_worktree`. That's a stale session
-    //     left over from before the env+socket isolation (its panes run
-    //     in the wrong dir / wrong KOBE_HOME), and silently reusing it
-    //     drops the user into the wrong environment. Rebuild so the new
-    //     panes run in `opts.cwd` with the current process's env.
-    if (panes >= 4 && taggedWorktree === opts.cwd) return
+    //   - Wrong PLACE: same name (`kobe-<taskId>`) but a different /
+    //     empty `@kobe_worktree` — a stale session from before the
+    //     env+socket isolation, whose panes run in the wrong dir / wrong
+    //     KOBE_HOME. Reusing it drops the user into the wrong env.
+    //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since
+    //     the session was built, so `@kobe_vendor` no longer matches —
+    //     the running pane is the OLD engine. Rebuild so the new pane
+    //     launches the engine the task now wants.
+    const vendorOk = !opts.vendor || taggedVendor === opts.vendor
+    if (panes >= 4 && taggedWorktree === opts.cwd && vendorOk) return
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 

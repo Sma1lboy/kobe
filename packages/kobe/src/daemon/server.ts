@@ -183,6 +183,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.setBranch(taskId, requireString(payload, "branch"))
         return {}
       }
+      case "task.setVendor": {
+        const taskId = requireString(payload, "taskId")
+        const vendor = optionalVendor(payload, "vendor")
+        if (!vendor) throw new Error("task.setVendor: vendor is required")
+        await orch.setVendor(taskId, vendor)
+        return {}
+      }
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId)
