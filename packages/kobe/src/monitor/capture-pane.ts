@@ -7,7 +7,7 @@
  * LivePreview renders as plain text (opentui owns the colours).
  */
 
-import { capturePaneById, firstPaneId } from "@/tmux/client"
+import { capturePaneById, claudePaneId } from "@/tmux/client"
 
 /**
  * Capture the current text of a task's claude pane. Returns the empty
@@ -18,7 +18,7 @@ import { capturePaneById, firstPaneId } from "@/tmux/client"
  * `lines` (optional) extends the capture into scrollback.
  */
 export async function capturePane(sessionName: string, lines?: number): Promise<string> {
-  const paneId = await firstPaneId(sessionName)
+  const paneId = await claudePaneId(sessionName)
   if (!paneId) return ""
   return capturePaneById(paneId, lines)
 }

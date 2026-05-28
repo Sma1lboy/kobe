@@ -14,6 +14,9 @@
  * Everything in this file is pure: same inputs → same strings, no IO.
  */
 
+/** Far-left Tasks pane width as a % of the window (experimental). */
+export const TASKS_PANE_PERCENT = 22
+
 /** Left (claude) pane width as a % of the window. */
 export const CLAUDE_PANE_PERCENT = 60
 
@@ -101,6 +104,15 @@ export function previewWindowCommand(args: {
     `git diff HEAD -- ${file} | { delta --paging=always 2>/dev/null || less -R; }; ` +
     `else bat --style=plain --paging=always ${file} 2>/dev/null || \${PAGER:-less} ${file} 2>/dev/null || cat ${file}; fi`
   return `${inv} ops --worktree ${wt} --preview ${file} || { ${fallback}; }`
+}
+
+/**
+ * The far-left Tasks pane command — `kobe tasks` (a read-only task
+ * list that `switch-client`s between sessions). `cliInvocation` is the
+ * argv prefix that runs the kobe CLI (injected for purity/testability).
+ */
+export function tasksPaneCommand(cliInvocation: readonly string[]): string {
+  return shellQuoteArgv([...cliInvocation, "tasks"])
 }
 
 /**

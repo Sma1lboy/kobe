@@ -28,8 +28,16 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { listPaneIds, runTmux, runTmuxCapturing, sessionExists } from "@/tmux/client"
-import { CLAUDE_PANE_PERCENT, OPS_PANE_PERCENT, keepAlive, opsPaneCommand, shellQuoteArgv } from "@/tmux/session-layout"
+import { listPaneIds, runTmux, runTmuxCapturing, sessionExists, tagClaudePane } from "@/tmux/client"
+import {
+  CLAUDE_PANE_PERCENT,
+  OPS_PANE_PERCENT,
+  TASKS_PANE_PERCENT,
+  keepAlive,
+  opsPaneCommand,
+  shellQuoteArgv,
+  tasksPaneCommand,
+} from "@/tmux/session-layout"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
@@ -82,8 +90,10 @@ export interface EnsureSessionOpts {
 export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   if (await sessionExists(opts.name)) {
     const panes = await paneCount(opts.name)
-    if (panes >= 3) return
-    // Legacy / broken layout — drop and rebuild from scratch.
+    // Full layout is 4 panes (tasks / claude / ops / shell). Anything
+    // fewer is a legacy / broken session — drop and rebuild so it
+    // picks up the current layout on re-enter.
+    if (panes >= 4) return
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
@@ -128,6 +138,29 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
     console.error("[kobe tmux] new-session returned no pane id; session creation failed")
     return
   }
+  // Tag claude by a pane user-option — tmux renumbers panes by
+  // position when the Tasks pane is inserted on the left, so the
+  // monitor can't rely on "first pane" to find claude (KOB-233).
+  await tagClaudePane(pane0)
+  const inv = kobeCliInvocation()
+
+  // Tasks pane (experimental): inserted to the LEFT of claude with
+  // `split-window -hb`. claude stays pane 0 (first-created) so the
+  // monitor's `firstPaneId`-based capture still targets it. The tasks
+  // pane is a read-only `kobe tasks` list that switch-clients between
+  // sessions.
+  await runTmux([
+    "split-window",
+    "-h",
+    "-b",
+    "-t",
+    pane0,
+    "-l",
+    `${TASKS_PANE_PERCENT}%`,
+    "-c",
+    opts.cwd,
+    keepAlive(tasksPaneCommand(inv)),
+  ])
 
   // Resolve the Ops command now that we know pane 0's id — kobe ops
   // uses it as the `--target-pane` selector for `@file` send-keys
@@ -138,7 +171,7 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
         cwd: opts.cwd,
         taskId: opts.taskId,
         claudePaneId: pane0,
-        cliInvocation: kobeCliInvocation(),
+        cliInvocation: inv,
       }),
   )
 

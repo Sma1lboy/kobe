@@ -88,6 +88,13 @@ async function main(): Promise<void> {
     await runDaemonSubcommand(rest)
     return
   }
+  if (subcommand === "tasks") {
+    // Experimental Tasks pane (left side of a task's tmux session) —
+    // a read-only task list that `switch-client`s between sessions.
+    const { startTasksPane } = await import("../tui/tasks-pane/host.tsx")
+    await startTasksPane()
+    return
+  }
   if (subcommand === "ops") {
     // The Ops pane (right side of the per-task tmux session). Runs in
     // its own process inside the tmux pane; mounts the v0.5 FileTree

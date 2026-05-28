@@ -104,11 +104,49 @@ export async function listPaneIds(sessionName: string): Promise<string[]> {
 }
 
 /**
- * The id of the session's first pane — the claude pane (created
- * before the Ops + shell splits). `""` when the session doesn't exist.
+ * The id of the session's first pane. `""` when the session doesn't
+ * exist. NOTE: tmux numbers panes by POSITION, not creation order, so
+ * once the layout grew a left-hand Tasks pane the "first" pane stopped
+ * being claude — prefer {@link claudePaneId} for "the claude pane".
  */
 export async function firstPaneId(sessionName: string): Promise<string> {
   return (await listPaneIds(sessionName))[0] ?? ""
+}
+
+/** Per-pane user option marking the claude pane (set by `ensureSession`). */
+export const CLAUDE_ROLE_OPTION = "@kobe_role"
+const CLAUDE_ROLE_VALUE = "claude"
+
+/** Tag a pane as the claude pane so {@link claudePaneId} can find it. */
+export async function tagClaudePane(paneId: string): Promise<void> {
+  await runTmux(["set-option", "-p", "-t", paneId, CLAUDE_ROLE_OPTION, CLAUDE_ROLE_VALUE])
+}
+
+/**
+ * The id of the session's claude pane, found by its `@kobe_role`
+ * user-option tag — robust against tmux's by-position pane numbering
+ * (a left-hand Tasks pane renumbers everything). Falls back to the
+ * first pane for sessions created before tagging existed. `""` when
+ * the session doesn't exist.
+ */
+export async function claudePaneId(sessionName: string): Promise<string> {
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${sessionName}`,
+    "-F",
+    `#{pane_id}\t#{${CLAUDE_ROLE_OPTION}}`,
+  ])
+  if (code !== 0) return ""
+  let firstId = ""
+  for (const line of stdout.split("\n")) {
+    const [id, role] = line.split("\t")
+    if (!id) continue
+    if (!firstId) firstId = id.trim()
+    if (role?.trim() === CLAUDE_ROLE_VALUE) return id.trim()
+  }
+  return firstId
 }
 
 /**
