@@ -11,10 +11,11 @@
  *   - Reads `~/.kobe/tasks.json` directly and re-reads on a timer. The
  *     outer app's Orchestrator / Daemon still own most writes; this pane
  *     leaves delete/archive/rename/pin as no-ops.
- *   - Create: `n` (or the footer "+ New task") fires the daemon's
- *     `task.create` RPC — the first write-path here, the step toward
- *     retiring the outer "page 1". Repo is inherited from the cursor
- *     task (no repo picker). Backlog task, worktree lazy on first enter.
+ *   - Create: `n` (or the footer "+ New task") opens the SAME
+ *     NewTaskDialog as the outer app (repo picker + base branch + clone
+ *     tab) and fires the daemon's `task.create` RPC — the first
+ *     write-path here, the step toward retiring the outer "page 1".
+ *     Default repo = cursor task's repo. Backlog task, worktree lazy.
  *   - Switch + lazy-create: Enter / click `switch-client`s to a task's
  *     session, creating it on demand (`ensureSession`) when the task's
  *     worktree already exists on disk — that covers every `main` task
@@ -31,8 +32,9 @@ import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
+import { getSavedRepos } from "../../state/repos.ts"
 import type { Task } from "../../types/task.ts"
-import { RenameTaskDialog } from "../component/rename-task-dialog"
+import { NewTaskDialog } from "../component/new-task-dialog"
 import { FocusProvider } from "../context/focus"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -41,6 +43,7 @@ import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
@@ -62,25 +65,35 @@ function TasksShell(props: {
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
   })
 
-  // `n` (and the footer "+ New task" click) creates a new task. The
-  // standalone pane has no Orchestrator, so it fires the daemon's
-  // `task.create` RPC — the same path the outer app uses. The repo is
-  // inherited from the cursor task (fallback: first task in the list),
-  // so there's no repo picker to build: a new task lands in whatever
-  // repo you're already looking at. Created as a backlog task (no
-  // worktree yet, matching the outer app); the worktree materialises on
-  // first enter from the outer monitor. This is the first write-path in
-  // the Tasks pane — the step toward retiring the outer "page 1".
+  // `n` (and the footer "+ New task" click) creates a new task using the
+  // SAME NewTaskDialog the outer app uses (repo picker + base-branch +
+  // clone tab) — parity matters; this pane is meant to replace the outer
+  // "page 1". The standalone pane has no Orchestrator, so it fires the
+  // daemon's `task.create` RPC instead of calling it in-process. Default
+  // repo is the cursor task's repo (fallback: first saved repo), matching
+  // the outer app's "spawn a sibling" default. Backlog task (worktree
+  // lazy on first enter); list reloads immediately after.
   async function createTask(): Promise<void> {
+    const repos = getSavedRepos()
+    if (repos.length === 0) {
+      await DialogConfirm.show(
+        dialog,
+        "No saved repos.",
+        "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
+        "",
+        "ok",
+      )
+      return
+    }
     const list = props.tasks()
-    const repo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-    if (!repo) return
-    const title = await RenameTaskDialog.show(dialog, "", { dialogTitle: "New task" })
-    if (title === undefined) return
+    const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+    const defaultRepo = cursorRepo ?? repos[0] ?? ""
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
+    if (!result) return
     try {
       const client = await connectOrStartDaemon()
       try {
-        await client.request("task.create", { repo, title: title || undefined })
+        await client.request("task.create", { repo: result.repo, baseRef: result.baseRef })
       } finally {
         client.close()
       }
@@ -91,7 +104,7 @@ function TasksShell(props: {
     await props.reload()
   }
 
-  // Gate on an empty dialog stack so typing "n" INTO the title input
+  // Gate on an empty dialog stack so typing "n" INTO a dialog field
   // doesn't re-fire createTask (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
   useBindings(() => ({
