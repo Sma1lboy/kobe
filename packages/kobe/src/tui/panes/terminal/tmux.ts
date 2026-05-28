@@ -4,17 +4,19 @@
  * One tmux session per Task (`kobe-<taskId>`, on the dedicated
  * `tmux -L kobe` socket). Each **window** in the session is a **chat
  * tab** — an independent claude conversation on the same worktree —
- * and every window has the same four-pane workspace:
+ * and every window has the same three-pane workspace (claude dominant
+ * so the outer monitor's capture-pane preview is wide, KOB-244):
  *
- *     ┌────────┬──────────────────┬───────────────┐
- *     │ tasks  │   claude         │  ops          │
- *     │ (left) │   (@kobe_role)   ├───────────────┤
- *     │        │                  │  shell        │
- *     └────────┴──────────────────┴───────────────┘
+ *     ┌──────────────────────────┬───────────────┐
+ *     │   claude (72%)           │  ops          │
+ *     │   (@kobe_role=claude)    ├───────────────┤
+ *     │                          │  shell        │
+ *     └──────────────────────────┴───────────────┘
  *
- * The tmux status-bar window list is the chat-tab switcher; the left
- * Tasks pane switches between task sessions. `Ctrl+T` opens a new chat
- * tab (window). Everything is rendered by tmux, so claude repaints at
+ * The tmux status-bar window list is the chat-tab switcher; `Ctrl+T`
+ * opens a new chat tab (window). Switch BETWEEN tasks from the outer
+ * monitor (the far-left Tasks pane was dropped from the default layout
+ * — KOB-244). Everything is rendered by tmux, so claude repaints at
  * native speed without kobe's outer renderer fighting for the TTY.
  *
  * `Ctrl+Q` detaches back to the outer monitor; `Ctrl+h/j/k/l` move
@@ -46,12 +48,10 @@ import {
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
-  TASKS_PANE_PERCENT,
   keepAlive,
   opsPaneCommand,
   shellQuote,
   shellQuoteArgv,
-  tasksPaneCommand,
 } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 
@@ -254,17 +254,11 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // tmux expands at fire time).
   const invStr = inv.map(shellQuote).join(" ")
   await runTmux(["bind-key", "-n", "C-t", "run-shell", `${invStr} new-chattab --session '#{session_name}'`])
-  // `<prefix> f` = quick-create: focus the Tasks pane and open the
-  // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
-  // the tmux world). `kobe quick-create` selects the tasks pane and
-  // injects `n`, so the dialog + its logic are exactly the Tasks pane's
-  // createTask — no separate code path. PREFIX-scoped (not no-prefix
-  // C-f): a no-prefix Ctrl+F was unusable — it shadows readline
-  // forward-char in the claude/shell panes and several apps grab it, so
-  // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
-  // two-key chord but conflict-free; the prefix is whatever the user's
-  // own tmux.conf sets (we load it on the `-L kobe` socket).
-  await runTmux(["bind-key", "f", "run-shell", `${invStr} quick-create --session '#{session_name}'`])
+  // NOTE: the `<prefix> f` quick-create chord is gone with the Tasks pane
+  // (KOB-244) — it focused that pane and injected `n` to open the new-task
+  // dialog there, and there's no Tasks pane to host it now. Create tasks
+  // from the outer monitor (`n` in the sidebar). The `kobe quick-create`
+  // subcommand survives for if the Tasks pane is ever revived.
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
@@ -310,40 +304,24 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
 
 /**
  * Build the workspace panes around a freshly-created claude pane:
- * Tasks (left) + Ops (right-top) + shell (right-bottom). Shared by
- * the session's first window ({@link ensureSession}) and every new
- * chat-tab window ({@link newChatTab}).
+ * Ops (right-top) + shell (right-bottom), with claude taking
+ * {@link CLAUDE_PANE_PERCENT} of the window. Shared by the session's
+ * first window ({@link ensureSession}) and every new chat-tab window
+ * ({@link newChatTab}).
+ *
+ * The far-left Tasks pane is NOT part of the default layout (KOB-244):
+ * it ate ~22% of the width and squeezed claude down to under half the
+ * window, which made the outer monitor's live preview look half-empty.
+ * The `kobe tasks` / `kobe quick-create` machinery is kept (revivable)
+ * but no longer auto-built; switch tasks from the outer monitor instead.
  */
 async function buildPanesAround(
   claudePane: string,
   args: { cwd: string; taskId?: string; opsCommand?: string; inv: readonly string[] },
 ): Promise<void> {
-  // Tag claude by a pane user-option — tmux renumbers panes by
-  // position when the Tasks pane is inserted on the left, so the
-  // monitor can't rely on "first pane" to find claude (KOB-233).
+  // Tag claude by a pane user-option so the monitor + heal paths re-find
+  // it by role, not by position (tmux numbers panes by position, KOB-233).
   await tagClaudePane(claudePane)
-
-  // Tasks pane to the LEFT (`-hb` inserts before). Task list that
-  // switch-clients between task sessions + creates tasks. Tagged
-  // `@kobe_role=tasks` so the Ctrl+F quick-create handler can re-find
-  // it regardless of tmux's by-position pane numbering.
-  const rTasks = await runTmuxCapturing([
-    "split-window",
-    "-h",
-    "-b",
-    "-t",
-    claudePane,
-    "-l",
-    `${TASKS_PANE_PERCENT}%`,
-    "-c",
-    args.cwd,
-    "-P",
-    "-F",
-    "#{pane_id}",
-    keepAlive(tasksPaneCommand(args.inv)),
-  ])
-  const tasksPane = rTasks.stdout.trim()
-  if (tasksPane) await tagPaneRole(tasksPane, "tasks")
 
   // Ops pane (right column). Uses the claude pane id as its
   // `--target-pane` for `@file` mention injection.

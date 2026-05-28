@@ -17,8 +17,13 @@
 /** Far-left Tasks pane width as a % of the window (experimental). */
 export const TASKS_PANE_PERCENT = 22
 
-/** Left (claude) pane width as a % of the window. */
-export const CLAUDE_PANE_PERCENT = 60
+/**
+ * Left (claude) pane width as a % of the window. Bumped 60 → 72 when the
+ * far-left Tasks pane was dropped from the default layout (KOB-244): with
+ * no Tasks pane eating width, claude can dominate, and the outer monitor's
+ * capture-pane preview no longer looks half-empty.
+ */
+export const CLAUDE_PANE_PERCENT = 72
 
 /** Upper-right (Ops) pane height as a % of the right column. */
 export const OPS_PANE_PERCENT = 50
