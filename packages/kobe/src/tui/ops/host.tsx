@@ -21,6 +21,7 @@
  * writing would race the main process).
  */
 
+import { sendKeys } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { kvStatePath } from "../../env.ts"
@@ -32,7 +33,6 @@ import { DialogProvider } from "../ui/dialog"
 import { readDiff, readFile, splitLines } from "./diff"
 
 const FALLBACK_THEME = "claude"
-const SOCKET = "kobe"
 
 export interface OpsHostArgs {
   readonly taskId: string
@@ -154,15 +154,7 @@ function FilePreview(props: {
 
   async function mention(): Promise<void> {
     if (!props.targetPane) return
-    try {
-      await Bun.spawn(["tmux", "-L", SOCKET, "send-keys", "-t", props.targetPane, `@${props.relPath} `], {
-        stdin: "ignore",
-        stdout: "ignore",
-        stderr: "ignore",
-      }).exited
-    } catch {
-      /* best-effort */
-    }
+    await sendKeys(props.targetPane, `@${props.relPath} `)
   }
 
   useBindings(() => ({

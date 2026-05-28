@@ -28,9 +28,20 @@
  */
 
 import { fileURLToPath } from "node:url"
+import {
+  attachArgv,
+  killSession,
+  listPaneIds,
+  runTmux,
+  runTmuxCapturing,
+  sessionExists,
+  tmuxAvailable,
+  tmuxSessionName,
+} from "@/tmux/client"
 
-/** Dedicated tmux socket name — isolates kobe's server from the user's. */
-const SOCKET = "kobe"
+// Re-export the shared identity/lifecycle helpers so existing importers
+// (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
+export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName }
 
 /**
  * The argv prefix that re-invokes the kobe CLI for a subcommand from
@@ -68,91 +79,14 @@ const CLAUDE_PANE_PERCENT = 60
 /** Default upper-right (Ops) pane height as a percentage of the right column. */
 const OPS_PANE_PERCENT = 50
 
-function tmuxBase(...args: string[]): string[] {
-  return ["tmux", "-L", SOCKET, ...args]
-}
-
-/**
- * tmux session name for a task. tmux disallows `.` and `:` in names
- * and matches a bare `-t name` as a prefix; we sanitize and always
- * target with `-t =name` (exact) at the call sites.
- */
-export function tmuxSessionName(taskId: string): string {
-  return `kobe-${taskId.replace(/[^A-Za-z0-9_-]/g, "")}`
-}
-
-/** argv that attaches to `name` (exact match). */
-export function attachArgv(name: string): string[] {
-  return tmuxBase("attach-session", "-t", `=${name}`)
-}
-
-/**
- * Run a tmux command, capturing stderr to the log when it fails. Silent
- * tmux errors are a foot-gun: KOB-233 had `split-window -t :0.0` silently
- * fail because the user's tmux uses `base-index 1`, so the rebuild path
- * ended up creating empty sessions and nobody noticed for hours. Logging
- * is cheap; we only emit when the exit code is non-zero.
- */
-async function runTmux(args: string[]): Promise<number> {
-  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "ignore", stderr: "pipe" })
-  const code = await proc.exited
-  if (code !== 0) {
-    try {
-      const errText = await new Response(proc.stderr).text()
-      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
-    } catch {
-      // best-effort: we surfaced the exit code already
-    }
-  }
-  return code
-}
-
-async function runTmuxCapturing(args: string[]): Promise<{ code: number; stdout: string }> {
-  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
-  const text = await new Response(proc.stdout).text()
-  const code = await proc.exited
-  if (code !== 0) {
-    try {
-      const errText = await new Response(proc.stderr).text()
-      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
-    } catch {
-      /* keep the stdout we did get */
-    }
-  }
-  return { code, stdout: text }
-}
-
-/** Is the `tmux` binary on PATH? */
-export async function tmuxAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(["tmux", "-V"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
-    return (await proc.exited) === 0
-  } catch {
-    return false
-  }
-}
-
-/** Does a session with this exact name exist on kobe's socket? */
-export async function sessionExists(name: string): Promise<boolean> {
-  return (await runTmux(["has-session", "-t", `=${name}`])) === 0
-}
-
 /**
  * Count the panes across every window of the session. Used to detect
  * old (v0.5 / KOB-225) one-pane sessions so {@link ensureSession} can
- * rebuild them with the three-pane layout.
- *
- * `list-panes -s` walks the whole session, which sidesteps the user's
- * `base-index` setting — targeting `:0` outright (as the first
- * implementation did) returned an empty list whenever the user's tmux
- * was configured with `base-index 1`, and the rebuild path "succeeded"
- * by silently creating an empty session.
+ * rebuild them with the three-pane layout. `listPaneIds` walks the
+ * whole session (`-s`), so it sidesteps the user's `base-index` config.
  */
 async function paneCount(name: string): Promise<number> {
-  const { code, stdout } = await runTmuxCapturing(["list-panes", "-s", "-t", `=${name}`, "-F", "#{pane_id}"])
-  if (code !== 0) return 0
-  const lines = stdout.split("\n").filter((l) => l.length > 0)
-  return lines.length
+  return (await listPaneIds(name)).length
 }
 
 export interface EnsureSessionOpts {
@@ -385,9 +319,4 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
-}
-
-/** Kill a session (if any). Used when a task is removed. */
-export async function killSession(name: string): Promise<void> {
-  if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
 }
