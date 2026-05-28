@@ -34,6 +34,7 @@ import { runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
+import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { getSavedRepos } from "../../state/repos.ts"
@@ -216,7 +217,8 @@ function TasksShell(props: {
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
     if (!(await sessionExists(name))) {
-      let cwd = props.tasks().find((t) => t.id === id)?.worktreePath
+      const task = props.tasks().find((t) => t.id === id)
+      let cwd = task?.worktreePath
       if (!cwd || !existsSync(cwd)) {
         try {
           const client = await connectOrStartDaemon()
@@ -233,7 +235,13 @@ function TasksShell(props: {
         await props.reload()
       }
       if (!cwd || !existsSync(cwd)) return
-      await ensureSession({ name, cwd, command: ["claude"], taskId: id })
+      await ensureSession({
+        name,
+        cwd,
+        command: interactiveEngineCommand(task?.vendor),
+        taskId: id,
+        vendor: task?.vendor,
+      })
     }
     await runTmux(["switch-client", "-t", `=${name}`])
   }

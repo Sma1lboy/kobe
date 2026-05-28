@@ -25,6 +25,7 @@
 import type { CliRenderer } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, type JSXElement, Show, createSignal } from "solid-js"
+import type { VendorId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { attachArgv, ensureSession, tmuxAvailable, tmuxSessionName } from "./tmux"
@@ -73,8 +74,10 @@ export type LaunchTaskTmuxOpts = {
   taskId: string
   /** Worktree the session runs in. Empty triggers `onEnsureWorktree`. */
   cwd: string | null
-  /** argv for pane 0 (the claude pane). */
+  /** argv for pane 0 (the engine pane). */
   command: readonly string[]
+  /** Engine vendor — tagged on the session so `new-chattab` relaunches the same engine. */
+  vendor?: VendorId
   /** Materialise the worktree on first enter. */
   onEnsureWorktree: (taskId: string) => Promise<string>
 }
@@ -105,7 +108,7 @@ export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTa
     }
   }
   const name = tmuxSessionName(opts.taskId)
-  await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId })
+  await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId, vendor: opts.vendor })
   const exitCode = await runFullscreen({ renderer: opts.renderer, command: attachArgv(name) })
   return { kind: "ok", exitCode }
 }
@@ -119,8 +122,10 @@ export type ClaudeLauncherProps = {
    * called on enter to materialise it.
    */
   cwd: Accessor<string | null>
-  /** argv the tmux session runs (the chat pane passes `["claude"]`). */
+  /** argv the tmux session runs (vendor-resolved, e.g. `["claude"]` / `["codex"]`). */
   command: readonly string[]
+  /** Engine vendor — tagged on the session for `new-chattab`. */
+  vendor?: VendorId
   /** Whether the workspace pane currently owns focus (gates the chord). */
   focused: Accessor<boolean>
   /**
@@ -153,6 +158,7 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
       taskId,
       cwd: props.cwd(),
       command: props.command,
+      vendor: props.vendor,
       onEnsureWorktree: props.onEnsureWorktree,
     })
       .then((res) => {

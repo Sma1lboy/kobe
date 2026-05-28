@@ -29,6 +29,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
+import { interactiveEngineCommand } from "@/engine/interactive-command"
 import {
   getSessionOption,
   listPaneIds,
@@ -51,6 +52,7 @@ import {
   shellQuoteArgv,
   tasksPaneCommand,
 } from "@/tmux/session-layout"
+import type { VendorId } from "@/types/task"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
@@ -84,6 +86,12 @@ export interface EnsureSessionOpts {
    * their own `opsCommand` don't need to pass it.
    */
   readonly taskId?: string
+  /**
+   * Engine vendor — tagged on the session (`@kobe_vendor`) so a new
+   * chat tab ({@link newChatTab}) relaunches the SAME engine, not a
+   * hard-coded `claude`.
+   */
+  readonly vendor?: string
 }
 
 /**
@@ -148,6 +156,7 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // (the Ctrl+T handler) can rebuild the same workspace in a new window.
   if (opts.taskId) await setSessionOption(opts.name, "@kobe_task", opts.taskId)
   await setSessionOption(opts.name, "@kobe_worktree", opts.cwd)
+  if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
 
   await buildPanesAround(pane0, { cwd: opts.cwd, taskId: opts.taskId, opsCommand: opts.opsCommand, inv })
 
@@ -283,15 +292,18 @@ async function buildPanesAround(
 
 /**
  * Open a new chat-tab window in an existing task session: a new
- * tmux window with a fresh claude conversation + the same workspace
+ * tmux window with a fresh engine conversation + the same workspace
  * panes, on the same worktree. Invoked by `kobe new-chattab` (the
  * Ctrl+T handler), which passes only the session name; the worktree +
- * task id are read back from the session's `@kobe_*` tags.
+ * task id + vendor are read back from the session's `@kobe_*` tags so
+ * the new tab launches the SAME engine the task was created with.
  */
 export async function newChatTab(session: string): Promise<void> {
   if (!(await sessionExists(session))) return
   const cwd = (await getSessionOption(session, "@kobe_worktree")) || process.cwd()
   const taskId = (await getSessionOption(session, "@kobe_task")) || undefined
+  const vendor = (await getSessionOption(session, "@kobe_vendor")) || undefined
+  const command = interactiveEngineCommand(vendor as VendorId | undefined)
   const inv = kobeCliInvocation()
   const r = await runTmuxCapturing([
     "new-window",
@@ -302,7 +314,7 @@ export async function newChatTab(session: string): Promise<void> {
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(shellQuoteArgv(["claude"])),
+    keepAlive(shellQuoteArgv(command)),
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return

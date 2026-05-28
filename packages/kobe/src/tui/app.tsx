@@ -23,6 +23,7 @@ import {
 } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
+import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
@@ -57,11 +58,6 @@ import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
-
-// The chat pane handed off to a tmux session running this argv. Step B
-// (KOB-228) extends the session to a three-pane split; the bare `claude`
-// command lives in pane 0.
-const CHAT_CLAUDE_COMMAND: readonly string[] = ["claude"]
 
 type AppDeps = {
   orchestrator: KobeOrchestrator
@@ -129,7 +125,8 @@ function Shell(props: AppDeps) {
       renderer,
       taskId: id,
       cwd: task.worktreePath || null,
-      command: CHAT_CLAUDE_COMMAND,
+      command: interactiveEngineCommand(task.vendor),
+      vendor: task.vendor,
       onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
     })
     if (res.kind === "error") {
@@ -430,7 +427,8 @@ function Shell(props: AppDeps) {
                     <ClaudeLauncher
                       taskId={taskIdAcc}
                       cwd={worktreePathAcc}
-                      command={CHAT_CLAUDE_COMMAND}
+                      command={interactiveEngineCommand(activeTask()?.vendor)}
+                      vendor={activeTask()?.vendor}
                       focused={isFocused("workspace")}
                       onEnsureWorktree={async (id) => props.orchestrator.ensureWorktree(id)}
                     />
