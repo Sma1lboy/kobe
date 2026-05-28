@@ -34,6 +34,7 @@
 
 import { existsSync } from "node:fs"
 import { runTmux, tmuxSessionName } from "@/tmux/client"
+import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
@@ -319,18 +320,25 @@ function ShortcutHints() {
     { k: "↵", label: "open" },
     { k: "n", label: "new task" },
     { k: "r/b/v", label: "name / branch / engine" },
-    { k: "^h^j^k^l", label: "move panes" },
+    { k: "^hjkl", label: "move panes" },
     { k: "^t", label: "new tab" },
     { k: "^q", label: "monitor" },
   ]
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+        ── keys ──
+      </text>
       <For each={HINTS}>
         {(h) => (
           <box flexDirection="row" gap={1}>
-            <box width={9} flexShrink={0}>
-              <text fg={theme.accent} wrapMode="none">
-                {h.k}
+            {/* `[key]` keycap chip — agent-deck style, mirrors the outer
+                monitor's StatusBar Hotkey: bold accent key in brackets,
+                muted label. No fill, so it stays clean in transparent
+                mode. Fixed-width key column so the labels line up. */}
+            <box width={10} flexShrink={0}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+                [{h.k}]
               </text>
             </box>
             <text fg={theme.textMuted} wrapMode="none">
