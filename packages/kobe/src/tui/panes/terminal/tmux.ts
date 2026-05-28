@@ -252,8 +252,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // `kobe new-chattab` reads the session's @kobe_task / @kobe_worktree
   // tags so the binding only needs to pass the session name (which
   // tmux expands at fire time).
+  // Bake kobe's env onto the run-shell chords too (same reason as the
+  // pane commands — see inheritedEnvPrefix), so `new-chattab` /
+  // `quick-create` spawn against the SAME home + daemon as this monitor.
+  const envStr = inheritedEnvPrefix()
   const invStr = inv.map(shellQuote).join(" ")
-  await runTmux(["bind-key", "-n", "C-t", "run-shell", `${invStr} new-chattab --session '#{session_name}'`])
+  await runTmux(["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`])
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and
@@ -264,7 +268,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
   // two-key chord but conflict-free; the prefix is whatever the user's
   // own tmux.conf sets (we load it on the `-L kobe` socket).
-  await runTmux(["bind-key", "f", "run-shell", `${invStr} quick-create --session '#{session_name}'`])
+  await runTmux(["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
@@ -309,6 +313,25 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
 }
 
 /**
+ * Shell `KEY='val' …` prefix that pins kobe's env onto an inner pane's
+ * command so the pane uses the SAME home dir / daemon / tmux server as
+ * the outer monitor that created it — independent of tmux-server env
+ * inheritance, which goes stale when a server persists across outer
+ * restarts. Without this the Tasks pane could read the PRODUCTION
+ * `~/.kobe/tasks.json` (KOBE_HOME_DIR missing) or connect to a dead
+ * daemon (KOBE_DAEMON_SOCKET_PATH stale) → its task list / clicks
+ * desynced from the outer monitor (KOB-244).
+ */
+function inheritedEnvPrefix(): string {
+  const parts: string[] = []
+  for (const key of ["KOBE_HOME_DIR", "KOBE_DAEMON_SOCKET_PATH", "KOBE_TMUX_SOCKET"]) {
+    const value = process.env[key]
+    if (value && value.length > 0) parts.push(`${key}=${shellQuote(value)}`)
+  }
+  return parts.length > 0 ? `${parts.join(" ")} ` : ""
+}
+
+/**
  * Build the workspace panes around a freshly-created claude pane:
  * Tasks (left) + Ops (right-top) + shell (right-bottom). Shared by
  * the session's first window ({@link ensureSession}) and every new
@@ -340,7 +363,7 @@ async function buildPanesAround(
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(tasksPaneCommand(args.inv)),
+    keepAlive(inheritedEnvPrefix() + tasksPaneCommand(args.inv)),
   ])
   const tasksPane = rTasks.stdout.trim()
   if (tasksPane) await tagPaneRole(tasksPane, "tasks")
@@ -349,7 +372,8 @@ async function buildPanesAround(
   // `--target-pane` for `@file` mention injection.
   const opsCmd = keepAlive(
     args.opsCommand ??
-      opsPaneCommand({ cwd: args.cwd, taskId: args.taskId, claudePaneId: claudePane, cliInvocation: args.inv }),
+      inheritedEnvPrefix() +
+        opsPaneCommand({ cwd: args.cwd, taskId: args.taskId, claudePaneId: claudePane, cliInvocation: args.inv }),
   )
   const r1 = await runTmuxCapturing([
     "split-window",

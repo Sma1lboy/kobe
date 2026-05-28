@@ -33,7 +33,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { runTmux, tmuxSessionName } from "@/tmux/client"
+import { getSessionOption, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, createSignal, onCleanup, onMount } from "solid-js"
@@ -239,17 +239,34 @@ function TasksShell(props: {
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
     const task = props.tasks().find((t) => t.id === id)
-    // Resolve the worktree FIRST (unconditionally) — materialising it via the
-    // daemon's task.ensureWorktree RPC for a backlog task never entered — then
-    // run ensureSession on EVERY enter, exactly like the outer monitor's
-    // launchTaskTmux. This is what makes a vendor cycle (`v`), a branch
-    // rename, or a stale/wrong-place session actually take effect from the
-    // Tasks pane: ensureSession rebuilds a session whose @kobe_vendor /
-    // @kobe_worktree no longer matches. Previously this path only ran
-    // ensureSession when the session did NOT exist, so the documented "takes
-    // effect on next enter" promise silently broke for any live session
-    // (KOB-244). For a live, matching session ensureSession is a cheap
-    // idempotent no-op (it early-returns on the healthy-reuse check).
+    const exists = await sessionExists(name)
+
+    // A LIVE session ALWAYS gets switched into — clicking a running task
+    // must jump, full stop. Its worktree dir comes from the session's own
+    // `@kobe_worktree` tag, NOT the Tasks-pane tasks.json read (which can
+    // lag the daemon and show an empty worktreePath; relying on it made a
+    // click bail before switch-client — KOB-244 regression). We still run
+    // ensureSession to heal vendor/worktree drift, but never let that
+    // block the switch.
+    if (exists) {
+      const cwd = (await getSessionOption(name, "@kobe_worktree")) || task?.worktreePath || ""
+      if (cwd && existsSync(cwd)) {
+        await ensureSession({
+          name,
+          cwd,
+          command: interactiveEngineCommand(task?.vendor),
+          taskId: id,
+          vendor: task?.vendor,
+        })
+      }
+      await runTmux(["switch-client", "-t", `=${name}`])
+      return
+    }
+
+    // No session yet. Resolve the worktree — for a never-entered backlog
+    // task, materialise it via the daemon's task.ensureWorktree RPC (git
+    // worktree add — only the Orchestrator can do it) — then build the
+    // session and switch.
     let cwd = task?.worktreePath
     if (!cwd || !existsSync(cwd)) {
       try {
