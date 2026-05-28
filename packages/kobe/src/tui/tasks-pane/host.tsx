@@ -31,6 +31,7 @@ import { runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
+import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { getSavedRepos } from "../../state/repos.ts"
 import type { Task } from "../../types/task.ts"
@@ -176,8 +177,13 @@ export async function startTasksPane(): Promise<void> {
   const prefs = readPersistedUiPrefs(FALLBACK_THEME)
 
   // Read-only task source: load the manifest now, re-read on a timer so
-  // tasks created/renamed in the outer app show up here too.
-  const store = new TaskIndexStore()
+  // tasks created/renamed in the outer app show up here too. MUST pass
+  // `homeDir()` (KOBE_HOME_DIR-aware) — TaskIndexStore's bare default is
+  // `os.homedir()`, which would read the PRODUCTION `~/.kobe/tasks.json`
+  // even inside a sandbox session, so the Tasks pane would show a
+  // different task list than the outer monitor it's meant to mirror
+  // (KOB-233).
+  const store = new TaskIndexStore({ homeDir: homeDir() })
   await store.load()
   const [tasks, setTasks] = createSignal<readonly Task[]>(store.list())
   const reload = async (): Promise<void> => {
