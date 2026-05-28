@@ -260,6 +260,29 @@ export class Orchestrator {
     await this.store.update(task.id, { title: trimmed })
   }
 
+  /**
+   * Rename a task's branch. For a materialised worktree this renames
+   * the real git branch (`git branch -m`, which also moves HEAD on the
+   * checked-out worktree so a running session keeps streaming); for a
+   * not-yet-materialised task it just records the name, which
+   * {@link ensureWorktree} then uses instead of the title-derived
+   * default. Rejected for `kind: "main"` (it tracks the repo's own
+   * branch — rename that with git directly, not through kobe).
+   */
+  async setBranch(id: TaskId | string, branch: string): Promise<void> {
+    const trimmed = branch.trim()
+    if (!trimmed) throw new Error("setBranch: branch is required (empty or whitespace-only rejected)")
+    const task = this.requireTask(id)
+    if (task.kind === "main") {
+      throw new Error("setBranch: a main task tracks the repo's own branch; rename it with git directly")
+    }
+    if (task.branch === trimmed) return
+    if (task.worktreePath) {
+      await this.worktrees.renameBranch(task.worktreePath, task.branch, trimmed)
+    }
+    await this.store.update(task.id, { branch: trimmed })
+  }
+
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     const task = this.requireTask(id)

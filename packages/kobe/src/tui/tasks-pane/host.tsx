@@ -11,9 +11,9 @@
  *   - Reads `~/.kobe/tasks.json` directly and re-reads on a timer. The
  *     outer app's Orchestrator / Daemon still own most writes; this pane
  *     leaves delete/archive/pin as no-ops.
- *   - Rename: `r` opens the RenameTaskDialog and fires the daemon's
- *     `task.rename` RPC. Branch follows the title for not-yet-built
- *     tasks; a materialised worktree keeps its git branch.
+ *   - Rename: `r` renames the title (`task.rename` RPC); `b` renames the
+ *     branch (`task.setBranch` RPC — `git branch -m` for a materialised
+ *     worktree, else just recorded for the eventual ensureWorktree).
  *   - Create: `n` (or the footer "+ New task") opens the SAME
  *     NewTaskDialog as the outer app (repo picker + base branch + clone
  *     tab) and fires the daemon's `task.create` RPC — the first
@@ -157,12 +157,50 @@ function TasksShell(props: {
     }
   }
 
-  // Gate on an empty dialog stack so typing "n" INTO a dialog field
-  // doesn't re-fire createTask (the keymap sees inline-input keystrokes;
+  // Rename a task's branch via `task.setBranch` RPC. For a materialised
+  // worktree the daemon runs `git branch -m` (HEAD moves on the
+  // checked-out worktree, a running session keeps streaming); otherwise
+  // it just records the name for the eventual `ensureWorktree`.
+  async function renameBranch(id: string): Promise<void> {
+    const current = props.tasks().find((t) => t.id === id)
+    if (!current || current.kind === "main") return
+    const selfPane = process.env.TMUX_PANE
+    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    try {
+      const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
+      if (!next) return
+      try {
+        const client = await connectOrStartDaemon()
+        try {
+          await client.request("task.setBranch", { taskId: id, branch: next })
+        } finally {
+          client.close()
+        }
+      } catch (err) {
+        console.error("[kobe tasks] task.setBranch failed:", err)
+        return
+      }
+      await props.reload()
+    } finally {
+      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    }
+  }
+
+  // Gate on an empty dialog stack so a letter typed INTO a dialog field
+  // doesn't re-fire the binding (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [{ key: "n", cmd: () => void createTask() }],
+    bindings: [
+      { key: "n", cmd: () => void createTask() },
+      {
+        key: "b",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void renameBranch(id)
+        },
+      },
+    ],
   }))
 
   // Enter / click on a task → switch this tmux client to that task's

@@ -178,6 +178,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.setTitle(taskId, requireString(payload, "title"))
         return {}
       }
+      case "task.setBranch": {
+        const taskId = requireString(payload, "taskId")
+        await orch.setBranch(taskId, requireString(payload, "branch"))
+        return {}
+      }
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId)
