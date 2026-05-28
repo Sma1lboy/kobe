@@ -25,7 +25,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.5.27",
+      "version": "0.6.0",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -33,7 +33,6 @@
         "@ansi-tools/parser": "^1.0.15",
         "@opentui/core": "0.2.4",
         "@opentui/solid": "0.2.4",
-        "@sma1lboy/kobe-ops": "workspace:*",
         "@xterm/headless": "^6.0.0",
         "solid-js": "1.9.12",
       },
@@ -42,24 +41,6 @@
         "@tsconfig/bun": "1.0.9",
         "@types/bun": "1.3.12",
         "node-pty": "^1.1.0",
-        "typescript": "5.8.2",
-        "vitest": "2.1.9",
-      },
-    },
-    "packages/kobe-ops": {
-      "name": "@sma1lboy/kobe-ops",
-      "version": "0.6.0",
-      "bin": {
-        "kobe-ops": "src/cli/index.ts",
-      },
-      "dependencies": {
-        "@opentui/core": "0.2.4",
-        "@opentui/solid": "0.2.4",
-        "solid-js": "1.9.12",
-      },
-      "devDependencies": {
-        "@tsconfig/bun": "1.0.9",
-        "@types/bun": "1.3.12",
         "typescript": "5.8.2",
         "vitest": "2.1.9",
       },
@@ -311,8 +292,6 @@
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.60.3", "", { "os": "win32", "cpu": "x64" }, "sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA=="],
 
     "@sma1lboy/kobe": ["@sma1lboy/kobe@workspace:packages/kobe"],
-
-    "@sma1lboy/kobe-ops": ["@sma1lboy/kobe-ops@workspace:packages/kobe-ops"],
 
     "@tsconfig/bun": ["@tsconfig/bun@1.0.9", "", {}, "sha512-4M0/Ivfwcpz325z6CwSifOBZYji3DFOEpY6zEUt0+Xi2qRhzwvmqQN9XAHJh3OVvRJuAqVTLU2abdCplvp6mwQ=="],
 

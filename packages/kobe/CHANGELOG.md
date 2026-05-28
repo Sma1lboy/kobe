@@ -24,7 +24,7 @@ Anthropic's 2026-06-15 billing change put `claude -p`, the Agent SDK, and every 
 
 ### How
 
-Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `@sma1lboy/kobe-ops` (companion CLI watching `git status` + worktree tree, refreshing every second; falls back to `lsd` / `eza` / `tree` / `ls` when the bin isn't on PATH), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
+Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `kobe ops` (the v0.5 FileTree pane re-hosted as a subcommand — browse the worktree, Enter on a file injects `@<path>` into the claude pane; falls back to an inline `git status` + tree watcher if the launch fails), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
 
 ### Removed (no longer in any form)
 
@@ -34,9 +34,9 @@ The self-rendered chat surface and its supporting plumbing are gone. Not coming 
 
 These were valuable v0.5 surfaces that don't survive in their old form but will be reimplemented in the new model (KOB-232 tracks): **quick-fork** — sidebar shortcut → pick base branch → new worktree + new tmux session; **create-PR** — Ops-pane shortcut → render `pr/instructions.ts` template → `tmux send-keys` into the claude pane; **file preview** — sub-mode inside the Ops pane (split top/bottom: file list + diff / cat).
 
-### New packages
+### New subcommands
 
-`@sma1lboy/kobe-ops` — companion CLI shipped as a Bun workspace. Lives in the right-hand "Ops" pane next to claude. 0.6.0 only ships the file watcher; the ops menu lands in 0.6.x.
+`kobe ops --task-id <id> --worktree <path> --target-pane <pane>` — the Ops pane that fills the right-hand side of a task's tmux session. It re-hosts the v0.5 FileTree (the `git ls-files`-driven tree with All / Changes tabs) in its own process; Enter on a file injects `@<path>` into the claude pane via `tmux send-keys`. Not meant to be run by hand — the launcher wires it into the tmux split automatically.
 
 ### Schema
 

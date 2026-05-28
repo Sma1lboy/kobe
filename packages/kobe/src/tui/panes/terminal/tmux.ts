@@ -3,7 +3,7 @@
  *
  * Per-task tmux session running inside a dedicated socket (`tmux -L
  * kobe`). Each session is pre-split into three panes — claude on the
- * left, the kobe-ops file watcher on the upper right, and an
+ * left, the `kobe ops` FileTree pane on the upper right, and an
  * interactive shell on the lower right. The whole composition is
  * rendered by tmux, so claude can repaint at native speed without
  * kobe's outer renderer fighting it for the TTY.
@@ -27,8 +27,40 @@
  * persistence + native attach are exactly what tmux is good at.
  */
 
+import { fileURLToPath } from "node:url"
+
 /** Dedicated tmux socket name — isolates kobe's server from the user's. */
 const SOCKET = "kobe"
+
+/**
+ * The argv prefix that re-invokes the kobe CLI for a subcommand from
+ * inside a tmux pane. In a packaged install this is just `kobe`
+ * (on PATH via npm's bin shim). In dev (`bun run dev`) there's no
+ * `kobe` on PATH, so we reconstruct `<bun> <cli-entry>` from the
+ * current process — `process.execPath` is bun, and the CLI entry is
+ * resolved relative to this module (mirrors the old MCP-bridge entry
+ * resolution). Extension follows our own (`.ts` in dev, `.js` built).
+ */
+function kobeCliInvocation(): string[] {
+  // Packaged: the `kobe` bin shim is on PATH. Detect "are we running
+  // from a dist build" by checking the module extension.
+  const isBuilt = import.meta.url.endsWith(".js")
+  if (isBuilt) return ["kobe"]
+  // Dev (`bun run dev`): there's no `kobe` on PATH, and the child must
+  // boot opentui/solid the same way the dev script does — with the
+  // JSX preload + the `browser` export condition. Without these the
+  // child crashes with "Export named 'jsxDEV' not found".
+  //
+  // The preload must be an ABSOLUTE path: the Ops pane runs with the
+  // worktree as its cwd, and `--preload @opentui/solid/preload`
+  // resolves relative to cwd — the worktree's node_modules won't have
+  // opentui, so a bare specifier fails. `import.meta.resolve` resolves
+  // against THIS module (inside the kobe package), so it always finds
+  // kobe's own copy regardless of the child's cwd.
+  const entry = fileURLToPath(new URL("../../../cli/index.ts", import.meta.url))
+  const preload = fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
+  return [process.execPath, "--preload", preload, "--conditions=browser", entry]
+}
 
 /** Default left-pane width as a percentage of the window. */
 const CLAUDE_PANE_PERCENT = 60
@@ -130,14 +162,14 @@ export interface EnsureSessionOpts {
   /** argv that pane 0 (the claude pane) runs. */
   readonly command: readonly string[]
   /**
-   * argv that pane 1 (the Ops pane) runs. Defaults to
-   * `kobe-ops --task-id <taskId> --worktree <cwd>` (shipped as
-   * `@sma1lboy/kobe-ops` since v0.6.0); if the bin isn't on PATH we
-   * fall back to the inline git-status + tree watcher.
+   * Shell command line that pane 1 (the Ops pane) runs. Defaults to
+   * `kobe ops --task-id <taskId> --worktree <cwd> --target-pane <id>`
+   * (the FileTree pane — see `tui/ops/host.tsx`); if that launch fails
+   * we fall back to the inline git-status + tree watcher.
    */
-  readonly opsCommand?: readonly string[]
+  readonly opsCommand?: string
   /**
-   * Stable kobe task id — used to build the default `kobe-ops` argv
+   * Stable kobe task id — used to build the default `kobe ops` argv
    * and the `target-pane` selector. Optional so callers that supply
    * their own `opsCommand` don't need to pass it.
    */
@@ -145,33 +177,31 @@ export interface EnsureSessionOpts {
 }
 
 /**
- * Resolve the default Ops pane argv. Prefers the shipped
- * `@sma1lboy/kobe-ops` binary (KOB-229), falling back to an inline
- * shell loop that prints `git status` + a tree if it's unavailable.
- * The fallback is also used in dev when `kobe-ops` hasn't been linked
- * into PATH yet.
+ * Resolve the default Ops pane shell command. Prefers `kobe ops`
+ * (the v0.5 FileTree pane re-hosted as a subcommand — see
+ * `tui/ops/host.tsx`), falling back to an inline shell loop that
+ * prints `git status` + a tree if that launch fails for any reason.
+ *
+ * Returns a single shell command STRING (not an argv) — tmux runs the
+ * pane command via `sh -c`, so building the string ourselves and
+ * letting tmux's own sh execute it avoids the send-keys re-parse +
+ * double-quoting trap (KOB-233: an argv joined with spaces lost the
+ * `sh -c "<script>"` quoting and the pane ran the wrong thing).
  *
  * `claudePaneId` is the tmux pane id (`%N`) of the claude pane — pane
- * ids are server-global and survive `base-index` differences, so
- * kobe-ops sends keystrokes back to claude by id rather than by index.
+ * ids are server-global and survive `base-index` differences, so the
+ * Ops pane sends keystrokes (`@file` mentions) back to claude by id
+ * rather than by index.
  */
-function defaultOpsCommand(cwd: string, taskId: string | undefined, claudePaneId: string | null): readonly string[] {
+function defaultOpsCommand(cwd: string, taskId: string | undefined, claudePaneId: string | null): string {
   if (taskId && claudePaneId) {
-    // `kobe-ops` is linked into node_modules/.bin as a workspace
-    // dependency of kobe; Bun automatically adds that directory to
-    // PATH for spawned subprocesses, so a bare `kobe-ops` invocation
-    // works in dev. Production installs see the same path via npm's
-    // bin shim. If the binary is missing the tmux pane exits
-    // immediately and the user sees an empty pane — `fallbackOpsScript`
-    // covers that case via `sh -c || ...` so the pane stays useful.
-    return [
-      "sh",
-      "-c",
-      `kobe-ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(claudePaneId)} ` +
-        `|| ${fallbackOpsScript(cwd)}`,
-    ]
+    const inv = kobeCliInvocation().map(shellQuote).join(" ")
+    return (
+      `${inv} ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(claudePaneId)} ` +
+      `|| { ${fallbackOpsScript(cwd)}; }`
+    )
   }
-  return ["sh", "-c", fallbackOpsScript(cwd)]
+  return fallbackOpsScript(cwd)
 }
 
 /**
@@ -211,6 +241,21 @@ function shellQuote(s: string): string {
 }
 
 /**
+ * Turn an argv array into a shell-safe command line for `send-keys`.
+ *
+ * `send-keys` sends literal text that the pane's shell re-parses, so a
+ * pre-tokenized argv must be re-quoted — `argv.join(" ")` silently
+ * breaks any element containing spaces or quotes. KOB-233 bug: the Ops
+ * command `["sh", "-c", "<multi-word script>"]` joined to
+ * `sh -c <unquoted script>`, which the pane shell parsed as
+ * `sh -c <first-word>` with the rest as positional args, so `kobe ops`
+ * never ran and the `|| fallback` loop took over instead.
+ */
+function shellQuoteArgv(argv: readonly string[]): string {
+  return argv.map(shellQuote).join(" ")
+}
+
+/**
  * Ensure a detached session named `name` exists with the three-pane
  * layout. Idempotent in the happy path: a session that already has
  * the right number of panes is left alone (that's the persistence —
@@ -244,17 +289,42 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   //   step 2: split-window -h (40% right)    → pane 1 (right column)
   //   step 3: split-window -v on pane 1 (50%) → pane 2 (right bottom)
   // -l N% is the modern replacement for the deprecated -p N flag.
-  const r0 = await runTmuxCapturing(["new-session", "-d", "-s", opts.name, "-c", opts.cwd, "-P", "-F", "#{pane_id}"])
+  // Each pane's command is passed as the trailing arg to
+  // new-session / split-window — tmux runs it via its own `sh -c`,
+  // so we hand it a single shell command STRING and skip send-keys
+  // entirely. send-keys re-parses text through the pane's shell,
+  // which mangled the Ops pane's `sh -c "<script>"` quoting (KOB-233).
+  //
+  // `; exec "${SHELL:-/bin/sh}"` keeps the pane alive after its
+  // command exits: instead of tmux closing the pane (and collapsing
+  // the layout), the user lands in an interactive shell. claude
+  // exiting → shell; kobe ops exiting → shell; the Ops fallback loops
+  // forever so it never reaches the exec.
+  const keepAlive = (cmd: string): string => `${cmd}; exec "\${SHELL:-/bin/sh}"`
+  const claudeCmd = keepAlive(shellQuoteArgv(opts.command))
+
+  const r0 = await runTmuxCapturing([
+    "new-session",
+    "-d",
+    "-s",
+    opts.name,
+    "-c",
+    opts.cwd,
+    "-P",
+    "-F",
+    "#{pane_id}",
+    claudeCmd,
+  ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {
     console.error("[kobe tmux] new-session returned no pane id; session creation failed")
     return
   }
 
-  // Resolve the Ops pane argv now that we know pane 0's id — kobe-ops
-  // uses it as the `--target-pane` selector for future `send-keys`
+  // Resolve the Ops command now that we know pane 0's id — kobe ops
+  // uses it as the `--target-pane` selector for `@file` send-keys
   // injections back into claude.
-  const ops = opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId, pane0)
+  const opsCmd = keepAlive(opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId, pane0))
 
   const r1 = await runTmuxCapturing([
     "split-window",
@@ -268,12 +338,12 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
     "-P",
     "-F",
     "#{pane_id}",
+    opsCmd,
   ])
   const pane1 = r1.stdout.trim()
 
-  // We only need pane 1's id for the vertical split + the Ops
-  // send-keys; pane 2's id isn't used after creation (it inherits
-  // the user's $SHELL via tmux's default-command).
+  // Pane 2 (bottom right) is a plain shell scoped to the worktree —
+  // no command, tmux uses its default-command ($SHELL).
   if (pane1) {
     await runTmuxCapturing([
       "split-window",
@@ -299,23 +369,17 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // — it tells the user they're inside a kobe-managed tmux session,
   // which pane/window is active, and how to get out. We explicitly
   // set `on` (not just "leave default") so a server that an older
-  // kobe turned OFF flips back. Styled in kobe's claude-orange accent
-  // so it reads as intentional, not stock-tmux green.
+  // kobe turned OFF flips back.
+  //
+  // We deliberately do NOT set status-style / status-left /
+  // status-right: the `-L kobe` socket still loads the user's
+  // `~/.tmux.conf` (the `-L` flag only changes the socket path, not
+  // the config file), so the user's own status-bar theme applies.
+  // The session name (`kobe-<task-id>`, shown via the user's
+  // default `#S` in status-left) is the only identity we impose.
   await runTmux(["set-option", "-g", "status", "on"])
-  await runTmux(["set-option", "-g", "status-style", "bg=#cc785c,fg=#1a1a1a"])
-  await runTmux(["set-option", "-g", "status-left-length", "60"])
-  await runTmux(["set-option", "-g", "status-left", " #[bold]kobe#[default] ▸ #S "])
-  await runTmux(["set-option", "-g", "status-right-length", "60"])
-  await runTmux(["set-option", "-g", "status-right", " #[bold]ctrl+q#[default] detach → kobe "])
   // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
   await runTmux(["bind-key", "-n", "C-q", "detach-client"])
-
-  // Send commands by pane id. send-keys + Enter is cleaner than
-  // passing the command to new-session / split-window because the
-  // pane stays alive after the command exits (the user lands in a
-  // shell prompt rather than tmux closing the pane).
-  await runTmux(["send-keys", "-t", pane0, opts.command.join(" "), "Enter"])
-  if (pane1) await runTmux(["send-keys", "-t", pane1, ops.join(" "), "Enter"])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops

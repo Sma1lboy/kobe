@@ -27,6 +27,33 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
   }
 }
 
+interface OpsFlags {
+  taskId?: string
+  worktree?: string
+  targetPane?: string
+}
+
+/** Parse `--task-id` / `--worktree` / `--target-pane` for `kobe ops`. */
+function parseOpsFlags(argv: readonly string[]): OpsFlags {
+  const flags: OpsFlags = {}
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i]
+    const value = argv[i + 1]
+    if (value === undefined) continue
+    if (flag === "--task-id") {
+      flags.taskId = value
+      i++
+    } else if (flag === "--worktree") {
+      flags.worktree = value
+      i++
+    } else if (flag === "--target-pane") {
+      flags.targetPane = value
+      i++
+    }
+  }
+  return flags
+}
+
 async function main(): Promise<void> {
   const [, , ...rawArgs] = process.argv
   let parsed: ReturnType<typeof parseCliArgs>
@@ -54,6 +81,24 @@ async function main(): Promise<void> {
   if (subcommand === "daemon") {
     const { runDaemonSubcommand } = await import("./daemon-cmd.ts")
     await runDaemonSubcommand(rest)
+    return
+  }
+  if (subcommand === "ops") {
+    // The Ops pane (right side of the per-task tmux session). Runs in
+    // its own process inside the tmux pane; mounts the v0.5 FileTree
+    // against the task's worktree. Dynamic import keeps opentui out of
+    // the other subcommands' startup graph.
+    const flags = parseOpsFlags(rest)
+    if (!flags.worktree) {
+      console.error("kobe ops: --worktree <path> is required")
+      process.exit(2)
+    }
+    const { startOpsHost } = await import("../tui/ops/host.tsx")
+    await startOpsHost({
+      taskId: flags.taskId ?? "",
+      worktree: flags.worktree,
+      targetPane: flags.targetPane ?? null,
+    })
     return
   }
 
