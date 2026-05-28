@@ -130,7 +130,11 @@ function Shell(props: AppDeps) {
     if (launchRunning()) return { kind: "ok", exitCode: null }
     setSelectedId(id)
     kv.set("lastSelectedTaskId", id)
-    setFocused("workspace")
+    // Don't grab workspace focus on enter: the renderer suspends for the
+    // attach (so outer focus is invisible meanwhile), and we land back on
+    // the sidebar after detach. The sidebar (task pane) is the outer
+    // monitor's home focus; the launcher still renders launchError
+    // regardless of which pane is focused, so errors stay visible (KOB-244).
     const task = props.orchestrator.getTask(id)
     if (!task) return { kind: "error", message: "task not found" }
     setLaunchRunning(true)
