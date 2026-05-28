@@ -285,28 +285,3 @@ export async function newWindow(session: string, opts: { cwd: string; command: s
 export async function killSession(name: string): Promise<void> {
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
 }
-
-/**
- * Is any tmux client attached to this session? Used by the outer
- * monitor's live preview: it only resizes a session's window to fit the
- * preview box when NOBODY is attached, so it never fights/flickers a
- * session the user is actively working in (KOB-244). `window-size` is
- * left at its default `latest`, so an attaching client resizes the
- * window back to the real terminal — the preview resize only sticks
- * while detached.
- */
-export async function sessionHasClient(sessionName: string): Promise<boolean> {
-  const { code, stdout } = await runTmuxCapturing(["list-clients", "-t", `=${sessionName}`, "-F", "#{client_name}"])
-  if (code !== 0) return false
-  return stdout.split("\n").some((l) => l.trim().length > 0)
-}
-
-/**
- * Resize a session's window (only meaningful while no client is
- * attached — see {@link sessionHasClient}). Lets the outer monitor make
- * the engine pane wide enough that `capture-pane` fills the preview box.
- */
-export async function resizeWindow(sessionName: string, cols: number, rows: number): Promise<void> {
-  if (cols <= 0 || rows <= 0) return
-  await runTmux(["resize-window", "-t", `=${sessionName}`, "-x", String(cols), "-y", String(rows)])
-}
