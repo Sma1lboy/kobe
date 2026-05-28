@@ -23,7 +23,8 @@ import {
 } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
-import { Orchestrator } from "../orchestrator/core.ts"
+import { deriveTitleFromSession } from "../monitor/auto-title.ts"
+import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
@@ -133,6 +134,21 @@ function Shell(props: AppDeps) {
     })
     if (res.kind === "error") {
       console.error("[kobe] enterTask failed:", res.message)
+      return
+    }
+    // Auto-name a still-unnamed task from its first prompt, now that the
+    // user has interacted and the session transcript exists. One-shot:
+    // only while the title is the placeholder, so a manual rename or a
+    // prior auto-name is never overwritten. Best-effort — naming failure
+    // must not break the return-from-handover path.
+    const after = props.orchestrator.getTask(id)
+    if (after && after.title === PLACEHOLDER_TASK_TITLE && after.worktreePath) {
+      try {
+        const title = await deriveTitleFromSession(after.worktreePath)
+        if (title) await props.orchestrator.setTitle(id, title)
+      } catch (err) {
+        console.error("[kobe] auto-title failed:", err)
+      }
     }
   }
 
