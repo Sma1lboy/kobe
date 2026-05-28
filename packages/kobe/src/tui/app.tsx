@@ -151,6 +151,11 @@ function Shell(props: AppDeps) {
         console.error("[kobe] enterTask failed:", res.message)
         return res
       }
+      // We're back in the outer monitor (the user hit Ctrl+Q to detach, or
+      // the engine exited). Land focus on the sidebar task list, not the
+      // workspace preview, so they can immediately pick / navigate tasks
+      // (KOB-244).
+      setFocused("sidebar")
       // Auto-name a still-unnamed task from its first prompt, now that the
       // user has interacted and the session transcript exists. One-shot:
       // only while the title is the placeholder, so a manual rename or a
