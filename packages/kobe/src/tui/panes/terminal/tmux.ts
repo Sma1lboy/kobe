@@ -54,15 +54,39 @@ export function attachArgv(name: string): string[] {
   return tmuxBase("attach-session", "-t", `=${name}`)
 }
 
+/**
+ * Run a tmux command, capturing stderr to the log when it fails. Silent
+ * tmux errors are a foot-gun: KOB-233 had `split-window -t :0.0` silently
+ * fail because the user's tmux uses `base-index 1`, so the rebuild path
+ * ended up creating empty sessions and nobody noticed for hours. Logging
+ * is cheap; we only emit when the exit code is non-zero.
+ */
 async function runTmux(args: string[]): Promise<number> {
-  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
-  return await proc.exited
+  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "ignore", stderr: "pipe" })
+  const code = await proc.exited
+  if (code !== 0) {
+    try {
+      const errText = await new Response(proc.stderr).text()
+      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+    } catch {
+      // best-effort: we surfaced the exit code already
+    }
+  }
+  return code
 }
 
 async function runTmuxCapturing(args: string[]): Promise<{ code: number; stdout: string }> {
-  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "pipe", stderr: "ignore" })
+  const proc = Bun.spawn(tmuxBase(...args), { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
   const text = await new Response(proc.stdout).text()
   const code = await proc.exited
+  if (code !== 0) {
+    try {
+      const errText = await new Response(proc.stderr).text()
+      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+    } catch {
+      /* keep the stdout we did get */
+    }
+  }
   return { code, stdout: text }
 }
 
@@ -82,12 +106,18 @@ export async function sessionExists(name: string): Promise<boolean> {
 }
 
 /**
- * Count the panes in the session's first window. Used to detect old
- * (v0.5 / KOB-225) one-pane sessions so {@link ensureSession} can
+ * Count the panes across every window of the session. Used to detect
+ * old (v0.5 / KOB-225) one-pane sessions so {@link ensureSession} can
  * rebuild them with the three-pane layout.
+ *
+ * `list-panes -s` walks the whole session, which sidesteps the user's
+ * `base-index` setting — targeting `:0` outright (as the first
+ * implementation did) returned an empty list whenever the user's tmux
+ * was configured with `base-index 1`, and the rebuild path "succeeded"
+ * by silently creating an empty session.
  */
 async function paneCount(name: string): Promise<number> {
-  const { code, stdout } = await runTmuxCapturing(["list-panes", "-t", `=${name}:0`, "-F", "#{pane_index}"])
+  const { code, stdout } = await runTmuxCapturing(["list-panes", "-s", "-t", `=${name}`, "-F", "#{pane_id}"])
   if (code !== 0) return 0
   const lines = stdout.split("\n").filter((l) => l.length > 0)
   return lines.length
@@ -120,29 +150,28 @@ export interface EnsureSessionOpts {
  * shell loop that prints `git status` + a tree if it's unavailable.
  * The fallback is also used in dev when `kobe-ops` hasn't been linked
  * into PATH yet.
+ *
+ * `claudePaneId` is the tmux pane id (`%N`) of the claude pane — pane
+ * ids are server-global and survive `base-index` differences, so
+ * kobe-ops sends keystrokes back to claude by id rather than by index.
  */
-function defaultOpsCommand(cwd: string, taskId: string | undefined): readonly string[] {
-  if (taskId) {
+function defaultOpsCommand(cwd: string, taskId: string | undefined, claudePaneId: string | null): readonly string[] {
+  if (taskId && claudePaneId) {
     // `kobe-ops` is linked into node_modules/.bin as a workspace
     // dependency of kobe; Bun automatically adds that directory to
     // PATH for spawned subprocesses, so a bare `kobe-ops` invocation
     // works in dev. Production installs see the same path via npm's
     // bin shim. If the binary is missing the tmux pane exits
-    // immediately and the user sees an empty pane — `fallbackOpsCommand`
-    // covers that case via `sh -c` so the pane stays useful.
-    const target = `=${tmuxSessionNameFromTaskId(taskId)}:0.0`
+    // immediately and the user sees an empty pane — `fallbackOpsScript`
+    // covers that case via `sh -c || ...` so the pane stays useful.
     return [
       "sh",
       "-c",
-      `kobe-ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(target)} ` +
+      `kobe-ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(claudePaneId)} ` +
         `|| ${fallbackOpsScript(cwd)}`,
     ]
   }
   return ["sh", "-c", fallbackOpsScript(cwd)]
-}
-
-function tmuxSessionNameFromTaskId(taskId: string): string {
-  return tmuxSessionName(taskId)
 }
 
 /**
@@ -199,23 +228,67 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   if (await sessionExists(opts.name)) {
     const panes = await paneCount(opts.name)
     if (panes >= 3) return
-    // Legacy single-pane session — drop and rebuild.
+    // Legacy / broken layout — drop and rebuild from scratch.
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
-  const ops = opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId)
+  // Build the session in three splits, capturing each pane's tmux
+  // pane id (`%N`) so we can target by id afterwards. Pane ids are
+  // server-global and immune to the user's `base-index` /
+  // `pane-base-index` config — targeting by `=name:0.0` (which we did
+  // first) broke on any tmux server using `base-index 1`, the default
+  // in most popular tmux configs. Bug history: KOB-233.
+  //
+  // Layout grammar:
+  //   step 1: new-session -d                 → pane 0 (left, full size)
+  //   step 2: split-window -h (40% right)    → pane 1 (right column)
+  //   step 3: split-window -v on pane 1 (50%) → pane 2 (right bottom)
+  // -l N% is the modern replacement for the deprecated -p N flag.
+  const r0 = await runTmuxCapturing(["new-session", "-d", "-s", opts.name, "-c", opts.cwd, "-P", "-F", "#{pane_id}"])
+  const pane0 = r0.stdout.trim()
+  if (!pane0) {
+    console.error("[kobe tmux] new-session returned no pane id; session creation failed")
+    return
+  }
 
-  // Build the session in four steps:
-  //   1. `new-session -d` — fresh detached session, pane 0 inherits cwd
-  //      but no command (we send-keys claude in step 4 so we keep an
-  //      idle pane in front of the user if claude exits / crashes).
-  //   2. `split-window -h -p 40` — right column = 40% of the window.
-  //   3. `split-window -v -t :.1 -p 50` — split right column 50/50.
-  //   4. send `claude` to pane 0 and the Ops command to pane 1.
-  // The shell pane (2) stays at its default `$SHELL` prompt.
-  await runTmux(["new-session", "-d", "-s", opts.name, "-c", opts.cwd])
-  await runTmux(["split-window", "-h", "-t", `=${opts.name}:0.0`, "-p", `${100 - CLAUDE_PANE_PERCENT}`, "-c", opts.cwd])
-  await runTmux(["split-window", "-v", "-t", `=${opts.name}:0.1`, "-p", `${100 - OPS_PANE_PERCENT}`, "-c", opts.cwd])
+  // Resolve the Ops pane argv now that we know pane 0's id — kobe-ops
+  // uses it as the `--target-pane` selector for future `send-keys`
+  // injections back into claude.
+  const ops = opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId, pane0)
+
+  const r1 = await runTmuxCapturing([
+    "split-window",
+    "-h",
+    "-t",
+    pane0,
+    "-l",
+    `${100 - CLAUDE_PANE_PERCENT}%`,
+    "-c",
+    opts.cwd,
+    "-P",
+    "-F",
+    "#{pane_id}",
+  ])
+  const pane1 = r1.stdout.trim()
+
+  // We only need pane 1's id for the vertical split + the Ops
+  // send-keys; pane 2's id isn't used after creation (it inherits
+  // the user's $SHELL via tmux's default-command).
+  if (pane1) {
+    await runTmuxCapturing([
+      "split-window",
+      "-v",
+      "-t",
+      pane1,
+      "-l",
+      `${100 - OPS_PANE_PERCENT}%`,
+      "-c",
+      opts.cwd,
+      "-P",
+      "-F",
+      "#{pane_id}",
+    ])
+  }
 
   // Server-scoped niceties — done after the session is alive so the
   // server is definitely up. Both `-g` options are idempotent so
@@ -223,20 +296,17 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   await runTmux(["set-option", "-g", "status", "off"])
   await runTmux(["bind-key", "-n", "C-q", "detach-client"])
 
-  // Send the actual commands. send-keys + Enter is cleaner than
-  // passing the command to `new-session` / `split-window` because:
-  //   - the pane stays alive after the command exits (the user is
-  //     dropped back to a shell rather than having tmux close the
-  //     pane, which would also tear down the window in some configs)
-  //   - we can target panes by their stable index regardless of the
-  //     order tmux assigned to them
-  await runTmux(["send-keys", "-t", `=${opts.name}:0.0`, opts.command.join(" "), "Enter"])
-  await runTmux(["send-keys", "-t", `=${opts.name}:0.1`, ops.join(" "), "Enter"])
+  // Send commands by pane id. send-keys + Enter is cleaner than
+  // passing the command to new-session / split-window because the
+  // pane stays alive after the command exits (the user lands in a
+  // shell prompt rather than tmux closing the pane).
+  await runTmux(["send-keys", "-t", pane0, opts.command.join(" "), "Enter"])
+  if (pane1) await runTmux(["send-keys", "-t", pane1, ops.join(" "), "Enter"])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
-  // whatever pane tmux remembered — that's deliberate, so a user who
-  // detached from the Ops pane lands back in it.
-  await runTmux(["select-pane", "-t", `=${opts.name}:0.0`])
+  // whatever pane tmux remembered — so a user who detached from Ops
+  // lands back in Ops.
+  await runTmux(["select-pane", "-t", pane0])
 }
 
 /** Kill a session (if any). Used when a task is removed. */
