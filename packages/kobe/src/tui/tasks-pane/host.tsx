@@ -38,6 +38,7 @@ import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
+import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
@@ -377,23 +378,40 @@ export async function startTasksPane(): Promise<void> {
   }
   const prefs = readPersistedUiPrefs(FALLBACK_THEME)
 
-  // Read-only task source: load the manifest now, re-read on a timer so
-  // tasks created/renamed in the outer app show up here too. MUST pass
-  // `homeDir()` (KOBE_HOME_DIR-aware) — TaskIndexStore's bare default is
-  // `os.homedir()`, which would read the PRODUCTION `~/.kobe/tasks.json`
-  // even inside a sandbox session, so the Tasks pane would show a
-  // different task list than the outer monitor it's meant to mirror
-  // (KOB-233).
+  // Task source. PRIMARY = a live daemon SUBSCRIBE (via RemoteOrchestrator):
+  // a task created / renamed / deleted in ANY session's Tasks pane or in
+  // the outer monitor is pushed to THIS pane in real time, so every
+  // session's list stays in sync (KOB-244 — a new task wasn't showing up
+  // in an already-open session's Tasks pane). The shared env baked onto
+  // this pane's command (inheritedEnvPrefix) guarantees we connect to the
+  // SAME daemon as everyone else.
+  //
+  // FALLBACK = a direct tasks.json read + slow poll, used only when the
+  // daemon is unreachable. MUST pass `homeDir()` (KOBE_HOME_DIR-aware) or
+  // it would read the PRODUCTION `~/.kobe/tasks.json` (KOB-233).
   const store = new TaskIndexStore({ homeDir: homeDir() })
   await store.load()
-  const [tasks, setTasks] = createSignal<readonly Task[]>(store.list())
-  const reload = async (): Promise<void> => {
-    await store.load()
-    setTasks(store.list())
+  const [fileTasks, setFileTasks] = createSignal<readonly Task[]>(store.list())
+
+  let orch: RemoteOrchestrator | null = null
+  try {
+    const client = await connectOrStartDaemon()
+    const remote = new RemoteOrchestrator(client)
+    await remote.init() // hello + subscribe → tasksSignal() is now live
+    orch = remote
+  } catch (err) {
+    console.error("[kobe tasks] daemon subscribe unavailable, polling tasks.json:", err)
   }
-  const timer = setInterval(() => {
-    void reload()
-  }, RELOAD_MS)
+
+  const tasks: Accessor<readonly Task[]> = orch ? orch.tasksSignal() : fileTasks
+  const reload = async (): Promise<void> => {
+    // Subscribe keeps the list live; reload only matters in the polling
+    // fallback (re-read the file after a local mutation).
+    if (orch) return
+    await store.load()
+    setFileTasks(store.list())
+  }
+  const timer = orch ? undefined : setInterval(() => void reload(), RELOAD_MS)
 
   await render(
     () => (
@@ -413,5 +431,6 @@ export async function startTasksPane(): Promise<void> {
       useKittyKeyboard: {},
     },
   )
-  clearInterval(timer)
+  if (timer) clearInterval(timer)
+  orch?.dispose()
 }
