@@ -113,6 +113,30 @@ export function getSavedRepos(): readonly string[] {
   return raw.filter((s): s is string => typeof s === "string")
 }
 
+/**
+ * Read a string value from the shared kv state.json. For standalone
+ * processes (the `kobe tasks` pane) that need a kv value but don't host
+ * the TUI's reactive `useKV` — e.g. `lastSelectedVendor`. Returns
+ * `undefined` when absent or non-string. Atomic read.
+ */
+export function getPersistedString(key: string): string | undefined {
+  const value = load()[key]
+  return typeof value === "string" ? value : undefined
+}
+
+/**
+ * Persist a string value into the shared kv state.json (read-modify-
+ * write + atomic rename). Pairs with {@link getPersistedString} for
+ * standalone processes. Concurrent with the TUI's `useKV` writes, but
+ * both go through an atomic tmp+rename so neither corrupts the file
+ * (last write wins on the touched key).
+ */
+export function setPersistedString(key: string, value: string): void {
+  const state = load()
+  state[key] = value
+  save(state)
+}
+
 export type AddResult = { added: boolean; path: string; total: number }
 
 /**

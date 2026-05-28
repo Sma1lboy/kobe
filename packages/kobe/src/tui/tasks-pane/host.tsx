@@ -37,8 +37,8 @@ import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
-import { getSavedRepos } from "../../state/repos.ts"
-import type { Task } from "../../types/task.ts"
+import { getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
+import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { FocusProvider } from "../context/focus"
@@ -102,8 +102,12 @@ function TasksShell(props: {
       const list = props.tasks()
       const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
       const defaultRepo = cursorRepo ?? repos[0] ?? ""
-      const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
+      const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+      const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
       if (!result) return
+      // Remember the choice (shared kv state.json) so the next new-task
+      // dialog — here or in the outer monitor — defaults to it.
+      setPersistedString("lastSelectedVendor", result.vendor)
       let createdId: string | undefined
       try {
         const client = await connectOrStartDaemon()
@@ -111,6 +115,7 @@ function TasksShell(props: {
           const res = await client.request<{ taskId: string }>("task.create", {
             repo: result.repo,
             baseRef: result.baseRef,
+            vendor: result.vendor,
           })
           createdId = res.taskId
         } finally {

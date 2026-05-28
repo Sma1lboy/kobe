@@ -16,6 +16,7 @@ import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
+import type { VendorId } from "@/types/vendor"
 
 /* --------------------------------------------------------------------- */
 /*  Public types                                                          */
@@ -32,6 +33,8 @@ import * as path from "node:path"
 export type NewTaskInput = {
   repo: string
   baseRef: string
+  /** Engine the task runs on. Defaults to the user's last-selected vendor. */
+  vendor: VendorId
   cloned?: { parentDir: string }
 }
 

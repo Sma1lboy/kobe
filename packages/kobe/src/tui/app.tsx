@@ -29,6 +29,7 @@ import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
+import { DEFAULT_TASK_VENDOR, type VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { HelpDialog } from "./component/help-dialog"
 import { NewTaskDialog } from "./component/new-task-dialog"
@@ -228,11 +229,15 @@ function Shell(props: AppDeps) {
     // Default to the active task's repo when one is selected so the
     // common "spawn a sibling" flow doesn't make the user re-pick.
     const defaultRepo = activeTask()?.repo ?? repos[0] ?? ""
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
+    const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
     if (!result) return
+    // Remember the choice so the next new-task dialog defaults to it.
+    kv.set("lastSelectedVendor", result.vendor)
     const task = await props.orchestrator.createTask({
       repo: result.repo,
       baseRef: result.baseRef,
+      vendor: result.vendor,
     })
     selectTask(task.id)
   }

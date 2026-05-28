@@ -11,3 +11,16 @@
  * which history-reader to call.
  */
 export type VendorId = "claude" | "codex"
+
+/**
+ * Selectable vendors, in cycle order (the new-task dialog's `ctrl+e`
+ * walks this). Extend here when a new engine is wired — keep it in sync
+ * with `engine/interactive-command.ts` and the history-reader dispatch.
+ */
+export const ALL_VENDORS: readonly VendorId[] = ["claude", "codex"]
+
+/** Next vendor in {@link ALL_VENDORS} order, wrapping around. */
+export function nextVendor(current: VendorId): VendorId {
+  const i = ALL_VENDORS.indexOf(current)
+  return ALL_VENDORS[(i + 1) % ALL_VENDORS.length] ?? ALL_VENDORS[0]
+}
