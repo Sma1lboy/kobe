@@ -27,6 +27,7 @@ import { type Accessor, type JSXElement, Show } from "solid-js"
 import type { VendorId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
+import { useDialog } from "../../ui/dialog"
 import { attachArgv, ensureSession, sessionExists, tmuxAvailable, tmuxSessionName } from "./tmux"
 
 export type FullscreenRunOpts = {
@@ -158,6 +159,7 @@ export type ClaudeLauncherProps = {
  */
 export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   const { theme } = useTheme()
+  const dialog = useDialog()
 
   const enter = (): void => {
     const taskId = props.taskId()
@@ -166,7 +168,10 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   }
 
   useBindings(() => ({
-    enabled: props.focused() && !props.running() && props.taskId() !== null,
+    // Gate on an empty dialog stack too: an Enter submitting a dialog
+    // (e.g. settings' command editor opened over the workspace) must not
+    // fall through the keymap to here and launch the task (KOB-244).
+    enabled: props.focused() && !props.running() && props.taskId() !== null && dialog.stack.length === 0,
     bindings: [
       { key: "return", cmd: enter },
       { key: "enter", cmd: enter },

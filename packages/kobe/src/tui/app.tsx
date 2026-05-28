@@ -108,6 +108,14 @@ function Shell(props: AppDeps) {
   const [launchRunning, setLaunchRunning] = createSignal(false)
   const [launchError, setLaunchError] = createSignal<string | null>(null)
 
+  // Sidebar bindings (Enter→enterTask, j/k, …) must go quiet while ANY
+  // dialog is open: an input-based dialog (new-task / rename / settings'
+  // command editor) submits via the native input's onSubmit, NOT a keymap
+  // binding, so an un-gated Enter falls through the keymap to the Sidebar
+  // and enters a task behind the dialog (KOB-244). Gate the Sidebar's
+  // `focused` (which drives its bindings) on an empty dialog stack.
+  const sidebarBindable = createMemo(() => isFocused("sidebar")() && dialog.stack.length === 0)
+
   function selectTask(id: string): void {
     setSelectedId(id)
     kv.set("lastSelectedTaskId", id)
@@ -439,7 +447,7 @@ function Shell(props: AppDeps) {
             selectedId={taskIdAcc}
             onSelect={selectTask}
             onActivate={(id) => void enterTask(id)}
-            focused={isFocused("sidebar")}
+            focused={sidebarBindable}
             onDeleteRequest={(id) => void deleteTask(id)}
             onArchiveRequest={(id) => void archiveTask(id)}
             onRenameRequest={(id) => void renameTask(id)}

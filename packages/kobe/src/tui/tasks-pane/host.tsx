@@ -84,87 +84,76 @@ function TasksShell(props: {
   // the outer app's "spawn a sibling" default. Backlog task (worktree
   // lazy on first enter); list reloads immediately after.
   async function createTask(): Promise<void> {
-    // Zoom the Tasks pane to the full window for the dialog's lifetime.
-    // The pane is only ~22% wide, which would clip the medium (80-col)
-    // NewTaskDialog and make it look different from the outer monitor's
-    // full-width version (KOB-233). `resize-pane -Z` toggles zoom; the
-    // pane is never zoomed in normal use, so on→off is symmetric.
-    const selfPane = process.env.TMUX_PANE
-    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
-    try {
-      const repos = getSavedRepos()
-      if (repos.length === 0) {
-        await DialogConfirm.show(
-          dialog,
-          "No saved repos.",
-          "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
-          "",
-          "ok",
-        )
-        return
-      }
-      const list = props.tasks()
-      const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-      const defaultRepo = cursorRepo ?? repos[0] ?? ""
-      const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-      const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
-      if (!result) return
-      // Remember the choice (shared kv state.json) so the next new-task
-      // dialog — here or in the outer monitor — defaults to it.
-      setPersistedString("lastSelectedVendor", result.vendor)
-      let createdId: string | undefined
-      try {
-        const client = await connectOrStartDaemon()
-        try {
-          const res = await client.request<{ taskId: string }>("task.create", {
-            repo: result.repo,
-            baseRef: result.baseRef,
-            vendor: result.vendor,
-          })
-          createdId = res.taskId
-        } finally {
-          client.close()
-        }
-      } catch (err) {
-        console.error("[kobe tasks] task.create failed:", err)
-        return
-      }
-      await props.reload()
-      // Land the cursor on the new task so Enter / click enters it next.
-      if (createdId) setSelectedId(createdId)
-    } finally {
-      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    // Show the dialog IN the Tasks pane without zooming it full-window
+    // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
+    // panes for the dialog's lifetime, which felt like the whole layout
+    // "popped out". The dialog overlay already caps to the pane width
+    // (`maxWidth = dimensions().width - 2`), so it renders fine in the
+    // ~22%-wide pane — just narrower — and the other panes stay visible.
+    const repos = getSavedRepos()
+    if (repos.length === 0) {
+      await DialogConfirm.show(
+        dialog,
+        "No saved repos.",
+        "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
+        "",
+        "ok",
+      )
+      return
     }
+    const list = props.tasks()
+    const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+    const defaultRepo = cursorRepo ?? repos[0] ?? ""
+    const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
+    if (!result) return
+    // Remember the choice (shared kv state.json) so the next new-task
+    // dialog — here or in the outer monitor — defaults to it.
+    setPersistedString("lastSelectedVendor", result.vendor)
+    let createdId: string | undefined
+    try {
+      const client = await connectOrStartDaemon()
+      try {
+        const res = await client.request<{ taskId: string }>("task.create", {
+          repo: result.repo,
+          baseRef: result.baseRef,
+          vendor: result.vendor,
+        })
+        createdId = res.taskId
+      } finally {
+        client.close()
+      }
+    } catch (err) {
+      console.error("[kobe tasks] task.create failed:", err)
+      return
+    }
+    await props.reload()
+    // Land the cursor on the new task so Enter / click enters it next.
+    if (createdId) setSelectedId(createdId)
   }
 
   // Rename a task's title via the daemon's `task.rename` RPC (same path
-  // the outer app's `r` uses). Zoom for the dialog, like createTask, so
-  // it matches the outer monitor's full-width look. The branch follows
-  // the title for not-yet-materialised tasks (autoBranch derives from
-  // it); a worktree that already exists keeps its git branch.
+  // the outer app's `r` uses). No pane zoom (KOB-244) — the dialog shows
+  // in place; the other panes stay visible. The branch follows the title
+  // for not-yet-materialised tasks (autoBranch derives from it); a
+  // worktree that already exists keeps its git branch.
   async function renameTask(id: string): Promise<void> {
     const current = props.tasks().find((t) => t.id === id)
     if (!current) return
-    const selfPane = process.env.TMUX_PANE
-    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    const next = await RenameTaskDialog.show(dialog, current.title)
+    if (!next) return
     try {
-      const next = await RenameTaskDialog.show(dialog, current.title)
-      if (!next) return
+      const client = await connectOrStartDaemon()
       try {
-        const client = await connectOrStartDaemon()
-        try {
-          await client.request("task.rename", { taskId: id, title: next })
-        } finally {
-          client.close()
-        }
-      } catch (err) {
-        console.error("[kobe tasks] task.rename failed:", err)
-        return
+        await client.request("task.rename", { taskId: id, title: next })
+      } finally {
+        client.close()
       }
-      await props.reload()
-    } finally {
-      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    } catch (err) {
+      console.error("[kobe tasks] task.rename failed:", err)
+      return
     }
+    await props.reload()
   }
 
   // Rename a task's branch via `task.setBranch` RPC. For a materialised
@@ -174,26 +163,20 @@ function TasksShell(props: {
   async function renameBranch(id: string): Promise<void> {
     const current = props.tasks().find((t) => t.id === id)
     if (!current || current.kind === "main") return
-    const selfPane = process.env.TMUX_PANE
-    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
+    if (!next) return
     try {
-      const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
-      if (!next) return
+      const client = await connectOrStartDaemon()
       try {
-        const client = await connectOrStartDaemon()
-        try {
-          await client.request("task.setBranch", { taskId: id, branch: next })
-        } finally {
-          client.close()
-        }
-      } catch (err) {
-        console.error("[kobe tasks] task.setBranch failed:", err)
-        return
+        await client.request("task.setBranch", { taskId: id, branch: next })
+      } finally {
+        client.close()
       }
-      await props.reload()
-    } finally {
-      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    } catch (err) {
+      console.error("[kobe tasks] task.setBranch failed:", err)
+      return
     }
+    await props.reload()
   }
 
   // Cycle the cursor task's engine vendor (claude ↔ codex ↔ …) via the
@@ -307,7 +290,13 @@ function TasksShell(props: {
         activateOnClick
         onAddTask={() => void createTask()}
         onRenameRequest={(id) => void renameTask(id)}
-        focused={() => true}
+        // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
+        // empty dialog stack — otherwise Enter pressed to submit a dialog
+        // (new-task / rename) leaks past the input to switchTo and yanks
+        // you into a task (the Sidebar's Enter isn't registered through
+        // the input's onSubmit, so the keymap falls through to it). Mirrors
+        // the n/b/v gate above (KOB-244).
+        focused={() => dialog.stack.length === 0}
       />
     </box>
   )
