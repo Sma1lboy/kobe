@@ -492,15 +492,27 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
     orchestrator = new Orchestrator({ store, worktrees })
   } else {
     const daemonMode = resolveDaemonMode(options.daemonMode)
+    let daemonSocketPath: string
     if (daemonMode === "shared") {
-      orchestrator = new RemoteOrchestrator(await connectOrStartDaemon())
+      const client = await connectOrStartDaemon()
+      daemonSocketPath = client.socketPath
+      orchestrator = new RemoteOrchestrator(client)
     } else {
       const owned = await connectOrStartOwnedDaemon()
       stopOwnedDaemon = owned.stop
+      daemonSocketPath = owned.socketPath
       orchestrator = new RemoteOrchestrator(owned.client, {
         ensureReachable: () => ensureOwnedDaemonReachable(owned.socketPath, owned.pidPath),
       })
     }
+    // Propagate THIS daemon's socket so every in-session client connects
+    // to the SAME daemon, not a separate stable one. The tmux server +
+    // all panes (Tasks pane, quick-create, ops) inherit this env, so a
+    // task created / renamed / re-vendored from inside a session lands on
+    // the daemon the outer monitor subscribes to — keeping all panels in
+    // sync (KOB-233). Owned mode uses a per-pid socket that the stable
+    // `defaultDaemonSocketPath` would otherwise miss.
+    process.env.KOBE_DAEMON_SOCKET_PATH = daemonSocketPath
     await orchestrator.init()
   }
   normalizeSavedRepos()
