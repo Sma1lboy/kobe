@@ -106,6 +106,19 @@ async function main(): Promise<void> {
     await newChatTab(session)
     return
   }
+  if (subcommand === "quick-create") {
+    // Ctrl+F handler from inside a task's tmux session — focuses the
+    // Tasks pane and opens its new-task dialog. Reads `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe quick-create: --session <name> is required")
+      process.exit(2)
+    }
+    const { quickCreate } = await import("../tui/panes/terminal/tmux.ts")
+    await quickCreate(session)
+    return
+  }
   if (subcommand === "tasks") {
     // Experimental Tasks pane (left side of a task's tmux session) —
     // a read-only task list that `switch-client`s between sessions.

@@ -32,11 +32,14 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import {
   getSessionOption,
   listPaneIds,
+  paneIdByRole,
   runTmux,
   runTmuxCapturing,
+  sendKeys,
   sessionExists,
   setSessionOption,
   tagClaudePane,
+  tagPaneRole,
 } from "@/tmux/client"
 import {
   CLAUDE_PANE_PERCENT,
@@ -186,6 +189,12 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // tmux expands at fire time).
   const invStr = inv.map(shellQuote).join(" ")
   await runTmux(["bind-key", "-n", "C-t", "run-shell", `${invStr} new-chattab --session '#{session_name}'`])
+  // Ctrl+F = quick-create: focus the Tasks pane and open the new-task
+  // dialog there (the v0.5 quick-fork chord, KOB-74, reborn in the tmux
+  // world). `kobe quick-create` selects the tasks pane and injects `n`,
+  // so the dialog + its logic are exactly the Tasks pane's createTask —
+  // no separate code path.
+  await runTmux(["bind-key", "-n", "C-f", "run-shell", `${invStr} quick-create --session '#{session_name}'`])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
@@ -208,9 +217,11 @@ async function buildPanesAround(
   // monitor can't rely on "first pane" to find claude (KOB-233).
   await tagClaudePane(claudePane)
 
-  // Tasks pane to the LEFT (`-hb` inserts before). Read-only task list
-  // that switch-clients between task sessions.
-  await runTmux([
+  // Tasks pane to the LEFT (`-hb` inserts before). Task list that
+  // switch-clients between task sessions + creates tasks. Tagged
+  // `@kobe_role=tasks` so the Ctrl+F quick-create handler can re-find
+  // it regardless of tmux's by-position pane numbering.
+  const rTasks = await runTmuxCapturing([
     "split-window",
     "-h",
     "-b",
@@ -220,8 +231,13 @@ async function buildPanesAround(
     `${TASKS_PANE_PERCENT}%`,
     "-c",
     args.cwd,
+    "-P",
+    "-F",
+    "#{pane_id}",
     keepAlive(tasksPaneCommand(args.inv)),
   ])
+  const tasksPane = rTasks.stdout.trim()
+  if (tasksPane) await tagPaneRole(tasksPane, "tasks")
 
   // Ops pane (right column). Uses the claude pane id as its
   // `--target-pane` for `@file` mention injection.
@@ -278,4 +294,20 @@ export async function newChatTab(session: string): Promise<void> {
   const claudePane = r.stdout.trim()
   if (!claudePane) return
   await buildPanesAround(claudePane, { cwd, taskId, inv })
+}
+
+/**
+ * Quick-create (Ctrl+F): focus the active window's Tasks pane and open
+ * its new-task dialog. Implemented by selecting the tasks pane and
+ * injecting an `n` keystroke — the Tasks pane's own `n` binding then
+ * runs `createTask`, so the dialog and its logic are identical to
+ * pressing `n` in the pane directly. Invoked by `kobe quick-create`
+ * (the Ctrl+F handler), which passes only the session name.
+ */
+export async function quickCreate(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const tasksPane = await paneIdByRole(session, "tasks")
+  if (!tasksPane) return
+  await runTmux(["select-pane", "-t", tasksPane])
+  await sendKeys(tasksPane, "n")
 }

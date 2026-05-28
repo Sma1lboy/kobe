@@ -134,42 +134,54 @@ export async function getSessionOption(session: string, option: string): Promise
   return code === 0 ? stdout.trim() : ""
 }
 
-/** Per-pane user option marking the claude pane (set by `ensureSession`). */
-export const CLAUDE_ROLE_OPTION = "@kobe_role"
+/** Per-pane user option marking a pane's role (set by `ensureSession`). */
+export const PANE_ROLE_OPTION = "@kobe_role"
+/** Back-compat alias — older callers imported `CLAUDE_ROLE_OPTION`. */
+export const CLAUDE_ROLE_OPTION = PANE_ROLE_OPTION
 const CLAUDE_ROLE_VALUE = "claude"
+
+/** Tag a pane with a role (`claude` / `tasks`) so it can be re-found later. */
+export async function tagPaneRole(paneId: string, role: string): Promise<void> {
+  await runTmux(["set-option", "-p", "-t", paneId, PANE_ROLE_OPTION, role])
+}
 
 /** Tag a pane as the claude pane so {@link claudePaneId} can find it. */
 export async function tagClaudePane(paneId: string): Promise<void> {
-  await runTmux(["set-option", "-p", "-t", paneId, CLAUDE_ROLE_OPTION, CLAUDE_ROLE_VALUE])
+  await tagPaneRole(paneId, CLAUDE_ROLE_VALUE)
 }
 
 /**
- * The id of the session's claude pane, found by its `@kobe_role`
- * user-option tag — robust against tmux's by-position pane numbering
- * (a left-hand Tasks pane renumbers everything). Falls back to the
- * first pane for sessions created before tagging existed. `""` when
+ * The id of the pane tagged `role` in the session's ACTIVE window,
+ * found by its `@kobe_role` user-option tag — robust against tmux's
+ * by-position pane numbering (a left-hand Tasks pane renumbers
+ * everything). `fallbackFirst` returns the first pane when no tagged
+ * pane is found (used by claude for pre-tagging sessions). `""` when
  * the session doesn't exist.
  */
-export async function claudePaneId(sessionName: string): Promise<string> {
-  // No `-s`: scope to the session's ACTIVE window so the monitor's
-  // preview tracks the chat tab the user last looked at (each chat-tab
-  // window has its own claude pane).
+export async function paneIdByRole(sessionName: string, role: string, fallbackFirst = false): Promise<string> {
+  // No `-s`: scope to the session's ACTIVE window (each chat-tab window
+  // has its own claude / tasks pane).
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-t",
     `=${sessionName}`,
     "-F",
-    `#{pane_id}\t#{${CLAUDE_ROLE_OPTION}}`,
+    `#{pane_id}\t#{${PANE_ROLE_OPTION}}`,
   ])
   if (code !== 0) return ""
   let firstId = ""
   for (const line of stdout.split("\n")) {
-    const [id, role] = line.split("\t")
+    const [id, paneRole] = line.split("\t")
     if (!id) continue
     if (!firstId) firstId = id.trim()
-    if (role?.trim() === CLAUDE_ROLE_VALUE) return id.trim()
+    if (paneRole?.trim() === role) return id.trim()
   }
-  return firstId
+  return fallbackFirst ? firstId : ""
+}
+
+/** The session's claude pane id (falls back to first pane). `""` if gone. */
+export async function claudePaneId(sessionName: string): Promise<string> {
+  return paneIdByRole(sessionName, CLAUDE_ROLE_VALUE, true)
 }
 
 /**
