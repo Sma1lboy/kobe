@@ -373,8 +373,14 @@ function Shell(props: AppDeps) {
   // chords moved with the chat pane). `q` quits, `n` new task,
   // `tab`/`shift+tab` cycle pane focus, `ctrl+1..2` jump to pane,
   // `ctrl+d` toggles cost dashboard.
+  //
+  // Gated on an empty dialog stack: while a modal (settings, new-task,
+  // confirms) is open, NO app-level chord should fire behind it — the
+  // dialog's own bindings sit on top of the keymap stack and handle what
+  // they need; everything else must go quiet so a keypress can't leak to
+  // a task action behind the dialog (KOB-244).
   useBindings(() => ({
-    enabled: true,
+    enabled: dialog.stack.length === 0,
     bindings: [
       // Ctrl+C asks for confirmation (same dialog as `q`) rather than
       // quitting outright — Jackson wants a guard against a fat-fingered
@@ -392,9 +398,13 @@ function Shell(props: AppDeps) {
     ],
   }))
 
-  // Sidebar-scoped letter chords.
+  // Sidebar-scoped letter chords. Gated on `sidebarBindable` (sidebar
+  // focused AND no dialog open) — these are the task actions (n / d / a /
+  // r / q / s) that must NOT fire when a dialog (e.g. settings) is open
+  // over the sidebar, which would otherwise still count as "focused"
+  // and leak the keypress into a task action behind the modal (KOB-244).
   useBindings(() => ({
-    enabled: isFocused("sidebar")(),
+    enabled: sidebarBindable(),
     bindings: [
       { key: "n", cmd: () => void newTask() },
       { key: "s", cmd: () => openSettings() },
