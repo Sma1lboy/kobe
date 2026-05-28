@@ -196,6 +196,16 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   await runTmux(["set-option", "-g", "status", "on"])
   // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
   await runTmux(["bind-key", "-n", "C-q", "detach-client"])
+  // No-prefix Ctrl+1/2/3 jump to claude / Ops / shell. Targeted by
+  // POSITION (`{left}` / `{top-right}` / `{bottom-right}`) not index —
+  // immune to `base-index`, and correct for every kobe session since
+  // they all share the same three-pane geometry. Server-scoped on the
+  // `-L kobe` socket so the user's own tmux keys are untouched. Mirrors
+  // the outer TUI's ctrl+1/2 region-jump; no conflict since the outer
+  // renderer is suspended while attached.
+  await runTmux(["bind-key", "-n", "C-1", "select-pane", "-t", "{left}"])
+  await runTmux(["bind-key", "-n", "C-2", "select-pane", "-t", "{top-right}"])
+  await runTmux(["bind-key", "-n", "C-3", "select-pane", "-t", "{bottom-right}"])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
