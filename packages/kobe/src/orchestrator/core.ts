@@ -158,13 +158,18 @@ export class Orchestrator {
   async createTask(input: CreateTaskInput): Promise<Task> {
     if (!input.repo) throw new Error("createTask: repo is required")
     const title = (input.title ?? PLACEHOLDER_TASK_TITLE).trim() || PLACEHOLDER_TASK_TITLE
-    // Auto-branch is derived from the title — `ensureWorktree` rebuilds
-    // it later if the title changes before the worktree materialises.
-    const branch = input.branch ?? autoBranch(title, "deferred")
+    // Leave the branch EMPTY for a lazily-allocated task (unless the caller
+    // gave an explicit one): {@link ensureWorktree} derives a unique
+    // `kobe/<slug>-<id>` from the task's OWN id when the worktree
+    // materialises. We must NOT pre-derive a branch here — at create time
+    // there is no task id yet, so every placeholder-titled task would get
+    // the SAME name (`kobe/new-task-…`) and the second `git worktree add
+    // -b` would fail on a duplicate branch (KOB-244). Deferring also lets
+    // the branch follow a rename made before first enter.
     const task = await this.store.create({
       repo: input.repo,
       title,
-      branch,
+      branch: input.branch ?? "",
       worktreePath: "",
       status: "backlog",
       kind: "task",
