@@ -82,6 +82,15 @@ export type SidebarProps = {
    * accidental clicks don't suspend the renderer.
    */
   onActivate?: (taskId: string) => void
+  /**
+   * When true, a mouse click on a row fires {@link onActivate} (not
+   * just {@link onSelect}). Off in the outer app — there activate is a
+   * **Handover** that suspends the renderer, so a stray click must not
+   * launch. The **Tasks pane** opts in: its activate is a cheap,
+   * reversible `tmux switch-client`, so click-to-switch is the natural
+   * affordance.
+   */
+  activateOnClick?: boolean
   focused?: Accessor<boolean>
   onDeleteRequest?: (taskId: string) => void
   /**
@@ -597,7 +606,10 @@ export function Sidebar(props: SidebarProps) {
                   paddingRight={1}
                   gap={1}
                   backgroundColor={isCursor() ? theme.primary : isSelected() ? theme.backgroundElement : undefined}
-                  onMouseUp={() => props.onSelect(task.id)}
+                  onMouseUp={() => {
+                    props.onSelect(task.id)
+                    if (props.activateOnClick) props.onActivate?.(task.id)
+                  }}
                 >
                   <text
                     fg={isCursor() ? theme.selectedListItemText : badgeColor()}

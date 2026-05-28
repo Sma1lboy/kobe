@@ -158,6 +158,11 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // The session name (`kobe-<task-id>`, shown via the user's
   // default `#S` in status-left) is the only identity we impose.
   await runTmux(["set-option", "-g", "status", "on"])
+  // Mouse: ON. The Tasks pane's click-to-switch and the Ops FileTree's
+  // click/scroll only work if tmux forwards mouse events to the pane's
+  // app. Most configs already set this, but we force it on the `-L
+  // kobe` socket so the feature doesn't depend on the user's config.
+  await runTmux(["set-option", "-g", "mouse", "on"])
   // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
   await runTmux(["bind-key", "-n", "C-q", "detach-client"])
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the

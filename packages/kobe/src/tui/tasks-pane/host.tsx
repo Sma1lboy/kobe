@@ -64,6 +64,7 @@ function TasksShell(props: {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onActivate={(id) => void switchTo(id)}
+        activateOnClick
         focused={() => true}
       />
     </box>
