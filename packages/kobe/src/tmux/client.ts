@@ -113,6 +113,27 @@ export async function firstPaneId(sessionName: string): Promise<string> {
   return (await listPaneIds(sessionName))[0] ?? ""
 }
 
+/**
+ * Set a session-scoped user option (e.g. `@kobe_task`).
+ *
+ * NOTE: `set-option` / `show-options` do NOT accept the `=name`
+ * exact-match prefix that most other tmux targets take — tmux 3.5a
+ * treats `=name` as a literal session name and reports "no such
+ * session", silently dropping the option (KOB-233 burned a debug cycle
+ * on exactly this). So these two helpers target the bare name. Our
+ * session names are `kobe-<taskId>` slugs; a prefix collision between
+ * two live tasks is the only theoretical risk and we accept it.
+ */
+export async function setSessionOption(session: string, option: string, value: string): Promise<void> {
+  await runTmux(["set-option", "-t", session, option, value])
+}
+
+/** Read a session-scoped user option. `""` when unset / session gone. */
+export async function getSessionOption(session: string, option: string): Promise<string> {
+  const { code, stdout } = await runTmuxCapturing(["show-options", "-v", "-t", session, option])
+  return code === 0 ? stdout.trim() : ""
+}
+
 /** Per-pane user option marking the claude pane (set by `ensureSession`). */
 export const CLAUDE_ROLE_OPTION = "@kobe_role"
 const CLAUDE_ROLE_VALUE = "claude"
@@ -130,9 +151,11 @@ export async function tagClaudePane(paneId: string): Promise<void> {
  * the session doesn't exist.
  */
 export async function claudePaneId(sessionName: string): Promise<string> {
+  // No `-s`: scope to the session's ACTIVE window so the monitor's
+  // preview tracks the chat tab the user last looked at (each chat-tab
+  // window has its own claude pane).
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
-    "-s",
     "-t",
     `=${sessionName}`,
     "-F",

@@ -1,25 +1,26 @@
 /**
  * tmux-backed interactive sessions (v0.6).
  *
- * Per-task tmux session running inside a dedicated socket (`tmux -L
- * kobe`). Each session is pre-split into three panes — claude on the
- * left, the `kobe ops` FileTree pane on the upper right, and an
- * interactive shell on the lower right. The whole composition is
- * rendered by tmux, so claude can repaint at native speed without
- * kobe's outer renderer fighting it for the TTY.
+ * One tmux session per Task (`kobe-<taskId>`, on the dedicated
+ * `tmux -L kobe` socket). Each **window** in the session is a **chat
+ * tab** — an independent claude conversation on the same worktree —
+ * and every window has the same four-pane workspace:
  *
- * Layout grammar (v0.6 / KOB-228):
+ *     ┌────────┬──────────────────┬───────────────┐
+ *     │ tasks  │   claude         │  ops          │
+ *     │ (left) │   (@kobe_role)   ├───────────────┤
+ *     │        │                  │  shell        │
+ *     └────────┴──────────────────┴───────────────┘
  *
- *     ┌──────────────────────┬───────────────┐
- *     │                      │  pane 1: ops  │
- *     │   pane 0: claude     │               │
- *     │   (left, ~60%)       ├───────────────┤
- *     │                      │  pane 2: sh   │
- *     └──────────────────────┴───────────────┘
+ * The tmux status-bar window list is the chat-tab switcher; the left
+ * Tasks pane switches between task sessions. `Ctrl+T` opens a new chat
+ * tab (window). Everything is rendered by tmux, so claude repaints at
+ * native speed without kobe's outer renderer fighting for the TTY.
  *
- * `Ctrl+Q` detaches the client (server-scoped binding on `-L kobe`,
- * so the user's own tmux is untouched). The session keeps running
- * after detach AND across a kobe restart.
+ * `Ctrl+Q` detaches back to the outer monitor; `Ctrl+h/j/k/l` move
+ * between panes. All bindings are server-scoped on `-L kobe`, so the
+ * user's own tmux is untouched. Sessions persist across detach AND a
+ * kobe restart.
  *
  * NOTE on the "kobe deliberately does NOT use tmux" rule in `pty.ts`:
  * that still holds for the legacy terminal-pane shell backend. tmux
@@ -28,13 +29,22 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { listPaneIds, runTmux, runTmuxCapturing, sessionExists, tagClaudePane } from "@/tmux/client"
+import {
+  getSessionOption,
+  listPaneIds,
+  runTmux,
+  runTmuxCapturing,
+  sessionExists,
+  setSessionOption,
+  tagClaudePane,
+} from "@/tmux/client"
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
   TASKS_PANE_PERCENT,
   keepAlive,
   opsPaneCommand,
+  shellQuote,
   shellQuoteArgv,
   tasksPaneCommand,
 } from "@/tmux/session-layout"
@@ -97,30 +107,14 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
-  // Build the session in three splits, capturing each pane's tmux
-  // pane id (`%N`) so we can target by id afterwards. Pane ids are
-  // server-global and immune to the user's `base-index` /
-  // `pane-base-index` config — targeting by `=name:0.0` (which we did
-  // first) broke on any tmux server using `base-index 1`, the default
-  // in most popular tmux configs. Bug history: KOB-233.
-  //
-  // Layout grammar:
-  //   step 1: new-session -d                 → pane 0 (left, full size)
-  //   step 2: split-window -h (40% right)    → pane 1 (right column)
-  //   step 3: split-window -v on pane 1 (50%) → pane 2 (right bottom)
-  // -l N% is the modern replacement for the deprecated -p N flag.
-  // Each pane's command is passed as the trailing arg to
-  // new-session / split-window — tmux runs it via its own `sh -c`,
-  // so we hand it a single shell command STRING and skip send-keys
-  // entirely. send-keys re-parses text through the pane's shell,
-  // which mangled the Ops pane's `sh -c "<script>"` quoting (KOB-233).
-  //
-  // `keepAlive` wraps each command so the pane drops to a shell when
-  // the command exits instead of tmux closing it (collapsing the
-  // layout). All the command/layout policy is pure + tested in
-  // `tmux/session-layout.ts`; this function is just the mechanics.
-  const claudeCmd = keepAlive(shellQuoteArgv(opts.command))
-
+  // Create the session's first window with the claude pane, then build
+  // the surrounding panes. Each pane command is passed as the trailing
+  // arg to new-session / split-window — tmux runs it via its own
+  // `sh -c`, so we hand it a single shell command STRING and skip
+  // send-keys (which re-parses text and mangled the Ops `sh -c` quoting
+  // in KOB-233). Pane ids (`%N`) are server-global and immune to
+  // `base-index`, so we always target by id.
+  const inv = kobeCliInvocation()
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
@@ -131,83 +125,20 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
     "-P",
     "-F",
     "#{pane_id}",
-    claudeCmd,
+    keepAlive(shellQuoteArgv(opts.command)),
   ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {
     console.error("[kobe tmux] new-session returned no pane id; session creation failed")
     return
   }
-  // Tag claude by a pane user-option — tmux renumbers panes by
-  // position when the Tasks pane is inserted on the left, so the
-  // monitor can't rely on "first pane" to find claude (KOB-233).
-  await tagClaudePane(pane0)
-  const inv = kobeCliInvocation()
 
-  // Tasks pane (experimental): inserted to the LEFT of claude with
-  // `split-window -hb`. claude stays pane 0 (first-created) so the
-  // monitor's `firstPaneId`-based capture still targets it. The tasks
-  // pane is a read-only `kobe tasks` list that switch-clients between
-  // sessions.
-  await runTmux([
-    "split-window",
-    "-h",
-    "-b",
-    "-t",
-    pane0,
-    "-l",
-    `${TASKS_PANE_PERCENT}%`,
-    "-c",
-    opts.cwd,
-    keepAlive(tasksPaneCommand(inv)),
-  ])
+  // Tag the session with the task id + worktree so `kobe new-chattab`
+  // (the Ctrl+T handler) can rebuild the same workspace in a new window.
+  if (opts.taskId) await setSessionOption(opts.name, "@kobe_task", opts.taskId)
+  await setSessionOption(opts.name, "@kobe_worktree", opts.cwd)
 
-  // Resolve the Ops command now that we know pane 0's id — kobe ops
-  // uses it as the `--target-pane` selector for `@file` send-keys
-  // injections back into claude.
-  const opsCmd = keepAlive(
-    opts.opsCommand ??
-      opsPaneCommand({
-        cwd: opts.cwd,
-        taskId: opts.taskId,
-        claudePaneId: pane0,
-        cliInvocation: inv,
-      }),
-  )
-
-  const r1 = await runTmuxCapturing([
-    "split-window",
-    "-h",
-    "-t",
-    pane0,
-    "-l",
-    `${100 - CLAUDE_PANE_PERCENT}%`,
-    "-c",
-    opts.cwd,
-    "-P",
-    "-F",
-    "#{pane_id}",
-    opsCmd,
-  ])
-  const pane1 = r1.stdout.trim()
-
-  // Pane 2 (bottom right) is a plain shell scoped to the worktree —
-  // no command, tmux uses its default-command ($SHELL).
-  if (pane1) {
-    await runTmuxCapturing([
-      "split-window",
-      "-v",
-      "-t",
-      pane1,
-      "-l",
-      `${100 - OPS_PANE_PERCENT}%`,
-      "-c",
-      opts.cwd,
-      "-P",
-      "-F",
-      "#{pane_id}",
-    ])
-  }
+  await buildPanesAround(pane0, { cwd: opts.cwd, taskId: opts.taskId, opsCommand: opts.opsCommand, inv })
 
   // Server-scoped niceties — done after the session is alive so the
   // server is definitely up. All `-g` options are idempotent so
@@ -242,9 +173,104 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   await runTmux(["bind-key", "-n", "C-j", "select-pane", "-D"])
   await runTmux(["bind-key", "-n", "C-k", "select-pane", "-U"])
   await runTmux(["bind-key", "-n", "C-l", "select-pane", "-R"])
+  // Ctrl+T opens a new chat tab = a new window with its own claude
+  // (fresh conversation) + the same panes, on the same worktree. The
+  // window status bar becomes the chat-tab switcher (Ctrl+B n/p too).
+  // `kobe new-chattab` reads the session's @kobe_task / @kobe_worktree
+  // tags so the binding only needs to pass the session name (which
+  // tmux expands at fire time).
+  const invStr = inv.map(shellQuote).join(" ")
+  await runTmux(["bind-key", "-n", "C-t", "run-shell", `${invStr} new-chattab --session '#{session_name}'`])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
+}
+
+/**
+ * Build the workspace panes around a freshly-created claude pane:
+ * Tasks (left) + Ops (right-top) + shell (right-bottom). Shared by
+ * the session's first window ({@link ensureSession}) and every new
+ * chat-tab window ({@link newChatTab}).
+ */
+async function buildPanesAround(
+  claudePane: string,
+  args: { cwd: string; taskId?: string; opsCommand?: string; inv: readonly string[] },
+): Promise<void> {
+  // Tag claude by a pane user-option — tmux renumbers panes by
+  // position when the Tasks pane is inserted on the left, so the
+  // monitor can't rely on "first pane" to find claude (KOB-233).
+  await tagClaudePane(claudePane)
+
+  // Tasks pane to the LEFT (`-hb` inserts before). Read-only task list
+  // that switch-clients between task sessions.
+  await runTmux([
+    "split-window",
+    "-h",
+    "-b",
+    "-t",
+    claudePane,
+    "-l",
+    `${TASKS_PANE_PERCENT}%`,
+    "-c",
+    args.cwd,
+    keepAlive(tasksPaneCommand(args.inv)),
+  ])
+
+  // Ops pane (right column). Uses the claude pane id as its
+  // `--target-pane` for `@file` mention injection.
+  const opsCmd = keepAlive(
+    args.opsCommand ??
+      opsPaneCommand({ cwd: args.cwd, taskId: args.taskId, claudePaneId: claudePane, cliInvocation: args.inv }),
+  )
+  const r1 = await runTmuxCapturing([
+    "split-window",
+    "-h",
+    "-t",
+    claudePane,
+    "-l",
+    `${100 - CLAUDE_PANE_PERCENT}%`,
+    "-c",
+    args.cwd,
+    "-P",
+    "-F",
+    "#{pane_id}",
+    opsCmd,
+  ])
+  const opsPane = r1.stdout.trim()
+
+  // shell pane (right-bottom) — no command, tmux's default $SHELL.
+  if (opsPane) {
+    await runTmux(["split-window", "-v", "-t", opsPane, "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", args.cwd])
+  }
+  await runTmux(["select-pane", "-t", claudePane])
+}
+
+/**
+ * Open a new chat-tab window in an existing task session: a new
+ * tmux window with a fresh claude conversation + the same workspace
+ * panes, on the same worktree. Invoked by `kobe new-chattab` (the
+ * Ctrl+T handler), which passes only the session name; the worktree +
+ * task id are read back from the session's `@kobe_*` tags.
+ */
+export async function newChatTab(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const cwd = (await getSessionOption(session, "@kobe_worktree")) || process.cwd()
+  const taskId = (await getSessionOption(session, "@kobe_task")) || undefined
+  const inv = kobeCliInvocation()
+  const r = await runTmuxCapturing([
+    "new-window",
+    "-t",
+    `=${session}`,
+    "-c",
+    cwd,
+    "-P",
+    "-F",
+    "#{pane_id}",
+    keepAlive(shellQuoteArgv(["claude"])),
+  ])
+  const claudePane = r.stdout.trim()
+  if (!claudePane) return
+  await buildPanesAround(claudePane, { cwd, taskId, inv })
 }

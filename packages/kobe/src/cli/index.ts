@@ -33,9 +33,11 @@ interface OpsFlags {
   targetPane?: string
   /** When set, render the full-width file preview for this rel path instead of the FileTree. */
   preview?: string
+  /** tmux session name (used by `new-chattab`). */
+  session?: string
 }
 
-/** Parse `kobe ops` flags. */
+/** Parse `kobe ops` / `kobe new-chattab` flags. */
 function parseOpsFlags(argv: readonly string[]): OpsFlags {
   const flags: OpsFlags = {}
   for (let i = 0; i < argv.length; i++) {
@@ -53,6 +55,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--preview") {
       flags.preview = value
+      i++
+    } else if (flag === "--session") {
+      flags.session = value
       i++
     }
   }
@@ -86,6 +91,19 @@ async function main(): Promise<void> {
   if (subcommand === "daemon") {
     const { runDaemonSubcommand } = await import("./daemon-cmd.ts")
     await runDaemonSubcommand(rest)
+    return
+  }
+  if (subcommand === "new-chattab") {
+    // Ctrl+T handler from inside a task's tmux session — opens a new
+    // chat-tab window. Reads the session name from `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe new-chattab: --session <name> is required")
+      process.exit(2)
+    }
+    const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
+    await newChatTab(session)
     return
   }
   if (subcommand === "tasks") {
