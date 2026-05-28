@@ -64,7 +64,15 @@ function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   transparent: boolean
   focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
-  /** Force an immediate tasks.json re-read after a mutation. */
+  /**
+   * The shared task-state framework: one daemon-backed RemoteOrchestrator
+   * used for BOTH the live subscribe (reads) and every mutation (writes),
+   * so the Tasks pane goes through the same single source of truth as the
+   * outer monitor — no ad-hoc per-op clients (KOB-244). `null` only in the
+   * degraded no-daemon fallback, where mutations are unavailable.
+   */
+  orch: RemoteOrchestrator | null
+  /** Force an immediate tasks.json re-read after a mutation (poll fallback). */
   reload: () => Promise<void>
 }) {
   const themeCtx = useTheme()
@@ -112,25 +120,25 @@ function TasksShell(props: {
     // Remember the choice (shared kv state.json) so the next new-task
     // dialog — here or in the outer monitor — defaults to it.
     setPersistedString("lastSelectedVendor", result.vendor)
+    if (!props.orch) {
+      console.error("[kobe tasks] no daemon; cannot create task")
+      return
+    }
     let createdId: string | undefined
     try {
-      const client = await connectOrStartDaemon()
-      try {
-        const res = await client.request<{ taskId: string }>("task.create", {
-          repo: result.repo,
-          baseRef: result.baseRef,
-          vendor: result.vendor,
-        })
-        createdId = res.taskId
-      } finally {
-        client.close()
-      }
+      const task = await props.orch.createTask({
+        repo: result.repo,
+        baseRef: result.baseRef,
+        vendor: result.vendor,
+      })
+      createdId = task.id
     } catch (err) {
       console.error("[kobe tasks] task.create failed:", err)
       return
     }
     await props.reload()
     // Land the cursor on the new task so Enter / click enters it next.
+    // (The daemon subscribe pushes the new task into the list momentarily.)
     if (createdId) setSelectedId(createdId)
   }
 
@@ -143,14 +151,9 @@ function TasksShell(props: {
     const current = props.tasks().find((t) => t.id === id)
     if (!current) return
     const next = await RenameTaskDialog.show(dialog, current.title)
-    if (!next) return
+    if (!next || !props.orch) return
     try {
-      const client = await connectOrStartDaemon()
-      try {
-        await client.request("task.rename", { taskId: id, title: next })
-      } finally {
-        client.close()
-      }
+      await props.orch.setTitle(id, next)
     } catch (err) {
       console.error("[kobe tasks] task.rename failed:", err)
       return
@@ -166,14 +169,9 @@ function TasksShell(props: {
     const current = props.tasks().find((t) => t.id === id)
     if (!current || current.kind === "main") return
     const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
-    if (!next) return
+    if (!next || !props.orch) return
     try {
-      const client = await connectOrStartDaemon()
-      try {
-        await client.request("task.setBranch", { taskId: id, branch: next })
-      } finally {
-        client.close()
-      }
+      await props.orch.setBranch(id, next)
     } catch (err) {
       console.error("[kobe tasks] task.setBranch failed:", err)
       return
@@ -187,15 +185,10 @@ function TasksShell(props: {
   // matches, so the new tmux pane launches the new engine.
   async function cycleVendor(id: string): Promise<void> {
     const current = props.tasks().find((t) => t.id === id)
-    if (!current) return
+    if (!current || !props.orch) return
     const next = nextVendor(current.vendor ?? DEFAULT_TASK_VENDOR)
     try {
-      const client = await connectOrStartDaemon()
-      try {
-        await client.request("task.setVendor", { taskId: id, vendor: next })
-      } finally {
-        client.close()
-      }
+      await props.orch.setVendor(id, next)
     } catch (err) {
       console.error("[kobe tasks] task.setVendor failed:", err)
       return
@@ -270,14 +263,12 @@ function TasksShell(props: {
     // session and switch.
     let cwd = task?.worktreePath
     if (!cwd || !existsSync(cwd)) {
+      if (!props.orch) {
+        console.error("[kobe tasks] no daemon; cannot materialise worktree")
+        return
+      }
       try {
-        const client = await connectOrStartDaemon()
-        try {
-          const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: id })
-          cwd = res.worktreePath
-        } finally {
-          client.close()
-        }
+        cwd = await props.orch.ensureWorktree(id)
       } catch (err) {
         console.error("[kobe tasks] task.ensureWorktree failed:", err)
         return
@@ -418,7 +409,13 @@ export async function startTasksPane(): Promise<void> {
       <ThemeProvider mode="dark" theme={prefs.theme}>
         <FocusProvider initial="sidebar">
           <DialogProvider>
-            <TasksShell tasks={tasks} transparent={prefs.transparent} focusAccent={prefs.focusAccent} reload={reload} />
+            <TasksShell
+              tasks={tasks}
+              orch={orch}
+              transparent={prefs.transparent}
+              focusAccent={prefs.focusAccent}
+              reload={reload}
+            />
           </DialogProvider>
         </FocusProvider>
       </ThemeProvider>
