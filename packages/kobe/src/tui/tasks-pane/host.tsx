@@ -35,7 +35,7 @@
 import { existsSync } from "node:fs"
 import { runTmux, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
-import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
+import { type Accessor, For, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
@@ -282,22 +282,63 @@ function TasksShell(props: {
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <Sidebar
-        tasks={props.tasks}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onActivate={(id) => void switchTo(id)}
-        activateOnClick
-        onAddTask={() => void createTask()}
-        onRenameRequest={(id) => void renameTask(id)}
-        // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
-        // empty dialog stack — otherwise Enter pressed to submit a dialog
-        // (new-task / rename) leaks past the input to switchTo and yanks
-        // you into a task (the Sidebar's Enter isn't registered through
-        // the input's onSubmit, so the keymap falls through to it). Mirrors
-        // the n/b/v gate above (KOB-244).
-        focused={() => dialog.stack.length === 0}
-      />
+      <box flexGrow={1} flexShrink={1}>
+        <Sidebar
+          tasks={props.tasks}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onActivate={(id) => void switchTo(id)}
+          activateOnClick
+          onAddTask={() => void createTask()}
+          onRenameRequest={(id) => void renameTask(id)}
+          // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
+          // empty dialog stack — otherwise Enter pressed to submit a dialog
+          // (new-task / rename) leaks past the input to switchTo and yanks
+          // you into a task (the Sidebar's Enter isn't registered through
+          // the input's onSubmit, so the keymap falls through to it). Mirrors
+          // the n/b/v gate above (KOB-244).
+          focused={() => dialog.stack.length === 0}
+        />
+      </box>
+      <ShortcutHints />
+    </box>
+  )
+}
+
+/**
+ * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
+ * shows the in-pane task actions plus the session-level tmux chords so the
+ * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` line is
+ * the existing tmux pane navigation — shown here, not rebound.
+ */
+function ShortcutHints() {
+  const { theme } = useTheme()
+  // Fixed-width key column so the labels line up — a terminal-grammar
+  // legend column, not a proportional pane (allowed hardcode).
+  const HINTS: ReadonlyArray<{ k: string; label: string }> = [
+    { k: "↵", label: "open" },
+    { k: "n", label: "new task" },
+    { k: "r/b/v", label: "name / branch / engine" },
+    { k: "^h^j^k^l", label: "move panes" },
+    { k: "^t", label: "new tab" },
+    { k: "^q", label: "monitor" },
+  ]
+  return (
+    <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
+      <For each={HINTS}>
+        {(h) => (
+          <box flexDirection="row" gap={1}>
+            <box width={9} flexShrink={0}>
+              <text fg={theme.accent} wrapMode="none">
+                {h.k}
+              </text>
+            </box>
+            <text fg={theme.textMuted} wrapMode="none">
+              {h.label}
+            </text>
+          </box>
+        )}
+      </For>
     </box>
   )
 }
