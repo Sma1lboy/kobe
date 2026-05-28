@@ -1,26 +1,20 @@
 /**
  * Per-task cost aggregation for the monitor's cost dashboard (KOB-230).
  *
- * Source of truth is Claude Code's on-disk JSONL transcript:
+ * The "where does Claude persist a worktree's session transcripts"
+ * knowledge lives in `engine/claude-code-local/history.ts`
+ * (`listSessionFilesForWorktree`) — this module only does the
+ * monitor-specific part: read each transcript and SUM the per-message
+ * `usage` fields cumulatively (the dashboard wants lifetime cost, not
+ * the last-turn snapshot `deriveSessionUsageMetrics` returns).
  *
- *     ~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl
- *
- * where `<encoded-cwd>` is the worktree's absolute path with `/`
- * replaced by `-`. We list every JSONL in the encoded directory for a
- * given worktree, read each one, sum the per-message `usage` fields,
- * and surface a single {@link TaskCostSummary} that the dashboard
- * tile renders.
- *
- * Codex transcripts live under a different root (`~/.codex/sessions/`)
- * with a different layout; we'll plumb them through here when KOB-232
- * lands the create-PR companion. For now the dashboard is
- * claude-focused.
+ * Codex transcripts live under a different root (`~/.codex/sessions/`);
+ * we'll plumb them through when KOB-232 lands. For now the dashboard
+ * is claude-focused.
  */
 
-import { readFile, readdir, stat } from "node:fs/promises"
-import { homedir } from "node:os"
-import path from "node:path"
-import { encodeCwd } from "../engine/claude-code-local/history.ts"
+import { readFile } from "node:fs/promises"
+import { listSessionFilesForWorktree } from "../engine/claude-code-local/history.ts"
 
 export interface TaskCostSummary {
   readonly taskId: string
@@ -42,56 +36,41 @@ interface JsonlUsageRecord {
       cache_creation_input_tokens?: number
     }
   }
-  readonly timestamp?: string
 }
 
 /**
- * Aggregate Claude usage across every session JSONL in the given
- * worktree. Returns zeros (with `sessionCount: 0`) when the directory
- * doesn't exist yet — i.e. the task was created but never ⏎'d into.
+ * Sum Claude usage across every session transcript in the worktree.
+ * Returns zeros (`sessionCount: 0`) when the task was never entered.
  */
 export async function summarizeTaskCost(opts: {
   taskId: string
   worktree: string
 }): Promise<TaskCostSummary> {
-  const empty: TaskCostSummary = {
+  const files = await listSessionFilesForWorktree(opts.worktree)
+  const base: TaskCostSummary = {
     taskId: opts.taskId,
     worktree: opts.worktree,
-    sessionCount: 0,
+    sessionCount: files.length,
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
     cacheCreateTokens: 0,
-    lastActivityMs: null,
+    // files are sorted newest-first by the lister, so file[0]'s mtime
+    // is the worktree's most recent activity.
+    lastActivityMs: files[0]?.mtimeMs ?? null,
   }
-  if (!opts.worktree) return empty
-  const projectsDir = path.join(homedir(), ".claude", "projects", encodeCwd(opts.worktree))
-  let entries: string[]
-  try {
-    entries = await readdir(projectsDir)
-  } catch {
-    return empty
-  }
-  const jsonl = entries.filter((e) => e.endsWith(".jsonl"))
-  if (jsonl.length === 0) return empty
+  if (files.length === 0) return base
+
   let input = 0
   let output = 0
   let cacheRead = 0
   let cacheCreate = 0
-  let lastActivity = 0
-  for (const file of jsonl) {
-    const full = path.join(projectsDir, file)
+  for (const file of files) {
     let raw: string
     try {
-      raw = await readFile(full, "utf8")
+      raw = await readFile(file.path, "utf8")
     } catch {
       continue
-    }
-    try {
-      const st = await stat(full)
-      if (st.mtimeMs > lastActivity) lastActivity = st.mtimeMs
-    } catch {
-      // best-effort — keep going with whatever lastActivity we had
     }
     for (const line of raw.split("\n")) {
       if (line.length === 0) continue
@@ -110,13 +89,10 @@ export async function summarizeTaskCost(opts: {
     }
   }
   return {
-    taskId: opts.taskId,
-    worktree: opts.worktree,
-    sessionCount: jsonl.length,
+    ...base,
     inputTokens: input,
     outputTokens: output,
     cacheReadTokens: cacheRead,
     cacheCreateTokens: cacheCreate,
-    lastActivityMs: lastActivity > 0 ? lastActivity : null,
   }
 }

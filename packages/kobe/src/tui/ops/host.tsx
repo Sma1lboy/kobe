@@ -24,10 +24,10 @@
 import { sendKeys } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, For, Show, createMemo, createResource, createSignal, onCleanup, onMount } from "solid-js"
-import { kvStatePath } from "../../env.ts"
-import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, ThemeProvider, addTheme, hasTheme, useTheme } from "../context/theme"
+import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
+import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
 import { DialogProvider } from "../ui/dialog"
 import { readDiff, readFile, splitLines } from "./diff"
@@ -41,33 +41,7 @@ export interface OpsHostArgs {
   readonly targetPane: string | null
 }
 
-interface ThemePrefs {
-  readonly theme: string
-  readonly transparent: boolean
-  readonly focusAccent: FocusAccentSlot | null
-}
-
-/**
- * Read the theme prefs the outer kobe app persisted. Read-only and
- * sync — we only need them once at mount, and writing back would race
- * the main process for `state.json`.
- */
-function readThemePrefs(): ThemePrefs {
-  try {
-    const text = require("node:fs").readFileSync(kvStatePath(), "utf8")
-    const parsed = JSON.parse(text) as Record<string, unknown>
-    const theme =
-      typeof parsed.activeTheme === "string" && hasTheme(parsed.activeTheme) ? parsed.activeTheme : FALLBACK_THEME
-    const transparent = parsed.transparentBackground === true
-    const focusAccent =
-      typeof parsed.focusAccent === "string" && (FOCUS_ACCENT_SLOTS as readonly string[]).includes(parsed.focusAccent)
-        ? (parsed.focusAccent as FocusAccentSlot)
-        : null
-    return { theme, transparent, focusAccent }
-  } catch {
-    return { theme: FALLBACK_THEME, transparent: false, focusAccent: null }
-  }
-}
+type ThemePrefs = PersistedUiPrefs
 
 type View = "tree" | "file"
 type FileMode = "content" | "diff"
@@ -231,7 +205,7 @@ export async function startOpsHost(args: OpsHostArgs): Promise<void> {
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
-  const prefs = readThemePrefs()
+  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
   await render(() => <OpsApp {...args} prefs={prefs} />, {
     backgroundColor: "transparent",
     externalOutputMode: "passthrough",

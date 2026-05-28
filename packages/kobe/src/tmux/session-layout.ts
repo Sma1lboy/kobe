@@ -1,0 +1,100 @@
+/**
+ * Pure command/layout builders for a task's tmux session.
+ *
+ * The session-build procedure (`tui/panes/terminal/tmux.ts`
+ * `ensureSession`) is unavoidably imperative — it spawns `tmux
+ * new-session` / `split-window` against a real server. But the
+ * *policy* it encodes — pane sizes, which shell command each pane
+ * runs, the keep-alive wrapper, the Ops-pane fallback — is pure data
+ * + string building. Pulling it out here makes that policy unit
+ * testable without a real tmux server, which is exactly the surface
+ * that bit us in KOB-233 (quoting + targeting bugs that only showed
+ * up at runtime).
+ *
+ * Everything in this file is pure: same inputs → same strings, no IO.
+ */
+
+/** Left (claude) pane width as a % of the window. */
+export const CLAUDE_PANE_PERCENT = 60
+
+/** Upper-right (Ops) pane height as a % of the right column. */
+export const OPS_PANE_PERCENT = 50
+
+/**
+ * Quote `s` for safe inclusion inside a single-line `sh -c` command.
+ * tmux runs each pane command via `sh -c`, and we build that command
+ * string ourselves, so any path with a space or quote needs POSIX
+ * single-quote escaping (`'` → `'\''`).
+ */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`
+}
+
+/** Shell-quote each argv element and join — a safe command line. */
+export function shellQuoteArgv(argv: readonly string[]): string {
+  return argv.map(shellQuote).join(" ")
+}
+
+/**
+ * Wrap a pane command so the pane survives the command exiting: drop
+ * to an interactive shell instead of letting tmux close the pane (which
+ * would collapse the layout). claude exiting → shell; `kobe ops`
+ * exiting → shell; the Ops fallback loops forever so it never reaches
+ * the exec.
+ */
+export function keepAlive(cmd: string): string {
+  return `${cmd}; exec "\${SHELL:-/bin/sh}"`
+}
+
+/**
+ * Inline shell loop that prints `git status` + a worktree tree once a
+ * second. Used as the Ops pane's `|| fallback` when `kobe ops` can't
+ * launch, or directly when there's no task id to wire `kobe ops` to.
+ */
+export function fallbackOpsScript(cwd: string): string {
+  return `\
+cd ${shellQuote(cwd)} && \
+while :; do \
+  clear; \
+  printf "\\033[1m# %s\\033[0m\\n\\n" ${shellQuote(cwd)}; \
+  git status --short --branch 2>/dev/null | sed 's/^/  /' || true; \
+  printf "\\n"; \
+  if command -v lsd >/dev/null 2>&1; then \
+    lsd --tree --git -I node_modules -I .git --depth 2 .; \
+  elif command -v eza >/dev/null 2>&1; then \
+    eza --tree --git -L 2 -I 'node_modules|.git' .; \
+  elif command -v tree >/dev/null 2>&1; then \
+    tree -L 2 -I 'node_modules|.git'; \
+  else \
+    ls -la; \
+  fi; \
+  sleep 2; \
+done`
+}
+
+/**
+ * The Ops pane's shell command. Prefers `kobe ops` (the FileTree pane);
+ * `|| fallback` keeps a useful git-status + tree watcher if that launch
+ * fails. Returns a single `sh -c`-ready string.
+ *
+ * `cliInvocation` is the argv prefix that runs the kobe CLI (from
+ * `cli/invocation.ts`) — injected rather than imported so this stays
+ * pure + testable. `claudePaneId` is the tmux pane id (`%N`) of the
+ * claude pane; `kobe ops` uses it as the `--target-pane` for `@file`
+ * mention injection back into claude.
+ */
+export function opsPaneCommand(args: {
+  cwd: string
+  taskId: string | undefined
+  claudePaneId: string | null
+  cliInvocation: readonly string[]
+}): string {
+  if (args.taskId && args.claudePaneId) {
+    const inv = args.cliInvocation.map(shellQuote).join(" ")
+    return (
+      `${inv} ops --task-id ${shellQuote(args.taskId)} --worktree ${shellQuote(args.cwd)} ` +
+      `--target-pane ${shellQuote(args.claudePaneId)} || { ${fallbackOpsScript(args.cwd)}; }`
+    )
+  }
+  return fallbackOpsScript(args.cwd)
+}

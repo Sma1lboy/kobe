@@ -27,57 +27,13 @@
  * persistence + native attach are exactly what tmux is good at.
  */
 
-import { fileURLToPath } from "node:url"
-import {
-  attachArgv,
-  killSession,
-  listPaneIds,
-  runTmux,
-  runTmuxCapturing,
-  sessionExists,
-  tmuxAvailable,
-  tmuxSessionName,
-} from "@/tmux/client"
+import { kobeCliInvocation } from "@/cli/invocation"
+import { listPaneIds, runTmux, runTmuxCapturing, sessionExists } from "@/tmux/client"
+import { CLAUDE_PANE_PERCENT, OPS_PANE_PERCENT, keepAlive, opsPaneCommand, shellQuoteArgv } from "@/tmux/session-layout"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
-export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName }
-
-/**
- * The argv prefix that re-invokes the kobe CLI for a subcommand from
- * inside a tmux pane. In a packaged install this is just `kobe`
- * (on PATH via npm's bin shim). In dev (`bun run dev`) there's no
- * `kobe` on PATH, so we reconstruct `<bun> <cli-entry>` from the
- * current process — `process.execPath` is bun, and the CLI entry is
- * resolved relative to this module (mirrors the old MCP-bridge entry
- * resolution). Extension follows our own (`.ts` in dev, `.js` built).
- */
-function kobeCliInvocation(): string[] {
-  // Packaged: the `kobe` bin shim is on PATH. Detect "are we running
-  // from a dist build" by checking the module extension.
-  const isBuilt = import.meta.url.endsWith(".js")
-  if (isBuilt) return ["kobe"]
-  // Dev (`bun run dev`): there's no `kobe` on PATH, and the child must
-  // boot opentui/solid the same way the dev script does — with the
-  // JSX preload + the `browser` export condition. Without these the
-  // child crashes with "Export named 'jsxDEV' not found".
-  //
-  // The preload must be an ABSOLUTE path: the Ops pane runs with the
-  // worktree as its cwd, and `--preload @opentui/solid/preload`
-  // resolves relative to cwd — the worktree's node_modules won't have
-  // opentui, so a bare specifier fails. `import.meta.resolve` resolves
-  // against THIS module (inside the kobe package), so it always finds
-  // kobe's own copy regardless of the child's cwd.
-  const entry = fileURLToPath(new URL("../../../cli/index.ts", import.meta.url))
-  const preload = fileURLToPath(import.meta.resolve("@opentui/solid/preload"))
-  return [process.execPath, "--preload", preload, "--conditions=browser", entry]
-}
-
-/** Default left-pane width as a percentage of the window. */
-const CLAUDE_PANE_PERCENT = 60
-
-/** Default upper-right (Ops) pane height as a percentage of the right column. */
-const OPS_PANE_PERCENT = 50
+export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName } from "@/tmux/client"
 
 /**
  * Count the panes across every window of the session. Used to detect
@@ -97,9 +53,8 @@ export interface EnsureSessionOpts {
   readonly command: readonly string[]
   /**
    * Shell command line that pane 1 (the Ops pane) runs. Defaults to
-   * `kobe ops --task-id <taskId> --worktree <cwd> --target-pane <id>`
-   * (the FileTree pane — see `tui/ops/host.tsx`); if that launch fails
-   * we fall back to the inline git-status + tree watcher.
+   * the `kobe ops` FileTree pane (see `tmux/session-layout.ts`
+   * `opsPaneCommand`); override is the test/escape hatch.
    */
   readonly opsCommand?: string
   /**
@@ -108,85 +63,6 @@ export interface EnsureSessionOpts {
    * their own `opsCommand` don't need to pass it.
    */
   readonly taskId?: string
-}
-
-/**
- * Resolve the default Ops pane shell command. Prefers `kobe ops`
- * (the v0.5 FileTree pane re-hosted as a subcommand — see
- * `tui/ops/host.tsx`), falling back to an inline shell loop that
- * prints `git status` + a tree if that launch fails for any reason.
- *
- * Returns a single shell command STRING (not an argv) — tmux runs the
- * pane command via `sh -c`, so building the string ourselves and
- * letting tmux's own sh execute it avoids the send-keys re-parse +
- * double-quoting trap (KOB-233: an argv joined with spaces lost the
- * `sh -c "<script>"` quoting and the pane ran the wrong thing).
- *
- * `claudePaneId` is the tmux pane id (`%N`) of the claude pane — pane
- * ids are server-global and survive `base-index` differences, so the
- * Ops pane sends keystrokes (`@file` mentions) back to claude by id
- * rather than by index.
- */
-function defaultOpsCommand(cwd: string, taskId: string | undefined, claudePaneId: string | null): string {
-  if (taskId && claudePaneId) {
-    const inv = kobeCliInvocation().map(shellQuote).join(" ")
-    return (
-      `${inv} ops --task-id ${shellQuote(taskId)} --worktree ${shellQuote(cwd)} --target-pane ${shellQuote(claudePaneId)} ` +
-      `|| { ${fallbackOpsScript(cwd)}; }`
-    )
-  }
-  return fallbackOpsScript(cwd)
-}
-
-/**
- * Plain shell-command string that prints `git status` + a tree on a
- * loop. Used either directly (when no taskId is provided) or as the
- * `||` fallback after `kobe-ops` fails to launch.
- */
-function fallbackOpsScript(cwd: string): string {
-  return `\
-cd ${shellQuote(cwd)} && \
-while :; do \
-  clear; \
-  printf "\\033[1m# %s\\033[0m\\n\\n" ${shellQuote(cwd)}; \
-  git status --short --branch 2>/dev/null | sed 's/^/  /' || true; \
-  printf "\\n"; \
-  if command -v lsd >/dev/null 2>&1; then \
-    lsd --tree --git -I node_modules -I .git --depth 2 .; \
-  elif command -v eza >/dev/null 2>&1; then \
-    eza --tree --git -L 2 -I 'node_modules|.git' .; \
-  elif command -v tree >/dev/null 2>&1; then \
-    tree -L 2 -I 'node_modules|.git'; \
-  else \
-    ls -la; \
-  fi; \
-  sleep 2; \
-done`
-}
-
-/**
- * Quote `s` for safe inclusion inside a single-line `sh -c` script.
- * tmux's `split-window` argv passes one string per panel — we build
- * that string ourselves, so any path with a space or quote needs
- * shell-quoting before it reaches the child shell.
- */
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
-}
-
-/**
- * Turn an argv array into a shell-safe command line for `send-keys`.
- *
- * `send-keys` sends literal text that the pane's shell re-parses, so a
- * pre-tokenized argv must be re-quoted — `argv.join(" ")` silently
- * breaks any element containing spaces or quotes. KOB-233 bug: the Ops
- * command `["sh", "-c", "<multi-word script>"]` joined to
- * `sh -c <unquoted script>`, which the pane shell parsed as
- * `sh -c <first-word>` with the rest as positional args, so `kobe ops`
- * never ran and the `|| fallback` loop took over instead.
- */
-function shellQuoteArgv(argv: readonly string[]): string {
-  return argv.map(shellQuote).join(" ")
 }
 
 /**
@@ -229,12 +105,10 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // entirely. send-keys re-parses text through the pane's shell,
   // which mangled the Ops pane's `sh -c "<script>"` quoting (KOB-233).
   //
-  // `; exec "${SHELL:-/bin/sh}"` keeps the pane alive after its
-  // command exits: instead of tmux closing the pane (and collapsing
-  // the layout), the user lands in an interactive shell. claude
-  // exiting → shell; kobe ops exiting → shell; the Ops fallback loops
-  // forever so it never reaches the exec.
-  const keepAlive = (cmd: string): string => `${cmd}; exec "\${SHELL:-/bin/sh}"`
+  // `keepAlive` wraps each command so the pane drops to a shell when
+  // the command exits instead of tmux closing it (collapsing the
+  // layout). All the command/layout policy is pure + tested in
+  // `tmux/session-layout.ts`; this function is just the mechanics.
   const claudeCmd = keepAlive(shellQuoteArgv(opts.command))
 
   const r0 = await runTmuxCapturing([
@@ -258,7 +132,15 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // Resolve the Ops command now that we know pane 0's id — kobe ops
   // uses it as the `--target-pane` selector for `@file` send-keys
   // injections back into claude.
-  const opsCmd = keepAlive(opts.opsCommand ?? defaultOpsCommand(opts.cwd, opts.taskId, pane0))
+  const opsCmd = keepAlive(
+    opts.opsCommand ??
+      opsPaneCommand({
+        cwd: opts.cwd,
+        taskId: opts.taskId,
+        claudePaneId: pane0,
+        cliInvocation: kobeCliInvocation(),
+      }),
+  )
 
   const r1 = await runTmuxCapturing([
     "split-window",
