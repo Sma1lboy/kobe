@@ -75,41 +75,52 @@ function TasksShell(props: {
   // the outer app's "spawn a sibling" default. Backlog task (worktree
   // lazy on first enter); list reloads immediately after.
   async function createTask(): Promise<void> {
-    const repos = getSavedRepos()
-    if (repos.length === 0) {
-      await DialogConfirm.show(
-        dialog,
-        "No saved repos.",
-        "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
-        "",
-        "ok",
-      )
-      return
-    }
-    const list = props.tasks()
-    const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-    const defaultRepo = cursorRepo ?? repos[0] ?? ""
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
-    if (!result) return
-    let createdId: string | undefined
+    // Zoom the Tasks pane to the full window for the dialog's lifetime.
+    // The pane is only ~22% wide, which would clip the medium (80-col)
+    // NewTaskDialog and make it look different from the outer monitor's
+    // full-width version (KOB-233). `resize-pane -Z` toggles zoom; the
+    // pane is never zoomed in normal use, so on→off is symmetric.
+    const selfPane = process.env.TMUX_PANE
+    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
     try {
-      const client = await connectOrStartDaemon()
-      try {
-        const res = await client.request<{ taskId: string }>("task.create", {
-          repo: result.repo,
-          baseRef: result.baseRef,
-        })
-        createdId = res.taskId
-      } finally {
-        client.close()
+      const repos = getSavedRepos()
+      if (repos.length === 0) {
+        await DialogConfirm.show(
+          dialog,
+          "No saved repos.",
+          "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
+          "",
+          "ok",
+        )
+        return
       }
-    } catch (err) {
-      console.error("[kobe tasks] task.create failed:", err)
-      return
+      const list = props.tasks()
+      const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+      const defaultRepo = cursorRepo ?? repos[0] ?? ""
+      const result = await NewTaskDialog.show(dialog, defaultRepo, repos)
+      if (!result) return
+      let createdId: string | undefined
+      try {
+        const client = await connectOrStartDaemon()
+        try {
+          const res = await client.request<{ taskId: string }>("task.create", {
+            repo: result.repo,
+            baseRef: result.baseRef,
+          })
+          createdId = res.taskId
+        } finally {
+          client.close()
+        }
+      } catch (err) {
+        console.error("[kobe tasks] task.create failed:", err)
+        return
+      }
+      await props.reload()
+      // Land the cursor on the new task so Enter / click enters it next.
+      if (createdId) setSelectedId(createdId)
+    } finally {
+      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
     }
-    await props.reload()
-    // Land the cursor on the new task so Enter / click enters it next.
-    if (createdId) setSelectedId(createdId)
   }
 
   // Gate on an empty dialog stack so typing "n" INTO a dialog field
