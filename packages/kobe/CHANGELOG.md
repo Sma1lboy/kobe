@@ -24,7 +24,12 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Live preview no longer flashes "press ⏎ to enter" over a running session** — a momentarily-blank `capture-pane` (a TUI mid-repaint) is now distinguished from a genuinely absent session, so the empty-state hint only shows when there really is no session (KOB-244).
 - **Rapid double-Enter on a task no longer races two session builds** — `ensureSession` is serialized per session name and both enter paths share one in-flight guard (KOB-244).
 - **Auto-naming a task works from the workspace pane too** — entering a placeholder-titled task by pressing Enter while the workspace pane is focused now derives its title from the first prompt, the same as entering it from the sidebar (KOB-244).
-- The Ops pane's Enter opens a full-width syntax-highlighted file/diff preview window (`kobe ops --preview`); `@file` injection into the engine pane remains deferred to KOB-232 (the 0.6.0 notes mis-described this as shipped). Plus tmux-client hardening: literal `send-keys -l` injection, concurrent stderr drain (no large-stderr deadlock), strict claude-pane resolution, charset-escape stripping in the preview, and a `RemoteOrchestrator.setBranch` / `setVendor` parity fix so the outer monitor can change branch/vendor through the orchestrator (KOB-244).
+- The Ops pane's Enter opens a full-width syntax-highlighted file/diff preview window (`kobe ops --preview`); the 0.6.0 notes mis-described this as the `@file` injection path. Plus tmux-client hardening: literal `send-keys -l` injection, concurrent stderr drain (no large-stderr deadlock), strict claude-pane resolution, charset-escape stripping in the preview, and a `RemoteOrchestrator.setBranch` / `setVendor` parity fix so the outer monitor can change branch/vendor through the orchestrator (KOB-244).
+
+### Added
+
+- **`@file` mention injection from the Ops pane** — pressing `a` on a file in the Ops pane types `@<path>` into the engine (claude/codex) pane via tmux send-keys (literal, no auto-submit — you decide when to send), with focus staying in the Ops pane so you can queue several. Enter still opens the full-width preview window. This wires the injection the 0.6.0 notes had promised (KOB-232).
+- **Switching a task's engine relaunches it in place on a multi-tab session** — cycling vendor (`v`) on a task with several Ctrl+T chat-tab windows now `respawn-pane`s the engine pane in each window (preserving the windows, their other panes, and pane ids) instead of killing the whole session, so sibling chat tabs survive the switch (KOB-232).
 
 ## [0.6.0] - 2026-05-22
 

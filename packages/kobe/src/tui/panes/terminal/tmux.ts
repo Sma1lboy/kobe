@@ -140,18 +140,37 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since the
     //     session was built, so `@kobe_vendor` no longer matches the OLD
     //     engine pane → rebuild so the new pane launches the wanted engine.
+    const worktreeOk = taggedWorktree === opts.cwd
     const vendorOk = !opts.vendor || taggedVendor === opts.vendor
-    const placementOk = taggedWorktree === opts.cwd && vendorOk
     const claudeAlive = (await claudePaneIdStrict(opts.name)) !== ""
-    if (claudeAlive && placementOk) return true
-    // Need to rebuild — but `kill-session` drops EVERY window, including
-    // sibling Ctrl+T chat tabs (each its own engine conversation). When the
-    // session is in the right place / engine and only the active window's
-    // claude pane is missing, a multi-window session keeps its other tabs:
-    // reuse rather than nuke healthy siblings (full per-window relaunch is a
-    // KOB-232 follow-up). A legacy single-pane v0.5 session has no worktree
-    // tag, so placementOk is false and it still rebuilds (KOB-244).
-    if (placementOk && (await windowCount(opts.name)) > 1) return true
+
+    // Happy path: healthy + right place + right engine → reuse as-is.
+    if (claudeAlive && worktreeOk && vendorOk) return true
+
+    // Vendor-only drift (right worktree, the task switched engines via `v`):
+    // relaunch the engine pane IN PLACE in EVERY window via respawn-pane
+    // instead of kill-session, so the switch takes effect WITHOUT destroying
+    // the session's other Ctrl+T chat-tab windows (each its own conversation).
+    // respawn-pane keeps each pane's id + @kobe_role tag, so the Ops pane's
+    // --target-pane stays valid (KOB-232). Falls through to a full rebuild if
+    // no engine pane is found to respawn.
+    if (worktreeOk && !vendorOk && opts.command.length > 0) {
+      if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
+        if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
+        return true
+      }
+    }
+
+    // Right place + right engine but the active window's engine pane is gone,
+    // and sibling windows exist: don't `kill-session` (that would drop those
+    // sibling chat tabs). Reuse — per-window recreate of a destroyed pane is a
+    // future follow-up; the common shell-exit case never gets here because the
+    // engine pane survives (KOB-244).
+    if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) return true
+
+    // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
+    // a wrong-PLACE session (different @kobe_worktree), or a single-window
+    // session whose engine pane was destroyed.
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
@@ -251,6 +270,41 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
+  return true
+}
+
+/**
+ * Relaunch the engine (claude/codex) pane in EVERY window of the session
+ * in place via `respawn-pane`, preserving the windows and their other
+ * panes (and each pane's id + `@kobe_role` tag, so the Ops pane's
+ * `--target-pane` keeps pointing at a live pane). Returns `true` if at
+ * least one engine pane was respawned, `false` if none was found (caller
+ * then falls back to a full rebuild). Used to apply a vendor switch to a
+ * multi-window session without `kill-session` dropping sibling chat tabs
+ * (KOB-232).
+ */
+async function relaunchEngineInAllWindows(session: string, cwd: string, command: readonly string[]): Promise<boolean> {
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{pane_id}\t#{@kobe_role}",
+  ])
+  if (code !== 0) return false
+  const enginePanes = stdout
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .filter(([, role]) => role?.trim() === "claude")
+    .map(([id]) => id?.trim())
+    .filter((id): id is string => !!id)
+  if (enginePanes.length === 0) return false
+  const cmd = keepAlive(shellQuoteArgv(command))
+  for (const pane of enginePanes) {
+    // `-k` kills the old engine process; `-c` keeps the worktree cwd.
+    await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
+  }
   return true
 }
 

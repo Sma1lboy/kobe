@@ -18,7 +18,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { newWindow, tmuxSessionName } from "@/tmux/client"
+import { newWindow, sendKeys, tmuxSessionName } from "@/tmux/client"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import { SyntaxStyle } from "@opentui/core"
 import { render } from "@opentui/solid"
@@ -70,13 +70,26 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     })
   }
 
-  // `targetPane` (the claude pane id) is reserved for the `@file`
-  // mention injection KOB-232 will wire; unused in this slice.
-  void props.targetPane
+  // `a` on a file → inject `@<path> ` into the engine pane via tmux
+  // send-keys (KOB-232). `targetPane` is the claude/codex pane id passed
+  // by the launcher (`opsPaneCommand --target-pane`). Literal send (the
+  // shared `sendKeys` uses `-l`), trailing space, NO Enter — the user
+  // decides when to submit, and focus stays in the Ops pane so they can
+  // queue several mentions. No-op when there's no target pane (a
+  // standalone `kobe ops` invocation without --target-pane).
+  function injectMention(rel: string): void {
+    if (!props.targetPane) return
+    void sendKeys(props.targetPane, `@${rel} `)
+  }
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
-      <FileTree worktreePath={() => props.worktree} focused={() => true} onOpenFile={openPreview} />
+      <FileTree
+        worktreePath={() => props.worktree}
+        focused={() => true}
+        onOpenFile={openPreview}
+        onMention={injectMention}
+      />
     </box>
   )
 }

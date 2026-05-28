@@ -92,6 +92,12 @@ export type FileTreeProps = {
    */
   onOpenFile: (relPath: string) => void
   /**
+   * Fires when the user requests an `@<path>` mention of the current
+   * file (the `a` key). The Ops host wires this to a tmux send-keys
+   * injection into the engine pane; omit it elsewhere (the key no-ops).
+   */
+  onMention?: (relPath: string) => void
+  /**
    * Whether the pane has keyboard focus. Defaults to `() => true` —
    * Wave 3 has no focus manager yet, the integration agent will
    * thread real signals when the 5-pane layout lands.
@@ -447,6 +453,15 @@ export function FileTree(props: FileTreeProps) {
     }
     props.onOpenFile(row.path)
   }
+  function mentionCurrent(): void {
+    const r = rows()
+    const i = cursorIndex()
+    if (i < 0 || i >= r.length) return
+    const row = r[i]
+    // Only files make sense as an @mention; dirs are ignored.
+    if (!row || row.kind === "dir") return
+    props.onMention?.(row.path)
+  }
   function refresh(): void {
     setRefreshTick((n) => n + 1)
   }
@@ -469,6 +484,7 @@ export function FileTree(props: FileTreeProps) {
     setTab: (t) => setTab(t),
     currentTab: tab,
     openCurrent,
+    mentionCurrent,
     openExternal,
     refresh,
     expandOrDescend,
