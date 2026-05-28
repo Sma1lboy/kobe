@@ -26,6 +26,7 @@ import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
+import { DIRTY_WORKTREE_CODE } from "../orchestrator/errors.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
@@ -53,7 +54,7 @@ import { useThemePersistence } from "./lib/use-theme-persistence"
 import { CostDashboard } from "./panes/monitor/CostDashboard"
 import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { ClaudeLauncher, launchTaskTmux } from "./panes/terminal/fullscreen"
+import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
 import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
@@ -100,7 +101,12 @@ function Shell(props: AppDeps) {
   })
 
   const taskIdAcc = createMemo<string | null>(() => selectedId())
-  const worktreePathAcc = createMemo<string | null>(() => activeTask()?.worktreePath || null)
+
+  // Launch state is host-owned so BOTH enter paths (sidebar Enter and the
+  // workspace launcher's own Enter) share one in-flight guard + one error
+  // surface — the launcher renders `launchError` and gates on `launchRunning`.
+  const [launchRunning, setLaunchRunning] = createSignal(false)
+  const [launchError, setLaunchError] = createSignal<string | null>(null)
 
   function selectTask(id: string): void {
     setSelectedId(id)
@@ -116,37 +122,52 @@ function Shell(props: AppDeps) {
    * to open the task") is the user-visible contract — the user
    * never has to think about pane focus first.
    */
-  async function enterTask(id: string): Promise<void> {
+  async function enterTask(id: string): Promise<LaunchTaskTmuxResult> {
+    // Single convergence point for BOTH entry bindings (sidebar onActivate
+    // and the workspace launcher's own Enter). The host-owned launchRunning
+    // guard makes a rapid double-Enter — even one that switches which pane
+    // fires the chord — a no-op instead of racing a second launch (KOB-244).
+    if (launchRunning()) return { kind: "ok", exitCode: null }
     setSelectedId(id)
     kv.set("lastSelectedTaskId", id)
     setFocused("workspace")
     const task = props.orchestrator.getTask(id)
-    if (!task) return
-    const res = await launchTaskTmux({
-      renderer,
-      taskId: id,
-      cwd: task.worktreePath || null,
-      command: interactiveEngineCommand(task.vendor),
-      vendor: task.vendor,
-      onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
-    })
-    if (res.kind === "error") {
-      console.error("[kobe] enterTask failed:", res.message)
-      return
-    }
-    // Auto-name a still-unnamed task from its first prompt, now that the
-    // user has interacted and the session transcript exists. One-shot:
-    // only while the title is the placeholder, so a manual rename or a
-    // prior auto-name is never overwritten. Best-effort — naming failure
-    // must not break the return-from-handover path.
-    const after = props.orchestrator.getTask(id)
-    if (after && after.title === PLACEHOLDER_TASK_TITLE && after.worktreePath) {
-      try {
-        const title = await deriveTitleFromSession(after.worktreePath, after.vendor)
-        if (title) await props.orchestrator.setTitle(id, title)
-      } catch (err) {
-        console.error("[kobe] auto-title failed:", err)
+    if (!task) return { kind: "error", message: "task not found" }
+    setLaunchRunning(true)
+    setLaunchError(null)
+    try {
+      const res = await launchTaskTmux({
+        renderer,
+        taskId: id,
+        cwd: task.worktreePath || null,
+        command: interactiveEngineCommand(task.vendor),
+        vendor: task.vendor,
+        onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
+      })
+      if (res.kind === "error") {
+        // Surface visibly — the workspace launcher renders launchError. A
+        // bare console.error is invisible under the alternate-screen renderer.
+        setLaunchError(res.message)
+        console.error("[kobe] enterTask failed:", res.message)
+        return res
       }
+      // Auto-name a still-unnamed task from its first prompt, now that the
+      // user has interacted and the session transcript exists. One-shot:
+      // only while the title is the placeholder, so a manual rename or a
+      // prior auto-name is never overwritten. Best-effort — naming failure
+      // must not break the return-from-handover path.
+      const after = props.orchestrator.getTask(id)
+      if (after && after.title === PLACEHOLDER_TASK_TITLE && after.worktreePath) {
+        try {
+          const title = await deriveTitleFromSession(after.worktreePath, after.vendor)
+          if (title) await props.orchestrator.setTitle(id, title)
+        } catch (err) {
+          console.error("[kobe] auto-title failed:", err)
+        }
+      }
+      return res
+    } finally {
+      setLaunchRunning(false)
     }
   }
 
@@ -283,9 +304,39 @@ function Shell(props: AppDeps) {
       "delete",
     )
     if (ok !== true) return
-    await props.orchestrator.deleteTask(taskId).catch((err: unknown) => {
-      console.error("[kobe] delete failed:", err)
-    })
+    // First attempt is non-force: the orchestrator refuses to destroy a
+    // worktree with uncommitted/untracked work and throws a DIRTY_WORKTREE
+    // error instead. Catch that and re-prompt for an explicit force-delete
+    // so the user can't lose unsaved work silently (KOB-244).
+    let deleted = false
+    try {
+      await props.orchestrator.deleteTask(taskId)
+      deleted = true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes(DIRTY_WORKTREE_CODE)) {
+        const forceOk = await DialogConfirm.show(
+          dialog,
+          `"${task.title}" has uncommitted changes`,
+          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
+          "cancel",
+          "force delete",
+        )
+        if (forceOk === true) {
+          try {
+            await props.orchestrator.deleteTask(taskId, { force: true })
+            deleted = true
+          } catch (forceErr) {
+            console.error("[kobe] force delete failed:", forceErr)
+          }
+        }
+      } else {
+        console.error("[kobe] delete failed:", err)
+      }
+    }
+    // Only tear down the session + drop selection if the task was actually
+    // removed — a failed/declined delete must leave everything in place.
+    if (!deleted) return
     // Tear down the tmux session for this task so a re-created task
     // with the same id (theoretically possible across kobe restarts
     // if the user crafted a manifest) doesn't attach into the dead
@@ -431,11 +482,10 @@ function Shell(props: AppDeps) {
                   <box flexShrink={0} paddingTop={1} paddingBottom={1}>
                     <ClaudeLauncher
                       taskId={taskIdAcc}
-                      cwd={worktreePathAcc}
-                      command={interactiveEngineCommand(activeTask()?.vendor)}
-                      vendor={activeTask()?.vendor}
                       focused={isFocused("workspace")}
-                      onEnsureWorktree={async (id) => props.orchestrator.ensureWorktree(id)}
+                      running={launchRunning}
+                      error={launchError}
+                      onEnter={(id) => void enterTask(id)}
                     />
                   </box>
                 </box>

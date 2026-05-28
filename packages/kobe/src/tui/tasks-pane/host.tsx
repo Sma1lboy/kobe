@@ -33,7 +33,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
+import { runTmux, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
@@ -254,32 +254,45 @@ function TasksShell(props: {
   // the outer monitor).
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
-    if (!(await sessionExists(name))) {
-      const task = props.tasks().find((t) => t.id === id)
-      let cwd = task?.worktreePath
-      if (!cwd || !existsSync(cwd)) {
+    const task = props.tasks().find((t) => t.id === id)
+    // Resolve the worktree FIRST (unconditionally) — materialising it via the
+    // daemon's task.ensureWorktree RPC for a backlog task never entered — then
+    // run ensureSession on EVERY enter, exactly like the outer monitor's
+    // launchTaskTmux. This is what makes a vendor cycle (`v`), a branch
+    // rename, or a stale/wrong-place session actually take effect from the
+    // Tasks pane: ensureSession rebuilds a session whose @kobe_vendor /
+    // @kobe_worktree no longer matches. Previously this path only ran
+    // ensureSession when the session did NOT exist, so the documented "takes
+    // effect on next enter" promise silently broke for any live session
+    // (KOB-244). For a live, matching session ensureSession is a cheap
+    // idempotent no-op (it early-returns on the healthy-reuse check).
+    let cwd = task?.worktreePath
+    if (!cwd || !existsSync(cwd)) {
+      try {
+        const client = await connectOrStartDaemon()
         try {
-          const client = await connectOrStartDaemon()
-          try {
-            const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: id })
-            cwd = res.worktreePath
-          } finally {
-            client.close()
-          }
-        } catch (err) {
-          console.error("[kobe tasks] task.ensureWorktree failed:", err)
-          return
+          const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: id })
+          cwd = res.worktreePath
+        } finally {
+          client.close()
         }
-        await props.reload()
+      } catch (err) {
+        console.error("[kobe tasks] task.ensureWorktree failed:", err)
+        return
       }
-      if (!cwd || !existsSync(cwd)) return
-      await ensureSession({
-        name,
-        cwd,
-        command: interactiveEngineCommand(task?.vendor),
-        taskId: id,
-        vendor: task?.vendor,
-      })
+      await props.reload()
+    }
+    if (!cwd || !existsSync(cwd)) return
+    const ready = await ensureSession({
+      name,
+      cwd,
+      command: interactiveEngineCommand(task?.vendor),
+      taskId: id,
+      vendor: task?.vendor,
+    })
+    if (!ready) {
+      console.error(`[kobe tasks] failed to start session ${name}`)
+      return
     }
     await runTmux(["switch-client", "-t", `=${name}`])
   }

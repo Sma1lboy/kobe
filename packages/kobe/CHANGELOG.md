@@ -14,6 +14,18 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **Switching a task's engine from the Tasks pane now takes effect** — pressing `v` to cycle a task's vendor (or renaming its branch) on a task whose tmux session is still running used to do nothing: entering it just switched back into the still-running OLD engine. The Tasks-pane enter path now runs the same `ensureSession` heal the outer monitor always did, so a vendor/branch/worktree change rebuilds the session on the next Enter from either surface (KOB-244).
+- **Exiting the shell pane no longer destroys your engine session** — typing `exit` (or Ctrl+D) in a task's bottom shell pane dropped the session's pane count below the rebuild threshold, so the next Enter killed and rebuilt the whole session, throwing away the live `claude` / `codex` conversation. Session health is now keyed off the load-bearing engine pane (its `@kobe_role` tag), not a raw pane count, so closing a disposable shell/ops pane is harmless; this also makes the check per-window so a multi-tab (Ctrl+T) session is judged correctly (KOB-244).
+- **A failed `tmux attach` is now surfaced instead of a silent bounce** — if a session fails to build, or dies between build and attach, the launcher shows the error in the workspace pane rather than flashing you back to the "press ⏎" splash with no explanation (KOB-244).
+- **Deleting a task with uncommitted work asks before destroying it** — delete no longer force-removes the worktree unconditionally; it refuses a dirty worktree and re-prompts with an explicit "force delete anyway?" confirmation, and a failed worktree removal keeps the task entry instead of silently orphaning the directory on disk (KOB-244).
+- **Stale TUI/daemon version pairs surface a clear upgrade message** — the daemon now validates the client's protocol version at `hello` (and the client checks the daemon's), rejecting a mismatch with "upgrade your kobe" instead of failing later with cryptic per-request errors (KOB-244).
+- **Live preview no longer flashes "press ⏎ to enter" over a running session** — a momentarily-blank `capture-pane` (a TUI mid-repaint) is now distinguished from a genuinely absent session, so the empty-state hint only shows when there really is no session (KOB-244).
+- **Rapid double-Enter on a task no longer races two session builds** — `ensureSession` is serialized per session name and both enter paths share one in-flight guard (KOB-244).
+- **Auto-naming a task works from the workspace pane too** — entering a placeholder-titled task by pressing Enter while the workspace pane is focused now derives its title from the first prompt, the same as entering it from the sidebar (KOB-244).
+- The Ops pane's Enter opens a full-width syntax-highlighted file/diff preview window (`kobe ops --preview`); `@file` injection into the engine pane remains deferred to KOB-232 (the 0.6.0 notes mis-described this as shipped). Plus tmux-client hardening: literal `send-keys -l` injection, concurrent stderr drain (no large-stderr deadlock), strict claude-pane resolution, charset-escape stripping in the preview, and a `RemoteOrchestrator.setBranch` / `setVendor` parity fix so the outer monitor can change branch/vendor through the orchestrator (KOB-244).
+
 ## [0.6.0] - 2026-05-22
 
 This is a **product reshape**, not a patch release. kobe is no longer a chat-stream renderer wrapped around `claude -p`; it is a task-launcher + outer monitor that delegates the whole interactive surface to tmux. The version bumps to `0.6.0` so the change is visible in `package.json`. The 0.5 line stays as-is for anyone who wants the self-rendered chat experience back.
@@ -24,7 +36,7 @@ Anthropic's 2026-06-15 billing change put `claude -p`, the Agent SDK, and every 
 
 ### How
 
-Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `kobe ops` (the v0.5 FileTree pane re-hosted as a subcommand — browse the worktree, Enter on a file injects `@<path>` into the claude pane; falls back to an inline `git status` + tree watcher if the launch fails), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
+Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `kobe ops` (the v0.5 FileTree pane re-hosted as a subcommand — browse the worktree; `@file` injection into the claude pane is tracked for 0.6.x, KOB-232; falls back to an inline `git status` + tree watcher if the launch fails), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
 
 ### Removed (no longer in any form)
 
@@ -36,7 +48,7 @@ These were valuable v0.5 surfaces that don't survive in their old form but will 
 
 ### New subcommands
 
-`kobe ops --task-id <id> --worktree <path> --target-pane <pane>` — the Ops pane that fills the right-hand side of a task's tmux session. It re-hosts the v0.5 FileTree (the `git ls-files`-driven tree with All / Changes tabs) in its own process; Enter on a file injects `@<path>` into the claude pane via `tmux send-keys`. Not meant to be run by hand — the launcher wires it into the tmux split automatically.
+`kobe ops --task-id <id> --worktree <path> --target-pane <pane>` — the Ops pane that fills the right-hand side of a task's tmux session. It re-hosts the v0.5 FileTree (the `git ls-files`-driven tree with All / Changes tabs) in its own process; `@file` injection into the claude pane via `tmux send-keys` is tracked for 0.6.x (KOB-232). Not meant to be run by hand — the launcher wires it into the tmux split automatically.
 
 ### Schema
 

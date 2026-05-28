@@ -51,40 +51,50 @@ export function attachArgv(name: string): string[] {
   return tmuxArgs("attach-session", "-t", `=${name}`)
 }
 
+/** Read a child stream to a string, best-effort (`""` on any error). */
+async function drainText(stream: ReadableStream<Uint8Array> | null | undefined): Promise<string> {
+  if (!stream) return ""
+  try {
+    return await new Response(stream).text()
+  } catch {
+    return ""
+  }
+}
+
 /**
  * Run a tmux command, logging stderr when it fails. Silent tmux
  * errors are a foot-gun (KOB-233): a `split-window -t :0.0` that
  * failed because of `base-index 1` left the layout broken with no
  * trace. We only emit on a non-zero exit.
+ *
+ * stderr is drained CONCURRENTLY with the exit (not after it): if a
+ * tmux invocation ever filled the stderr pipe buffer before exiting,
+ * reading it only post-exit would dead-lock (the child blocks on the
+ * write, we block on `exited`). tmux diagnostics are tiny in practice,
+ * but the concurrent read removes the latent hang regardless (KOB-244).
  */
 export async function runTmux(args: string[]): Promise<number> {
   const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "ignore", stderr: "pipe" })
-  const code = await proc.exited
-  if (code !== 0) {
-    try {
-      const errText = await new Response(proc.stderr).text()
-      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
-    } catch {
-      // best-effort: the exit code is already surfaced
-    }
+  const [errText, code] = await Promise.all([drainText(proc.stderr), proc.exited])
+  if (code !== 0 && errText.trim().length > 0) {
+    console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
   }
   return code
 }
 
-/** Run a tmux command and capture stdout (stderr logged on failure). */
+/**
+ * Run a tmux command and capture stdout (stderr logged on failure).
+ * Both streams are drained concurrently with the exit so neither a full
+ * stdout (large capture-pane) nor a full stderr can dead-lock the call
+ * (KOB-244).
+ */
 export async function runTmuxCapturing(args: string[]): Promise<{ code: number; stdout: string }> {
   const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
-  const text = await new Response(proc.stdout).text()
-  const code = await proc.exited
-  if (code !== 0) {
-    try {
-      const errText = await new Response(proc.stderr).text()
-      if (errText.trim().length > 0) console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
-    } catch {
-      /* keep the stdout we did get */
-    }
+  const [stdout, errText, code] = await Promise.all([drainText(proc.stdout), drainText(proc.stderr), proc.exited])
+  if (code !== 0 && errText.trim().length > 0) {
+    console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
   }
-  return { code, stdout: text }
+  return { code, stdout }
 }
 
 /** Is the `tmux` binary on PATH? */
@@ -114,6 +124,17 @@ export async function listPaneIds(sessionName: string): Promise<string[]> {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
+}
+
+/**
+ * Number of windows (chat tabs) in the session. `0` when the session
+ * doesn't exist. Used to avoid a whole-session rebuild that would drop
+ * sibling Ctrl+T chat-tab windows (KOB-244).
+ */
+export async function windowCount(sessionName: string): Promise<number> {
+  const { code, stdout } = await runTmuxCapturing(["list-windows", "-t", `=${sessionName}`, "-F", "#{window_id}"])
+  if (code !== 0) return 0
+  return stdout.split("\n").filter((l) => l.trim().length > 0).length
 }
 
 /**
@@ -198,10 +219,27 @@ export async function claudePaneId(sessionName: string): Promise<string> {
 }
 
 /**
+ * STRICT claude-pane lookup: the id of the pane explicitly tagged
+ * `@kobe_role=claude` in the active window, with NO first-pane fallback.
+ * `""` when the active window has no tagged claude pane — which is the
+ * health signal {@link ../tui/panes/terminal/tmux.ts ensureSession} keys
+ * its reuse decision on: a legacy/pre-tag (v0.5) session has no tagged
+ * claude pane, so this returns `""` and the session is rebuilt, while a
+ * healthy session whose disposable shell/ops pane was closed still has
+ * its tagged claude pane and is reused (KOB-244).
+ */
+export async function claudePaneIdStrict(sessionName: string): Promise<string> {
+  return paneIdByRole(sessionName, CLAUDE_ROLE_VALUE, false)
+}
+
+/**
  * Capture the visible text of `paneId`. `lines` (optional) extends the
  * capture `lines` rows up into scrollback. Returns `""` on any error.
- * ANSI escapes are kept (`-e`) so a caller that wants colour has it;
- * callers that render plain text strip via `stripAnsi`.
+ *
+ * We do NOT pass `-e`, so tmux strips ANSI escapes and the output is
+ * plain text — kobe deliberately renders the preview plain (opentui owns
+ * the colours; see `monitor/capture-pane.ts`). A future caller that
+ * wants raw colour would have to add `-e`.
  */
 export async function capturePaneById(paneId: string, lines?: number): Promise<string> {
   if (!paneId) return ""
@@ -211,9 +249,23 @@ export async function capturePaneById(paneId: string, lines?: number): Promise<s
   return code === 0 ? stdout : ""
 }
 
-/** Send literal keys to a pane (used for `@file` mention injection). */
+/**
+ * Send LITERAL text to a pane — the `-l` flag is load-bearing.
+ *
+ * Without `-l`, tmux re-parses each argument as a KEY NAME, so a token
+ * equal to `Enter` / `Space` / `Tab` / `C-x` (or an injected file path
+ * shaped like one) fires that key instead of being typed. With `-l` the
+ * text is always typed verbatim; `--` ends flag parsing so text starting
+ * with `-` isn't mistaken for a flag (KOB-244). To send an actual named
+ * key (e.g. Enter to submit) use {@link sendKeyName}, not this.
+ */
 export async function sendKeys(target: string, text: string): Promise<void> {
-  await runTmux(["send-keys", "-t", target, text])
+  await runTmux(["send-keys", "-t", target, "-l", "--", text])
+}
+
+/** Send a tmux KEY NAME (e.g. `Enter`, `C-c`) to a pane — NOT literal text. */
+export async function sendKeyName(target: string, key: string): Promise<void> {
+  await runTmux(["send-keys", "-t", target, key])
 }
 
 /**

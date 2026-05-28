@@ -31,8 +31,8 @@
 import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand } from "@/engine/interactive-command"
 import {
+  claudePaneIdStrict,
   getSessionOption,
-  listPaneIds,
   paneIdByRole,
   runTmux,
   runTmuxCapturing,
@@ -41,6 +41,7 @@ import {
   setSessionOption,
   tagClaudePane,
   tagPaneRole,
+  windowCount,
 } from "@/tmux/client"
 import {
   CLAUDE_PANE_PERCENT,
@@ -57,16 +58,6 @@ import type { VendorId } from "@/types/task"
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
 export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName } from "@/tmux/client"
-
-/**
- * Count the panes across every window of the session. Used to detect
- * old (v0.5 / KOB-225) one-pane sessions so {@link ensureSession} can
- * rebuild them with the three-pane layout. `listPaneIds` walks the
- * whole session (`-s`), so it sidesteps the user's `base-index` config.
- */
-async function paneCount(name: string): Promise<number> {
-  return (await listPaneIds(name)).length
-}
 
 export interface EnsureSessionOpts {
   readonly name: string
@@ -94,39 +85,73 @@ export interface EnsureSessionOpts {
   readonly vendor?: string
 }
 
+/** Per-session-name in-flight lock — concurrent enters coalesce. */
+const ensureSessionLocks = new Map<string, Promise<boolean>>()
+
 /**
- * Ensure a detached session named `name` exists with the three-pane
- * layout. Idempotent in the happy path: a session that already has
- * the right number of panes is left alone (that's the persistence —
- * a prior session keeps running across detach / kobe restart). A
- * legacy one-pane session is detected by {@link paneCount} and
- * **rebuilt**: killed and recreated. We choose rebuild over in-place
- * `split-window` because a pre-v0.6 session's pane 0 is already
- * running claude with whatever scrollback state the user has, and
- * splitting now would create empty panes 1/2 alongside it — fine for
- * fresh tasks, but the layout would only become "correct" after the
- * user's next kobe restart anyway. Rebuilding gives every existing
- * task the new look on first re-enter.
+ * Ensure a detached session named `name` exists with the four-pane
+ * layout. Returns `true` once the session is ready (reused or freshly
+ * built), `false` if creation failed (so callers can avoid attaching to
+ * a nonexistent session — KOB-244).
+ *
+ * Idempotent in the happy path: a healthy session that matches this
+ * task is left running (that's the persistence — it survives detach /
+ * kobe restart). Otherwise it is **rebuilt** (killed + recreated); we
+ * choose rebuild over in-place `split-window` because a stale/legacy
+ * session's pane 0 already runs an engine with whatever state the user
+ * has, and splitting now would only become "correct" after the next
+ * restart anyway.
+ *
+ * Concurrent calls for the same `name` (e.g. a fast double-Enter) share
+ * one build via {@link ensureSessionLocks} instead of racing
+ * kill-session against each other's split-window.
  */
-export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
+export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
+  const inflight = ensureSessionLocks.get(opts.name)
+  if (inflight) return inflight
+  const work = ensureSessionImpl(opts)
+  ensureSessionLocks.set(opts.name, work)
+  try {
+    return await work
+  } finally {
+    ensureSessionLocks.delete(opts.name)
+  }
+}
+
+async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   if (await sessionExists(opts.name)) {
-    const panes = await paneCount(opts.name)
     const taggedWorktree = await getSessionOption(opts.name, "@kobe_worktree")
     const taggedVendor = await getSessionOption(opts.name, "@kobe_vendor")
-    // Reuse ONLY a healthy session that matches this task. Failure modes
-    // this guards against (KOB-233):
-    //   - Wrong layout: fewer than the full 4 panes (tasks / claude /
-    //     ops / shell) → legacy/broken, rebuild.
-    //   - Wrong PLACE: same name (`kobe-<taskId>`) but a different /
-    //     empty `@kobe_worktree` — a stale session from before the
-    //     env+socket isolation, whose panes run in the wrong dir / wrong
-    //     KOBE_HOME. Reusing it drops the user into the wrong env.
-    //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since
-    //     the session was built, so `@kobe_vendor` no longer matches —
-    //     the running pane is the OLD engine. Rebuild so the new pane
-    //     launches the engine the task now wants.
+    // Reuse ONLY a healthy session that matches this task. We key health
+    // off the LOAD-BEARING claude pane (its `@kobe_role=claude` tag in the
+    // active window), NOT a raw pane COUNT. Rationale + failure modes:
+    //   - Pane present? `claudePaneIdStrict` returns "" when the active
+    //     window has no tagged claude pane: a legacy/pre-tag (v0.5/KOB-225)
+    //     one-pane session, or a window whose claude pane was destroyed →
+    //     rebuild. Critically, this does NOT fire just because a DISPOSABLE
+    //     pane (the shell, or ops) was closed — typing `exit` in the shell
+    //     pane used to drop the count below 4 and nuke the whole session,
+    //     destroying the live engine conversation (KOB-244). The claude
+    //     pane survives that, so we reuse. The check is active-window
+    //     scoped, so each Ctrl+T chat-tab window is judged on its own.
+    //   - Wrong PLACE: a different/empty `@kobe_worktree` (a stale session
+    //     from before env+socket isolation, panes in the wrong dir / wrong
+    //     KOBE_HOME) → rebuild so the user isn't dropped into the wrong env.
+    //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since the
+    //     session was built, so `@kobe_vendor` no longer matches the OLD
+    //     engine pane → rebuild so the new pane launches the wanted engine.
     const vendorOk = !opts.vendor || taggedVendor === opts.vendor
-    if (panes >= 4 && taggedWorktree === opts.cwd && vendorOk) return
+    const placementOk = taggedWorktree === opts.cwd && vendorOk
+    const claudeAlive = (await claudePaneIdStrict(opts.name)) !== ""
+    if (claudeAlive && placementOk) return true
+    // Need to rebuild — but `kill-session` drops EVERY window, including
+    // sibling Ctrl+T chat tabs (each its own engine conversation). When the
+    // session is in the right place / engine and only the active window's
+    // claude pane is missing, a multi-window session keeps its other tabs:
+    // reuse rather than nuke healthy siblings (full per-window relaunch is a
+    // KOB-232 follow-up). A legacy single-pane v0.5 session has no worktree
+    // tag, so placementOk is false and it still rebuilds (KOB-244).
+    if (placementOk && (await windowCount(opts.name)) > 1) return true
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
@@ -153,7 +178,7 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   const pane0 = r0.stdout.trim()
   if (!pane0) {
     console.error("[kobe tmux] new-session returned no pane id; session creation failed")
-    return
+    return false
   }
 
   // Tag the session with the task id + worktree so `kobe new-chattab`
@@ -226,6 +251,7 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
+  return true
 }
 
 /**
@@ -286,6 +312,10 @@ async function buildPanesAround(
     opsCmd,
   ])
   const opsPane = r1.stdout.trim()
+  // Tag the Ops pane by role so it's re-findable regardless of tmux's
+  // by-position pane numbering (mirrors the claude/tasks tags) — lets a
+  // future heal/recreate path target it without counting panes.
+  if (opsPane) await tagPaneRole(opsPane, "ops")
 
   // shell pane (right-bottom) — no command, tmux's default $SHELL.
   if (opsPane) {

@@ -57,6 +57,12 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
   // task's tmux session. The Ops pane lives in that session, named
   // `kobe-<taskId>`, so we can target it by name.
   function openPreview(rel: string): void {
+    // Without a task id, `tmuxSessionName("")` is `kobe-`, which targets a
+    // session that doesn't exist — new-window would just error and Enter
+    // would silently do nothing. Only the standalone `kobe ops --worktree X`
+    // invocation (no --task-id) hits this; the in-session Ops pane always
+    // has one. Bail rather than fire at a phantom session (KOB-244).
+    if (!props.taskId) return
     void newWindow(tmuxSessionName(props.taskId), {
       cwd: props.worktree,
       command: previewWindowCommand({ worktree: props.worktree, relPath: rel, cliInvocation: kobeCliInvocation() }),

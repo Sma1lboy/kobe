@@ -34,12 +34,17 @@ export function LivePreview(props: LivePreviewProps): JSXElement {
     }
     const session = tmuxSessionName(id)
     const text = await capturePane(session)
-    if (text.length === 0) {
+    // `null` = no claude pane / no session → the empty-state hint is right.
+    if (text === null) {
       setLines([])
       setEmpty(true)
       return
     }
+    // A live pane (even one momentarily blank mid-repaint) is NOT the
+    // no-session state. Keep the previous frame for a blank capture so a
+    // transient cleared screen doesn't flash the "press ⏎" hint (KOB-244).
     setEmpty(false)
+    if (text.length === 0) return
     const stripped = stripAnsi(text)
     const all = stripped.split("\n")
     // Keep the tail — capture-pane already trimmed to the viewport,

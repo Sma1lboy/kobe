@@ -130,6 +130,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     const payload = objectPayload(req.payload)
     switch (req.name) {
       case "hello": {
+        // Reject a protocol-mismatched client with a clear upgrade message
+        // (the promise made in protocol.ts / CHANGELOG). A client that sends
+        // no `protocolVersion` is tolerated (older clients during a rolling
+        // upgrade); a client that sends a DIFFERENT version is rejected.
+        const clientVersion = payload.protocolVersion
+        if (typeof clientVersion === "number" && clientVersion !== DAEMON_PROTOCOL_VERSION) {
+          throw new Error(
+            `daemon is protocol v${DAEMON_PROTOCOL_VERSION}; this client is v${clientVersion}. Upgrade your kobe.`,
+          )
+        }
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
           daemonPid: process.pid,
@@ -192,7 +202,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
-        await orch.deleteTask(taskId)
+        await orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
         return {}
       }
       case "task.pin": {

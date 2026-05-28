@@ -26,7 +26,13 @@ import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
-import { CannotDeleteMainTaskError, IllegalTransitionError, TaskNotFoundError } from "./errors.ts"
+import {
+  CannotDeleteMainTaskError,
+  DirtyWorktreeError,
+  IllegalTransitionError,
+  TaskNotFoundError,
+  WorktreeRemoveFailedError,
+} from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { autoBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
@@ -329,18 +335,42 @@ export class Orchestrator {
   /**
    * Permanently remove a task. Refuses to delete `kind: "main"`
    * tasks (the user removes the repo from saved repos instead).
+   *
+   * Worktree safety (KOB-244): without `opts.force` a worktree with
+   * uncommitted / untracked changes is NOT destroyed — we throw
+   * {@link DirtyWorktreeError} so the UI can re-prompt for explicit
+   * force confirmation. And if `git worktree remove` itself fails
+   * (locked / permission / corrupt git-dir) we throw
+   * {@link WorktreeRemoveFailedError} and KEEP the index entry, so the
+   * orphaned worktree stays visible + re-deletable instead of becoming
+   * invisible on-disk debris. The index entry is dropped only after the
+   * worktree is genuinely gone.
    */
-  async deleteTask(id: TaskId | string): Promise<void> {
+  async deleteTask(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<void> {
     const task = this.store.get(id)
     if (!task) return
     if (task.kind === "main") {
       throw new CannotDeleteMainTaskError()
     }
+    const force = opts?.force === true
     if (task.worktreePath) {
+      if (!force) {
+        let dirty = false
+        try {
+          dirty = await this.worktrees.isDirty(task.worktreePath)
+        } catch {
+          // Can't determine dirtiness (e.g. the path is already gone) —
+          // treat as clean and let remove() handle the missing-dir case.
+        }
+        if (dirty) throw new DirtyWorktreeError(task.id)
+      }
       try {
-        await this.worktrees.remove(task.worktreePath, { force: true })
+        await this.worktrees.remove(task.worktreePath, { force })
       } catch (err) {
-        console.warn(`[kobe Orchestrator] worktree remove failed for ${task.id}:`, err)
+        // Keep the index entry — see method doc. Surfacing instead of
+        // the old console.warn-and-continue means a failed cleanup no
+        // longer silently orphans the worktree.
+        throw new WorktreeRemoveFailedError(task.id, err)
       }
     }
     await this.store.remove(task.id)

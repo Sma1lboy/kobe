@@ -9,8 +9,8 @@
  * longer brokers any of that.
  */
 
-import { type Accessor, createSignal } from "solid-js"
-import type { SerializedTask } from "../daemon/protocol.ts"
+import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
+import { DAEMON_PROTOCOL_VERSION, type SerializedTask } from "../daemon/protocol.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
@@ -62,7 +62,18 @@ export class RemoteOrchestrator {
 
   /** Open the daemon socket, hello, subscribe to the task snapshot stream. */
   async init(): Promise<void> {
-    const hello = await this.client.request<{ tasks?: SerializedTask[] }>("hello")
+    // Send our protocol version so the daemon can reject a mismatch, and
+    // verify the daemon's version so an OLD daemon (which predates the
+    // server-side check) is caught client-side too — both surface the
+    // documented "upgrade your kobe" error instead of cryptic failures.
+    const hello = await this.client.request<{ tasks?: SerializedTask[]; protocolVersion?: number }>("hello", {
+      protocolVersion: DAEMON_PROTOCOL_VERSION,
+    })
+    if (typeof hello.protocolVersion === "number" && hello.protocolVersion !== DAEMON_PROTOCOL_VERSION) {
+      throw new Error(
+        `kobe daemon is protocol v${hello.protocolVersion}; this client is v${DAEMON_PROTOCOL_VERSION}. Restart the daemon (\`kobe daemon restart\`) or upgrade kobe.`,
+      )
+    }
     if (hello.tasks) this.setTasks(hello.tasks.map(deserializeTask))
     await this.client.request("subscribe")
     this.setConnectionState("online")
@@ -106,24 +117,27 @@ export class RemoteOrchestrator {
     } catch (err) {
       console.error("[kobe RemoteOrchestrator] task listener threw on subscribe:", err)
     }
-    // Forward subsequent snapshots through Solid's reactive system —
-    // we don't have a direct subscribe primitive on the signal, so
-    // we poll the accessor inside an effect-style guard. Callers
-    // typically use tasksSignal() directly; this is the seldom-used
-    // imperative path kept for parity with the local Orchestrator.
-    let previous = this.listTasks()
-    const id = setInterval(() => {
-      const current = this.listTasks()
-      if (current !== previous) {
-        previous = current
+    // Forward subsequent snapshots reactively off the Solid signal instead
+    // of polling it on a timer. createEffect re-runs whenever tasksAcc()
+    // changes; createRoot gives it an owner so the returned disposer tears
+    // it down. The effect fires once synchronously on creation — skip that
+    // run since we already delivered the current snapshot eagerly above.
+    let first = true
+    return createRoot((dispose) => {
+      createEffect(() => {
+        const current = this.tasksAcc()
+        if (first) {
+          first = false
+          return
+        }
         try {
           listener(current)
         } catch (err) {
           console.error("[kobe RemoteOrchestrator] task listener threw:", err)
         }
-      }
-    }, 100)
-    return () => clearInterval(id)
+      })
+      return dispose
+    })
   }
 
   // --- write ---
@@ -153,6 +167,14 @@ export class RemoteOrchestrator {
     await this.client.request("task.rename", { taskId: String(id), title })
   }
 
+  async setBranch(id: TaskId | string, branch: string): Promise<void> {
+    await this.client.request("task.setBranch", { taskId: String(id), branch })
+  }
+
+  async setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
+    await this.client.request("task.setVendor", { taskId: String(id), vendor })
+  }
+
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     await this.client.request("task.pin", { taskId: String(id), pinned })
   }
@@ -165,8 +187,8 @@ export class RemoteOrchestrator {
     await this.client.request("task.status", { taskId: String(id), status })
   }
 
-  async deleteTask(id: TaskId | string): Promise<void> {
-    await this.client.request("task.delete", { taskId: String(id) })
+  async deleteTask(id: TaskId | string, opts?: { force?: boolean }): Promise<void> {
+    await this.client.request("task.delete", { taskId: String(id), force: opts?.force })
   }
 
   // --- internals ---

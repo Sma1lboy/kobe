@@ -23,12 +23,11 @@
  */
 
 import type { CliRenderer } from "@opentui/core"
-import { useRenderer } from "@opentui/solid"
-import { type Accessor, type JSXElement, Show, createSignal } from "solid-js"
+import { type Accessor, type JSXElement, Show } from "solid-js"
 import type { VendorId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
-import { attachArgv, ensureSession, tmuxAvailable, tmuxSessionName } from "./tmux"
+import { attachArgv, ensureSession, sessionExists, tmuxAvailable, tmuxSessionName } from "./tmux"
 
 export type FullscreenRunOpts = {
   /** The opentui renderer to suspend/resume around the handover. */
@@ -108,68 +107,66 @@ export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTa
     }
   }
   const name = tmuxSessionName(opts.taskId)
-  await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId, vendor: opts.vendor })
+  const ready = await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId, vendor: opts.vendor })
+  if (!ready) {
+    // ensureSession failed to create the session (e.g. `tmux new-session`
+    // returned no pane id). Don't attach to a session that isn't there —
+    // surface it instead of bouncing the user silently to the splash.
+    return { kind: "error", message: `tmux session ${name} failed to start (check the console / daemon log)` }
+  }
   const exitCode = await runFullscreen({ renderer: opts.renderer, command: attachArgv(name) })
+  // A clean detach (Ctrl+Q / Ctrl+B d) exits 0 and leaves the session
+  // alive. `null` means the attach process couldn't even spawn, and a
+  // nonzero exit with the session GONE means the attach failed (the
+  // session died between build and attach) — both are real errors, not
+  // a clean detach, so surface them rather than silently re-showing the
+  // splash (KOB-244).
+  if (exitCode === null) {
+    return { kind: "error", message: `failed to attach to tmux session ${name}` }
+  }
+  if (exitCode !== 0 && !(await sessionExists(name))) {
+    return { kind: "error", message: `tmux session ${name} ended unexpectedly (attach exited ${exitCode})` }
+  }
   return { kind: "ok", exitCode }
 }
 
 export type ClaudeLauncherProps = {
   /** Stable task id — keys the persistent tmux session. Null = no task. */
   taskId: Accessor<string | null>
-  /**
-   * Worktree the claude session runs in. May be empty (the task is in
-   * `backlog` with no allocated worktree yet); `onEnsureWorktree` is
-   * called on enter to materialise it.
-   */
-  cwd: Accessor<string | null>
-  /** argv the tmux session runs (vendor-resolved, e.g. `["claude"]` / `["codex"]`). */
-  command: readonly string[]
-  /** Engine vendor — tagged on the session for `new-chattab`. */
-  vendor?: VendorId
   /** Whether the workspace pane currently owns focus (gates the chord). */
   focused: Accessor<boolean>
   /**
-   * Materialise the worktree for `taskId` if it doesn't exist yet. The
-   * orchestrator returns the absolute worktree path on success.
+   * Run the full enter sequence for `taskId`. The HOST owns this so both
+   * entry points (sidebar Enter and this launcher's own Enter) converge
+   * on one code path — launch + auto-title + error surfacing all happen
+   * once, regardless of which pane was focused (KOB-244). The launcher
+   * never calls `launchTaskTmux` directly anymore.
    */
-  onEnsureWorktree: (taskId: string) => Promise<string>
+  onEnter: (taskId: string) => void
+  /** Host-owned: an enter is in flight (gates the chord + dims the splash). */
+  running: Accessor<boolean>
+  /** Host-owned: last launch error to display (`null` = none). */
+  error: Accessor<string | null>
 }
 
 /**
  * Launcher view for the workspace pane. `⏎` while the pane is focused
- * attaches the terminal to the task's tmux session full-screen
- * (creating it on first enter); the session persists across detach
- * (Ctrl+Q / Ctrl+B D) and kobe restarts. When the user detaches or
- * claude exits they land back here.
+ * runs the host's enter sequence, which attaches the terminal to the
+ * task's tmux session full-screen (creating it on first enter); the
+ * session persists across detach (Ctrl+Q / Ctrl+B D) and kobe restarts.
+ * When the user detaches or claude exits they land back here.
  */
 export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
   const { theme } = useTheme()
-  const renderer = useRenderer()
-  const [running, setRunning] = createSignal(false)
-  const [error, setError] = createSignal<string | null>(null)
 
   const enter = (): void => {
     const taskId = props.taskId()
-    if (!taskId || running()) return
-    setRunning(true)
-    setError(null)
-    void launchTaskTmux({
-      renderer,
-      taskId,
-      cwd: props.cwd(),
-      command: props.command,
-      vendor: props.vendor,
-      onEnsureWorktree: props.onEnsureWorktree,
-    })
-      .then((res) => {
-        if (res.kind === "error") setError(res.message)
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setRunning(false))
+    if (!taskId || props.running()) return
+    props.onEnter(taskId)
   }
 
   useBindings(() => ({
-    enabled: props.focused() && !running() && props.taskId() !== null,
+    enabled: props.focused() && !props.running() && props.taskId() !== null,
     bindings: [
       { key: "return", cmd: enter },
       { key: "enter", cmd: enter },
@@ -181,8 +178,8 @@ export function ClaudeLauncher(props: ClaudeLauncherProps): JSXElement {
       <text fg={theme.text}>Claude session</text>
       <text fg={theme.textMuted}>{props.taskId() ? "press ⏎ to enter — full screen" : "(no task selected)"}</text>
       <text fg={theme.textMuted}>ctrl+q (or ctrl+b d) detaches — the session keeps running</text>
-      <Show when={error()}>
-        <text fg={theme.error}>{error()}</text>
+      <Show when={props.error()}>
+        <text fg={theme.error}>{props.error()}</text>
       </Show>
     </box>
   )
