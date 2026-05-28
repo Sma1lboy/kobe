@@ -8,9 +8,13 @@
  * `tmux switch-client`s to that task's session.
  *
  * Scope of the experiment (deliberately minimal):
- *   - Read-only: loads `~/.kobe/tasks.json` directly and re-reads on a
- *     timer. The outer app's Orchestrator / Daemon own writes; this
- *     pane never mutates (delete/archive/rename/pin are no-ops here).
+ *   - Reads `~/.kobe/tasks.json` directly and re-reads on a timer. The
+ *     outer app's Orchestrator / Daemon still own most writes; this pane
+ *     leaves delete/archive/rename/pin as no-ops.
+ *   - Create: `n` (or the footer "+ New task") fires the daemon's
+ *     `task.create` RPC — the first write-path here, the step toward
+ *     retiring the outer "page 1". Repo is inherited from the cursor
+ *     task (no repo picker). Backlog task, worktree lazy on first enter.
  *   - Switch + lazy-create: Enter / click `switch-client`s to a task's
  *     session, creating it on demand (`ensureSession`) when the task's
  *     worktree already exists on disk — that covers every `main` task
@@ -25,15 +29,18 @@ import { existsSync } from "node:fs"
 import { runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
+import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import type { Task } from "../../types/task.ts"
+import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { FocusProvider } from "../context/focus"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
+import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession } from "../panes/terminal/tmux.ts"
-import { DialogProvider } from "../ui/dialog"
+import { DialogProvider, useDialog } from "../ui/dialog"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
@@ -42,15 +49,55 @@ function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   transparent: boolean
   focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
+  /** Force an immediate tasks.json re-read after a mutation. */
+  reload: () => Promise<void>
 }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
+  const dialog = useDialog()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
 
   onMount(() => {
     themeCtx.setTransparentBackground(props.transparent)
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
   })
+
+  // `n` (and the footer "+ New task" click) creates a new task. The
+  // standalone pane has no Orchestrator, so it fires the daemon's
+  // `task.create` RPC — the same path the outer app uses. The repo is
+  // inherited from the cursor task (fallback: first task in the list),
+  // so there's no repo picker to build: a new task lands in whatever
+  // repo you're already looking at. Created as a backlog task (no
+  // worktree yet, matching the outer app); the worktree materialises on
+  // first enter from the outer monitor. This is the first write-path in
+  // the Tasks pane — the step toward retiring the outer "page 1".
+  async function createTask(): Promise<void> {
+    const list = props.tasks()
+    const repo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+    if (!repo) return
+    const title = await RenameTaskDialog.show(dialog, "", { dialogTitle: "New task" })
+    if (title === undefined) return
+    try {
+      const client = await connectOrStartDaemon()
+      try {
+        await client.request("task.create", { repo, title: title || undefined })
+      } finally {
+        client.close()
+      }
+    } catch (err) {
+      console.error("[kobe tasks] task.create failed:", err)
+      return
+    }
+    await props.reload()
+  }
+
+  // Gate on an empty dialog stack so typing "n" INTO the title input
+  // doesn't re-fire createTask (the keymap sees inline-input keystrokes;
+  // the dialog stack is the focus signal here).
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0,
+    bindings: [{ key: "n", cmd: () => void createTask() }],
+  }))
 
   // Enter / click on a task → switch this tmux client to that task's
   // session. If the session isn't running yet we create it here —
@@ -79,6 +126,7 @@ function TasksShell(props: {
         onSelect={setSelectedId}
         onActivate={(id) => void switchTo(id)}
         activateOnClick
+        onAddTask={() => void createTask()}
         focused={() => true}
       />
     </box>
@@ -96,8 +144,12 @@ export async function startTasksPane(): Promise<void> {
   const store = new TaskIndexStore()
   await store.load()
   const [tasks, setTasks] = createSignal<readonly Task[]>(store.list())
+  const reload = async (): Promise<void> => {
+    await store.load()
+    setTasks(store.list())
+  }
   const timer = setInterval(() => {
-    void store.load().then(() => setTasks(store.list()))
+    void reload()
   }, RELOAD_MS)
 
   await render(
@@ -105,7 +157,7 @@ export async function startTasksPane(): Promise<void> {
       <ThemeProvider mode="dark" theme={prefs.theme}>
         <FocusProvider initial="sidebar">
           <DialogProvider>
-            <TasksShell tasks={tasks} transparent={prefs.transparent} focusAccent={prefs.focusAccent} />
+            <TasksShell tasks={tasks} transparent={prefs.transparent} focusAccent={prefs.focusAccent} reload={reload} />
           </DialogProvider>
         </FocusProvider>
       </ThemeProvider>
