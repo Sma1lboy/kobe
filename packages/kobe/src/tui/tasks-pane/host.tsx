@@ -11,13 +11,17 @@
  *   - Read-only: loads `~/.kobe/tasks.json` directly and re-reads on a
  *     timer. The outer app's Orchestrator / Daemon own writes; this
  *     pane never mutates (delete/archive/rename/pin are no-ops here).
- *   - Switch only: Enter `switch-client`s to a task's EXISTING session.
- *     A task that's never been entered has no session to switch to —
- *     creating one needs the Orchestrator (worktree alloc), which this
- *     standalone pane process doesn't have. Those land back in the
- *     outer monitor.
+ *   - Switch + lazy-create: Enter / click `switch-client`s to a task's
+ *     session, creating it on demand (`ensureSession`) when the task's
+ *     worktree already exists on disk — that covers every `main` task
+ *     (worktree = repo root) and any worktree task entered at least
+ *     once. A backlog task whose worktree was never materialised needs
+ *     `git worktree add` from the Orchestrator (which this standalone
+ *     pane doesn't have), so it stays a no-op; enter it from the outer
+ *     monitor instead.
  */
 
+import { existsSync } from "node:fs"
 import { runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { render } from "@opentui/solid"
 import { type Accessor, createSignal, onCleanup, onMount } from "solid-js"
@@ -28,6 +32,7 @@ import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { Sidebar } from "../panes/sidebar/Sidebar"
+import { ensureSession } from "../panes/terminal/tmux.ts"
 import { DialogProvider } from "../ui/dialog"
 
 const FALLBACK_THEME = "claude"
@@ -47,13 +52,22 @@ function TasksShell(props: {
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
   })
 
-  // Enter on a task → switch this tmux client to that task's session,
-  // if it's running. No-op (with a log) when the session doesn't exist
-  // yet — that task hasn't been entered, and creating it needs the
-  // Orchestrator which this pane doesn't have.
+  // Enter / click on a task → switch this tmux client to that task's
+  // session. If the session isn't running yet we create it here —
+  // but ONLY when the task's worktree already exists on disk (every
+  // `main` task, and any worktree task that's been entered once). A
+  // backlog task whose worktree was never materialised needs `git
+  // worktree add`, which lives in the Orchestrator this standalone
+  // pane doesn't have — those stay a no-op and the user enters them
+  // from the outer monitor.
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
-    if (!(await sessionExists(name))) return
+    if (!(await sessionExists(name))) {
+      const task = props.tasks().find((t) => t.id === id)
+      const cwd = task?.worktreePath
+      if (!cwd || !existsSync(cwd)) return
+      await ensureSession({ name, cwd, command: ["claude"], taskId: id })
+    }
     await runTmux(["switch-client", "-t", `=${name}`])
   }
 
