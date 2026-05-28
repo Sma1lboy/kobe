@@ -10,7 +10,10 @@
  * Scope of the experiment (deliberately minimal):
  *   - Reads `~/.kobe/tasks.json` directly and re-reads on a timer. The
  *     outer app's Orchestrator / Daemon still own most writes; this pane
- *     leaves delete/archive/rename/pin as no-ops.
+ *     leaves delete/archive/pin as no-ops.
+ *   - Rename: `r` opens the RenameTaskDialog and fires the daemon's
+ *     `task.rename` RPC. Branch follows the title for not-yet-built
+ *     tasks; a materialised worktree keeps its git branch.
  *   - Create: `n` (or the footer "+ New task") opens the SAME
  *     NewTaskDialog as the outer app (repo picker + base branch + clone
  *     tab) and fires the daemon's `task.create` RPC — the first
@@ -36,6 +39,7 @@ import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { getSavedRepos } from "../../state/repos.ts"
 import type { Task } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
+import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { FocusProvider } from "../context/focus"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -123,6 +127,36 @@ function TasksShell(props: {
     }
   }
 
+  // Rename a task's title via the daemon's `task.rename` RPC (same path
+  // the outer app's `r` uses). Zoom for the dialog, like createTask, so
+  // it matches the outer monitor's full-width look. The branch follows
+  // the title for not-yet-materialised tasks (autoBranch derives from
+  // it); a worktree that already exists keeps its git branch.
+  async function renameTask(id: string): Promise<void> {
+    const current = props.tasks().find((t) => t.id === id)
+    if (!current) return
+    const selfPane = process.env.TMUX_PANE
+    if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    try {
+      const next = await RenameTaskDialog.show(dialog, current.title)
+      if (!next) return
+      try {
+        const client = await connectOrStartDaemon()
+        try {
+          await client.request("task.rename", { taskId: id, title: next })
+        } finally {
+          client.close()
+        }
+      } catch (err) {
+        console.error("[kobe tasks] task.rename failed:", err)
+        return
+      }
+      await props.reload()
+    } finally {
+      if (selfPane) await runTmux(["resize-pane", "-Z", "-t", selfPane])
+    }
+  }
+
   // Gate on an empty dialog stack so typing "n" INTO a dialog field
   // doesn't re-fire createTask (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
@@ -175,6 +209,7 @@ function TasksShell(props: {
         onActivate={(id) => void switchTo(id)}
         activateOnClick
         onAddTask={() => void createTask()}
+        onRenameRequest={(id) => void renameTask(id)}
         focused={() => true}
       />
     </box>
