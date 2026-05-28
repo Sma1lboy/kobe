@@ -29,8 +29,14 @@ const SOCKET = "kobe"
  * pane history; default returns the visible viewport only (no history).
  */
 export async function capturePane(sessionName: string, lines?: number): Promise<string> {
-  const target = `=${sessionName}:0.0`
-  const args = ["tmux", "-L", SOCKET, "capture-pane", "-t", target, "-p"]
+  // Resolve the claude pane by id rather than `:0.0` — the index form
+  // breaks on tmux servers using `base-index 1` (KOB-233). The claude
+  // pane is created first, so it's the first id `list-panes` returns
+  // for the session's windows. Capturing by id also pins us to claude
+  // regardless of where the user last left pane focus (ops / shell).
+  const paneId = await firstPaneId(sessionName)
+  if (!paneId) return ""
+  const args = ["tmux", "-L", SOCKET, "capture-pane", "-t", paneId, "-p"]
   if (typeof lines === "number" && lines > 0) {
     // Start `-lines` rows back from the visible bottom. tmux uses
     // negative line numbers for scrollback positions.
@@ -42,6 +48,32 @@ export async function capturePane(sessionName: string, lines?: number): Promise<
     const code = await proc.exited
     if (code !== 0) return ""
     return text
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * The id (`%N`) of the session's first pane — the claude pane (created
+ * before the Ops + shell splits). Returns `""` when the session
+ * doesn't exist (a task that hasn't been entered yet).
+ */
+async function firstPaneId(sessionName: string): Promise<string> {
+  try {
+    const proc = Bun.spawn(["tmux", "-L", SOCKET, "list-panes", "-s", "-t", `=${sessionName}`, "-F", "#{pane_id}"], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+    })
+    const text = await new Response(proc.stdout).text()
+    const code = await proc.exited
+    if (code !== 0) return ""
+    return (
+      text
+        .split("\n")
+        .find((l) => l.trim().length > 0)
+        ?.trim() ?? ""
+    )
   } catch {
     return ""
   }

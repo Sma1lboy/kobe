@@ -286,6 +286,9 @@ function Shell(props: AppDeps) {
       { key: "ctrl+c", cmd: forceExit },
       { key: "ctrl+1", cmd: () => setFocused("sidebar") },
       { key: "ctrl+2", cmd: () => setFocused("workspace") },
+      // h / l mirror the pane-header letters (sidebar=h, workspace=l).
+      { key: "ctrl+h", cmd: () => setFocused("sidebar") },
+      { key: "ctrl+l", cmd: () => setFocused("workspace") },
       { key: "ctrl+d", cmd: toggleDashboard },
       { key: "tab", cmd: () => cycleFocus(+1) },
       { key: "shift+tab", cmd: () => cycleFocus(-1) },
@@ -338,9 +341,10 @@ function Shell(props: AppDeps) {
     <box flexDirection="column" flexGrow={1}>
       <TopBar orchestrator={props.orchestrator} activeTask={activeTask} updateInfo={updateInfo} />
       <box flexDirection="row" flexGrow={1}>
-        {/* Sidebar — task list, status badges, search. */}
+        {/* Sidebar — task list, status badges, search. The Sidebar
+            renders its own `h TASKS` header internally, so we don't
+            wrap it in a PaneHeader (that double-stacked the title). */}
         <box flexShrink={0} width={sidebarWidth()} flexDirection="column" onMouseUp={() => setFocused("sidebar")}>
-          <PaneHeader title="TASKS" ordinal="j" focused={focusedPane() === "sidebar"} />
           <Sidebar
             tasks={tasksAcc}
             selectedId={taskIdAcc}
@@ -373,7 +377,7 @@ function Shell(props: AppDeps) {
         >
           <PaneHeader
             title={view() === "dashboard" ? "COST DASHBOARD" : "WORKSPACE"}
-            ordinal="k"
+            ordinal="l"
             focused={focusedPane() === "workspace"}
           />
           <Show
