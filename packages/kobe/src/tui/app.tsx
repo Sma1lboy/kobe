@@ -149,26 +149,37 @@ function Shell(props: AppDeps) {
   // Pane sizes (sidebar width only in v0.6).
   const { sidebarWidth, setSidebarWidth, clampSidebar } = usePaneSizes(kv)
 
+  // Re-entry guard: a second `q` / Ctrl+C while the confirm dialog is
+  // already open would stack another dialog. Both chords route here.
+  let quitConfirmOpen = false
   async function quit(): Promise<void> {
+    if (quitConfirmOpen) return
+    quitConfirmOpen = true
     const running = tasksAcc().filter((t) => t.status === "in_progress").length
     const message =
       running > 0
         ? `${running} task${running === 1 ? "" : "s"} still in progress. Their tmux sessions keep running after kobe exits.`
         : "Quit kobe?"
-    const ok = await DialogConfirm.show(
-      dialog,
-      message,
-      "Their work is persisted in tmux. Re-enter any time.",
-      "stay",
-      "quit",
-    )
+    let ok: boolean | undefined
+    try {
+      ok = await DialogConfirm.show(
+        dialog,
+        message,
+        "Their work is persisted in tmux. Re-enter any time.",
+        "stay",
+        "quit",
+      )
+    } finally {
+      quitConfirmOpen = false
+    }
     if (ok !== true) return
     forceExit()
   }
 
-  // Hard exit path — bypass the confirm prompt. Used by Ctrl+C and the
-  // detached `process.exit` callers. We destroy the renderer first so
-  // the terminal isn't left in raw / alt-screen / mouse-tracking mode.
+  // Hard exit path — bypass the confirm prompt. Used after a confirmed
+  // `quit()` and the detached `process.exit` callers. We destroy the
+  // renderer first so the terminal isn't left in raw / alt-screen /
+  // mouse-tracking mode.
   function forceExit(): void {
     try {
       renderer?.destroy()
@@ -279,11 +290,11 @@ function Shell(props: AppDeps) {
   useBindings(() => ({
     enabled: true,
     bindings: [
-      // Force-exit on Ctrl+C — the v0.5 two-press-to-quit chord came
-      // with a wider keymap stack we tore down. Single-press immediate
-      // exit is fine for v0.6: every task's work is persisted in tmux,
-      // so Ctrl+C never loses anything.
-      { key: "ctrl+c", cmd: forceExit },
+      // Ctrl+C asks for confirmation (same dialog as `q`) rather than
+      // quitting outright — Jackson wants a guard against a fat-fingered
+      // exit. The `quit()` re-entry guard makes a second Ctrl+C while
+      // the dialog is open a no-op.
+      { key: "ctrl+c", cmd: () => void quit() },
       { key: "ctrl+1", cmd: () => setFocused("sidebar") },
       { key: "ctrl+2", cmd: () => setFocused("workspace") },
       // h / l mirror the pane-header letters (sidebar=h, workspace=l).
