@@ -103,10 +103,18 @@ export interface EnsureSessionOpts {
 export async function ensureSession(opts: EnsureSessionOpts): Promise<void> {
   if (await sessionExists(opts.name)) {
     const panes = await paneCount(opts.name)
-    // Full layout is 4 panes (tasks / claude / ops / shell). Anything
-    // fewer is a legacy / broken session — drop and rebuild so it
-    // picks up the current layout on re-enter.
-    if (panes >= 4) return
+    const taggedWorktree = await getSessionOption(opts.name, "@kobe_worktree")
+    // Reuse ONLY a healthy session whose worktree tag matches this
+    // task's cwd. Two failure modes this guards against (KOB-233):
+    //   - Wrong layout: fewer than the full 4 panes (tasks / claude /
+    //     ops / shell) → legacy/broken, rebuild.
+    //   - Wrong PLACE: a session of the same name (`kobe-<taskId>`) but
+    //     a different / empty `@kobe_worktree`. That's a stale session
+    //     left over from before the env+socket isolation (its panes run
+    //     in the wrong dir / wrong KOBE_HOME), and silently reusing it
+    //     drops the user into the wrong environment. Rebuild so the new
+    //     panes run in `opts.cwd` with the current process's env.
+    if (panes >= 4 && taggedWorktree === opts.cwd) return
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
