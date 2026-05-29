@@ -14,8 +14,17 @@
  * Everything in this file is pure: same inputs → same strings, no IO.
  */
 
-/** Far-left Tasks pane width as a % of the window (experimental). */
-export const TASKS_PANE_PERCENT = 22
+/**
+ * Far-left Tasks pane width in CELLS — FIXED, not a % of the window
+ * (KOB-248). A %-split drifted: the pane's absolute width changed with the
+ * terminal size, between chat-tab windows, and across engine (claude/codex)
+ * rebuilds (tmux re-lays-out %-panes on those events). A fixed-cell rail is
+ * the same in every window, always. 42 matches the outer monitor's Sidebar
+ * (the opencode / agent-deck "history rail" convention) so the inner Tasks
+ * pane and the outer task list line up. This is an allowed hardcode per the
+ * layout rule (convention-width rail).
+ */
+export const TASKS_PANE_WIDTH = 42
 
 /** Left (claude) pane width as a % of the window. */
 export const CLAUDE_PANE_PERCENT = 60

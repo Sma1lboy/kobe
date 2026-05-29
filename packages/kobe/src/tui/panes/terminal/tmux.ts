@@ -46,7 +46,7 @@ import {
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
-  TASKS_PANE_PERCENT,
+  TASKS_PANE_WIDTH,
   keepAlive,
   opsPaneCommand,
   shellQuote,
@@ -357,7 +357,9 @@ async function buildPanesAround(
     "-t",
     claudePane,
     "-l",
-    `${TASKS_PANE_PERCENT}%`,
+    // Fixed cell width (no `%`) so the Tasks rail is the same size in every
+    // window + across engine rebuilds (KOB-248).
+    `${TASKS_PANE_WIDTH}`,
     "-c",
     args.cwd,
     "-P",
