@@ -1,5 +1,12 @@
 import { type Socket, connect } from "node:net"
-import { type DaemonEventName, type DaemonFrame, type DaemonRequestName, frameToLine } from "../daemon/protocol.ts"
+import {
+  type ChannelName,
+  type ChannelPayloads,
+  type DaemonEventName,
+  type DaemonFrame,
+  type DaemonRequestName,
+  frameToLine,
+} from "../daemon/protocol.ts"
 
 export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>) => void
 
@@ -93,6 +100,25 @@ export class KobeDaemonClient {
       set?.delete(handler)
       if (set?.size === 0) this.handlers.delete(name)
     }
+  }
+
+  /**
+   * Typed sugar over {@link on} for a push channel (KOB-246): the handler
+   * receives the channel's payload, typed from {@link ChannelPayloads}.
+   * Adding a consumer for a new channel is just `onChannel("cost", …)`.
+   */
+  onChannel<C extends ChannelName>(channel: C, handler: (payload: ChannelPayloads[C]) => void): () => void {
+    return this.on(channel, (frame) => handler(frame.payload as ChannelPayloads[C]))
+  }
+
+  /**
+   * Subscribe to the daemon's push channels. Omit `channels` to receive
+   * ALL of them (today's behavior); a `channels` filter is accepted for
+   * forward-compat (the daemon currently sends everything regardless). The
+   * daemon replays each channel's current value on subscribe.
+   */
+  subscribe(channels?: readonly ChannelName[]): Promise<unknown> {
+    return this.request("subscribe", channels ? { channels } : {})
   }
 
   onLifecycle(name: LifecycleEvent, handler: () => void): () => void {

@@ -75,7 +75,10 @@ export class RemoteOrchestrator {
       )
     }
     if (hello.tasks) this.setTasks(hello.tasks.map(deserializeTask))
-    await this.client.request("subscribe")
+    // Subscribe to all channels (the daemon replays each channel's current
+    // value on connect). We only consume `task.snapshot` here; future
+    // channels get their own `client.onChannel(...)` consumers elsewhere.
+    await this.client.subscribe()
     this.setConnectionState("online")
   }
 

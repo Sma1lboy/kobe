@@ -18,6 +18,7 @@ import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { logDaemonError } from "./crash-log.ts"
+import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 
@@ -56,6 +57,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const clients = new Set<ClientState>()
   let nextClientId = 1
 
+  // Channel event bus (KOB-246): the single hub the daemon publishes push
+  // events to. One sink fans each publish out to subscribed sockets; the
+  // bus also caches the last value per channel so a late subscriber gets
+  // the current value on connect. `task.snapshot` is channel #1; new
+  // channels just call `bus.publish` (see protocol.ts ChannelPayloads).
+  const bus = new DaemonEventBus()
+  bus.onPublish((event) => {
+    broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
+  })
+
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
   await unlink(socketPath).catch(() => {})
@@ -80,17 +91,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     })
   })
 
-  // Push every task-list change to subscribed clients as a snapshot.
-  // v0.5 sent per-task `task.updated` / `task.created` / `task.deleted`
-  // deltas; the new surface is small enough that re-sending the full
-  // list on every mutation is cheaper than computing the diff. The
-  // clients re-derive their delta locally.
+  // Push every task-list change to subscribed clients as a snapshot via
+  // the bus. v0.5 sent per-task deltas; re-sending the full list on every
+  // mutation is cheaper than diffing for this small surface — clients
+  // re-derive their delta locally. `subscribeTasks` fires once eagerly
+  // with the current list, which warms the bus's last-value cache so a
+  // subscriber connecting before the first mutation still replays the
+  // current tasks (no cold cache).
   const unsubscribeStore = orch.subscribeTasks((snapshot) => {
-    broadcast(clients, {
-      type: "event",
-      name: "task.snapshot",
-      payload: { tasks: snapshot.map(serializeTask) },
-    })
+    bus.publish("task.snapshot", { tasks: snapshot.map(serializeTask) })
   })
 
   const serverApi: DaemonServer = {
@@ -238,13 +247,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "subscribe": {
         client.subscribed = true
-        // Send the current snapshot immediately so the client can
-        // hydrate without a separate `task.list` round trip.
-        writeFrame(client, {
-          type: "event",
-          name: "task.snapshot",
-          payload: { tasks: orch.listTasks().map(serializeTask) },
-        })
+        // Replay the current value of every populated channel so a late
+        // subscriber hydrates without a separate round trip — generalized
+        // from the old single task.snapshot send (KOB-246). `payload.channels`
+        // is accepted for forward-compat (a future per-channel filter) but
+        // currently ignored: every subscriber gets every channel, exactly
+        // as before. The bus cache is warm (subscribeTasks' eager fire).
+        for (const event of bus.snapshot()) {
+          writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
+        }
         return {}
       }
       default:

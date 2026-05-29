@@ -47,7 +47,39 @@ export type DaemonRequestName =
   | "task.ensureMain"
   | "task.ensureWorktree"
 
-export type DaemonEventName = "task.created" | "task.updated" | "task.deleted" | "task.snapshot" | "daemon.stopping"
+/**
+ * Channel registry — the SINGLE source of truth for daemon→client push
+ * channels (KOB-246). The daemon is a cross-process pub/sub bus over the
+ * socket: each channel carries a last-value the daemon caches and replays
+ * to a late subscriber on connect (see `daemon/event-bus.ts`). Add a key
+ * here (name + payload type) and the whole stack — `bus.publish`,
+ * `client.onChannel`, the subscribe-time replay — is typed for it; nothing
+ * else needs touching.
+ *
+ * Ordering: per-socket delivery is FIFO; cross-channel ordering is NOT
+ * guaranteed. Last-value replay suits STATE channels (a snapshot, a cost,
+ * a status); a true event-LOG channel would only replay its last item.
+ */
+export interface ChannelPayloads {
+  "task.snapshot": { tasks: SerializedTask[] }
+  // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
+  // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
+  // "cost": { taskId: string; usd: number; tokens: number }
+  // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
+}
+
+/** A push-channel name (a key of {@link ChannelPayloads}). */
+export type ChannelName = keyof ChannelPayloads
+
+/** Runtime channel list — defaults subscribe-to-all + validates a filter. */
+export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot"]
+
+/**
+ * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a
+ * lifecycle signal that is deliberately NOT a channel (it has no last-value
+ * and must never be replayed to a late subscriber as if current).
+ */
+export type DaemonEventName = ChannelName | "daemon.stopping"
 
 export interface DaemonError {
   readonly message: string
