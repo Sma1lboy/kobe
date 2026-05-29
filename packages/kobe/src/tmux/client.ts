@@ -113,20 +113,6 @@ export async function sessionExists(name: string): Promise<boolean> {
 }
 
 /**
- * Every pane id (`%N`) across the session's windows, in tmux's order
- * (which is creation order — so the first id is the claude pane).
- * Pane ids are server-global and immune to `base-index` config.
- */
-export async function listPaneIds(sessionName: string): Promise<string[]> {
-  const { code, stdout } = await runTmuxCapturing(["list-panes", "-s", "-t", `=${sessionName}`, "-F", "#{pane_id}"])
-  if (code !== 0) return []
-  return stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
-}
-
-/**
  * Number of windows (chat tabs) in the session. `0` when the session
  * doesn't exist. Used to avoid a whole-session rebuild that would drop
  * sibling Ctrl+T chat-tab windows (KOB-244).
@@ -135,16 +121,6 @@ export async function windowCount(sessionName: string): Promise<number> {
   const { code, stdout } = await runTmuxCapturing(["list-windows", "-t", `=${sessionName}`, "-F", "#{window_id}"])
   if (code !== 0) return 0
   return stdout.split("\n").filter((l) => l.trim().length > 0).length
-}
-
-/**
- * The id of the session's first pane. `""` when the session doesn't
- * exist. NOTE: tmux numbers panes by POSITION, not creation order, so
- * once the layout grew a left-hand Tasks pane the "first" pane stopped
- * being claude — prefer {@link claudePaneId} for "the claude pane".
- */
-export async function firstPaneId(sessionName: string): Promise<string> {
-  return (await listPaneIds(sessionName))[0] ?? ""
 }
 
 /**
