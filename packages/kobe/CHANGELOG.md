@@ -14,16 +14,13 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-29
+
+First stable release on top of the 0.6 product reshape — promotes the `0.6.1-experimental.0` prerelease to `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245), GitHub Copilot as a third engine plus the Accounts view (KOB-249), the inner Tasks-pane width trim (KOB-253), the Ops-pane new-activity badge (KOB-254), and the Ops file-watcher fix (KOB-255).
+
 ### Fixed
 
 - **The Ops pane file watcher actually starts in task sessions** — the v0.6 Ops pane reused FileTree's opt-in watcher, but the tmux launch command never set the opt-in env var, so file changes only appeared after pressing `r`; task-launched `kobe ops` now enables `KOBE_FILETREE_WATCH=1` for that process while leaving other FileTree uses manual-refresh by default (KOB-255).
-
-## [0.6.1-experimental.0] - 2026-05-29
-
-Experimental line on top of the 0.6 product reshape — published under the npm `experimental` dist-tag, not `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245, 249) plus GitHub Copilot as a third engine and the Accounts view (KOB-249).
-
-### Fixed
-
 - **Switching a task's engine from the Tasks pane now takes effect** — pressing `v` to cycle a task's vendor (or renaming its branch) on a task whose tmux session is still running used to do nothing: entering it just switched back into the still-running OLD engine. The Tasks-pane enter path now runs the same `ensureSession` heal the outer monitor always did, so a vendor/branch/worktree change rebuilds the session on the next Enter from either surface (KOB-244).
 - **Exiting the shell pane no longer destroys your engine session** — typing `exit` (or Ctrl+D) in a task's bottom shell pane dropped the session's pane count below the rebuild threshold, so the next Enter killed and rebuilt the whole session, throwing away the live `claude` / `codex` conversation. Session health is now keyed off the load-bearing engine pane (its `@kobe_role` tag), not a raw pane count, so closing a disposable shell/ops pane is harmless; this also makes the check per-window so a multi-tab (Ctrl+T) session is judged correctly (KOB-244).
 - **A failed `tmux attach` is now surfaced instead of a silent bounce** — if a session fails to build, or dies between build and attach, the launcher shows the error in the workspace pane rather than flashing you back to the "press ⏎" splash with no explanation (KOB-244).
