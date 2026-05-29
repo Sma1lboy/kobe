@@ -29,7 +29,7 @@ import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
 import { DIRTY_WORKTREE_CODE } from "../orchestrator/errors.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
+import { addSavedRepo, getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { HelpDialog } from "./component/help-dialog"
@@ -266,24 +266,25 @@ function Shell(props: AppDeps) {
   // Sidebar callbacks.
   async function newTask(): Promise<void> {
     const repos = getSavedRepos()
-    if (repos.length === 0) {
-      await DialogConfirm.show(
-        dialog,
-        "No saved repos.",
-        "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
-        "",
-        "ok",
-      )
-      return
-    }
-    // Default to the active task's repo when one is selected so the
-    // common "spawn a sibling" flow doesn't make the user re-pick.
-    const defaultRepo = activeTask()?.repo ?? repos[0] ?? ""
+    // First run (no saved repos): instead of bouncing the user to a
+    // shell for `kobe add`, open the dialog defaulted to the cwd so they
+    // pick a path in-TUI (the picker's saved mode preselects it; typing
+    // `/` flips to the directory browser). Otherwise default to the
+    // active task's repo so the common "spawn a sibling" flow doesn't
+    // make the user re-pick.
+    const defaultRepo = activeTask()?.repo ?? repos[0] ?? process.cwd()
     const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
     if (!result) return
     // Remember the choice so the next new-task dialog defaults to it.
     kv.set("lastSelectedVendor", result.vendor)
+    // Auto-save the chosen repo so the saved list self-populates and
+    // `kobe add` stays optional. addSavedRepo normalizes to the git
+    // root + dedupes on disk; mirror the fresh list into the kv store so
+    // its debounced whole-store flush doesn't clobber the write
+    // (savedRepos is not otherwise a kv-managed key).
+    addSavedRepo(result.repo)
+    kv.set("savedRepos", getSavedRepos())
     const task = await props.orchestrator.createTask({
       repo: result.repo,
       baseRef: result.baseRef,

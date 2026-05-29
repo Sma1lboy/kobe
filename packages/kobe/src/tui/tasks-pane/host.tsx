@@ -42,7 +42,7 @@ import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
-import { getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
+import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendor } from "../../types/vendor.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
@@ -55,7 +55,6 @@ import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
-import { DialogConfirm } from "../ui/dialog-confirm"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
@@ -111,25 +110,24 @@ function TasksShell(props: {
     // (`maxWidth = dimensions().width - 2`), so it renders fine in the
     // ~22%-wide pane — just narrower — and the other panes stay visible.
     const repos = getSavedRepos()
-    if (repos.length === 0) {
-      await DialogConfirm.show(
-        dialog,
-        "No saved repos.",
-        "Run `kobe add <path>` from a shell first to register a repo, then come back here.",
-        "",
-        "ok",
-      )
-      return
-    }
     const list = props.tasks()
     const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-    const defaultRepo = cursorRepo ?? repos[0] ?? ""
+    // First run (no saved repos): default the dialog to the cwd so the
+    // user picks a path in-TUI instead of being sent to a shell for
+    // `kobe add` (saved mode preselects it; typing `/` flips to the
+    // directory browser). Otherwise default to the cursor task's repo
+    // (the "spawn a sibling" default).
+    const defaultRepo = cursorRepo ?? repos[0] ?? process.cwd()
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
     if (!result) return
     // Remember the choice (shared kv state.json) so the next new-task
     // dialog — here or in the outer monitor — defaults to it.
     setPersistedString("lastSelectedVendor", result.vendor)
+    // Auto-save the chosen repo so the saved list self-populates and
+    // `kobe add` stays optional. This pane uses disk-only persistence
+    // (no in-process kv store), so the atomic disk write is sufficient.
+    addSavedRepo(result.repo)
     if (!props.orch) {
       console.error("[kobe tasks] no daemon; cannot create task")
       return
