@@ -1,29 +1,21 @@
 /**
- * kobe application shell — full 5-pane Wave 3 layout.
+ * kobe application shell (v0.6).
  *
- * Layout (left → right): Sidebar | Chat | RightColumn{ FileTree, Preview, Terminal }
+ * Layout: TopBar + Sidebar | ClaudeLauncher + StatusBar.
  *
- * Wiring:
- *   - Active task is selected in Sidebar (Stream F) and propagates a
- *     `selectedId` Solid signal that drives every other pane.
- *   - `worktreePath` is derived from the active task and feeds FileTree
- *     (Stream H), Preview (Stream I), and Terminal (Stream J).
- *   - FileTree's `onOpenFile` calls into Preview's imperative API, captured
- *     once via the `onOpen` callback.
- *   - Terminal owns one pty per task (resolved Wave 1 decision §5).
- *
- * Engine selection:
- *   - Default: `ClaudeCodeLocal` (subprocess wrapper around `claude` CLI).
- *   - With `KOBE_TEST_ENGINE=fake`: in-process `FakeAIEngine` plus a tiny
- *     HTTP side-channel on `KOBE_TEST_FAKE_PORT` for behavior tests to
- *     script events. The test pre-allocates the port and POSTs JSON to
- *     `/script` and `/finish`. Production never sets the env vars.
+ * v0.5 hosted a 5-pane workspace (sidebar / chat / files / preview /
+ * terminal) driven by a headless `claude -p` engine. v0.6 collapses
+ * the workspace to a single full-pane ClaudeLauncher — pressing ⏎
+ * hands the terminal over to a tmux session that the engine
+ * (claude / codex) runs natively. Step B (KOB-228) extends the tmux
+ * session to a pre-split three-pane layout (claude / Ops / shell);
+ * Step C (KOB-229) ships the Ops pane tool; Step D (KOB-230) brings
+ * a live preview rail + cost dashboard back into the outer monitor.
  */
 
 import { homedir } from "node:os"
-import { join } from "node:path"
 import { render, useRenderer } from "@opentui/solid"
-import { type Accessor, Show, createEffect, createMemo, createSignal, on, onCleanup, onMount } from "solid-js"
+import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import {
   connectOrStartDaemon,
   connectOrStartOwnedDaemon,
@@ -31,132 +23,75 @@ import {
 } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
-import { Orchestrator, chatRunStateKey } from "../orchestrator/core.ts"
+import { interactiveEngineCommand } from "../engine/interactive-command.ts"
+import { deriveTitleFromSession } from "../monitor/auto-title.ts"
+import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
+import { DIRTY_WORKTREE_CODE } from "../orchestrator/errors.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
-import { NullMetadataSuggester } from "../orchestrator/metadata-suggester.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
-import type { ChatTab } from "../types/task.ts"
+import { addSavedRepo, getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
+import { DEFAULT_TASK_VENDOR, type VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
-import { useAppKeymap } from "./app-keymap"
-import { CenterTabStrip } from "./component/center-tab-strip"
 import { HelpDialog } from "./component/help-dialog"
+import { NewTaskDialog } from "./component/new-task-dialog"
 import { PaneHeader } from "./component/pane-header"
-import { RcBridgeDialog } from "./component/rc-bridge-dialog"
+import { RenameTaskDialog } from "./component/rename-task-dialog"
 import { ResizableEdge } from "./component/resizable-edge"
+import { SettingsDialog } from "./component/settings-dialog"
 import { StatusBar } from "./component/status-bar"
 import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
-import { CommandPaletteProvider, useCommandPalette } from "./context/command-palette"
+import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
-import { useKobeKeybindings } from "./context/keybindings"
 import { KVProvider, useKV } from "./context/kv"
-import { NotificationsProvider, useNotifications } from "./context/notifications"
+import { NotificationsProvider } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
-import { buildEngines } from "./engine-bootstrap"
-import { formatPlanUsageCompact } from "./lib/format-plan-usage"
-import { useCompletionNotifications } from "./lib/use-completion-notifications"
+import { useBindings } from "./lib/keymap"
 import { usePaneSizes } from "./lib/use-pane-sizes"
-import { useTaskActions } from "./lib/use-task-actions"
-import { useTestSideChannel } from "./lib/use-test-side-channel"
 import { useThemePersistence } from "./lib/use-theme-persistence"
-import { useWorkspaceTabs } from "./lib/use-workspace-tabs"
-import { detectWorktreeOpener, openWorktree } from "./lib/worktree-opener"
-import { Chat } from "./panes/chat/Chat"
-import { bootstrapHistory } from "./panes/chat/composer/history"
-import { FileTree } from "./panes/filetree"
-import { Preview, type PreviewApi } from "./panes/preview"
+import { CostDashboard } from "./panes/monitor/CostDashboard"
+import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
-import { Terminal } from "./panes/terminal"
+import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
+import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
 const DEFAULT_THEME = "claude"
 
-// Engine selection + fake-engine HTTP side-channel moved to
-// `./engine-bootstrap.ts`. The side-channel is test-only — production
-// builds never set `KOBE_TEST_ENGINE` / `KOBE_TEST_FAKE_PORT`.
-
-// New-task dialog lives in `./component/new-task-dialog/` — see that
-// module for the state machine (state.ts), the JSX shell (dialog.tsx),
-// and the `NewTaskDialog.show(...)` entry point. Imported above.
-//
-// Rename-task dialog lives in `./component/rename-task-dialog/` and
-// shares `stripNewlines` with the new-task dialog (opentui's `<input>`
-// quirk that inserts a literal `\n` on Enter).
-
-/* --------------------------------------------------------------------- */
-/*  Top-level Shell                                                       */
-/* --------------------------------------------------------------------- */
-
-export type AppDeps = {
+type AppDeps = {
   orchestrator: KobeOrchestrator
   onQuit?: () => Promise<void>
 }
-
-// PaneHeader / StatusBar / TopBar moved to `./component/*.tsx` — they
-// are pure rendering and don't share state with Shell. The `Hotkey`
-// chip helper moved alongside StatusBar (it's only used there).
 
 function Shell(props: AppDeps) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-  const notifications = useNotifications()
+  const { setFocused, focused: focusedPane, is: isFocused } = useFocus()
+  const renderer = useRenderer()
 
-  // Theme / KV round-trip — hydrate once on mount, then mirror every
-  // change back. See `./lib/use-theme-persistence.ts` for the three
-  // round-trips (activeTheme, transparentBackground, focusAccent) and
-  // why the hydrate has to happen here rather than inside ThemeProvider.
   useThemePersistence(themeCtx, kv)
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
-  // Live per-task engine state (running / awaiting_input / idle) for
-  // the sidebar status dot. Reactive — bumps whenever a task's tab
-  // starts, finishes, or pauses on AskUserQuestion / ExitPlanMode.
-  const chatRunStateAcc = props.orchestrator.chatRunStateSignal()
-  // Persisted across runs in `~/.config/kobe/state.json` via the KV store
-  // so reopening kobe lands on the task + center tab the user left from.
-  // The auto-select effect below validates the persisted id against the
-  // current task list (it may have been deleted between runs) and falls
-  // back to tasks[0] when stale.
+
   const persistedSelectedId = kv.get("lastSelectedTaskId") as string | null | undefined
-  const [selectedId, setSelectedId] = createSignal<string | null>(null)
-  // Set by the new-task flow so the chat pane auto-submits the
-  // prompt the user typed in the dialog. The chat clears it on
-  // consumption to avoid re-submission on resubscribe.
-  const [pendingPrompt, setPendingPrompt] = createSignal<{ taskId: string; prompt: string } | null>(null)
-  /** Workspace header context meter (`12% · 24k/200k`), fed by the active chat tab. */
-  const [workspaceContextAside, setWorkspaceContextAside] = createSignal<string | null>(null)
-  // Claude plan utilization, fed by the daemon's plan-usage poller.
-  // Independent of the active tab — surfaces in the workspace header
-  // even when no chat is open. The combined memo lives further down,
-  // after `isChatTabActive` is destructured from `useWorkspaceTabs`.
-  const planUsageAcc = props.orchestrator.planUsageSignal()
-  const workspacePlanAside = createMemo(() => formatPlanUsageCompact(planUsageAcc()))
+  const [selectedId, setSelectedId] = createSignal<string | null>(persistedSelectedId ?? null)
 
-  // Remote-control bridge (KOB-62) — accessor declared up here so
-  // anyone above-the-fold (TopBar) can read it. The palette command
-  // that opens the dialog is registered further down in Shell, after
-  // `activeTask` / `activeChatTabIdAcc` exist — the dialog binds the
-  // bridge to the focused tab so claude.ai sees the right worktree.
-  const rcBridgeAcc = props.orchestrator.rcBridgeSignal()
-
-  // Background npm-registry version check. Runs on every TUI launch so
-  // freshly published versions show up in the topbar immediately. The
-  // request has a 3s timeout; failures are silent, the chip just doesn't render.
-  const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
+  // Validate the persisted selection against the live list. If the task
+  // was deleted, fall back to the first non-archived task.
   onMount(() => {
-    void checkLatestVersion()
-      .then((info) => {
-        if (info) setUpdateInfo(info)
-      })
-      .catch(() => {
-        /* swallow — version check is best-effort */
-      })
+    const all = tasksAcc()
+    const persisted = selectedId()
+    if (persisted && all.some((t) => t.id === persisted)) return
+    const first = all.find((t) => !t.archived) ?? all[0]
+    if (first) {
+      setSelectedId(first.id)
+      kv.set("lastSelectedTaskId", first.id)
+    }
   })
 
   const activeTask = createMemo(() => {
@@ -164,437 +99,386 @@ function Shell(props: AppDeps) {
     if (!id) return undefined
     return tasksAcc().find((t) => t.id === id)
   })
-  const worktreeOpener = createMemo(() => detectWorktreeOpener())
-  function openActiveTaskInEditor(): void {
-    const task = activeTask()
-    const opener = worktreeOpener()
-    if (!task?.worktreePath || !opener) return
-    if (!openWorktree(task.worktreePath, opener)) {
-      // eslint-disable-next-line no-console
-      console.error("[kobe] failed to open worktree:", task.worktreePath)
+
+  const taskIdAcc = createMemo<string | null>(() => selectedId())
+
+  // Launch state is host-owned so BOTH enter paths (sidebar Enter and the
+  // workspace launcher's own Enter) share one in-flight guard + one error
+  // surface — the launcher renders `launchError` and gates on `launchRunning`.
+  const [launchRunning, setLaunchRunning] = createSignal(false)
+  const [launchError, setLaunchError] = createSignal<string | null>(null)
+
+  // Follow the shared active-task focus: when a task is entered/switched
+  // anywhere (this monitor or a tmux session's Tasks pane), the sidebar
+  // selection tracks it, so coming back from a session you switched around
+  // in lands the highlight on the task you were last in (KOB-247).
+  createEffect(() => {
+    const active = props.orchestrator.activeTaskSignal()()
+    if (active !== null) setSelectedId(active)
+  })
+
+  // Sidebar bindings (Enter→enterTask, j/k, …) must go quiet while ANY
+  // dialog is open: an input-based dialog (new-task / rename / settings'
+  // command editor) submits via the native input's onSubmit, NOT a keymap
+  // binding, so an un-gated Enter falls through the keymap to the Sidebar
+  // and enters a task behind the dialog (KOB-244). Gate the Sidebar's
+  // `focused` (which drives its bindings) on an empty dialog stack.
+  const sidebarBindable = createMemo(() => isFocused("sidebar")() && dialog.stack.length === 0)
+
+  function selectTask(id: string): void {
+    setSelectedId(id)
+    kv.set("lastSelectedTaskId", id)
+  }
+
+  /**
+   * Enter the selected task's tmux session full-screen. Wired to:
+   *   - The sidebar's `onActivate` (Enter on a row).
+   *   - The ClaudeLauncher's own enter binding when the workspace
+   *     pane already has focus.
+   * Both paths converge here so a single keystroke ("press Enter
+   * to open the task") is the user-visible contract — the user
+   * never has to think about pane focus first.
+   */
+  async function enterTask(id: string): Promise<LaunchTaskTmuxResult> {
+    // Single convergence point for BOTH entry bindings (sidebar onActivate
+    // and the workspace launcher's own Enter). The host-owned launchRunning
+    // guard makes a rapid double-Enter — even one that switches which pane
+    // fires the chord — a no-op instead of racing a second launch (KOB-244).
+    if (launchRunning()) return { kind: "ok", exitCode: null }
+    setSelectedId(id)
+    kv.set("lastSelectedTaskId", id)
+    // Don't grab workspace focus on enter: the renderer suspends for the
+    // attach (so outer focus is invisible meanwhile), and we land back on
+    // the sidebar after detach. The sidebar (task pane) is the outer
+    // monitor's home focus; the launcher still renders launchError
+    // regardless of which pane is focused, so errors stay visible (KOB-244).
+    const task = props.orchestrator.getTask(id)
+    if (!task) return { kind: "error", message: "task not found" }
+    // Publish the shared focus so EVERY surface (this monitor + each tmux
+    // session's Tasks pane) highlights the same active task (KOB-247).
+    void props.orchestrator.setActiveTask(id).catch(() => {})
+    setLaunchRunning(true)
+    setLaunchError(null)
+    try {
+      const res = await launchTaskTmux({
+        renderer,
+        taskId: id,
+        cwd: task.worktreePath || null,
+        command: interactiveEngineCommand(task.vendor),
+        vendor: task.vendor,
+        onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
+      })
+      if (res.kind === "error") {
+        // Surface visibly — the workspace launcher renders launchError. A
+        // bare console.error is invisible under the alternate-screen renderer.
+        setLaunchError(res.message)
+        console.error("[kobe] enterTask failed:", res.message)
+        return res
+      }
+      // We're back in the outer monitor (the user hit Ctrl+Q to detach, or
+      // the engine exited). Land focus on the sidebar task list, not the
+      // workspace preview, so they can immediately pick / navigate tasks
+      // (KOB-244).
+      setFocused("sidebar")
+      // Auto-name a still-unnamed task from its first prompt, now that the
+      // user has interacted and the session transcript exists. One-shot:
+      // only while the title is the placeholder, so a manual rename or a
+      // prior auto-name is never overwritten. Best-effort — naming failure
+      // must not break the return-from-handover path.
+      const after = props.orchestrator.getTask(id)
+      if (after && after.title === PLACEHOLDER_TASK_TITLE && after.worktreePath) {
+        try {
+          const title = await deriveTitleFromSession(after.worktreePath, after.vendor)
+          if (title) await props.orchestrator.setTitle(id, title)
+        } catch (err) {
+          console.error("[kobe] auto-title failed:", err)
+        }
+      }
+      return res
+    } finally {
+      setLaunchRunning(false)
     }
   }
 
-  // Accessor for the chat pane that yields a prompt only when it
-  // matches the currently active task. This keeps the chat from
-  // auto-submitting a leftover prompt against the wrong task after
-  // a switch.
-  const taskIdAcc = createMemo(() => selectedId() ?? undefined)
-  createEffect(
-    on(taskIdAcc, () => {
-      setWorkspaceContextAside(null)
-    }),
-  )
-  const activeTitleAcc = createMemo(() => activeTask()?.title)
-  const pendingPromptForActive = createMemo(() => {
-    const pp = pendingPrompt()
-    if (!pp) return undefined
-    if (pp.taskId !== selectedId()) return undefined
-    return pp.prompt
+  // Background npm-registry check — best-effort, no spinner.
+  const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
+  onMount(() => {
+    void checkLatestVersion()
+      .then((info) => {
+        if (info) setUpdateInfo(info)
+      })
+      .catch(() => {})
   })
-  // Per-task accessors for the right-column panes. FileTree + Preview key
-  // off `worktreePath`; Terminal keys off both `cwd` and `taskId` (so the
-  // pty registry can deduplicate per task per the resolved Wave-1 decision).
-  //
-  // Empty string is normalised to null: orchestrator.createTask publishes
-  // a transient placeholder task with worktreePath="" before the worktree
-  // is actually written to disk. Treating "" as a real path would call
-  // `git ls-files` with cwd="" and crash. The placeholder window is short
-  // (one git worktree add) but the subscribers see it.
-  const worktreePathAcc = createMemo<string | null>(() => {
-    const path = activeTask()?.worktreePath
-    return path ? path : null
-  })
-  const taskIdNullAcc = createMemo<string | null>(() => selectedId())
-  // Diff base — for v1, just compare against HEAD (working-tree changes).
-  // Wave 4 polish makes this configurable per-task (e.g. branch fork point).
-  const diffBaseAcc = createMemo<string | null>(() => (worktreePathAcc() ? "HEAD" : null))
 
-  // FileTree → Preview wiring: capture Preview's imperative API once,
-  // then route file-tree clicks/enters into Preview.open(). Plus the
-  // outer center-column tab state below tracks which file tab is active.
-  const [previewApi, setPreviewApi] = createSignal<PreviewApi | null>(null)
+  // Pane sizes (sidebar width only in v0.6).
+  const { sidebarWidth, setSidebarWidth, clampSidebar } = usePaneSizes(kv)
 
-  /* ------------------------------------------------------------------- */
-  /*  Pane sizing — three <ResizableEdge /> splitters + keyboard nudger   */
-  /* ------------------------------------------------------------------- */
-  // All size signals, KV round-trip, and the clamp helpers live in
-  // `./lib/use-pane-sizes.ts`. The hook also owns the keyboard-resize
-  // `nudge(delta, focused)` that we thread into the app-keymap below.
-  const paneSizes = usePaneSizes(kv)
-  const { sidebarWidth, setSidebarWidth, workspaceWidth, setWorkspaceWidth, filesHeight, setFilesHeight } = paneSizes
-  const { clampSidebar, clampWorkspace, clampFiles } = paneSizes
+  // Re-entry guard: a second `q` / Ctrl+C while the confirm dialog is
+  // already open would stack another dialog. Both chords route here.
+  let quitConfirmOpen = false
+  async function quit(): Promise<void> {
+    if (quitConfirmOpen) return
+    quitConfirmOpen = true
+    const running = tasksAcc().filter((t) => t.status === "in_progress").length
+    const message =
+      running > 0
+        ? `${running} task${running === 1 ? "" : "s"} still in progress. Their tmux sessions keep running after kobe exits.`
+        : "Quit kobe?"
+    let ok: boolean | undefined
+    try {
+      ok = await DialogConfirm.show(
+        dialog,
+        message,
+        "Their work is persisted in tmux. Re-enter any time.",
+        "stay",
+        "quit",
+      )
+    } finally {
+      quitConfirmOpen = false
+    }
+    if (ok !== true) return
+    forceExit()
+  }
 
-  /* ------------------------------------------------------------------- */
-  /*  Pane focus — backed by FocusContext (src/tui/context/focus.tsx)     */
-  /* ------------------------------------------------------------------- */
-  const focus = useFocus()
-  const focusedPane = focus.focused
-  const setFocusedPane = focus.setFocused
-  // Renderer handle — only used by the quit-confirm path so we can
-  // tear down opentui state (mouse tracking, alt-screen, raw mode)
-  // before process.exit. Without this the parent shell sees mouse
-  // escape sequences leaking past kobe's exit.
-  const renderer = useRenderer()
-  let quitting = false
-  const quit = () => {
-    if (quitting) return
-    quitting = true
+  // Hard exit path — bypass the confirm prompt. Used after a confirmed
+  // `quit()` and the detached `process.exit` callers. We destroy the
+  // renderer first so the terminal isn't left in raw / alt-screen /
+  // mouse-tracking mode.
+  function forceExit(): void {
     try {
       renderer?.destroy()
     } catch (err) {
       console.error("kobe: renderer.destroy() failed during quit:", err)
     }
-    const forceExit = setTimeout(() => process.exit(0), 1500)
-    forceExit.unref()
-    void (props.onQuit?.() ?? Promise.resolve()).finally(() => {
-      clearTimeout(forceExit)
-      process.exit(0)
-    })
-  }
-  // Pane-bindings-active accessor: true only when (a) the pane is the
-  // focused one AND (b) no dialog is open. The dialog gate prevents
-  // sidebar/files/terminal bindings from firing while the user is
-  // typing into a dialog input — `d` typed into a path field would
-  // otherwise trigger the sidebar's delete-task confirmation.
-  const isFocused = (pane: PaneId): Accessor<boolean> => {
-    const baseAcc = focus.is(pane)
-    return () => baseAcc() && dialog.stack.length === 0
+    void props.onQuit?.().catch(() => {})
+    process.exit(0)
   }
 
-  /* ------------------------------------------------------------------- */
-  /*  Daemon disconnect modal (KOB-38)                                    */
-  /* ------------------------------------------------------------------- */
-  // When the daemon socket drops, RemoteOrchestrator flips
-  // `connectionState` to `"disconnected"`. We pop a modal letting the
-  // user pick Restart (spawn `kobe daemon start` + reconnect) or Quit (process.exit).
-  // Esc on the modal counts as Quit — daemon-less kobe is useless so
-  // dismissing the prompt would just leave the user stranded.
-  // In-process Orchestrator (KOBE_NO_DAEMON) has no socket and stays
-  // `"online"` forever, so the effect is a no-op there.
-  let showingDisconnectDialog = false
-  async function showDisconnectDialog(): Promise<void> {
-    const orch = props.orchestrator
-    if (!(orch instanceof RemoteOrchestrator)) return
-    let message = "The kobe daemon is no longer reachable. Restart it and reconnect, or quit kobe?"
-    while (true) {
-      const choice = await DialogConfirm.show(dialog, "daemon disconnected", message, "Quit", "Restart")
-      if (choice !== true) {
-        quit()
-      }
-      try {
-        await orch.manualReconnect()
-        return
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err)
-        message = `Restart failed: ${errMsg}\n\nTry again or quit?`
+  // Workspace view mode: "preview" (live capture-pane + ⏎ to enter)
+  // or "dashboard" (cost table). Toggle with `d` when workspace focused
+  // or `ctrl+d` globally. Defaults to preview so a fresh user sees
+  // what their task is doing.
+  const [view, setView] = createSignal<"preview" | "dashboard">("preview")
+  const toggleDashboard = (): void => {
+    setView((v) => (v === "dashboard" ? "preview" : "dashboard"))
+  }
+
+  // Sidebar callbacks.
+  async function newTask(): Promise<void> {
+    const repos = getSavedRepos()
+    // First run (no saved repos): instead of bouncing the user to a
+    // shell for `kobe add`, open the dialog defaulted to the cwd so they
+    // pick a path in-TUI (the picker's saved mode preselects it; typing
+    // `/` flips to the directory browser). Otherwise default to the
+    // active task's repo so the common "spawn a sibling" flow doesn't
+    // make the user re-pick.
+    const defaultRepo = activeTask()?.repo ?? repos[0] ?? process.cwd()
+    const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
+    if (!result) return
+    // Remember the choice so the next new-task dialog defaults to it.
+    kv.set("lastSelectedVendor", result.vendor)
+    // Auto-save the chosen repo so the saved list self-populates and
+    // `kobe add` stays optional. addSavedRepo normalizes to the git
+    // root + dedupes on disk; mirror the fresh list into the kv store so
+    // its debounced whole-store flush doesn't clobber the write
+    // (savedRepos is not otherwise a kv-managed key).
+    addSavedRepo(result.repo)
+    kv.set("savedRepos", getSavedRepos())
+    const task = await props.orchestrator.createTask({
+      repo: result.repo,
+      baseRef: result.baseRef,
+      vendor: result.vendor,
+    })
+    selectTask(task.id)
+  }
+
+  function openSettings(): void {
+    void SettingsDialog.show(dialog, kv, props.orchestrator)
+  }
+
+  function openHelp(): void {
+    HelpDialog.show(dialog)
+  }
+
+  async function archiveTask(taskId: string): Promise<void> {
+    await props.orchestrator.setArchived(taskId).catch((err: unknown) => {
+      console.error("[kobe] archive failed:", err)
+    })
+  }
+
+  async function renameTask(taskId: string): Promise<void> {
+    const task = props.orchestrator.getTask(taskId)
+    if (!task) return
+    const next = await RenameTaskDialog.show(dialog, task.title)
+    if (!next) return
+    await props.orchestrator.setTitle(taskId, next).catch((err: unknown) => {
+      console.error("[kobe] rename failed:", err)
+    })
+  }
+
+  async function pinTask(taskId: string): Promise<void> {
+    await props.orchestrator.setPinned(taskId).catch((err: unknown) => {
+      console.error("[kobe] pin failed:", err)
+    })
+  }
+
+  async function deleteTask(taskId: string): Promise<void> {
+    const task = props.orchestrator.getTask(taskId)
+    if (!task) return
+    const ok = await DialogConfirm.show(
+      dialog,
+      `Delete "${task.title}"?`,
+      "Removes the task entry and its worktree. The tmux session (if any) is killed.",
+      "cancel",
+      "delete",
+    )
+    if (ok !== true) return
+    // First attempt is non-force: the orchestrator refuses to destroy a
+    // worktree with uncommitted/untracked work and throws a DIRTY_WORKTREE
+    // error instead. Catch that and re-prompt for an explicit force-delete
+    // so the user can't lose unsaved work silently (KOB-244).
+    let deleted = false
+    try {
+      await props.orchestrator.deleteTask(taskId)
+      deleted = true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes(DIRTY_WORKTREE_CODE)) {
+        const forceOk = await DialogConfirm.show(
+          dialog,
+          `"${task.title}" has uncommitted changes`,
+          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
+          "cancel",
+          "force delete",
+        )
+        if (forceOk === true) {
+          try {
+            await props.orchestrator.deleteTask(taskId, { force: true })
+            deleted = true
+          } catch (forceErr) {
+            console.error("[kobe] force delete failed:", forceErr)
+          }
+        }
+      } else {
+        console.error("[kobe] delete failed:", err)
       }
     }
-  }
-  createEffect(() => {
-    const orch = props.orchestrator
-    if (!(orch instanceof RemoteOrchestrator)) return
-    if (orch.connectionStateSignal()() !== "disconnected") return
-    if (showingDisconnectDialog) return
-    showingDisconnectDialog = true
-    void showDisconnectDialog().finally(() => {
-      showingDisconnectDialog = false
+    // Only tear down the session + drop selection if the task was actually
+    // removed — a failed/declined delete must leave everything in place.
+    if (!deleted) return
+    // Tear down the tmux session for this task so a re-created task
+    // with the same id (theoretically possible across kobe restarts
+    // if the user crafted a manifest) doesn't attach into the dead
+    // task's stale claude pane.
+    await killSession(tmuxSessionName(taskId)).catch((err: unknown) => {
+      console.error("[kobe] kill tmux session failed:", err)
     })
-  })
-
-  // ctrl+hjkl pane focus. h/j/k/l → sidebar / workspace / files /
-  // terminal (ordinal 1/2/3/4 mapped onto the vim row). ctrl+letter
-  // chords have stable C0 control byte mappings, so they work in
-  // every terminal + tmux config without CSI-u / kitty keyboard /
-  // per-user setup. The handler reads `evt.name` to dispatch.
-  const FOCUS_HJKL_TARGETS: Record<string, PaneId> = {
-    h: "sidebar",
-    j: "workspace",
-    k: "files",
-    l: "terminal",
+    // Drop selection if we just deleted the selected task.
+    if (selectedId() === taskId) {
+      const remaining = tasksAcc()
+      const next = remaining.find((t) => !t.archived) ?? remaining[0]
+      setSelectedId(next?.id ?? null)
+    }
   }
 
-  // Keyboard-resize step. The grow/shrink direction comes from the
-  // chord; the per-pane nudge logic lives in `paneSizes.nudge`.
-  const RESIZE_STEP = 2
-  const nudgeFocusedPane = (delta: number): void => paneSizes.nudge(delta, focusedPane())
-  // Note: the actual `useBindings(...)` calls for focus.numeric and
-  // pane.resize live in `useAppKeymap(...)` below — see app-keymap.tsx
-  // for the full priority stack.
+  // Global keybindings — minimal in v0.6 (no chat composer, so most
+  // chords moved with the chat pane). `q` quits, `n` new task,
+  // `tab`/`shift+tab` cycle pane focus, `ctrl+1..2` jump to pane,
+  // `ctrl+d` toggles cost dashboard.
+  //
+  // Gated on an empty dialog stack: while a modal (settings, new-task,
+  // confirms) is open, NO app-level chord should fire behind it — the
+  // dialog's own bindings sit on top of the keymap stack and handle what
+  // they need; everything else must go quiet so a keypress can't leak to
+  // a task action behind the dialog (KOB-244).
+  useBindings(() => ({
+    enabled: dialog.stack.length === 0,
+    bindings: [
+      // Ctrl+C asks for confirmation (same dialog as `q`) rather than
+      // quitting outright — Jackson wants a guard against a fat-fingered
+      // exit. The `quit()` re-entry guard makes a second Ctrl+C while
+      // the dialog is open a no-op.
+      { key: "ctrl+c", cmd: () => void quit() },
+      { key: "ctrl+1", cmd: () => setFocused("sidebar") },
+      { key: "ctrl+2", cmd: () => setFocused("workspace") },
+      // h / l mirror the pane-header letters (sidebar=h, workspace=l).
+      { key: "ctrl+h", cmd: () => setFocused("sidebar") },
+      { key: "ctrl+l", cmd: () => setFocused("workspace") },
+      { key: "ctrl+d", cmd: toggleDashboard },
+      { key: "tab", cmd: () => cycleFocus(+1) },
+      { key: "shift+tab", cmd: () => cycleFocus(-1) },
+    ],
+  }))
 
-  // Tab / shift+tab pane cycling is registered via `useKobeKeybindings`'s
-  // onFocusNext / onFocusPrev callbacks below — we just gate them here
-  // (no-op when workspace is focused so opentui's textareas can claim
-  // tab for their own intra-input behavior).
+  // Sidebar-scoped letter chords. Gated on `sidebarBindable` (sidebar
+  // focused AND no dialog open) — these are the task actions (n / d / a /
+  // r / q / s) that must NOT fire when a dialog (e.g. settings) is open
+  // over the sidebar, which would otherwise still count as "focused"
+  // and leak the keypress into a task action behind the modal (KOB-244).
+  useBindings(() => ({
+    enabled: sidebarBindable(),
+    bindings: [
+      { key: "n", cmd: () => void newTask() },
+      { key: "s", cmd: () => openSettings() },
+      { key: "?", cmd: () => openHelp() },
+      { key: "f1", cmd: () => openHelp() },
+      { key: "q", cmd: () => void quit() },
+      {
+        key: "d",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void deleteTask(id)
+        },
+      },
+      {
+        key: "a",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void archiveTask(id)
+        },
+      },
+      {
+        key: "r",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void renameTask(id)
+        },
+      },
+      { key: "d", cmd: toggleDashboard },
+    ],
+  }))
 
-  /* ------------------------------------------------------------------- */
-  /*  Center-column tab state — per-task                                  */
-  /* ------------------------------------------------------------------- */
-  // Workspace tab strategy lives in `./lib/use-workspace-tabs.ts` — see
-  // that hook for the KOB-20 single-file-tab rule, the chat-multitab
-  // chip wiring, and the per-task persistence effect.
-  const workspaceTabs = useWorkspaceTabs({
-    orchestrator: props.orchestrator,
-    kv,
-    selectedId,
-    activeTask,
-    previewApi,
-    setFocusedPane,
-  })
-  const {
-    isChatTabActive,
-    activeFileTabPath,
-    activeChatTabsAcc,
-    activeChatTabIdAcc,
-    openFileInCenter,
-    selectChatTab,
-    selectChatTabById,
-    selectFileTab,
-    closeFileTab,
-  } = workspaceTabs
-
-  // Workspace header right-side chip: plan utilization always (when
-  // available) joined to the context meter when a chat tab is active.
-  // Defined here because the join depends on `isChatTabActive`, which
-  // only exists after the destructure above.
-  const workspaceAsideRight = createMemo<string | undefined>(() => {
-    const plan = workspacePlanAside()
-    const ctx = isChatTabActive() ? workspaceContextAside() : null
-    const parts = [plan, ctx].filter((v): v is string => Boolean(v))
-    if (parts.length === 0) return undefined
-    return parts.join("  •  ")
-  })
-
-  // Register the remote-control share command in the palette. Daemon-only —
-  // the in-process Orchestrator stub returns "off" forever, so even if a
-  // test somehow invoked the command it would be a no-op. The dialog
-  // binds to whichever task + chat tab is focused at the moment of
-  // invocation; switching focus later doesn't reassign a running bridge.
-  const palette = useCommandPalette()
-  onMount(() => {
-    if (!(props.orchestrator instanceof RemoteOrchestrator)) return
-    const orch = props.orchestrator
-    const unregister = palette.addCommand({
-      name: "rcBridge.share",
-      title: "Share to claude.ai (remote-control)",
-      desc: "Bind this task's worktree to a claude.ai environment so you can resume the conversation from another device.",
-      slashName: "share",
-      run: () => RcBridgeDialog.show(dialog, orch, rcBridgeAcc, activeTask, activeChatTabIdAcc),
-    })
-    onCleanup(unregister)
-  })
-  onMount(() => {
-    const unregister = palette.addCommand({
-      name: "task.openEditor",
-      title: "Open task in editor",
-      desc: "Open the active task worktree in Cursor, VS Code, or the detected system editor.",
-      run: openActiveTaskInEditor,
-    })
-    onCleanup(unregister)
-  })
-
-  // Auto-select on first task availability. Prefer the persisted task
-  // from the previous run when it still exists; otherwise fall back to
-  // tasks[0]. The `persistedSelectedId` reference is consumed exactly
-  // once (we null it after the first successful match) so user-driven
-  // selections later in the session aren't snapped back.
-  let pendingPersistedId: string | null = persistedSelectedId ?? null
-  createEffect(() => {
-    const tasks = tasksAcc()
-    if (selectedId()) return
-    if (tasks.length === 0) return
-    const persisted = pendingPersistedId ? tasks.find((t) => t.id === pendingPersistedId) : undefined
-    pendingPersistedId = null
-    setSelectedId((persisted ?? tasks[0])!.id)
-  })
-
-  // Persist the active task whenever it changes. The KV store debounces
-  // writes internally so this is cheap. (Per-task tab state is persisted
-  // inside `useWorkspaceTabs`.)
-  createEffect(() => {
-    kv.set("lastSelectedTaskId", selectedId())
-  })
-
-  // Saved repos — populated by the `kobe add [path]` CLI subcommand
-  // (src/cli/index.ts), read here for the new-task dialog's repo
-  // picker. Reading through a memo over kv.store keeps the picker
-  // reactive on the same kobe instance. Defensive filter in case the
-  // on-disk file was hand-edited to a non-array.
-  const savedRepos = createMemo<readonly string[]>(() => {
-    const raw = kv.get("savedRepos", [])
-    if (!Array.isArray(raw)) return []
-    return raw.filter((s): s is string => typeof s === "string")
-  })
-
-  useKobeKeybindings({
-    onShowHelp: () => HelpDialog.show(dialog),
-    // Tab cycle is no-op while workspace is focused so the composer's
-    // own tab handling (dialog field cycling, indent, etc.) wins.
-    onFocusNext: () => {
-      if (focusedPane() !== "workspace") focus.cycle(1)
-    },
-    onFocusPrev: () => {
-      if (focusedPane() !== "workspace") focus.cycle(-1)
-    },
-    focusCycleEnabled: () => focusedPane() !== "workspace",
-    onQuit: quit,
-  })
-
-  // User-action handlers — every "verb that opens a dialog and calls
-  // through to the orchestrator" lives in `./lib/use-task-actions.ts`.
-  // See that hook for the new-task / rename-task / rename-chat-tab /
-  // delete-task flows.
-  const {
-    openNewTaskFlow,
-    quickForkActiveTask,
-    confirmRenameTask,
-    confirmRenameChatTab,
-    confirmDeleteTask,
-    confirmArchiveTask,
-    confirmLocalMergeTask,
-  } = useTaskActions({
-    orchestrator: props.orchestrator,
-    dialog,
-    kv,
-    selectedId,
-    setSelectedId,
-    setFocusedPane,
-    savedRepos,
-  })
-
-  // Centralised keymap registration. All six top-level useBindings
-  // call sites used to live inline here; they were consolidated into
-  // app-keymap.tsx so the priority stack + scope rationale are
-  // visible in one place. See that file for the registration order
-  // and the rule about plain-letter vs modifier-prefixed chords.
-  // Mirror of the sidebar's `/`-search active flag, lifted here so the
-  // app keymap can gate the sidebar-scope plain-letter chords (n/s/q)
-  // off while the user is typing in the search input. The Sidebar
-  // component still owns the underlying signal; this is a one-way
-  // observer wired via its `onSearchActiveChange` callback.
-  const [sidebarSearchActive, setSidebarSearchActive] = createSignal(false)
-
-  // Compute the (task, tab) currently visible to the user. "Visible"
-  // means the workspace is on chat AND this is the active chat tab in
-  // the active task. The focused-pane is irrelevant: even if the user
-  // is currently typing in the sidebar, the chat tab they last looked
-  // at is still on screen. Consumed by the completion-notification
-  // suppressor (don't toast a "done" the user can plainly see). We
-  // don't gate on the parent terminal having focus either — host
-  // focus isn't reliably observable from a TUI.
-  const visibleTabKey = createMemo<string | null>(() => {
-    const taskId = selectedId()
-    const tabId = activeChatTabIdAcc()
-    if (!taskId || !tabId) return null
-    if (!isChatTabActive()) return null
-    return chatRunStateKey(taskId, tabId)
-  })
-
-  useAppKeymap({
-    dialog,
-    focusedPane,
-    setFocusedPane,
-    nudgeFocusedPane,
-    resizeStep: RESIZE_STEP,
-    focusHjklTargets: FOCUS_HJKL_TARGETS,
-    openNewTaskFlow,
-    kv,
-    orchestrator: props.orchestrator,
-    renderer,
-    onQuit: quit,
-    activeTask,
-    openActiveTaskInEditor,
-    sidebarSearchActive,
-  })
-
-  // Per-ChatTab completion notifications.
-  useCompletionNotifications({
-    chatRunState: chatRunStateAcc,
-    tasks: tasksAcc,
-    visibleTabKey,
-    notifications,
-  })
-  // Clear the unread mark whenever the user is visibly looking at a
-  // tab. Wraps the visible-tab-key computation rather than hooking
-  // selectChatTabById so it also covers: switching back to chat from a
-  // file tab, swapping tasks where the new active tab had a pending
-  // unread, etc. — anywhere the chip becomes the in-view chip.
-  createEffect(() => {
-    const key = visibleTabKey()
-    if (!key) return
-    const idx = key.indexOf(":")
-    if (idx < 0) return
-    notifications.markRead(key.slice(0, idx), key.slice(idx + 1))
-  })
-
-  // Behavior-test side-channel — mounts globals on `globalThis` that
-  // the fake-engine HTTP server reads at request time. See
-  // `./lib/use-test-side-channel.ts` for the two globals
-  // (__kobeTestRequestPR + __kobeTestRespondToInput) and why we route
-  // PR/respondToInput through them instead of synthesizing keystrokes.
-  // Production never sets KOBE_TEST_FAKE_PORT, so the globals are
-  // harmless dead branches.
-  useTestSideChannel({ orchestrator: props.orchestrator, activeTask })
+  function cycleFocus(direction: 1 | -1): void {
+    const order: PaneId[] = ["sidebar", "workspace"]
+    const current = focusedPane()
+    const idx = order.indexOf(current)
+    const next = order[(idx + direction + order.length) % order.length] ?? "sidebar"
+    setFocused(next)
+  }
 
   return (
     <box flexDirection="column" flexGrow={1}>
-      <TopBar
-        orchestrator={props.orchestrator}
-        activeTask={activeTask}
-        activeChatTabId={activeChatTabIdAcc}
-        updateInfo={updateInfo}
-        worktreeOpener={worktreeOpener}
-      />
+      <TopBar orchestrator={props.orchestrator} activeTask={activeTask} updateInfo={updateInfo} />
       <box flexDirection="row" flexGrow={1}>
-        {/* Left: task sidebar. Click anywhere on the sidebar pane to
-            focus it. The right edge is a separate <ResizableEdge /> that
-            owns the drag-to-resize affordance plus hover/focus colors.
-            backgroundPanel paints a slightly-raised tone vs the chat
-            (which keeps `theme.background`) — IDE convention is the
-            auxiliary rails recede in saturation, the work area is the
-            visual focus. */}
-        <box
-          flexShrink={0}
-          flexDirection="column"
-          backgroundColor={theme.backgroundPanel}
-          onMouseUp={() => setFocusedPane("sidebar")}
-        >
+        {/* Sidebar — task list, status badges, search. The Sidebar
+            renders its own `h TASKS` header internally, so we don't
+            wrap it in a PaneHeader (that double-stacked the title). */}
+        <box flexShrink={0} width={sidebarWidth()} flexDirection="column" onMouseUp={() => setFocused("sidebar")}>
           <Sidebar
-            width={sidebarWidth}
             tasks={tasksAcc}
-            chatRunState={chatRunStateAcc}
-            onSelect={(id: string) => {
-              setSelectedId(id)
-              // Selecting a task usually means "I want to look at it" —
-              // pull focus to workspace so the user can immediately type
-              // / scroll without another ctrl+2.
-              setFocusedPane("workspace")
-            }}
-            onDeleteRequest={(id: string) => {
-              void confirmDeleteTask(id)
-            }}
-            onArchiveRequest={(id: string) => {
-              void confirmArchiveTask(id)
-            }}
-            onLocalMergeRequest={(id: string) => {
-              void confirmLocalMergeTask(id)
-            }}
-            onRenameRequest={(id: string) => {
-              void confirmRenameTask(id)
-            }}
-            onPinRequest={(id: string) => {
-              void props.orchestrator.setPinned(id).catch((err) => {
-                // eslint-disable-next-line no-console
-                console.error("[kobe] setPinned failed:", err)
-              })
-            }}
-            onAddTask={() => void openNewTaskFlow()}
-            onSearchActiveChange={(active: boolean) => setSidebarSearchActive(active)}
-            selectedId={selectedId}
-            focused={isFocused("sidebar")}
+            selectedId={taskIdAcc}
+            onSelect={selectTask}
+            onActivate={(id) => void enterTask(id)}
+            focused={sidebarBindable}
+            onDeleteRequest={(id) => void deleteTask(id)}
+            onArchiveRequest={(id) => void archiveTask(id)}
+            onRenameRequest={(id) => void renameTask(id)}
+            onPinRequest={(id) => void pinTask(id)}
+            onAddTask={() => void newTask()}
+            width={sidebarWidth}
           />
         </box>
-        {/* Sidebar ↔ workspace splitter. */}
         <ResizableEdge
           orientation="vertical"
           size={sidebarWidth}
@@ -602,128 +486,57 @@ function Shell(props: AppDeps) {
           clamp={clampSidebar}
           focused={isFocused("sidebar")}
         />
-        {/* Center: tabbed (chat | <file>...) — primary interaction surface.
-            Width controlled by workspaceWidth; the right edge is a
-            <ResizableEdge /> sibling rather than a `border={["right"]}`
-            on this box. No bg paint — the chat body inherits the
-            renderer's `theme.background` (which the ThemeProvider
-            forces to transparent under the transparent-bg toggle).
-            Only the composer's `theme.backgroundElement` fill stays
-            tinted in transparent mode, keeping the input area
-            legible against any host wallpaper. */}
+        {/* Workspace — single full pane for the ClaudeLauncher. */}
         <box
           flexDirection="column"
-          flexShrink={0}
-          width={workspaceWidth()}
-          onMouseUp={() => setFocusedPane("workspace")}
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          onMouseUp={() => setFocused("workspace")}
+          backgroundColor={theme.background}
         >
           <PaneHeader
-            title="WORKSPACE"
-            ordinal="j"
-            subtitle={activeTask()?.title ?? "no task"}
-            asideRight={workspaceAsideRight()}
+            title={view() === "dashboard" ? "COST DASHBOARD" : "WORKSPACE"}
+            ordinal="l"
             focused={focusedPane() === "workspace"}
           />
-          <Show when={selectedId()}>
-            <CenterTabStrip
-              isChatActive={isChatTabActive}
-              activeFile={activeFileTabPath}
-              chatTabs={activeChatTabsAcc}
-              activeChatTabId={activeChatTabIdAcc}
-              activeTaskId={taskIdAcc}
-              chatRunState={chatRunStateAcc}
-              unread={notifications.unread}
-              onSelectChat={selectChatTab}
-              onSelectChatTab={selectChatTabById}
-              onSelectFile={selectFileTab}
-              onCloseFile={closeFileTab}
-            />
-          </Show>
-          <box flexGrow={1}>
-            <Show
-              when={isChatTabActive()}
-              fallback={
-                <Preview
-                  worktreePath={worktreePathAcc}
-                  diffBase={diffBaseAcc}
-                  onOpen={(api) => setPreviewApi(api)}
-                  hideInternalTabs={() => true}
-                  onExternalClose={closeFileTab}
-                  focused={isFocused("workspace")}
-                />
-              }
-            >
-              <Chat
-                orchestrator={props.orchestrator}
-                taskId={taskIdAcc}
-                title={activeTitleAcc}
-                pendingPrompt={pendingPromptForActive}
-                onPendingPromptConsumed={() => setPendingPrompt(null)}
-                focused={isFocused("workspace")}
-                onContextMeter={(label) => setWorkspaceContextAside(label)}
-                onRenameTabRequest={(tabId: string) => {
-                  void confirmRenameChatTab(tabId)
-                }}
-                onOpenFilePath={openFileInCenter}
-                onQuickForkRequest={() => {
-                  void quickForkActiveTask()
-                }}
-              />
-            </Show>
-          </box>
-        </box>
-        {/* Workspace ↔ right column splitter. */}
-        <ResizableEdge
-          orientation="vertical"
-          size={workspaceWidth}
-          setSize={setWorkspaceWidth}
-          clamp={clampWorkspace}
-          focused={isFocused("workspace")}
-        />
-        {/* Right column: FILES top + TERMINAL bottom. Width absorbs the
-            remainder via flexGrow={1}; the FILES↔TERMINAL split is a
-            <ResizableEdge orientation="horizontal" /> with a controlled
-            filesHeight signal driving the upper pane. Same
-            backgroundPanel tone as the sidebar so the two rails feel
-            symmetric and the chat in the middle is visibly the focus. */}
-        <box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} backgroundColor={theme.backgroundPanel}>
-          <box flexShrink={0} height={filesHeight()} flexDirection="column" onMouseUp={() => setFocusedPane("files")}>
-            <PaneHeader title="FILES" ordinal="k" focused={focusedPane() === "files"} />
-            <box flexGrow={1}>
-              <FileTree worktreePath={worktreePathAcc} onOpenFile={openFileInCenter} focused={isFocused("files")} />
-            </box>
-          </box>
-          {/* Files ↔ terminal splitter. */}
-          <ResizableEdge
-            orientation="horizontal"
-            size={filesHeight}
-            setSize={setFilesHeight}
-            clamp={clampFiles}
-            focused={isFocused("files")}
-          />
-          <box
-            flexGrow={1}
-            flexShrink={1}
-            flexBasis={0}
-            flexDirection="column"
-            onMouseUp={() => setFocusedPane("terminal")}
+          <Show
+            when={view() === "dashboard"}
+            fallback={
+              <Show
+                when={activeTask()}
+                fallback={
+                  <box flexGrow={1} alignItems="center" justifyContent="center">
+                    <text fg={theme.textMuted}>No task selected — press `n` in the sidebar to create one.</text>
+                  </box>
+                }
+              >
+                {/* Top half: live capture-pane preview of the selected
+                  task's claude session. Bottom: the launcher with the
+                  ⏎ hint. The split is 70/30 — preview is the focus,
+                  launcher is a thin foot. */}
+                <box flexDirection="column" flexGrow={1}>
+                  <box flexGrow={7} flexShrink={1} flexBasis={0}>
+                    <LivePreview taskId={taskIdAcc} />
+                  </box>
+                  <box flexShrink={0} paddingTop={1} paddingBottom={1}>
+                    <ClaudeLauncher
+                      taskId={taskIdAcc}
+                      focused={isFocused("workspace")}
+                      running={launchRunning}
+                      error={launchError}
+                      onEnter={(id) => void enterTask(id)}
+                    />
+                  </box>
+                </box>
+              </Show>
+            }
           >
-            <PaneHeader
-              title="TERMINAL"
-              ordinal="l"
-              subtitle={worktreePathAcc() ? worktreePathAcc()?.split("/").slice(-1)[0] : undefined}
-              focused={focusedPane() === "terminal"}
-            />
-            <box flexGrow={1}>
-              <Terminal cwd={worktreePathAcc} taskId={taskIdNullAcc} focused={isFocused("terminal")} />
-            </box>
-          </box>
+            <CostDashboard tasks={tasksAcc} />
+          </Show>
         </box>
       </box>
       <StatusBar />
-      {/* Bottom-right transient toasts for background-tab completions
-          and approval requests. Sits on its own position="absolute"
-          layer above the panes but below the dialog backdrop. */}
       <ToastOverlay />
     </box>
   )
@@ -733,32 +546,23 @@ function App(props: AppDeps) {
   return (
     <ThemeProvider mode="dark" theme={DEFAULT_THEME}>
       <KVProvider>
-        <NotificationsProvider>
-          <SyncProvider>
+        <SyncProvider>
+          <NotificationsProvider>
             <DialogProvider>
               <CommandPaletteProvider>
-                <FocusProvider>
-                  <Shell {...props} />
+                <FocusProvider initial="sidebar">
+                  <Shell orchestrator={props.orchestrator} onQuit={props.onQuit} />
                 </FocusProvider>
               </CommandPaletteProvider>
             </DialogProvider>
-          </SyncProvider>
-        </NotificationsProvider>
+          </NotificationsProvider>
+        </SyncProvider>
       </KVProvider>
     </ThemeProvider>
   )
 }
 
-/**
- * Mount the G2 app. Builds the orchestrator stack, then renders
- * `<App />`. Replaces `tui/index.tsx`'s previous banner mount.
- */
 export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Promise<void> {
-  // Register user-installed themes (`~/.kobe/themes/*.json`) BEFORE the
-  // ThemeProvider mounts. ThemeProvider's `init` reads the active theme
-  // out of the registry; if the user persisted a theme that lives in a
-  // user file, it has to exist by registry time or the provider falls
-  // back to the bundled default. Sync — see loader.ts header for why.
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
@@ -771,91 +575,44 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
     ownedDaemonStopped = true
     await stopOwnedDaemon?.()
   }
-  if (process.env.KOBE_TEST_ENGINE || process.env.KOBE_NO_DAEMON === "1") {
-    const engines = await buildEngines()
+  if (process.env.KOBE_NO_DAEMON === "1") {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const worktrees = new GitWorktreeManager()
-    orchestrator = new Orchestrator({
-      engines,
-      store,
-      worktrees,
-      ...(process.env.KOBE_TEST_ENGINE ? { metadataSuggester: new NullMetadataSuggester() } : {}),
-    })
-    // Bridge: bind a Unix-socket RPC server + write an MCP config so
-    // every claude subprocess kobe spawns gets the `kobe_*` tools.
-    try {
-      const { startBridge } = await import("../orchestrator/bridge/index.ts")
-      await startBridge(orchestrator, { homeDir })
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[kobe] bridge failed to start:", err)
-    }
+    orchestrator = new Orchestrator({ store, worktrees })
   } else {
     const daemonMode = resolveDaemonMode(options.daemonMode)
+    let daemonSocketPath: string
     if (daemonMode === "shared") {
-      orchestrator = new RemoteOrchestrator(await connectOrStartDaemon())
+      const client = await connectOrStartDaemon()
+      daemonSocketPath = client.socketPath
+      orchestrator = new RemoteOrchestrator(client)
     } else {
       const owned = await connectOrStartOwnedDaemon()
       stopOwnedDaemon = owned.stop
+      daemonSocketPath = owned.socketPath
       orchestrator = new RemoteOrchestrator(owned.client, {
         ensureReachable: () => ensureOwnedDaemonReachable(owned.socketPath, owned.pidPath),
       })
     }
+    // Propagate THIS daemon's socket so every in-session client connects
+    // to the SAME daemon, not a separate stable one. The tmux server +
+    // all panes (Tasks pane, quick-create, ops) inherit this env, so a
+    // task created / renamed / re-vendored from inside a session lands on
+    // the daemon the outer monitor subscribes to — keeping all panels in
+    // sync (KOB-233). Owned mode uses a per-pid socket that the stable
+    // `defaultDaemonSocketPath` would otherwise miss.
+    process.env.KOBE_DAEMON_SOCKET_PATH = daemonSocketPath
     await orchestrator.init()
   }
-  // KOB-15: seed a pinned "main" task per saved repo. Idempotent:
-  // ensureMainTask returns the existing main task on subsequent boots.
-  // We read savedRepos from `state/repos.ts` (which honours
-  // KOBE_HOME_DIR) rather than from the TUI's KV context — KV isn't
-  // mounted yet, and we want behavior tests with a tmpdir HOME to see
-  // the seeding too. Failures per repo are logged and swallowed so a
-  // single bad path can't gate the whole UI from booting.
-  //
-  // Heal legacy saved-repos written before addSavedRepo normalized
-  // paths to the git toplevel: a subdir (e.g. `packages/kobe`) seeded
-  // a main task whose FileTree rendered the entire monorepo rooted at
-  // `packages/...` because `git ls-files --full-name` is toplevel-
-  // relative. Resolving once at boot folds the entry back to the repo
-  // root and dedupes any pair that collapses to the same toplevel.
   normalizeSavedRepos()
   for (const repo of getSavedRepos()) {
     try {
       await orchestrator.ensureMainTask(repo)
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
     }
   }
-  // Replay persisted prompt history into the in-memory STORE before
-  // the first composer mounts (KOB-157). Sync read of a small JSONL
-  // file under `<kobeStateDir()>/composer-history.jsonl`. The set of
-  // live task ids lets bootstrapHistory replay entries under their
-  // original task id when that task still exists (so the same task's
-  // ↑ walks past sessions naturally) and fall back to a synthetic
-  // `project-<root>` key when the task was deleted between sessions
-  // (those entries surface only via Ctrl+R). Failures are swallowed
-  // inside `bootstrapHistory` — a fresh install with no history file
-  // is the most common case and shouldn't slow boot or warn.
-  bootstrapHistory({ liveTaskIds: new Set(orchestrator.listTasks().map((t) => t.id)) })
-  // Renderer-level background: transparent so the host terminal's
-  // background (theme, image, transparency setting) shows through where
-  // panes don't paint. opentui PR #824 / v0.1.89+ added this — earlier
-  // versions composited transparent regions against opaque black.
-  // exitOnCtrlC: false — opentui's default kills the process on a single
-  // Ctrl+C. Jackson wants the standard "first press copies / arms,
-  // second press quits" UX, owned by useKobeKeybindings.
-  // useKittyKeyboard:{} — opt into the kitty / CSI-u keyboard
-  // protocol. Most kobe shortcuts are deliberately legacy-safe
-  // ctrl+letter chords, but CSI-u lets supporting terminals distinguish
-  // richer shortcuts such as shift+enter, ctrl+enter, ctrl+pageup, and
-  // modifier-prefixed punctuation/digits. Kitty/foot/iTerm2/recent
-  // Terminal.app reply to the enable sequence and start sending events
-  // with full modifier info. tmux users need `set -g extended-keys on`
-  // (and recent enough tmux) plus an `*:extkeys` terminal feature for
-  // those sequences to pass through. Non-supporting terminals fall back
-  // to legacy mode silently — no regression, just fewer distinguishable
-  // shortcuts.
   await render(() => <App orchestrator={orchestrator} onQuit={stopOwnedDaemonOnce} />, {
     backgroundColor: "transparent",
     externalOutputMode: "passthrough",
@@ -866,6 +623,4 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
     screenMode: "alternate-screen",
     useKittyKeyboard: {},
   })
-  // Side-effect: silence the "no usage" lint warning if any.
-  void join
 }

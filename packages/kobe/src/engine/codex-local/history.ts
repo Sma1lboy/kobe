@@ -25,7 +25,7 @@
  * whole result.
  */
 
-import { readFile, readdir, unlink } from "node:fs/promises"
+import { readFile, readdir, stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { ContentBlock } from "@/types/content"
@@ -39,6 +39,8 @@ export interface HistoryDeps {
   sessionsDir(): string
   readdir(p: string): Promise<string[]>
   readFile(p: string): Promise<string>
+  /** mtime probe — injected so the activity poll is unit-testable. */
+  stat(p: string): Promise<{ mtimeMs: number }>
 }
 
 const defaultDeps: HistoryDeps = {
@@ -55,6 +57,7 @@ const defaultDeps: HistoryDeps = {
   async readFile(p) {
     return await readFile(p, "utf8")
   },
+  stat,
 }
 
 /**
@@ -96,6 +99,98 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
     if (path.basename(p).endsWith(`-${sessionId}.jsonl`)) return p
   }
   return undefined
+}
+
+/** UUID embedded at the tail of a `rollout-<ISO>-<UUID>.jsonl` filename. */
+const UUID_AT_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
+
+/** The `cwd` recorded on a rollout's `session_meta` line, or `""`. */
+function rolloutCwd(raw: string): string {
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    try {
+      const rec = JSON.parse(trimmed) as { type?: string; payload?: { cwd?: string } }
+      if (rec.type === "session_meta") return rec.payload?.cwd ?? ""
+    } catch {
+      // tolerate a malformed leading line
+    }
+    // session_meta is the first record; if the first JSON line isn't it,
+    // this rollout has no meta — stop probing.
+    return ""
+  }
+  return ""
+}
+
+/** Cap on rollout files probed by {@link listSessionIdsForWorktree}. */
+const MAX_WORKTREE_SCAN = 200
+
+/**
+ * Session UUIDs whose rollout `session_meta.cwd` equals `worktree`,
+ * oldest-first. The Codex analogue of claude-code's
+ * `listSessionFilesForWorktree` — Codex stores rollouts in a global
+ * date tree (not per-worktree dirs), so we scan newest-first (capped)
+ * and filter by the recorded cwd, then reverse to oldest-first so the
+ * caller sees the worktree's origin conversation first.
+ */
+export async function listSessionIdsForWorktree(worktree: string, deps: HistoryDeps = defaultDeps): Promise<string[]> {
+  if (!worktree) return []
+  const files = await listRolloutFiles(deps)
+  const matches: string[] = []
+  let scanned = 0
+  for (const file of files) {
+    if (scanned >= MAX_WORKTREE_SCAN) break
+    scanned++
+    let raw: string
+    try {
+      raw = await deps.readFile(file)
+    } catch {
+      continue
+    }
+    if (rolloutCwd(raw) !== worktree) continue
+    const id = path.basename(file).match(UUID_AT_END)?.[1]
+    if (id) matches.push(id)
+  }
+  return matches.reverse()
+}
+
+/** Reads probed before giving up the cwd-match scan in {@link latestTranscriptMtimeForWorktree}. */
+const MAX_MTIME_SCAN = 12
+
+/**
+ * Newest rollout mtime (epoch ms) for `worktree`, or 0 when none match.
+ * The Ops pane polls this to detect new Codex conversation output
+ * without parsing the tmux pane (KOB-254). Codex stores rollouts in a
+ * global date tree, so we walk `listRolloutFiles` (newest-first by
+ * filename ≈ chronological) and return the first cwd-match's mtime —
+ * the file the agent just appended to is the newest, so the common case
+ * is a single read. Capped at {@link MAX_MTIME_SCAN} reads so a busy
+ * machine with many unrelated sessions can't make the poll expensive.
+ */
+export async function latestTranscriptMtimeForWorktree(
+  worktree: string,
+  deps: HistoryDeps = defaultDeps,
+): Promise<number> {
+  if (!worktree) return 0
+  const files = await listRolloutFiles(deps)
+  let scanned = 0
+  for (const file of files) {
+    if (scanned >= MAX_MTIME_SCAN) break
+    scanned++
+    let raw: string
+    try {
+      raw = await deps.readFile(file)
+    } catch {
+      continue
+    }
+    if (rolloutCwd(raw) !== worktree) continue
+    try {
+      return (await deps.stat(file)).mtimeMs
+    } catch {
+      return 0
+    }
+  }
+  return 0
 }
 
 export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {

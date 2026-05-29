@@ -31,6 +31,7 @@
  * stack or opentui.
  */
 
+import { ALL_VENDORS, type VendorId, nextVendor } from "@/types/vendor"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
@@ -87,6 +88,12 @@ export type NewTaskDialogProps = {
    * falls back to `~/` inside the dialog.
    */
   defaultCloneParent?: string
+  /**
+   * Engine to pre-select, defaulting to the user's last-selected vendor
+   * (kv `lastSelectedVendor`). `ctrl+e` cycles it; the choice rides out
+   * on {@link NewTaskInput.vendor} and the caller persists it.
+   */
+  defaultVendor?: VendorId
 }
 
 export function NewTaskDialogView(props: NewTaskDialogProps) {
@@ -95,6 +102,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
 
   // Which sub-tab is currently visible. Switched via Ctrl+[ / Ctrl+].
   const [tab, setTab] = createSignal<DialogTab>("existing")
+
+  // Engine vendor for the new task — defaults to the last-selected one,
+  // cycled with `ctrl+e`. Rides out on the submit payload.
+  const [vendor, setVendor] = createSignal<VendorId>(props.defaultVendor ?? "claude")
 
   // Dialog only asks for repo + branch on the existing tab. The first
   // prompt lives in the chat composer — orchestrator.runTask back-fills
@@ -242,7 +253,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       return
     }
     const b = baseRef().trim() || DEFAULT_BASE_REF
-    props.onSubmit({ repo: r, baseRef: b })
+    props.onSubmit({ repo: r, baseRef: b, vendor: vendor() })
     dialog.clear()
   }
 
@@ -274,7 +285,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     }
     const b = cloneBaseRef().trim() || DEFAULT_BASE_REF
     const parentDir = expandHome(cloneParent().trim())
-    props.onSubmit({ repo: result.path, baseRef: b, cloned: { parentDir } })
+    props.onSubmit({ repo: result.path, baseRef: b, vendor: vendor(), cloned: { parentDir } })
     dialog.clear()
   }
 
@@ -388,6 +399,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         cmd: () => switchToTab(nextDialogTab(tab())),
       },
       {
+        // Ctrl+E cycles the engine vendor (claude / codex / …).
+        key: "ctrl+e",
+        cmd: () => setVendor((v) => nextVendor(v)),
+      },
+      {
         key: "up",
         cmd: () => {
           if (cloneInFlight()) return
@@ -479,19 +495,37 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
       <box gap={1} paddingTop={1} paddingBottom={1}>
         <box flexDirection="row" gap={2}>
           <text
-            fg={tab() === "existing" ? theme.info : theme.textMuted}
+            fg={tab() === "existing" ? theme.primary : theme.textMuted}
             attributes={tab() === "existing" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => switchToTab("existing")}
           >
             {tab() === "existing" ? "▸ For Existing" : "  For Existing"}
           </text>
           <text
-            fg={tab() === "clone" ? theme.info : theme.textMuted}
+            fg={tab() === "clone" ? theme.primary : theme.textMuted}
             attributes={tab() === "clone" ? TextAttributes.BOLD : undefined}
             onMouseUp={() => switchToTab("clone")}
           >
             {tab() === "clone" ? "▸ For New Repo" : "  For New Repo"}
           </text>
+        </box>
+        {/* Engine selector — common to both tabs. Defaults to the user's
+            last-selected vendor; ctrl+e cycles, click picks. New engines
+            (gemini / copilot) appear automatically via ALL_VENDORS. */}
+        <box flexDirection="row" gap={2}>
+          <text fg={theme.textMuted}>engine</text>
+          <For each={ALL_VENDORS}>
+            {(v) => (
+              <text
+                fg={vendor() === v ? theme.primary : theme.textMuted}
+                attributes={vendor() === v ? TextAttributes.BOLD : undefined}
+                onMouseUp={() => setVendor(v)}
+              >
+                {v}
+              </text>
+            )}
+          </For>
+          <text fg={theme.textMuted}>ctrl+e</text>
         </box>
         <Show when={tab() === "existing"}>
           {/* ── Existing tab body ───────────────────────────────────── */}

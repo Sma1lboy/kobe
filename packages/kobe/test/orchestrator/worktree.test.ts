@@ -22,7 +22,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import { worktreePathFor, worktreeRootFor } from "../../src/orchestrator/worktree/paths.ts"
 
-const REPO_INIT = path.resolve(__dirname, "../behavior/fixtures/repo-init.sh")
+const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
 
 let tmpRoot: string
 let repo: string

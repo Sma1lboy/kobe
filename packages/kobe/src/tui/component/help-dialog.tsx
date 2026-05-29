@@ -34,21 +34,15 @@ import { For } from "solid-js"
 import { type KobeBinding, KobeKeymap } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
-import { BUILTIN_CLAUDE_SLASHES } from "../panes/chat/composer/builtin-slashes"
 import { type DialogContext, useDialog } from "../ui/dialog"
-import { formatSlashLabel, orderSlashes } from "./help-dialog-helpers"
 
-export { formatSlashLabel, orderSlashes }
+// v0.6 dropped the chat composer, so the "Slash commands" section
+// (which read `BUILTIN_CLAUDE_SLASHES` from the composer) is gone.
+// Users discover slashes natively inside the interactive `claude`
+// pane now. The dialog stays focused on kobe's own keybindings.
 
 /** Sentinel string the behavior test asserts on. */
 export const HELP_DIALOG_TITLE = "kobe — keybindings"
-
-/** Header for the slash commands section — exported for tests / future tooling. */
-export const HELP_DIALOG_SLASH_HEADER = "Slash commands"
-
-/** Footer hint pointing users at the composer's live dropdown. */
-export const HELP_DIALOG_SLASH_FOOTER =
-  "(Type / in the composer to filter and tab-complete; user-defined commands appear there too)"
 
 /**
  * Group the flat keymap into categories in declaration order.
@@ -70,7 +64,6 @@ export function HelpDialog() {
   const dialog = useDialog()
   const { theme } = useTheme()
   const grouped = () => groupBindings(KobeKeymap)
-  const slashes = () => orderSlashes(BUILTIN_CLAUDE_SLASHES)
 
   // Press `?` again to dismiss (ergonomic mirror of vim/tmux help). esc
   // is handled by the DialogProvider's own binding stack — don't re-bind.
@@ -141,26 +134,6 @@ export function HelpDialog() {
               </box>
             )}
           </For>
-          <box gap={0}>
-            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-              {HELP_DIALOG_SLASH_HEADER}
-            </text>
-            <For each={slashes()}>
-              {(slash) => (
-                <box flexDirection="row" gap={2} paddingLeft={1}>
-                  <box width={20}>
-                    <text fg={theme.primary}>{formatSlashLabel(slash.name)}</text>
-                  </box>
-                  <box flexGrow={1}>
-                    <text fg={theme.text}>{slash.description}</text>
-                  </box>
-                </box>
-              )}
-            </For>
-            <box paddingLeft={1} paddingTop={1}>
-              <text fg={theme.textMuted}>{HELP_DIALOG_SLASH_FOOTER}</text>
-            </box>
-          </box>
         </box>
       </scrollbox>
     </box>

@@ -11,27 +11,27 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { Show, createMemo, createSignal, onMount } from "solid-js"
+import { Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator"
 import {
   type ClaudeAccount,
   type CodexAccount,
   type CopilotAccount,
   type EngineAccountStatus,
-  type GeminiAccount,
   detectClaudeAccount,
   detectCodexAccount,
   detectCopilotAccount,
-  detectGeminiAccount,
 } from "../../engine/account-detect"
-import { CODEX_BACKEND_KV_KEY, type CodexBackend } from "../../engine/codex-local/app-server"
+import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
+import type { VendorId } from "../../types/task"
+import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
+import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
 import {
-  CODEX_BACKENDS,
   type NavLevel,
   SECTIONS,
   type SectionId,
@@ -43,8 +43,8 @@ import {
 } from "./settings-dialog/model"
 import {
   AccountsSettingsSection,
-  CodexSettingsSection,
   DevSettingsSection,
+  EngineSettingsSection,
   GeneralSettingsSection,
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
@@ -76,40 +76,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ),
   )
   const hasDaemon = hasRestartableDaemon(props.orchestrator)
+
+  // Account detection (KOB-249): read-only fs/env probes, lazily run the
+  // first time the Accounts section is opened so a settings open that
+  // never visits it pays nothing.
   const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
   const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
-  const [geminiStatus, setGeminiStatus] = createSignal<EngineAccountStatus<GeminiAccount> | null>(null)
   const [copilotStatus, setCopilotStatus] = createSignal<EngineAccountStatus<CopilotAccount> | null>(null)
-
-  onMount(() => {
-    void detectClaudeAccount()
-      .then(setClaudeStatus)
-      .catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("kobe: detectClaudeAccount threw:", err)
-        setClaudeStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
-      })
-    void detectCodexAccount()
-      .then(setCodexStatus)
-      .catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("kobe: detectCodexAccount threw:", err)
-        setCodexStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
-      })
-    void detectGeminiAccount()
-      .then(setGeminiStatus)
-      .catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("kobe: detectGeminiAccount threw:", err)
-        setGeminiStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
-      })
-    void detectCopilotAccount()
-      .then(setCopilotStatus)
-      .catch((err: unknown) => {
-        // eslint-disable-next-line no-console
-        console.error("kobe: detectCopilotAccount threw:", err)
-        setCopilotStatus({ binary: { found: false, error: String(err) }, account: { kind: "none" } })
-      })
+  let accountsProbed = false
+  createEffect(() => {
+    if (section() !== "accounts" || accountsProbed) return
+    accountsProbed = true
+    void detectClaudeAccount().then(setClaudeStatus)
+    void detectCodexAccount().then(setCodexStatus)
+    void detectCopilotAccount().then(setCopilotStatus)
   })
 
   function bodyRowCount(): number {
@@ -149,13 +129,25 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
-  function codexBackend(): CodexBackend {
-    const raw = props.kv.get(CODEX_BACKEND_KV_KEY, "app-server")
-    return raw === "exec" || raw === "app-server" ? raw : "app-server"
+  // Engines section: per-vendor launch command. Stored in the shared
+  // state.json under engineCommandKey via kv (reactive here; read
+  // cross-process by interactiveEngineCommand). Empty override = default.
+  function engineOverride(vendor: VendorId): string {
+    const v = props.kv.get(engineCommandKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
   }
-
-  function setCodexBackend(next: CodexBackend): void {
-    props.kv.set(CODEX_BACKEND_KV_KEY, next)
+  function engineCommandText(vendor: VendorId): string {
+    return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
+  }
+  function engineIsDefault(vendor: VendorId): boolean {
+    return engineOverride(vendor).length === 0
+  }
+  async function editEngine(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
+      dialogTitle: `${VENDOR_LABEL[vendor]} launch command`,
+    })
+    if (next === undefined) return
+    props.kv.set(engineCommandKey(vendor), next.trim())
   }
 
   function enterBody(): void {
@@ -214,9 +206,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
       if (name) themeCtx.set(name)
       return
     }
-    if (section() === "codex") {
-      const backend = CODEX_BACKENDS[bodyRow()]
-      if (backend) setCodexBackend(backend)
+    if (section() === "engines") {
+      const vendor = ALL_VENDORS[bodyRow()]
+      if (vendor) void editEngine(vendor)
       return
     }
     if (section() === "dev") {
@@ -280,22 +272,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleSound={toggleSound}
             />
           </Show>
-          <Show when={section() === "accounts"}>
-            <AccountsSettingsSection
-              claudeStatus={claudeStatus}
-              codexStatus={codexStatus}
-              geminiStatus={geminiStatus}
-              copilotStatus={copilotStatus}
-            />
-          </Show>
-          <Show when={section() === "codex"}>
-            <CodexSettingsSection
+          <Show when={section() === "engines"}>
+            <EngineSettingsSection
               level={level}
               bodyRow={bodyRow}
               setLevel={setLevel}
               setBodyRow={setBodyRow}
-              codexBackend={codexBackend}
-              setCodexBackend={setCodexBackend}
+              vendors={ALL_VENDORS}
+              commandText={engineCommandText}
+              isDefault={engineIsDefault}
+              editEngine={(v) => void editEngine(v)}
+            />
+          </Show>
+          <Show when={section() === "accounts"}>
+            <AccountsSettingsSection
+              claudeStatus={claudeStatus}
+              codexStatus={codexStatus}
+              copilotStatus={copilotStatus}
             />
           </Show>
           <Show when={section() === "dev"}>

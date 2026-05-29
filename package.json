@@ -9,8 +9,8 @@
   "workspaces": ["packages/*"],
   "scripts": {
     "dev": "cd packages/kobe && bun run dev",
-    "dev:test": "cd packages/kobe && bun run dev:test",
-    "dev:test:reset": "cd packages/kobe && bun run dev:test:reset",
+    "dev:sandbox": "cd packages/kobe && bun run dev:sandbox",
+    "dev:sandbox:reset": "cd packages/kobe && bun run dev:sandbox:reset",
     "daemon": "cd packages/kobe && bun run src/cli/index.ts daemon start",
     "daemon:stop": "cd packages/kobe && bun run src/cli/index.ts daemon stop",
     "daemon:restart": "cd packages/kobe && bun run src/cli/index.ts daemon restart",

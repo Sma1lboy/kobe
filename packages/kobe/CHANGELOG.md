@@ -14,6 +14,69 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.1-experimental.0] - 2026-05-29
+
+Experimental line on top of the 0.6 product reshape — published under the npm `experimental` dist-tag, not `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245, 249) plus GitHub Copilot as a third engine and the Accounts view (KOB-249).
+
+### Fixed
+
+- **Switching a task's engine from the Tasks pane now takes effect** — pressing `v` to cycle a task's vendor (or renaming its branch) on a task whose tmux session is still running used to do nothing: entering it just switched back into the still-running OLD engine. The Tasks-pane enter path now runs the same `ensureSession` heal the outer monitor always did, so a vendor/branch/worktree change rebuilds the session on the next Enter from either surface (KOB-244).
+- **Exiting the shell pane no longer destroys your engine session** — typing `exit` (or Ctrl+D) in a task's bottom shell pane dropped the session's pane count below the rebuild threshold, so the next Enter killed and rebuilt the whole session, throwing away the live `claude` / `codex` conversation. Session health is now keyed off the load-bearing engine pane (its `@kobe_role` tag), not a raw pane count, so closing a disposable shell/ops pane is harmless; this also makes the check per-window so a multi-tab (Ctrl+T) session is judged correctly (KOB-244).
+- **A failed `tmux attach` is now surfaced instead of a silent bounce** — if a session fails to build, or dies between build and attach, the launcher shows the error in the workspace pane rather than flashing you back to the "press ⏎" splash with no explanation (KOB-244).
+- **Deleting a task with uncommitted work asks before destroying it** — delete no longer force-removes the worktree unconditionally; it refuses a dirty worktree and re-prompts with an explicit "force delete anyway?" confirmation, and a failed worktree removal keeps the task entry instead of silently orphaning the directory on disk (KOB-244).
+- **Stale TUI/daemon version pairs surface a clear upgrade message** — the daemon now validates the client's protocol version at `hello` (and the client checks the daemon's), rejecting a mismatch with "upgrade your kobe" instead of failing later with cryptic per-request errors (KOB-244).
+- **Live preview no longer flashes "press ⏎ to enter" over a running session** — a momentarily-blank `capture-pane` (a TUI mid-repaint) is now distinguished from a genuinely absent session, so the empty-state hint only shows when there really is no session (KOB-244).
+- **Rapid double-Enter on a task no longer races two session builds** — `ensureSession` is serialized per session name and both enter paths share one in-flight guard (KOB-244).
+- **Auto-naming a task works from the workspace pane too** — entering a placeholder-titled task by pressing Enter while the workspace pane is focused now derives its title from the first prompt, the same as entering it from the sidebar (KOB-244).
+- **Enter no longer leaks past a dialog into the task list behind it** — submitting a new-task / rename / settings-command dialog with Enter used to fall through the keymap to the Sidebar (which would enter a task) and swallow the dialog submit, because input-based dialogs submit via the native input, not a keymap binding. The Sidebar / launcher bindings are now gated on an empty dialog stack (KOB-244).
+- **The Tasks pane's new-task / rename dialogs no longer zoom over the other panes** — they used to `resize-pane -Z` the Tasks pane full-window (hiding claude / ops / shell) for the dialog's lifetime; the dialog now shows in place (it already caps to the pane width) so the rest of the session stays visible (KOB-244).
+- **Every Tasks pane + the outer monitor share one focus** — switching / entering a task anywhere highlights the SAME active task across all surfaces (via the new `active-task` channel), instead of each Tasks pane remembering its own last click. Also fixed the daemon client being disposed the moment a Tasks pane mounted (cleanup moved to the renderer's `onDestroy`), which had broken cross-pane sync and threw "daemon client disposed" on repeated switching (KOB-247).
+- **The inner Tasks pane is a fixed-width rail** — it used a %-of-window split whose absolute width drifted with terminal size, between chat-tab windows, and across engine (claude/codex) rebuilds; now a fixed-cell rail so it's the same in every window. Narrowed to a thin 12-cell task-list column (the content floor set by the bottom legend's key chip), much tighter than the outer monitor's Sidebar (KOB-248, KOB-253).
+- The Ops pane's Enter opens a full-width syntax-highlighted file/diff preview window (`kobe ops --preview`); the 0.6.0 notes mis-described this as the `@file` injection path. Plus tmux-client hardening: literal `send-keys -l` injection, concurrent stderr drain (no large-stderr deadlock), strict claude-pane resolution, charset-escape stripping in the preview, and a `RemoteOrchestrator.setBranch` / `setVendor` parity fix so the outer monitor can change branch/vendor through the orchestrator (KOB-244).
+
+### Added
+
+- **`@file` mention injection from the Ops pane** — pressing `a` on a file in the Ops pane types `@<path>` into the engine (claude/codex) pane via tmux send-keys (literal, no auto-submit — you decide when to send), with focus staying in the Ops pane so you can queue several. Enter still opens the full-width preview window. This wires the injection the 0.6.0 notes had promised (KOB-232).
+- **Switching a task's engine relaunches it in place on a multi-tab session** — cycling vendor (`v`) on a task with several Ctrl+T chat-tab windows now `respawn-pane`s the engine pane in each window (preserving the windows, their other panes, and pane ids) instead of killing the whole session, so sibling chat tabs survive the switch (KOB-232).
+- **Shortcut legend in the Tasks pane** — a small key hint footer pinned to the bottom of the inner Tasks pane (↵ open · n new · r/b/v name·branch·engine · ^h^j^k^l move panes · ^t new tab · ^q monitor) so the bindings are discoverable in place (KOB-244).
+- **Per-engine launch command is configurable** — Settings → Engines lets you override the command each vendor's task pane runs, so a Claude binary that isn't on PATH as `claude` (e.g. it's `cl`) or one that wants default flags (`claude --model …`) just works; quotes are honored for flag values with spaces. Stored in `state.json`; empty = the built-in default; takes effect on the next task enter (KOB-245).
+- **Daemon broadcast is a typed channel event-bus** — the daemon's push surface generalized from a single hardcoded task-snapshot to named channels (`task.snapshot`, `active-task`, …): adding one is a registry entry + `bus.publish` + `client.onChannel`. A last-value-per-channel cache replays the current value to a late-subscribing pane on connect. Same socket transport, no protocol bump (KOB-246).
+- **GitHub Copilot CLI is selectable as a third engine** — `copilot` joins `claude` / `codex` as a task vendor (cycle it with `v` / `ctrl+e`): its interactive CLI runs in the tmux pane, and the monitor reads `~/.copilot/session-state` transcripts for auto-titling, the same way it reads Claude's and Codex's. Ported from the 0.5.x Copilot adapter down to v0.6's lean engine shape (binary discovery + history reader + usage snapshot — no spawn/stream path, since the engine runs in tmux now). The 0.5.x heavy adapter (spawn/stream/sessions/capabilities/app-server) was dropped (KOB-249).
+- **Settings → Accounts is back** — a read-only view of locally-detected engine accounts: whether `claude` / `codex` / `copilot` are on PATH and which login (Anthropic OAuth, ChatGPT / API-key, Copilot token / OAuth) is configured. Detection is pure fs/env reads (no `claude /status` shell-out) and runs lazily the first time you open the section. Gemini is not listed — v0.6 dropped it as an engine (KOB-249).
+- **The Ops pane flags new engine activity** — a `● new` badge lights in the top-right of the Ops (file-changes) pane when the task's engine produces new conversation output, so you can tell a background task did something without watching its claude/codex/copilot pane. The signal is the engine's own transcript JSONL (the same files the cost dashboard reads) — `~/.claude/projects`, `~/.codex/sessions`, `~/.copilot/session-state` — polled for a newer mtime, NOT a scrape of the tmux pane. Press `r` (refresh) to acknowledge and clear it. Works per task across all three engines (KOB-254).
+
+## [0.6.0] - 2026-05-22
+
+This is a **product reshape**, not a patch release. kobe is no longer a chat-stream renderer wrapped around `claude -p`; it is a task-launcher + outer monitor that delegates the whole interactive surface to tmux. The version bumps to `0.6.0` so the change is visible in `package.json`. The 0.5 line stays as-is for anyone who wants the self-rendered chat experience back.
+
+### Why
+
+Anthropic's 2026-06-15 billing change put `claude -p`, the Agent SDK, and every third-party programmatic caller on a separate \$200/month bucket; only **interactive** Claude Code stays on the regular subscription. kobe's v0.5 engine was the programmatic path, so heavy concurrent use ran straight into the \$200 cap. v0.6 drives interactive `claude` directly inside a tmux pane, so every token kobe spends is back on the subscription bucket.
+
+### How
+
+Each task gets a dedicated tmux session (`tmux -L kobe`, server-isolated from the user's own tmux). The session is pre-split into three panes the first time the user enters it: pane 0 (left, 60%) runs interactive `claude` natively, pane 1 (upper right) runs `kobe ops` (the v0.5 FileTree pane re-hosted as a subcommand — browse the worktree; `@file` injection into the claude pane is tracked for 0.6.x, KOB-232; falls back to an inline `git status` + tree watcher if the launch fails), and pane 2 (lower right) is a default-shell prompt scoped to the worktree. Outside the tmux session, the kobe TUI is now an outer monitor: a `WORKSPACE` view shows a live `tmux capture-pane` preview of the selected task's claude pane (1s refresh) on top, with a "press ⏎ to enter" launcher footer; a `COST DASHBOARD` view (toggle with `d` from the sidebar or `ctrl+d` globally) lists every task's input / output / cache-read / cache-create tokens summed from `~/.claude/projects/*.jsonl`, plus a TOTAL row. Pressing `⏎` in the workspace suspends the kobe renderer and hands the real TTY to `tmux attach`; `Ctrl+Q` (or `Ctrl+B D`) detaches and the session keeps running across detach AND a full kobe restart.
+
+### Removed (no longer in any form)
+
+The self-rendered chat surface and its supporting plumbing are gone. Not coming back. The following are deliberately removed and will **not** be re-added — `claude` / `codex` already provide them natively inside the tmux pane: the whole chat pane (composer, message list, tool-row renderers, TodoWrite checklist, AskUserQuestion / ExitPlanMode approval pickers, `@file` mentions, queued prompt editing, bash composer mode, `/recap`, context meter, model picker, resume-session picker, slash-command discovery, recap-on-tab-leave); the headless engine port and every vendor adapter's spawn / stream / registry path (only the binary-discovery + history-reader pieces of `claude-code-local` and `codex-local` survive — used by the cost dashboard, not by any live engine driver); the `gemini-local` adapter entirely (no interactive TUI equivalent worth wrapping); the Preview pane (file / diff viewer), the Terminal pane (Bun PTY), and the FileTree pane in the outer TUI (files + terminal live inside the tmux session now); the daemon's chat / PR / merge / plan-usage / rc-bridge RPCs (the wire protocol drops from 30+ methods to 13: task CRUD + `subscribe` + `task.ensureWorktree`); the whole behavior-test harness, the fake-engine HTTP side-channel, and every test that asserted on streamed event shapes; `kobe diagnose`, `kobe mcp-bridge`, `kobe api`, `kobe skill` (the MCP bridge in particular — kobe no longer hosts the engine, so there's nothing for spawned claude to call back into via MCP).
+
+### Kept (intent only — reshaped landing in 0.6.x)
+
+These were valuable v0.5 surfaces that don't survive in their old form but will be reimplemented in the new model (KOB-232 tracks): **quick-fork** — sidebar shortcut → pick base branch → new worktree + new tmux session; **create-PR** — Ops-pane shortcut → render `pr/instructions.ts` template → `tmux send-keys` into the claude pane; **file preview** — sub-mode inside the Ops pane (split top/bottom: file list + diff / cat).
+
+### New subcommands
+
+`kobe ops --task-id <id> --worktree <path> --target-pane <pane>` — the Ops pane that fills the right-hand side of a task's tmux session. It re-hosts the v0.5 FileTree (the `git ls-files`-driven tree with All / Changes tabs) in its own process; `@file` injection into the claude pane via `tmux send-keys` is tracked for 0.6.x (KOB-232). Not meant to be run by hand — the launcher wires it into the tmux split automatically.
+
+### Schema
+
+`TaskIndex` bumps to v3 — drops `tabs`, `activeTabId`, `sessionId`, `model`, `modelEffort`, `permissionMode`. Old v1 / v2 manifests are migrated on load by silently stripping the dropped fields; downgrading is not supported. Daemon protocol bumps to v2 — v1 clients are rejected with a clear "your kobe is v0.5, upgrade" error.
+
+### Thanks
+
+To Jackson for steering the pivot end-to-end — design doc, scope cuts, and the call to ship the reshape as a minor instead of stretching 0.5.
+
 ## [0.5.29] - 2026-05-25
 
 ### Added

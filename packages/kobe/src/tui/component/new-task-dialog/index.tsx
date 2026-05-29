@@ -15,6 +15,7 @@
  *     helpers to signals.
  */
 
+import type { VendorId } from "@/types/vendor"
 import type { DialogContext } from "../../ui/dialog"
 import { NewTaskDialogView } from "./dialog"
 import type { NewTaskInput } from "./state"
@@ -29,6 +30,11 @@ export type NewTaskDialogOptions = {
    * dialog when omitted or empty.
    */
   defaultCloneParent?: string
+  /**
+   * Engine to pre-select — the user's last-selected vendor (kv
+   * `lastSelectedVendor`). Falls back to `claude` in the dialog.
+   */
+  defaultVendor?: VendorId
 }
 
 /**
@@ -56,6 +62,7 @@ function show(
           defaultRepo={defaultRepo}
           savedRepos={savedRepos}
           defaultCloneParent={options?.defaultCloneParent}
+          defaultVendor={options?.defaultVendor}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}
         />

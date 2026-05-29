@@ -74,7 +74,7 @@ export const EMPTY_STYLE: Style = Object.freeze({
  * pull opentui's full module graph into the test runtime (see file
  * top-of-comment for why we keep this file opentui-free).
  */
-function ansi256ToRgb(index: number): RGB {
+export function ansi256ToRgb(index: number): RGB {
   if (index < 0) return [0, 0, 0]
   if (index < 16) return SYSTEM_PALETTE[index] ?? [0, 0, 0]
   if (index < 232) {
@@ -254,15 +254,16 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
       i += 1
       continue
     }
-    // Extended fg. Two forms:
+    // Extended fg. Two introducer forms:
     //   - 38;5;N        — 256-color palette (3 params total)
-    //   - 38;2;[ID;]R;G;B — true-color (5 or 6 params depending on
-    //     whether the optional ITU T.416 colorspace ID is included)
+    //   - 38;2;R;G;B    — true-color, legacy semicolon shape (5 params)
     //
-    // `@ansi-tools/parser` normalizes the bare `38;2;R;G;B` form by
-    // inserting a `0` colorspace ID — so what we see is always the
-    // 6-param shape. We ignore the colorspace ID (it's almost always
-    // 0 = "RGB" anyway).
+    // We deliberately parse the legacy 5-param shape. The optional ITU
+    // T.416 colorspace id (the 6-param `38;2;ID;R;G;B`) only exists in
+    // the colon-subparameter form in practice; semicolon-delimited SGR
+    // is universally R;G;B. `parseAnsiLine` feeds us params split from
+    // the raw escape (see `sgrParamsFromRaw`) precisely so no phantom
+    // colorspace id can shift the RGB triple here.
     if (p === 38) {
       const sub = params[i + 1]
       if (sub === 5) {
@@ -272,11 +273,11 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
         continue
       }
       if (sub === 2) {
-        const r = params[i + 3] ?? 0
-        const g = params[i + 4] ?? 0
-        const b = params[i + 5] ?? 0
+        const r = params[i + 2] ?? 0
+        const g = params[i + 3] ?? 0
+        const b = params[i + 4] ?? 0
         fg = [r, g, b]
-        i += 6
+        i += 5
         continue
       }
       // Malformed — skip the introducer and try to recover.
@@ -293,11 +294,11 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
         continue
       }
       if (sub === 2) {
-        const r = params[i + 3] ?? 0
-        const g = params[i + 4] ?? 0
-        const b = params[i + 5] ?? 0
+        const r = params[i + 2] ?? 0
+        const g = params[i + 3] ?? 0
+        const b = params[i + 4] ?? 0
         bg = [r, g, b]
-        i += 6
+        i += 5
         continue
       }
       i += 1
@@ -308,6 +309,34 @@ function applySgr(prev: Style, rawParams: readonly string[]): Style {
     i += 1
   }
   return { fg, bg, attributes: attr }
+}
+
+/**
+ * Split an SGR escape's parameter list straight from its raw bytes.
+ *
+ * We do NOT trust `@ansi-tools/parser`'s pre-split `params`: for a bare
+ * single true-color escape like `\x1b[38;2;R;G;B m` it injects a
+ * phantom ITU colorspace id (`38;2;0;R;G;B`), but it does NOT inject
+ * one when the introducer is chained (`\x1b[0;38;2;R;G;B m`,
+ * `\x1b[1;38;2;R;G;B m`). That inconsistency can't be undone from the
+ * split values alone, and it shifted the RGB triple by one — every
+ * true-color cell rendered the wrong hue. Re-splitting the raw escape
+ * gives the uniform legacy `R;G;B` shape regardless of chaining.
+ *
+ * Strips the CSI introducer (`\x1b[` or the 1-byte `\x9b`) and the
+ * trailing `m`, then splits on `;`. Empty body (`\x1b[m`) yields `[""]`,
+ * which `applySgr` treats as a reset — same as `\x1b[0m`.
+ */
+function sgrParamsFromRaw(raw: string): string[] {
+  // String slicing rather than a regex: the CSI introducers are control
+  // characters (ESC 0x1b, 1-byte CSI 0x9b), which a regex literal can't
+  // carry under our lint rules. Strip the introducer + trailing `m`.
+  let body = raw
+  if (body.charCodeAt(0) === 0x1b)
+    body = body.slice(2) // ESC `[`
+  else if (body.charCodeAt(0) === 0x9b) body = body.slice(1) // 1-byte CSI
+  if (body.endsWith("m")) body = body.slice(0, -1)
+  return body.split(";")
 }
 
 /**
@@ -348,7 +377,7 @@ export function parseAnsiLine(input: string, initial: Style = EMPTY_STYLE): { ch
     // we drop those rather than rendering raw bytes.
     if (code.type === "CSI" && code.command === "m") {
       flush()
-      style = applySgr(style, code.params)
+      style = applySgr(style, sgrParamsFromRaw(code.raw))
     }
     // Any other control code we let through as raw text is silently
     // dropped. If a stray OSC / CSI slips through, dropping it is safer

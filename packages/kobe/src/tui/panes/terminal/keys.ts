@@ -36,7 +36,8 @@
  */
 
 import type { KeyEvent } from "@opentui/core"
-import type { Accessor } from "solid-js"
+import { useRenderer } from "@opentui/solid"
+import { type Accessor, onCleanup } from "solid-js"
 import { bindByIds } from "../../context/keybindings"
 import { useBindings } from "../../lib/keymap"
 import {
@@ -132,4 +133,34 @@ export function useTerminalBindings(opts: TerminalBindingsOpts): void {
     enabled: opts.focused(),
     bindings,
   }))
+
+  // Catch-all input forwarder.
+  //
+  // The bindings table above only matches keys whose `name` is in
+  // `PASSTHROUGH_NAMES` (ASCII letters / digits / punctuation / named
+  // keys). IME / pinyin composition commits arrive as keypress events
+  // whose `name` is the composed character itself (e.g. "你"), which no
+  // binding matches — so without this they were silently dropped.
+  //
+  // We listen at the raw keypress level and forward anything the keymap
+  // stack did NOT already consume. `dispatchKeyEvent` calls
+  // `preventDefault()` on every hit, and the global keymap listener runs
+  // before this one, so:
+  //   - keys handled by a binding (passthrough ASCII, scrollback, reset,
+  //     AND global escape chords like ctrl+q) are `defaultPrevented` →
+  //     skipped here. That's why ctrl+q still escapes to the sidebar.
+  //   - everything else (CJK / IME / any non-enumerated input) carries
+  //     its bytes in `sequence` and is forwarded to the PTY.
+  const renderer = useRenderer()
+  const forwardUnhandled = (evt: KeyEvent) => {
+    if (!opts.focused() || evt.defaultPrevented) return
+    const bytes = keyEventToShellBytes(evt)
+    if (bytes == null) return
+    opts.write(bytes)
+    evt.preventDefault()
+  }
+  renderer.keyInput.on("keypress", forwardUnhandled)
+  onCleanup(() => {
+    renderer.keyInput.off("keypress", forwardUnhandled)
+  })
 }

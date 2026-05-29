@@ -6,14 +6,26 @@
  * headless xterm emulator to turn terminal control bytes into a stable
  * screen buffer for opentui to render.
  *
+ * The Bun backend renders xterm's authoritative cell grid DIRECTLY into
+ * opentui-ready style runs (`Chunk[]` per row) — we do not re-serialize
+ * cells back to ANSI and re-parse them. xterm-headless owns the VT
+ * emulation end to end; this file only maps its cells to chunks. (The
+ * old cell→ANSI→reparse round-trip was where every render bug lived:
+ * true-color SGR mis-parsing, multi-byte glyph corruption. KOB-224.)
+ *
  * A pipe backend remains available through `KOBE_TERMINAL_BACKEND=pipe`
- * as a fallback for old Bun builds or unsupported platforms, but it is
- * not the production path.
+ * as a fallback for old Bun builds or unsupported platforms. It has no
+ * emulator, so it still parses its raw byte buffer via `sgr.ts` into the
+ * same `Chunk[]` rows.
  */
 
 import { Buffer } from "node:buffer"
 import { spawn } from "node:child_process"
 import { Terminal as XtermHeadless } from "@xterm/headless"
+import { type Chunk, type RGB, ansi256ToRgb, parseAnsiSnapshot } from "./sgr"
+
+/** One rendered row: a list of opentui-ready style runs. */
+export type TerminalRow = readonly Chunk[]
 
 /* --------------------------------------------------------------------- */
 /*  Public surface                                                        */
@@ -30,10 +42,21 @@ export type TaskPtyOpts = {
   rows?: number
   /** Override `$SHELL`. Defaults to `process.env.SHELL` or `/bin/bash`. */
   shell?: string
+  /**
+   * Override the spawned process argv. When set, the PTY runs this
+   * command instead of an interactive shell — e.g. `["claude"]` to
+   * embed an interactive Claude Code session in the terminal pane.
+   * The first element is the executable; the rest are its arguments.
+   * When unset (or empty) the PTY falls back to the user's shell.
+   */
+  command?: readonly string[]
 }
 
-/** Listener for new pane snapshots. Receives the full buffer. */
-export type DataListener = (snapshot: string, cursor: CursorPos | null) => void
+/**
+ * Listener for new pane snapshots. Receives the full screen as
+ * structured rows (one `Chunk[]` per row) plus the cursor position.
+ */
+export type DataListener = (rows: readonly TerminalRow[], cursor: CursorPos | null) => void
 
 /** Cursor position within the rendered pane, 0-based. */
 export type CursorPos = { x: number; y: number }
@@ -46,7 +69,7 @@ export interface TaskPtyLike {
   write(data: string): void
   onData(cb: DataListener): () => void
   resize(cols: number, rows: number): void
-  capture(): string
+  capture(): readonly TerminalRow[]
   captureCursor(): CursorPos | null
   kill(): void
 }
@@ -61,6 +84,17 @@ const XTERM_COLOR_MODE_RGB = 3 << 24
 
 function defaultShell(): string {
   return process.env.SHELL ?? "/bin/bash"
+}
+
+/**
+ * Resolve the argv a `TaskPty` should spawn. Honours an explicit
+ * `command` override (the `["claude"]` interactive-engine path used by
+ * the chat pane) and otherwise falls back to a single-element shell
+ * argv — the terminal pane's default.
+ */
+function resolveArgv(opts: TaskPtyOpts): string[] {
+  if (opts.command && opts.command.length > 0) return [...opts.command]
+  return [opts.shell ?? defaultShell()]
 }
 
 type XtermCellLike = {
@@ -95,21 +129,19 @@ type RenderStyle = {
 
 const DEFAULT_RENDER_STYLE: RenderStyle = Object.freeze({ fg: "", bg: "", attrs: 0 })
 
-function sgrEscape(params: readonly (number | string)[]): string {
-  return `\x1b[${params.join(";")}m`
-}
-
-function paletteColorToSgr(index: number, base: 30 | 40): number[] {
-  if (index >= 0 && index <= 7) return [base + index]
-  if (index >= 8 && index <= 15) return [base + 60 + (index - 8)]
-  return [base === 30 ? 38 : 48, 5, index]
-}
-
-function rgbColorToSgr(rgb: number, base: 38 | 48): number[] {
-  const r = (rgb >> 16) & 0xff
-  const g = (rgb >> 8) & 0xff
-  const b = rgb & 0xff
-  return [base, 2, r, g, b]
+/**
+ * Convert one of `colorKey`'s opaque keys (`""` / `rgb:<packed>` /
+ * `pal:<index>`) to an RGB triple for a `Chunk`. The key is only an
+ * in-process comparison token for run-coalescing; this resolves it to
+ * the real color without any ANSI text in between.
+ */
+function colorKeyToRGB(key: string): RGB | undefined {
+  if (key === "") return undefined
+  const sep = key.indexOf(":")
+  const value = Number(key.slice(sep + 1))
+  if (key.startsWith("rgb:")) return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]
+  if (key.startsWith("pal:")) return ansi256ToRgb(value)
+  return undefined
 }
 
 function colorKey(cell: XtermCellLike, kind: "fg" | "bg"): string {
@@ -146,28 +178,14 @@ function styleEquals(a: RenderStyle, b: RenderStyle): boolean {
   return a.fg === b.fg && a.bg === b.bg && a.attrs === b.attrs
 }
 
-function styleToSgr(style: RenderStyle): string {
-  if (styleEquals(style, DEFAULT_RENDER_STYLE)) return sgrEscape([0])
-  const params: (number | string)[] = [0]
-  if (style.attrs & (1 << 0)) params.push(1)
-  if (style.attrs & (1 << 1)) params.push(2)
-  if (style.attrs & (1 << 2)) params.push(3)
-  if (style.attrs & (1 << 3)) params.push(4)
-  if (style.attrs & (1 << 4)) params.push(5)
-  if (style.attrs & (1 << 5)) params.push(7)
-  if (style.attrs & (1 << 6)) params.push(8)
-  if (style.attrs & (1 << 7)) params.push(9)
-  for (const [kind, key] of [
-    ["fg", style.fg],
-    ["bg", style.bg],
-  ] as const) {
-    if (key === "") continue
-    const [, raw] = key.split(":")
-    const value = Number(raw)
-    if (key.startsWith("rgb:")) params.push(...rgbColorToSgr(value, kind === "fg" ? 38 : 48))
-    if (key.startsWith("pal:")) params.push(...paletteColorToSgr(value, kind === "fg" ? 30 : 40))
+function renderStyleToChunkFields(style: RenderStyle): Pick<Chunk, "fg" | "bg" | "attributes"> {
+  const fg = colorKeyToRGB(style.fg)
+  const bg = colorKeyToRGB(style.bg)
+  return {
+    ...(fg ? { fg } : {}),
+    ...(bg ? { bg } : {}),
+    ...(style.attrs !== 0 ? { attributes: style.attrs } : {}),
   }
-  return sgrEscape(params)
 }
 
 function isVisibleCell(cell: XtermCellLike): boolean {
@@ -176,31 +194,47 @@ function isVisibleCell(cell: XtermCellLike): boolean {
   return !cell.isAttributeDefault() || !cell.isFgDefault() || !cell.isBgDefault()
 }
 
-function xtermLineToAnsi(
+/**
+ * Map one xterm buffer line to a list of opentui-ready style runs.
+ *
+ * This is the direct cell→chunk path: we read xterm's authoritative
+ * cells (chars + fg/bg/attrs) and coalesce contiguous same-style cells
+ * into one `Chunk`, resolving colors straight to RGB. No ANSI is
+ * produced or re-parsed. `minLast` keeps the cursor column visible even
+ * when the trailing cells are blank, mirroring the snapshot the cursor
+ * overlay is computed against.
+ */
+function xtermLineToChunks(
   line: { length: number; getCell(index: number): XtermCellLike | undefined },
   minLast = -1,
-): string {
+): Chunk[] {
   let last = Math.min(line.length - 1, minLast)
   for (let x = 0; x < line.length; x++) {
     const cell = line.getCell(x)
     if (!cell || cell.getWidth() === 0) continue
     if (isVisibleCell(cell)) last = x
   }
-  if (last === -1) return ""
+  if (last === -1) return []
 
-  let out = ""
+  const out: Chunk[] = []
   let active = DEFAULT_RENDER_STYLE
+  let buf = ""
+  const flush = () => {
+    if (buf === "") return
+    out.push({ text: buf, ...renderStyleToChunkFields(active) })
+    buf = ""
+  }
   for (let x = 0; x <= last; x++) {
     const cell = line.getCell(x)
     if (!cell || cell.getWidth() === 0) continue
     const next = cellStyle(cell)
     if (!styleEquals(active, next)) {
-      out += styleToSgr(next)
+      flush()
       active = next
     }
-    out += cell.getChars() || " "
+    buf += cell.getChars() || " "
   }
-  if (!styleEquals(active, DEFAULT_RENDER_STYLE)) out += styleToSgr(DEFAULT_RENDER_STYLE)
+  flush()
   return out
 }
 
@@ -214,7 +248,7 @@ export class BunTerminalTaskPty implements TaskPtyLike {
   private readonly proc: ReturnType<typeof Bun.spawn>
   private readonly term: XtermHeadless
   private readonly listeners = new Set<DataListener>()
-  private buffer = ""
+  private snapshot: readonly TerminalRow[] = []
   private cursor: CursorPos | null = null
   private _killed = false
   private cols: number
@@ -233,8 +267,24 @@ export class BunTerminalTaskPty implements TaskPtyLike {
       scrollback: VISIBLE_SCROLLBACK_MARGIN_ROWS,
     })
 
-    const shell = opts.shell ?? defaultShell()
-    this.proc = Bun.spawn([shell], {
+    // Reply channel: xterm emits responses to the program's terminal
+    // queries (Primary DA `\x1b[c`, cursor-position report `\x1b[6n`,
+    // status DSR, etc.) via `onData`. These MUST flow back to the
+    // child's stdin — an interactive app like `claude` queries the
+    // terminal on startup to detect its type/capabilities and to sync
+    // its cursor model. Dropping the replies left claude on a fallback
+    // path whose relative cursor-move + erase-to-EOL redraw landed on
+    // the wrong rows, half-erasing its input-box rule (KOB-208).
+    this.term.onData((data) => {
+      if (this._killed) return
+      try {
+        this.proc.terminal?.write(data)
+      } catch {
+        /* best effort — child may have exited */
+      }
+    })
+
+    this.proc = Bun.spawn(resolveArgv(opts), {
       cwd: opts.cwd,
       env: {
         ...process.env,
@@ -274,9 +324,9 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   onData(cb: DataListener): () => void {
     this.listeners.add(cb)
-    if (this.buffer !== "") {
+    if (this.snapshot.length > 0) {
       try {
-        cb(this.buffer, this.cursor)
+        cb(this.snapshot, this.cursor)
       } catch {
         /* one listener must not break the others */
       }
@@ -299,8 +349,8 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }
   }
 
-  capture(): string {
-    return this.buffer
+  capture(): readonly TerminalRow[] {
+    return this.snapshot
   }
 
   captureCursor(): CursorPos | null {
@@ -314,8 +364,14 @@ export class BunTerminalTaskPty implements TaskPtyLike {
 
   private onTerminalData(data: string | Uint8Array): void {
     if (this._killed) return
-    const chunk = typeof data === "string" ? data : Buffer.from(data).toString("utf8")
-    this.term.write(chunk, () => this.queueRefresh())
+    // Hand raw bytes straight to xterm. Its parser keeps a streaming
+    // UTF-8 decoder across `write` calls, so a multi-byte glyph
+    // (box-drawing `─`, claude's status icons) split across a PTY chunk
+    // boundary is reassembled correctly. Decoding each chunk to a UTF-8
+    // string here instead corrupted any glyph straddling a boundary:
+    // claude's full-width input-box rule rendered with gaps and its
+    // relative-cursor redraw landed on the wrong row (KOB-208).
+    this.term.write(data, () => this.queueRefresh())
   }
 
   private queueRefresh(): void {
@@ -327,22 +383,63 @@ export class BunTerminalTaskPty implements TaskPtyLike {
     }, 16)
   }
 
+  /**
+   * Is xterm currently mid-`?2026` synchronized-output block? Apps that
+   * paint atomically (interactive `claude` opens ~45 of these per
+   * prompt) write a frame in two halves; snapshotting between them
+   * renders a torn intermediate state. We skip the refresh while the
+   * mode is set — the closing `?2026l` is itself a write that re-queues
+   * a refresh once the frame is whole.
+   */
+  private inSynchronizedOutput(): boolean {
+    try {
+      return this.term.modes.synchronizedOutputMode === true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Has the app hidden the cursor via `?25l`? Streaming `claude` hides
+   * the cursor while it paints; an unconditional inverse cursor cell on
+   * top of that looks like a stray glyph. xterm tracks this on its
+   * core service — not surfaced through the public typings, hence the
+   * narrow internal reach.
+   */
+  private cursorHidden(): boolean {
+    try {
+      const core = (
+        this.term as unknown as {
+          _core?: { coreService?: { isCursorHidden?: boolean } }
+        }
+      )._core
+      return core?.coreService?.isCursorHidden === true
+    } catch {
+      return false
+    }
+  }
+
   private refreshSnapshot(): void {
     if (this._killed) return
+    // Don't snapshot a half-painted frame — wait for the sync block to close.
+    if (this.inSynchronizedOutput()) return
     const active = this.term.buffer.active
-    const rows: string[] = []
+    const rows: TerminalRow[] = []
     const cursorY = active.baseY + active.cursorY
     const start = Math.max(0, active.length - (this.rows + VISIBLE_SCROLLBACK_MARGIN_ROWS))
     for (let y = start; y < active.length; y++) {
       const line = active.getLine(y)
       const minLast = y === cursorY ? active.cursorX - 1 : -1
-      rows.push(line ? xtermLineToAnsi(line, minLast) : "")
+      rows.push(line ? xtermLineToChunks(line, minLast) : [])
     }
-    this.buffer = rows.join("\n")
-    this.cursor = { x: active.cursorX, y: active.baseY + active.cursorY - start }
+    this.snapshot = rows
+    // A hidden cursor (`?25l`) reports as null so the pane draws no
+    // inverse cursor cell — same contract as a backend that can't
+    // report a cursor at all.
+    this.cursor = this.cursorHidden() ? null : { x: active.cursorX, y: active.baseY + active.cursorY - start }
     for (const cb of this.listeners) {
       try {
-        cb(this.buffer, this.cursor)
+        cb(this.snapshot, this.cursor)
       } catch {
         /* one listener must not break the others */
       }
@@ -388,10 +485,13 @@ export class PipeTaskPty implements TaskPtyLike {
     this.cols = opts.cols ?? DEFAULT_COLS
     this.rows = opts.rows ?? DEFAULT_ROWS
 
-    const shell = opts.shell ?? defaultShell()
     // Do not pass `-i`: interactive shells expect a controlling TTY for
     // job control and can suspend the host TUI when backed only by pipes.
-    this.proc = spawn(shell, [], {
+    // A `command` override (e.g. `["claude"]`) carries its own argv.
+    const argv = resolveArgv(opts)
+    const exe = argv[0] ?? defaultShell()
+    const args = argv.slice(1)
+    this.proc = spawn(exe, args, {
       cwd: opts.cwd,
       env: {
         ...process.env,
@@ -438,7 +538,7 @@ export class PipeTaskPty implements TaskPtyLike {
     this.listeners.add(cb)
     if (this.buffer !== "") {
       try {
-        cb(this.buffer, null)
+        cb(this.capture(), null)
       } catch {
         /* one listener must not break the others */
       }
@@ -456,8 +556,10 @@ export class PipeTaskPty implements TaskPtyLike {
     // latest geometry for future process restarts.
   }
 
-  capture(): string {
-    return this.buffer
+  capture(): readonly TerminalRow[] {
+    // No emulator on this fallback path: parse the accumulated raw ANSI
+    // into the same `Chunk[]` rows the Bun backend produces from cells.
+    return parseAnsiSnapshot(this.buffer)
   }
 
   captureCursor(): CursorPos | null {
@@ -475,9 +577,10 @@ export class PipeTaskPty implements TaskPtyLike {
     if (this.buffer.length > PIPE_SCROLLBACK_LIMIT) {
       this.buffer = this.buffer.slice(this.buffer.length - PIPE_SCROLLBACK_LIMIT)
     }
+    const rows = this.capture()
     for (const cb of this.listeners) {
       try {
-        cb(this.buffer, null)
+        cb(rows, null)
       } catch {
         /* one listener must not break the others */
       }
@@ -535,9 +638,10 @@ export class MockTaskPty implements TaskPtyLike {
   feed(data: string): void {
     if (this._killed) return
     this.buffer += data
+    const rows = this.capture()
     for (const cb of this.listeners) {
       try {
-        cb(this.buffer, this._cursor)
+        cb(rows, this._cursor)
       } catch {
         /* one listener must not break the others */
       }
@@ -553,7 +657,7 @@ export class MockTaskPty implements TaskPtyLike {
     this.listeners.add(cb)
     if (this.buffer !== "") {
       try {
-        cb(this.buffer, this._cursor)
+        cb(this.capture(), this._cursor)
       } catch {
         /* one listener must not break the others */
       }
@@ -569,8 +673,10 @@ export class MockTaskPty implements TaskPtyLike {
     this._rows = rows
   }
 
-  capture(): string {
-    return this.buffer
+  capture(): readonly TerminalRow[] {
+    // Tests `feed()` raw ANSI/text; expose it as the same parsed rows
+    // the production backends emit.
+    return parseAnsiSnapshot(this.buffer)
   }
 
   setCursor(pos: CursorPos | null): void {

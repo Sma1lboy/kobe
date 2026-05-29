@@ -3,7 +3,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
-import { copilotUsageToSnapshot } from "./stream"
+import { copilotUsageToSnapshot } from "./usage"
 
 export interface CopilotHistoryDeps {
   copilotDir(): string
@@ -39,6 +39,57 @@ export async function listSessionDirs(deps: CopilotHistoryDeps = defaultDeps): P
   const root = path.join(deps.copilotDir(), "session-state")
   const names = await deps.readdir(root)
   return names.map((name) => path.join(root, name))
+}
+
+/**
+ * Session ids of Copilot conversations rooted at `worktree`, oldest-first.
+ *
+ * The monitor's auto-title dispatch (and any future per-vendor history
+ * walk) calls this the same way it calls Claude's
+ * `listSessionFilesForWorktree` / Codex's `listSessionIdsForWorktree`.
+ * Copilot stores each session as a directory under
+ * `~/.copilot/session-state/<id>/` with a `workspace.yaml` recording the
+ * `cwd`; we match that against the worktree and order by `updatedAt`
+ * (newest workspace timestamp last so the origin conversation comes
+ * first, matching the other readers' oldest-first contract).
+ */
+export async function listSessionIdsForWorktree(
+  worktree: string,
+  deps: CopilotHistoryDeps = defaultDeps,
+): Promise<string[]> {
+  const matches: { id: string; updatedAt: string }[] = []
+  for (const dir of await listSessionDirs(deps)) {
+    const workspace = await readWorkspace(dir, deps)
+    if (workspace.cwd !== worktree) continue
+    matches.push({ id: workspace.id ?? path.basename(dir), updatedAt: workspace.updatedAt ?? "" })
+  }
+  return matches.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((m) => m.id)
+}
+
+/**
+ * Newest `events.jsonl` mtime (epoch ms) across the Copilot sessions
+ * rooted at `worktree`, or 0 when none match. The Ops pane polls this to
+ * detect new Copilot conversation output without parsing the tmux pane
+ * (KOB-254). Each session is a dir with a `workspace.yaml` (for the cwd
+ * match) and a growing `events.jsonl` (the transcript we stat).
+ */
+export async function latestTranscriptMtimeForWorktree(
+  worktree: string,
+  deps: CopilotHistoryDeps = defaultDeps,
+): Promise<number> {
+  if (!worktree) return 0
+  let newest = 0
+  for (const dir of await listSessionDirs(deps)) {
+    const workspace = await readWorkspace(dir, deps)
+    if (workspace.cwd !== worktree) continue
+    try {
+      const { mtimeMs } = await deps.stat(path.join(dir, "events.jsonl"))
+      if (mtimeMs > newest) newest = mtimeMs
+    } catch {
+      // session dir without an events.jsonl yet — skip
+    }
+  }
+  return newest
 }
 
 export async function readHistoryWithMetrics(

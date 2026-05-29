@@ -6,6 +6,7 @@
  *   - `k` / `up`           previous row
  *   - `1` / `2` / `3`      switch to All / Changes / Checks tab
  *   - `enter` / `return`   open current file (calls `onOpenFile`)
+ *   - `a`                  inject current file as `@<path>` (calls `onMention`)
  *   - `r`                  refresh (re-run git commands)
  *
  * The bindings reach into a tiny controller object the parent
@@ -52,6 +53,8 @@ export type FileTreeBindingsOpts = {
   currentTab: Accessor<FileTreeTab>
   /** Activate the row under the cursor (calls `onOpenFile` upstream). */
   openCurrent: () => void
+  /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
+  mentionCurrent?: () => void
   /** Hand the current row off to the OS default app (audio, video, PDF). */
   openExternal: () => void
   /** Force a reload of the current tab's data. */
@@ -89,6 +92,7 @@ export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
         if (next) opts.setTab(next)
       },
       "files.open": () => opts.openCurrent(),
+      "files.mention": () => opts.mentionCurrent?.(),
       "files.openExternal": () => opts.openExternal(),
       "files.refresh": () => opts.refresh(),
     }),

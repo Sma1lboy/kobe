@@ -36,7 +36,7 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { appendFile, mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
@@ -87,6 +87,62 @@ export function encodeCwd(cwd: string): string {
   // Normalize to forward-slashes (paranoia for cross-platform callers
   // building these paths in tests). Then replace runs of `/` and `.`.
   return cwd.replace(/[/.]/g, "-")
+}
+
+/** One persisted Claude session file under a worktree's project dir. */
+export interface WorktreeSessionFile {
+  /** Session UUID (the JSONL filename without extension). */
+  readonly sessionId: string
+  /** Absolute path to the `.jsonl`. */
+  readonly path: string
+  /** File mtime in epoch ms — newest = most recent activity. */
+  readonly mtimeMs: number
+}
+
+/**
+ * List every Claude session transcript persisted for `worktree`.
+ *
+ * Owns the `~/.claude/projects/<encoded-cwd>/*.jsonl` directory layout
+ * knowledge so callers (the monitor's cost dashboard, future recap)
+ * don't re-derive it. Sorted newest-first by mtime. Returns `[]` when
+ * the worktree has no project dir yet (a task never entered). Never
+ * throws — best-effort scan.
+ */
+export async function listSessionFilesForWorktree(worktree: string): Promise<WorktreeSessionFile[]> {
+  if (!worktree) return []
+  const dir = path.join(homedir(), ".claude", "projects", encodeCwd(worktree))
+  let entries: string[]
+  try {
+    entries = await readdir(dir)
+  } catch {
+    return []
+  }
+  const out: WorktreeSessionFile[] = []
+  for (const entry of entries) {
+    if (!entry.endsWith(".jsonl")) continue
+    const full = path.join(dir, entry)
+    let mtimeMs = 0
+    try {
+      mtimeMs = (await stat(full)).mtimeMs
+    } catch {
+      // keep mtime 0; the file may have vanished between readdir and stat
+    }
+    out.push({ sessionId: entry.slice(0, -".jsonl".length), path: full, mtimeMs })
+  }
+  out.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  return out
+}
+
+/**
+ * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
+ * was never entered / has no session files. The Ops pane polls this to
+ * detect "the agent produced new conversation output" without parsing
+ * the tmux pane (KOB-254). `listSessionFilesForWorktree` already sorts
+ * newest-first, so `[0]` is the most recent activity.
+ */
+export async function latestTranscriptMtimeForWorktree(worktree: string): Promise<number> {
+  const files = await listSessionFilesForWorktree(worktree)
+  return files[0]?.mtimeMs ?? 0
 }
 
 /**

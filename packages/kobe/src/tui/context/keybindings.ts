@@ -678,6 +678,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open file in system default app (audio / video / pdf preview)",
     hint: { keys: "o", label: "open external", status: false },
   },
+  {
+    // `a` → inject `@<path>` into the engine (claude/codex) pane via
+    // tmux send-keys (KOB-232). Enter stays the full-width preview; this
+    // is the "add as a mention" action. Plain letter, files-scoped per
+    // the keybinding-boundaries rule, so it can't collide elsewhere.
+    id: "files.mention",
+    scope: "files",
+    keys: ["a"],
+    category: "Files",
+    description: "Inject @<path> mention into the engine pane",
+    hint: { keys: "a", label: "@mention" },
+  },
 
   // ─── Terminal ─────────────────────────────────────────────────────────
   {

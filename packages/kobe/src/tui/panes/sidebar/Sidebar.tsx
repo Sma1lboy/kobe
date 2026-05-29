@@ -53,8 +53,18 @@ import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
-import type { ChatRunState } from "../../../orchestrator/core"
-import { SIDEBAR_WIDTH } from "../../component/sidebar"
+import { useTheme as _useTheme } from "../../context/theme"
+
+/**
+ * Legacy chat-run-state shape kept as an inert type so older
+ * callers don't break their imports. Always-empty in v0.6 — the
+ * spinner derives "in progress" from `Task.status` alone now.
+ */
+export type ChatRunState = "running" | "awaiting_input" | "idle"
+
+/** Default sidebar width — `42` matches opencode / agent-deck convention. */
+const SIDEBAR_WIDTH = 42
+void _useTheme
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"
 import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
@@ -65,6 +75,22 @@ export type SidebarProps = {
   tasks: Accessor<readonly Task[]>
   selectedId: Accessor<string | null>
   onSelect: (id: string) => void
+  /**
+   * Fires on keyboard `enter` (NOT on mouse click). v0.6 wires this
+   * to "open the selected task in the workspace + launch tmux";
+   * mouse click stays a plain highlight via {@link onSelect} so
+   * accidental clicks don't suspend the renderer.
+   */
+  onActivate?: (taskId: string) => void
+  /**
+   * When true, a mouse click on a row fires {@link onActivate} (not
+   * just {@link onSelect}). Off in the outer app — there activate is a
+   * **Handover** that suspends the renderer, so a stray click must not
+   * launch. The **Tasks pane** opts in: its activate is a cheap,
+   * reversible `tmux switch-client`, so click-to-switch is the natural
+   * affordance.
+   */
+  activateOnClick?: boolean
   focused?: Accessor<boolean>
   onDeleteRequest?: (taskId: string) => void
   /**
@@ -379,7 +405,15 @@ export function Sidebar(props: SidebarProps) {
     cursorIndex,
     setCursorIndex,
     flatTaskIds: flatIds,
-    onSelect: (id) => props.onSelect(id),
+    onSelect: (id) => {
+      // Keyboard `enter` path. Always sync the highlight, and — if
+      // the host wired `onActivate` — fire it too so a single Enter
+      // opens the task (e.g. attaches to its tmux session). Mouse
+      // clicks still go through `props.onSelect` only via the
+      // per-row `onMouseUp`, so a stray click never auto-launches.
+      props.onSelect(id)
+      props.onActivate?.(id)
+    },
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
     onLocalMergeRequest: (id) => props.onLocalMergeRequest?.(id),
@@ -470,8 +504,8 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* View switcher: tab strip with the active view bracketed +
-         emphasized. `[` / `]` toggles. */}
+      {/* View switcher: tab strip with the active view emphasized by
+          colour + bold, no brackets. `[` / `]` toggles. */}
       <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1}>
         <For each={VIEW_TABS}>
           {(tab) => {
@@ -483,7 +517,7 @@ export function Sidebar(props: SidebarProps) {
                 wrapMode="none"
                 onMouseUp={() => setView(tab.view)}
               >
-                {active() ? `[ ${tab.label} ]` : tab.label}
+                {tab.label}
               </text>
             )
           }}
@@ -572,7 +606,10 @@ export function Sidebar(props: SidebarProps) {
                   paddingRight={1}
                   gap={1}
                   backgroundColor={isCursor() ? theme.primary : isSelected() ? theme.backgroundElement : undefined}
-                  onMouseUp={() => props.onSelect(task.id)}
+                  onMouseUp={() => {
+                    props.onSelect(task.id)
+                    if (props.activateOnClick) props.onActivate?.(task.id)
+                  }}
                 >
                   <text
                     fg={isCursor() ? theme.selectedListItemText : badgeColor()}

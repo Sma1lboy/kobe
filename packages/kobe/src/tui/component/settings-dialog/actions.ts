@@ -66,20 +66,14 @@ export async function confirmRestartDaemon(
   const ok = await DialogConfirm.show(
     dialog,
     "Restart backend?",
-    "Stops the kobe daemon and quits this kobe window. Relaunch to spawn a fresh daemon with the latest code. Other attached kobe windows will lose their daemon connection too.",
+    "Quits this kobe window. Relaunch to (re)spawn the daemon. Any other attached windows keep their connection. In v0.6 the daemon's RPC surface shrank to task CRUD + subscribe, so a graceful daemon.stop RPC is no longer plumbed through the client — quit + relaunch is the path.",
     "cancel",
   )
   if (ok !== true) return
-  try {
-    await orchestrator.stopDaemon()
-  } catch (err) {
-    // daemon.stop closes the socket as part of its work; the request
-    // may reject before the response frame arrives. That's the success
-    // path for this destructive restart flow, so keep it logged only.
-    // eslint-disable-next-line no-console
-    console.error("kobe: daemon.stop returned:", err)
-  }
+  // v0.5's `orchestrator.stopDaemon()` is gone with the rest of the
+  // chat-stream RPCs. The user can `kobe daemon stop` from a shell if
+  // they want to nuke the daemon proper; here we just quit the TUI.
   destroyRenderer(renderer, "daemon restart")
-  process.stderr.write("kobe: daemon stopped. Relaunch kobe to start fresh.\n")
+  process.stderr.write("kobe: window closed. Relaunch kobe to start fresh.\n")
   process.exit(0)
 }

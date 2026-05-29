@@ -1,23 +1,14 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
-import type {
-  ClaudeAccount,
-  CodexAccount,
-  CopilotAccount,
-  EngineAccountStatus,
-  GeminiAccount,
-} from "../../../engine/account-detect"
-import type { CodexBackend } from "../../../engine/codex-local/app-server"
+import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
+import { VENDOR_LABEL } from "../../../engine/interactive-command"
+import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import {
-  CODEX_BACKENDS,
-  CODEX_BACKEND_DESCRIPTION,
-  CODEX_BACKEND_LABEL,
   FOCUS_ACCENT_LABEL,
   type NavLevel,
   SECTIONS,
   type SectionId,
-  codexEnvOverride,
   soundRowIndex,
   toastRowIndex,
   transparentRowIndex,
@@ -244,13 +235,82 @@ export function GeneralSettingsSection(
   )
 }
 
+export function EngineSettingsSection(
+  props: CursorSetters & {
+    level: Accessor<NavLevel>
+    bodyRow: Accessor<number>
+    vendors: readonly VendorId[]
+    /** Current launch command shown for a vendor (override or default). */
+    commandText: (vendor: VendorId) => string
+    /** Whether the shown command is the built-in default (dims it). */
+    isDefault: (vendor: VendorId) => boolean
+    /** Open the editor for a vendor's launch command. */
+    editEngine: (vendor: VendorId) => void
+  },
+) {
+  const { theme } = useTheme()
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        Launch command
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        The command each engine's task pane runs. Override it when your binary isn't on PATH as `claude` / `codex` (e.g.
+        it's `cl`) or to pass default flags. enter to edit · takes effect on the next task enter.
+      </text>
+      <box flexDirection="column" gap={0}>
+        <For each={props.vendors}>
+          {(vendor, i) => {
+            const isCursor = () => props.level() === "body" && props.bodyRow() === i()
+            return (
+              <box
+                flexDirection="row"
+                gap={1}
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={isCursor() ? theme.primary : undefined}
+                onMouseUp={() => {
+                  props.setLevel("body")
+                  props.setBodyRow(i())
+                  props.editEngine(vendor)
+                }}
+              >
+                <text
+                  fg={isCursor() ? theme.selectedListItemText : theme.text}
+                  attributes={TextAttributes.BOLD}
+                  wrapMode="none"
+                >
+                  {VENDOR_LABEL[vendor]}
+                </text>
+                <text
+                  fg={
+                    isCursor() ? theme.selectedListItemText : props.isDefault(vendor) ? theme.textMuted : theme.accent
+                  }
+                  wrapMode="none"
+                >
+                  {props.commandText(vendor)}
+                  {props.isDefault(vendor) ? "  (default)" : ""}
+                </text>
+              </box>
+            )
+          }}
+        </For>
+      </box>
+    </box>
+  )
+}
+
+/** Read-only "is this engine installed + logged in" view (KOB-249). */
 export function AccountsSettingsSection(props: {
   claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
   codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>
-  geminiStatus: Accessor<EngineAccountStatus<GeminiAccount> | null>
   copilotStatus: Accessor<EngineAccountStatus<CopilotAccount> | null>
 }) {
   const { theme } = useTheme()
+  const binaryLine = (s: EngineAccountStatus<unknown>) =>
+    s.binary.found
+      ? `Binary: ${(s.binary as { path: string }).path}`
+      : `Binary: ${(s.binary as { error: string }).error}`
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -270,9 +330,7 @@ export function AccountsSettingsSection(props: {
           {(s) => (
             <box flexDirection="column" gap={0}>
               <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
-                {s().binary.found
-                  ? `Binary: ${(s().binary as { path: string }).path}`
-                  : `Binary: ${(s().binary as { error: string }).error}`}
+                {binaryLine(s())}
               </text>
               {(() => {
                 const a = s().account
@@ -308,9 +366,7 @@ export function AccountsSettingsSection(props: {
           {(s) => (
             <box flexDirection="column" gap={0}>
               <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
-                {s().binary.found
-                  ? `Binary: ${(s().binary as { path: string }).path}`
-                  : `Binary: ${(s().binary as { error: string }).error}`}
+                {binaryLine(s())}
               </text>
               {(() => {
                 const a = s().account
@@ -346,9 +402,7 @@ export function AccountsSettingsSection(props: {
           {(s) => (
             <box flexDirection="column" gap={0}>
               <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
-                {s().binary.found
-                  ? `Binary: ${(s().binary as { path: string }).path}`
-                  : `Binary: ${(s().binary as { error: string }).error}`}
+                {binaryLine(s())}
               </text>
               {(() => {
                 const a = s().account
@@ -366,119 +420,6 @@ export function AccountsSettingsSection(props: {
             </box>
           )}
         </Show>
-      </box>
-      <box flexDirection="column" gap={0}>
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          gemini
-        </text>
-        <Show when={props.geminiStatus() === null}>
-          <text fg={theme.textMuted}>Checking…</text>
-        </Show>
-        <Show when={props.geminiStatus()}>
-          {(s) => (
-            <box flexDirection="column" gap={0}>
-              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
-                {s().binary.found
-                  ? `Binary: ${(s().binary as { path: string }).path}`
-                  : `Binary: ${(s().binary as { error: string }).error}`}
-              </text>
-              {(() => {
-                const a = s().account
-                if (a.kind === "google") {
-                  const tail = a.authType ? ` (${a.authType})` : ""
-                  return (
-                    <text fg={theme.success} wrapMode="word">
-                      {`● Google login${a.email ? `: ${a.email}` : ""}${tail}`}
-                    </text>
-                  )
-                }
-                if (a.kind === "apikey") return <text fg={theme.success}>● Gemini API key configured</text>
-                if (a.kind === "vertex") {
-                  const tail = [a.project, a.location].filter((x): x is string => !!x).join(" · ")
-                  return (
-                    <text fg={theme.success} wrapMode="word">
-                      {`● Vertex AI configured${tail ? ` (${tail})` : ""}`}
-                    </text>
-                  )
-                }
-                return <text fg={theme.textMuted}>○ Not logged in</text>
-              })()}
-              <Show when={s().accountError}>
-                {(err) => (
-                  <text fg={theme.warning} wrapMode="word">
-                    {`! ${err()}`}
-                  </text>
-                )}
-              </Show>
-            </box>
-          )}
-        </Show>
-      </box>
-    </box>
-  )
-}
-
-export function CodexSettingsSection(
-  props: CursorSetters & {
-    level: Accessor<NavLevel>
-    bodyRow: Accessor<number>
-    codexBackend: Accessor<CodexBackend>
-    setCodexBackend: (backend: CodexBackend) => void
-  },
-) {
-  const { theme } = useTheme()
-  return (
-    <box flexDirection="column" gap={1}>
-      <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Codex backend
-      </text>
-      <text fg={theme.textMuted} wrapMode="word">
-        App server is the default path: kobe talks to `codex app-server` over JSON-RPC, so sessions and token usage come
-        from Codex directly. `exec --json` starts one Codex process per turn and resumes the saved session id; keep it
-        as a fallback.
-      </text>
-      <Show when={codexEnvOverride()}>
-        {(override) => (
-          <text fg={theme.warning} wrapMode="word">
-            {`Environment override is active: ${override()}. Unset KOBE_CODEX_BACKEND / KOBE_CODEX_APP_SERVER before the saved setting is used.`}
-          </text>
-        )}
-      </Show>
-      <text fg={theme.textMuted} wrapMode="word">
-        Changing this setting applies after Restart backend or the next kobe launch.
-      </text>
-      <box flexDirection="column" gap={0}>
-        <For each={CODEX_BACKENDS}>
-          {(backend, i) => {
-            const isCursor = () => props.level() === "body" && props.bodyRow() === i()
-            const isSelected = () => props.codexBackend() === backend
-            return (
-              <box
-                flexDirection="column"
-                paddingLeft={1}
-                paddingRight={1}
-                backgroundColor={isCursor() ? theme.primary : undefined}
-                onMouseUp={() => {
-                  props.setLevel("body")
-                  props.setBodyRow(i())
-                  props.setCodexBackend(backend)
-                }}
-              >
-                <text
-                  fg={isCursor() ? theme.selectedListItemText : isSelected() ? theme.accent : theme.text}
-                  attributes={isCursor() || isSelected() ? TextAttributes.BOLD : undefined}
-                  wrapMode="none"
-                >
-                  {isSelected() ? "● " : "  "}
-                  {CODEX_BACKEND_LABEL[backend]}
-                </text>
-                <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="word">
-                  {CODEX_BACKEND_DESCRIPTION[backend]}
-                </text>
-              </box>
-            )
-          }}
-        </For>
       </box>
     </box>
   )

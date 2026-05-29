@@ -38,15 +38,14 @@ The architecture decisions are not always obvious from the code. The docs above 
 
 ## Development environments
 
-Three flavours of `bun run dev:*` cover the spectrum from production-style state to fake engines:
+Two flavours of `bun run dev:*` (runnable from the repo root or `packages/kobe/`) — the `dev:test` / `DevAIEngine` fake-engine flavour is gone (deleted with the headless engine in v0.6):
 
 | Script | Engine | Home dir | Use when |
 |---|---|---|---|
 | `dev` | Real `claude` / `codex` | `~/.kobe` (production) | Touching production-style state. |
-| `dev:test` | `DevAIEngine` (auto-replying fake, no token cost) | `packages/kobe/.dev-fixture/home` (pre-seeded canned repos + tasks) | UI / chat-render iteration without burning tokens or hitting the network. Seeded by `scripts/dev-fixture.ts`. |
 | `dev:sandbox` | Real `claude` / `codex` | `packages/kobe/.dev-sandbox/home` (empty, throwaway) | Worktree-based dev where you want a real engine but must not touch the production `~/.kobe/tasks.json`. Reset with `bun run dev:sandbox:reset`. |
 
-Each gets its own daemon socket + pidfile under its respective `KOBE_HOME_DIR`, so all three can coexist. `defaultDaemonSocketPath` honours an explicit `KOBE_HOME_DIR` ahead of `XDG_RUNTIME_DIR`.
+Each gets its own daemon socket + pidfile under its respective `KOBE_HOME_DIR`, so both can coexist. `defaultDaemonSocketPath` honours an explicit `KOBE_HOME_DIR` ahead of `XDG_RUNTIME_DIR`. The **tmux server** is isolated the same way: the socket name comes from `KOBE_TMUX_SOCKET` (default `kobe`), and `dev:sandbox` sets `KOBE_TMUX_SOCKET=kobe-sandbox` so its task sessions never share a server with production. `bun run dev:sandbox:reset` (`kobe kill-sessions` on the sandbox socket) tears down only the sandbox sessions — use it after Tasks-pane / Ops-pane / engine changes so a long-lived session isn't still running old pane code. `kobe kill-sessions` with no env override targets the default `kobe` socket (production) — destructive, so reserve it for an intentional prod reset.
 
 ### Daemon logs & crash net
 

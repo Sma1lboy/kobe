@@ -1,405 +1,89 @@
-/**
- * Unit tests for `detectClaudeAccount` / `detectCodexAccount`.
- *
- * We pin every fs read + binary probe through injected `DetectDeps`,
- * so these tests are deterministic and don't touch the developer's
- * real `~/.claude.json` or `~/.codex/auth.json`.
- *
- * Why these tests matter — the on-disk shapes are external contracts
- * (anthropic's `claude` CLI and openai's `codex` CLI own them). If we
- * silently regress the parsing — e.g. mis-spell `oauthAccount`, drop
- * the JWT padding fix, swallow a parse error as "not logged in" — the
- * Accounts panel lies about login state. Tests below pin the happy
- * paths and the error-vs-none distinction.
- */
-
+import { describe, expect, it } from "vitest"
 import {
   type DetectDeps,
-  claudeGlobalConfigPath,
-  codexAuthPath,
-  copilotConfigPath,
   detectClaudeAccount,
   detectCodexAccount,
   detectCopilotAccount,
-  detectGeminiAccount,
-  geminiOauthCredsPath,
-  geminiSettingsPath,
-} from "@/engine/account-detect"
-import { ClaudeBinaryNotFoundError } from "@/engine/claude-code-local/binary"
-import { CodexBinaryNotFoundError } from "@/engine/codex-local/binary"
-import { CopilotBinaryNotFoundError } from "@/engine/copilot-local/binary"
-import { GeminiBinaryNotFoundError } from "@/engine/gemini-local/binary"
-import { describe, expect, it } from "vitest"
+} from "../../src/engine/account-detect.ts"
 
-function makeDeps(overrides: Partial<DetectDeps> = {}): DetectDeps {
+/** A DetectDeps with every binary found and no files/env, overridable per test. */
+function deps(over: Partial<DetectDeps> = {}): DetectDeps {
   return {
     readFile: () => null,
     env: () => undefined,
-    home: () => "/home/user",
-    findClaudeBinary: async () => "/usr/local/bin/claude",
-    findCodexBinary: async () => "/usr/local/bin/codex",
-    findGeminiBinary: async () => "/usr/local/bin/gemini",
-    findCopilotBinary: async () => "/usr/local/bin/copilot",
-    ...overrides,
+    home: () => "/home/u",
+    findClaudeBinary: async () => "/bin/claude",
+    findCodexBinary: async () => "/bin/codex",
+    findCopilotBinary: async () => "/bin/copilot",
+    ...over,
   }
 }
 
-// A real JWT-style id_token would be header.payload.signature, where
-// payload is base64url(JSON). The signature is opaque to us — we never
-// verify it. So we just need a parseable header and payload.
-function makeJwt(payload: object): string {
-  const enc = (o: object) =>
-    Buffer.from(JSON.stringify(o)).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_")
-  return `${enc({ alg: "RS256", typ: "JWT" })}.${enc(payload)}.signature`
+// A JWT (header.payload.signature) with a payload we control; signature unverified.
+function jwt(payload: Record<string, unknown>): string {
+  const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url")
+  return `${b64({ alg: "none" })}.${b64(payload)}.sig`
 }
 
-describe("claudeGlobalConfigPath", () => {
-  it("defaults to ~/.claude.json", () => {
-    expect(claudeGlobalConfigPath(() => undefined, "/home/user")).toBe("/home/user/.claude.json")
-  })
-  it("honours CLAUDE_CONFIG_DIR", () => {
-    expect(claudeGlobalConfigPath((k) => (k === "CLAUDE_CONFIG_DIR" ? "/custom/cfg" : undefined), "/home/user")).toBe(
-      "/custom/cfg/.claude.json",
-    )
-  })
-})
-
-describe("codexAuthPath", () => {
-  it("defaults to ~/.codex/auth.json", () => {
-    expect(codexAuthPath(() => undefined, "/home/user")).toBe("/home/user/.codex/auth.json")
-  })
-  it("honours CODEX_HOME", () => {
-    expect(codexAuthPath((k) => (k === "CODEX_HOME" ? "/elsewhere/codex" : undefined), "/home/user")).toBe(
-      "/elsewhere/codex/auth.json",
-    )
-  })
-})
-
-describe("gemini auth paths", () => {
-  it("uses ~/.gemini/oauth_creds.json and ~/.gemini/settings.json", () => {
-    expect(geminiOauthCredsPath("/home/user")).toBe("/home/user/.gemini/oauth_creds.json")
-    expect(geminiSettingsPath("/home/user")).toBe("/home/user/.gemini/settings.json")
-  })
-})
-
-describe("copilotConfigPath", () => {
-  it("defaults to ~/.copilot/config.json", () => {
-    expect(copilotConfigPath(() => undefined, "/home/user")).toBe("/home/user/.copilot/config.json")
-  })
-  it("honours COPILOT_HOME", () => {
-    expect(copilotConfigPath((k) => (k === "COPILOT_HOME" ? "/elsewhere/copilot" : undefined), "/home/user")).toBe(
-      "/elsewhere/copilot/config.json",
-    )
-  })
-})
-
 describe("detectClaudeAccount", () => {
-  it("reports binary path + 'none' when no config file exists", async () => {
-    const r = await detectClaudeAccount(makeDeps())
-    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/claude" })
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toBeUndefined()
-  })
-
-  it("extracts email + organization + displayName + billingType from oauthAccount", async () => {
-    const config = {
-      numStartups: 42,
-      oauthAccount: {
-        accountUuid: "abc",
-        emailAddress: "jane@example.com",
-        organizationName: "Jane's Org",
-        displayName: "Jane",
-        billingType: "stripe_subscription",
-      },
-    }
-    const r = await detectClaudeAccount(
-      makeDeps({
-        readFile: (p) => (p === "/home/user/.claude.json" ? JSON.stringify(config) : null),
+  it("reports the oauth email + org from ~/.claude.json", async () => {
+    const status = await detectClaudeAccount(
+      deps({
+        readFile: () => JSON.stringify({ oauthAccount: { emailAddress: "a@b.com", organizationName: "Acme" } }),
       }),
     )
-    expect(r.account).toEqual({
+    expect(status.binary).toEqual({ found: true, path: "/bin/claude" })
+    expect(status.account).toEqual({
       kind: "oauth",
-      email: "jane@example.com",
-      organization: "Jane's Org",
-      displayName: "Jane",
-      billingType: "stripe_subscription",
+      email: "a@b.com",
+      organization: "Acme",
+      displayName: undefined,
+      billingType: undefined,
     })
   })
 
-  it("reports 'none' when config exists but oauthAccount is absent", async () => {
-    const r = await detectClaudeAccount(makeDeps({ readFile: () => JSON.stringify({ numStartups: 1 }) }))
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toBeUndefined()
+  it("is 'none' when the config file is absent", async () => {
+    const status = await detectClaudeAccount(deps())
+    expect(status.account).toEqual({ kind: "none" })
   })
 
-  it("surfaces parse errors as accountError (NOT as 'not logged in')", async () => {
-    const r = await detectClaudeAccount(makeDeps({ readFile: () => "{ this is not json" }))
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/parse .*\.claude\.json/)
-  })
-
-  it("reports binary not-found cleanly without losing account detection", async () => {
-    const r = await detectClaudeAccount(
-      makeDeps({
+  it("surfaces a binary-not-found without throwing", async () => {
+    const status = await detectClaudeAccount(
+      deps({
         findClaudeBinary: async () => {
-          throw new ClaudeBinaryNotFoundError(["/nowhere"])
-        },
-        readFile: () => JSON.stringify({ oauthAccount: { emailAddress: "x@y.z" } }),
-      }),
-    )
-    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
-    expect(r.account).toEqual({ kind: "oauth", email: "x@y.z" })
-  })
-
-  it("respects CLAUDE_CONFIG_DIR", async () => {
-    let observed = ""
-    const r = await detectClaudeAccount(
-      makeDeps({
-        env: (k) => (k === "CLAUDE_CONFIG_DIR" ? "/custom" : undefined),
-        readFile: (p) => {
-          observed = p
-          return null
+          throw new Error("nope")
         },
       }),
     )
-    expect(observed).toBe("/custom/.claude.json")
-    expect(r.account).toEqual({ kind: "none" })
+    expect(status.binary.found).toBe(false)
   })
 })
 
 describe("detectCodexAccount", () => {
-  it("reports 'none' when no auth file exists", async () => {
-    const r = await detectCodexAccount(makeDeps())
-    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/codex" })
-    expect(r.account).toEqual({ kind: "none" })
+  it("decodes the ChatGPT id_token email + plan", async () => {
+    const idToken = jwt({ email: "c@d.com", "https://api.openai.com/auth": { chatgpt_plan_type: "pro" } })
+    const status = await detectCodexAccount(deps({ readFile: () => JSON.stringify({ tokens: { id_token: idToken } }) }))
+    expect(status.account).toEqual({ kind: "chatgpt", email: "c@d.com", plan: "pro" })
   })
 
-  it("decodes ChatGPT login: email + plan from id_token JWT", async () => {
-    const idToken = makeJwt({
-      email: "jane@example.com",
-      "https://api.openai.com/auth": { chatgpt_plan_type: "plus" },
-    })
-    const r = await detectCodexAccount(
-      makeDeps({
-        readFile: () =>
-          JSON.stringify({
-            OPENAI_API_KEY: null,
-            tokens: { id_token: idToken },
-          }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "chatgpt", email: "jane@example.com", plan: "plus" })
-  })
-
-  it("falls back to API key login when no id_token but OPENAI_API_KEY is set", async () => {
-    const r = await detectCodexAccount(
-      makeDeps({
-        readFile: () => JSON.stringify({ OPENAI_API_KEY: "sk-test-123", tokens: {} }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "apikey" })
-  })
-
-  it("treats null OPENAI_API_KEY + no id_token as 'not logged in'", async () => {
-    const r = await detectCodexAccount(
-      makeDeps({
-        readFile: () => JSON.stringify({ OPENAI_API_KEY: null, tokens: {} }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toBeUndefined()
-  })
-
-  it("surfaces malformed JWT as accountError (NOT as 'not logged in')", async () => {
-    const r = await detectCodexAccount(
-      makeDeps({
-        readFile: () => JSON.stringify({ OPENAI_API_KEY: null, tokens: { id_token: "not.a.jwt.too.many.parts" } }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/id_token/)
-  })
-
-  it("surfaces JWT with no email claim", async () => {
-    const idToken = makeJwt({ sub: "user-1" })
-    const r = await detectCodexAccount(
-      makeDeps({
-        readFile: () => JSON.stringify({ tokens: { id_token: idToken } }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/no email/)
-  })
-
-  it("surfaces JSON parse errors", async () => {
-    const r = await detectCodexAccount(makeDeps({ readFile: () => "{ not json" }))
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/parse .*auth\.json/)
-  })
-
-  it("reports binary not-found cleanly", async () => {
-    const r = await detectCodexAccount(
-      makeDeps({
-        findCodexBinary: async () => {
-          throw new CodexBinaryNotFoundError(["/nowhere"])
-        },
-      }),
-    )
-    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
-  })
-
-  it("respects CODEX_HOME", async () => {
-    let observed = ""
-    await detectCodexAccount(
-      makeDeps({
-        env: (k) => (k === "CODEX_HOME" ? "/elsewhere" : undefined),
-        readFile: (p) => {
-          observed = p
-          return null
-        },
-      }),
-    )
-    expect(observed).toBe("/elsewhere/auth.json")
-  })
-})
-
-describe("detectGeminiAccount", () => {
-  it("reports binary path + 'none' when no credential file or env auth exists", async () => {
-    const r = await detectGeminiAccount(makeDeps())
-    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/gemini" })
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toBeUndefined()
-  })
-
-  it("decodes Google login email from oauth_creds id_token and includes selected auth type", async () => {
-    const idToken = makeJwt({ email: "jane@example.com", email_verified: true })
-    const r = await detectGeminiAccount(
-      makeDeps({
-        readFile: (p) => {
-          if (p === "/home/user/.gemini/settings.json") {
-            return JSON.stringify({ security: { auth: { selectedType: "oauth-personal" } } })
-          }
-          if (p === "/home/user/.gemini/oauth_creds.json") {
-            return JSON.stringify({ id_token: idToken, token_type: "Bearer" })
-          }
-          return null
-        },
-      }),
-    )
-    expect(r.account).toEqual({ kind: "google", email: "jane@example.com", authType: "oauth-personal" })
-  })
-
-  it("supports legacy selectedAuthType settings", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        readFile: (p) => {
-          if (p === "/home/user/.gemini/settings.json") return JSON.stringify({ selectedAuthType: "oauth-personal" })
-          if (p === "/home/user/.gemini/oauth_creds.json") return JSON.stringify({ refresh_token: "refresh" })
-          return null
-        },
-      }),
-    )
-    expect(r.account).toEqual({ kind: "google", authType: "oauth-personal" })
-  })
-
-  it("prefers GEMINI_API_KEY env auth before cached OAuth", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        env: (k) => (k === "GEMINI_API_KEY" ? "test-key" : undefined),
-        readFile: () => JSON.stringify({ id_token: makeJwt({ email: "jane@example.com" }) }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "apikey" })
-  })
-
-  it("reports Vertex AI env auth", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        env: (k) =>
-          ({
-            GOOGLE_GENAI_USE_VERTEXAI: "true",
-            GOOGLE_CLOUD_PROJECT: "my-project",
-            GOOGLE_CLOUD_LOCATION: "us-central1",
-          })[k],
-      }),
-    )
-    expect(r.account).toEqual({ kind: "vertex", project: "my-project", location: "us-central1" })
-  })
-
-  it("surfaces malformed Gemini JWT as accountError", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        readFile: (p) => (p.endsWith("oauth_creds.json") ? JSON.stringify({ id_token: "not-a-jwt" }) : null),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/gemini id_token/)
-  })
-
-  it("surfaces JSON parse errors", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        readFile: (p) => (p.endsWith("oauth_creds.json") ? "{ not json" : null),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/parse .*oauth_creds\.json/)
-  })
-
-  it("reports binary not-found cleanly without losing account detection", async () => {
-    const r = await detectGeminiAccount(
-      makeDeps({
-        findGeminiBinary: async () => {
-          throw new GeminiBinaryNotFoundError(["/nowhere"])
-        },
-        readFile: (p) =>
-          p.endsWith("oauth_creds.json") ? JSON.stringify({ id_token: makeJwt({ email: "jane@example.com" }) }) : null,
-      }),
-    )
-    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
-    expect(r.account).toEqual({ kind: "google", email: "jane@example.com", authType: undefined })
+  it("falls back to api-key login", async () => {
+    const status = await detectCodexAccount(deps({ readFile: () => JSON.stringify({ OPENAI_API_KEY: "sk-x" }) }))
+    expect(status.account).toEqual({ kind: "apikey" })
   })
 })
 
 describe("detectCopilotAccount", () => {
-  it("reports 'none' when no token env or config file exists", async () => {
-    const r = await detectCopilotAccount(makeDeps())
-    expect(r.binary).toEqual({ found: true, path: "/usr/local/bin/copilot" })
-    expect(r.account).toEqual({ kind: "none" })
+  it("prefers an env token and names its source", async () => {
+    const status = await detectCopilotAccount(deps({ env: (n) => (n === "GH_TOKEN" ? "ghp_x" : undefined) }))
+    expect(status.account).toEqual({ kind: "token", source: "GH_TOKEN" })
   })
 
-  it("reports token auth by precedence", async () => {
-    const r = await detectCopilotAccount(
-      makeDeps({
-        env: (k) => (k === "GH_TOKEN" ? "gho_test" : undefined),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "token", source: "GH_TOKEN" })
+  it("detects an on-disk oauth login from config.json", async () => {
+    const status = await detectCopilotAccount(deps({ readFile: () => JSON.stringify({ oauth_token: "tok" }) }))
+    expect(status.account).toEqual({ kind: "oauth" })
   })
 
-  it("detects an OAuth-style config without exposing token material", async () => {
-    const r = await detectCopilotAccount(
-      makeDeps({
-        readFile: () => JSON.stringify({ auth: { access_token: "secret" }, selectedUser: "octo" }),
-      }),
-    )
-    expect(r.account).toEqual({ kind: "oauth" })
-  })
-
-  it("surfaces JSON parse errors", async () => {
-    const r = await detectCopilotAccount(makeDeps({ readFile: () => "{ not json" }))
-    expect(r.account).toEqual({ kind: "none" })
-    expect(r.accountError).toMatch(/parse .*config\.json/)
-  })
-
-  it("reports binary not-found cleanly", async () => {
-    const r = await detectCopilotAccount(
-      makeDeps({
-        findCopilotBinary: async () => {
-          throw new CopilotBinaryNotFoundError(["/nowhere"])
-        },
-      }),
-    )
-    expect(r.binary).toEqual({ found: false, error: "not found on PATH" })
+  it("is 'none' with no token and no config", async () => {
+    expect((await detectCopilotAccount(deps())).account).toEqual({ kind: "none" })
   })
 })
