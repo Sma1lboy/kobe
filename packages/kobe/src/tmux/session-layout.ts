@@ -142,12 +142,15 @@ export function opsPaneCommand(args: {
   taskId: string | undefined
   claudePaneId: string | null
   cliInvocation: readonly string[]
+  /** Task engine vendor — `kobe ops` polls this engine's transcript for the activity badge. */
+  vendor?: string
 }): string {
   if (args.taskId && args.claudePaneId) {
     const inv = args.cliInvocation.map(shellQuote).join(" ")
+    const vendorFlag = args.vendor ? ` --vendor ${shellQuote(args.vendor)}` : ""
     return (
       `${inv} ops --task-id ${shellQuote(args.taskId)} --worktree ${shellQuote(args.cwd)} ` +
-      `--target-pane ${shellQuote(args.claudePaneId)} || { ${fallbackOpsScript(args.cwd)}; }`
+      `--target-pane ${shellQuote(args.claudePaneId)}${vendorFlag} || { ${fallbackOpsScript(args.cwd)}; }`
     )
   }
   return fallbackOpsScript(args.cwd)

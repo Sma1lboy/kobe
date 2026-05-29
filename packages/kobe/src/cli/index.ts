@@ -19,6 +19,7 @@
  * MCP bridge, no behavior fixtures).
  */
 import { resolve } from "node:path"
+import { coerceVendorId } from "../types/vendor.ts"
 import { parseCliArgs } from "./daemon-mode.ts"
 
 async function runAddSubcommand(arg: string | undefined): Promise<void> {
@@ -36,6 +37,8 @@ interface OpsFlags {
   taskId?: string
   worktree?: string
   targetPane?: string
+  /** Task engine vendor — selects which transcript store the activity badge polls. */
+  vendor?: string
   /** When set, render the full-width file preview for this rel path instead of the FileTree. */
   preview?: string
   /** tmux session name (used by `new-chattab`). */
@@ -57,6 +60,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--target-pane") {
       flags.targetPane = value
+      i++
+    } else if (flag === "--vendor") {
+      flags.vendor = value
       i++
     } else if (flag === "--preview") {
       flags.preview = value
@@ -169,6 +175,7 @@ async function main(): Promise<void> {
       taskId: flags.taskId ?? "",
       worktree: flags.worktree,
       targetPane: flags.targetPane ?? null,
+      vendor: coerceVendorId(flags.vendor),
     })
     return
   }

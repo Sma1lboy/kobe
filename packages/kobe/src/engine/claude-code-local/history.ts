@@ -134,6 +134,18 @@ export async function listSessionFilesForWorktree(worktree: string): Promise<Wor
 }
 
 /**
+ * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
+ * was never entered / has no session files. The Ops pane polls this to
+ * detect "the agent produced new conversation output" without parsing
+ * the tmux pane (KOB-254). `listSessionFilesForWorktree` already sorts
+ * newest-first, so `[0]` is the most recent activity.
+ */
+export async function latestTranscriptMtimeForWorktree(worktree: string): Promise<number> {
+  const files = await listSessionFilesForWorktree(worktree)
+  return files[0]?.mtimeMs ?? 0
+}
+
+/**
  * Read all conversation messages persisted for the given session id.
  *
  * Algorithm:

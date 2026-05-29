@@ -206,7 +206,13 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   await setSessionOption(opts.name, "@kobe_worktree", opts.cwd)
   if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
 
-  await buildPanesAround(pane0, { cwd: opts.cwd, taskId: opts.taskId, opsCommand: opts.opsCommand, inv })
+  await buildPanesAround(pane0, {
+    cwd: opts.cwd,
+    taskId: opts.taskId,
+    opsCommand: opts.opsCommand,
+    inv,
+    vendor: opts.vendor,
+  })
 
   // Server-scoped niceties — done after the session is alive so the
   // server is definitely up. All `-g` options are idempotent so
@@ -339,7 +345,7 @@ function inheritedEnvPrefix(): string {
  */
 async function buildPanesAround(
   claudePane: string,
-  args: { cwd: string; taskId?: string; opsCommand?: string; inv: readonly string[] },
+  args: { cwd: string; taskId?: string; opsCommand?: string; inv: readonly string[]; vendor?: string },
 ): Promise<void> {
   // Tag claude by a pane user-option — tmux renumbers panes by
   // position when the Tasks pane is inserted on the left, so the
@@ -375,7 +381,13 @@ async function buildPanesAround(
   const opsCmd = keepAlive(
     args.opsCommand ??
       inheritedEnvPrefix() +
-        opsPaneCommand({ cwd: args.cwd, taskId: args.taskId, claudePaneId: claudePane, cliInvocation: args.inv }),
+        opsPaneCommand({
+          cwd: args.cwd,
+          taskId: args.taskId,
+          claudePaneId: claudePane,
+          cliInvocation: args.inv,
+          vendor: args.vendor,
+        }),
   )
   const r1 = await runTmuxCapturing([
     "split-window",
@@ -432,7 +444,7 @@ export async function newChatTab(session: string): Promise<void> {
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return
-  await buildPanesAround(claudePane, { cwd, taskId, inv })
+  await buildPanesAround(claudePane, { cwd, taskId, inv, vendor })
 }
 
 /**

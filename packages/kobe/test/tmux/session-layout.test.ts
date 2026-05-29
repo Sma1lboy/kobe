@@ -69,6 +69,22 @@ describe("opsPaneCommand", () => {
     )
   })
 
+  test("threads the engine vendor through as --vendor when given", () => {
+    const cmd = opsPaneCommand({
+      cwd: "/wt",
+      taskId: "t1",
+      claudePaneId: "%3",
+      cliInvocation: ["kobe"],
+      vendor: "codex",
+    })
+    expect(cmd).toContain("--vendor 'codex'")
+  })
+
+  test("omits --vendor when no vendor is given", () => {
+    const cmd = opsPaneCommand({ cwd: "/wt", taskId: "t1", claudePaneId: "%3", cliInvocation: ["kobe"] })
+    expect(cmd).not.toContain("--vendor")
+  })
+
   test("falls back to the inline watcher when there's no task id or pane", () => {
     const noTask = opsPaneCommand({ cwd: "/wt", taskId: undefined, claudePaneId: "%3", cliInvocation: ["kobe"] })
     const noPane = opsPaneCommand({ cwd: "/wt", taskId: "t1", claudePaneId: null, cliInvocation: ["kobe"] })

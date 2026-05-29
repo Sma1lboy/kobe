@@ -26,3 +26,13 @@ export function nextVendor(current: VendorId): VendorId {
   const i = ALL_VENDORS.indexOf(current)
   return ALL_VENDORS[(i + 1) % ALL_VENDORS.length] ?? ALL_VENDORS[0]
 }
+
+/**
+ * Coerce an untrusted string (a CLI flag, a persisted record) to a
+ * {@link VendorId}, falling back to `"claude"` for anything unrecognised
+ * or absent — the same default the rest of v0.6 assumes when a task has
+ * no recorded vendor.
+ */
+export function coerceVendorId(value: string | undefined): VendorId {
+  return ALL_VENDORS.includes(value as VendorId) ? (value as VendorId) : "claude"
+}

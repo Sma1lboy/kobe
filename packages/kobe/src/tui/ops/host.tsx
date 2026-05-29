@@ -18,11 +18,13 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
+import { latestTranscriptMtime } from "@/monitor/activity"
 import { newWindow, sendKeys, tmuxSessionName } from "@/tmux/client"
 import { previewWindowCommand } from "@/tmux/session-layout"
+import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { Show, createResource, onMount } from "solid-js"
+import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
@@ -37,7 +39,12 @@ export interface OpsHostArgs {
   readonly worktree: string
   /** tmux pane id / selector for the claude pane — send-keys target. */
   readonly targetPane: string | null
+  /** Task engine vendor — selects which transcript store the activity badge polls. */
+  readonly vendor: VendorId
 }
+
+/** How often the Ops pane polls the engine transcript for new activity. */
+const ACTIVITY_POLL_MS = 2500
 
 type ThemePrefs = PersistedUiPrefs
 
@@ -52,6 +59,42 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     themeCtx.setTransparentBackground(props.prefs.transparent)
     if (props.prefs.focusAccent) themeCtx.setFocusAccent(props.prefs.focusAccent)
   })
+
+  // New-activity badge (KOB-254). v0.6 has no chat-stream "done" signal
+  // and we explicitly don't parse the tmux pane, so we poll the engine's
+  // own transcript store (the JSONL the cost dashboard reads) and light
+  // a corner badge when its newest mtime advances past what we last
+  // acknowledged. `baseline` starts at "now's newest" so a pane that
+  // mounts onto an already-busy task doesn't flash stale activity; it's
+  // pushed forward on each `r` refresh (the user's "I've looked").
+  const [baseline, setBaseline] = createSignal(0)
+  const [latest, setLatest] = createSignal(0)
+  let primed = false
+  onMount(() => {
+    let disposed = false
+    async function poll(): Promise<void> {
+      const mtime = await latestTranscriptMtime(props.vendor, props.worktree)
+      if (disposed) return
+      if (!primed) {
+        // First read seeds the baseline so we only ever flag activity
+        // that happened after the pane came up.
+        primed = true
+        setBaseline(mtime)
+      }
+      setLatest(mtime)
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), ACTIVITY_POLL_MS)
+    onCleanup(() => {
+      disposed = true
+      clearInterval(timer)
+    })
+  })
+  const hasNewActivity = () => primed && latest() > baseline()
+  const cornerBadge = () => (hasNewActivity() ? { text: "● new", active: true } : null)
+  function ackActivity(): void {
+    setBaseline(latest())
+  }
 
   // Open the file's diff/content in a full-width preview window of the
   // task's tmux session. The Ops pane lives in that session, named
@@ -89,6 +132,8 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
         focused={() => true}
         onOpenFile={openPreview}
         onMention={injectMention}
+        cornerBadge={cornerBadge}
+        onRefresh={ackActivity}
       />
     </box>
   )

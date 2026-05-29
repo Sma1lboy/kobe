@@ -66,6 +66,32 @@ export async function listSessionIdsForWorktree(
   return matches.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt)).map((m) => m.id)
 }
 
+/**
+ * Newest `events.jsonl` mtime (epoch ms) across the Copilot sessions
+ * rooted at `worktree`, or 0 when none match. The Ops pane polls this to
+ * detect new Copilot conversation output without parsing the tmux pane
+ * (KOB-254). Each session is a dir with a `workspace.yaml` (for the cwd
+ * match) and a growing `events.jsonl` (the transcript we stat).
+ */
+export async function latestTranscriptMtimeForWorktree(
+  worktree: string,
+  deps: CopilotHistoryDeps = defaultDeps,
+): Promise<number> {
+  if (!worktree) return 0
+  let newest = 0
+  for (const dir of await listSessionDirs(deps)) {
+    const workspace = await readWorkspace(dir, deps)
+    if (workspace.cwd !== worktree) continue
+    try {
+      const { mtimeMs } = await deps.stat(path.join(dir, "events.jsonl"))
+      if (mtimeMs > newest) newest = mtimeMs
+    } catch {
+      // session dir without an events.jsonl yet — skip
+    }
+  }
+  return newest
+}
+
 export async function readHistoryWithMetrics(
   sessionId: string,
   deps: CopilotHistoryDeps = defaultDeps,

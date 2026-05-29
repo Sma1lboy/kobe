@@ -103,6 +103,19 @@ export type FileTreeProps = {
    * thread real signals when the 5-pane layout lands.
    */
   focused?: Accessor<boolean>
+  /**
+   * Optional right-aligned badge in the header (KOB-254). The Ops host
+   * uses it to surface "new engine activity since you last looked" —
+   * `active: true` paints it in the accent colour. Omit (or return
+   * `null`) to hide it.
+   */
+  cornerBadge?: Accessor<{ text: string; active: boolean } | null>
+  /**
+   * Fires when the user explicitly refreshes the pane (`r`). The Ops
+   * host treats a refresh as "I've looked" and clears the activity
+   * badge (KOB-254).
+   */
+  onRefresh?: () => void
 }
 
 /**
@@ -464,6 +477,7 @@ export function FileTree(props: FileTreeProps) {
   }
   function refresh(): void {
     setRefreshTick((n) => n + 1)
+    props.onRefresh?.()
   }
   function openExternal(): void {
     const r = rows()
@@ -517,22 +531,37 @@ export function FileTree(props: FileTreeProps) {
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `1` / `2` / `3` switch from the keyboard. */}
-      <box flexDirection="row" gap={2} paddingBottom={0} flexShrink={0}>
-        <For each={TABS}>
-          {(t) => {
-            const isActive = () => tab() === t
-            return (
-              <text
-                fg={isActive() ? theme.primary : theme.textMuted}
-                attributes={isActive() ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                onMouseUp={() => setTab(t)}
-              >
-                {TAB_LABEL[t]}
-              </text>
-            )
-          }}
-        </For>
+      <box flexDirection="row" justifyContent="space-between" paddingBottom={0} flexShrink={0}>
+        <box flexDirection="row" gap={2}>
+          <For each={TABS}>
+            {(t) => {
+              const isActive = () => tab() === t
+              return (
+                <text
+                  fg={isActive() ? theme.primary : theme.textMuted}
+                  attributes={isActive() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => setTab(t)}
+                >
+                  {TAB_LABEL[t]}
+                </text>
+              )
+            }}
+          </For>
+        </box>
+        {/* Right-aligned activity badge (KOB-254). No background fill so
+           it stays clean in transparent mode. */}
+        <Show when={props.cornerBadge?.()}>
+          {(badge) => (
+            <text
+              fg={badge().active ? theme.accent : theme.textMuted}
+              attributes={badge().active ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+            >
+              {badge().text}
+            </text>
+          )}
+        </Show>
       </box>
       {/* Status legend — only shown on the Changes tab so users can
          decode single-char git status codes without leaving the TUI. */}
