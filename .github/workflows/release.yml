@@ -1,7 +1,12 @@
 # Release pipeline.
 #
-# Trigger: pushing a `vX.Y.Z` tag (semver only — no `v0.1.0-rc.1` etc.;
-# add a separate prerelease workflow if/when we need one).
+# Trigger: pushing a `vX.Y.Z` tag, OR a prerelease tag `vX.Y.Z-<id>.<n>`
+# (e.g. `v0.6.1-experimental.0`). A plain semver tag publishes to the npm
+# `latest` dist-tag and a normal GitHub release; a prerelease tag
+# publishes to a dist-tag named after the prerelease identifier (the
+# `experimental` in `0.6.1-experimental.0`) and marks the GitHub release
+# as a prerelease — so `npm i @sma1lboy/kobe` keeps getting the stable
+# line while testers opt in with `npm i @sma1lboy/kobe@experimental`.
 #
 # Two job families run in parallel after the tag lands:
 #
@@ -30,6 +35,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
 
 # Default permissions are set to read-only for security; the publish
 # job re-grants only what it actually needs.
@@ -84,6 +90,25 @@ jobs:
           fi
           echo "tag and packages/kobe/package.json agree on $PKG_VERSION"
 
+      - name: Resolve release channel
+        id: channel
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # A prerelease version carries a `-<id>.<n>` suffix. The npm
+          # dist-tag is the prerelease identifier (`experimental` from
+          # `0.6.1-experimental.0`); a plain semver goes to `latest`.
+          if [[ "$VERSION" == *-* ]]; then
+            PRE="${VERSION#*-}"
+            DIST_TAG="${PRE%%.*}"
+            echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "publishing $VERSION to npm dist-tag '$DIST_TAG' (prerelease)"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "publishing $VERSION to npm dist-tag 'latest'"
+          fi
+
       - name: Extract changelog section
         id: changelog
         working-directory: packages/kobe
@@ -115,7 +140,7 @@ jobs:
         # Workspaces hoist deps to root; `npm publish` still runs
         # against the package's own dir.
         working-directory: packages/kobe
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
 
       - name: Create GitHub release
         # Creates the release shell with the changelog notes. The
@@ -128,7 +153,7 @@ jobs:
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.notes }}
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.channel.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
