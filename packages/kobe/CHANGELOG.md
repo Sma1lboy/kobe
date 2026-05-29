@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Ops pane file watcher actually starts in task sessions** — the v0.6 Ops pane reused FileTree's opt-in watcher, but the tmux launch command never set the opt-in env var, so file changes only appeared after pressing `r`; task-launched `kobe ops` now enables `KOBE_FILETREE_WATCH=1` for that process while leaving other FileTree uses manual-refresh by default (KOB-255).
+
 ## [0.6.1-experimental.0] - 2026-05-29
 
 Experimental line on top of the 0.6 product reshape — published under the npm `experimental` dist-tag, not `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245, 249) plus GitHub Copilot as a third engine and the Accounts view (KOB-249).

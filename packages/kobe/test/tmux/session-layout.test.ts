@@ -48,7 +48,7 @@ describe("opsPaneCommand", () => {
       claudePaneId: "%3",
       cliInvocation: ["kobe"],
     })
-    expect(cmd).toContain("'kobe' ops")
+    expect(cmd).toContain("KOBE_FILETREE_WATCH=1 'kobe' ops")
     expect(cmd).toContain("--task-id 't1'")
     expect(cmd).toContain("--worktree '/wt'")
     expect(cmd).toContain("--target-pane '%3'")
@@ -64,9 +64,11 @@ describe("opsPaneCommand", () => {
       claudePaneId: "%3",
       cliInvocation: ["/bin/bun", "--preload", "/abs/preload.ts", "--conditions=browser", "/abs/cli.ts"],
     })
-    expect(cmd.startsWith("'/bin/bun' '--preload' '/abs/preload.ts' '--conditions=browser' '/abs/cli.ts' ops")).toBe(
-      true,
-    )
+    expect(
+      cmd.startsWith(
+        "KOBE_FILETREE_WATCH=1 '/bin/bun' '--preload' '/abs/preload.ts' '--conditions=browser' '/abs/cli.ts' ops",
+      ),
+    ).toBe(true)
   })
 
   test("threads the engine vendor through as --vendor when given", () => {

@@ -149,7 +149,7 @@ export function opsPaneCommand(args: {
     const inv = args.cliInvocation.map(shellQuote).join(" ")
     const vendorFlag = args.vendor ? ` --vendor ${shellQuote(args.vendor)}` : ""
     return (
-      `${inv} ops --task-id ${shellQuote(args.taskId)} --worktree ${shellQuote(args.cwd)} ` +
+      `KOBE_FILETREE_WATCH=1 ${inv} ops --task-id ${shellQuote(args.taskId)} --worktree ${shellQuote(args.cwd)} ` +
       `--target-pane ${shellQuote(args.claudePaneId)}${vendorFlag} || { ${fallbackOpsScript(args.cwd)}; }`
     )
   }
