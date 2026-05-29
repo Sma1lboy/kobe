@@ -36,7 +36,7 @@ import { existsSync } from "node:fs"
 import { getSessionOption, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { type Accessor, For, createSignal, onCleanup, onMount } from "solid-js"
+import { type Accessor, For, createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
@@ -79,6 +79,16 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+
+  // Follow the SHARED active-task focus pushed on the daemon's `active-task`
+  // channel: whichever task was last switched/entered into (from ANY session
+  // or the outer monitor) is the one highlighted here, so every Tasks pane
+  // shows the same focus instead of its own last click (KOB-247). Local
+  // clicks still set selectedId optimistically; this keeps it consistent.
+  createEffect(() => {
+    const active = props.orch?.activeTaskSignal()()
+    if (active) setSelectedId(active)
+  })
 
   onMount(() => {
     themeCtx.setTransparentBackground(props.transparent)
@@ -254,6 +264,7 @@ function TasksShell(props: {
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
+      void props.orch?.setActiveTask(id)
       return
     }
 
@@ -288,6 +299,7 @@ function TasksShell(props: {
       return
     }
     await runTmux(["switch-client", "-t", `=${name}`])
+    void props.orch?.setActiveTask(id)
   }
 
   return (

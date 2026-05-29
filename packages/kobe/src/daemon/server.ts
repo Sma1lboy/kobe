@@ -245,6 +245,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const path = await orch.ensureWorktree(taskId)
         return { worktreePath: path }
       }
+      case "task.setActive": {
+        // Pure UI/session focus — not a task-index property — so it lives on
+        // the bus, not the orchestrator. Publishing caches the last value so
+        // a late-subscribing Tasks pane gets the current focus on connect
+        // and every pane highlights the same active task (KOB-247).
+        bus.publish("active-task", { taskId: optionalString(payload, "taskId") ?? null })
+        return {}
+      }
       case "subscribe": {
         client.subscribed = true
         // Replay the current value of every populated channel so a late

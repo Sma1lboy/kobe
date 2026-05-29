@@ -15,7 +15,7 @@
 
 import { homedir } from "node:os"
 import { render, useRenderer } from "@opentui/solid"
-import { type Accessor, Show, createMemo, createSignal, onMount } from "solid-js"
+import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import {
   connectOrStartDaemon,
   connectOrStartOwnedDaemon,
@@ -108,6 +108,15 @@ function Shell(props: AppDeps) {
   const [launchRunning, setLaunchRunning] = createSignal(false)
   const [launchError, setLaunchError] = createSignal<string | null>(null)
 
+  // Follow the shared active-task focus: when a task is entered/switched
+  // anywhere (this monitor or a tmux session's Tasks pane), the sidebar
+  // selection tracks it, so coming back from a session you switched around
+  // in lands the highlight on the task you were last in (KOB-247).
+  createEffect(() => {
+    const active = props.orchestrator.activeTaskSignal()()
+    if (active !== null) setSelectedId(active)
+  })
+
   // Sidebar bindings (Enter→enterTask, j/k, …) must go quiet while ANY
   // dialog is open: an input-based dialog (new-task / rename / settings'
   // command editor) submits via the native input's onSubmit, NOT a keymap
@@ -145,6 +154,9 @@ function Shell(props: AppDeps) {
     // regardless of which pane is focused, so errors stay visible (KOB-244).
     const task = props.orchestrator.getTask(id)
     if (!task) return { kind: "error", message: "task not found" }
+    // Publish the shared focus so EVERY surface (this monitor + each tmux
+    // session's Tasks pane) highlights the same active task (KOB-247).
+    void props.orchestrator.setActiveTask(id)
     setLaunchRunning(true)
     setLaunchError(null)
     try {

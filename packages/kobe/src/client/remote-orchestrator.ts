@@ -38,6 +38,8 @@ export interface RemoteOrchestratorOptions {
 export class RemoteOrchestrator {
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
+  private readonly activeTaskAcc: Accessor<string | null>
+  private readonly setActiveTaskSig: (next: string | null) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -47,9 +49,12 @@ export class RemoteOrchestrator {
     options: RemoteOrchestratorOptions = {},
   ) {
     const [tasks, setTasks] = createSignal<Task[]>([])
+    const [activeTask, setActiveTask] = createSignal<string | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
+    this.activeTaskAcc = activeTask
+    this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -104,6 +109,15 @@ export class RemoteOrchestrator {
 
   tasksSignal(): Accessor<Task[]> {
     return this.tasksAcc
+  }
+
+  /**
+   * The shared active task id (the session last switched/entered into),
+   * pushed live on the `active-task` channel. Every surface reads this so
+   * they all highlight the SAME focus (KOB-247). `null` until first set.
+   */
+  activeTaskSignal(): Accessor<string | null> {
+    return this.activeTaskAcc
   }
 
   listTasks(): Task[] {
@@ -194,13 +208,27 @@ export class RemoteOrchestrator {
     await this.client.request("task.delete", { taskId: String(id), force: opts?.force })
   }
 
+  /**
+   * Mark a task as the active focus (the session just switched/entered).
+   * The daemon publishes it on the `active-task` channel so every Tasks
+   * pane + the outer monitor highlight the same task (KOB-247).
+   */
+  async setActiveTask(id: TaskId | string | null): Promise<void> {
+    await this.client.request("task.setActive", { taskId: id === null ? null : String(id) })
+  }
+
   // --- internals ---
 
   private handleEvent(name: string, payload: unknown): void {
-    if (name !== "task.snapshot") return
-    const value = (payload as { tasks?: SerializedTask[] } | undefined)?.tasks
-    if (!Array.isArray(value)) return
-    this.setTasks(value.map(deserializeTask))
+    if (name === "task.snapshot") {
+      const value = (payload as { tasks?: SerializedTask[] } | undefined)?.tasks
+      if (Array.isArray(value)) this.setTasks(value.map(deserializeTask))
+      return
+    }
+    if (name === "active-task") {
+      const id = (payload as { taskId?: string | null } | undefined)?.taskId
+      this.setActiveTaskSig(typeof id === "string" ? id : null)
+    }
   }
 }
 

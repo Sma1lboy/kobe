@@ -78,6 +78,8 @@ export class Orchestrator {
   private readonly slugs: SlugAllocator
   private readonly tasksAcc: Accessor<Task[]>
   private readonly setTasks: (next: Task[]) => void
+  private readonly activeTaskAcc: Accessor<string | null>
+  private readonly setActiveTaskSig: (next: string | null) => void
   private readonly unsubscribeStore: TaskIndexUnsubscribe
   /** Per-repo lock so concurrent `ensureWorktree` calls don't race. */
   private readonly worktreeLocks = new Map<TaskId, Promise<void>>()
@@ -100,6 +102,9 @@ export class Orchestrator {
     const [tasks, setTasks] = createSignal<Task[]>(this.store.list())
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
+    const [activeTask, setActiveTask] = createSignal<string | null>(null)
+    this.activeTaskAcc = activeTask
+    this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.unsubscribeStore = this.store.subscribe((snapshot) => {
       this.setTasks(snapshot.slice())
     })
@@ -113,6 +118,21 @@ export class Orchestrator {
   async init(): Promise<void> {
     // No-op in v0.6. v0.5 had startup polling for plan-usage and rc-bridge;
     // both are gone. The TUI awaits this for parity.
+  }
+
+  /**
+   * The active-task focus, in-process. Mirrors {@link RemoteOrchestrator}'s
+   * daemon-backed `active-task` channel so the `KobeOrchestrator` union has
+   * one API; in this local (no-daemon) mode there are no sibling panes to
+   * sync, so it's just an in-process signal (KOB-247).
+   */
+  activeTaskSignal(): Accessor<string | null> {
+    return this.activeTaskAcc
+  }
+
+  /** Set the active-task focus (local signal; no daemon to broadcast to). */
+  async setActiveTask(id: TaskId | string | null): Promise<void> {
+    this.setActiveTaskSig(id === null ? null : String(id))
   }
 
   /** Solid signal of the current task list. */

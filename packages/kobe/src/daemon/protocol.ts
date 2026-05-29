@@ -46,6 +46,7 @@ export type DaemonRequestName =
   | "task.status"
   | "task.ensureMain"
   | "task.ensureWorktree"
+  | "task.setActive"
 
 /**
  * Channel registry — the SINGLE source of truth for daemon→client push
@@ -62,6 +63,13 @@ export type DaemonRequestName =
  */
 export interface ChannelPayloads {
   "task.snapshot": { tasks: SerializedTask[] }
+  /**
+   * The currently-active task (the session last switched/entered into).
+   * Shared so EVERY Tasks pane + the outer monitor highlight the SAME
+   * focus, instead of each pane remembering its own last click (KOB-247).
+   * `null` = nothing active yet. Set via the `task.setActive` RPC.
+   */
+  "active-task": { taskId: string | null }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -72,7 +80,7 @@ export interface ChannelPayloads {
 export type ChannelName = keyof ChannelPayloads
 
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
-export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot"]
+export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task"]
 
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a
