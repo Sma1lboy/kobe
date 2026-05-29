@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.1-experimental.0] - 2026-05-29
+
+Experimental line on top of the 0.6 product reshape — published under the npm `experimental` dist-tag, not `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245, 249) plus GitHub Copilot as a third engine and the Accounts view (KOB-249).
+
 ### Fixed
 
 - **Switching a task's engine from the Tasks pane now takes effect** — pressing `v` to cycle a task's vendor (or renaming its branch) on a task whose tmux session is still running used to do nothing: entering it just switched back into the still-running OLD engine. The Tasks-pane enter path now runs the same `ensureSession` heal the outer monitor always did, so a vendor/branch/worktree change rebuilds the session on the next Enter from either surface (KOB-244).
@@ -27,7 +31,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Enter no longer leaks past a dialog into the task list behind it** — submitting a new-task / rename / settings-command dialog with Enter used to fall through the keymap to the Sidebar (which would enter a task) and swallow the dialog submit, because input-based dialogs submit via the native input, not a keymap binding. The Sidebar / launcher bindings are now gated on an empty dialog stack (KOB-244).
 - **The Tasks pane's new-task / rename dialogs no longer zoom over the other panes** — they used to `resize-pane -Z` the Tasks pane full-window (hiding claude / ops / shell) for the dialog's lifetime; the dialog now shows in place (it already caps to the pane width) so the rest of the session stays visible (KOB-244).
 - **Every Tasks pane + the outer monitor share one focus** — switching / entering a task anywhere highlights the SAME active task across all surfaces (via the new `active-task` channel), instead of each Tasks pane remembering its own last click. Also fixed the daemon client being disposed the moment a Tasks pane mounted (cleanup moved to the renderer's `onDestroy`), which had broken cross-pane sync and threw "daemon client disposed" on repeated switching (KOB-247).
-- **The inner Tasks pane is a fixed-width rail** — it used a %-of-window split whose absolute width drifted with terminal size, between chat-tab windows, and across engine (claude/codex) rebuilds; now a fixed 42-cell rail (matching the outer monitor's Sidebar) so it's the same in every window (KOB-248).
+- **The inner Tasks pane is a fixed-width rail** — it used a %-of-window split whose absolute width drifted with terminal size, between chat-tab windows, and across engine (claude/codex) rebuilds; now a fixed-cell rail so it's the same in every window. Narrowed to a thin 12-cell task-list column (the content floor set by the bottom legend's key chip), much tighter than the outer monitor's Sidebar (KOB-248, KOB-253).
 - The Ops pane's Enter opens a full-width syntax-highlighted file/diff preview window (`kobe ops --preview`); the 0.6.0 notes mis-described this as the `@file` injection path. Plus tmux-client hardening: literal `send-keys -l` injection, concurrent stderr drain (no large-stderr deadlock), strict claude-pane resolution, charset-escape stripping in the preview, and a `RemoteOrchestrator.setBranch` / `setVendor` parity fix so the outer monitor can change branch/vendor through the orchestrator (KOB-244).
 
 ### Added

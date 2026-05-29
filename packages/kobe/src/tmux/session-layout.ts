@@ -19,12 +19,14 @@
  * (KOB-248). A %-split drifted: the pane's absolute width changed with the
  * terminal size, between chat-tab windows, and across engine (claude/codex)
  * rebuilds (tmux re-lays-out %-panes on those events). A fixed-cell rail is
- * the same in every window, always. 42 matches the outer monitor's Sidebar
- * (the opencode / agent-deck "history rail" convention) so the inner Tasks
- * pane and the outer task list line up. This is an allowed hardcode per the
- * layout rule (convention-width rail).
+ * the same in every window, always. The inner Tasks pane is a thin task-list
+ * rail, much tighter than the outer monitor's 42-cell Sidebar. 12 is the
+ * effective content floor: the bottom shortcut legend's key column is a fixed
+ * 10-cell `[key]` chip plus 1+1 padding, so opentui won't render the pane
+ * narrower than 12 regardless of the tmux `-l` value. This is an allowed
+ * hardcode per the layout rule (convention-width rail).
  */
-export const TASKS_PANE_WIDTH = 42
+export const TASKS_PANE_WIDTH = 12
 
 /** Left (claude) pane width as a % of the window. */
 export const CLAUDE_PANE_PERCENT = 60
