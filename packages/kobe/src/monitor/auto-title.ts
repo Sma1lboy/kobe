@@ -18,6 +18,7 @@
 
 import * as claudeHistory from "@/engine/claude-code-local/history"
 import * as codexHistory from "@/engine/codex-local/history"
+import * as copilotHistory from "@/engine/copilot-local/history"
 import { deriveTitleFromPrompt } from "@/orchestrator/title"
 import type { Message } from "@/types/engine"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
@@ -31,6 +32,9 @@ async function originSessions(
 ): Promise<{ ids: readonly string[]; read: (sessionId: string) => Promise<Message[]> }> {
   if (vendor === "codex") {
     return { ids: await codexHistory.listSessionIdsForWorktree(worktree), read: codexHistory.readHistory }
+  }
+  if (vendor === "copilot") {
+    return { ids: await copilotHistory.listSessionIdsForWorktree(worktree), read: copilotHistory.readHistory }
   }
   const files = await claudeHistory.listSessionFilesForWorktree(worktree)
   const ids = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)

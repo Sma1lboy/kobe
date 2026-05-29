@@ -11,8 +11,17 @@
 
 import { TextAttributes } from "@opentui/core"
 import { useRenderer } from "@opentui/solid"
-import { Show, createMemo, createSignal } from "solid-js"
+import { Show, createEffect, createMemo, createSignal } from "solid-js"
 import type { KobeOrchestrator } from "../../client/remote-orchestrator"
+import {
+  type ClaudeAccount,
+  type CodexAccount,
+  type CopilotAccount,
+  type EngineAccountStatus,
+  detectClaudeAccount,
+  detectCodexAccount,
+  detectCopilotAccount,
+} from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS } from "../../types/vendor"
@@ -33,6 +42,7 @@ import {
   transparentRowIndex,
 } from "./settings-dialog/model"
 import {
+  AccountsSettingsSection,
   DevSettingsSection,
   EngineSettingsSection,
   GeneralSettingsSection,
@@ -66,6 +76,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ),
   )
   const hasDaemon = hasRestartableDaemon(props.orchestrator)
+
+  // Account detection (KOB-249): read-only fs/env probes, lazily run the
+  // first time the Accounts section is opened so a settings open that
+  // never visits it pays nothing.
+  const [claudeStatus, setClaudeStatus] = createSignal<EngineAccountStatus<ClaudeAccount> | null>(null)
+  const [codexStatus, setCodexStatus] = createSignal<EngineAccountStatus<CodexAccount> | null>(null)
+  const [copilotStatus, setCopilotStatus] = createSignal<EngineAccountStatus<CopilotAccount> | null>(null)
+  let accountsProbed = false
+  createEffect(() => {
+    if (section() !== "accounts" || accountsProbed) return
+    accountsProbed = true
+    void detectClaudeAccount().then(setClaudeStatus)
+    void detectCodexAccount().then(setCodexStatus)
+    void detectCopilotAccount().then(setCopilotStatus)
+  })
 
   function bodyRowCount(): number {
     return countBodyRows(section(), themeNames().length, FOCUS_ACCENT_SLOTS.length, hasDaemon)
@@ -257,6 +282,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
               commandText={engineCommandText}
               isDefault={engineIsDefault}
               editEngine={(v) => void editEngine(v)}
+            />
+          </Show>
+          <Show when={section() === "accounts"}>
+            <AccountsSettingsSection
+              claudeStatus={claudeStatus}
+              codexStatus={codexStatus}
+              copilotStatus={copilotStatus}
             />
           </Show>
           <Show when={section() === "dev"}>

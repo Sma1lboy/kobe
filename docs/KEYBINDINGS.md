@@ -3,7 +3,7 @@
 Single source of truth for "what keys do what, where, and why."
 Lives in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical
 table. **Do not hardcode chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog
-(F1) and status bar both read directly from `KobeKeymap`, so a single edit there is enough to update chord, hint, and docs.
+(F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
 ---
 
@@ -94,7 +94,7 @@ the shortcuts where the terminal protocol is the only way to distinguish intent,
 ## Adding a new binding — checklist
 
 1. Decide the flavour (global/modifier vs pane-scoped/letter).
-2. Add the row to `KobeKeymap`. Set `id`, `scope`, `keys`, `description`, optional `hint`, optional `category`.
+2. Add the row to `KobeKeymap`. Set `id`, `scope`, `keys`, `description`, optional `hint`, optional `category`. Use `hint.status: false` when the chord belongs in Help but not in the always-visible footer.
 3. Wire the handler:
    - Global → register inside `useKobeKeybindings` (in `keybindings.ts`) or as a top-level `useBindings` block in
      `app.tsx`.

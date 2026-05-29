@@ -1,5 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
+import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
 import { VENDOR_LABEL } from "../../../engine/interactive-command"
 import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
@@ -294,6 +295,131 @@ export function EngineSettingsSection(
             )
           }}
         </For>
+      </box>
+    </box>
+  )
+}
+
+/** Read-only "is this engine installed + logged in" view (KOB-249). */
+export function AccountsSettingsSection(props: {
+  claudeStatus: Accessor<EngineAccountStatus<ClaudeAccount> | null>
+  codexStatus: Accessor<EngineAccountStatus<CodexAccount> | null>
+  copilotStatus: Accessor<EngineAccountStatus<CopilotAccount> | null>
+}) {
+  const { theme } = useTheme()
+  const binaryLine = (s: EngineAccountStatus<unknown>) =>
+    s.binary.found
+      ? `Binary: ${(s.binary as { path: string }).path}`
+      : `Binary: ${(s.binary as { error: string }).error}`
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        Accounts
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        Read-only view of locally-detected engine accounts. Login flows land here later.
+      </text>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          claude-code
+        </text>
+        <Show when={props.claudeStatus() === null}>
+          <text fg={theme.textMuted}>Checking…</text>
+        </Show>
+        <Show when={props.claudeStatus()}>
+          {(s) => (
+            <box flexDirection="column" gap={0}>
+              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                {binaryLine(s())}
+              </text>
+              {(() => {
+                const a = s().account
+                if (a.kind === "oauth") {
+                  const tail = [a.organization, a.billingType].filter((x): x is string => !!x).join(" · ")
+                  return (
+                    <text fg={theme.success} wrapMode="word">
+                      {`● Logged in: ${a.email}${tail ? ` (${tail})` : ""}`}
+                    </text>
+                  )
+                }
+                return <text fg={theme.textMuted}>○ Not logged in</text>
+              })()}
+              <Show when={s().accountError}>
+                {(err) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`! ${err()}`}
+                  </text>
+                )}
+              </Show>
+            </box>
+          )}
+        </Show>
+      </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          codex
+        </text>
+        <Show when={props.codexStatus() === null}>
+          <text fg={theme.textMuted}>Checking…</text>
+        </Show>
+        <Show when={props.codexStatus()}>
+          {(s) => (
+            <box flexDirection="column" gap={0}>
+              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                {binaryLine(s())}
+              </text>
+              {(() => {
+                const a = s().account
+                if (a.kind === "chatgpt") {
+                  return (
+                    <text fg={theme.success} wrapMode="word">
+                      {`● ChatGPT login: ${a.email}${a.plan ? ` (${a.plan})` : ""}`}
+                    </text>
+                  )
+                }
+                if (a.kind === "apikey") return <text fg={theme.success}>● API key configured</text>
+                return <text fg={theme.textMuted}>○ Not logged in</text>
+              })()}
+              <Show when={s().accountError}>
+                {(err) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`! ${err()}`}
+                  </text>
+                )}
+              </Show>
+            </box>
+          )}
+        </Show>
+      </box>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          copilot
+        </text>
+        <Show when={props.copilotStatus() === null}>
+          <text fg={theme.textMuted}>Checking…</text>
+        </Show>
+        <Show when={props.copilotStatus()}>
+          {(s) => (
+            <box flexDirection="column" gap={0}>
+              <text fg={s().binary.found ? theme.textMuted : theme.warning} wrapMode="word">
+                {binaryLine(s())}
+              </text>
+              {(() => {
+                const a = s().account
+                if (a.kind === "token") return <text fg={theme.success}>{`● Token configured (${a.source})`}</text>
+                if (a.kind === "oauth") return <text fg={theme.success}>● Copilot login detected</text>
+                return <text fg={theme.textMuted}>○ Not logged in</text>
+              })()}
+              <Show when={s().accountError}>
+                {(err) => (
+                  <text fg={theme.warning} wrapMode="word">
+                    {`! ${err()}`}
+                  </text>
+                )}
+              </Show>
+            </box>
+          )}
+        </Show>
       </box>
     </box>
   )

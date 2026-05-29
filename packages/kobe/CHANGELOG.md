@@ -37,6 +37,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - **Shortcut legend in the Tasks pane** — a small key hint footer pinned to the bottom of the inner Tasks pane (↵ open · n new · r/b/v name·branch·engine · ^h^j^k^l move panes · ^t new tab · ^q monitor) so the bindings are discoverable in place (KOB-244).
 - **Per-engine launch command is configurable** — Settings → Engines lets you override the command each vendor's task pane runs, so a Claude binary that isn't on PATH as `claude` (e.g. it's `cl`) or one that wants default flags (`claude --model …`) just works; quotes are honored for flag values with spaces. Stored in `state.json`; empty = the built-in default; takes effect on the next task enter (KOB-245).
 - **Daemon broadcast is a typed channel event-bus** — the daemon's push surface generalized from a single hardcoded task-snapshot to named channels (`task.snapshot`, `active-task`, …): adding one is a registry entry + `bus.publish` + `client.onChannel`. A last-value-per-channel cache replays the current value to a late-subscribing pane on connect. Same socket transport, no protocol bump (KOB-246).
+- **GitHub Copilot CLI is selectable as a third engine** — `copilot` joins `claude` / `codex` as a task vendor (cycle it with `v` / `ctrl+e`): its interactive CLI runs in the tmux pane, and the monitor reads `~/.copilot/session-state` transcripts for auto-titling, the same way it reads Claude's and Codex's. Ported from the 0.5.x Copilot adapter down to v0.6's lean engine shape (binary discovery + history reader + usage snapshot — no spawn/stream path, since the engine runs in tmux now). The 0.5.x heavy adapter (spawn/stream/sessions/capabilities/app-server) was dropped (KOB-249).
+- **Settings → Accounts is back** — a read-only view of locally-detected engine accounts: whether `claude` / `codex` / `copilot` are on PATH and which login (Anthropic OAuth, ChatGPT / API-key, Copilot token / OAuth) is configured. Detection is pure fs/env reads (no `claude /status` shell-out) and runs lazily the first time you open the section. Gemini is not listed — v0.6 dropped it as an engine (KOB-249).
 
 ## [0.6.0] - 2026-05-22
 
@@ -69,6 +71,31 @@ These were valuable v0.5 surfaces that don't survive in their old form but will 
 ### Thanks
 
 To Jackson for steering the pivot end-to-end — design doc, scope cuts, and the call to ship the reshape as a minor instead of stretching 0.5.
+
+## [0.5.29] - 2026-05-25
+
+### Added
+
+- **GitHub Copilot CLI can be selected as a local engine** — adds a first-class `copilot` adapter alongside Claude Code, Codex, and Gemini, with Copilot model choices, JSONL stream parsing, resume/history support from `~/.copilot/session-state`, full-access/plan-mode permission mapping, and Settings → Accounts detection for `copilot` login state (KOB-221).
+- **Copilot model picker now includes newer high-end choices** — adds GPT-5.5 and Claude Opus 4.7 to the Copilot catalog while removing GPT-5 mini and Claude Haiku 4.5 from the selectable allow-list (KOB-238).
+- **Model picker choices are grouped by provider** — the picker now shows collapsible provider sections and opens with the active tab's provider expanded so growing engine catalogs stay scannable (KOB-239).
+
+### Changed
+
+- **Skill distribution moved to `npx skills`** — the `kobe` skill now ships from `.agents/skills/kobe/` (a directory [`vercel-labs/skills`](https://github.com/vercel-labs/skills) scans by default) instead of being copied into the npm tarball under `share/skills/`. `kobe skill install` is now a deprecation shim that points you at `npx skills add Sma1lboy/kobe --skill kobe --agent claude-code`; `kobe skill uninstall` and `kobe diagnose`'s skill probe keep working for cleanup. Repo-internal skills (`linear`, `changelog-generator`) are flagged `internal: true` so the `npx skills add` discovery filter never installs codesfox/kobe-team tooling onto external users (KOB-210, KOB-211).
+- **Status bar shortcut hints are quieter** — the bottom footer now keeps Help visible while showing only the highest-value focused-pane actions, including Chat's new-tab and fork shortcuts; low-frequency, destructive, and picker-specific shortcuts stay discoverable in Help instead of crowding small terminals (KOB-241, KOB-242).
+
+### Fixed
+
+- **Copilot startup no longer fails on plan-gated Codex model ids** — removes `gpt-5.3-codex` from kobe's Copilot picker and lets the Copilot CLI own `COPILOT_MODEL` / `~/.copilot/settings.json` default resolution instead of echoing those values back as a hard `--model` flag (KOB-222).
+- **Copilot result-only sessions now attach correctly** — handles Copilot CLI runs that omit `session.start` and only report `sessionId` on the final `result` event, and avoids duplicate final assistant messages after streamed deltas (KOB-223).
+- **Copilot streams attach before the final result event** — fresh runs now start with a kobe-owned UUID via `copilot --session-id`, resume turns bind immediately to the known session id, and Windows npm `.cmd` / `.bat` shims launch through `cmd.exe` instead of failing after binary discovery (KOB-233).
+- **Copilot launch failures now surface after early binding** — process-level startup errors such as missing binaries or rejected shims are queued as visible engine errors even when kobe already created the session handle for live streaming (KOB-235).
+- **Copilot Auto no longer passes unsupported reasoning effort** — `auto` and Copilot models without explicit effort variants omit `--effort`, avoiding failures when Copilot chooses a model such as Claude Haiku that rejects reasoning effort configuration (KOB-236).
+
+## [0.5.28] - 2026-05-22
+
+Release tag only. The publish workflow failed before npm publish and GitHub Release creation; the user-facing change is included in `0.5.29`.
 
 ## [0.5.27] - 2026-05-18
 

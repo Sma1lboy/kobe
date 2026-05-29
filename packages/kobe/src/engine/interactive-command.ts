@@ -30,12 +30,14 @@ import type { VendorId } from "@/types/task"
 const DEFAULT_COMMANDS: Record<VendorId, readonly string[]> = {
   claude: ["claude"],
   codex: ["codex"],
+  copilot: ["copilot"],
 }
 
 /** Human label for a vendor (Settings → Engines rows). */
 export const VENDOR_LABEL: Record<VendorId, string> = {
   claude: "Claude",
   codex: "Codex",
+  copilot: "Copilot",
 }
 
 /** state.json key holding a vendor's launch-command override string. */

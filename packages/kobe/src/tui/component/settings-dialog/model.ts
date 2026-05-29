@@ -1,9 +1,10 @@
 /**
  * Pure data + helpers for settings-dialog (v0.6).
  *
- * v0.5 had Accounts (claude/codex/gemini login status) and Codex
- * (app-server / exec backend) sections; both depended on engine
- * modules that v0.6 deleted, so the dialog shrinks to General + Dev.
+ * v0.5 had a Codex (app-server / exec backend) section that depended on
+ * engine modules v0.6 deleted, so it's gone. Accounts came back in
+ * KOB-249 (read-only claude/codex/copilot login detection) alongside
+ * the Engines launch-command section.
  */
 
 import { ALL_VENDORS } from "../../../types/vendor"
@@ -11,11 +12,12 @@ import type { FocusAccentSlot } from "../../context/theme"
 
 export type NavLevel = "sidebar" | "body"
 
-export type SectionId = "general" | "engines" | "dev"
+export type SectionId = "general" | "engines" | "accounts" | "dev"
 
 export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "engines", label: "Engines" },
+  { id: "accounts", label: "Accounts" },
   { id: "dev", label: "Dev" },
 ]
 
@@ -46,6 +48,8 @@ export function bodyRowCount(
 ): number {
   if (section === "general") return generalRowCount(themeCount, focusAccentCount)
   if (section === "engines") return engineRowCount()
+  // Accounts is a read-only display — no navigable rows.
+  if (section === "accounts") return 0
   if (section === "dev") return devRowCount(hasDaemon)
   return 0
 }
