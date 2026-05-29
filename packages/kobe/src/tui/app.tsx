@@ -156,7 +156,7 @@ function Shell(props: AppDeps) {
     if (!task) return { kind: "error", message: "task not found" }
     // Publish the shared focus so EVERY surface (this monitor + each tmux
     // session's Tasks pane) highlights the same active task (KOB-247).
-    void props.orchestrator.setActiveTask(id)
+    void props.orchestrator.setActiveTask(id).catch(() => {})
     setLaunchRunning(true)
     setLaunchError(null)
     try {

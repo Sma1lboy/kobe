@@ -264,7 +264,7 @@ function TasksShell(props: {
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
-      void props.orch?.setActiveTask(id)
+      void props.orch?.setActiveTask(id).catch(() => {})
       return
     }
 
@@ -299,7 +299,7 @@ function TasksShell(props: {
       return
     }
     await runTmux(["switch-client", "-t", `=${name}`])
-    void props.orch?.setActiveTask(id)
+    void props.orch?.setActiveTask(id).catch(() => {})
   }
 
   return (
@@ -438,8 +438,16 @@ export async function startTasksPane(): Promise<void> {
       exitOnCtrlC: false,
       screenMode: "alternate-screen",
       useKittyKeyboard: {},
+      // Tear down on ACTUAL exit, not after render() resolves: `render`
+      // resolves at mount (cf. startApp, which also cleans up via
+      // onDestroy), so disposing here is the only correct place. Disposing
+      // after `await render(...)` killed the daemon client + poll the moment
+      // the pane mounted → "daemon client disposed" on the next switch and
+      // a dead subscribe (KOB-247).
+      onDestroy: () => {
+        if (timer) clearInterval(timer)
+        orch?.dispose()
+      },
     },
   )
-  if (timer) clearInterval(timer)
-  orch?.dispose()
 }
