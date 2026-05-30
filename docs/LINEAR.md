@@ -10,10 +10,11 @@ conventions shift.
 - **Team**: `KOB` (Kobe). All kobe work lives here. The legacy `COD`
   (Codesfox) team is dormant; its old projects are status `canceled`. Do not
   open new work there.
-- **Default project**: `Pre-1.0 整理` — the runway from `0.1.0` (shipped
-  2026-05-09) to `1.0`. Cleanup, polish, regression hunts, doc + workflow
-  standardization. New initiatives that aren't on the 1.0 path get their own
-  project.
+- **Default project**: `0.6 tmux 版本` — the current product line after the v0.6
+  reshape: tmux Handover, per-Task tmux Sessions, ChatTabs as tmux windows,
+  Tasks/Ops panes, and inner-first workflow polish.
+- **Legacy project**: `0.5 opentui 版本` — shipped/stale self-rendered opentui
+  chat work. Preserve it for history; do not file new v0.6 tmux work there.
 
 ## CLI defaults (this repo)
 
@@ -32,7 +33,7 @@ stored in the system keyring, not the repo.
 ## Layered concepts (one-liner each)
 
 - **Team (KOB)** — the kobe work group. Holds cycles, labels, members.
-- **Project** — a work package with start/end (e.g. `Pre-1.0 整理`,
+- **Project** — a work package with start/end (e.g. `0.6 tmux 版本`,
   `v1.1 perf`). Many can be open at once; a project is *not* the same as a
   git repo.
 - **Cycle** — a 2-week sprint window on the team. Cuts across projects.

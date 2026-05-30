@@ -80,6 +80,8 @@ _Avoid_: panel, window, view.
 The right **Pane** in the outer TUI. Shows the selected **Task**'s **Live Preview** + a **Handover** launcher, or the **Cost Dashboard**. Distinct from a **Worktree**.
 _Avoid_: editor, center.
 
+**Deprecation note**: the outer **Workspace** is transitional in the v0.6+ line. The intended direction is **inner-first**: when a target **Task** is known, launch straight into its tmux **Handover** instead of making the user stop in the outer monitor. Keep the outer **Workspace** only for flows that still lack tmux-native homes: no-Task startup, new/adopt **Task**, settings, daemon recovery, and explicit task selection.
+
 **Live Preview**:
 The **Workspace**'s read-only view of a **Task**'s claude pane, refreshed ~1s via `tmux capture-pane` (`monitor/capture-pane.ts`). Resolves the claude pane by its `@kobe_role` tag scoped to the **tmux Session**'s ACTIVE window — so the preview tracks whichever **ChatTab** the user last looked at. Empty until the task's first **Handover** creates its **tmux Session**.
 _Avoid_: mirror, snapshot.

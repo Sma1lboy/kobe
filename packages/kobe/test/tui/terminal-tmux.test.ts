@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { CHAT_TAB_SWITCH_BINDINGS, attachArgv, tmuxSessionName } from "../../src/tui/panes/terminal/tmux"
+import {
+  CHAT_TAB_CLOSE_BINDING,
+  CHAT_TAB_SWITCH_BINDINGS,
+  attachArgv,
+  tmuxSessionName,
+} from "../../src/tui/panes/terminal/tmux"
 
 describe("tmuxSessionName", () => {
   test("prefixes with kobe- and keeps safe id chars", () => {
@@ -29,6 +34,21 @@ describe("CHAT_TAB_SWITCH_BINDINGS", () => {
     expect(CHAT_TAB_SWITCH_BINDINGS).toEqual([
       ["bind-key", "-n", "C-[", "previous-window"],
       ["bind-key", "-n", "C-]", "next-window"],
+    ])
+  })
+})
+
+describe("CHAT_TAB_CLOSE_BINDING", () => {
+  test("maps Ctrl+W to closing the current tmux window while protecting the last window", () => {
+    expect(CHAT_TAB_CLOSE_BINDING).toEqual([
+      "bind-key",
+      "-n",
+      "C-w",
+      "if-shell",
+      "-F",
+      "#{>:#{session_windows},1}",
+      "kill-window",
+      "display-message 'Cannot close the only ChatTab'",
     ])
   })
 })

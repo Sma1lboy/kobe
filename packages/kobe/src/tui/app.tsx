@@ -11,6 +11,14 @@
  * session to a pre-split three-pane layout (claude / Ops / shell);
  * Step C (KOB-229) ships the Ops pane tool; Step D (KOB-230) brings
  * a live preview rail + cost dashboard back into the outer monitor.
+ *
+ * DEPRECATED DIRECTION: the outer monitor is now a transitional shell,
+ * not the long-term primary workspace. The v0.6+ product direction is
+ * inner-first: launching kobe should eventually hand over directly to
+ * the tmux workspace when a target Task is known. Keep this shell only
+ * for flows that still need an outer entry point (no Task yet, new/adopt
+ * Task, settings, daemon recovery, and task selection) until those have
+ * tmux-native homes.
  */
 
 import { homedir } from "node:os"

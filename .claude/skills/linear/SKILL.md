@@ -31,14 +31,15 @@ When working in `/Users/jacksonc/i/kobe`, defaults are:
 
 - **Workspace:** `codesfox`
 - **Team:** `KOB` (key) / `Kobe` (name) — pass with `--team KOB`
-- **Active project:** `Pre-1.0 整理` — pass with `--project "Pre-1.0 整理"`
+- **Active project:** `0.6 tmux 版本` — pass with `--project "0.6 tmux 版本"`
+- **Legacy project:** `0.5 opentui 版本` — shipped/stale self-rendered opentui chat work; do not file new v0.6 tmux work there.
 - **Workspace labels:** `Bug`, `Chore`, `Doc`, `Feature`, `Featurebase`, `Tech Debt`
 
 Re-fetch with `linear team list` / `linear project list` / `linear label list` if the user mentions something new.
 
 ## Required workflow
 
-1. **Clarify scope.** Confirm team/project/labels/priority before writing. For kobe issues, default to team `KOB` + project `Pre-1.0 整理` unless the user says otherwise.
+1. **Clarify scope.** Confirm team/project/labels/priority before writing. For kobe issues, default to team `KOB` + project `0.6 tmux 版本` unless the user says otherwise.
 2. **Read first.** `linear issue list`, `linear issue view <id>`, `linear project list` to build context — don't create blind.
 3. **Write with `--no-interactive`.** All `create` / `update` calls in this skill MUST pass `--no-interactive` so they don't hang waiting for prompts.
 4. **Long descriptions go through a temp file.** Use `--description-file /tmp/<slug>.md` instead of `-d "..."` whenever the body has newlines or markdown — preserves formatting and avoids shell-quoting hell.
@@ -55,7 +56,7 @@ EOF
 
 linear issue create \
   --team KOB \
-  --project "Pre-1.0 整理" \
+  --project "0.6 tmux 版本" \
   --title "<short imperative title>" \
   --description-file /tmp/issue-body.md \
   --label "Feature" \

@@ -360,6 +360,7 @@ function ShortcutHints() {
     { k: "⌃HJKL", label: "move panes" },
     { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },
+    { k: "⌃W", label: "close tab" },
     { k: "⌃Q", label: "monitor" },
   ]
   return (
