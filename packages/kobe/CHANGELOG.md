@@ -17,6 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **Tasks pane key hints and docs match the tmux-native flow** — the in-session key legend now includes Working/Archives view switching, ChatTab rename, engine-picker fallback, and quick-create prefix chords; README and keybinding docs now describe direct-tmux startup instead of the deprecated outer monitor flow.
+- **Existing tmux sessions self-heal kobe-owned panes after an update** — entering a healthy task session now checks the Tasks/Ops pane version tags and respawns only stale `kobe tasks` / `kobe ops` panes in place, leaving engine panes, shell panes, and ChatTab windows alive. `kobe reset` remains a runtime recovery fallback instead of the normal way to pick up new Tasks/Ops features after upgrading.
 
 ## [0.6.3] - 2026-05-29
 

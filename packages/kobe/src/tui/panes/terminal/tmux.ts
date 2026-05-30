@@ -58,6 +58,7 @@ import {
 } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
+import { CURRENT_VERSION } from "@/version"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
@@ -97,6 +98,7 @@ export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
 ] as const
 
 export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
+export const PANE_VERSION_OPTION = "@kobe_pane_version"
 export const CHAT_TAB_STATUS_FORMAT =
   "#{?#{==:#{@kobe_tab_state},running},●,#{?#{==:#{@kobe_tab_state},done},✓,#{?#{==:#{@kobe_tab_state},error},!,#{?#{==:#{@kobe_tab_state},unknown},?,○}}}} #I:#W"
 export const CHAT_TAB_STATUS_CURRENT_FORMAT = CHAT_TAB_STATUS_FORMAT
@@ -204,6 +206,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // Happy path: healthy + right place + right engine → reuse as-is.
     if (claudeAlive && worktreeOk && vendorOk) {
       await healTaskPaneWidths(opts.name)
+      await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
 
@@ -218,6 +221,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
         await healTaskPaneWidths(opts.name)
+        await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
         return true
       }
     }
@@ -229,6 +233,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // engine pane survives (KOB-244).
     if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
       await healTaskPaneWidths(opts.name)
+      await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
 
@@ -430,6 +435,105 @@ async function healTaskPaneWidths(session: string): Promise<void> {
   await runTmuxSequence(taskPanes.map((pane) => ["resize-pane", "-t", pane, "-x", `${TASKS_PANE_WIDTH}`]))
 }
 
+type KobePaneRow = {
+  windowId: string
+  paneId: string
+  role: string
+  version: string
+}
+
+function parseKobePaneRows(stdout: string): KobePaneRow[] {
+  const rows: KobePaneRow[] = []
+  for (const raw of stdout.split("\n")) {
+    const line = raw.trim()
+    if (!line) continue
+    const [windowId, paneId, role, version] = line.split("\t")
+    if (!windowId || !paneId || !role) continue
+    rows.push({ windowId: windowId.trim(), paneId: paneId.trim(), role: role.trim(), version: version?.trim() ?? "" })
+  }
+  return rows
+}
+
+/**
+ * kobe updates leave existing tmux sessions alive. That is correct for
+ * engine panes (they may be mid-turn), but the Tasks/Ops panes are also
+ * long-lived `kobe tasks` / `kobe ops` processes. If they keep running
+ * the old binary, newly shipped shortcuts and file-pane behaviour appear
+ * "missing" until the user manually resets tmux.
+ *
+ * Heal only kobe-owned panes: respawn Tasks/Ops in place when their pane
+ * version tag is absent or stale. tmux preserves the pane id, so Ops can
+ * keep targeting the same engine pane after its own restart; the engine
+ * pane and all ChatTab windows stay alive.
+ */
+async function healKobePaneVersions(
+  session: string,
+  cwd: string,
+  taskId: string | undefined,
+  vendor: string | undefined,
+): Promise<void> {
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    `#{window_id}\t#{pane_id}\t#{@kobe_role}\t#{${PANE_VERSION_OPTION}}`,
+  ])
+  if (code !== 0) return
+
+  const byWindow = new Map<string, KobePaneRow[]>()
+  for (const row of parseKobePaneRows(stdout)) {
+    const panes = byWindow.get(row.windowId) ?? []
+    panes.push(row)
+    byWindow.set(row.windowId, panes)
+  }
+
+  const commands: (readonly string[])[] = []
+  for (const panes of byWindow.values()) {
+    const claudePane = panes.find((pane) => pane.role === "claude")?.paneId
+    const tasksPane = panes.find((pane) => pane.role === "tasks")
+    const opsPane = panes.find((pane) => pane.role === "ops")
+
+    if (tasksPane && tasksPane.version !== CURRENT_VERSION) {
+      commands.push(
+        ["respawn-pane", "-k", "-t", tasksPane.paneId, "-c", cwd, keepAlive(envPrefix + tasksPaneCommand(inv))],
+        ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
+        ["set-option", "-p", "-t", tasksPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
+      )
+    }
+
+    if (opsPane && claudePane && opsPane.version !== CURRENT_VERSION) {
+      commands.push(
+        [
+          "respawn-pane",
+          "-k",
+          "-t",
+          opsPane.paneId,
+          "-c",
+          cwd,
+          keepAlive(
+            envPrefix +
+              opsPaneCommand({
+                cwd,
+                taskId,
+                claudePaneId: claudePane,
+                cliInvocation: inv,
+                vendor,
+              }),
+          ),
+        ],
+        ["set-option", "-p", "-t", opsPane.paneId, "@kobe_role", "ops"],
+        ["set-option", "-p", "-t", opsPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
+      )
+    }
+  }
+
+  if (commands.length > 0) await runTmuxSequence(commands)
+}
+
 /**
  * Shell `KEY='val' …` prefix that pins kobe's env onto an inner pane's
  * command so the pane uses the SAME home dir / daemon / tmux server as
@@ -528,7 +632,9 @@ async function buildPanesAround(
   )
   await runTmuxSequence([
     ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, "@kobe_role", "tasks"]] as const) : []),
+    ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", "ops"]] as const) : []),
+    ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
   ])
 }
 

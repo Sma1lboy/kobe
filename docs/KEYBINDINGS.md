@@ -110,6 +110,8 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 
 Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `o` open worktree, `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
+The Tasks/Ops panes are version-tagged with `@kobe_pane_version`. After an upgrade, `ensureSession` respawns stale kobe-owned panes in place while preserving the engine pane and ChatTab windows. Do not use `kobe reset` as the normal update path; reset is the runtime-recovery fallback for wedged tmux/daemon state.
+
 ## Adding a new binding — checklist
 
 1. Decide the flavour (global/modifier vs pane-scoped/letter).
