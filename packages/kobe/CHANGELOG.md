@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-05-29
+
 ### Added
 
 - **`kobe doctor` + `kobe reset` — recover a wedged install without a dev checkout** — the packaged build now has a first-class answer to "the daemon died / wedged, how do I reset?" that the dev-only `bun run dev:sandbox:reset` never gave end users. `kobe doctor` is a read-only health check: it reports whether the daemon is running / wedged (process alive but not answering) / stale (pidfile points at a dead pid) / not running, tails `daemon.log` when it's down so you can see why it died, counts kobe tmux sessions, and lists the presence + size of `tasks.json` / `state.json` / `daemon.log` — it never kills or deletes anything, just diagnoses and recommends. `kobe reset [--hard] [--yes]` is the production equivalent of the sandbox reset: it stops the daemon (graceful `daemon.stop` → SIGTERM → SIGKILL, the same escalation `kobe daemon restart` uses), removes its socket + pidfile, and kills every kobe tmux session in one shot; `--hard` additionally wipes the task index and UI state. It NEVER touches your git worktrees or anything under `.claude/worktrees/`, prompts for y/N confirmation on a terminal (skip with `--yes`), and does not respawn the daemon — relaunch kobe for a fresh one (KOB-258).
