@@ -82,6 +82,12 @@ export async function runTmux(args: string[]): Promise<number> {
   return code
 }
 
+/** Run a tmux command without logging failures. Use only for existence probes. */
+async function runTmuxQuiet(args: string[]): Promise<number> {
+  const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
+  return proc.exited
+}
+
 /** Flatten several tmux commands into one `tmux cmd \; cmd ...` invocation. */
 export function tmuxCommandSequence(commands: readonly (readonly string[])[]): string[] {
   const out: string[] = []
@@ -134,7 +140,7 @@ export async function tmuxAvailable(): Promise<boolean> {
 
 /** Does a session with this exact name exist on kobe's socket? */
 export async function sessionExists(name: string): Promise<boolean> {
-  return (await runTmux(["has-session", "-t", `=${name}`])) === 0
+  return (await runTmuxQuiet(["has-session", "-t", `=${name}`])) === 0
 }
 
 /**

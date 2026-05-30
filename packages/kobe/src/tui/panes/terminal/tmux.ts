@@ -88,6 +88,20 @@ export const CHAT_TAB_RENAME_BINDING = [
   "rename-window -- '%%'",
 ] as const
 
+export function tmuxInitialSizeArgs(
+  stdout: { columns?: number; rows?: number } = process.stdout,
+  env: Record<string, string | undefined> = process.env,
+): string[] {
+  const columns = positiveInt(stdout.columns) ?? positiveInt(env.COLUMNS)
+  const rows = positiveInt(stdout.rows) ?? positiveInt(env.LINES)
+  return columns && rows ? ["-x", `${columns}`, "-y", `${rows}`] : []
+}
+
+function positiveInt(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : Number.NaN
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
 export interface EnsureSessionOpts {
   readonly name: string
   /** Working directory for every pane in the new session. */
@@ -230,6 +244,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     opts.name,
     "-c",
     opts.cwd,
+    ...tmuxInitialSizeArgs(),
     "-P",
     "-F",
     "#{pane_id}",

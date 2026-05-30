@@ -12,6 +12,7 @@ import {
   CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
   parseWindowRoles,
+  tmuxInitialSizeArgs,
   tmuxSessionName,
 } from "../../src/tui/panes/terminal/tmux"
 
@@ -74,5 +75,20 @@ describe("parseWindowRoles", () => {
     const roles = parseWindowRoles("@0\ttasks\n@0\tops\n@1\ttasks\n@1\tclaude\n@1\tops\n")
     expect([...(roles.get("@0") ?? [])]).toEqual(["tasks", "ops"])
     expect([...(roles.get("@1") ?? [])]).toEqual(["tasks", "claude", "ops"])
+  })
+})
+
+describe("tmuxInitialSizeArgs", () => {
+  test("uses tty dimensions for detached new-session sizing", () => {
+    expect(tmuxInitialSizeArgs({ columns: 171, rows: 50 }, {})).toEqual(["-x", "171", "-y", "50"])
+  })
+
+  test("falls back to COLUMNS/LINES when stdout has no tty size", () => {
+    expect(tmuxInitialSizeArgs({ columns: undefined, rows: undefined }, { COLUMNS: "120", LINES: "40" })).toEqual([
+      "-x",
+      "120",
+      "-y",
+      "40",
+    ])
   })
 })
