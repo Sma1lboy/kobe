@@ -269,7 +269,7 @@ After install, Claude Code automatically picks up the skill on its next launch.
 For project-level overrides, copy the file to `<repo>/.claude/skills/kobe/SKILL.md`
 and customise — Claude Code's discovery order is project > user > none.
 
-To confirm it installed, check that `~/.claude/skills/kobe/SKILL.md` exists.
+Run `kobe doctor` to confirm — it reports whether the skill is installed and prints the install command if not. kobe also shows a one-time install hint on startup when the skill is missing.
 
 > The old built-in `kobe skill install` / `kobe diagnose` commands were
 > removed in v0.6 — use the `npx skills` command above to manage the skill.

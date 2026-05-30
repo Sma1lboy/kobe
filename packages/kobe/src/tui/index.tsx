@@ -6,8 +6,14 @@
  */
 
 import type { TuiDaemonMode } from "../daemon/mode.ts"
+import { maybeHintSkillInstall } from "../lib/skill-install.ts"
 
 export async function startTui(options: { daemonMode?: TuiDaemonMode } = {}): Promise<void> {
+  // One-time nudge (before the tmux/opentui takeover): if the kobe agent
+  // skill isn't installed, tell the user how. Best-effort — the reliable
+  // check is `kobe doctor`. No-op when installed or already shown once.
+  maybeHintSkillInstall()
+
   // Deprecated fallback: the old opentui outer monitor still exists for
   // settings/diagnostics/dev recovery, but the default product path is
   // now inner-first tmux. `--single` also stays on the old shell because

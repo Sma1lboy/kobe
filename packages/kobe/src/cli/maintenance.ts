@@ -32,6 +32,7 @@ import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile } from "../daemon/server.ts"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
+import { SKILL_INSTALL_COMMAND, isKobeSkillInstalled } from "../lib/skill-install.ts"
 import { KOBE_TMUX_SOCKET, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
@@ -192,6 +193,15 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     out.push(`tmux:    ${await kobeSessionCount()} kobe session(s) on \`${KOBE_TMUX_SOCKET}\` socket`)
   } else {
     out.push("tmux:    ✗ not found on PATH (task sessions need tmux)")
+  }
+  out.push("")
+
+  // --- agent skill ----------------------------------------------------
+  if (isKobeSkillInstalled()) {
+    out.push("skill:   ✓ kobe agent skill installed")
+  } else {
+    out.push("skill:   ✗ kobe agent skill not installed (optional — lets Claude Code drive `kobe api`)")
+    out.push(`         → ${SKILL_INSTALL_COMMAND}`)
   }
   out.push("")
 

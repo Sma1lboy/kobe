@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **kobe detects the agent skill and nudges you to install it** — `kobe doctor` now reports whether the kobe agent skill (which teaches Claude Code to drive `kobe api`) is installed, and prints the `npx skills add …` command when it isn't. On startup, kobe shows the same install hint once if the skill is missing. Checks both the user (`~/.claude/skills/kobe/SKILL.md`) and project locations.
+
 ## [0.6.5] - 2026-05-30
 
 ### Added
