@@ -117,20 +117,6 @@ export interface Task {
 }
 
 /**
- * Worktree directory slug for `task` — the basename of
- * `task.worktreePath`. Returns `""` for `kind: "main"` tasks (which
- * point at the repo root) and for tasks that haven't allocated a
- * worktree yet.
- */
-export function worktreeSlug(task: Pick<Task, "kind" | "worktreePath">): string {
-  if (task.kind === "main") return ""
-  if (!task.worktreePath) return ""
-  // Last path segment, robust to both POSIX and Windows separators.
-  const match = task.worktreePath.match(/([^/\\]+)[/\\]*$/)
-  return match ? (match[1] ?? "") : ""
-}
-
-/**
  * On-disk manifest at `~/.kobe/tasks.json`.
  *
  * Version 3 = the v0.6 reshape. v1 (`sessionId`-only) and v2 (`tabs`)

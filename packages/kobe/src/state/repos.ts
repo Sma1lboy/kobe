@@ -56,28 +56,6 @@ export function resolveRepoRoot(absPath: string): string {
 }
 
 /**
- * Whether two paths resolve to the same git toplevel. Used to identify
- * duplicate main-task rows whose `repo` strings differ (subdir vs
- * toplevel, `/var/...` vs `/private/var/...` on macOS, …) but point at
- * the same checkout. String-equality across `resolveRepoRoot` outputs
- * is unsafe because the helper preserves the caller's prefix when the
- * input is already canonical — two callers can therefore get different
- * strings for the same physical directory. Comparing realpaths of the
- * resolved toplevels is the canonical check.
- */
-export function sameRepoToplevel(a: string, b: string): boolean {
-  if (a === b) return true
-  const topA = resolveRepoRoot(a)
-  const topB = resolveRepoRoot(b)
-  if (topA === topB) return true
-  try {
-    return realpathSync(topA) === realpathSync(topB)
-  } catch {
-    return false
-  }
-}
-
-/**
  * Where the shared KV blob lives. Resolved on each access so a test's
  * `KOBE_HOME_DIR` override works without module-init reload tricks.
  */
