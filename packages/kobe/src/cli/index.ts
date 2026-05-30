@@ -55,6 +55,46 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
   } else {
     console.log(`already saved: ${result.path}`)
   }
+  // Fold in the repo's existing git worktrees: scan + adopt the ones not
+  // yet linked to a task, most-recently-active first (KOB-256). A plain
+  // repo with no extra worktrees imports nothing.
+  await adoptAllWorktrees(result.path)
+}
+
+/**
+ * Discover every unlinked git worktree of `repo` and adopt each as a
+ * task (discovery already sorts most-recently-active first). Used by
+ * `kobe add` to fold a repo's worktrees in on the way (KOB-256).
+ * Best-effort: an unreachable daemon just skips the scan with a note.
+ */
+async function adoptAllWorktrees(repo: string): Promise<void> {
+  const { connectOrStartDaemon } = await import("../client/daemon-process.ts")
+  let client: Awaited<ReturnType<typeof connectOrStartDaemon>>
+  try {
+    client = await connectOrStartDaemon()
+  } catch (err) {
+    console.error(`(skipped worktree scan — daemon unreachable: ${err instanceof Error ? err.message : String(err)})`)
+    return
+  }
+  try {
+    const { worktrees } = await client.request<{ worktrees: AdoptableWorktree[] }>("worktree.discoverAdoptable", {
+      repo,
+    })
+    if (worktrees.length === 0) return
+    console.log(`scanning ${repo}: ${worktrees.length} unlinked worktree(s) → importing`)
+    const vendor = coerceVendorId(undefined)
+    for (const w of worktrees) {
+      const { task } = await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
+        repo,
+        worktreePath: w.path,
+        branch: w.branch,
+        vendor,
+      })
+      console.log(`  adopted ${w.branch} → task ${task.id} (${task.title})`)
+    }
+  } finally {
+    client.close()
+  }
 }
 
 /**

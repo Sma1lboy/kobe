@@ -262,9 +262,33 @@ export class GitWorktreeManager implements WorktreeManager {
         head: entry.head ?? "",
         dirty,
         kobeManaged: isKobeManagedPath(repo, entry.path),
+        lastActivityMs: this.lastActivityMs(entry.path),
       })
     }
+    // Most recently active first (KOB-256).
+    infos.sort((a, b) => b.lastActivityMs - a.lastActivityMs)
     return infos
+  }
+
+  /**
+   * Last-activity time of a worktree in epoch ms — the HEAD commit's
+   * committer time, falling back to the directory's mtime when the log
+   * read fails (e.g. an unborn branch). Best-effort: returns 0 on total
+   * failure so sorting still works. Used to order the adopt list.
+   */
+  private lastActivityMs(worktreePath: string): number {
+    try {
+      const out = git(["log", "-1", "--format=%ct"], { cwd: worktreePath })
+      const secs = Number.parseInt(out.stdout.trim(), 10)
+      if (Number.isFinite(secs) && secs > 0) return secs * 1000
+    } catch {
+      // no commits yet / not readable — fall through to mtime
+    }
+    try {
+      return fs.statSync(worktreePath).mtimeMs
+    } catch {
+      return 0
+    }
   }
 
   /**

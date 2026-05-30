@@ -38,6 +38,13 @@ export interface AdoptableWorktree {
   readonly head: string
   readonly dirty: boolean
   readonly kobeManaged: boolean
+  /**
+   * Last-activity time (epoch ms) — the worktree HEAD's commit time,
+   * falling back to the directory mtime. Discovery sorts by this
+   * descending so the most recently-touched worktree leads the list
+   * (KOB-256).
+   */
+  readonly lastActivityMs: number
 }
 
 /**
