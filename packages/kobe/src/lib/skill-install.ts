@@ -59,8 +59,6 @@ export function maybeHintSkillInstall(): void {
   if (getPersistedString(HINT_SEEN_KEY) === "1") return
   setPersistedString(HINT_SEEN_KEY, "1")
   process.stderr.write(
-    `\nkobe: the kobe agent skill isn't installed — install it so Claude Code can fan out parallel tasks via \`kobe api\`:\n` +
-      `  ${SKILL_INSTALL_COMMAND}\n` +
-      "  (check anytime with `kobe doctor`)\n\n",
+    `\nkobe: the kobe agent skill isn't installed — install it so Claude Code can fan out parallel tasks via \`kobe api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (check anytime with \`kobe doctor\`)\n\n`,
   )
 }
