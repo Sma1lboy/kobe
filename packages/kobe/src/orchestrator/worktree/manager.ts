@@ -27,7 +27,7 @@
 
 import fs from "node:fs"
 import path from "node:path"
-import type { WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
+import type { AdoptableWorktree, WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
 import { GitCommandError, git } from "./git.ts"
 import { isKobeManagedPath, worktreePathFor, worktreeRootFor } from "./paths.ts"
 
@@ -224,6 +224,44 @@ export class GitWorktreeManager implements WorktreeManager {
         branch: entry.branch,
         head: entry.head ?? "",
         dirty,
+      })
+    }
+    return infos
+  }
+
+  /**
+   * List ALL git worktrees registered on `repo` — including ones the
+   * user created outside `<repo>/.claude/worktrees/` (KOB-256). Unlike
+   * {@link list}, this does NOT filter to the kobe convention root; it's
+   * the discovery source for "adopt an existing worktree as a task".
+   *
+   * Excludes the repo's main checkout (that's the main task, not an
+   * adoptable worktree) and detached/bare entries (no branch to track).
+   * Paths are returned as git reports them (absolute; on macOS that may
+   * be the `/private/...` realpath) — valid as a worktree `cwd` and
+   * compared canonically by callers, so no re-rooting is needed here.
+   */
+  async listAll(repo: string): Promise<readonly AdoptableWorktree[]> {
+    requireAbsolute("repo", repo)
+    const out = git(["worktree", "list", "--porcelain"], { cwd: repo })
+    const all = parsePorcelain(out.stdout)
+    const canonRepo = canonicalize(repo)
+
+    const infos: AdoptableWorktree[] = []
+    for (const entry of all) {
+      if (!entry.path) continue
+      if (entry.bare) continue
+      // Detached entries have no branch to map to a task's branch.
+      if (!entry.branch || entry.detached) continue
+      // Skip the main checkout — it's the repo root (the main task).
+      if (canonicalize(entry.path) === canonRepo) continue
+      const dirty = await this.isDirty(entry.path)
+      infos.push({
+        path: entry.path,
+        branch: entry.branch,
+        head: entry.head ?? "",
+        dirty,
+        kobeManaged: isKobeManagedPath(repo, entry.path),
       })
     }
     return infos

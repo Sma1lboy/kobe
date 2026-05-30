@@ -22,10 +22,13 @@
  * actually enters the task.)
  */
 
+import { realpathSync } from "node:fs"
+import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
+import type { AdoptableWorktree } from "../types/worktree.ts"
 import {
   CannotDeleteMainTaskError,
   DirtyWorktreeError,
@@ -403,6 +406,64 @@ export class Orchestrator {
     this.worktreeLocks.delete(task.id)
   }
 
+  /**
+   * Discover git worktrees on `repo` that exist on disk but aren't yet
+   * linked to any task — candidates for adoption (KOB-256). Includes
+   * worktrees outside the kobe convention root (the user's own
+   * `git worktree add`). De-dupes against the task store by canonical
+   * path so an already-adopted worktree never reappears.
+   */
+  async discoverAdoptableWorktrees(repo: string): Promise<readonly AdoptableWorktree[]> {
+    if (!repo) throw new Error("discoverAdoptableWorktrees: repo is required")
+    const all = await this.worktrees.listAll(repo)
+    const linked = new Set(
+      this.store
+        .list()
+        .filter((t) => t.worktreePath)
+        .map((t) => canonPath(t.worktreePath)),
+    )
+    return all.filter((wt) => !linked.has(canonPath(wt.path)))
+  }
+
+  /**
+   * Adopt an existing git worktree as a new task (KOB-256). The worktree
+   * already exists on disk, so we record the task with its real path +
+   * branch directly — `ensureWorktree` then short-circuits (non-empty
+   * `worktreePath`) and never touches the filesystem. Validates the path
+   * is a real worktree of `repo` and isn't already a task.
+   */
+  async adoptWorktree(input: {
+    readonly repo: string
+    readonly worktreePath: string
+    readonly branch?: string
+    readonly vendor?: VendorId
+    readonly title?: string
+  }): Promise<Task> {
+    if (!input.repo) throw new Error("adoptWorktree: repo is required")
+    if (!input.worktreePath) throw new Error("adoptWorktree: worktreePath is required")
+    const target = canonPath(input.worktreePath)
+    const candidates = await this.worktrees.listAll(input.repo)
+    const match = candidates.find((wt) => canonPath(wt.path) === target)
+    if (!match) {
+      throw new Error(
+        `adoptWorktree: ${input.worktreePath} is not an adoptable git worktree of ${input.repo} (unknown, detached, or the main checkout)`,
+      )
+    }
+    const alreadyLinked = this.store.list().some((t) => t.worktreePath && canonPath(t.worktreePath) === target)
+    if (alreadyLinked) throw new Error(`adoptWorktree: ${input.worktreePath} is already adopted as a task`)
+    const branch = input.branch?.trim() || match.branch
+    const title = (input.title ?? basename(match.path)).trim() || PLACEHOLDER_TASK_TITLE
+    return this.store.create({
+      repo: input.repo,
+      title,
+      branch,
+      worktreePath: match.path,
+      status: "backlog",
+      kind: "task",
+      vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
+    })
+  }
+
   // --- internals ---
 
   /** Optional base-ref per task — consumed once by `ensureWorktree`. */
@@ -418,6 +479,20 @@ export class Orchestrator {
 function titleFromRepo(repo: string): string {
   const segs = repo.split(/[/\\]/).filter(Boolean)
   return segs.length > 0 ? (segs[segs.length - 1] ?? repo) : repo
+}
+
+/**
+ * Resolve symlinks so two strings naming the same node compare equal
+ * (macOS `/var` → `/private/var`). Falls back to `resolve` when the path
+ * doesn't exist. Used to de-dupe discovered worktrees against task paths,
+ * which may be stored in different (caller vs git) forms (KOB-256).
+ */
+function canonPath(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return resolve(p)
+  }
 }
 
 // Avoid an unused-import warning while keeping toTaskId reachable for

@@ -245,6 +245,21 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const path = await orch.ensureWorktree(taskId)
         return { worktreePath: path }
       }
+      case "worktree.discoverAdoptable": {
+        const repo = requireString(payload, "repo")
+        const worktrees = await orch.discoverAdoptableWorktrees(repo)
+        return { worktrees }
+      }
+      case "worktree.adopt": {
+        const task = await orch.adoptWorktree({
+          repo: requireString(payload, "repo"),
+          worktreePath: requireString(payload, "worktreePath"),
+          branch: optionalString(payload, "branch"),
+          vendor: optionalVendor(payload, "vendor"),
+          title: optionalString(payload, "title"),
+        })
+        return { task: serializeTask(task) }
+      }
       case "task.setActive": {
         // Pure UI/session focus — not a task-index property — so it lives on
         // the bus, not the orchestrator. Publishing caches the last value so

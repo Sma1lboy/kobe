@@ -18,8 +18,10 @@
  * test fixtures. All gone in v0.6 (no engine port to diagnose, no
  * MCP bridge, no behavior fixtures).
  */
-import { resolve } from "node:path"
+import { basename, resolve } from "node:path"
+import { Glob } from "bun"
 import { coerceVendorId } from "../types/vendor.ts"
+import type { AdoptableWorktree } from "../types/worktree.ts"
 import { parseCliArgs } from "./daemon-mode.ts"
 
 async function runAddSubcommand(arg: string | undefined): Promise<void> {
@@ -30,6 +32,86 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
     console.log(`added ${result.path} (${result.total} saved repo${result.total === 1 ? "" : "s"} total)`)
   } else {
     console.log(`already saved: ${result.path}`)
+  }
+}
+
+/**
+ * `kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]` — scan a
+ * repo's existing git worktrees (including ones outside
+ * `.claude/worktrees/`) and import the ones not yet linked to a task
+ * (KOB-256). No glob → dry-run listing. With a path glob → list matches;
+ * `--yes` actually adopts them. Goes through the daemon so a running TUI
+ * sees the new tasks live.
+ */
+async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
+  let glob: string | undefined
+  let repoArg: string | undefined
+  let vendorArg: string | undefined
+  let yes = false
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === "--repo") {
+      repoArg = args[++i]
+    } else if (a === "--vendor") {
+      vendorArg = args[++i]
+    } else if (a === "--yes" || a === "-y") {
+      yes = true
+    } else if (a && !a.startsWith("-") && glob === undefined) {
+      glob = a
+    }
+  }
+
+  const { resolveRepoRoot } = await import("../state/repos.ts")
+  const repo = resolveRepoRoot(resolve(process.cwd(), repoArg && repoArg.length > 0 ? repoArg : "."))
+  const vendor = coerceVendorId(vendorArg)
+  const { connectOrStartDaemon } = await import("../client/daemon-process.ts")
+  const client = await connectOrStartDaemon()
+  try {
+    const { worktrees } = await client.request<{ worktrees: AdoptableWorktree[] }>("worktree.discoverAdoptable", {
+      repo,
+    })
+    if (worktrees.length === 0) {
+      console.log(`no adoptable worktrees for ${repo} — every git worktree here is already a task`)
+      return
+    }
+
+    // Match by absolute path, and by basename for convenience (so
+    // `kobe adopt 'feature-*'` works without typing the full path).
+    const matcher = glob ? new Glob(glob) : undefined
+    const isMatch = (w: AdoptableWorktree) => !matcher || matcher.match(w.path) || matcher.match(basename(w.path))
+
+    console.log(`adoptable worktrees in ${repo}:`)
+    for (const w of worktrees) {
+      const hit = matcher ? (isMatch(w) ? "*" : " ") : "-"
+      const tags = [w.dirty ? "dirty" : "", w.kobeManaged ? "" : "external"].filter(Boolean).join(",")
+      console.log(`  ${hit} ${w.branch}\t${w.path}${tags ? `  (${tags})` : ""}`)
+    }
+
+    if (!matcher) {
+      console.log(`\npass a path glob to adopt, e.g.  kobe adopt '${repo}/*' --yes`)
+      return
+    }
+    const matched = worktrees.filter(isMatch)
+    if (matched.length === 0) {
+      console.log(`\nno worktrees match glob ${JSON.stringify(glob)}`)
+      return
+    }
+    if (!yes) {
+      console.log(`\n${matched.length} worktree(s) match — re-run with --yes to adopt them`)
+      return
+    }
+    for (const w of matched) {
+      const { task } = await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
+        repo,
+        worktreePath: w.path,
+        branch: w.branch,
+        vendor,
+      })
+      console.log(`adopted ${w.branch} → task ${task.id} (${task.title})`)
+    }
+    console.log(`done — adopted ${matched.length} worktree(s)`)
+  } finally {
+    client.close()
   }
 }
 
@@ -87,6 +169,10 @@ async function main(): Promise<void> {
   const [subcommand, ...rest] = parsed.args
   if (subcommand === "add") {
     await runAddSubcommand(rest[0])
+    return
+  }
+  if (subcommand === "adopt") {
+    await runAdoptSubcommand(rest)
     return
   }
   if (subcommand === "update") {

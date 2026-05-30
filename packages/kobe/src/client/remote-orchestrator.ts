@@ -14,6 +14,7 @@ import { DAEMON_PROTOCOL_VERSION, type SerializedTask } from "../daemon/protocol
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
+import type { AdoptableWorktree } from "../types/worktree.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
@@ -206,6 +207,22 @@ export class RemoteOrchestrator {
 
   async deleteTask(id: TaskId | string, opts?: { force?: boolean }): Promise<void> {
     await this.client.request("task.delete", { taskId: String(id), force: opts?.force })
+  }
+
+  async discoverAdoptableWorktrees(repo: string): Promise<readonly AdoptableWorktree[]> {
+    const res = await this.client.request<{ worktrees: AdoptableWorktree[] }>("worktree.discoverAdoptable", { repo })
+    return res.worktrees
+  }
+
+  async adoptWorktree(input: {
+    repo: string
+    worktreePath: string
+    branch?: string
+    vendor?: VendorId
+    title?: string
+  }): Promise<Task> {
+    const res = await this.client.request<{ task: SerializedTask }>("worktree.adopt", input)
+    return deserializeTask(res.task)
   }
 
   /**
