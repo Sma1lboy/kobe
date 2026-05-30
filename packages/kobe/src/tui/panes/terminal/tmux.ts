@@ -533,6 +533,7 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
   const taskId = sessionOptions["@kobe_task"] || undefined
   const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
+  if (vendorOverride) await rememberSessionVendor(session, taskId, vendorOverride)
   const command = interactiveEngineCommand(vendor)
   const inv = kobeCliInvocation()
   const r = await runTmuxCapturing([
@@ -549,6 +550,29 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   const claudePane = r.stdout.trim()
   if (!claudePane) return
   await buildPanesAround(claudePane, { cwd, taskId, inv, vendor })
+}
+
+/**
+ * Engine-choice ChatTab creation is also a default change: after the user
+ * picks a vendor, future Ctrl+T tabs should use that vendor without asking.
+ * Persist both the tmux session tag (immediate fast path) and the daemon's
+ * task record (so the next ensureSession does not relaunch back to the old
+ * task vendor).
+ */
+async function rememberSessionVendor(session: string, taskId: string | undefined, vendor: VendorId): Promise<void> {
+  await setSessionOption(session, "@kobe_vendor", vendor)
+  if (!taskId) return
+  try {
+    const { connectOrStartDaemon } = await import("@/client/daemon-process")
+    const client = await connectOrStartDaemon()
+    try {
+      await client.request("task.setVendor", { taskId, vendor })
+    } finally {
+      client.close()
+    }
+  } catch (err) {
+    console.error("[kobe tmux] failed to persist selected engine vendor:", err)
+  }
 }
 
 /**
