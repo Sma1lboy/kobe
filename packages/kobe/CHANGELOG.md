@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-05-30
+
 ### Added
 
 - **`kobe api` returns for shell-driven fan-out** — agents can spawn and drive parallel tasks from a shell again, re-architected for v0.6's tmux model. Six verbs: `spawn-task` (create a task + worktree, and with `--prompt` start the engine and deliver the prompt); `fan-out --count N` / `--agents claude:2,codex:1` (spawn many of one prompt in a call, capped at 10); `send [--task-id ID] --prompt …` (paste a follow-up into a task's engine pane via tmux bracketed paste — multi-line stays one turn — defaulting to the active task); `get-task` / `list` (read task state); and `collect --task-ids … | --repo …` (read-only aggregation snapshot with per-task branch, live-session flag, and uncommitted change counts for comparing attempts). Output is one JSON object on stdout (errors are JSON on stderr); the daemon auto-starts.
@@ -21,7 +23,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **Unknown commands and `--help` print usage instead of launching the TUI** — a typo like `kobe statsu` now prints the command list and exits non-zero rather than silently opening the project. `kobe help` / `--help` / `-h` show usage, `kobe --version` / `-v` print the version, and a bare `kobe` still opens the TUI.
-- **The daemon is more resilient and upgrade-friendly** — it now self-heals a wedged daemon (one whose socket accepts connections but never answers): the client probes `hello` with a short timeout and, if there's no reply, kills the stuck process before respawning instead of hanging or racing a second daemon onto the same task index. The version handshake negotiates a compatibility range (LSP-style) rather than requiring an exact match, so a newer daemon keeps serving a slightly-older TUI across an upgrade. The daemon also owns the npm update check now, polling once and pushing it to every Tasks pane instead of each pane checking the registry itself.
+- **The daemon is more resilient and upgrade-friendly** — it now self-heals a wedged daemon (one whose socket accepts connections but never answers): the client probes `hello` with a short timeout and, if there's no reply, kills the stuck process before respawning instead of hanging or racing a second daemon onto the same task index. The version handshake negotiates a compatibility range (LSP-style) rather than requiring an exact match, so a newer daemon keeps serving a slightly-older TUI across an upgrade. The daemon also owns the npm update check now, polling once and pushing it to every Tasks pane instead of each pane checking the registry itself — and when an update is available the Tasks pane footer shows a `run: kobe update` hint so it's actionable on the tmux-native path.
 
 ## [0.6.4] - 2026-05-29
 
