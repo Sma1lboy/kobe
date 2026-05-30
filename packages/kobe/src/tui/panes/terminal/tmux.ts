@@ -57,6 +57,7 @@ import {
   tasksPaneCommand,
 } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
+import { ALL_VENDORS } from "@/types/vendor"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
@@ -86,6 +87,13 @@ export const CHAT_TAB_RENAME_BINDING = [
   "-I",
   "#{window_name}",
   "rename-window -- '%%'",
+] as const
+
+export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")})`
+
+export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
+  ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+  ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
 ] as const
 
 export function tmuxInitialSizeArgs(
@@ -190,7 +198,6 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 
     // Happy path: healthy + right place + right engine → reuse as-is.
     if (claudeAlive && worktreeOk && vendorOk) {
-      await healChatTabWindows(opts.name)
       await healTaskPaneWidths(opts.name)
       return true
     }
@@ -205,7 +212,6 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     if (worktreeOk && !vendorOk && opts.command.length > 0) {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-        await healChatTabWindows(opts.name)
         await healTaskPaneWidths(opts.name)
         return true
       }
@@ -217,10 +223,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // future follow-up; the common shell-exit case never gets here because the
     // engine pane survives (KOB-244).
     if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
-      if (await healChatTabWindows(opts.name)) {
-        await healTaskPaneWidths(opts.name)
-        return true
-      }
+      await healTaskPaneWidths(opts.name)
+      return true
     }
 
     // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
@@ -303,9 +307,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // untouched. Trade-off: this shadows readline Ctrl+k (kill-line) /
   // Ctrl+l (clear) inside the claude + shell panes; acceptable for the
   // pane-nav win, and the prefix (Ctrl+B arrows) still works too.
-  // Ctrl+T opens a new chat tab = a new window with its own claude
-  // (fresh conversation) + the same panes, on the same worktree. The
-  // window status bar becomes the chat-tab switcher (Ctrl+B n/p too).
+  // Ctrl+T opens a same-engine chat tab = a new window with its own
+  // engine process (fresh conversation) + the same panes, on the same
+  // worktree. Ctrl+Shift+T (when the terminal forwards it) and prefix T
+  // prompt for a specific engine before creating the tab.
   // No-prefix Ctrl+[ / Ctrl+] mirror kobe's old self-rendered chat-tab
   // cycle, but now map directly to tmux windows inside the handover.
   // Ctrl+W restores the v0.5 close-tab affordance. It deliberately
@@ -321,6 +326,9 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // `quick-create` spawn against the SAME home + daemon as this monitor.
   const envStr = inheritedEnvPrefix()
   const invStr = inv.map(shellQuote).join(" ")
+  const newChatTabCommand = `${envStr}${invStr} new-chattab --session '#{session_name}'`
+  const chooseEngineCommand = `${newChatTabCommand} --vendor '%%'`
+  const chooseEngineTmuxCommand = `run-shell ${shellQuote(chooseEngineCommand)}`
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and
@@ -339,7 +347,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["bind-key", "-n", "C-j", "select-pane", "-D"],
     ["bind-key", "-n", "C-k", "select-pane", "-U"],
     ["bind-key", "-n", "C-l", "select-pane", "-R"],
-    ["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`],
+    ["bind-key", "-n", "C-t", "run-shell", newChatTabCommand],
+    ...CHAT_TAB_CHOOSE_ENGINE_BINDINGS.map((binding) => [...binding, chooseEngineTmuxCommand] as const),
     ...CHAT_TAB_SWITCH_BINDINGS,
     CHAT_TAB_CLOSE_BINDING,
     CHAT_TAB_RENAME_BINDING,
@@ -386,49 +395,6 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
     await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
   }
   return true
-}
-
-/**
- * Select a ChatTab window that still has a tagged engine pane, then prune
- * stale windows without one. Older layouts can leave a window with
- * Tasks/Ops/Shell but no engine pane; keeping it in the window list makes
- * direct startup look broken even when healthy sibling ChatTabs exist.
- */
-async function healChatTabWindows(session: string): Promise<boolean> {
-  const { code, stdout } = await runTmuxCapturing([
-    "list-panes",
-    "-s",
-    "-t",
-    `=${session}`,
-    "-F",
-    "#{window_id}\t#{@kobe_role}",
-  ])
-  if (code !== 0) return false
-  const rolesByWindow = parseWindowRoles(stdout)
-  const healthy = [...rolesByWindow.entries()].filter(([, roles]) => roles.has("claude")).map(([windowId]) => windowId)
-  if (healthy.length === 0) return false
-  await runTmux(["select-window", "-t", healthy[0] ?? ""])
-  await runTmuxSequence(
-    [...rolesByWindow.entries()]
-      .filter(([windowId, roles]) => !roles.has("claude") && healthy.includes(windowId) === false)
-      .map(([windowId]) => ["kill-window", "-t", windowId]),
-  )
-  return true
-}
-
-/** Parse `#{window_id}\t#{@kobe_role}` list-panes output for stale-window healing. */
-export function parseWindowRoles(stdout: string): Map<string, Set<string>> {
-  const rolesByWindow = new Map<string, Set<string>>()
-  for (const line of stdout.split("\n")) {
-    const [windowId, role] = line.split("\t")
-    const id = windowId?.trim()
-    if (!id) continue
-    const roles = rolesByWindow.get(id) ?? new Set<string>()
-    const trimmedRole = role?.trim()
-    if (trimmedRole) roles.add(trimmedRole)
-    rolesByWindow.set(id, roles)
-  }
-  return rolesByWindow
 }
 
 /** Heal existing sessions built before the direct-tmux Tasks pane widened. */
@@ -556,17 +522,18 @@ async function buildPanesAround(
  * Open a new chat-tab window in an existing task session: a new
  * tmux window with a fresh engine conversation + the same workspace
  * panes, on the same worktree. Invoked by `kobe new-chattab` (the
- * Ctrl+T handler), which passes only the session name; the worktree +
- * task id + vendor are read back from the session's `@kobe_*` tags so
- * the new tab launches the SAME engine the task was created with.
+ * Ctrl+T handler), which passes only the session name for the fast path;
+ * the worktree + task id + vendor are read back from the session's
+ * `@kobe_*` tags so the new tab launches the SAME engine the task was
+ * created with. The engine-prompt path passes `vendorOverride`.
  */
-export async function newChatTab(session: string): Promise<void> {
+export async function newChatTab(session: string, vendorOverride?: VendorId): Promise<void> {
   if (!(await sessionExists(session))) return
   const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
   const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
   const taskId = sessionOptions["@kobe_task"] || undefined
-  const vendor = sessionOptions["@kobe_vendor"] || undefined
-  const command = interactiveEngineCommand(vendor as VendorId | undefined)
+  const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
+  const command = interactiveEngineCommand(vendor)
   const inv = kobeCliInvocation()
   const r = await runTmuxCapturing([
     "new-window",

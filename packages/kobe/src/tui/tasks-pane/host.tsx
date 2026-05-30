@@ -10,7 +10,8 @@
  * Scope of the experiment (deliberately minimal):
  *   - Reads `~/.kobe/tasks.json` directly and re-reads on a timer. The
  *     outer app's Orchestrator / Daemon still own most writes; this pane
- *     leaves delete/archive/pin as no-ops.
+ *     wires settings / delete / archive to the same daemon-backed paths
+ *     as the outer monitor.
  *   - Rename: `r` renames the title (`task.rename` RPC); `b` renames the
  *     branch (`task.setBranch` RPC — `git branch -m` for a materialised
  *     worktree, else just recorded for the eventual ensureWorktree).
@@ -33,7 +34,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { getSessionOption, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
+import { getSessionOption, killSession, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, createEffect, createSignal, onCleanup, onMount } from "solid-js"
@@ -41,13 +42,16 @@ import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
+import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendor } from "../../types/vendor.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
+import { SettingsDialog } from "../component/settings-dialog"
 import { FocusProvider } from "../context/focus"
+import { KVProvider, useKV } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
@@ -56,6 +60,7 @@ import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
+import { DialogConfirm } from "../ui/dialog-confirm"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
@@ -78,6 +83,7 @@ function TasksShell(props: {
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const dialog = useDialog()
+  const kv = useKV()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
 
   // Follow the SHARED active-task focus pushed on the daemon's `active-task`
@@ -164,6 +170,76 @@ function TasksShell(props: {
     // Land the cursor on the new task so Enter / click enters it next.
     // (The daemon subscribe pushes the new task into the list momentarily.)
     if (createdId) setSelectedId(createdId)
+  }
+
+  function openSettings(): void {
+    void SettingsDialog.show(dialog, kv, props.orch ?? undefined)
+  }
+
+  async function archiveTask(id: string): Promise<void> {
+    const task = props.tasks().find((t) => t.id === id)
+    if (!task || !props.orch) return
+    const nextArchived = !task.archived
+    try {
+      await props.orch.setArchived(id, nextArchived)
+      if (nextArchived) {
+        await killSession(tmuxSessionName(id)).catch((err: unknown) => {
+          console.error("[kobe tasks] kill tmux session failed:", err)
+        })
+      }
+    } catch (err) {
+      console.error("[kobe tasks] archive failed:", err)
+      return
+    }
+    await props.reload()
+  }
+
+  async function deleteTask(id: string): Promise<void> {
+    const task = props.tasks().find((t) => t.id === id)
+    if (!task || !props.orch) return
+    const ok = await DialogConfirm.show(
+      dialog,
+      `Delete "${task.title}"?`,
+      "Removes the task entry and its worktree. The tmux session (if any) is killed.",
+      "cancel",
+      "delete",
+    )
+    if (ok !== true) return
+    let deleted = false
+    try {
+      await props.orch.deleteTask(id)
+      deleted = true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes(DIRTY_WORKTREE_CODE)) {
+        const forceOk = await DialogConfirm.show(
+          dialog,
+          `"${task.title}" has uncommitted changes`,
+          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
+          "cancel",
+          "force delete",
+        )
+        if (forceOk === true) {
+          try {
+            await props.orch.deleteTask(id, { force: true })
+            deleted = true
+          } catch (forceErr) {
+            console.error("[kobe tasks] force delete failed:", forceErr)
+          }
+        }
+      } else {
+        console.error("[kobe tasks] delete failed:", err)
+      }
+    }
+    if (!deleted) return
+    await killSession(tmuxSessionName(id)).catch((err: unknown) => {
+      console.error("[kobe tasks] kill tmux session failed:", err)
+    })
+    await props.reload()
+    if (selectedId() === id) {
+      const remaining = props.tasks()
+      setSelectedId((remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
+    }
   }
 
   // Rename a task's title via the daemon's `task.rename` RPC (same path
@@ -254,6 +330,7 @@ function TasksShell(props: {
     enabled: dialog.stack.length === 0,
     bindings: [
       { key: "n", cmd: () => void createTask() },
+      { key: "s", cmd: () => openSettings() },
       {
         key: "o",
         cmd: () => {
@@ -361,6 +438,8 @@ function TasksShell(props: {
           activateOnClick
           onAddTask={() => void createTask()}
           onRenameRequest={(id) => void renameTask(id)}
+          onDeleteRequest={(id) => void deleteTask(id)}
+          onArchiveRequest={(id) => void archiveTask(id)}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // (new-task / rename) leaks past the input to switchTo and yanks
@@ -391,11 +470,14 @@ function ShortcutHints() {
   const HINTS: ReadonlyArray<{ k: string; label: string }> = [
     { k: "⏎", label: "open" },
     { k: "N", label: "new task" },
+    { k: "S", label: "settings" },
     { k: "O", label: "open wt" },
+    { k: "A/D", label: "archive/delete" },
     { k: "R/B/V", label: "name/branch/engine" },
     { k: "⌃HJKL", label: "move panes" },
     { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },
+    { k: "⌃⇧T", label: "engine tab" },
     { k: "⌃W", label: "close tab" },
     { k: "⌃Q", label: "detach" },
   ]
@@ -470,17 +552,19 @@ export async function startTasksPane(): Promise<void> {
   await render(
     () => (
       <ThemeProvider mode="dark" theme={prefs.theme}>
-        <FocusProvider initial="sidebar">
-          <DialogProvider>
-            <TasksShell
-              tasks={tasks}
-              orch={orch}
-              transparent={prefs.transparent}
-              focusAccent={prefs.focusAccent}
-              reload={reload}
-            />
-          </DialogProvider>
-        </FocusProvider>
+        <KVProvider>
+          <FocusProvider initial="sidebar">
+            <DialogProvider>
+              <TasksShell
+                tasks={tasks}
+                orch={orch}
+                transparent={prefs.transparent}
+                focusAccent={prefs.focusAccent}
+                reload={reload}
+              />
+            </DialogProvider>
+          </FocusProvider>
+        </KVProvider>
       </ThemeProvider>
     ),
     {

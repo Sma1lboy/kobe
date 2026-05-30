@@ -21,6 +21,8 @@ All notable changes to this project are documented here. The format follows [Kee
 - **ChatTab window switching gets no-prefix tmux shortcuts** — inside a task Handover, Ctrl+[ moves to the previous tmux ChatTab window and Ctrl+] moves to the next, matching the old bracket-pair tab vocabulary without bringing back the stale self-rendered chat surface (KOB-257).
 - **ChatTab close returns as Ctrl+W in tmux** — inside a task Handover, Ctrl+W closes the current tmux ChatTab window when another window remains, restoring the v0.5 close-tab affordance while protecting the final window from accidentally killing the whole Task session.
 - **More v0.5 productivity chords return in tmux-native form** — F2 renames the current tmux ChatTab window, the in-session Tasks pane can open the selected task's worktree with `o`, and the Ops pane's Changes tab now shows a slim `[P] create PR` action row that injects the PR prompt into the engine pane instead of using an outer-monitor button.
+- **Engine-select ChatTab creation** — Ctrl+T still opens a fast same-engine ChatTab, while Ctrl+Shift+T (plus prefix `T` as a terminal-safe fallback) prompts for `claude` / `codex` / `copilot` before opening the new tmux window.
+- **Tasks pane owns the missing outer-monitor actions** — with the legacy opentui monitor deprecated, the in-session Tasks pane now supports `s` settings, `a` archive, and `d` delete with the same confirmations and dirty-worktree guard as before; archive/delete also kill the task's cached tmux session when one exists.
 
 ### Changed
 
@@ -28,7 +30,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - **The default task/sidebar panel is now 32 cells wide** — direct-tmux startup makes the Tasks pane the primary navigator, so new installs and invalid saved widths start wide enough for readable task titles instead of the old 42-cell history rail (KOB-259).
 - **Tmux handover window setup is batched** — creating the first task window and new Ctrl+T ChatTabs now performs session tags, pane splits, pane role tags, and server keybindings through far fewer tmux subprocess round trips, making the kobe-level window/init path feel less sticky.
 - **The direct-tmux Tasks pane is wide enough to read** — the in-session Tasks pane now uses a 32-cell fixed width and heals existing 12-cell sessions on next enter, so Working/Archives, task titles, and shortcut hints are not clipped.
-- **Direct startup prunes stale broken ChatTab windows** — if a persisted tmux session contains old windows with Tasks/Ops/Shell but no engine pane, `kobe` now selects a healthy ChatTab and removes the broken windows instead of landing on or showing them.
 - **The first direct-tmux window uses the real terminal size** — clean sandbox/prod startup now passes the current TTY dimensions to detached `tmux new-session`, so the initial window has the same column widths as later Ctrl+T ChatTabs instead of being split at tmux's default 80-column size and stretched on attach.
 
 ## [0.6.1] - 2026-05-29

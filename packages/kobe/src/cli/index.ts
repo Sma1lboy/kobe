@@ -23,7 +23,7 @@
  */
 import { resolve } from "node:path"
 import { matchPathGlob } from "../lib/path-glob.ts"
-import { coerceVendorId } from "../types/vendor.ts"
+import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { parseCliArgs } from "./daemon-mode.ts"
 
@@ -204,15 +204,24 @@ async function main(): Promise<void> {
   }
   if (subcommand === "new-chattab") {
     // Ctrl+T handler from inside a task's tmux session — opens a new
-    // chat-tab window. Reads the session name from `--session`.
+    // chat-tab window. Reads the session name from `--session`; an
+    // optional `--vendor` comes from the engine-choice tmux prompt.
     const flags = parseOpsFlags(rest)
     const session = flags.session
     if (!session) {
       console.error("kobe new-chattab: --session <name> is required")
       process.exit(2)
     }
+    let vendor: VendorId | undefined
+    if (flags.vendor !== undefined) {
+      if (!ALL_VENDORS.includes(flags.vendor as VendorId)) {
+        console.error(`kobe new-chattab: --vendor must be one of ${ALL_VENDORS.join(", ")}`)
+        process.exit(2)
+      }
+      vendor = flags.vendor as VendorId
+    }
     const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
-    await newChatTab(session)
+    await newChatTab(session, vendor)
     return
   }
   if (subcommand === "kill-sessions") {

@@ -7,11 +7,12 @@
 
 import { describe, expect, test } from "vitest"
 import {
+  CHAT_TAB_CHOOSE_ENGINE_BINDINGS,
   CHAT_TAB_CLOSE_BINDING,
+  CHAT_TAB_ENGINE_PROMPT,
   CHAT_TAB_RENAME_BINDING,
   CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
-  parseWindowRoles,
   tmuxInitialSizeArgs,
   tmuxSessionName,
 } from "../../src/tui/panes/terminal/tmux"
@@ -70,11 +71,13 @@ describe("CHAT_TAB_RENAME_BINDING", () => {
   })
 })
 
-describe("parseWindowRoles", () => {
-  test("groups pane roles by tmux window id", () => {
-    const roles = parseWindowRoles("@0\ttasks\n@0\tops\n@1\ttasks\n@1\tclaude\n@1\tops\n")
-    expect([...(roles.get("@0") ?? [])]).toEqual(["tasks", "ops"])
-    expect([...(roles.get("@1") ?? [])]).toEqual(["tasks", "claude", "ops"])
+describe("CHAT_TAB_CHOOSE_ENGINE_BINDINGS", () => {
+  test("maps Ctrl+Shift+T and prefix T to the engine-choice prompt", () => {
+    expect(CHAT_TAB_ENGINE_PROMPT).toBe("engine (claude/codex/copilot)")
+    expect(CHAT_TAB_CHOOSE_ENGINE_BINDINGS).toEqual([
+      ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+      ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+    ])
   })
 })
 
