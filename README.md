@@ -67,7 +67,7 @@ bunx @sma1lboy/kobe
 First task: press `n`, choose a repo/base branch/engine, then prompt the engine pane. kobe creates the worktree under:
 
 ```text
-<repo>/.claude/worktrees/<task-id>/
+<repo>/.claude/worktrees/<task-slug>/
 ```
 
 ## Useful keys
