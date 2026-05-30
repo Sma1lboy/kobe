@@ -13,11 +13,34 @@ import type { Task } from "../types/task.ts"
 import type { UpdateInfo } from "../version.ts"
 
 /**
- * Bumped to 2 in v0.6 to signal the shape change. Older TUI clients
- * that hello with version 1 are rejected by the server with a clear
- * "daemon is v0.6, upgrade your TUI" error.
+ * Bumped to 2 in v0.6 to signal the shape change. The handshake now
+ * negotiates a COMPATIBILITY RANGE rather than requiring an exact match
+ * (LSP-style): each peer advertises its current version plus the oldest
+ * version it can still talk to ({@link MIN_COMPATIBLE_PROTOCOL_VERSION}),
+ * and unknown extra fields are ignored. A backward-compatible change bumps
+ * `DAEMON_PROTOCOL_VERSION` while leaving `MIN_COMPATIBLE_PROTOCOL_VERSION`
+ * put, so a newer daemon keeps serving a slightly-older TUI through a
+ * rolling upgrade instead of hard-rejecting it. Bump the MIN only on a
+ * breaking change.
  */
 export const DAEMON_PROTOCOL_VERSION = 2
+
+/** Oldest protocol version this build can still interoperate with. */
+export const MIN_COMPATIBLE_PROTOCOL_VERSION = 2
+
+/**
+ * Two protocol peers are compatible iff EACH side's current version is at
+ * least the OTHER side's minimum-supported version. Symmetric; unknown
+ * extra hello fields are ignored by the caller. Pure — unit-tested.
+ */
+export function isProtocolCompatible(args: {
+  readonly localVersion: number
+  readonly localMin: number
+  readonly remoteVersion: number
+  readonly remoteMin: number
+}): boolean {
+  return args.remoteVersion >= args.localMin && args.localVersion >= args.remoteMin
+}
 
 export type DaemonFrame =
   | { readonly type: "request"; readonly id: string; readonly name: DaemonRequestName; readonly payload?: unknown }

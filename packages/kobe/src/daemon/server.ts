@@ -21,7 +21,15 @@ import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
+import {
+  CHANNEL_NAMES,
+  DAEMON_PROTOCOL_VERSION,
+  type DaemonFrame,
+  MIN_COMPATIBLE_PROTOCOL_VERSION,
+  frameToLine,
+  isProtocolCompatible,
+  serializeTask,
+} from "./protocol.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -166,18 +174,29 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     const payload = objectPayload(req.payload)
     switch (req.name) {
       case "hello": {
-        // Reject a protocol-mismatched client with a clear upgrade message
-        // (the promise made in protocol.ts / CHANGELOG). A client that sends
-        // no `protocolVersion` is tolerated (older clients during a rolling
-        // upgrade); a client that sends a DIFFERENT version is rejected.
-        const clientVersion = payload.protocolVersion
-        if (typeof clientVersion === "number" && clientVersion !== DAEMON_PROTOCOL_VERSION) {
+        // Negotiate a compatibility RANGE (see protocol.ts isProtocolCompatible).
+        // A client that omits a field is tolerated: a missing version means
+        // "current", a missing min means "same as its version". Only a true
+        // range mismatch is rejected, with a clear upgrade message.
+        const clientVersion =
+          typeof payload.protocolVersion === "number" ? payload.protocolVersion : DAEMON_PROTOCOL_VERSION
+        const clientMin = typeof payload.minProtocolVersion === "number" ? payload.minProtocolVersion : clientVersion
+        if (
+          !isProtocolCompatible({
+            localVersion: DAEMON_PROTOCOL_VERSION,
+            localMin: MIN_COMPATIBLE_PROTOCOL_VERSION,
+            remoteVersion: clientVersion,
+            remoteMin: clientMin,
+          })
+        ) {
           throw new Error(
-            `daemon is protocol v${DAEMON_PROTOCOL_VERSION}; this client is v${clientVersion}. Upgrade your kobe.`,
+            `daemon is protocol v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}); this client is v${clientVersion} (min v${clientMin}). Upgrade your kobe.`,
           )
         }
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
+          minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
+          capabilities: [...CHANNEL_NAMES],
           daemonPid: process.pid,
           clientId: client.id,
           tasks: orch.listTasks().map(serializeTask),

@@ -10,7 +10,12 @@
  */
 
 import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
-import { DAEMON_PROTOCOL_VERSION, type SerializedTask } from "../daemon/protocol.ts"
+import {
+  DAEMON_PROTOCOL_VERSION,
+  MIN_COMPATIBLE_PROTOCOL_VERSION,
+  type SerializedTask,
+  isProtocolCompatible,
+} from "../daemon/protocol.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
@@ -78,12 +83,26 @@ export class RemoteOrchestrator {
     // verify the daemon's version so an OLD daemon (which predates the
     // server-side check) is caught client-side too — both surface the
     // documented "upgrade your kobe" error instead of cryptic failures.
-    const hello = await this.client.request<{ tasks?: SerializedTask[]; protocolVersion?: number }>("hello", {
+    const hello = await this.client.request<{
+      tasks?: SerializedTask[]
+      protocolVersion?: number
+      minProtocolVersion?: number
+    }>("hello", {
       protocolVersion: DAEMON_PROTOCOL_VERSION,
+      minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
     })
-    if (typeof hello.protocolVersion === "number" && hello.protocolVersion !== DAEMON_PROTOCOL_VERSION) {
+    const daemonVersion = typeof hello.protocolVersion === "number" ? hello.protocolVersion : DAEMON_PROTOCOL_VERSION
+    const daemonMin = typeof hello.minProtocolVersion === "number" ? hello.minProtocolVersion : daemonVersion
+    if (
+      !isProtocolCompatible({
+        localVersion: DAEMON_PROTOCOL_VERSION,
+        localMin: MIN_COMPATIBLE_PROTOCOL_VERSION,
+        remoteVersion: daemonVersion,
+        remoteMin: daemonMin,
+      })
+    ) {
       throw new Error(
-        `kobe daemon is protocol v${hello.protocolVersion}; this client is v${DAEMON_PROTOCOL_VERSION}. Restart the daemon (\`kobe daemon restart\`) or upgrade kobe.`,
+        `kobe daemon is protocol v${daemonVersion} (min v${daemonMin}); this client is v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}). Restart the daemon (\`kobe daemon restart\`) or upgrade kobe.`,
       )
     }
     if (hello.tasks) this.setTasks(hello.tasks.map(deserializeTask))
