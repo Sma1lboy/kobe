@@ -47,6 +47,8 @@ export type DaemonRequestName =
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
+  | "worktree.discoverAdoptable"
+  | "worktree.adopt"
 
 /**
  * Channel registry — the SINGLE source of truth for daemon→client push

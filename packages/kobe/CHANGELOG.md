@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- **Adopt existing git worktrees as tasks** — kobe can now pick up worktrees that already exist on disk (including ones you made yourself with `git worktree add`, outside `.claude/worktrees/`) instead of only ones it created. New `kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]` CLI: run it to list a repo's adoptable worktrees (those not already a task), pass a path glob to select a batch, and `--yes` to import them — each becomes a task pointing at the existing worktree + its branch, with no new checkout. The New Task dialog gains an **Adopt Worktree** tab (in both the outer monitor and the in-session Tasks pane): it lists the same candidates with a path-glob filter, space/click to multi-select (Ctrl+A = all), and Create to import. Discovery reads `git worktree list` and de-dupes against existing tasks; adoption goes through the daemon so every surface updates live (KOB-256).
+
 ## [0.6.1] - 2026-05-29
 
 First stable release on top of the 0.6 product reshape — promotes the `0.6.1-experimental.0` prerelease to `latest`. Bundles the post-0.6.0 Tasks-pane / engine / event-bus work (KOB-244, 246, 247, 248, 232, 245), GitHub Copilot as a third engine plus the Accounts view (KOB-249), the inner Tasks-pane width trim (KOB-253), the Ops-pane new-activity badge (KOB-254), and the Ops file-watcher fix (KOB-255).

@@ -274,7 +274,10 @@ function Shell(props: AppDeps) {
     // make the user re-pick.
     const defaultRepo = activeTask()?.repo ?? repos[0] ?? process.cwd()
     const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
+      defaultVendor,
+      discoverAdoptable: (repo) => props.orchestrator.discoverAdoptableWorktrees(repo),
+    })
     if (!result) return
     // Remember the choice so the next new-task dialog defaults to it.
     kv.set("lastSelectedVendor", result.vendor)
@@ -285,6 +288,22 @@ function Shell(props: AppDeps) {
     // (savedRepos is not otherwise a kv-managed key).
     addSavedRepo(result.repo)
     kv.set("savedRepos", getSavedRepos())
+    // Adopt: import one or more existing worktrees as tasks, then focus
+    // the last one (KOB-256).
+    if (result.mode === "adopt") {
+      let lastId: string | undefined
+      for (const w of result.adopt) {
+        const t = await props.orchestrator.adoptWorktree({
+          repo: result.repo,
+          worktreePath: w.worktreePath,
+          branch: w.branch,
+          vendor: result.vendor,
+        })
+        lastId = t.id
+      }
+      if (lastId) selectTask(lastId)
+      return
+    }
     const task = await props.orchestrator.createTask({
       repo: result.repo,
       baseRef: result.baseRef,

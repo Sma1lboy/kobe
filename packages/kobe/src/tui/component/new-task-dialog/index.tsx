@@ -16,6 +16,7 @@
  */
 
 import type { VendorId } from "@/types/vendor"
+import type { AdoptableWorktree } from "@/types/worktree"
 import type { DialogContext } from "../../ui/dialog"
 import { NewTaskDialogView } from "./dialog"
 import type { NewTaskInput } from "./state"
@@ -35,6 +36,12 @@ export type NewTaskDialogOptions = {
    * `lastSelectedVendor`). Falls back to `claude` in the dialog.
    */
   defaultVendor?: VendorId
+  /**
+   * Discover existing git worktrees on `repo` not yet linked to a task
+   * (KOB-256) — powers the Adopt tab. Omit to disable adoption (the tab
+   * still renders but shows nothing to import).
+   */
+  discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
 
 /**
@@ -63,6 +70,7 @@ function show(
           savedRepos={savedRepos}
           defaultCloneParent={options?.defaultCloneParent}
           defaultVendor={options?.defaultVendor}
+          discoverAdoptable={options?.discoverAdoptable}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}
         />

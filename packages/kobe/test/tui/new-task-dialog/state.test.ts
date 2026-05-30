@@ -17,8 +17,48 @@
  *     repos, so the first-run picker is never empty.
  */
 
-import { computeRepoOptions, pickerModeFor, splitPathForDirSuggest } from "@/tui/component/new-task-dialog/state"
+import {
+  computeRepoOptions,
+  filterAdoptableByGlob,
+  nextDialogTab,
+  pickerModeFor,
+  splitPathForDirSuggest,
+} from "@/tui/component/new-task-dialog/state"
 import { describe, expect, it } from "vitest"
+
+describe("filterAdoptableByGlob (KOB-256)", () => {
+  const list = [
+    { path: "/work/repo/.claude/worktrees/panda" },
+    { path: "/work/feature-login" },
+    { path: "/work/feature-signup" },
+    { path: "/elsewhere/bugfix" },
+  ]
+  it("returns the full list for an empty glob", () => {
+    expect(filterAdoptableByGlob(list, "")).toHaveLength(4)
+    expect(filterAdoptableByGlob(list, "  ")).toHaveLength(4)
+  })
+  it("matches on basename so a bare pattern works", () => {
+    expect(filterAdoptableByGlob(list, "feature-*").map((w) => w.path)).toEqual([
+      "/work/feature-login",
+      "/work/feature-signup",
+    ])
+  })
+  it("matches on absolute path globs", () => {
+    expect(filterAdoptableByGlob(list, "/work/**").map((w) => w.path)).toEqual([
+      "/work/repo/.claude/worktrees/panda",
+      "/work/feature-login",
+      "/work/feature-signup",
+    ])
+  })
+})
+
+describe("nextDialogTab (KOB-256: 3-tab cycle)", () => {
+  it("cycles existing → clone → adopt → existing", () => {
+    expect(nextDialogTab("existing")).toBe("clone")
+    expect(nextDialogTab("clone")).toBe("adopt")
+    expect(nextDialogTab("adopt")).toBe("existing")
+  })
+})
 
 describe("pickerModeFor", () => {
   it("stays in saved mode when the input exactly matches a saved repo", () => {

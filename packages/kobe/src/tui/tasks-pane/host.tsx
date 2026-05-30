@@ -119,7 +119,10 @@ function TasksShell(props: {
     // (the "spawn a sibling" default).
     const defaultRepo = cursorRepo ?? repos[0] ?? process.cwd()
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, { defaultVendor })
+    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
+      defaultVendor,
+      discoverAdoptable: props.orch ? (repo) => props.orch!.discoverAdoptableWorktrees(repo) : undefined,
+    })
     if (!result) return
     // Remember the choice (shared kv state.json) so the next new-task
     // dialog — here or in the outer monitor — defaults to it.
@@ -134,14 +137,26 @@ function TasksShell(props: {
     }
     let createdId: string | undefined
     try {
-      const task = await props.orch.createTask({
-        repo: result.repo,
-        baseRef: result.baseRef,
-        vendor: result.vendor,
-      })
-      createdId = task.id
+      if (result.mode === "adopt") {
+        for (const w of result.adopt) {
+          const t = await props.orch.adoptWorktree({
+            repo: result.repo,
+            worktreePath: w.worktreePath,
+            branch: w.branch,
+            vendor: result.vendor,
+          })
+          createdId = t.id
+        }
+      } else {
+        const task = await props.orch.createTask({
+          repo: result.repo,
+          baseRef: result.baseRef,
+          vendor: result.vendor,
+        })
+        createdId = task.id
+      }
     } catch (err) {
-      console.error("[kobe tasks] task.create failed:", err)
+      console.error("[kobe tasks] task.create/adopt failed:", err)
       return
     }
     await props.reload()

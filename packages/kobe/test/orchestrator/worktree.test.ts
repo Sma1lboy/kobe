@@ -243,3 +243,32 @@ describe("createForTask helper", () => {
     expect(info.branch).toBe("kobe/from-side")
   })
 })
+
+describe("GitWorktreeManager.listAll (KOB-256)", () => {
+  test("includes external worktrees + excludes main checkout, with kobeManaged flags", async () => {
+    const mgr = new GitWorktreeManager()
+    // kobe-managed worktree under <repo>/.claude/worktrees/
+    const managed = await mgr.createForTask({ repo, slug: "managed-wt", branch: "kobe/managed" })
+    // external worktree created by the user OUTSIDE the convention root
+    const extPath = path.join(tmpRoot, "external-wt")
+    const r = spawnSync("git", ["worktree", "add", "-b", "ext-branch", extPath], { cwd: repo, encoding: "utf8" })
+    expect(r.status).toBe(0)
+
+    const all = await mgr.listAll(repo)
+    const byBranch = new Map(all.map((w) => [w.branch, w]))
+
+    // both worktrees show up
+    expect(byBranch.has("kobe/managed")).toBe(true)
+    expect(byBranch.has("ext-branch")).toBe(true)
+    // main checkout (the repo root branch) is excluded
+    for (const w of all) expect(fs.realpathSync(w.path)).not.toBe(fs.realpathSync(repo))
+    // kobeManaged flag distinguishes origin
+    expect(byBranch.get("kobe/managed")?.kobeManaged).toBe(true)
+    expect(byBranch.get("ext-branch")?.kobeManaged).toBe(false)
+    // list() still only returns the managed one
+    const managedOnly = await mgr.list(repo)
+    expect(managedOnly.some((w) => w.branch === "kobe/managed")).toBe(true)
+    expect(managedOnly.some((w) => w.branch === "ext-branch")).toBe(false)
+    void managed
+  })
+})

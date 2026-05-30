@@ -26,6 +26,21 @@ export interface WorktreeInfo {
 }
 
 /**
+ * A git worktree discovered on disk that COULD be adopted as a kobe
+ * task (KOB-256). Unlike {@link WorktreeInfo} (kobe-managed only), this
+ * includes worktrees the user created outside `<repo>/.claude/worktrees/`
+ * via plain `git worktree add`. `kobeManaged` marks whether the path
+ * lives under the kobe convention root, so the UI can label its origin.
+ */
+export interface AdoptableWorktree {
+  readonly path: string
+  readonly branch: string
+  readonly head: string
+  readonly dirty: boolean
+  readonly kobeManaged: boolean
+}
+
+/**
  * Manager for git worktrees mapped 1:1 to kobe Tasks.
  *
  * Conventions / invariants the impl must hold:
