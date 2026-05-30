@@ -37,7 +37,7 @@ import { existsSync } from "node:fs"
 import { getSessionOption, killSession, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { type Accessor, For, createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
@@ -514,6 +514,14 @@ function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null> }) {
           {updateLabel()}
         </text>
       </box>
+      {/* When an update is published, surface the action — the self-update
+          command — right here in the tmux-native footer, since the old
+          outer-monitor update dialog isn't reachable on normal startup. */}
+      <Show when={props.updateInfo()?.hasUpdate}>
+        <text fg={theme.accent} attributes={TextAttributes.DIM} wrapMode="none">
+          run: kobe update
+        </text>
+      </Show>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         ── keys ──
       </text>

@@ -39,7 +39,7 @@ import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
 import { addSavedRepo, getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../types/task.ts"
-import { type UpdateInfo, checkLatestVersion } from "../version.ts"
+import type { UpdateInfo } from "../version.ts"
 import { HelpDialog } from "./component/help-dialog"
 import { NewTaskDialog } from "./component/new-task-dialog"
 import { PaneHeader } from "./component/pane-header"
@@ -208,14 +208,19 @@ function Shell(props: AppDeps) {
     }
   }
 
-  // Background npm-registry check — best-effort, no spinner.
+  // Update info comes from the daemon-owned `update` channel (the daemon
+  // polls npm once and fans it out) via the RemoteOrchestrator — the same
+  // source the Tasks pane uses, so the outer monitor no longer hits the
+  // registry itself. app.tsx always wires a RemoteOrchestrator; the guard
+  // just keeps the KobeOrchestrator union type honest. Keep the last
+  // non-null value so a later null poll (offline) doesn't drop the chip.
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
-  onMount(() => {
-    void checkLatestVersion()
-      .then((info) => {
-        if (info) setUpdateInfo(info)
-      })
-      .catch(() => {})
+  createEffect(() => {
+    const orch = props.orchestrator
+    if (orch instanceof RemoteOrchestrator) {
+      const info = orch.updateSignal()()
+      if (info) setUpdateInfo(info)
+    }
   })
 
   // Pane sizes (sidebar width only in v0.6).

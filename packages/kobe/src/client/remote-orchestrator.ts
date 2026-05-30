@@ -87,6 +87,10 @@ export class RemoteOrchestrator {
       tasks?: SerializedTask[]
       protocolVersion?: number
       minProtocolVersion?: number
+      // Forward-compat: the daemon advertises its channel/feature set here.
+      // Unused today (we negotiate by version range); declared so the field
+      // is typed when a future client starts gating on a capability.
+      capabilities?: readonly string[]
     }>("hello", {
       protocolVersion: DAEMON_PROTOCOL_VERSION,
       minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
@@ -285,6 +289,7 @@ export class RemoteOrchestrator {
     if (name === "update") {
       const info = (payload as { info?: UpdateInfo | null } | undefined)?.info
       this.setUpdateSig(info ?? null)
+      return
     }
   }
 }
