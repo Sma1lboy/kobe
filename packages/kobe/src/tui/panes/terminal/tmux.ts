@@ -175,7 +175,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     const claudeAlive = (await claudePaneIdStrict(opts.name)) !== ""
 
     // Happy path: healthy + right place + right engine → reuse as-is.
-    if (claudeAlive && worktreeOk && vendorOk) return true
+    if (claudeAlive && worktreeOk && vendorOk) {
+      await healTaskPaneWidths(opts.name)
+      return true
+    }
 
     // Vendor-only drift (right worktree, the task switched engines via `v`):
     // relaunch the engine pane IN PLACE in EVERY window via respawn-pane
@@ -187,6 +190,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     if (worktreeOk && !vendorOk && opts.command.length > 0) {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
+        await healTaskPaneWidths(opts.name)
         return true
       }
     }
@@ -196,7 +200,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // sibling chat tabs). Reuse — per-window recreate of a destroyed pane is a
     // future follow-up; the common shell-exit case never gets here because the
     // engine pane survives (KOB-244).
-    if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) return true
+    if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
+      await healTaskPaneWidths(opts.name)
+      return true
+    }
 
     // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
     // a wrong-PLACE session (different @kobe_worktree), or a single-window
@@ -360,6 +367,26 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
     await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
   }
   return true
+}
+
+/** Heal existing sessions built before the direct-tmux Tasks pane widened. */
+async function healTaskPaneWidths(session: string): Promise<void> {
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{pane_id}\t#{@kobe_role}",
+  ])
+  if (code !== 0) return
+  const taskPanes = stdout
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .filter(([, role]) => role?.trim() === "tasks")
+    .map(([id]) => id?.trim())
+    .filter((id): id is string => !!id)
+  await runTmuxSequence(taskPanes.map((pane) => ["resize-pane", "-t", pane, "-x", `${TASKS_PANE_WIDTH}`]))
 }
 
 /**

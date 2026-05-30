@@ -18,15 +18,12 @@
  * Far-left Tasks pane width in CELLS — FIXED, not a % of the window
  * (KOB-248). A %-split drifted: the pane's absolute width changed with the
  * terminal size, between chat-tab windows, and across engine (claude/codex)
- * rebuilds (tmux re-lays-out %-panes on those events). A fixed-cell rail is
- * the same in every window, always. The inner Tasks pane is a thin task-list
- * rail, matching the outer monitor's compact task-list Sidebar. 12 is the
- * effective content floor: the bottom shortcut legend's key column is a fixed
- * 10-cell `[key]` chip plus 1+1 padding, so opentui won't render the pane
- * narrower than 12 regardless of the tmux `-l` value. This is an allowed
- * hardcode per the layout rule (convention-width rail).
+ * rebuilds (tmux re-lays-out %-panes on those events). Direct-tmux mode
+ * makes this pane the primary navigator, not a tiny preview rail, so 32 cells
+ * is the convention width that fits Working/Archives, task titles, and the
+ * shortcut legend without clipped text.
  */
-export const TASKS_PANE_WIDTH = 12
+export const TASKS_PANE_WIDTH = 32
 
 /** Left (claude) pane width as a % of the window. */
 export const CLAUDE_PANE_PERCENT = 60

@@ -7,6 +7,7 @@
 
 import { describe, expect, test } from "vitest"
 import {
+  TASKS_PANE_WIDTH,
   fallbackOpsScript,
   keepAlive,
   opsPaneCommand,
@@ -14,6 +15,12 @@ import {
   shellQuote,
   shellQuoteArgv,
 } from "../../src/tmux/session-layout.ts"
+
+describe("layout constants", () => {
+  test("keeps the direct-tmux Tasks pane wide enough for labels", () => {
+    expect(TASKS_PANE_WIDTH).toBe(32)
+  })
+})
 
 describe("shellQuote", () => {
   test("wraps in single quotes", () => {

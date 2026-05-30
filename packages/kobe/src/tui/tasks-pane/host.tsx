@@ -392,7 +392,7 @@ function ShortcutHints() {
     { k: "⏎", label: "open" },
     { k: "N", label: "new task" },
     { k: "O", label: "open wt" },
-    { k: "R/B/V", label: "name / branch / engine" },
+    { k: "R/B/V", label: "name/branch/engine" },
     { k: "⌃HJKL", label: "move panes" },
     { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },

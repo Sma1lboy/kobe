@@ -11,9 +11,9 @@ import { useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, createEffect, createSignal } from "solid-js"
 import type { KVContext } from "../context/kv"
 
-const MIN_SIDEBAR_WIDTH = 12
+const MIN_SIDEBAR_WIDTH = 18
 const MIN_WORKSPACE_WIDTH = 30
-const DEFAULT_SIDEBAR_WIDTH = 12
+const DEFAULT_SIDEBAR_WIDTH = 32
 
 export type PaneSizes = {
   sidebarWidth: Accessor<number>
