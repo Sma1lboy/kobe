@@ -95,6 +95,21 @@ export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
 }
 
 /**
+ * Connect to the daemon ONLY if one is already running and responsive —
+ * never spawn one. Returns `null` when the daemon is absent or wedged.
+ * For side-effect-light commands (e.g. `kobe add`'s worktree scan) that
+ * want to sync with a live daemon when present but must not boot one as
+ * a side effect.
+ */
+export async function connectIfRunning(): Promise<KobeDaemonClient | null> {
+  const socketPath = defaultDaemonSocketPath()
+  if (!(await testDaemonResponds(socketPath))) return null
+  const client = new KobeDaemonClient(socketPath)
+  await client.connect()
+  return client
+}
+
+/**
  * Start a daemon owned by the current TUI process.
  *
  * Unlike {@link connectOrStartDaemon}, this never reuses the stable

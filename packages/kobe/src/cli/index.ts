@@ -63,37 +63,55 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
 
 /**
  * Discover every unlinked git worktree of `repo` and adopt each as a
- * task (discovery already sorts most-recently-active first). Used by
- * `kobe add` to fold a repo's worktrees in on the way (KOB-256).
- * Best-effort: an unreachable daemon just skips the scan with a note.
+ * task (discovery sorts most-recently-active first). Used by `kobe add`
+ * to fold a repo's worktrees in on the way (KOB-256).
+ *
+ * Discovery runs IN-PROCESS — `git worktree list` + a `tasks.json` read,
+ * no daemon — so a plain repo with no extra worktrees stays instant and
+ * never boots a daemon as a side effect of `kobe add`. Only when there's
+ * something to import do we touch the daemon: a running one gets the
+ * writes over RPC (so a live TUI updates and the on-disk index isn't
+ * split-brained); with no daemon running we write in-process and a later
+ * `kobe` launch reads the result. Best-effort throughout — a scan/adopt
+ * failure is reported, not fatal to `kobe add`.
  */
 async function adoptAllWorktrees(repo: string): Promise<void> {
-  const { connectOrStartDaemon } = await import("../client/daemon-process.ts")
-  let client: Awaited<ReturnType<typeof connectOrStartDaemon>>
+  const { TaskIndexStore } = await import("../orchestrator/index/store.ts")
+  const { GitWorktreeManager } = await import("../orchestrator/worktree/manager.ts")
+  const { Orchestrator } = await import("../orchestrator/core.ts")
+  const store = new TaskIndexStore()
+  await store.load()
+  const orch = new Orchestrator({ store, worktrees: new GitWorktreeManager() })
+
+  let candidates: readonly AdoptableWorktree[]
   try {
-    client = await connectOrStartDaemon()
+    candidates = await orch.discoverAdoptableWorktrees(repo)
   } catch (err) {
-    console.error(`(skipped worktree scan — daemon unreachable: ${err instanceof Error ? err.message : String(err)})`)
+    console.error(`(skipped worktree scan: ${err instanceof Error ? err.message : String(err)})`)
     return
   }
+  if (candidates.length === 0) return
+
+  console.log(`scanning ${repo}: ${candidates.length} unlinked worktree(s) → importing`)
+  const vendor = coerceVendorId(undefined)
+  const { connectIfRunning } = await import("../client/daemon-process.ts")
+  const client = await connectIfRunning()
   try {
-    const { worktrees } = await client.request<{ worktrees: AdoptableWorktree[] }>("worktree.discoverAdoptable", {
-      repo,
-    })
-    if (worktrees.length === 0) return
-    console.log(`scanning ${repo}: ${worktrees.length} unlinked worktree(s) → importing`)
-    const vendor = coerceVendorId(undefined)
-    for (const w of worktrees) {
-      const { task } = await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
-        repo,
-        worktreePath: w.path,
-        branch: w.branch,
-        vendor,
-      })
-      console.log(`  adopted ${w.branch} → task ${task.id} (${task.title})`)
+    for (const w of candidates) {
+      const adopted = client
+        ? (
+            await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
+              repo,
+              worktreePath: w.path,
+              branch: w.branch,
+              vendor,
+            })
+          ).task
+        : await orch.adoptWorktree({ repo, worktreePath: w.path, branch: w.branch, vendor })
+      console.log(`  adopted ${w.branch} → task ${adopted.id} (${adopted.title})`)
     }
   } finally {
-    client.close()
+    client?.close()
   }
 }
 
