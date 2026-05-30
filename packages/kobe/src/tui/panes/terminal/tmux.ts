@@ -96,6 +96,9 @@ export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
   ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
 ] as const
 
+export const CHAT_TAB_STATUS_FORMAT = "#{?window_activity_flag,●,○} #I:#W"
+export const CHAT_TAB_STATUS_CURRENT_FORMAT = "#{?window_activity_flag,●,○} #I:#W"
+
 export function tmuxInitialSizeArgs(
   stdout: { columns?: number; rows?: number } = process.stdout,
   env: Record<string, string | undefined> = process.env,
@@ -293,6 +296,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the config file), so the user's own status-bar theme applies.
   // The session name (`kobe-<task-id>`, shown via the user's
   // default `#S` in status-left) is the only identity we impose.
+  // Window-status format: a compact activity icon in each ChatTab label.
+  // `monitor-activity` is tmux-native and means "this window produced
+  // output since you last viewed it", which is the reliable signal we have
+  // inside a pure tmux handover without scraping engine-specific prompts.
   // Mouse: ON. The Tasks pane's click-to-switch and the Ops FileTree's
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
@@ -341,6 +348,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // own tmux.conf sets (we load it on the `-L kobe` socket).
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
+    ["set-option", "-g", "monitor-activity", "on"],
+    ["set-option", "-g", "visual-activity", "off"],
+    ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],
+    ["set-option", "-g", "window-status-current-format", CHAT_TAB_STATUS_CURRENT_FORMAT],
     ["set-option", "-g", "mouse", "on"],
     ["bind-key", "-n", "C-q", "detach-client"],
     ["bind-key", "-n", "C-h", "select-pane", "-L"],

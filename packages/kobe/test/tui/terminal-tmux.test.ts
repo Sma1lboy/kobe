@@ -11,6 +11,8 @@ import {
   CHAT_TAB_CLOSE_BINDING,
   CHAT_TAB_ENGINE_PROMPT,
   CHAT_TAB_RENAME_BINDING,
+  CHAT_TAB_STATUS_CURRENT_FORMAT,
+  CHAT_TAB_STATUS_FORMAT,
   CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
   tmuxInitialSizeArgs,
@@ -78,6 +80,13 @@ describe("CHAT_TAB_CHOOSE_ENGINE_BINDINGS", () => {
       ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
       ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
     ])
+  })
+})
+
+describe("CHAT_TAB_STATUS_FORMAT", () => {
+  test("prefixes tmux window labels with an activity icon", () => {
+    expect(CHAT_TAB_STATUS_FORMAT).toBe("#{?window_activity_flag,●,○} #I:#W")
+    expect(CHAT_TAB_STATUS_CURRENT_FORMAT).toBe("#{?window_activity_flag,●,○} #I:#W")
   })
 })
 

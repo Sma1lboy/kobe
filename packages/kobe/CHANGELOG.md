@@ -23,6 +23,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **More v0.5 productivity chords return in tmux-native form** — F2 renames the current tmux ChatTab window, the in-session Tasks pane can open the selected task's worktree with `o`, and the Ops pane's Changes tab now shows a slim `[P] create PR` action row that injects the PR prompt into the engine pane instead of using an outer-monitor button.
 - **Engine-select ChatTab creation** — Ctrl+T still opens a fast same-engine ChatTab, while Ctrl+Shift+T (plus prefix `T` as a terminal-safe fallback) prompts for `claude` / `codex` / `copilot` before opening the new tmux window; that choice becomes the task/session default for later Ctrl+T tabs.
 - **Tasks pane owns the missing outer-monitor actions** — with the legacy opentui monitor deprecated, the in-session Tasks pane now supports `s` settings, `a` archive, and `d` delete with the same confirmations and dirty-worktree guard as before; archive/delete also kill the task's cached tmux session when one exists.
+- **ChatTab labels show activity status** — tmux window tabs now carry a compact activity icon (`●` when that ChatTab has produced output since you last viewed it, `○` otherwise), making background engine activity visible without returning to the tab.
 
 ### Changed
 
