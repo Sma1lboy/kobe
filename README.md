@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Run a small team of coding agents from one terminal.</strong><br/>
-  kobe is a local-first TUI that turns each task into a git worktree, a tmux session, and a live engine pane.
+  <strong>Run a small team of coding agents from any terminal.</strong><br/>
+  kobe is a local-first, SSH-friendly TUI that turns each task into a git worktree, a tmux session, and a live engine pane.
 </p>
 
 <p align="center">
@@ -20,6 +20,8 @@ AI coding tools are great at one thread. Real work is rarely one thread.
 
 kobe gives you a terminal-native cockpit for running parallel coding attempts without leaving your shell. Create a task, let it work in its own git worktree, switch to another task, compare changes in the Ops pane, and keep every engine conversation alive in tmux.
 
+Most agent orchestrators assume a desktop app, a browser tab, or a cloud workspace. kobe assumes the place developers already do serious work: a terminal attached to the machine that has the repo, dependencies, credentials, build cache, and internal network access. That terminal can be local. More interestingly, it can be an SSH session into a devbox, CI runner, VPS, or beefy remote workstation.
+
 The product unit is simple:
 
 ```text
@@ -27,6 +29,28 @@ Task = git worktree + tmux session + branch
 ```
 
 That means experiments do not trample your main checkout, long-running agents keep working after you detach, and every attempt has a branch you can inspect, merge, archive, or delete.
+
+## Built for SSH and devboxes
+
+The terminal is not a fallback UI for kobe. It is the deployment model.
+
+```bash
+ssh devbox
+cd repo
+kobe
+```
+
+Because kobe runs where the code runs, it fits remote development naturally:
+
+| Remote workflow need | What kobe does |
+|---|---|
+| Keep work alive after disconnects | Engine panes live inside tmux; detach and reattach without stopping tasks. |
+| Use the real development environment | Agents run beside your repo, env vars, local services, build tools, and credentials. |
+| Avoid GUI forwarding | No browser, VNC, X11, or Electron remoting required; SSH is enough. |
+| Fan out on larger machines | Put parallel agents on a devbox with more CPU, RAM, disk, and network access than a laptop. |
+| Keep code and secrets in place | Worktrees, transcripts, and task state stay on the remote machine unless you move them. |
+
+kobe works fine on a laptop. Its sharper edge is remote: it turns an SSH session into an agent control plane.
 
 ## What it feels like
 
@@ -52,7 +76,8 @@ Each task can have multiple ChatTab tmux windows on the same worktree, so you ca
 ## Highlights
 
 - **Local-first orchestration** - state lives on disk under `~/.kobe`, engine transcripts stay where each CLI already stores them, and work happens in normal git worktrees.
-- **Tmux-native runtime** - detach with `ctrl+q`, reattach later, and keep engine panes alive without a cloud service.
+- **SSH/devbox-native** - run kobe on the machine with the repo, credentials, services, and build cache; reconnect from anywhere SSH reaches.
+- **Tmux-native runtime** - detach with `ctrl+q`, reattach later, and keep engine panes alive without a cloud service or GUI session.
 - **Multi-engine by CLI** - works with local Claude Code, Codex, and GitHub Copilot CLI sessions through engine-owned contracts.
 - **Worktree isolation** - every task gets a branch and checkout, so parallel attempts can edit the same repo safely.
 - **Ops pane for review** - browse changed files, inject `@file` mentions, open previews, and ask an agent to prepare a PR.
@@ -98,6 +123,14 @@ From a git repo:
 kobe
 ```
 
+From a remote devbox, the flow is the same:
+
+```bash
+ssh devbox
+cd repo
+kobe
+```
+
 Then:
 
 1. Press `n` in the Tasks pane.
@@ -118,7 +151,7 @@ The task appears in the Tasks pane and the engine runs inside that worktree. Det
 ```text
 1. Create a task for an idea, bug, or refactor.
 2. Let the engine work in its isolated branch.
-3. Spawn another task for a competing approach.
+3. Spawn another task for a competing approach, even after detaching from SSH.
 4. Use Ops to inspect changed files and inject follow-up context.
 5. Open the worktree in your editor or ask the agent to prepare a PR.
 6. Archive finished tasks; keep the branch/worktree history available.
