@@ -343,8 +343,8 @@ function TasksShell(props: {
 /**
  * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
  * shows the in-pane task actions plus the session-level tmux chords so the
- * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` line is
- * the existing tmux pane navigation — shown here, not rebound.
+ * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
+ * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
 function ShortcutHints() {
   const { theme } = useTheme()
@@ -358,6 +358,7 @@ function ShortcutHints() {
     { k: "N", label: "new task" },
     { k: "R/B/V", label: "name / branch / engine" },
     { k: "⌃HJKL", label: "move panes" },
+    { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },
     { k: "⌃Q", label: "monitor" },
   ]

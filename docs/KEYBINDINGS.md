@@ -60,7 +60,7 @@ site — they should agree.
 | `ctrl+o`         | shell flow-control history (`^O`) / editor-open convention | Global "open active task in editor." We use a modifier chord because it must work from every pane without stealing composer text. The handler is a no-op when no active task or editor opener is available. |
 | `tab`            | pane cycle vs textarea focus actions    | `useKobeKeybindings` no-ops `tab` when workspace has focus so the composer's own tab handling (slash completion, indent) wins.                                                      |
 | `[` / `]`        | sidebar view switch vs files tab cycle  | Both pane-scoped (different scopes), so the focused pane wins.                                                                                                                      |
-| `ctrl+[` / `ctrl+]` | chat tab cycle vs new-task dialog sub-tab cycle | Dialog-local handler wins while the New Task dialog is open. App-level workspace bindings are gated `enabled: dialog.stack.length === 0`, so the dialog's `useBindings` registration intercepts the chord first and toggles between the "For Existing" and "For New Repo" sub-tabs. Closing the dialog restores the chat-tab cycle. |
+| `ctrl+[` / `ctrl+]` | outer dialog sub-tab cycle vs tmux ChatTab cycle | In the outer TUI, the New Task dialog owns `ctrl+[` / `ctrl+]` locally to switch its sub-tabs. Inside a Handover, the same chords are tmux no-prefix bindings on the dedicated `-L kobe` socket: previous / next ChatTab window. The old self-rendered chat-tab handler is stale; ChatTabs are tmux windows now. |
 | sidebar letter chords (`j`/`k`/`g`/`G`/`d`/`a`/`r`/`P`/`m`) vs `/`-search typing | Letter chords are registered in a sidebar-scoped `useBindings` block gated `enabled: focused() && !searchMode()`. When `/` enters search mode the block de-registers, so subsequent letter keys fall through to the inline search input as literal text. `[` / `]` view switch lives in a separate always-on block and keeps firing during search. A second search-only block registers `up`/`down` (filtered-list nav), `enter` (commit), and `esc` (cancel + restore prior selection). |
 
 ## tmux passthrough
@@ -164,8 +164,7 @@ We iterated through three candidates before landing on `ctrl+hjkl`. Recording th
 re-derive it.
 
 1. **`ctrl+1..4`** — first attempt, mirrors VSCode/iTerm pane focus muscle memory.
-   - **Conflict 1** (resolved): `chat.tab.pick` was registered on the same chords. Moved chat tab navigation to `ctrl+]` / `ctrl+[`
-     cycle so pane focus has hard precedence.
+   - **Conflict 1** (resolved): `chat.tab.pick` was registered on the same chords. In v0.6, self-rendered chat-tab picking is gone; ChatTab navigation lives inside tmux as `ctrl+]` / `ctrl+[` previous / next window.
    - **Conflict 2** (load-bearing): legacy terminal mode doesn't propagate the ctrl modifier on digit keys — pressing `ctrl+1`
      just sends the byte `1`. The ctrl-digit chord requires the **CSI-u / kitty keyboard** protocol, which:
      - opentui can request via `useKittyKeyboard: {}` on `render()`. Done.

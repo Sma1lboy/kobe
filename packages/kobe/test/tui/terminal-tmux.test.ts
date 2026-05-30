@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { attachArgv, tmuxSessionName } from "../../src/tui/panes/terminal/tmux"
+import { CHAT_TAB_SWITCH_BINDINGS, attachArgv, tmuxSessionName } from "../../src/tui/panes/terminal/tmux"
 
 describe("tmuxSessionName", () => {
   test("prefixes with kobe- and keeps safe id chars", () => {
@@ -21,5 +21,14 @@ describe("tmuxSessionName", () => {
 describe("attachArgv", () => {
   test("targets the dedicated socket and an exact session name", () => {
     expect(attachArgv("kobe-t1")).toEqual(["tmux", "-L", "kobe", "attach-session", "-t", "=kobe-t1"])
+  })
+})
+
+describe("CHAT_TAB_SWITCH_BINDINGS", () => {
+  test("maps bracket chords to tmux window navigation", () => {
+    expect(CHAT_TAB_SWITCH_BINDINGS).toEqual([
+      ["bind-key", "-n", "C-[", "previous-window"],
+      ["bind-key", "-n", "C-]", "next-window"],
+    ])
   })
 })

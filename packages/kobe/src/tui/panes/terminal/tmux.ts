@@ -14,7 +14,8 @@
  *
  * The tmux status-bar window list is the chat-tab switcher; the left
  * Tasks pane switches between task sessions. `Ctrl+T` opens a new chat
- * tab (window). Everything is rendered by tmux, so claude repaints at
+ * tab (window), and `Ctrl+[` / `Ctrl+]` move to the previous / next
+ * chat tab. Everything is rendered by tmux, so claude repaints at
  * native speed without kobe's outer renderer fighting for the TTY.
  *
  * `Ctrl+Q` detaches back to the outer monitor; `Ctrl+h/j/k/l` move
@@ -58,6 +59,11 @@ import type { VendorId } from "@/types/task"
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
 export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName } from "@/tmux/client"
+
+export const CHAT_TAB_SWITCH_BINDINGS = [
+  ["bind-key", "-n", "C-[", "previous-window"],
+  ["bind-key", "-n", "C-]", "next-window"],
+] as const
 
 export interface EnsureSessionOpts {
   readonly name: string
@@ -255,6 +261,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // Ctrl+T opens a new chat tab = a new window with its own claude
   // (fresh conversation) + the same panes, on the same worktree. The
   // window status bar becomes the chat-tab switcher (Ctrl+B n/p too).
+  // No-prefix Ctrl+[ / Ctrl+] mirror kobe's old self-rendered chat-tab
+  // cycle, but now map directly to tmux windows inside the handover.
   // `kobe new-chattab` reads the session's @kobe_task / @kobe_worktree
   // tags so the binding only needs to pass the session name (which
   // tmux expands at fire time).
@@ -264,6 +272,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const envStr = inheritedEnvPrefix()
   const invStr = inv.map(shellQuote).join(" ")
   await runTmux(["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`])
+  for (const binding of CHAT_TAB_SWITCH_BINDINGS) await runTmux([...binding])
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and
