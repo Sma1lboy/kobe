@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": ["src/cli/index.ts!", "scripts/build.ts", "test/**/*.test.{ts,tsx}"],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+  "ignoreBinaries": ["tmux", "claude", "codex", "copilot"]
+}
