@@ -176,7 +176,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 
     // Happy path: healthy + right place + right engine → reuse as-is.
     if (claudeAlive && worktreeOk && vendorOk) {
-      await selectFirstHealthyChatTab(opts.name)
+      await healChatTabWindows(opts.name)
       await healTaskPaneWidths(opts.name)
       return true
     }
@@ -191,7 +191,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     if (worktreeOk && !vendorOk && opts.command.length > 0) {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-        await selectFirstHealthyChatTab(opts.name)
+        await healChatTabWindows(opts.name)
         await healTaskPaneWidths(opts.name)
         return true
       }
@@ -203,7 +203,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // future follow-up; the common shell-exit case never gets here because the
     // engine pane survives (KOB-244).
     if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
-      if (await selectFirstHealthyChatTab(opts.name)) {
+      if (await healChatTabWindows(opts.name)) {
         await healTaskPaneWidths(opts.name)
         return true
       }
@@ -374,11 +374,12 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
 }
 
 /**
- * Select a ChatTab window that still has a tagged engine pane. Older layouts
- * can leave a stale window with Tasks/Ops/Shell but no engine pane; attaching
- * into that window looks like a broken first screen while Ctrl+T is fine.
+ * Select a ChatTab window that still has a tagged engine pane, then prune
+ * stale windows without one. Older layouts can leave a window with
+ * Tasks/Ops/Shell but no engine pane; keeping it in the window list makes
+ * direct startup look broken even when healthy sibling ChatTabs exist.
  */
-async function selectFirstHealthyChatTab(session: string): Promise<boolean> {
+async function healChatTabWindows(session: string): Promise<boolean> {
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-s",
@@ -388,13 +389,31 @@ async function selectFirstHealthyChatTab(session: string): Promise<boolean> {
     "#{window_id}\t#{@kobe_role}",
   ])
   if (code !== 0) return false
+  const rolesByWindow = parseWindowRoles(stdout)
+  const healthy = [...rolesByWindow.entries()].filter(([, roles]) => roles.has("claude")).map(([windowId]) => windowId)
+  if (healthy.length === 0) return false
+  await runTmux(["select-window", "-t", healthy[0] ?? ""])
+  await runTmuxSequence(
+    [...rolesByWindow.entries()]
+      .filter(([windowId, roles]) => !roles.has("claude") && healthy.includes(windowId) === false)
+      .map(([windowId]) => ["kill-window", "-t", windowId]),
+  )
+  return true
+}
+
+/** Parse `#{window_id}\t#{@kobe_role}` list-panes output for stale-window healing. */
+export function parseWindowRoles(stdout: string): Map<string, Set<string>> {
+  const rolesByWindow = new Map<string, Set<string>>()
   for (const line of stdout.split("\n")) {
     const [windowId, role] = line.split("\t")
-    if (windowId && role?.trim() === "claude") {
-      return (await runTmux(["select-window", "-t", windowId.trim()])) === 0
-    }
+    const id = windowId?.trim()
+    if (!id) continue
+    const roles = rolesByWindow.get(id) ?? new Set<string>()
+    const trimmedRole = role?.trim()
+    if (trimmedRole) roles.add(trimmedRole)
+    rolesByWindow.set(id, roles)
   }
-  return false
+  return rolesByWindow
 }
 
 /** Heal existing sessions built before the direct-tmux Tasks pane widened. */

@@ -28,7 +28,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - **The default task/sidebar panel is now 32 cells wide** — direct-tmux startup makes the Tasks pane the primary navigator, so new installs and invalid saved widths start wide enough for readable task titles instead of the old 42-cell history rail (KOB-259).
 - **Tmux handover window setup is batched** — creating the first task window and new Ctrl+T ChatTabs now performs session tags, pane splits, pane role tags, and server keybindings through far fewer tmux subprocess round trips, making the kobe-level window/init path feel less sticky.
 - **The direct-tmux Tasks pane is wide enough to read** — the in-session Tasks pane now uses a 32-cell fixed width and heals existing 12-cell sessions on next enter, so Working/Archives, task titles, and shortcut hints are not clipped.
-- **Direct startup skips stale broken ChatTab windows** — if a persisted tmux session contains an old window with Tasks/Ops/Shell but no engine pane, `kobe` now selects a healthy ChatTab before attaching instead of landing on the broken first screen.
+- **Direct startup prunes stale broken ChatTab windows** — if a persisted tmux session contains old windows with Tasks/Ops/Shell but no engine pane, `kobe` now selects a healthy ChatTab and removes the broken windows instead of landing on or showing them.
 
 ## [0.6.1] - 2026-05-29
 

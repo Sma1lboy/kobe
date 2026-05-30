@@ -11,6 +11,7 @@ import {
   CHAT_TAB_RENAME_BINDING,
   CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
+  parseWindowRoles,
   tmuxSessionName,
 } from "../../src/tui/panes/terminal/tmux"
 
@@ -65,5 +66,13 @@ describe("CHAT_TAB_RENAME_BINDING", () => {
       "#{window_name}",
       "rename-window -- '%%'",
     ])
+  })
+})
+
+describe("parseWindowRoles", () => {
+  test("groups pane roles by tmux window id", () => {
+    const roles = parseWindowRoles("@0\ttasks\n@0\tops\n@1\ttasks\n@1\tclaude\n@1\tops\n")
+    expect([...(roles.get("@0") ?? [])]).toEqual(["tasks", "ops"])
+    expect([...(roles.get("@1") ?? [])]).toEqual(["tasks", "claude", "ops"])
   })
 })
