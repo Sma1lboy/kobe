@@ -69,6 +69,7 @@ kobe is built by deliberately copying ideas (and sometimes code) from reference 
 | `ccstatusline` | fresh clone of [`sirmalloc/ccstatusline`](https://github.com/sirmalloc/ccstatusline) | **Status/context/speed derivation reference.** Reads Claude Code's `transcript_path` JSONL and status JSON to derive token totals, context-window usage, compaction hints, and input/output/total token speed. Use it before changing kobe's context meter, plan/status chips, or any transcript-derived usage metric. |
 | `codex` | fresh clone of [`openai/codex`](https://github.com/openai/codex) | **Official Codex CLI / engine behavior reference.** Use before changing `packages/kobe/src/engine/codex-local/`: spawn flags, `exec --json` event shapes, resume/session semantics, app-server protocol, auth behavior, sandbox/approval options, model reasoning controls, and transcript/session storage. |
 | `codexui` | fresh clone of [`friuns2/codexui`](https://github.com/friuns2/codexui) | **How to drive the `codex` CLI / app-server from another process.** Browser bridge for `codex app-server` (richer RPC than the `codex exec --json` path kobe's `engine/codex-local/` uses today). Consult when extending codex support — auth/login flows, app-server features the exec path can't reach, or matching their normalization choices. |
+| `warp` | fresh clone of [`warpdotdev/warp`](https://github.com/warpdotdev/warp) | **Terminal-native workflow and UI reference.** Use when comparing terminal task/session UX, command surfaces, keyboard-first flows, and pane/split ergonomics against a polished terminal product. |
 
 ### Setup before developing
 
@@ -80,6 +81,7 @@ git clone --depth 1 https://github.com/tanbiralam/claude-code.git
 git clone --depth 1 https://github.com/sirmalloc/ccstatusline.git
 git clone --depth 1 https://github.com/openai/codex.git
 git clone --depth 1 https://github.com/friuns2/codexui.git
+git clone --depth 1 https://github.com/warpdotdev/warp.git
 # `conductor` is image-only — read docs/DESIGN.md §1 for the layout
 ```
 
@@ -94,6 +96,7 @@ git clone --depth 1 https://github.com/friuns2/codexui.git
 - "How should status/context/speed be derived from Claude Code data?" → `ccstatusline/src/ccstatusline.ts`, `ccstatusline/src/utils/jsonl-metrics.ts`, and `ccstatusline/src/utils/context-window.ts`. Important pattern: speed is not a field Claude Code hands over; it is derived by reading the conversation JSONL (`transcript_path`), pairing user/assistant timestamps, and dividing token usage by active request duration.
 - "How should kobe match official Codex CLI behavior?" → `codex/` first. Treat this as authoritative for `codex exec --json`, `codex app-server`, auth/session storage, sandbox/approval modes, model reasoning options, and event schemas.
 - "How do I drive `codex` from another process / normalize its events / handle auth?" → `codexui/src/server/` + `codexui/src/api/`. Their bridge speaks `codex app-server` RPC, not `codex exec --json`; port ideas, not architecture.
+- "How should terminal-native task/session UX compare to a polished terminal product?" → `warp/`.
 
 If a ref disagrees with kobe's existing implementation, kobe wins (we already chose) — but read the ref before deciding to deviate further.
 
@@ -105,7 +108,8 @@ kobe **code-level** work is tracked in Linear. The Linear project is the product
 |---|---|
 | Workspace | [`codesfox`](https://linear.app/codesfox) |
 | Team | `KOB` (Kobe) |
-| Active project | `Pre-1.0 整理` |
+| Active project | `0.6 tmux 版本` |
+| Legacy project | `0.5 opentui 版本` — shipped/stale self-rendered opentui chat work; do not file new v0.6 tmux work here |
 | Workspace labels | `Bug`, `Chore`, `Doc`, `Feature`, `Featurebase`, `Tech Debt` |
 
 ### What to file
@@ -151,7 +155,7 @@ cat > /tmp/issue-body.md <<'EOF'
 <markdown body — context, scope, open questions>
 EOF
 linear issue create \
-  --team KOB --project "Pre-1.0 整理" \
+  --team KOB --project "0.6 tmux 版本" \
   --title "<short imperative title>" \
   --description-file /tmp/issue-body.md \
   --label "Feature" --no-interactive
@@ -204,7 +208,7 @@ Full skill at [`.claude/skills/linear/SKILL.md`](./.claude/skills/linear/SKILL.m
 
 opentui boxes follow Yoga flexbox semantics. Default to flex flow (`flexGrow`, `flexShrink`, `flexBasis`, `flexDirection`) for sizing — let panes share available terminal width by ratio, not by pixel-count. Hardcoded `width={N}` / `height={N}` is acceptable only when:
 
-- **Convention** — e.g. the sidebar's 42-cell width matches opencode/agent-deck precedent for "history rail" pane. Document the reason inline.
+- **Convention** — e.g. the task/sidebar rail's 12-cell width matches kobe's compact tmux Tasks pane. Document the reason inline.
 - **Terminal-grammar fixed glyph** — e.g. a 2-cell column for diff-line `+`/`-` markers.
 - **Modal or transient overlay** — dialogs centered with computed dimensions.
 

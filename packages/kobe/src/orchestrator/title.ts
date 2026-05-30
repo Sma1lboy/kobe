@@ -8,7 +8,7 @@
  * via the daemon RPC); v0.6 itself doesn't surface that path.
  */
 
-/** Title cap. Short enough to fit in a 42-char sidebar with status prefix. */
+/** Title cap. Kept generous for branch slugs; the compact sidebar truncates visually. */
 export const TITLE_CHAR_CAP = 40
 
 /**

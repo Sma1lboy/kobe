@@ -15,7 +15,7 @@
  *   │  ...                                    │
  *   └────────────────────────────────────────┘
  *
- * Layout: ~38 cells wide (paired with the sidebar's 42). The width is
+ * Layout: ~38 cells wide in the old five-pane shell. The width is
  * a layout target, not a hard cap — the parent can adjust by overriding
  * via the surrounding box; we just render as `width={FILETREE_WIDTH}`.
  *
@@ -66,10 +66,9 @@ import { type FileTreeTab, useFileTreeBindings } from "./keys"
 import { openExternally } from "./open-external"
 
 /**
- * Default width of the pane in terminal cells. Paired with the
- * sidebar's 42 to leave the centre column ~roomy on an 80x24 terminal.
- * The parent can override via the surrounding box layout if a wider
- * window warrants it; we expose the constant rather than hard-code
+ * Default width of the pane in terminal cells from the old centre-column
+ * layout. The parent can override via the surrounding box layout if a
+ * wider window warrants it; we expose the constant rather than hard-code
  * inside JSX.
  */
 export const FILETREE_WIDTH = 38

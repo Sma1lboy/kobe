@@ -99,7 +99,7 @@ work in an area, ping the listed owner first to avoid stomping.
 | **Chat / message rendering** | `src/tui/panes/chat/` | Jackson | Match Claude Code's `src/ink/` rendering (refs/claude-code) — don't reinvent. |
 | **Composer / input** | `src/tui/panes/chat/composer/`, `Composer.tsx` | Jackson | Heavy keyboard user contract: every interaction must be reachable without a mouse. |
 | **Hotkeys / keybindings** | `src/tui/context/keybindings.ts` | 薯条 | Central registry (PR #5). Add new bindings here, not inline in pane code. Document chord sequences. |
-| **Sidebar / task list** | `src/tui/panes/sidebar/` | Jackson | History rail at agent-deck width (42 cells). Don't hardcode height. |
+| **Sidebar / task list** | `src/tui/panes/sidebar/` | Jackson | Compact task rail at 12 cells. Don't hardcode height. |
 | **File tree** | `src/tui/panes/filetree/` | TBD | Look at agent-deck's file pane for layout grammar. |
 | **Terminal pane** | `src/tui/panes/terminal/` | Pengyu | Isolated module — modify freely without coordinating with other panes. Cursor visibility is a known issue (KOB-2). |
 | **Preview / diff** | `src/tui/panes/preview/` | Jackson | "open*" diff naming TBD — `opendiff` / `claudediff` candidates. |

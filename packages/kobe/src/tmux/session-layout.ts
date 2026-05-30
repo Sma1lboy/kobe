@@ -20,7 +20,7 @@
  * terminal size, between chat-tab windows, and across engine (claude/codex)
  * rebuilds (tmux re-lays-out %-panes on those events). A fixed-cell rail is
  * the same in every window, always. The inner Tasks pane is a thin task-list
- * rail, much tighter than the outer monitor's 42-cell Sidebar. 12 is the
+ * rail, matching the outer monitor's compact task-list Sidebar. 12 is the
  * effective content floor: the bottom shortcut legend's key column is a fixed
  * 10-cell `[key]` chip plus 1+1 padding, so opentui won't render the pane
  * narrower than 12 regardless of the tmux `-l` value. This is an allowed

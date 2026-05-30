@@ -308,7 +308,7 @@ These four are the building blocks. Wave 2 glues them.
 **Inputs**: Stream C (TaskIndexStore — read-only here), Stream 0.2 (sidebar component reference from `refs/opencode/.../routes/session/sidebar.tsx`).
 
 **Outputs**: `src/tui/panes/sidebar/`:
-- `Sidebar.tsx` — Solid component, 42-char fixed width
+- `Sidebar.tsx` — Solid component, fixed-width task rail
 - Status groups: Done / In review / In progress / Backlog / Canceled (collapsible)
 - Cursor nav (j/k); enter selects task and emits `selectTask(id)` event
 - Subscribe to `TaskIndexStore` updates (poll or push)
@@ -317,7 +317,7 @@ These four are the building blocks. Wave 2 glues them.
 **Done when**: Sidebar renders standalone in a test harness with sample data; cursor navigation works.
 
 **Agent prompt seed**:
-> Build the kobe sidebar pane. Adapt `refs/opencode/packages/opencode/src/cli/cmd/tui/routes/session/sidebar.tsx`. 42-char fixed width. Group tasks by status (5 groups, collapsible). Cursor j/k nav. Read tasks from `TaskIndexStore` (Stream C), poll every 1s for changes (we'll move to push later). Emit `selectTask(id)` via Solid signal. Standalone test harness with 9 mock tasks. ~250 LoC.
+> Build the kobe sidebar pane. Adapt `refs/opencode/packages/opencode/src/cli/cmd/tui/routes/session/sidebar.tsx`. Fixed-width task rail. Group tasks by status (5 groups, collapsible). Cursor j/k nav. Read tasks from `TaskIndexStore` (Stream C), poll every 1s for changes (we'll move to push later). Emit `selectTask(id)` via Solid signal. Standalone test harness with 9 mock tasks. ~250 LoC.
 
 ---
 

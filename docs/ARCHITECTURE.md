@@ -112,6 +112,9 @@ is a symlink). The slots and what each one teaches kobe:
 | `opcode` | clone of `winfunc/opcode` | Subprocess wrapping for Claude Code — kobe's `src/engine/claude-code-local/` was algorithmically ported from `opcode/src-tauri/src/commands/claude.rs` |
 | `claude-code` | clone of `tanbiralam/claude-code` (leaked Anthropic source) | Render parity — match Claude Code's text formatting, tool display, citations exactly. See `src/ink/` in the ref |
 | `ccstatusline` | clone of `sirmalloc/ccstatusline` | Status/context/speed derivation — especially transcript JSONL usage parsing, context-window math, and token-speed calculations |
+| `codex` | clone of `openai/codex` | Official Codex CLI / engine behavior reference |
+| `codexui` | clone of `friuns2/codexui` | Driving `codex app-server` from another process |
+| `warp` | clone of `warpdotdev/warp` | Terminal-native workflow and pane/session UX reference |
 
 Concrete provenance examples in the kobe source:
 

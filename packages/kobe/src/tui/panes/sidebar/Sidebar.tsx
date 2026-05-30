@@ -23,9 +23,9 @@
  * (non-destructive; the worktree, the branch, and the chat history all
  * stay).
  *
- * The 42-cell sidebar width is a documented hardcode (CLAUDE.md
- * "flex-first, hardcode last"): convention rationale — matches
- * opencode/agent-deck precedent for "history rail" panes.
+ * The 12-cell sidebar width is a documented hardcode (CLAUDE.md
+ * "flex-first, hardcode last"): convention rationale — matches the compact
+ * task-list rail used by the tmux Tasks pane.
  *
  * Status badges (●○) still render on per-task rows as a visual hint of
  * the underlying `task.status` (the orchestrator's concurrency cap and
@@ -62,8 +62,8 @@ import { useTheme as _useTheme } from "../../context/theme"
  */
 export type ChatRunState = "running" | "awaiting_input" | "idle"
 
-/** Default sidebar width — `42` matches opencode / agent-deck convention. */
-const SIDEBAR_WIDTH = 42
+/** Default sidebar width — compact task-list rail matching the tmux Tasks pane. */
+const SIDEBAR_WIDTH = 12
 void _useTheme
 import { useTheme } from "../../context/theme"
 import { readCurrentBranch } from "./git-head"

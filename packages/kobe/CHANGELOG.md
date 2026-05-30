@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - **Adopt existing git worktrees as tasks** — kobe can now pick up worktrees that already exist on disk (including ones you made yourself with `git worktree add`, outside `.claude/worktrees/`) instead of only ones it created. New `kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]` CLI: run it to list a repo's adoptable worktrees (those not already a task), pass a path glob to select a batch, and `--yes` to import them — each becomes a task pointing at the existing worktree + its branch, with no new checkout. The New Task dialog gains an **Adopt Worktree** tab (in both the outer monitor and the in-session Tasks pane): it lists the same candidates with a path-glob filter, space/click to multi-select (Ctrl+A = all), and Create to import. Discovery reads `git worktree list` and de-dupes against existing tasks; adoption goes through the daemon so every surface updates live (KOB-256).
 - **ChatTab window switching gets no-prefix tmux shortcuts** — inside a task Handover, Ctrl+[ moves to the previous tmux ChatTab window and Ctrl+] moves to the next, matching the old bracket-pair tab vocabulary without bringing back the stale self-rendered chat surface (KOB-257).
+- **ChatTab close returns as Ctrl+W in tmux** — inside a task Handover, Ctrl+W closes the current tmux ChatTab window when another window remains, restoring the v0.5 close-tab affordance while protecting the final window from accidentally killing the whole Task session.
+
+### Changed
+
+- **The default task/sidebar panel is now 12 cells wide** — new installs and invalid saved widths start with the same compact rail width as the in-session Tasks pane, instead of the old 42-cell history rail (KOB-259).
 
 ## [0.6.1] - 2026-05-29
 
