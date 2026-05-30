@@ -14,6 +14,12 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-05-29
+
+### Added
+
+- **Direct-tmux Tasks pane shows update status** — the in-session Tasks pane now has a compact `system` footer above the key legend, showing the current kobe version normally, `latest` when npm confirms it is current, and a warning-colored `vX.Y.Z available` when a newer patch is published. This keeps update detection visible after the legacy outer opentui monitor was deprecated.
+
 ## [0.6.2] - 2026-05-29
 
 ### Added

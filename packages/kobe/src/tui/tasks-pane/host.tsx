@@ -37,7 +37,7 @@ import { existsSync } from "node:fs"
 import { getSessionOption, killSession, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
-import { type Accessor, For, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { type Accessor, For, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
@@ -47,6 +47,7 @@ import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendor } from "../../types/vendor.ts"
+import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../../version.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
@@ -85,6 +86,7 @@ function TasksShell(props: {
   const dialog = useDialog()
   const kv = useKV()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+  const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
 
   // Follow the SHARED active-task focus pushed on the daemon's `active-task`
   // channel: whichever task was last switched/entered into (from ANY session
@@ -99,6 +101,11 @@ function TasksShell(props: {
   onMount(() => {
     themeCtx.setTransparentBackground(props.transparent)
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
+    void checkLatestVersion()
+      .then((info) => {
+        if (info) setUpdateInfo(info)
+      })
+      .catch(() => {})
   })
 
   // `n` (and the footer "+ New task" click) creates a new task using the
@@ -449,7 +456,7 @@ function TasksShell(props: {
           focused={() => dialog.stack.length === 0}
         />
       </box>
-      <ShortcutHints />
+      <ShortcutHints updateInfo={updateInfo} />
     </box>
   )
 }
@@ -460,8 +467,13 @@ function TasksShell(props: {
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
-function ShortcutHints() {
+function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null> }) {
   const { theme } = useTheme()
+  const updateLabel = createMemo(() => {
+    const info = props.updateInfo()
+    if (!info) return `v${CURRENT_VERSION}`
+    return info.hasUpdate ? `v${info.latest} available` : `v${CURRENT_VERSION} latest`
+  })
   // Fixed-width key column so the labels line up — a terminal-grammar
   // legend column, not a proportional pane (allowed hardcode).
   // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
@@ -483,6 +495,18 @@ function ShortcutHints() {
   ]
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
+      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+        ── system ──
+      </text>
+      <box flexDirection="row" gap={1}>
+        <text
+          fg={props.updateInfo()?.hasUpdate ? theme.warning : theme.textMuted}
+          attributes={props.updateInfo()?.hasUpdate ? TextAttributes.BOLD : TextAttributes.DIM}
+          wrapMode="none"
+        >
+          {updateLabel()}
+        </text>
+      </box>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         ── keys ──
       </text>
