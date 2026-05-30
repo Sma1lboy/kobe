@@ -21,6 +21,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **Unknown commands and `--help` print usage instead of launching the TUI** — a typo like `kobe statsu` now prints the command list and exits non-zero rather than silently opening the project. `kobe help` / `--help` / `-h` show usage, `kobe --version` / `-v` print the version, and a bare `kobe` still opens the TUI.
+- **The daemon is more resilient and upgrade-friendly** — it now self-heals a wedged daemon (one whose socket accepts connections but never answers): the client probes `hello` with a short timeout and, if there's no reply, kills the stuck process before respawning instead of hanging or racing a second daemon onto the same task index. The version handshake negotiates a compatibility range (LSP-style) rather than requiring an exact match, so a newer daemon keeps serving a slightly-older TUI across an upgrade. The daemon also owns the npm update check now, polling once and pushing it to every Tasks pane instead of each pane checking the registry itself.
 
 ## [0.6.4] - 2026-05-29
 
