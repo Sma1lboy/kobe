@@ -176,6 +176,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 
     // Happy path: healthy + right place + right engine → reuse as-is.
     if (claudeAlive && worktreeOk && vendorOk) {
+      await selectFirstHealthyChatTab(opts.name)
       await healTaskPaneWidths(opts.name)
       return true
     }
@@ -190,6 +191,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     if (worktreeOk && !vendorOk && opts.command.length > 0) {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
+        await selectFirstHealthyChatTab(opts.name)
         await healTaskPaneWidths(opts.name)
         return true
       }
@@ -201,8 +203,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // future follow-up; the common shell-exit case never gets here because the
     // engine pane survives (KOB-244).
     if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
-      await healTaskPaneWidths(opts.name)
-      return true
+      if (await selectFirstHealthyChatTab(opts.name)) {
+        await healTaskPaneWidths(opts.name)
+        return true
+      }
     }
 
     // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
@@ -367,6 +371,30 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
     await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
   }
   return true
+}
+
+/**
+ * Select a ChatTab window that still has a tagged engine pane. Older layouts
+ * can leave a stale window with Tasks/Ops/Shell but no engine pane; attaching
+ * into that window looks like a broken first screen while Ctrl+T is fine.
+ */
+async function selectFirstHealthyChatTab(session: string): Promise<boolean> {
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{window_id}\t#{@kobe_role}",
+  ])
+  if (code !== 0) return false
+  for (const line of stdout.split("\n")) {
+    const [windowId, role] = line.split("\t")
+    if (windowId && role?.trim() === "claude") {
+      return (await runTmux(["select-window", "-t", windowId.trim()])) === 0
+    }
+  }
+  return false
 }
 
 /** Heal existing sessions built before the direct-tmux Tasks pane widened. */
