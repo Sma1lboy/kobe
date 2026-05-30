@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- **`kobe add` folds in a repo's existing worktrees** — saving a repo with `kobe add <path>` now also scans that repo's git worktrees and imports the ones not yet linked to a task, so an existing multi-worktree checkout shows up in kobe without a separate adopt step. Imports nothing for a plain repo; skips quietly if the daemon is unreachable (KOB-256).
+- **`kobe add` folds in a repo's existing worktrees** — saving a repo with `kobe add <path>` now also scans that repo's git worktrees and imports the ones not yet linked to a task, so an existing multi-worktree checkout shows up in kobe without a separate adopt step. The scan runs in-process (`git worktree list` + a `tasks.json` read) so a plain repo with no extra worktrees stays instant and `kobe add` never boots a daemon as a side effect; when there are worktrees to import, a running daemon takes the writes over RPC (a live TUI updates) and an in-process write is used otherwise (KOB-256).
 - **kobe detects the agent skill and nudges you to install it** — `kobe doctor` now reports whether the kobe agent skill (which teaches Claude Code to drive `kobe api`) is installed, and prints the `npx skills add …` command when it isn't. On startup, kobe shows the same install hint once if the skill is missing. Checks both the user (`~/.claude/skills/kobe/SKILL.md`) and project locations.
 
 ### Changed
