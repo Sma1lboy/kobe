@@ -32,8 +32,9 @@
  */
 
 import { ALL_VENDORS, type VendorId, nextVendor } from "@/types/vendor"
+import type { AdoptableWorktree } from "@/types/worktree"
 import { TextAttributes } from "@opentui/core"
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useDialog } from "../../ui/dialog"
@@ -48,6 +49,7 @@ import {
   computeRepoOptions,
   deriveFolderName,
   expandHome,
+  filterAdoptableByGlob,
   filterBranches,
   filterRepos,
   filterSubdirs,
@@ -94,6 +96,11 @@ export type NewTaskDialogProps = {
    * on {@link NewTaskInput.vendor} and the caller persists it.
    */
   defaultVendor?: VendorId
+  /**
+   * Discover existing git worktrees on a repo not yet linked to a task
+   * (KOB-256) — powers the Adopt tab's list. Omit to leave the tab empty.
+   */
+  discoverAdoptable?: (repo: string) => Promise<readonly AdoptableWorktree[]>
 }
 
 export function NewTaskDialogView(props: NewTaskDialogProps) {
@@ -187,6 +194,49 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   const [cloneParentCursor, setCloneParentCursor] = createSignal(0)
   const cloneParentWindow = createMemo<PickerWindow>(() => windowAround(cloneParentFiltered(), cloneParentCursor()))
 
+  // Adopt-tab state (KOB-256): discover existing worktrees for the
+  // chosen repo, filter by a path glob, multi-select, then import.
+  const [adoptFilter, setAdoptFilter] = createSignal("")
+  const [adoptCursor, setAdoptCursor] = createSignal(0)
+  const [adoptSelected, setAdoptSelected] = createSignal<ReadonlySet<string>>(new Set())
+  // Re-discovers whenever the Adopt tab is active for the current repo.
+  // Keyed on the expanded repo path so switching repos refetches.
+  const [adoptable] = createResource(
+    () => (tab() === "adopt" ? expandHome(repo().trim()) : null),
+    async (r) => (props.discoverAdoptable ? await props.discoverAdoptable(r) : []),
+  )
+  const adoptList = createMemo<readonly AdoptableWorktree[]>(() =>
+    filterAdoptableByGlob(adoptable() ?? [], adoptFilter()),
+  )
+  const adoptWindow = createMemo<PickerWindow>(() =>
+    windowAround(
+      adoptList().map((w) => w.path),
+      adoptCursor(),
+    ),
+  )
+  const adoptVisible = createMemo<readonly AdoptableWorktree[]>(() => {
+    const w = adoptWindow()
+    return adoptList().slice(w.start, w.start + w.items.length)
+  })
+  // Keep the cursor in range as the filtered list shrinks/grows.
+  createEffect(() => {
+    void adoptList()
+    setAdoptCursor((c) => clampCursor(c, adoptList().length))
+  })
+
+  function toggleAdopt(p: string): void {
+    setAdoptSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(p)) next.delete(p)
+      else next.add(p)
+      return next
+    })
+  }
+  function toggleAdoptCursor(): void {
+    const w = adoptList()[adoptCursor()]
+    if (w) toggleAdopt(w.path)
+  }
+
   // Reset cursors whenever the filtered list changes — typing should
   // always land the highlight on the first match, otherwise the cursor
   // can sit on a now-hidden index and feels broken.
@@ -237,6 +287,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     void cloneUrl()
     void cloneParent()
     void cloneFolder()
+    void adoptFilter()
     setSubmitError(null)
   })
 
@@ -289,9 +340,31 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     dialog.clear()
   }
 
+  function commitAdopt() {
+    const list = adoptList()
+    if (list.length === 0) {
+      setSubmitError("no adoptable worktrees to import")
+      return
+    }
+    const sel = adoptSelected()
+    const chosen = sel.size > 0 ? list.filter((w) => sel.has(w.path)) : list.slice(adoptCursor(), adoptCursor() + 1)
+    if (chosen.length === 0) return
+    props.onSubmit({
+      mode: "adopt",
+      repo: expandHome(repo().trim()),
+      vendor: vendor(),
+      adopt: chosen.map((w) => ({ worktreePath: w.path, branch: w.branch })),
+    })
+    dialog.clear()
+  }
+
   function commit() {
     if (tab() === "clone") {
       void commitClone()
+      return
+    }
+    if (tab() === "adopt") {
+      commitAdopt()
       return
     }
     commitExisting()
@@ -423,6 +496,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             const list = cloneParentFiltered()
             if (list.length === 0) return
             setCloneParentCursor(clampCursor(cloneParentCursor() - 1, list.length))
+            return
+          }
+          if (tab() === "adopt") {
+            const list = adoptList()
+            if (list.length === 0) return
+            setAdoptCursor(clampCursor(adoptCursor() - 1, list.length))
           }
         },
       },
@@ -446,7 +525,25 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             const list = cloneParentFiltered()
             if (list.length === 0) return
             setCloneParentCursor(clampCursor(cloneParentCursor() + 1, list.length))
+            return
           }
+          if (tab() === "adopt") {
+            const list = adoptList()
+            if (list.length === 0) return
+            setAdoptCursor(clampCursor(adoptCursor() + 1, list.length))
+          }
+        },
+      },
+      {
+        // Ctrl+A on the Adopt tab toggles select-all over the filtered
+        // list (all-on unless everything is already selected → clears).
+        key: "ctrl+a",
+        cmd: () => {
+          if (tab() !== "adopt") return
+          const list = adoptList()
+          if (list.length === 0) return
+          const allSelected = list.every((w) => adoptSelected().has(w.path))
+          setAdoptSelected(allSelected ? new Set<string>() : new Set(list.map((w) => w.path)))
         },
       },
     ],
@@ -507,6 +604,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             onMouseUp={() => switchToTab("clone")}
           >
             {tab() === "clone" ? "▸ For New Repo" : "  For New Repo"}
+          </text>
+          <text
+            fg={tab() === "adopt" ? theme.primary : theme.textMuted}
+            attributes={tab() === "adopt" ? TextAttributes.BOLD : undefined}
+            onMouseUp={() => switchToTab("adopt")}
+          >
+            {tab() === "adopt" ? "▸ Adopt Worktree" : "  Adopt Worktree"}
           </text>
         </box>
         {/* Engine selector — common to both tabs. Defaults to the user's
@@ -739,6 +843,83 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             <box gap={0} paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
                 {cloneProgress() || "Cloning…"}
+              </text>
+            </box>
+          </Show>
+        </Show>
+        <Show when={tab() === "adopt"}>
+          {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
+          <box gap={0}>
+            <text fg={field() === "adoptFilter" ? theme.accent : theme.textMuted}>filter (path glob)</text>
+            <input
+              value={adoptFilter()}
+              placeholder="* — type e.g. feature-* to narrow"
+              focused={field() === "adoptFilter"}
+              onInput={(v: string) => setAdoptFilter(stripNewlines(v))}
+              onSubmit={() => toggleAdoptCursor()}
+            />
+          </box>
+          <box paddingLeft={2}>
+            <text fg={theme.textMuted} wrapMode="none">
+              repo: {expandHome(repo().trim()) || "(none)"}
+            </text>
+          </box>
+          <Show when={adoptable.loading}>
+            <box paddingLeft={2}>
+              <text fg={theme.textMuted} wrapMode="none">
+                scanning worktrees…
+              </text>
+            </box>
+          </Show>
+          <Show when={!adoptable.loading && adoptList().length === 0}>
+            <box paddingLeft={2}>
+              <text fg={theme.textMuted} wrapMode="none">
+                {(adoptable() ?? []).length === 0
+                  ? "no unlinked worktrees — every git worktree here is already a task"
+                  : "no worktrees match the filter"}
+              </text>
+            </box>
+          </Show>
+          <Show when={adoptList().length > 0}>
+            <box gap={0} paddingLeft={2}>
+              <Show when={adoptWindow().start > 0}>
+                <text fg={theme.textMuted} wrapMode="none">
+                  ↑ {adoptWindow().start} more
+                </text>
+              </Show>
+              <For each={adoptVisible()}>
+                {(w, i) => {
+                  const absoluteIndex = () => adoptWindow().start + i()
+                  const isCursor = () => absoluteIndex() === adoptCursor()
+                  const isChecked = () => adoptSelected().has(w.path)
+                  const tags = () => [w.dirty ? "dirty" : "", w.kobeManaged ? "" : "external"].filter(Boolean).join(",")
+                  return (
+                    <text
+                      fg={isCursor() ? theme.primary : isChecked() ? theme.accent : theme.textMuted}
+                      attributes={isCursor() ? TextAttributes.BOLD : undefined}
+                      wrapMode="none"
+                      onMouseUp={() => {
+                        setAdoptCursor(absoluteIndex())
+                        toggleAdopt(w.path)
+                      }}
+                    >
+                      {isCursor() ? "▸ " : "  "}
+                      {isChecked() ? "[x] " : "[ ] "}
+                      {w.branch}
+                      {tags() ? `  (${tags()})` : ""}
+                    </text>
+                  )
+                }}
+              </For>
+              <Show when={adoptWindow().start + adoptWindow().items.length < adoptWindow().total}>
+                <text fg={theme.textMuted} wrapMode="none">
+                  ↓ {adoptWindow().total - adoptWindow().start - adoptWindow().items.length} more
+                </text>
+              </Show>
+              <text fg={theme.textMuted} wrapMode="none">
+                {adoptSelected().size > 0
+                  ? `${adoptSelected().size} selected · enter toggles · ctrl+a all · Create imports`
+                  : "enter toggles · ctrl+a all · Create imports the highlighted row"}
               </text>
             </box>
           </Show>

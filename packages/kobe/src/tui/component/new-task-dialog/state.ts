@@ -16,6 +16,7 @@ import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
+import { matchPathGlob } from "@/lib/path-glob"
 import type { VendorId } from "@/types/vendor"
 
 /* --------------------------------------------------------------------- */
@@ -30,13 +31,28 @@ import type { VendorId } from "@/types/vendor"
  * to the saved-repos list so it shows up in the existing-tab picker
  * next time.
  */
-export type NewTaskInput = {
-  repo: string
-  baseRef: string
-  /** Engine the task runs on. Defaults to the user's last-selected vendor. */
-  vendor: VendorId
-  cloned?: { parentDir: string }
-}
+/**
+ * Dialog result. Two shapes, discriminated by `mode`:
+ *   - create (default) — make a fresh task on `repo` at `baseRef`.
+ *   - adopt — import one or more EXISTING git worktrees as tasks
+ *     (KOB-256). `adopt` carries the chosen worktrees; the caller loops
+ *     `orchestrator.adoptWorktree` over them.
+ */
+export type NewTaskInput =
+  | {
+      mode?: "create"
+      repo: string
+      baseRef: string
+      /** Engine the task runs on. Defaults to the user's last-selected vendor. */
+      vendor: VendorId
+      cloned?: { parentDir: string }
+    }
+  | {
+      mode: "adopt"
+      repo: string
+      vendor: VendorId
+      adopt: readonly { worktreePath: string; branch: string }[]
+    }
 
 /**
  * Which sub-tab the dialog is showing:
@@ -46,11 +62,13 @@ export type NewTaskInput = {
  * Switched via Ctrl+[ / Ctrl+] while the dialog is open. With only two
  * tabs the chord pair behaves as a toggle.
  */
-export type DialogTab = "existing" | "clone"
+export type DialogTab = "existing" | "clone" | "adopt"
 
-/** Cycle helper for the two-tab strip. */
+/** Cycle helper for the tab strip: existing → clone → adopt → existing. */
 export function nextDialogTab(tab: DialogTab): DialogTab {
-  return tab === "existing" ? "clone" : "existing"
+  if (tab === "existing") return "clone"
+  if (tab === "clone") return "adopt"
+  return "existing"
 }
 
 /**
@@ -60,7 +78,15 @@ export function nextDialogTab(tab: DialogTab): DialogTab {
  * shared so the bottom-row Create button works identically on both
  * surfaces. Tab cycling stays inside a single sub-tab's field list.
  */
-export type Field = "repo" | "baseRef" | "cloneUrl" | "cloneParent" | "cloneFolder" | "cloneBaseRef" | "confirm"
+export type Field =
+  | "repo"
+  | "baseRef"
+  | "cloneUrl"
+  | "cloneParent"
+  | "cloneFolder"
+  | "cloneBaseRef"
+  | "adoptFilter"
+  | "confirm"
 
 /**
  * Which list the unified picker should render under the repo input.
@@ -139,6 +165,11 @@ export function nextField(field: Field, tab: DialogTab = "existing"): Field {
     if (field === "cloneBaseRef") return "confirm"
     return "cloneUrl"
   }
+  if (tab === "adopt") {
+    // Two stops: the glob-filter input and the Create (= Adopt) button.
+    // List navigation is up/down on the rows, not Tab.
+    return field === "adoptFilter" ? "confirm" : "adoptFilter"
+  }
   if (field === "repo") return "baseRef"
   if (field === "baseRef") return "confirm"
   return "repo"
@@ -146,7 +177,22 @@ export function nextField(field: Field, tab: DialogTab = "existing"): Field {
 
 /** First field for a sub-tab (used when switching tabs). */
 export function firstFieldFor(tab: DialogTab): Field {
-  return tab === "clone" ? "cloneUrl" : "repo"
+  if (tab === "clone") return "cloneUrl"
+  if (tab === "adopt") return "adoptFilter"
+  return "repo"
+}
+
+/**
+ * Filter adoptable worktrees by a path glob (KOB-256). Empty glob → the
+ * full list. Matches against the absolute path AND the basename, so a
+ * bare `feature-*` works without typing the full directory. Uses Bun's
+ * built-in `Glob` (zero-dep). An invalid pattern matches nothing rather
+ * than throwing — the dialog keeps rendering.
+ */
+export function filterAdoptableByGlob<T extends { path: string }>(list: readonly T[], glob: string): readonly T[] {
+  const pattern = glob.trim()
+  if (!pattern) return list
+  return list.filter((w) => matchPathGlob(pattern, w.path))
 }
 
 /**

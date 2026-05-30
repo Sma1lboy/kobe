@@ -18,8 +18,8 @@
  * test fixtures. All gone in v0.6 (no engine port to diagnose, no
  * MCP bridge, no behavior fixtures).
  */
-import { basename, resolve } from "node:path"
-import { Glob } from "bun"
+import { resolve } from "node:path"
+import { matchPathGlob } from "../lib/path-glob.ts"
 import { coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { parseCliArgs } from "./daemon-mode.ts"
@@ -77,17 +77,16 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
 
     // Match by absolute path, and by basename for convenience (so
     // `kobe adopt 'feature-*'` works without typing the full path).
-    const matcher = glob ? new Glob(glob) : undefined
-    const isMatch = (w: AdoptableWorktree) => !matcher || matcher.match(w.path) || matcher.match(basename(w.path))
+    const isMatch = (w: AdoptableWorktree) => !glob || matchPathGlob(glob, w.path)
 
     console.log(`adoptable worktrees in ${repo}:`)
     for (const w of worktrees) {
-      const hit = matcher ? (isMatch(w) ? "*" : " ") : "-"
+      const hit = glob ? (isMatch(w) ? "*" : " ") : "-"
       const tags = [w.dirty ? "dirty" : "", w.kobeManaged ? "" : "external"].filter(Boolean).join(",")
       console.log(`  ${hit} ${w.branch}\t${w.path}${tags ? `  (${tags})` : ""}`)
     }
 
-    if (!matcher) {
+    if (!glob) {
       console.log(`\npass a path glob to adopt, e.g.  kobe adopt '${repo}/*' --yes`)
       return
     }
