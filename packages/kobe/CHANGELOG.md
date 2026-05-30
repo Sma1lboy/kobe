@@ -24,6 +24,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- **`kobe` now opens directly into tmux** — the opentui outer monitor is deprecated and kept behind `KOBE_OUTER_MONITOR=1`; normal startup selects the last active task, ensures its tmux workspace, and attaches immediately, with task switching handled by the in-session Tasks pane.
 - **The default task/sidebar panel is now 12 cells wide** — new installs and invalid saved widths start with the same compact rail width as the in-session Tasks pane, instead of the old 42-cell history rail (KOB-259).
 - **Tmux handover window setup is batched** — creating the first task window and new Ctrl+T ChatTabs now performs session tags, pane splits, pane role tags, and server keybindings through far fewer tmux subprocess round trips, making the kobe-level window/init path feel less sticky.
 

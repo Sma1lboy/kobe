@@ -20,7 +20,7 @@
  * Everything is rendered by tmux, so claude repaints at native speed
  * without kobe's outer renderer fighting for the TTY.
  *
- * `Ctrl+Q` detaches back to the outer monitor; `Ctrl+h/j/k/l` move
+ * `Ctrl+Q` detaches back to the launching shell; `Ctrl+h/j/k/l` move
  * between panes. All bindings are server-scoped on `-L kobe`, so the
  * user's own tmux is untouched. Sessions persist across detach AND a
  * kobe restart.
@@ -267,7 +267,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
   // kobe` socket so the feature doesn't depend on the user's config.
-  // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
+  // No-prefix Ctrl+Q detaches back to the launching shell.
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
   // vim-tmux-navigator convention. (Ctrl+1/2/3 was tried first but
   // terminals can't encode Ctrl+<digit> without the kitty protocol, so

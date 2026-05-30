@@ -397,7 +397,7 @@ function ShortcutHints() {
     { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },
     { k: "⌃W", label: "close tab" },
-    { k: "⌃Q", label: "monitor" },
+    { k: "⌃Q", label: "detach" },
   ]
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
