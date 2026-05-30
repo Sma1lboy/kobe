@@ -76,13 +76,7 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
  * failure is reported, not fatal to `kobe add`.
  */
 async function adoptAllWorktrees(repo: string): Promise<void> {
-  const { TaskIndexStore } = await import("../orchestrator/index/store.ts")
-  const { GitWorktreeManager } = await import("../orchestrator/worktree/manager.ts")
-  const { Orchestrator } = await import("../orchestrator/core.ts")
-  const store = new TaskIndexStore()
-  await store.load()
-  const orch = new Orchestrator({ store, worktrees: new GitWorktreeManager() })
-
+  const orch = await openLocalOrchestrator()
   let candidates: readonly AdoptableWorktree[]
   try {
     candidates = await orch.discoverAdoptableWorktrees(repo)
@@ -91,13 +85,38 @@ async function adoptAllWorktrees(repo: string): Promise<void> {
     return
   }
   if (candidates.length === 0) return
-
   console.log(`scanning ${repo}: ${candidates.length} unlinked worktree(s) → importing`)
-  const vendor = coerceVendorId(undefined)
+  await adoptWorktreesInto(orch, repo, candidates, coerceVendorId(undefined))
+}
+
+/** Build a short-lived in-process orchestrator (store + git manager) for
+ * a one-shot CLI command. No daemon, no socket — just reads `tasks.json`
+ * and shells git. */
+async function openLocalOrchestrator() {
+  const { TaskIndexStore } = await import("../orchestrator/index/store.ts")
+  const { GitWorktreeManager } = await import("../orchestrator/worktree/manager.ts")
+  const { Orchestrator } = await import("../orchestrator/core.ts")
+  const store = new TaskIndexStore()
+  await store.load()
+  return new Orchestrator({ store, worktrees: new GitWorktreeManager() })
+}
+
+/**
+ * Adopt `list` as tasks, printing one line each. Prefers a RUNNING
+ * daemon (writes over RPC so a live TUI updates + the on-disk index
+ * isn't split-brained); falls back to the in-process orchestrator when
+ * no daemon is up. Never boots a daemon (KOB-256).
+ */
+async function adoptWorktreesInto(
+  orch: Awaited<ReturnType<typeof openLocalOrchestrator>>,
+  repo: string,
+  list: readonly AdoptableWorktree[],
+  vendor: VendorId,
+): Promise<void> {
   const { connectIfRunning } = await import("../client/daemon-process.ts")
   const client = await connectIfRunning()
   try {
-    for (const w of candidates) {
+    for (const w of list) {
       const adopted = client
         ? (
             await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
@@ -172,54 +191,42 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   const { resolveRepoRoot } = await import("../state/repos.ts")
   const repo = resolveRepoRoot(resolve(process.cwd(), repoArg && repoArg.length > 0 ? repoArg : "."))
   const vendor = coerceVendorId(vendorArg)
-  const { connectOrStartDaemon } = await import("../client/daemon-process.ts")
-  const client = await connectOrStartDaemon()
-  try {
-    const { worktrees } = await client.request<{ worktrees: AdoptableWorktree[] }>("worktree.discoverAdoptable", {
-      repo,
-    })
-    if (worktrees.length === 0) {
-      console.log(`no adoptable worktrees for ${repo} — every git worktree here is already a task`)
-      return
-    }
 
-    // Match by absolute path, and by basename for convenience (so
-    // `kobe adopt 'feature-*'` works without typing the full path).
-    const isMatch = (w: AdoptableWorktree) => !glob || matchPathGlob(glob, w.path)
-
-    console.log(`adoptable worktrees in ${repo}:`)
-    for (const w of worktrees) {
-      const hit = glob ? (isMatch(w) ? "*" : " ") : "-"
-      const tags = [w.dirty ? "dirty" : "", w.kobeManaged ? "" : "external"].filter(Boolean).join(",")
-      console.log(`  ${hit} ${w.branch}\t${w.path}${tags ? `  (${tags})` : ""}`)
-    }
-
-    if (!glob) {
-      console.log(`\npass a path glob to adopt, e.g.  kobe adopt '${repo}/*' --yes`)
-      return
-    }
-    const matched = worktrees.filter(isMatch)
-    if (matched.length === 0) {
-      console.log(`\nno worktrees match glob ${JSON.stringify(glob)}`)
-      return
-    }
-    if (!yes) {
-      console.log(`\n${matched.length} worktree(s) match — re-run with --yes to adopt them`)
-      return
-    }
-    for (const w of matched) {
-      const { task } = await client.request<{ task: { id: string; title: string } }>("worktree.adopt", {
-        repo,
-        worktreePath: w.path,
-        branch: w.branch,
-        vendor,
-      })
-      console.log(`adopted ${w.branch} → task ${task.id} (${task.title})`)
-    }
-    console.log(`done — adopted ${matched.length} worktree(s)`)
-  } finally {
-    client.close()
+  // Discovery is a local read (git + tasks.json) — no daemon needed, so
+  // listing never boots one (KOB-256).
+  const orch = await openLocalOrchestrator()
+  const worktrees = await orch.discoverAdoptableWorktrees(repo)
+  if (worktrees.length === 0) {
+    console.log(`no adoptable worktrees for ${repo} — every git worktree here is already a task`)
+    return
   }
+
+  // Match by absolute path, and by basename for convenience (so
+  // `kobe adopt 'feature-*'` works without typing the full path).
+  const isMatch = (w: AdoptableWorktree) => !glob || matchPathGlob(glob, w.path)
+
+  console.log(`adoptable worktrees in ${repo}:`)
+  for (const w of worktrees) {
+    const hit = glob ? (isMatch(w) ? "*" : " ") : "-"
+    const tags = [w.dirty ? "dirty" : "", w.kobeManaged ? "" : "external"].filter(Boolean).join(",")
+    console.log(`  ${hit} ${w.branch}\t${w.path}${tags ? `  (${tags})` : ""}`)
+  }
+
+  if (!glob) {
+    console.log(`\npass a path glob to adopt, e.g.  kobe adopt '${repo}/*' --yes`)
+    return
+  }
+  const matched = worktrees.filter(isMatch)
+  if (matched.length === 0) {
+    console.log(`\nno worktrees match glob ${JSON.stringify(glob)}`)
+    return
+  }
+  if (!yes) {
+    console.log(`\n${matched.length} worktree(s) match — re-run with --yes to adopt them`)
+    return
+  }
+  await adoptWorktreesInto(orch, repo, matched, vendor)
+  console.log(`done — adopted ${matched.length} worktree(s)`)
 }
 
 function printTopLevelUsage(out: Pick<typeof process.stderr, "write">): void {
