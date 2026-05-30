@@ -56,8 +56,9 @@ describe("stopDaemonProcess", () => {
     const result = await stopDaemonProcess(socketPath, pidPath)
 
     expect(result.pid).toBe(deadPid)
-    // Already gone, so no signal was needed beyond the graceful ask.
-    expect(result.method).toBe("graceful")
+    // The pid was never alive when we checked, so nothing was killed — a
+    // stale pidfile is reported as "absent", not "graceful".
+    expect(result.method).toBe("absent")
     expect(existsSync(pidPath)).toBe(false)
   })
 

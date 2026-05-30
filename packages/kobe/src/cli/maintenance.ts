@@ -111,8 +111,10 @@ function tailFile(path: string, n: number): string {
  *  doctor/reset treat an absent server as a normal state, not an error. */
 async function tmuxQuiet(args: string[]): Promise<{ code: number; stdout: string }> {
   const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "pipe", stderr: "ignore" })
-  const stdout = await new Response(proc.stdout).text().catch(() => "")
-  const code = await proc.exited
+  // Drain stdout CONCURRENTLY with awaiting exit (the runTmuxCapturing
+  // pattern, KOB-244) so a large `list-sessions` can never fill the pipe
+  // buffer and wedge the call.
+  const [stdout, code] = await Promise.all([new Response(proc.stdout).text().catch(() => ""), proc.exited])
   return { code, stdout }
 }
 
