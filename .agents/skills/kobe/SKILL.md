@@ -38,18 +38,24 @@ there is nothing to launch first.
 
 Single ambiguous tasks → no fan-out. Just do them in your own chat.
 
-## How — the four verbs
+## How — the six verbs
 
 Each verb is a one-shot shell command. Reads stdin: none. Writes a JSON
 object to stdout, exits 0. On error, writes
 `{"error":{"message":"...","code":"..."}}` to stderr and exits non-zero.
 
 ```bash
-# Spawn a new task. With --prompt, kobe also starts the task's engine
+# Spawn ONE task. With --prompt, kobe also starts the task's engine
 # (claude/codex/copilot) in tmux and delivers the prompt. Returns task JSON;
 # read `.taskId`. `.engineReady` is false if a freshly-started engine didn't
 # confirm it was ready before the prompt was pasted (delivery is best-effort).
 kobe api spawn-task --repo $PWD --prompt "<scoped prompt>" [--title T] [--base-branch B] [--vendor claude|codex|copilot]
+
+# Fan out N tasks of the same prompt in one call (the usual parallel-attempts
+# entry point). Either a flat count of one vendor, or per-engine counts.
+# Returns { count, tasks: [{ taskId, vendor, engineReady, ... }] }. Capped at 10.
+kobe api fan-out --repo $PWD --prompt "<prompt>" --count 3
+kobe api fan-out --repo $PWD --prompt "<prompt>" --agents claude:2,codex:1
 
 # Send a follow-up prompt to a task's running engine. Prefer --task-id for
 # unattended fan-out: the bare default targets the *active* task (whatever the
@@ -58,6 +64,11 @@ kobe api send [--task-id <id>] --prompt "<text>"
 
 # Read a task's metadata. `.running` is true when its tmux session is live.
 kobe api get-task --task-id <id>
+
+# Aggregation snapshot for comparing attempts: per task, identity + branch +
+# `.running` + uncommitted `.changes` ({added, deleted} file counts). Read-only.
+kobe api collect --task-ids <id1>,<id2>,<id3>
+kobe api collect --repo $PWD            # all non-archived tasks in the repo
 
 # List all tasks.
 kobe api list
@@ -73,34 +84,32 @@ Output to stdout is always one JSON object terminated with `\n`.
 > `create-tab` / `get-tab` verbs; extra chat tabs are tmux windows you
 > open from inside the TUI.
 
-## Workflow — fan-out + hand off to the TUI
+## Workflow — fan-out + compare + hand off to the TUI
 
 ```bash
-# 1. Spawn 3 parallel attempts, each with its own scoped prompt. Cap at 3-4.
-T1=$(kobe api spawn-task --repo "$PWD" --prompt "Approach A: use a state machine" | jq -r .taskId)
-T2=$(kobe api spawn-task --repo "$PWD" --prompt "Approach B: use event sourcing"  | jq -r .taskId)
-T3=$(kobe api spawn-task --repo "$PWD" --prompt "Approach C: use a reducer pattern" | jq -r .taskId)
+# 1. Fan out 3 parallel attempts in one call. (For distinct per-attempt
+#    prompts, use separate spawn-task calls instead; fan-out shares one prompt.)
+IDS=$(kobe api fan-out --repo "$PWD" --count 3 \
+  --prompt "Make the sidebar virtualize long task lists. Explore your own approach." \
+  | jq -r '.tasks[].taskId')
 
 # 2. Tell the user what you spawned so the sidebar reads back correctly,
 #    and point them at the TUI to watch each agent work.
-echo "Spawned three tasks — open the kobe TUI to watch them:"
-echo "  $T1 (state machine)  $T2 (event sourcing)  $T3 (reducer)"
+echo "Spawned: $IDS — open the kobe TUI to watch them."
 
-# 3. (Optional) Confirm each task's session is live before reporting.
-for ID in $T1 $T2 $T3; do
-  kobe api get-task --task-id "$ID" | jq -r '"\(.task.id) running=\(.running) status=\(.task.status)"'
-done
+# 3. Once they've run, compare attempts (branch + uncommitted change counts).
+kobe api collect --task-ids "$(echo "$IDS" | paste -sd, -)" --pretty
 ```
 
 To drive an already-running task further, `send` a follow-up:
 
 ```bash
-kobe api send --task-id "$T1" --prompt "Now add tests for the edge cases."
+kobe api send --task-id "<id>" --prompt "Now add tests for the edge cases."
 ```
 
 ## Do
 
-- Cap fan-out at 3-4 in parallel. kobe caps total concurrency at 4.
+- Keep fan-out to 3-4 in practice (one `--count 3` is plenty); `fan-out` hard-caps a single call at 10.
 - Give each subtask its own scoped prompt — don't dump the whole parent conversation.
 - Tell the user what was spawned, with IDs, so they can follow along in the sidebar / TUI.
 - Aggregate or compare results back into your own chat once the user reports what each task produced.

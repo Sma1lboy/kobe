@@ -16,7 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
-- **`kobe api` returns for shell-driven fan-out** — agents can spawn and drive parallel tasks from a shell again, re-architected for v0.6's tmux model. `kobe api spawn-task` creates a task + worktree (and, with `--prompt`, starts the engine in tmux and delivers the prompt); `kobe api send [--task-id ID] --prompt …` injects a follow-up into a task's engine pane via `tmux send-keys` (defaulting to the active task); `kobe api get-task` / `kobe api list` read task state. Output is one JSON object on stdout (errors are JSON on stderr); the daemon auto-starts.
+- **`kobe api` returns for shell-driven fan-out** — agents can spawn and drive parallel tasks from a shell again, re-architected for v0.6's tmux model. Six verbs: `spawn-task` (create a task + worktree, and with `--prompt` start the engine and deliver the prompt); `fan-out --count N` / `--agents claude:2,codex:1` (spawn many of one prompt in a call, capped at 10); `send [--task-id ID] --prompt …` (paste a follow-up into a task's engine pane via tmux bracketed paste — multi-line stays one turn — defaulting to the active task); `get-task` / `list` (read task state); and `collect --task-ids … | --repo …` (read-only aggregation snapshot with per-task branch, live-session flag, and uncommitted change counts for comparing attempts). Output is one JSON object on stdout (errors are JSON on stderr); the daemon auto-starts.
 
 ### Changed
 

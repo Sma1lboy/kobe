@@ -203,7 +203,7 @@ kobe daemon stop      # tell the daemon to drain and exit
 > was removed in favor of the single-bin surface (KOB-136); any script with
 > `kobed restart` needs a one-time rename to `kobe daemon restart`.
 
-### `kobe api <verb>` — four shell verbs
+### `kobe api <verb>` — six shell verbs
 
 Each call is a short-lived process: connect to (or auto-start) the daemon, do
 the work, print JSON to stdout, exit. Any tool with a `Bash` capability (Claude
@@ -211,9 +211,11 @@ Code, Codex, Cursor, a custom agent) can drive it.
 
 | verb | flags | what it does |
 |---|---|---|
-| `spawn-task` | `--repo PATH [--prompt TEXT] [--title T] [--base-branch B] [--vendor V]` | Create a task + worktree. With `--prompt`, also start the engine in tmux and deliver the prompt. |
+| `spawn-task` | `--repo PATH [--prompt TEXT] [--title T] [--base-branch B] [--vendor V]` | Create one task + worktree. With `--prompt`, also start the engine in tmux and deliver the prompt. |
+| `fan-out`    | `--repo PATH --prompt TEXT [--count N \| --agents claude:2,codex:1] [--base-branch B]` | Spawn N tasks of the same prompt in one call (per-engine counts optional). Returns `{count, tasks[]}`. Capped at 10. |
 | `send`       | `[--task-id ID] --prompt TEXT` | Paste a prompt into a task's engine pane (bracketed paste, then Enter — multi-line stays one turn). Defaults to the active task; prefer `--task-id` for unattended fan-out. |
 | `get-task`   | `--task-id ID` | Read task metadata; `.running` is true when the tmux session is live. |
+| `collect`    | `--task-ids a,b,c \| --repo PATH` | Read-only aggregation snapshot: per task, branch + `.running` + uncommitted `.changes` ({added, deleted}) for comparing attempts. |
 | `list`       | — | List all tasks. |
 
 `spawn-task --prompt` and `send` also return `.engineReady` — `false` means a freshly-started engine didn't confirm it was ready before the prompt was pasted (delivered best-effort).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { API_VERBS, ApiError, apiUsage, parseFlags } from "../../src/cli/api-cmd.ts"
+import { API_VERBS, ApiError, apiUsage, parseAgentsSpec, parseFlags } from "../../src/cli/api-cmd.ts"
 
 describe("parseFlags", () => {
   it("parses `--key value` pairs", () => {
@@ -48,8 +48,37 @@ describe("apiUsage", () => {
   })
 })
 
+describe("parseAgentsSpec", () => {
+  it("expands vendor:count pairs into one entry per task", () => {
+    expect(parseAgentsSpec("claude:2,codex:1")).toEqual(["claude", "claude", "codex"])
+  })
+
+  it("tolerates whitespace and skips empty segments", () => {
+    expect(parseAgentsSpec(" claude:1 , , codex:2 ")).toEqual(["claude", "codex", "codex"])
+  })
+
+  it("rejects an unknown vendor", () => {
+    try {
+      parseAgentsSpec("bogus:2")
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError)
+      expect((err as ApiError).code).toBe("BAD_FLAG")
+    }
+  })
+
+  it("rejects a non-positive or malformed count", () => {
+    expect(() => parseAgentsSpec("claude:0")).toThrow(/positive integer/)
+    expect(() => parseAgentsSpec("claude")).toThrow(/vendor:count/)
+  })
+
+  it("rejects a spec that expands to nothing", () => {
+    expect(() => parseAgentsSpec(" , ")).toThrow(/no agents/)
+  })
+})
+
 describe("API_VERBS", () => {
-  it("is the v0.6 four-verb surface", () => {
-    expect([...API_VERBS]).toEqual(["spawn-task", "send", "get-task", "list"])
+  it("is the v0.6 six-verb surface", () => {
+    expect([...API_VERBS]).toEqual(["spawn-task", "fan-out", "send", "get-task", "collect", "list"])
   })
 })
