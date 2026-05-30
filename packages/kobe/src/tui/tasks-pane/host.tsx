@@ -52,6 +52,7 @@ import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
@@ -219,6 +220,33 @@ function TasksShell(props: {
     await props.reload()
   }
 
+  async function openSelectedWorktree(id: string): Promise<void> {
+    const task = props.tasks().find((t) => t.id === id)
+    let worktree = task?.worktreePath
+    if (!worktree || !existsSync(worktree)) {
+      if (!props.orch) {
+        console.error("[kobe tasks] no daemon; cannot materialise worktree")
+        return
+      }
+      try {
+        worktree = await props.orch.ensureWorktree(id)
+      } catch (err) {
+        console.error("[kobe tasks] task.ensureWorktree failed:", err)
+        return
+      }
+      await props.reload()
+    }
+    if (!worktree || !existsSync(worktree)) return
+    const opener = detectWorktreeOpener()
+    if (!opener) {
+      console.error("[kobe tasks] no editor/opener found; set KOBE_OPEN_EDITOR")
+      return
+    }
+    if (!openWorktree(worktree, opener)) {
+      console.error(`[kobe tasks] failed to open worktree with ${opener.label}`)
+    }
+  }
+
   // Gate on an empty dialog stack so a letter typed INTO a dialog field
   // doesn't re-fire the binding (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
@@ -226,6 +254,13 @@ function TasksShell(props: {
     enabled: dialog.stack.length === 0,
     bindings: [
       { key: "n", cmd: () => void createTask() },
+      {
+        key: "o",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void openSelectedWorktree(id)
+        },
+      },
       {
         key: "b",
         cmd: () => {
@@ -356,6 +391,7 @@ function ShortcutHints() {
   const HINTS: ReadonlyArray<{ k: string; label: string }> = [
     { k: "⏎", label: "open" },
     { k: "N", label: "new task" },
+    { k: "O", label: "open wt" },
     { k: "R/B/V", label: "name / branch / engine" },
     { k: "⌃HJKL", label: "move panes" },
     { k: "⌃[/]", label: "switch tabs" },

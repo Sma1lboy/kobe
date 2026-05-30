@@ -15,9 +15,10 @@
  * The tmux status-bar window list is the chat-tab switcher; the left
  * Tasks pane switches between task sessions. `Ctrl+T` opens a new chat
  * tab (window), `Ctrl+[` / `Ctrl+]` move to the previous / next
- * chat tab, and `Ctrl+W` closes the current chat tab when at least one
- * sibling window remains. Everything is rendered by tmux, so claude repaints at
- * native speed without kobe's outer renderer fighting for the TTY.
+ * chat tab, `Ctrl+W` closes the current chat tab when at least one
+ * sibling window remains, and `F2` renames the current chat tab.
+ * Everything is rendered by tmux, so claude repaints at native speed
+ * without kobe's outer renderer fighting for the TTY.
  *
  * `Ctrl+Q` detaches back to the outer monitor; `Ctrl+h/j/k/l` move
  * between panes. All bindings are server-scoped on `-L kobe`, so the
@@ -75,6 +76,16 @@ export const CHAT_TAB_CLOSE_BINDING = [
   "#{>:#{session_windows},1}",
   "kill-window",
   "display-message 'Cannot close the only ChatTab'",
+] as const
+
+export const CHAT_TAB_RENAME_BINDING = [
+  "bind-key",
+  "-n",
+  "F2",
+  "command-prompt",
+  "-I",
+  "#{window_name}",
+  "rename-window -- '%%'",
 ] as const
 
 export interface EnsureSessionOpts {
@@ -278,7 +289,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // Ctrl+W restores the v0.5 close-tab affordance. It deliberately
   // refuses to close the final window: tmux treats that as killing the
   // whole task session, while the user intent here is "close this
-  // ChatTab", not "destroy the Task handover".
+  // ChatTab", not "destroy the Task handover". F2 restores the v0.5
+  // rename-tab affordance as a native tmux window rename.
   // `kobe new-chattab` reads the session's @kobe_task / @kobe_worktree
   // tags so the binding only needs to pass the session name (which
   // tmux expands at fire time).
@@ -290,6 +302,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   await runTmux(["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`])
   for (const binding of CHAT_TAB_SWITCH_BINDINGS) await runTmux([...binding])
   await runTmux([...CHAT_TAB_CLOSE_BINDING])
+  await runTmux([...CHAT_TAB_RENAME_BINDING])
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and

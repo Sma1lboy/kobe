@@ -97,6 +97,13 @@ export type FileTreeProps = {
    */
   onMention?: (relPath: string) => void
   /**
+   * Optional Ops-pane action: request PR creation for this worktree.
+   * Rendered as a slim action row above the Changes list and bound to
+   * `p`, so Create PR lives with file changes instead of as an outer
+   * monitor button.
+   */
+  onCreatePR?: () => void
+  /**
    * Whether the pane has keyboard focus. Defaults to `() => true` —
    * Wave 3 has no focus manager yet, the integration agent will
    * thread real signals when the 5-pane layout lands.
@@ -498,6 +505,7 @@ export function FileTree(props: FileTreeProps) {
     currentTab: tab,
     openCurrent,
     mentionCurrent,
+    createPR: props.onCreatePR,
     openExternal,
     refresh,
     expandOrDescend,
@@ -565,7 +573,17 @@ export function FileTree(props: FileTreeProps) {
       {/* Status legend — only shown on the Changes tab so users can
          decode single-char git status codes without leaving the TUI. */}
       <Show when={tab() === "changes"}>
-        <box flexDirection="row" paddingBottom={1} flexShrink={0}>
+        <box flexDirection="column" paddingBottom={1} flexShrink={0} gap={0}>
+          <Show when={props.onCreatePR}>
+            <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+                [P]
+              </text>
+              <text fg={theme.text} wrapMode="none">
+                create PR
+              </text>
+            </box>
+          </Show>
           <text fg={theme.textMuted} wrapMode="none">
             M modified · A added · D deleted · ? untracked
           </text>

@@ -19,7 +19,7 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { latestTranscriptMtime } from "@/monitor/activity"
-import { newWindow, sendKeys, tmuxSessionName } from "@/tmux/client"
+import { newWindow, sendKeyName, sendKeys, tmuxSessionName } from "@/tmux/client"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
@@ -31,6 +31,7 @@ import { useBindings } from "../lib/keymap"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
 import { DialogProvider } from "../ui/dialog"
+import { buildPRPrompt } from "./pr-prompt"
 
 const FALLBACK_THEME = "claude"
 
@@ -125,6 +126,13 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     void sendKeys(props.targetPane, `@${rel} `)
   }
 
+  async function createPR(): Promise<void> {
+    if (!props.targetPane) return
+    const prompt = await buildPRPrompt(props.worktree)
+    await sendKeys(props.targetPane, prompt)
+    await sendKeyName(props.targetPane, "Enter")
+  }
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <FileTree
@@ -132,6 +140,7 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
         focused={() => true}
         onOpenFile={openPreview}
         onMention={injectMention}
+        onCreatePR={() => void createPR()}
         cornerBadge={cornerBadge}
         onRefresh={ackActivity}
       />

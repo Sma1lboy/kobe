@@ -690,6 +690,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Inject @<path> mention into the engine pane",
     hint: { keys: "a", label: "@mention" },
   },
+  {
+    // Ops-pane action on the Changes tab. This is the v0.5 Create PR
+    // button rehomed into the file-changes surface: pressing `p` sends
+    // the PR prompt into the engine pane instead of rendering an outer
+    // monitor button.
+    id: "files.createPR",
+    scope: "files",
+    keys: ["p"],
+    category: "Files",
+    description: "Create PR from the current task",
+    hint: { keys: "p", label: "create PR" },
+  },
 
   // ─── Terminal ─────────────────────────────────────────────────────────
   {

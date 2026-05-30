@@ -8,6 +8,7 @@
 import { describe, expect, test } from "vitest"
 import {
   CHAT_TAB_CLOSE_BINDING,
+  CHAT_TAB_RENAME_BINDING,
   CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
   tmuxSessionName,
@@ -49,6 +50,20 @@ describe("CHAT_TAB_CLOSE_BINDING", () => {
       "#{>:#{session_windows},1}",
       "kill-window",
       "display-message 'Cannot close the only ChatTab'",
+    ])
+  })
+})
+
+describe("CHAT_TAB_RENAME_BINDING", () => {
+  test("maps F2 to tmux window rename prompt", () => {
+    expect(CHAT_TAB_RENAME_BINDING).toEqual([
+      "bind-key",
+      "-n",
+      "F2",
+      "command-prompt",
+      "-I",
+      "#{window_name}",
+      "rename-window -- '%%'",
     ])
   })
 })

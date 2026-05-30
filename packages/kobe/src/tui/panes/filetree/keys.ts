@@ -7,6 +7,7 @@
  *   - `1` / `2` / `3`      switch to All / Changes / Checks tab
  *   - `enter` / `return`   open current file (calls `onOpenFile`)
  *   - `a`                  inject current file as `@<path>` (calls `onMention`)
+ *   - `p`                  create PR prompt (Ops host only)
  *   - `r`                  refresh (re-run git commands)
  *
  * The bindings reach into a tiny controller object the parent
@@ -55,6 +56,8 @@ export type FileTreeBindingsOpts = {
   openCurrent: () => void
   /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
   mentionCurrent?: () => void
+  /** `p` — inject the Create PR prompt into the engine pane (Ops host only). */
+  createPR?: () => void
   /** Hand the current row off to the OS default app (audio, video, PDF). */
   openExternal: () => void
   /** Force a reload of the current tab's data. */
@@ -93,6 +96,7 @@ export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
       },
       "files.open": () => opts.openCurrent(),
       "files.mention": () => opts.mentionCurrent?.(),
+      "files.createPR": () => opts.createPR?.(),
       "files.openExternal": () => opts.openExternal(),
       "files.refresh": () => opts.refresh(),
     }),
