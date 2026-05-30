@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- **Tasks pane key hints and docs match the tmux-native flow** — the in-session key legend now includes Working/Archives view switching, ChatTab rename, engine-picker fallback, and quick-create prefix chords; README and keybinding docs now describe direct-tmux startup instead of the deprecated outer monitor flow.
+
 ## [0.6.3] - 2026-05-29
 
 ### Added

@@ -1,9 +1,9 @@
 # Keybindings — boundaries, conflicts, conventions
 
 Single source of truth for "what keys do what, where, and why."
-Lives in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical
-table. **Do not hardcode chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog
-(F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
+Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
+
+Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings and live in [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts), with the in-session Tasks pane footer in [`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx). Keep those three surfaces in sync when changing a handover key.
 
 ---
 
@@ -91,6 +91,24 @@ Outer-terminal requirements still apply:
 The invariant for kobe-owned shortcuts remains: primary navigation must work without this setup. `ctrl+hjkl` pane focus is kept as
 the direct pane chord because ctrl+letter maps to stable C0 bytes that tmux can pass in legacy mode. Extended-key passthrough is for
 the shortcuts where the terminal protocol is the only way to distinguish intent, not a dependency for basic operation.
+
+## Direct-tmux handover keys
+
+Normal startup opens directly into the task's tmux session. These keys are installed on kobe's isolated tmux socket, not the user's global tmux config:
+
+| Chord | Scope | Action |
+| --- | --- | --- |
+| `ctrl+h/j/k/l` | no-prefix tmux | Move between Tasks / engine / Ops / shell panes directionally. |
+| `ctrl+q` | no-prefix tmux | Detach to the launching shell; the session keeps running. |
+| `ctrl+t` | no-prefix tmux | Create a same-engine ChatTab window for the current task/worktree. |
+| `ctrl+shift+t` | no-prefix tmux, terminal-dependent | Prompt for engine, then create a ChatTab window. |
+| tmux `prefix T` | tmux prefix fallback | Same engine picker as `ctrl+shift+t`, for terminals that do not forward the shifted control chord. |
+| `ctrl+[` / `ctrl+]` | no-prefix tmux | Previous / next ChatTab window. |
+| `ctrl+w` | no-prefix tmux | Close the current ChatTab window if another window remains. |
+| `F2` | no-prefix tmux | Rename the current ChatTab window. |
+| tmux `prefix f` | tmux prefix | Focus the Tasks pane and open the new-task dialog. |
+
+Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `o` open worktree, `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
 ## Adding a new binding — checklist
 

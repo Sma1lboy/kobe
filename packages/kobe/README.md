@@ -78,28 +78,20 @@ Once you're in, the keys you'll use most:
 
 | Key                | What it does                                                   |
 | ------------------ | -------------------------------------------------------------- |
-| `ctrl+h` / `ctrl+j` / `ctrl+k` / `ctrl+l` | Jump straight to a pane (sidebar, workspace, files, terminal) |
-| `tab`              | Cycle focus to the next pane                                   |
-| `ctrl+q`           | Detach back to the sidebar (your task keeps streaming)         |
-| `ctrl+o`           | Open the active task's worktree in your editor                 |
-| `F1`               | Show the full keybinding help dialog                           |
-| `ctrl+,`           | Open Settings (theme, transparent background, dev reset)       |
-| `q`                | Quit (with confirm)                                            |
+| `ctrl+h` / `ctrl+j` / `ctrl+k` / `ctrl+l` | Move between tmux panes (Tasks, engine, Ops files, shell) |
+| `ctrl+q`           | Detach back to your launching shell; the task tmux session keeps running |
+| `ctrl+t`           | Open a same-engine ChatTab window on the current task/worktree |
+| `ctrl+shift+t` or tmux `prefix T` | Pick an engine, then open a new ChatTab window |
+| `ctrl+[` / `ctrl+]` | Switch to previous / next ChatTab window                    |
+| `ctrl+w`           | Close the current ChatTab window; the final window is protected |
+| `F2`               | Rename the current ChatTab window                            |
+| tmux `prefix f`    | Open the Tasks pane's new-task dialog from anywhere in the session |
 
-Inside the sidebar, with a task highlighted: `n` creates a task, `j/k` moves,
-`enter` opens, `r` renames, `a` archives, `d` deletes, `s` opens Settings, and
-`[` / `]` switches between the working session and the archives view.
+Inside the Tasks pane, with a task highlighted: `n` creates a task, `j/k` moves, `enter` opens, `r` renames, `b` renames the branch, `v` cycles the engine, `o` opens the worktree in your editor, `a` archives/unarchives, `d` deletes, `s` opens Settings, and `[` / `]` switches between Working session and Archives. Archive/delete also kill the task's cached tmux session when one exists.
 
-Inside the chat composer:
+Inside the Ops files pane: `[` / `]` switches All / Changes, `enter` opens the preview, `a` injects an `@file` mention into the engine pane, `p` injects the create-PR prompt, `r` refreshes, and `o` opens a file externally when that makes sense.
 
-- `enter` to send, `shift+enter` for a newline.
-- `shift+tab` toggles the per-task tool-permission mode between `default` and `plan`. `default` is the trusted-bypass mode — kobe forwards it to `claude` as `--permission-mode bypassPermissions` because `claude -p` has no interactive permission protocol, so the only meaningful choice is "auto-deny outside cwd" or "auto-approve everything." `plan` forwards unchanged.
-- Click the model label in the footer to pick the model for this task (opus / sonnet / haiku).
-- Type `/` to open the slash-command dropdown. Bundled `claude-code` commands and your own `.claude/{commands,skills}/*.md` are merged in.
-- A `Create PR` chip on the chat header injects a PR-instructions prompt into the active task and routes the resulting PR through the orchestrator.
-
-A given task can host **multiple chat tabs** on the same worktree — useful when
-you want a parallel sub-conversation without losing the main thread.
+A given task can host **multiple ChatTab tmux windows** on the same worktree — useful when you want a parallel sub-conversation without losing the main thread.
 
 ## Opening tasks in your editor
 
