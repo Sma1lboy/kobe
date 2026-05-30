@@ -203,23 +203,30 @@ kobe daemon stop      # tell the daemon to drain and exit
 > was removed in favor of the single-bin surface (KOB-136); any script with
 > `kobed restart` needs a one-time rename to `kobe daemon restart`.
 
-### `kobe api <verb>` — five shell verbs
+### `kobe api <verb>` — four shell verbs
 
-Each call is a short-lived process: open the daemon socket, do one RPC, print
-JSON to stdout, exit. Any tool with a `Bash` capability (Claude Code, Codex,
-Cursor, a custom agent) can drive it.
+Each call is a short-lived process: connect to (or auto-start) the daemon, do
+the work, print JSON to stdout, exit. Any tool with a `Bash` capability (Claude
+Code, Codex, Cursor, a custom agent) can drive it.
 
 | verb | flags | what it does |
 |---|---|---|
-| `spawn-task` | `--repo PATH --prompt TEXT [--title T] [--base-branch B]` | Create a new task + worktree + chat session. |
-| `create-tab` | `--task-id ID [--title T]` | Open an extra chat tab on an existing task. |
-| `send`       | `--task-id ID --prompt TEXT [--tab-id TID]` | Resume the task's session with a new prompt. |
-| `get-task`   | `--task-id ID` | Read task metadata (status, branch, worktree, tabs). |
-| `get-tab`    | `--task-id ID --tab-id TID` | Read a single tab off the task. |
+| `spawn-task` | `--repo PATH [--prompt TEXT] [--title T] [--base-branch B] [--vendor V]` | Create a task + worktree. With `--prompt`, also start the engine in tmux and deliver the prompt. |
+| `send`       | `[--task-id ID] --prompt TEXT` | Paste a prompt into a task's engine pane (bracketed paste, then Enter — multi-line stays one turn). Defaults to the active task; prefer `--task-id` for unattended fan-out. |
+| `get-task`   | `--task-id ID` | Read task metadata; `.running` is true when the tmux session is live. |
+| `list`       | — | List all tasks. |
+
+`spawn-task --prompt` and `send` also return `.engineReady` — `false` means a freshly-started engine didn't confirm it was ready before the prompt was pasted (delivered best-effort).
 
 Output is one JSON object on stdout, `\n` terminated, exit 0. Errors land on
 stderr as `{"error":{"message":"...","code":"..."}}` with a non-zero exit.
 Add `--pretty` for human inspection.
+
+v0.6 is tmux-native — a task's chat history lives in its tmux session, not in
+the daemon — so `send` types the prompt into the engine pane and there is no
+verb that reads the reply back. Results are reviewed in the TUI. (The v0.5
+`create-tab` / `get-tab` verbs are gone; extra chat tabs are tmux windows
+opened from inside the TUI.)
 
 Fan-out from a shell:
 
@@ -229,19 +236,17 @@ T2=$(kobe api spawn-task --repo "$PWD" --prompt "Approach B: event sourcing"  | 
 T3=$(kobe api spawn-task --repo "$PWD" --prompt "Approach C: reducer pattern" | jq -r .taskId)
 
 # Tell the user three tasks are running — they'll appear in the sidebar.
-echo "Spawned $T1 $T2 $T3"
+echo "Spawned $T1 $T2 $T3 — open the kobe TUI to watch them"
 
-# Poll until each settles.
+# Confirm each session came up.
 for ID in $T1 $T2 $T3; do
-  until [ "$(kobe api get-task --task-id "$ID" | jq -r .task.status)" = "idle" ]; do
-    sleep 10
-  done
+  kobe api get-task --task-id "$ID" | jq -r '"\(.task.id) running=\(.running)"'
 done
 ```
 
-If the daemon isn't running, `kobe api ...` exits 2 with
-`{"error":{"code":"BAD_DAEMON",...}}` on stderr. Start it with
-`kobe daemon start` (or just launch the TUI).
+`kobe api ...` auto-starts the daemon, so there is nothing to launch first. If
+the daemon cannot be reached or started, it exits 2 with
+`{"error":{"code":"BAD_DAEMON",...}}` on stderr.
 
 ### Install the agent skill
 
@@ -262,12 +267,10 @@ After install, Claude Code automatically picks up the skill on its next launch.
 For project-level overrides, copy the file to `<repo>/.claude/skills/kobe/SKILL.md`
 and customise — Claude Code's discovery order is project > user > none.
 
-`kobe diagnose` reports whether the skill is installed, which is the
-fastest way to confirm.
+To confirm it installed, check that `~/.claude/skills/kobe/SKILL.md` exists.
 
-> `kobe skill install` is deprecated as of v0.6 — use the `npx skills`
-> command above. `kobe skill uninstall` still works for cleaning up an
-> older copy.
+> The old built-in `kobe skill install` / `kobe diagnose` commands were
+> removed in v0.6 — use the `npx skills` command above to manage the skill.
 
 ## Coming later
 

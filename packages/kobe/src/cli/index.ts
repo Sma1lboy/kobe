@@ -5,6 +5,8 @@
  * Subcommands surface:
  *   - `kobe`                    Launch the TUI (default).
  *   - `kobe add [path]`         Save a repo path for the new-task picker.
+ *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
+ *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
  *   - `kobe update [target]`    Self-update (when packaged).
@@ -12,22 +14,39 @@
  *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
  *                               kill sessions (+ wipe state with --hard).
  *   - `kobe kill-sessions`      Tear down kobe's tmux server (dev reset).
+ *   - `kobe --version` / `-v`   Print version.
+ *   - `kobe --help` / `-h`      Print usage.
+ *
+ * An unrecognized subcommand prints usage and exits non-zero (it does
+ * NOT fall through to launching the TUI).
  *
  * Internal subcommands fired by tmux key bindings inside a task session
  * (not meant for direct use): `new-chattab`, `quick-create`, `tasks`,
  * `ops` — each takes the session/worktree as flags.
  *
- * v0.5 had `diagnose`, `mcp-bridge`, `api`, `skill`, and pane-host
- * test fixtures. All gone in v0.6 (no engine port to diagnose, no
- * MCP bridge, no behavior fixtures).
+ * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
+ * a prompt via `tmux send-keys` into the task's engine pane, not the
+ * deleted chat RPCs (see `./api-cmd.ts`). v0.5's `diagnose`, `mcp-bridge`,
+ * `skill`, and pane-host test fixtures remain gone.
  */
 import { resolve } from "node:path"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { parseCliArgs } from "./daemon-mode.ts"
+import { topLevelUsage } from "./usage.ts"
 
 async function runAddSubcommand(arg: string | undefined): Promise<void> {
+  if (arg === "--help" || arg === "-h" || arg === "help") {
+    process.stdout.write(
+      "Usage: kobe add [path]\n\nSave a repo path (default: the current directory) for the new-task picker.\n",
+    )
+    return
+  }
+  if (arg?.startsWith("-")) {
+    process.stderr.write(`kobe add: unknown flag "${arg}"\n\nUsage: kobe add [path]\n`)
+    process.exit(2)
+  }
   const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
   const { addSavedRepo } = await import("../state/repos.ts")
   const result = addSavedRepo(target)
@@ -46,6 +65,25 @@ async function runAddSubcommand(arg: string | undefined): Promise<void> {
  * `--yes` actually adopts them. Goes through the daemon so a running TUI
  * sees the new tasks live.
  */
+const ADOPT_USAGE = [
+  "Usage: kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]",
+  "",
+  "Import existing git worktrees in a repo as kobe tasks.",
+  "No glob → dry-run listing. With a glob → list matches; --yes adopts them.",
+  "",
+  "Options:",
+  "  --repo <path>   Repo to scan (default: current directory)",
+  "  --vendor <v>    Engine vendor for adopted tasks",
+  "  -y, --yes       Actually adopt the matched worktrees",
+  "  -h, --help      Print this help",
+  "",
+].join("\n")
+
+function adoptUsageError(message: string): never {
+  process.stderr.write(`kobe adopt: ${message}\n\n${ADOPT_USAGE}\n`)
+  process.exit(2)
+}
+
 async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   let glob: string | undefined
   let repoArg: string | undefined
@@ -53,14 +91,23 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   let yes = false
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
+    if (a === "--help" || a === "-h" || a === "help") {
+      process.stdout.write(`${ADOPT_USAGE}\n`)
+      return
+    }
     if (a === "--repo") {
       repoArg = args[++i]
+      if (repoArg === undefined) adoptUsageError("--repo requires a value")
     } else if (a === "--vendor") {
       vendorArg = args[++i]
+      if (vendorArg === undefined) adoptUsageError("--vendor requires a value")
     } else if (a === "--yes" || a === "-y") {
       yes = true
     } else if (a && !a.startsWith("-") && glob === undefined) {
       glob = a
+    } else {
+      // Unknown flag or a second positional → don't silently ignore it.
+      adoptUsageError(`unexpected argument "${a}"`)
     }
   }
 
@@ -117,6 +164,10 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   }
 }
 
+function printTopLevelUsage(out: Pick<typeof process.stderr, "write">): void {
+  out.write(`${topLevelUsage()}\n`)
+}
+
 interface OpsFlags {
   taskId?: string
   worktree?: string
@@ -169,12 +220,28 @@ async function main(): Promise<void> {
     process.exit(2)
   }
   const [subcommand, ...rest] = parsed.args
+
+  if (subcommand === "--version" || subcommand === "-v" || subcommand === "version") {
+    const { CURRENT_VERSION } = await import("../version.ts")
+    console.log(`kobe ${CURRENT_VERSION}`)
+    return
+  }
+  if (subcommand === "--help" || subcommand === "-h" || subcommand === "help") {
+    printTopLevelUsage(process.stdout)
+    return
+  }
+
   if (subcommand === "add") {
     await runAddSubcommand(rest[0])
     return
   }
   if (subcommand === "adopt") {
     await runAdoptSubcommand(rest)
+    return
+  }
+  if (subcommand === "api") {
+    const { runApiSubcommand } = await import("./api-cmd.ts")
+    await runApiSubcommand(rest)
     return
   }
   if (subcommand === "update") {
@@ -194,7 +261,7 @@ async function main(): Promise<void> {
   }
   if (subcommand === "doctor") {
     const { runDoctorSubcommand } = await import("./maintenance.ts")
-    await runDoctorSubcommand()
+    await runDoctorSubcommand(rest)
     return
   }
   if (subcommand === "reset") {
@@ -285,6 +352,15 @@ async function main(): Promise<void> {
       vendor: coerceVendorId(flags.vendor),
     })
     return
+  }
+
+  // An unrecognized subcommand is a CLI error, not a TUI launch — a typo
+  // like `kobe statsu` should print usage and exit non-zero, not silently
+  // open the project. Only a bare `kobe` (no subcommand) launches the TUI.
+  if (subcommand !== undefined) {
+    console.error(`kobe: unknown command '${subcommand}'`)
+    printTopLevelUsage(process.stderr)
+    process.exit(2)
   }
 
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
