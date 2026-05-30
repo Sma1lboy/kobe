@@ -105,7 +105,7 @@ export async function findRolloutFile(sessionId: string, deps: HistoryDeps = def
 const UUID_AT_END = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i
 
 /** The `cwd` recorded on a rollout's `session_meta` line, or `""`. */
-function rolloutCwd(raw: string): string {
+export function rolloutCwd(raw: string): string {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue

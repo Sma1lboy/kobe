@@ -84,9 +84,11 @@ describe("CHAT_TAB_CHOOSE_ENGINE_BINDINGS", () => {
 })
 
 describe("CHAT_TAB_STATUS_FORMAT", () => {
-  test("prefixes tmux window labels with an activity icon", () => {
-    expect(CHAT_TAB_STATUS_FORMAT).toBe("#{?window_activity_flag,●,○} #I:#W")
-    expect(CHAT_TAB_STATUS_CURRENT_FORMAT).toBe("#{?window_activity_flag,●,○} #I:#W")
+  test("prefixes tmux window labels with a detector-owned state icon", () => {
+    expect(CHAT_TAB_STATUS_FORMAT).toContain("@kobe_tab_state")
+    expect(CHAT_TAB_STATUS_FORMAT).toContain("running")
+    expect(CHAT_TAB_STATUS_FORMAT).toContain("done")
+    expect(CHAT_TAB_STATUS_CURRENT_FORMAT).toBe(CHAT_TAB_STATUS_FORMAT)
   })
 })
 

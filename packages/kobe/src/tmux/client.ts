@@ -205,6 +205,11 @@ export async function tagPaneRole(paneId: string, role: string): Promise<void> {
   await runTmux(["set-option", "-p", "-t", paneId, PANE_ROLE_OPTION, role])
 }
 
+/** Set a window-scoped user option, targeting any pane/window inside it. */
+export async function setWindowOption(target: string, option: string, value: string): Promise<void> {
+  await runTmux(["set-window-option", "-t", target, option, value])
+}
+
 /** Tag a pane as the claude pane so {@link claudePaneId} can find it. */
 export async function tagClaudePane(paneId: string): Promise<void> {
   await tagPaneRole(paneId, CLAUDE_ROLE_VALUE)

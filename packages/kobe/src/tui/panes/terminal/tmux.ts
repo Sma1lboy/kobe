@@ -96,8 +96,10 @@ export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
   ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
 ] as const
 
-export const CHAT_TAB_STATUS_FORMAT = "#{?window_activity_flag,●,○} #I:#W"
-export const CHAT_TAB_STATUS_CURRENT_FORMAT = "#{?window_activity_flag,●,○} #I:#W"
+export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
+export const CHAT_TAB_STATUS_FORMAT =
+  "#{?#{==:#{@kobe_tab_state},running},●,#{?#{==:#{@kobe_tab_state},done},✓,#{?#{==:#{@kobe_tab_state},error},!,#{?#{==:#{@kobe_tab_state},unknown},?,○}}}} #I:#W"
+export const CHAT_TAB_STATUS_CURRENT_FORMAT = CHAT_TAB_STATUS_FORMAT
 
 export function tmuxInitialSizeArgs(
   stdout: { columns?: number; rows?: number } = process.stdout,
@@ -482,6 +484,7 @@ async function buildPanesAround(
   // `--target-pane` for `@file` mention injection.
   const { stdout } = await runTmuxSequenceCapturing([
     ["set-option", "-p", "-t", claudePane, "@kobe_role", "claude"],
+    ["set-window-option", "-t", claudePane, CHAT_TAB_STATE_OPTION, "idle"],
     [
       "split-window",
       "-h",

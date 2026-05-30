@@ -17,9 +17,11 @@
  * `readPersistedUiPrefs` (read-only — the outer app owns `state.json`).
  */
 
+import { createHash } from "node:crypto"
 import { kobeCliInvocation } from "@/cli/invocation"
+import { type ChatTabTurnState, createEngineTurnDetector } from "@/engine/turn-detector"
 import { latestTranscriptMtime } from "@/monitor/activity"
-import { newWindow, sendKeyName, sendKeys, tmuxSessionName } from "@/tmux/client"
+import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmuxSessionName } from "@/tmux/client"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
@@ -46,6 +48,9 @@ export interface OpsHostArgs {
 
 /** How often the Ops pane polls the engine transcript for new activity. */
 const ACTIVITY_POLL_MS = 2500
+const TURN_STATUS_POLL_MS = 1500
+const STABLE_POLLS_FOR_DONE = 2
+const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 
 type ThemePrefs = PersistedUiPrefs
 
@@ -96,6 +101,63 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
   function ackActivity(): void {
     setBaseline(latest())
   }
+
+  // Per-window turn detector. The engine adapter owns transcript-specific
+  // completion markers (Codex `turn.completed`, Claude assistant records).
+  // This pane owns only the tmux-local quiescence check for its paired
+  // engine pane, so sibling ChatTabs on the same worktree don't report done
+  // unless THIS window actually changed.
+  onMount(() => {
+    if (!props.targetPane) return
+    const detector = createEngineTurnDetector(props.vendor)
+    let disposed = false
+    let baselineCompletionId: string | null = null
+    let paneHash = ""
+    let observedPaneActivity = false
+    let stablePolls = 0
+    let published: ChatTabTurnState | null = null
+
+    async function publish(state: ChatTabTurnState): Promise<void> {
+      if (state === published) return
+      published = state
+      await setWindowOption(props.targetPane!, CHAT_TAB_STATE_OPTION, state)
+    }
+
+    async function prime(): Promise<void> {
+      paneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
+      baselineCompletionId = (await detector.latestCompletion(props.worktree))?.id ?? null
+      await publish(detector.supportsCompletionMarkers() ? "idle" : "unknown")
+    }
+
+    async function poll(): Promise<void> {
+      const nextPaneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
+      if (disposed) return
+      if (nextPaneHash !== paneHash) {
+        paneHash = nextPaneHash
+        observedPaneActivity = true
+        stablePolls = 0
+        await publish(detector.supportsCompletionMarkers() ? "running" : "unknown")
+      } else if (observedPaneActivity) {
+        stablePolls++
+      }
+
+      if (!detector.supportsCompletionMarkers() || !observedPaneActivity || stablePolls < STABLE_POLLS_FOR_DONE) return
+
+      const marker = await detector.latestCompletion(props.worktree)
+      if (disposed || !marker || marker.id === baselineCompletionId) return
+      baselineCompletionId = marker.id
+      observedPaneActivity = false
+      stablePolls = 0
+      await publish("done")
+    }
+
+    void prime()
+    const timer = setInterval(() => void poll(), TURN_STATUS_POLL_MS)
+    onCleanup(() => {
+      disposed = true
+      clearInterval(timer)
+    })
+  })
 
   // Open the file's diff/content in a full-width preview window of the
   // task's tmux session. The Ops pane lives in that session, named
@@ -151,6 +213,10 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
 function basename(p: string): string {
   const i = p.lastIndexOf("/")
   return i >= 0 ? p.slice(i + 1) : p
+}
+
+function fingerprint(text: string): string {
+  return createHash("sha1").update(text).digest("hex")
 }
 
 function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
