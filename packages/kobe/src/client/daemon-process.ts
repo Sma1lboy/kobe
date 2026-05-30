@@ -1,13 +1,22 @@
 import { type StdioOptions, spawn } from "node:child_process"
 import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
-import { unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { defaultDaemonLogPath, defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
+import { stopDaemonProcess } from "../daemon/lifecycle.ts"
+import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath, fitSocketPath } from "../daemon/paths.ts"
+import { DAEMON_PROTOCOL_VERSION } from "../daemon/protocol.ts"
 import { KobeDaemonClient } from "./index.ts"
 
 const DAEMON_START_ARGS = ["daemon", "start"] as const
+
+/**
+ * How long to wait for a `hello` round-trip before declaring a daemon
+ * WEDGED (process alive, socket accepting, but not servicing requests). A
+ * healthy daemon answers `hello` in well under 100ms; 3s is a wide margin
+ * so a momentarily-busy daemon is never mistaken for a wedged one.
+ */
+const DAEMON_HELLO_TIMEOUT_MS = 3000
 
 /**
  * Spawn the detached daemon child with stdout/stderr appended to
@@ -58,20 +67,24 @@ export interface OwnedDaemonClient {
  */
 export async function ensureDaemonReachable(): Promise<string> {
   const socketPath = defaultDaemonSocketPath()
-  if (await testCanConnect(socketPath)) return socketPath
+  if (await testDaemonResponds(socketPath)) return socketPath
+
+  // Not responding: the daemon is absent OR wedged (socket open, hello
+  // silent). Kill any wedged process FIRST — `stopDaemonProcess` is
+  // idempotent (just clears stale socket/pidfile when nothing is alive),
+  // so this is safe when absent and prevents a fresh spawn from racing a
+  // still-alive wedged daemon onto the same tasks.json (split-brain).
+  await stopDaemonProcess(socketPath, defaultDaemonPidPath()).catch(() => {})
 
   const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
   spawnDetachedDaemon(command, args, process.env, defaultDaemonLogPath())
 
   const deadline = Date.now() + 5000
-  let lastErr: unknown
   while (Date.now() < deadline) {
-    if (await testCanConnect(socketPath)) return socketPath
+    if (await testDaemonResponds(socketPath)) return socketPath
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
   }
-  throw new Error(
-    `kobe: daemon did not start at ${socketPath}: ${lastErr instanceof Error ? lastErr.message : "timeout"}`,
-  )
+  throw new Error(`kobe: daemon did not start (or stayed wedged) at ${socketPath}`)
 }
 
 export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {
@@ -122,7 +135,10 @@ export async function connectOrStartOwnedDaemon(): Promise<OwnedDaemonClient> {
  * shared production daemon socket.
  */
 export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: string): Promise<void> {
-  await unlink(socketPath).catch(() => {})
+  // Kill any prior owned daemon on this path (e.g. a wedged one left by a
+  // crashed TUI) and clear its socket/pidfile before respawning, so the
+  // fresh daemon doesn't race a still-alive predecessor.
+  await stopDaemonProcess(socketPath, pidPath).catch(() => {})
 
   const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
   const env = {
@@ -137,7 +153,7 @@ export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: st
 
   const deadline = Date.now() + 5000
   while (Date.now() < deadline) {
-    if (await testCanConnect(socketPath)) {
+    if (await testDaemonResponds(socketPath)) {
       return
     }
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
@@ -145,16 +161,37 @@ export async function ensureOwnedDaemonReachable(socketPath: string, pidPath: st
   throw new Error(`kobe: owned daemon did not start at ${socketPath}`)
 }
 
-async function testCanConnect(socketPath: string): Promise<boolean> {
+/**
+ * True iff a daemon at `socketPath` both accepts a connection AND answers
+ * `hello` within `timeoutMs`. A socket that connects but never replies is
+ * a WEDGED daemon — distinct from an absent one, and the reason we probe
+ * `hello` rather than just `connect` (KOB). Any reply (even a
+ * version-mismatch error) counts as "alive"; only a timeout means wedged.
+ * Exported for tests.
+ */
+export async function testDaemonResponds(
+  socketPath: string,
+  timeoutMs: number = DAEMON_HELLO_TIMEOUT_MS,
+): Promise<boolean> {
   const probe = new KobeDaemonClient(socketPath)
   try {
     await probe.connect()
-    probe.close()
-    return true
   } catch {
     probe.close()
     return false
   }
+  const replied = probe
+    .request("hello", { protocolVersion: DAEMON_PROTOCOL_VERSION })
+    .then(() => true)
+    .catch(() => true)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs)
+  })
+  const alive = await Promise.race([replied, timedOut])
+  if (timer) clearTimeout(timer)
+  probe.close()
+  return alive
 }
 
 /**
