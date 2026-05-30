@@ -56,6 +56,15 @@ The daemon is a long-lived background process. Two pieces of infrastructure keep
 
 When adding a fire-and-forget daemon call (`void someAsync()`), attach `.catch((err) => logDaemonError("<subsystem>", err))` so a failure is pinned to its subsystem (`[plan-usage-poller]`, `[daemon-shutdown]`, …) instead of surfacing as an anonymous rejection. Crash handlers are installed only in the real daemon process (`cli/daemon-cmd.ts` `start` branch) — never from code shared with the TUI or tests, since they mutate global `process` state.
 
+### Packaged-build recovery: `kobe doctor` / `kobe reset` (KOB-258)
+
+`dev:sandbox:reset` is dev-only. The packaged answer to "the daemon wedged/died, reset it" is two top-level commands in [`src/cli/maintenance.ts`](./packages/kobe/src/cli/maintenance.ts):
+
+- **`kobe doctor`** — read-only diagnosis. Reports daemon state (running / WEDGED = process alive but not answering / stale pidfile / not running), tails `daemon.log` when down, counts kobe tmux sessions, and lists `tasks.json` / `state.json` / `daemon.log`. Never mutates — it only recommends the fix.
+- **`kobe reset [--hard] [--yes]`** — stop the daemon, remove its socket + pidfile, kill all kobe tmux sessions. `--hard` also wipes the task index + UI state. Never touches worktrees; confirms on a TTY; does not respawn (relaunch kobe).
+
+The wedge these exist for: `startDaemonServer` unlinks the socket before `listen`, so a stale socket *file* is harmless — the real trap is an OLD daemon still alive but not servicing the socket, which a fresh launch races by stealing the socket → two daemons on one `tasks.json`. The graceful → SIGTERM → SIGKILL kill that makes the old one go away lives once in [`src/daemon/lifecycle.ts`](./packages/kobe/src/daemon/lifecycle.ts) `stopDaemonProcess()`, shared by both `reset` and `kobe daemon restart`.
+
 ## Reference repos — clone before development
 
 kobe is built by deliberately copying ideas (and sometimes code) from reference projects. New devs / agents must have these refs cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.

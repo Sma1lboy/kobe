@@ -8,6 +8,9 @@
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
  *   - `kobe update [target]`    Self-update (when packaged).
+ *   - `kobe doctor`             Diagnose daemon / tmux / state (read-only).
+ *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
+ *                               kill sessions (+ wipe state with --hard).
  *   - `kobe kill-sessions`      Tear down kobe's tmux server (dev reset).
  *
  * Internal subcommands fired by tmux key bindings inside a task session
@@ -187,6 +190,16 @@ async function main(): Promise<void> {
   if (subcommand === "daemon") {
     const { runDaemonSubcommand } = await import("./daemon-cmd.ts")
     await runDaemonSubcommand(rest)
+    return
+  }
+  if (subcommand === "doctor") {
+    const { runDoctorSubcommand } = await import("./maintenance.ts")
+    await runDoctorSubcommand()
+    return
+  }
+  if (subcommand === "reset") {
+    const { runResetSubcommand } = await import("./maintenance.ts")
+    await runResetSubcommand(rest)
     return
   }
   if (subcommand === "new-chattab") {
