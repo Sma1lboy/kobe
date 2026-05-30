@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Run a small team of coding agents from any terminal.</strong><br/>
-  kobe is a local-first, SSH-friendly TUI that turns each task into a git worktree, a tmux session, and a live engine pane.
+  <strong>Run parallel coding agents from any terminal.</strong><br/>
+  kobe is an SSH-friendly TUI for turning AI coding work into isolated git worktrees and persistent tmux sessions.
 </p>
 
 <p align="center">
@@ -14,25 +14,13 @@
 
 ---
 
-## Why kobe exists
-
-AI coding tools are great at one thread. Real work is rarely one thread.
-
-kobe gives you a terminal-native cockpit for running parallel coding attempts without leaving your shell. Create a task, let it work in its own git worktree, switch to another task, compare changes in the Ops pane, and keep every engine conversation alive in tmux.
-
-Most agent orchestrators assume a desktop app, a browser tab, or a cloud workspace. kobe assumes the place developers already do serious work: a terminal attached to the machine that has the repo, dependencies, credentials, build cache, and internal network access. That terminal can be local. More interestingly, it can be an SSH session into a devbox, CI runner, VPS, or beefy remote workstation.
-
-The product unit is simple:
+AI agents are useful one at a time. kobe is for when you want five attempts running at once.
 
 ```text
 Task = git worktree + tmux session + branch
 ```
 
-That means experiments do not trample your main checkout, long-running agents keep working after you detach, and every attempt has a branch you can inspect, merge, archive, or delete.
-
-## Built for SSH and devboxes
-
-The terminal is not a fallback UI for kobe. It is the deployment model.
+Create a task, send it to `claude`, `codex`, or `copilot`, detach, reattach, compare the worktree, keep the good branch, archive the rest. It runs where your code already lives: your laptop, a devbox, a VPS, or any machine you can SSH into.
 
 ```bash
 ssh devbox
@@ -40,262 +28,91 @@ cd repo
 kobe
 ```
 
-Because kobe runs where the code runs, it fits remote development naturally:
+## Why try it
 
-| Remote workflow need | What kobe does |
-|---|---|
-| Keep work alive after disconnects | Engine panes live inside tmux; detach and reattach without stopping tasks. |
-| Use the real development environment | Agents run beside your repo, env vars, local services, build tools, and credentials. |
-| Avoid GUI forwarding | No browser, VNC, X11, or Electron remoting required; SSH is enough. |
-| Fan out on larger machines | Put parallel agents on a devbox with more CPU, RAM, disk, and network access than a laptop. |
-| Keep code and secrets in place | Worktrees, transcripts, and task state stay on the remote machine unless you move them. |
+- **Made for SSH/devboxes** - no browser, VNC, or desktop app; the terminal is the product.
+- **Persistent by default** - agents live in tmux, so disconnects do not kill the work.
+- **Safe parallelism** - every attempt gets its own branch and worktree.
+- **Real environment** - agents run next to your dependencies, services, credentials, and build cache.
+- **Scriptable fan-out** - `kobe api` lets another agent or shell script spawn more tasks.
 
-kobe works fine on a laptop. Its sharper edge is remote: it turns an SSH session into an agent control plane.
-
-## What it feels like
+## A quick look
 
 <p align="center">
   <img src="docs/assets/brand/pane-grid.gif" alt="kobe pane layout" width="720" />
 </p>
 
-kobe opens directly into a tmux workspace:
+kobe opens into a tmux workspace with:
 
-| Pane | Purpose |
-|---|---|
-| Tasks | Switch, create, archive, rename, retarget, and open task worktrees. |
-| Engine | Your live `claude`, `codex`, or `copilot` CLI session. |
-| Ops | Browse files, changes, previews, `@file` mentions, and PR prompts. |
-| Shell | A normal shell already inside the task worktree. |
-
-Each task can have multiple ChatTab tmux windows on the same worktree, so you can keep a main thread and branch off side conversations without losing context.
-
-<p align="center">
-  <img src="docs/assets/brand/task-streams.gif" alt="kobe task streams" width="720" />
-</p>
-
-## Highlights
-
-- **Local-first orchestration** - state lives on disk under `~/.kobe`, engine transcripts stay where each CLI already stores them, and work happens in normal git worktrees.
-- **SSH/devbox-native** - run kobe on the machine with the repo, credentials, services, and build cache; reconnect from anywhere SSH reaches.
-- **Tmux-native runtime** - detach with `ctrl+q`, reattach later, and keep engine panes alive without a cloud service or GUI session.
-- **Multi-engine by CLI** - works with local Claude Code, Codex, and GitHub Copilot CLI sessions through engine-owned contracts.
-- **Worktree isolation** - every task gets a branch and checkout, so parallel attempts can edit the same repo safely.
-- **Ops pane for review** - browse changed files, inject `@file` mentions, open previews, and ask an agent to prepare a PR.
-- **Agent-to-agent fan-out** - `kobe api` lets any shell-capable agent spawn and drive more kobe tasks.
-- **Packaged recovery tools** - `kobe doctor` diagnoses daemon/tmux state; `kobe reset` fixes wedged runtime state without touching worktrees.
+- **Tasks** - create, switch, archive, rename, retarget.
+- **Engine** - the live AI CLI session.
+- **Ops** - changed files, previews, `@file` mentions, PR prompts.
+- **Shell** - a normal shell inside the task worktree.
 
 ## Install
 
-Requirements:
-
-- [Bun](https://bun.sh) `>= 1.3.11`
-- [tmux](https://github.com/tmux/tmux)
-- At least one supported engine CLI on `PATH`: `claude`, `codex`, or `copilot`
-
-Install from npm:
+Requirements: [Bun](https://bun.sh) `>= 1.3.11`, `tmux`, and at least one engine CLI on `PATH` (`claude`, `codex`, or `copilot`).
 
 ```bash
 bun install -g @sma1lboy/kobe
 kobe
 ```
 
-Or run without installing:
+Or:
 
 ```bash
 bunx @sma1lboy/kobe
 ```
 
-Optional preview dependencies improve image and SVG rendering in the Ops pane:
-
-| Platform | Preview dependencies |
-|---|---|
-| macOS | `brew install chafa ffmpeg librsvg` |
-| Debian / Ubuntu | `sudo apt install chafa ffmpeg librsvg2-bin` |
-| Fedora | `sudo dnf install chafa ffmpeg librsvg2-tools` |
-| Arch | `sudo pacman -S chafa ffmpeg librsvg` |
-| Windows | `winget install hpjansson.chafa Gyan.FFmpeg` |
-
-## First run
-
-From a git repo:
-
-```bash
-kobe
-```
-
-From a remote devbox, the flow is the same:
-
-```bash
-ssh devbox
-cd repo
-kobe
-```
-
-Then:
-
-1. Press `n` in the Tasks pane.
-2. Pick or enter the repo path and base branch.
-3. Choose an engine.
-4. Send the first prompt in the engine pane.
-
-kobe creates a worktree under:
+First task: press `n`, choose a repo/base branch/engine, then prompt the engine pane. kobe creates the worktree under:
 
 ```text
 <repo>/.claude/worktrees/<task-id>/
 ```
 
-The task appears in the Tasks pane and the engine runs inside that worktree. Detach with `ctrl+q`; relaunch `kobe` to re-enter the workspace.
-
-## Daily workflow
-
-```text
-1. Create a task for an idea, bug, or refactor.
-2. Let the engine work in its isolated branch.
-3. Spawn another task for a competing approach, even after detaching from SSH.
-4. Use Ops to inspect changed files and inject follow-up context.
-5. Open the worktree in your editor or ask the agent to prepare a PR.
-6. Archive finished tasks; keep the branch/worktree history available.
-```
-
-Core shortcuts:
+## Useful keys
 
 | Key | Action |
 |---|---|
 | `ctrl+h/j/k/l` | Move between Tasks, engine, Ops, and shell panes. |
-| `ctrl+q` | Detach from the tmux workspace. |
-| `ctrl+t` | Create another ChatTab window on the same task. |
-| `ctrl+shift+t` or tmux `prefix T` | Pick an engine, then create a ChatTab. |
-| `ctrl+[` / `ctrl+]` | Switch ChatTab windows. |
-| `ctrl+w` | Close the current ChatTab window when another one exists. |
+| `ctrl+q` | Detach; tasks keep running in tmux. |
+| `ctrl+t` | New ChatTab on the same task/worktree. |
+| `ctrl+[` / `ctrl+]` | Previous / next ChatTab. |
 | `F2` | Rename the current ChatTab. |
-| tmux `prefix f` | Focus Tasks and open the new-task dialog. |
+| tmux `prefix f` | Open the new-task dialog. |
 
-More keybinding detail lives in [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
+More: [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
 
-## Fan out from the shell
-
-kobe exposes a JSON CLI for agents and scripts:
+## Fan out
 
 ```bash
 kobe api fan-out \
   --repo "$PWD" \
   --agents claude:2,codex:1 \
-  --prompt "Find three different ways to simplify the auth flow."
+  --prompt "Try three approaches to simplify the auth flow."
 ```
 
-Useful verbs:
-
-| Verb | Use |
-|---|---|
-| `spawn-task` | Create one task, optionally start it with a prompt. |
-| `fan-out` | Spawn many tasks from one prompt. |
-| `send` | Paste a follow-up into a task's engine pane. |
-| `get-task` | Read one task's metadata. |
-| `collect` | Compare branches, running state, and uncommitted change counts. |
-| `list` | List tasks. |
-
-Install the companion agent skill so an AI assistant knows when to use this surface:
+Install the companion skill so Claude Code knows when to use `kobe api`:
 
 ```bash
 npx skills add Sma1lboy/kobe --skill kobe --agent claude-code
 ```
 
-## Recovery
-
-When something feels stuck, diagnose first:
+## If it gets stuck
 
 ```bash
-kobe doctor
+kobe doctor   # read-only diagnosis
+kobe reset    # reset daemon + kobe tmux sessions; does not delete worktrees
 ```
 
-`kobe doctor` is read-only. It reports daemon health, tmux sessions, runtime files, and recent daemon logs.
-
-If the runtime is wedged:
-
-```bash
-kobe reset
-```
-
-`kobe reset` stops the daemon, removes its socket and pidfile, and kills kobe-owned tmux sessions. It does not delete git worktrees. `kobe reset --hard` additionally wipes the task index and UI state, but still does not touch worktrees.
-
-## Architecture
-
-This repo is a Bun workspace:
-
-| Package | What it owns |
-|---|---|
-| [`packages/kobe`](./packages/kobe) | The published TUI, daemon, tmux session layout, engine adapters, and CLI. |
-| [`packages/branding`](./packages/branding) | Remotion pipeline for the brand assets in [`docs/assets/brand`](./docs/assets/brand). |
-
-The main package has four layers:
-
-```text
-TUI / tmux panes
-  -> orchestrator
-    -> engine contract
-      -> local engine CLIs
-```
-
-Important boundaries:
-
-- Panes ask the orchestrator for task state; they do not parse engine transcripts directly.
-- The orchestrator owns task/worktree/index lifecycle.
-- Engine adapters own product identity, history, telemetry, and vendor-specific transcript formats.
-- tmux is the live runtime surface; the legacy outer opentui monitor is deprecated and only available behind `KOBE_OUTER_MONITOR=1`.
-
-Read more:
-
-- [`docs/DESIGN.md`](./docs/DESIGN.md) - product philosophy and design decisions
-- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) - source tree and ownership map
-- [`docs/HARNESS.md`](./docs/HARNESS.md) - self-test contract for contributors
-- [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) - shipped behavior by release
-
-## Develop locally
+## Develop
 
 ```bash
 bun install
 bun run dev:sandbox
-```
-
-`dev:sandbox` uses an isolated home directory and tmux socket:
-
-```text
-packages/kobe/.dev-sandbox/home
-KOBE_TMUX_SOCKET=kobe-sandbox
-```
-
-Reset only the sandbox runtime:
-
-```bash
-bun run dev:sandbox:reset
-```
-
-Before sending a change, run:
-
-```bash
 bun run typecheck
 bun run lint
 bun run test
 ```
 
-For user-visible TUI work, also run:
-
-```bash
-bun run test:behavior
-```
-
-## Contributing
-
-kobe is young and moving fast. The best contributions are concrete, user-visible improvements to the terminal workflow:
-
-- Better Ops previews and diff review.
-- More reliable engine lifecycle handling.
-- Sharper tmux pane ergonomics.
-- Documentation that helps real users recover from stuck sessions.
-- Focused bug reports with `kobe doctor` output and reproduction steps.
-
-Start with [`HANDOFF.md`](./HANDOFF.md) for the current project state, then read [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) before changing code. The latest shipped behavior is always in [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
-
-## Status
-
-kobe is open source and usable, but still a codename-stage project. The CLI surface and tmux-native workflow are active, the package is published as [`@sma1lboy/kobe`](https://www.npmjs.com/package/@sma1lboy/kobe), and releases are tracked in the changelog.
+Start with [`HANDOFF.md`](./HANDOFF.md), [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md), and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
