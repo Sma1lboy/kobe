@@ -10,6 +10,7 @@
  */
 
 import type { Task } from "../types/task.ts"
+import type { UpdateInfo } from "../version.ts"
 
 /**
  * Bumped to 2 in v0.6 to signal the shape change. Older TUI clients
@@ -72,6 +73,13 @@ export interface ChannelPayloads {
    * `null` = nothing active yet. Set via the `task.setActive` RPC.
    */
   "active-task": { taskId: string | null }
+  /**
+   * Latest published-version info, polled by the daemon on an interval and
+   * pushed to every pane so each `kobe tasks` process doesn't hit the npm
+   * registry itself (KOB — daemon-owned update check). `info` is `null`
+   * when the check is suppressed (dev mode) or unavailable (offline).
+   */
+  update: { info: UpdateInfo | null }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -82,7 +90,7 @@ export interface ChannelPayloads {
 export type ChannelName = keyof ChannelPayloads
 
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
-export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task"]
+export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task", "update"]
 
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a

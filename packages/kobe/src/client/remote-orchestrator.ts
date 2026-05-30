@@ -15,6 +15,7 @@ import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
+import type { UpdateInfo } from "../version.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
@@ -41,6 +42,8 @@ export class RemoteOrchestrator {
   private readonly setTasks: (next: Task[]) => void
   private readonly activeTaskAcc: Accessor<string | null>
   private readonly setActiveTaskSig: (next: string | null) => void
+  private readonly updateAcc: Accessor<UpdateInfo | null>
+  private readonly setUpdateSig: (next: UpdateInfo | null) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -51,11 +54,14 @@ export class RemoteOrchestrator {
   ) {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [activeTask, setActiveTask] = createSignal<string | null>(null)
+    const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
     this.activeTaskAcc = activeTask
     this.setActiveTaskSig = (next) => setActiveTask(() => next)
+    this.updateAcc = update
+    this.setUpdateSig = (next) => setUpdate(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -119,6 +125,16 @@ export class RemoteOrchestrator {
    */
   activeTaskSignal(): Accessor<string | null> {
     return this.activeTaskAcc
+  }
+
+  /**
+   * Latest published-version info, pushed live on the daemon-owned `update`
+   * channel (the daemon polls npm once and fans it out — panes don't poll
+   * the registry themselves). `null` until the first check resolves, or when
+   * the check is suppressed (dev) / unavailable (offline).
+   */
+  updateSignal(): Accessor<UpdateInfo | null> {
+    return this.updateAcc
   }
 
   listTasks(): Task[] {
@@ -245,6 +261,11 @@ export class RemoteOrchestrator {
     if (name === "active-task") {
       const id = (payload as { taskId?: string | null } | undefined)?.taskId
       this.setActiveTaskSig(typeof id === "string" ? id : null)
+      return
+    }
+    if (name === "update") {
+      const info = (payload as { info?: UpdateInfo | null } | undefined)?.info
+      this.setUpdateSig(info ?? null)
     }
   }
 }

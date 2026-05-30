@@ -47,7 +47,7 @@ import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendor } from "../../types/vendor.ts"
-import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../../version.ts"
+import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
@@ -101,11 +101,14 @@ function TasksShell(props: {
   onMount(() => {
     themeCtx.setTransparentBackground(props.transparent)
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
-    void checkLatestVersion()
-      .then((info) => {
-        if (info) setUpdateInfo(info)
-      })
-      .catch(() => {})
+  })
+
+  // Update info comes from the daemon-owned `update` channel (the daemon polls
+  // npm once and fans it out) rather than each pane hitting the registry. Keep
+  // the last non-null value so a later null poll doesn't drop the chip.
+  createEffect(() => {
+    const info = props.orch?.updateSignal()()
+    if (info) setUpdateInfo(info)
   })
 
   // `n` (and the footer "+ New task" click) creates a new task using the

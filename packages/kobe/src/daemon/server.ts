@@ -17,10 +17,14 @@ import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
+import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
+
+/** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
+const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
 
 export interface DaemonServerOptions {
   readonly socketPath?: string
@@ -28,6 +32,10 @@ export interface DaemonServerOptions {
   readonly homeDir?: string
   readonly startedAt?: Date
   readonly onStop?: () => void | Promise<void>
+  /** Override the npm version check (tests inject a fake to avoid the network). */
+  readonly checkUpdate?: () => Promise<UpdateInfo | null>
+  /** Re-check interval in ms; `0` disables the poller. Defaults to 6h. */
+  readonly updatePollMs?: number
 }
 
 export interface DaemonServer {
@@ -102,6 +110,24 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     bus.publish("task.snapshot", { tasks: snapshot.map(serializeTask) })
   })
 
+  // Daemon-owned update check (KOB): poll npm once on start + on an interval
+  // and publish to the `update` channel, so every `kobe tasks` pane subscribes
+  // instead of hitting the registry itself. A failure is logged, not fatal;
+  // the bus caches the last value for late subscribers like any other channel.
+  const checkUpdate = options.checkUpdate ?? checkLatestVersion
+  const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
+  const pollUpdate = (): void => {
+    void checkUpdate()
+      .then((info) => bus.publish("update", { info }))
+      .catch((err) => logDaemonError("update-poller", err))
+  }
+  let updateTimer: ReturnType<typeof setInterval> | null = null
+  if (updatePollMs > 0) {
+    pollUpdate()
+    updateTimer = setInterval(pollUpdate, updatePollMs)
+    updateTimer.unref?.()
+  }
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -109,6 +135,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     clients,
     async close() {
       unsubscribeStore()
+      if (updateTimer) clearInterval(updateTimer)
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       for (const client of Array.from(clients)) {
         client.socket.destroy()
