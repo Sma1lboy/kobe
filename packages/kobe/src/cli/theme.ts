@@ -56,6 +56,19 @@ function fail(message: string): never {
 }
 
 /**
+ * A malformed invocation (unknown action/flag, missing or extra args).
+ * Prints the error AND the full usage, then exits with the conventional
+ * usage code (2). Distinct from {@link fail} (runtime/content errors,
+ * exit 1) so an agent driving the CLI always sees the instruction surface
+ * when it guesses the command shape wrong, not a bare one-liner.
+ */
+function failUsage(message: string): never {
+  process.stderr.write(`kobe theme: ${message}\n\n`)
+  printUsage()
+  process.exit(2)
+}
+
+/**
  * List bundled + user-installed theme names. Bundled themes are tagged
  * `[built-in]`; user themes show their on-disk path. Sorted within each
  * group so `kobe theme list` output is deterministic.
@@ -145,7 +158,7 @@ function parseAddArgs(args: string[]): { source: string; opts: AddOpts } {
     }
     if (a === "--name" || a === "-n") {
       const next = args[i + 1]
-      if (next === undefined) fail("--name requires a value")
+      if (next === undefined) failUsage("--name requires a value")
       name = next
       i += 1
       continue
@@ -154,14 +167,14 @@ function parseAddArgs(args: string[]): { source: string; opts: AddOpts } {
       name = a.slice("--name=".length)
       continue
     }
-    if (a.startsWith("--")) fail(`unknown flag: ${a}`)
+    if (a.startsWith("--")) failUsage(`unknown flag: ${a}`)
     if (source === null) {
       source = a
       continue
     }
-    fail(`unexpected positional argument: ${a}`)
+    failUsage(`unexpected positional argument: ${a}`)
   }
-  if (source === null) fail("missing <source> (URL or path to theme JSON)")
+  if (source === null) failUsage("missing <source> (URL or path to theme JSON)")
   return { source, opts: { name, force } }
 }
 
@@ -201,8 +214,8 @@ async function addTheme(args: string[]): Promise<void> {
 
 function removeTheme(args: string[]): void {
   const name = args[0]
-  if (!name) fail("missing <name>")
-  if (args.length > 1) fail(`unexpected extra arguments after "${name}"`)
+  if (!name) failUsage("missing <name>")
+  if (args.length > 1) failUsage(`unexpected extra arguments after "${name}"`)
   if (BUNDLED_NAMES.includes(name)) {
     fail(`"${name}" is a built-in theme and cannot be removed`)
   }
@@ -243,11 +256,11 @@ export async function runThemeSubcommand(args: string[]): Promise<void> {
   const [action, ...rest] = args
   if (!action || action === "--help" || action === "-h" || action === "help") {
     printUsage()
-    if (!action) process.exit(1)
+    if (!action) process.exit(2)
     return
   }
   if (action === "list" || action === "ls") {
-    if (rest.length > 0) fail(`"${action}" takes no arguments`)
+    if (rest.length > 0) failUsage(`"${action}" takes no arguments`)
     listThemes()
     return
   }
@@ -259,5 +272,5 @@ export async function runThemeSubcommand(args: string[]): Promise<void> {
     removeTheme(rest)
     return
   }
-  fail(`unknown action "${action}" (try "list", "add", or "remove")`)
+  failUsage(`unknown action "${action}" (try "list", "add", or "remove")`)
 }

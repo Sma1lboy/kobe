@@ -131,7 +131,26 @@ async function kobeSessionCount(): Promise<number> {
  * it only reports and recommends. The fix is `kobe reset` / `kobe daemon
  * restart`, surfaced in the output.
  */
-export async function runDoctorSubcommand(): Promise<void> {
+export async function runDoctorSubcommand(argv: readonly string[] = []): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
+    process.stdout.write(
+      ["Usage: kobe doctor", "", "Read-only diagnosis of the daemon / tmux / state. Takes no options.", ""].join("\n"),
+    )
+    return
+  }
+  const unknown = argv.find((a) => a.length > 0)
+  if (unknown !== undefined) {
+    process.stderr.write(
+      [
+        `kobe doctor: unexpected argument "${unknown}"`,
+        "",
+        "Usage: kobe doctor   (read-only; takes no options)",
+        "",
+      ].join("\n"),
+    )
+    process.exit(2)
+  }
+
   const socketPath = defaultDaemonSocketPath()
   const pidPath = defaultDaemonPidPath()
   const logPath = defaultDaemonLogPath()
@@ -222,7 +241,39 @@ async function removeStateFile(path: string, label: string): Promise<void> {
  * Confirmation: interactive y/N on a TTY; `--yes`/`-y` skips it; on a
  * non-TTY without `--yes` it prints the plan and exits without acting.
  */
+function printResetUsage(out: Pick<typeof process.stderr, "write">): void {
+  out.write(
+    [
+      "Usage: kobe reset [--hard] [--yes]",
+      "",
+      "Recover a wedged install: stop the daemon (graceful → SIGTERM → SIGKILL),",
+      "remove its socket + pidfile, and kill all kobe tmux sessions.",
+      "Never touches your git worktrees.",
+      "",
+      "Options:",
+      "  --hard        Also wipe the task index + UI state",
+      "  -y, --yes     Skip the interactive confirmation",
+      "  -h, --help    Print this help",
+      "",
+    ].join("\n"),
+  )
+}
+
 export async function runResetSubcommand(argv: readonly string[]): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
+    printResetUsage(process.stdout)
+    return
+  }
+  // Reject any unrecognized flag with usage instead of silently ignoring
+  // it — a typo like `--harf` must not quietly run a soft reset.
+  const known = new Set(["--hard", "--yes", "-y"])
+  const unknown = argv.find((a) => !known.has(a))
+  if (unknown !== undefined) {
+    process.stderr.write(`kobe reset: unknown argument "${unknown}"\n\n`)
+    printResetUsage(process.stderr)
+    process.exit(2)
+  }
+
   const hard = argv.includes("--hard")
   const yes = argv.includes("--yes") || argv.includes("-y")
 

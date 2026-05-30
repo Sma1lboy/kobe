@@ -15,10 +15,30 @@ import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile, startDaemonServer } from "../daemon/server.ts"
 
+function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
+  out.write(
+    [
+      "Usage: kobe daemon <command>",
+      "",
+      "Commands:",
+      "  status     Print the running daemon's status JSON (default)",
+      "  start      Run the daemon in the foreground (this process becomes it)",
+      "  stop       Ask the running daemon to shut down",
+      "  restart    Stop the daemon (graceful → SIGTERM → SIGKILL) and respawn it",
+      "",
+    ].join("\n"),
+  )
+}
+
 export async function runDaemonSubcommand(argv: readonly string[]): Promise<void> {
   const [command = "status"] = argv
   const socketPath = defaultDaemonSocketPath()
   const pidPath = defaultDaemonPidPath()
+
+  if (command === "--help" || command === "-h" || command === "help") {
+    printDaemonUsage(process.stdout)
+    return
+  }
 
   if (command === "status") {
     const client = new KobeDaemonClient(socketPath)
@@ -61,7 +81,8 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
   }
 
   if (command !== "start") {
-    console.error("usage: kobe daemon start|stop|status|restart")
+    process.stderr.write(`kobe daemon: unknown command "${command}"\n\n`)
+    printDaemonUsage(process.stderr)
     process.exit(2)
   }
 

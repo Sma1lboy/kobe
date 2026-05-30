@@ -23,11 +23,6 @@ type RunDeps = {
   exit: (code: number) => never
 }
 
-function fail(message: string): never {
-  process.stderr.write(`kobe update: ${message}\n`)
-  process.exit(1)
-}
-
 export function updatePlan(): UpdatePlan {
   return {
     command: "sh",
@@ -51,7 +46,12 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
       dryRun = true
       continue
     }
-    fail(`unknown argument "${arg}"`)
+    // Malformed invocation → show the error AND the usage, exit 2. An
+    // agent that guesses a flag wrong should land on the instruction
+    // surface, not a bare one-liner.
+    process.stderr.write(`kobe update: unknown argument "${arg}"\n\n`)
+    printUsage(process.stderr)
+    process.exit(2)
   }
 
   return { help: false, dryRun }
