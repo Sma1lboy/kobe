@@ -35,15 +35,15 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand } from "@/engine/interactive-command"
 import {
   claudePaneIdStrict,
-  getSessionOption,
+  getSessionOptions,
   paneIdByRole,
   runTmux,
   runTmuxCapturing,
+  runTmuxSequence,
+  runTmuxSequenceCapturing,
   sendKeys,
   sessionExists,
   setSessionOption,
-  tagClaudePane,
-  tagPaneRole,
   windowCount,
 } from "@/tmux/client"
 import {
@@ -149,8 +149,9 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
 
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   if (await sessionExists(opts.name)) {
-    const taggedWorktree = await getSessionOption(opts.name, "@kobe_worktree")
-    const taggedVendor = await getSessionOption(opts.name, "@kobe_vendor")
+    const sessionOptions = await getSessionOptions(opts.name, ["@kobe_worktree", "@kobe_vendor"])
+    const taggedWorktree = sessionOptions["@kobe_worktree"] ?? ""
+    const taggedVendor = sessionOptions["@kobe_vendor"] ?? ""
     // Reuse ONLY a healthy session that matches this task. We key health
     // off the LOAD-BEARING claude pane (its `@kobe_role=claude` tag in the
     // active window), NOT a raw pane COUNT. Rationale + failure modes:
@@ -231,9 +232,11 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 
   // Tag the session with the task id + worktree so `kobe new-chattab`
   // (the Ctrl+T handler) can rebuild the same workspace in a new window.
-  if (opts.taskId) await setSessionOption(opts.name, "@kobe_task", opts.taskId)
-  await setSessionOption(opts.name, "@kobe_worktree", opts.cwd)
-  if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
+  await runTmuxSequence([
+    ...(opts.taskId ? ([["set-option", "-t", opts.name, "@kobe_task", opts.taskId]] as const) : []),
+    ["set-option", "-t", opts.name, "@kobe_worktree", opts.cwd],
+    ...(opts.vendor ? ([["set-option", "-t", opts.name, "@kobe_vendor", opts.vendor]] as const) : []),
+  ])
 
   await buildPanesAround(pane0, {
     cwd: opts.cwd,
@@ -260,14 +263,11 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the config file), so the user's own status-bar theme applies.
   // The session name (`kobe-<task-id>`, shown via the user's
   // default `#S` in status-left) is the only identity we impose.
-  await runTmux(["set-option", "-g", "status", "on"])
   // Mouse: ON. The Tasks pane's click-to-switch and the Ops FileTree's
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
   // kobe` socket so the feature doesn't depend on the user's config.
-  await runTmux(["set-option", "-g", "mouse", "on"])
   // No-prefix Ctrl+Q detaches back to the kobe outer monitor.
-  await runTmux(["bind-key", "-n", "C-q", "detach-client"])
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
   // vim-tmux-navigator convention. (Ctrl+1/2/3 was tried first but
   // terminals can't encode Ctrl+<digit> without the kitty protocol, so
@@ -277,10 +277,6 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // untouched. Trade-off: this shadows readline Ctrl+k (kill-line) /
   // Ctrl+l (clear) inside the claude + shell panes; acceptable for the
   // pane-nav win, and the prefix (Ctrl+B arrows) still works too.
-  await runTmux(["bind-key", "-n", "C-h", "select-pane", "-L"])
-  await runTmux(["bind-key", "-n", "C-j", "select-pane", "-D"])
-  await runTmux(["bind-key", "-n", "C-k", "select-pane", "-U"])
-  await runTmux(["bind-key", "-n", "C-l", "select-pane", "-R"])
   // Ctrl+T opens a new chat tab = a new window with its own claude
   // (fresh conversation) + the same panes, on the same worktree. The
   // window status bar becomes the chat-tab switcher (Ctrl+B n/p too).
@@ -299,10 +295,6 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // `quick-create` spawn against the SAME home + daemon as this monitor.
   const envStr = inheritedEnvPrefix()
   const invStr = inv.map(shellQuote).join(" ")
-  await runTmux(["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`])
-  for (const binding of CHAT_TAB_SWITCH_BINDINGS) await runTmux([...binding])
-  await runTmux([...CHAT_TAB_CLOSE_BINDING])
-  await runTmux([...CHAT_TAB_RENAME_BINDING])
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and
@@ -313,7 +305,20 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
   // two-key chord but conflict-free; the prefix is whatever the user's
   // own tmux.conf sets (we load it on the `-L kobe` socket).
-  await runTmux(["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`])
+  await runTmuxSequence([
+    ["set-option", "-g", "status", "on"],
+    ["set-option", "-g", "mouse", "on"],
+    ["bind-key", "-n", "C-q", "detach-client"],
+    ["bind-key", "-n", "C-h", "select-pane", "-L"],
+    ["bind-key", "-n", "C-j", "select-pane", "-D"],
+    ["bind-key", "-n", "C-k", "select-pane", "-U"],
+    ["bind-key", "-n", "C-l", "select-pane", "-R"],
+    ["bind-key", "-n", "C-t", "run-shell", `${envStr}${invStr} new-chattab --session '#{session_name}'`],
+    ...CHAT_TAB_SWITCH_BINDINGS,
+    CHAT_TAB_CLOSE_BINDING,
+    CHAT_TAB_RENAME_BINDING,
+    ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
+  ])
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
@@ -389,37 +394,15 @@ async function buildPanesAround(
   // Tag claude by a pane user-option — tmux renumbers panes by
   // position when the Tasks pane is inserted on the left, so the
   // monitor can't rely on "first pane" to find claude (KOB-233).
-  await tagClaudePane(claudePane)
+  const envPrefix = inheritedEnvPrefix()
 
   // Tasks pane to the LEFT (`-hb` inserts before). Task list that
   // switch-clients between task sessions + creates tasks. Tagged
   // `@kobe_role=tasks` so the Ctrl+F quick-create handler can re-find
   // it regardless of tmux's by-position pane numbering.
-  const rTasks = await runTmuxCapturing([
-    "split-window",
-    "-h",
-    "-b",
-    "-t",
-    claudePane,
-    "-l",
-    // Fixed cell width (no `%`) so the Tasks rail is the same size in every
-    // window + across engine rebuilds (KOB-248).
-    `${TASKS_PANE_WIDTH}`,
-    "-c",
-    args.cwd,
-    "-P",
-    "-F",
-    "#{pane_id}",
-    keepAlive(inheritedEnvPrefix() + tasksPaneCommand(args.inv)),
-  ])
-  const tasksPane = rTasks.stdout.trim()
-  if (tasksPane) await tagPaneRole(tasksPane, "tasks")
-
-  // Ops pane (right column). Uses the claude pane id as its
-  // `--target-pane` for `@file` mention injection.
   const opsCmd = keepAlive(
     args.opsCommand ??
-      inheritedEnvPrefix() +
+      envPrefix +
         opsPaneCommand({
           cwd: args.cwd,
           taskId: args.taskId,
@@ -428,31 +411,56 @@ async function buildPanesAround(
           vendor: args.vendor,
         }),
   )
-  const r1 = await runTmuxCapturing([
-    "split-window",
-    "-h",
-    "-t",
-    claudePane,
-    "-l",
-    `${100 - CLAUDE_PANE_PERCENT}%`,
-    "-c",
-    args.cwd,
-    "-P",
-    "-F",
-    "#{pane_id}",
-    opsCmd,
-  ])
-  const opsPane = r1.stdout.trim()
-  // Tag the Ops pane by role so it's re-findable regardless of tmux's
-  // by-position pane numbering (mirrors the claude/tasks tags) — lets a
-  // future heal/recreate path target it without counting panes.
-  if (opsPane) await tagPaneRole(opsPane, "ops")
 
-  // shell pane (right-bottom) — no command, tmux's default $SHELL.
-  if (opsPane) {
-    await runTmux(["split-window", "-v", "-t", opsPane, "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", args.cwd])
-  }
-  await runTmux(["select-pane", "-t", claudePane])
+  // Ops pane (right column). Uses the claude pane id as its
+  // `--target-pane` for `@file` mention injection.
+  const { stdout } = await runTmuxSequenceCapturing([
+    ["set-option", "-p", "-t", claudePane, "@kobe_role", "claude"],
+    [
+      "split-window",
+      "-h",
+      "-b",
+      "-t",
+      claudePane,
+      "-l",
+      // Fixed cell width (no `%`) so the Tasks rail is the same size in every
+      // window + across engine rebuilds (KOB-248).
+      `${TASKS_PANE_WIDTH}`,
+      "-c",
+      args.cwd,
+      "-P",
+      "-F",
+      "tasks=#{pane_id}",
+      keepAlive(envPrefix + tasksPaneCommand(args.inv)),
+    ],
+    [
+      "split-window",
+      "-h",
+      "-t",
+      claudePane,
+      "-l",
+      `${100 - CLAUDE_PANE_PERCENT}%`,
+      "-c",
+      args.cwd,
+      "-P",
+      "-F",
+      "ops=#{pane_id}",
+      opsCmd,
+    ],
+    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", args.cwd],
+    ["select-pane", "-t", claudePane],
+  ])
+  const ids = Object.fromEntries(
+    stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.split("=", 2)),
+  )
+  await runTmuxSequence([
+    ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, "@kobe_role", "tasks"]] as const) : []),
+    ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", "ops"]] as const) : []),
+  ])
 }
 
 /**
@@ -465,9 +473,10 @@ async function buildPanesAround(
  */
 export async function newChatTab(session: string): Promise<void> {
   if (!(await sessionExists(session))) return
-  const cwd = (await getSessionOption(session, "@kobe_worktree")) || process.cwd()
-  const taskId = (await getSessionOption(session, "@kobe_task")) || undefined
-  const vendor = (await getSessionOption(session, "@kobe_vendor")) || undefined
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const taskId = sessionOptions["@kobe_task"] || undefined
+  const vendor = sessionOptions["@kobe_vendor"] || undefined
   const command = interactiveEngineCommand(vendor as VendorId | undefined)
   const inv = kobeCliInvocation()
   const r = await runTmuxCapturing([

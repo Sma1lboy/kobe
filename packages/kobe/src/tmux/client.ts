@@ -82,6 +82,23 @@ export async function runTmux(args: string[]): Promise<number> {
   return code
 }
 
+/** Flatten several tmux commands into one `tmux cmd \; cmd ...` invocation. */
+export function tmuxCommandSequence(commands: readonly (readonly string[])[]): string[] {
+  const out: string[] = []
+  for (const cmd of commands) {
+    if (cmd.length === 0) continue
+    if (out.length > 0) out.push(";")
+    out.push(...cmd)
+  }
+  return out
+}
+
+/** Run several tmux commands in one process. */
+export async function runTmuxSequence(commands: readonly (readonly string[])[]): Promise<number> {
+  const args = tmuxCommandSequence(commands)
+  return args.length === 0 ? 0 : runTmux(args)
+}
+
 /**
  * Run a tmux command and capture stdout (stderr logged on failure).
  * Both streams are drained concurrently with the exit so neither a full
@@ -95,6 +112,14 @@ export async function runTmuxCapturing(args: string[]): Promise<{ code: number; 
     console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
   }
   return { code, stdout }
+}
+
+/** Run several tmux commands in one process and capture combined stdout. */
+export async function runTmuxSequenceCapturing(
+  commands: readonly (readonly string[])[],
+): Promise<{ code: number; stdout: string }> {
+  const args = tmuxCommandSequence(commands)
+  return args.length === 0 ? { code: 0, stdout: "" } : runTmuxCapturing(args)
 }
 
 /** Is the `tmux` binary on PATH? */
@@ -142,6 +167,25 @@ export async function setSessionOption(session: string, option: string, value: s
 export async function getSessionOption(session: string, option: string): Promise<string> {
   const { code, stdout } = await runTmuxCapturing(["show-options", "-v", "-t", session, option])
   return code === 0 ? stdout.trim() : ""
+}
+
+/** Read several session-scoped user options in one tmux process. */
+export async function getSessionOptions(
+  session: string,
+  options: readonly string[],
+): Promise<Record<string, string | undefined>> {
+  const values: Record<string, string | undefined> = Object.fromEntries(options.map((option) => [option, undefined]))
+  const { code, stdout } = await runTmuxSequenceCapturing(
+    options.map((option) => ["show-options", "-q", "-t", session, option]),
+  )
+  if (code !== 0) return values
+  for (const line of stdout.split("\n")) {
+    const idx = line.indexOf(" ")
+    if (idx <= 0) continue
+    const option = line.slice(0, idx)
+    if (option in values) values[option] = line.slice(idx + 1).trim()
+  }
+  return values
 }
 
 /** Per-pane user option marking a pane's role (set by `ensureSession`). */

@@ -25,6 +25,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **The default task/sidebar panel is now 12 cells wide** — new installs and invalid saved widths start with the same compact rail width as the in-session Tasks pane, instead of the old 42-cell history rail (KOB-259).
+- **Tmux handover window setup is batched** — creating the first task window and new Ctrl+T ChatTabs now performs session tags, pane splits, pane role tags, and server keybindings through far fewer tmux subprocess round trips, making the kobe-level window/init path feel less sticky.
 
 ## [0.6.1] - 2026-05-29
 
