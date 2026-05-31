@@ -221,6 +221,20 @@ export const MAIN_BRANCH_POLL_MS = 2_000
  */
 export const CHANGES_COLUMN_WIDTH = 5
 
+/**
+ * Max width (cells) for a task row's branch label. The rail is narrow, so
+ * a long branch is truncated keeping its PREFIX (`feat/long-branch…`) —
+ * the front of a branch name carries the type/scope the eye scans for,
+ * the tail is usually a redundant slug. Exported for tests.
+ */
+export const BRANCH_LABEL_MAX = 16
+
+/** Truncate keeping the prefix, with a trailing ellipsis when clipped. */
+export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): string {
+  if (branch.length <= max) return branch
+  return `${branch.slice(0, Math.max(0, max - 1))}…`
+}
+
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
 
@@ -661,15 +675,28 @@ export function Sidebar(props: SidebarProps) {
                       </text>
                     </Show>
                   </box>
-                  {/* Branch label + pin marker — wrapped so they don't
-                      collide with the changes column on the left, and so
-                      the row stays clean (no empty container) when there
-                      is nothing to show. */}
-                  <Show when={(isMain && branchLabel().length > 0) || (!isMain && task.pinned === true)}>
-                    <box flexDirection="row" gap={1} paddingLeft={1}>
+                  {/* Branch label + pin marker — right-aligned (flex-end)
+                      so labels line up against the rail's right edge,
+                      wrapped so they don't collide with the changes column
+                      on the left, and so the row stays clean (no empty
+                      container) when there is nothing to show. Main rows
+                      show the live HEAD branch; task rows show their own
+                      `task.branch`, prefix-truncated for the narrow rail. */}
+                  <Show
+                    when={
+                      (isMain && branchLabel().length > 0) ||
+                      (!isMain && (task.branch.length > 0 || task.pinned === true))
+                    }
+                  >
+                    <box flexDirection="row" justifyContent="flex-end" gap={1} paddingLeft={1} flexShrink={0}>
                       <Show when={isMain && branchLabel().length > 0}>
                         <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
                           {branchLabel()}
+                        </text>
+                      </Show>
+                      <Show when={!isMain && task.branch.length > 0}>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+                          {truncateBranchLabel(task.branch)}
                         </text>
                       </Show>
                       <Show when={!isMain && task.pinned === true}>
