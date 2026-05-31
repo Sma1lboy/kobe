@@ -2,7 +2,12 @@ refs/
 node_modules/
 dist/
 release-bin/
-.kobe/
+# Ignore kobe's runtime state under .kobe/ but keep the committed per-repo
+# init convention files (`kobe repo` / state/repo-init.ts) — they're meant
+# to be version-controlled. Same `/*` + `!` pattern as `.claude/` below.
+.kobe/*
+!.kobe/init.sh
+!.kobe/init-prompt.md
 # Ignore everything under .claude/ except the project-scoped skills
 # directory — those need to live in the repo so Claude Code users
 # pick them up automatically. (Trailing `/*` instead of `/` lets the
