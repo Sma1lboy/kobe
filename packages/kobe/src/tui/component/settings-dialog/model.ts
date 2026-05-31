@@ -37,7 +37,9 @@ export function devRowCount(hasDaemon: boolean): number {
 }
 
 export function generalRowCount(themeCount: number, focusAccentCount: number): number {
-  return themeCount + 1 + focusAccentCount + 2
+  // themes + transparent(1) + focus accents + toast(1) + sound(1)
+  //   + settings surface: ChatTab(1) + Task panel(1)
+  return themeCount + 1 + focusAccentCount + 4
 }
 
 export function bodyRowCount(
@@ -71,4 +73,16 @@ export function toastRowIndex(themeCount: number, focusAccentCount: number): num
 
 export function soundRowIndex(themeCount: number, focusAccentCount: number): number {
   return toastRowIndex(themeCount, focusAccentCount) + 1
+}
+
+/**
+ * The "Settings page" surface picker — two explicit, mutually-exclusive
+ * checkbox rows at the end of the General section: ChatTab then Task panel.
+ */
+export function surfaceChattabRowIndex(themeCount: number, focusAccentCount: number): number {
+  return soundRowIndex(themeCount, focusAccentCount) + 1
+}
+
+export function surfaceTaskpanelRowIndex(themeCount: number, focusAccentCount: number): number {
+  return surfaceChattabRowIndex(themeCount, focusAccentCount) + 1
 }

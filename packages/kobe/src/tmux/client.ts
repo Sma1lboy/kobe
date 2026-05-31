@@ -312,6 +312,22 @@ export async function newWindow(session: string, opts: { cwd: string; command: s
   await runTmux(args)
 }
 
+/**
+ * The session this process is running inside, resolved from `$TMUX_PANE`
+ * (set by tmux for every pane command). Returns `null` when we're not in
+ * a kobe tmux pane (e.g. the outer monitor) or tmux can't answer — the
+ * caller then falls back to the in-pane dialog surface.
+ */
+export async function currentSessionName(): Promise<string | null> {
+  const args = ["display-message", "-p"]
+  const target = process.env.TMUX_PANE
+  if (target && target.length > 0) args.push("-t", target)
+  args.push("#{session_name}")
+  const { code, stdout } = await runTmuxCapturing(args)
+  const name = stdout.trim()
+  return code === 0 && name.length > 0 ? name : null
+}
+
 /** Kill a session (if any). */
 export async function killSession(name: string): Promise<void> {
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])

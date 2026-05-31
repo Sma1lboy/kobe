@@ -242,6 +242,8 @@ interface OpsFlags {
   preview?: string
   /** tmux session name (used by `new-chattab`). */
   session?: string
+  /** Default repo to pre-select (used by `new-task`). */
+  repo?: string
 }
 
 /** Parse `kobe ops` / `kobe new-chattab` flags. */
@@ -268,6 +270,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--session") {
       flags.session = value
+      i++
+    } else if (flag === "--repo") {
+      flags.repo = value
       i++
     }
   }
@@ -382,6 +387,25 @@ async function main(): Promise<void> {
     // a read-only task list that `switch-client`s between sessions.
     const { startTasksPane } = await import("../tui/tasks-pane/host.tsx")
     await startTasksPane()
+    return
+  }
+  if (subcommand === "settings") {
+    // The Settings page as a standalone full-window surface (the default
+    // `chattab` settings surface). Opened by `openSettingsTab` as a new
+    // tmux window; reuses the same SettingsDialog the in-pane overlay
+    // uses. Dynamic import keeps opentui off the other subcommands' path.
+    const { startSettingsHost } = await import("../tui/settings/host.tsx")
+    await startSettingsHost()
+    return
+  }
+  if (subcommand === "new-task") {
+    // The new-task flow as a standalone full-window page (the default
+    // `chattab` settings surface). Opened by `openNewTaskTab`; reuses the
+    // same NewTaskDialog the in-pane overlay uses and performs the
+    // create/adopt against its own daemon connection before exiting.
+    const flags = parseOpsFlags(rest)
+    const { startNewTaskHost } = await import("../tui/new-task/host.tsx")
+    await startNewTaskHost({ defaultRepo: flags.repo })
     return
   }
   if (subcommand === "ops") {

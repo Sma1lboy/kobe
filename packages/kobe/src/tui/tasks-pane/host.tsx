@@ -34,7 +34,14 @@
  */
 
 import { existsSync } from "node:fs"
-import { getSessionOption, killSession, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
+import {
+  currentSessionName,
+  getSessionOption,
+  killSession,
+  runTmux,
+  sessionExists,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
@@ -57,9 +64,10 @@ import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
-import { ensureSession } from "../panes/terminal/tmux.ts"
+import { ensureSession, openNewTaskTab, openSettingsTab } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -120,12 +128,6 @@ function TasksShell(props: {
   // the outer app's "spawn a sibling" default. Backlog task (worktree
   // lazy on first enter); list reloads immediately after.
   async function createTask(): Promise<void> {
-    // Show the dialog IN the Tasks pane without zooming it full-window
-    // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
-    // panes for the dialog's lifetime, which felt like the whole layout
-    // "popped out". The dialog overlay already caps to the pane width
-    // (`maxWidth = dimensions().width - 2`), so it renders fine in the
-    // ~22%-wide pane — just narrower — and the other panes stay visible.
     const repos = getSavedRepos()
     const list = props.tasks()
     const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
@@ -135,6 +137,27 @@ function TasksShell(props: {
     // directory browser). Otherwise default to the cursor task's repo
     // (the "spawn a sibling" default).
     const defaultRepo = cursorRepo ?? repos[0] ?? process.cwd()
+
+    // Same surface preference as Settings (default chattab): open the
+    // new-task flow as a dedicated full-window page in a new tmux tab.
+    // The page performs the create/adopt itself and the subscribe pushes
+    // the new task back into this list. Fall back to the in-pane overlay
+    // if we can't resolve our tmux session.
+    const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+    if (surface === "chattab") {
+      const session = await currentSessionName()
+      if (session) {
+        await openNewTaskTab(session, defaultRepo)
+        return
+      }
+    }
+
+    // Show the dialog IN the Tasks pane without zooming it full-window
+    // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
+    // panes for the dialog's lifetime, which felt like the whole layout
+    // "popped out". The dialog overlay already caps to the pane width
+    // (`maxWidth = dimensions().width - 2`), so it renders fine in the
+    // ~22%-wide pane — just narrower — and the other panes stay visible.
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
@@ -182,7 +205,19 @@ function TasksShell(props: {
     if (createdId) setSelectedId(createdId)
   }
 
-  function openSettings(): void {
+  // Settings opens on the user's chosen surface (default chattab): a
+  // dedicated full-window `kobe settings` page opened as a new tmux tab,
+  // or the in-pane SettingsDialog overlay. If we can't resolve our tmux
+  // session (e.g. running outside a kobe pane), fall back to the overlay.
+  async function openSettings(): Promise<void> {
+    const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+    if (surface === "chattab") {
+      const session = await currentSessionName()
+      if (session) {
+        await openSettingsTab(session)
+        return
+      }
+    }
     void SettingsDialog.show(dialog, kv, props.orch ?? undefined)
   }
 
@@ -340,7 +375,7 @@ function TasksShell(props: {
     enabled: dialog.stack.length === 0,
     bindings: [
       { key: "n", cmd: () => void createTask() },
-      { key: "s", cmd: () => openSettings() },
+      { key: "s", cmd: () => void openSettings() },
       {
         key: "o",
         cmd: () => {
