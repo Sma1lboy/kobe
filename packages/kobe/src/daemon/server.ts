@@ -34,6 +34,21 @@ import {
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
 
+/**
+ * Grace before a subscriber-less daemon self-stops (refcounted lazy
+ * shutdown). The window absorbs reconnect races — `manualReconnect()`
+ * force-disconnects then re-subscribes, briefly dropping to zero — so a
+ * blip doesn't tear the daemon down. Override via `KOBE_DAEMON_IDLE_GRACE_MS`.
+ */
+const DEFAULT_IDLE_GRACE_MS = 3000
+
+function resolveIdleGraceMs(): number {
+  const raw = process.env.KOBE_DAEMON_IDLE_GRACE_MS
+  if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
+}
+
 export interface DaemonServerOptions {
   readonly socketPath?: string
   readonly pidPath?: string
@@ -73,6 +88,44 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const clients = new Set<ClientState>()
   let nextClientId = 1
 
+  // Refcounted lazy shutdown (KOB): the daemon's lifetime is bound to the
+  // number of attached GUIs — a subscribed TUI client. CLI pokes (hello-only
+  // status/stop, `daemon restart`) never subscribe, so they never count and
+  // never trip shutdown. When the LAST subscriber disconnects we wait a short
+  // grace then self-stop. We arm only on a >0 → 0 transition (never on boot),
+  // so a deliberately-foreground `kobe daemon start` or a freshly-respawned
+  // `kobe daemon restart` daemon — both subscriber-less by design — stay up.
+  // Shutdown runs the normal `stopSoon()` path, which NEVER touches tmux:
+  // task sessions outlive the daemon (only `kobe reset` / `kobe kill-sessions`
+  // tear tmux down, via `tmux -L kobe kill-server`).
+  const idleGraceMs = resolveIdleGraceMs()
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  let stopping = false
+
+  function subscriberCount(): number {
+    let n = 0
+    for (const c of clients) if (c.subscribed) n++
+    return n
+  }
+
+  function cancelIdleTimer(): void {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+
+  function maybeArmIdleShutdown(): void {
+    if (stopping || subscriberCount() > 0) return
+    cancelIdleTimer()
+    idleTimer = setTimeout(() => {
+      idleTimer = null
+      if (stopping || subscriberCount() > 0) return
+      void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err))
+    }, idleGraceMs)
+    idleTimer.unref?.()
+  }
+
   // Channel event bus (KOB-246): the single hub the daemon publishes push
   // events to. One sink fans each publish out to subscribed sockets; the
   // bus also caches the last value per channel so a late subscriber gets
@@ -104,6 +157,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     socket.on("error", () => {})
     socket.on("close", () => {
       clients.delete(client)
+      // Last GUI gone → start the grace timer toward self-stop. A non-GUI
+      // socket (never subscribed) leaves the count unchanged, so transient
+      // CLI commands never arm it.
+      if (client.subscribed) maybeArmIdleShutdown()
     })
   })
 
@@ -142,8 +199,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     startedAt,
     clients,
     async close() {
+      stopping = true
+      cancelIdleTimer()
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
+      // tmux is intentionally untouched here: closing the daemon never tears
+      // down task sessions. Session teardown lives ONLY in `kobe reset` /
+      // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
       broadcast(clients, { type: "event", name: "daemon.stopping", payload: {} })
       for (const client of Array.from(clients)) {
         client.socket.destroy()
@@ -164,6 +226,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   await writeFile(pidPath, `${process.pid}\n`, "utf8")
 
   async function stopSoon(): Promise<void> {
+    if (stopping) return
+    stopping = true
+    cancelIdleTimer()
     await options.onStop?.()
     setTimeout(() => {
       serverApi.close().catch((err) => logDaemonError("daemon-shutdown", err))
@@ -207,7 +272,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           daemonPid: process.pid,
           uptimeMs: Date.now() - startedAt.getTime(),
           startedAt: startedAt.toISOString(),
-          attachedClients: clients.size,
+          // Attached GUIs (subscribed TUIs) — the refcount that keeps the
+          // daemon alive — not raw socket count (excludes transient CLI pokes).
+          attachedClients: subscriberCount(),
           taskCount: orch.listTasks().length,
           socketPath,
         }
@@ -316,6 +383,8 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "subscribe": {
         client.subscribed = true
+        // A GUI (re)attached — cancel any pending lazy-shutdown grace.
+        cancelIdleTimer()
         // Replay the current value of every populated channel so a late
         // subscriber hydrates without a separate round trip — generalized
         // from the old single task.snapshot send (KOB-246). `payload.channels`
