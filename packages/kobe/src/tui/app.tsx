@@ -24,13 +24,8 @@
 import { homedir } from "node:os"
 import { render, useRenderer } from "@opentui/solid"
 import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
-import {
-  connectOrStartDaemon,
-  connectOrStartOwnedDaemon,
-  ensureOwnedDaemonReachable,
-} from "../client/daemon-process.ts"
+import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
-import { type TuiDaemonMode, resolveDaemonMode } from "../daemon/mode.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
@@ -71,7 +66,6 @@ const DEFAULT_THEME = "claude"
 
 type AppDeps = {
   orchestrator: KobeOrchestrator
-  onQuit?: () => Promise<void>
 }
 
 function Shell(props: AppDeps) {
@@ -263,7 +257,6 @@ function Shell(props: AppDeps) {
     } catch (err) {
       console.error("kobe: renderer.destroy() failed during quit:", err)
     }
-    void props.onQuit?.().catch(() => {})
     process.exit(0)
   }
 
@@ -583,7 +576,7 @@ function App(props: AppDeps) {
             <DialogProvider>
               <CommandPaletteProvider>
                 <FocusProvider initial="sidebar">
-                  <Shell orchestrator={props.orchestrator} onQuit={props.onQuit} />
+                  <Shell orchestrator={props.orchestrator} />
                 </FocusProvider>
               </CommandPaletteProvider>
             </DialogProvider>
@@ -594,47 +587,26 @@ function App(props: AppDeps) {
   )
 }
 
-export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Promise<void> {
+export async function startApp(): Promise<void> {
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   let orchestrator: KobeOrchestrator
-  let stopOwnedDaemon: (() => Promise<void>) | undefined
-  let ownedDaemonStopped = false
-  const stopOwnedDaemonOnce = async (): Promise<void> => {
-    if (ownedDaemonStopped) return
-    ownedDaemonStopped = true
-    await stopOwnedDaemon?.()
-  }
   if (process.env.KOBE_NO_DAEMON === "1") {
     const store = new TaskIndexStore({ homeDir })
     await store.load()
     const worktrees = new GitWorktreeManager()
     orchestrator = new Orchestrator({ store, worktrees })
   } else {
-    const daemonMode = resolveDaemonMode(options.daemonMode)
-    let daemonSocketPath: string
-    if (daemonMode === "shared") {
-      const client = await connectOrStartDaemon()
-      daemonSocketPath = client.socketPath
-      orchestrator = new RemoteOrchestrator(client)
-    } else {
-      const owned = await connectOrStartOwnedDaemon()
-      stopOwnedDaemon = owned.stop
-      daemonSocketPath = owned.socketPath
-      orchestrator = new RemoteOrchestrator(owned.client, {
-        ensureReachable: () => ensureOwnedDaemonReachable(owned.socketPath, owned.pidPath),
-      })
-    }
-    // Propagate THIS daemon's socket so every in-session client connects
-    // to the SAME daemon, not a separate stable one. The tmux server +
-    // all panes (Tasks pane, quick-create, ops) inherit this env, so a
-    // task created / renamed / re-vendored from inside a session lands on
-    // the daemon the outer monitor subscribes to — keeping all panels in
-    // sync (KOB-233). Owned mode uses a per-pid socket that the stable
-    // `defaultDaemonSocketPath` would otherwise miss.
-    process.env.KOBE_DAEMON_SOCKET_PATH = daemonSocketPath
+    const client = await connectOrStartDaemon()
+    orchestrator = new RemoteOrchestrator(client)
+    // Propagate the daemon's socket so every in-session client connects to
+    // the SAME daemon. The tmux server + all panes (Tasks pane, quick-create,
+    // ops) inherit this env, so a task created / renamed / re-vendored from
+    // inside a session lands on the daemon the outer monitor subscribes to —
+    // keeping all panels in sync (KOB-233).
+    process.env.KOBE_DAEMON_SOCKET_PATH = client.socketPath
     await orchestrator.init()
   }
   normalizeSavedRepos()
@@ -645,13 +617,10 @@ export async function startApp(options: { daemonMode?: TuiDaemonMode } = {}): Pr
       console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
     }
   }
-  await render(() => <App orchestrator={orchestrator} onQuit={stopOwnedDaemonOnce} />, {
+  await render(() => <App orchestrator={orchestrator} />, {
     backgroundColor: "transparent",
     externalOutputMode: "passthrough",
     exitOnCtrlC: false,
-    onDestroy: () => {
-      void stopOwnedDaemonOnce().catch(() => {})
-    },
     screenMode: "alternate-screen",
     useKittyKeyboard: {},
   })

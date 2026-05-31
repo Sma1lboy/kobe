@@ -25,8 +25,6 @@ export function topLevelUsage(): string {
     "  kill-sessions           Tear down kobe's tmux server (dev reset)",
     "",
     "Options:",
-    "  --daemon                Launch the TUI against a shared daemon",
-    "  --single                Launch the TUI with its own daemon",
     "  -v, --version           Print version",
     "  -h, --help              Print this help",
   ].join("\n")

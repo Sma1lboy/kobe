@@ -33,7 +33,6 @@ import { resolve } from "node:path"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
-import { parseCliArgs } from "./daemon-mode.ts"
 import { topLevelUsage } from "./usage.ts"
 
 async function runAddSubcommand(arg: string | undefined): Promise<void> {
@@ -277,14 +276,7 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
 
 async function main(): Promise<void> {
   const [, , ...rawArgs] = process.argv
-  let parsed: ReturnType<typeof parseCliArgs>
-  try {
-    parsed = parseCliArgs(rawArgs)
-  } catch (err) {
-    console.error(`kobe: ${err instanceof Error ? err.message : String(err)}`)
-    process.exit(2)
-  }
-  const [subcommand, ...rest] = parsed.args
+  const [subcommand, ...rest] = rawArgs
 
   if (subcommand === "--version" || subcommand === "-v" || subcommand === "version") {
     const { CURRENT_VERSION } = await import("../version.ts")
@@ -431,7 +423,7 @@ async function main(): Promise<void> {
   // Default: launch the TUI. Dynamic import so non-TUI subcommands
   // (like `kobe add`) don't pull in opentui/solid at startup.
   const { startTui } = await import("../tui/index.tsx")
-  await startTui({ daemonMode: parsed.daemonMode })
+  await startTui()
 }
 
 main().catch((err) => {
