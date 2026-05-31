@@ -8,6 +8,7 @@
 import { describe, expect, test } from "vitest"
 import {
   TASKS_PANE_WIDTH,
+  engineLaunchLine,
   fallbackOpsScript,
   keepAlive,
   opsPaneCommand,
@@ -134,5 +135,43 @@ describe("fallbackOpsScript", () => {
     expect(s).toContain("git status --short --branch")
     expect(s).toContain("while :;")
     expect(s).toContain("sleep 2")
+  })
+})
+
+describe("engineLaunchLine", () => {
+  const engine = shellQuoteArgv(["claude"])
+
+  test("no init script → plain keepAlive", () => {
+    expect(engineLaunchLine(engine)).toBe(keepAlive(engine))
+    expect(engineLaunchLine(engine, { initScript: "   " })).toBe(keepAlive(engine))
+  })
+
+  test("init without a marker runs every launch, in a brace group (not a subshell)", () => {
+    const line = engineLaunchLine(engine, { initScript: "export FOO=1" })
+    // brace group so `export` reaches the engine — NOT a `( … )` subshell.
+    expect(line).toContain("{\nexport FOO=1\n}")
+    expect(line).not.toContain("(\nexport FOO=1\n)")
+    // engine + keepAlive tail still present, and no marker guard.
+    expect(line.endsWith(keepAlive(engine))).toBe(true)
+    expect(line).not.toContain("[ ! -f")
+  })
+
+  test("init with a marker is once-per-worktree and touched only on success", () => {
+    const line = engineLaunchLine(engine, {
+      initScript: "sh .kobe/init.sh",
+      markerPath: "/home/.kobe/worktree-init/ab",
+    })
+    // guard: run only when the marker is absent
+    expect(line).toContain("if [ ! -f '/home/.kobe/worktree-init/ab' ]; then")
+    // success-gate the touch ($? after the group), and mkdir the parent
+    expect(line).toContain(
+      "if [ $? -eq 0 ]; then mkdir -p '/home/.kobe/worktree-init' && : > '/home/.kobe/worktree-init/ab'; fi",
+    )
+    expect(line.endsWith(keepAlive(engine))).toBe(true)
+  })
+
+  test("single-quotes in the marker path are escaped", () => {
+    const line = engineLaunchLine(engine, { initScript: "x", markerPath: "/a'b/m" })
+    expect(line).toContain("'/a'\\''b/m'")
   })
 })

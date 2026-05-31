@@ -51,6 +51,7 @@ import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
+import { resolveRepoInit } from "../../state/repo-init.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendor } from "../../types/vendor.ts"
@@ -457,12 +458,15 @@ function TasksShell(props: {
       await props.reload()
     }
     if (!cwd || !existsSync(cwd)) return
+    const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
     const ready = await ensureSession({
       name,
       cwd,
       command: interactiveEngineCommand(task?.vendor),
       taskId: id,
       vendor: task?.vendor,
+      initScript: init.initScript,
+      initPrompt: init.initPrompt,
     })
     if (!ready) {
       console.error(`[kobe tasks] failed to start session ${name}`)

@@ -22,6 +22,7 @@
  * record once at startup and have these accessors read from it.
  */
 
+import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -70,4 +71,17 @@ export function kobeStateDir(): string {
  */
 export function kvStatePath(): string {
   return join(homeDir(), ".config", "kobe", "state.json")
+}
+
+/**
+ * Per-worktree marker proving the repo's init script already ran for that
+ * worktree (once-per-worktree semantics). Kept under `<home>/.kobe/` —
+ * NOT inside the worktree — so it never shows up as an uncommitted change.
+ * Keyed by a short hash of the worktree path; a deleted+recreated worktree
+ * at the same path reuses the marker, which is the intended "don't re-run"
+ * behaviour.
+ */
+export function worktreeInitMarkerPath(worktreePath: string): string {
+  const hash = createHash("sha1").update(worktreePath).digest("hex").slice(0, 16)
+  return join(kobeStateDir(), "worktree-init", hash)
 }

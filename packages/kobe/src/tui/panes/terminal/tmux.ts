@@ -33,6 +33,7 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand } from "@/engine/interactive-command"
+import { worktreeInitMarkerPath } from "@/env"
 import {
   claudePaneIdStrict,
   getSessionOptions,
@@ -47,10 +48,12 @@ import {
   setSessionOption,
   windowCount,
 } from "@/tmux/client"
+import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
   TASKS_PANE_WIDTH,
+  engineLaunchLine,
   keepAlive,
   opsPaneCommand,
   shellQuote,
@@ -142,6 +145,19 @@ export interface EnsureSessionOpts {
    * hard-coded `claude`.
    */
   readonly vendor?: string
+  /**
+   * Per-repo init script woven before the engine on a FRESH session (runs
+   * in the same shell so `export`s reach the engine; once-per-worktree via
+   * a marker under `<home>/.kobe/`). No-op on reuse — only the create path
+   * applies it. Resolve via {@link resolveRepoInit}.
+   */
+  readonly initScript?: string
+  /**
+   * Per-repo first prompt — pasted as the engine's first message right
+   * after a FRESH session's engine is ready. Fire-and-forget; never sent
+   * on reuse/re-attach. Resolve via {@link resolveRepoInit}.
+   */
+  readonly initPrompt?: string
 }
 
 /** Per-session-name in-flight lock — concurrent enters coalesce. */
@@ -263,7 +279,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(shellQuoteArgv(opts.command)),
+    // Weave the per-repo init script before the engine (once-per-worktree
+    // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
+    engineLaunchLine(shellQuoteArgv(opts.command), {
+      initScript: opts.initScript,
+      markerPath: opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+    }),
   ])
   const pane0 = r0.stdout.trim()
   if (!pane0) {
@@ -378,6 +399,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
+
+  // Per-repo first prompt: deliver it AFTER the engine wakes, on this
+  // FRESH session only (this is the create path — reuse/respawn never
+  // reach here). Fire-and-forget so building the session doesn't block on
+  // the engine's boot; the helper waits for readiness then pastes.
+  const initPrompt = opts.initPrompt?.trim()
+  if (initPrompt) {
+    void deliverFirstPrompt(opts.name, initPrompt).catch((err) =>
+      console.error("[kobe tmux] init prompt delivery failed:", err),
+    )
+  }
   return true
 }
 

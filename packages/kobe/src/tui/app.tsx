@@ -168,6 +168,7 @@ function Shell(props: AppDeps) {
         cwd: task.worktreePath || null,
         command: interactiveEngineCommand(task.vendor),
         vendor: task.vendor,
+        repo: task.repo,
         onEnsureWorktree: (taskId) => props.orchestrator.ensureWorktree(taskId),
       })
       if (res.kind === "error") {

@@ -57,6 +57,62 @@ export function keepAlive(cmd: string): string {
   return `${cmd}; exec "\${SHELL:-/bin/sh}"`
 }
 
+/** Single-quote a string for safe interpolation into a `sh -c` program. */
+function shQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`
+}
+
+export interface EngineInitLaunch {
+  /**
+   * Raw shell to run before the engine. Runs in the SAME shell that execs
+   * the engine (a `{ …; }` group, NOT a `( … )` subshell) so any `export`
+   * reaches the engine. Already a shell snippet (e.g. `sh .kobe/init.sh`
+   * or a user override) — not shell-quoted.
+   */
+  readonly initScript?: string
+  /**
+   * When set, the init script runs only if this marker file is ABSENT,
+   * then the marker is created on success — once-per-worktree semantics.
+   * Omit to run the init script on every (re)launch.
+   */
+  readonly markerPath?: string
+}
+
+/**
+ * Build the pane-0 launch line: optional init script, then the engine,
+ * then a keep-alive shell. The whole thing is handed to tmux as a single
+ * command string and run via its own `sh -c`.
+ *
+ * The init script runs in a brace group so its `export`s propagate to the
+ * engine; `$?` after the group gates the marker touch so a failed init
+ * (e.g. offline `pnpm install`) is retried next launch instead of being
+ * marked done.
+ */
+export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch): string {
+  const tail = keepAlive(engineCmd)
+  const script = init?.initScript?.trim()
+  if (!script) return tail
+  const group = ["{", script, "}"].join("\n")
+  if (init?.markerPath) {
+    const marker = shQuote(init.markerPath)
+    const markerDir = shQuote(markerDirOf(init.markerPath))
+    return [
+      `if [ ! -f ${marker} ]; then`,
+      group,
+      `if [ $? -eq 0 ]; then mkdir -p ${markerDir} && : > ${marker}; fi`,
+      "fi",
+      tail,
+    ].join("\n")
+  }
+  return [group, tail].join("\n")
+}
+
+/** Parent dir of a marker path, without importing node:path into this pure module's hot path. */
+function markerDirOf(p: string): string {
+  const i = p.lastIndexOf("/")
+  return i <= 0 ? "." : p.slice(0, i)
+}
+
 /**
  * Inline shell loop that prints `git status` + a worktree tree once a
  * second. Used as the Ops pane's `|| fallback` when `kobe ops` can't

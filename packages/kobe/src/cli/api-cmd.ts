@@ -37,15 +37,8 @@ import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import type { KobeDaemonClient } from "../client/index.ts"
 import type { SerializedTask } from "../daemon/protocol.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
-import {
-  capturePaneById,
-  claudePaneId,
-  claudePaneIdStrict,
-  runTmux,
-  sendKeyName,
-  sessionExists,
-  tmuxSessionName,
-} from "../tmux/client.ts"
+import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
+import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
 import { ALL_VENDORS, type VendorId } from "../types/vendor.ts"
 
 /** Verbs this command accepts, in help order. */
@@ -202,63 +195,13 @@ function fail(message: string, code: string, exitCode = 1): never {
   process.exit(exitCode)
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
-
 /** Task metadata needed to find/build a session and its engine pane. */
 interface PromptTarget {
   readonly id: string
   readonly worktreePath: string
   readonly vendor?: VendorId
-}
-
-/**
- * Wait for a session's engine (claude/codex) pane to be ready for input.
- *
- * The engine pane is tagged `@kobe_role=claude` at session-BUILD time —
- * before the engine process boots — so a tagged pane is NOT proof the
- * REPL can accept input yet; sending keystrokes too early drops them. For
- * a fresh session we therefore treat the pane as ready only once its
- * captured text is non-empty AND stable across two polls (~250ms apart):
- * a quiesced pane means the input box is painted, not still repainting on
- * boot. An already-running session's engine is ready immediately.
- *
- * `ready` is `false` when the budget is exhausted without confirmation —
- * the caller still delivers best-effort but surfaces that to the script,
- * so a cold-boot drop never looks like a clean success.
- */
-async function waitForEnginePane(session: string, fresh: boolean): Promise<{ pane: string; ready: boolean }> {
-  let prev: string | null = null
-  for (let attempt = 0; attempt < 24; attempt++) {
-    const pane = await claudePaneIdStrict(session)
-    if (pane) {
-      if (!fresh) return { pane, ready: true }
-      const cur = (await capturePaneById(pane)).trim()
-      if (cur.length > 0 && cur === prev) return { pane, ready: true }
-      prev = cur
-    }
-    await sleep(250)
-  }
-  // Budget exhausted: deliver to the tagged pane (or first-pane fallback
-  // for a legacy/pre-tag session), but report the engine never confirmed.
-  const pane = (await claudePaneIdStrict(session)) || (await claudePaneId(session))
-  return { pane, ready: false }
-}
-
-/**
- * Type a (possibly multi-line) prompt into a pane and submit it.
- *
- * Uses a tmux paste buffer with bracketed-paste markers (`-p`) so an
- * interactive REPL receives the whole block as ONE paste. Plain
- * `send-keys -l` would type the bytes verbatim, and an embedded newline
- * is Enter to claude/codex — so a multi-paragraph prompt would submit at
- * the first line break. With bracketed paste the engine inserts the
- * entire block into its composer; a single trailing Enter then submits.
- */
-async function pasteAndSubmit(pane: string, text: string): Promise<void> {
-  const buffer = `kobe-api-${pane.replace(/[^A-Za-z0-9]/g, "")}`
-  await runTmux(["set-buffer", "-b", buffer, "--", text])
-  await runTmux(["paste-buffer", "-p", "-d", "-b", buffer, "-t", pane])
-  await sendKeyName(pane, "Enter")
+  /** Repo root (git toplevel) — for per-repo init script resolution. */
+  readonly repo?: string
 }
 
 /**
@@ -285,12 +228,18 @@ async function deliverPrompt(
   const existed = await sessionExists(session)
   if (!existed) {
     const { ensureSession } = await import("../tui/panes/terminal/tmux.ts")
+    const { resolveRepoInit } = await import("../state/repo-init.ts")
+    // Run the repo's init script before the engine. The init PROMPT is
+    // intentionally NOT passed here: this flow delivers its own explicit
+    // prompt below, which is the engine's first message instead.
+    const init = resolveRepoInit(target.repo ?? "", worktree)
     const ok = await ensureSession({
       name: session,
       cwd: worktree,
       command: interactiveEngineCommand(target.vendor),
       taskId: target.id,
       vendor: target.vendor,
+      initScript: init.initScript,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
   }
@@ -342,7 +291,12 @@ async function spawnTask(client: KobeDaemonClient, parsed: ParsedArgs): Promise<
   }
   const delivered = await deliverPrompt(
     client,
-    { id: res.taskId, worktreePath: res.task.worktreePath, vendor: res.task.vendor as VendorId | undefined },
+    {
+      id: res.taskId,
+      worktreePath: res.task.worktreePath,
+      vendor: res.task.vendor as VendorId | undefined,
+      repo: res.task.repo,
+    },
     prompt,
   )
   return {
@@ -371,7 +325,12 @@ async function send(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unkno
   const res = await client.request<{ task: SerializedTask }>("task.get", { taskId })
   const delivered = await deliverPrompt(
     client,
-    { id: taskId, worktreePath: res.task.worktreePath, vendor: res.task.vendor as VendorId | undefined },
+    {
+      id: taskId,
+      worktreePath: res.task.worktreePath,
+      vendor: res.task.vendor as VendorId | undefined,
+      repo: res.task.repo,
+    },
     prompt,
   )
   return {
@@ -427,7 +386,7 @@ async function fanOut(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unk
     const res = await client.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
     const delivered = await deliverPrompt(
       client,
-      { id: res.taskId, worktreePath: res.task.worktreePath, vendor },
+      { id: res.taskId, worktreePath: res.task.worktreePath, vendor, repo: res.task.repo },
       prompt,
     )
     tasks.push({

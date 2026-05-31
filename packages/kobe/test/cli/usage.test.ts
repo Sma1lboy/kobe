@@ -5,7 +5,7 @@ describe("topLevelUsage", () => {
   const usage = topLevelUsage()
 
   it("lists every public subcommand, including api", () => {
-    for (const cmd of ["add", "adopt", "api", "daemon", "theme", "update", "doctor", "reset"]) {
+    for (const cmd of ["add", "adopt", "repo", "api", "daemon", "theme", "update", "doctor", "reset"]) {
       expect(usage).toContain(cmd)
     }
   })

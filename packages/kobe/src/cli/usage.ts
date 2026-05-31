@@ -16,6 +16,7 @@ export function topLevelUsage(): string {
     "Commands:",
     "  add [path]              Save a repo path for the new-task picker",
     "  adopt [glob]            Import existing git worktrees as tasks",
+    "  repo <verb>             Per-repo init script + first prompt (show|set|unset)",
     "  api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)",
     "  daemon <verb>           Manage the daemon (start|stop|status|restart)",
     "  theme <verb>            Manage user themes (list|add|remove)",

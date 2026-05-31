@@ -24,6 +24,7 @@
 
 import type { CliRenderer } from "@opentui/core"
 import { type Accessor, type JSXElement, Show } from "solid-js"
+import { resolveRepoInit } from "../../../state/repo-init.ts"
 import type { VendorId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
@@ -78,6 +79,8 @@ export type LaunchTaskTmuxOpts = {
   command: readonly string[]
   /** Engine vendor — tagged on the session so `new-chattab` relaunches the same engine. */
   vendor?: VendorId
+  /** Repo root (git toplevel) — for per-repo init script/prompt resolution. */
+  repo?: string
   /** Materialise the worktree on first enter. */
   onEnsureWorktree: (taskId: string) => Promise<string>
 }
@@ -108,7 +111,16 @@ export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTa
     }
   }
   const name = tmuxSessionName(opts.taskId)
-  const ready = await ensureSession({ name, cwd, command: opts.command, taskId: opts.taskId, vendor: opts.vendor })
+  const init = opts.repo ? resolveRepoInit(opts.repo, cwd) : {}
+  const ready = await ensureSession({
+    name,
+    cwd,
+    command: opts.command,
+    taskId: opts.taskId,
+    vendor: opts.vendor,
+    initScript: init.initScript,
+    initPrompt: init.initPrompt,
+  })
   if (!ready) {
     // ensureSession failed to create the session (e.g. `tmux new-session`
     // returned no pane id). Don't attach to a session that isn't there —

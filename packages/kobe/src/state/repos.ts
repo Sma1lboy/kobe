@@ -166,6 +166,65 @@ export function normalizeSavedRepos(): void {
   save(state)
 }
 
+/**
+ * Per-user, per-repo init override stored under the `repoConfigs` key of
+ * the shared state.json. This is the FALLBACK default for a repo that does
+ * not ship its own `.kobe/init.sh` / `.kobe/init-prompt.md` — the in-repo
+ * files win (see {@link ../state/repo-init.ts resolveRepoInit}). Keyed by
+ * git toplevel so every worktree of the repo resolves the same entry.
+ */
+export interface RepoInitOverride {
+  readonly initScript?: string
+  readonly initPrompt?: string
+}
+
+function readRepoConfigs(state: Record<string, unknown>): Record<string, RepoInitOverride> {
+  const raw = state.repoConfigs
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  return raw as Record<string, RepoInitOverride>
+}
+
+function coerceOverride(entry: unknown): RepoInitOverride {
+  if (!entry || typeof entry !== "object") return {}
+  const e = entry as Record<string, unknown>
+  return {
+    initScript: typeof e.initScript === "string" && e.initScript.length > 0 ? e.initScript : undefined,
+    initPrompt: typeof e.initPrompt === "string" && e.initPrompt.length > 0 ? e.initPrompt : undefined,
+  }
+}
+
+/** Read the per-user state.json override for a repo (by git toplevel). */
+export function getRepoInitOverride(repoRoot: string): RepoInitOverride {
+  return coerceOverride(readRepoConfigs(load())[resolveRepoRoot(repoRoot)])
+}
+
+/**
+ * Patch a repo's init override. A field set to `""` clears that field; a
+ * field left `undefined` is preserved. When both fields end up empty the
+ * repo's entry is dropped entirely so state.json stays tidy.
+ */
+export function setRepoInitOverride(repoRoot: string, patch: RepoInitOverride): RepoInitOverride {
+  const normalized = resolveRepoRoot(repoRoot)
+  const state = load()
+  const configs = { ...readRepoConfigs(state) }
+  const cur = coerceOverride(configs[normalized])
+  const nextScript = patch.initScript === undefined ? cur.initScript : patch.initScript || undefined
+  const nextPrompt = patch.initPrompt === undefined ? cur.initPrompt : patch.initPrompt || undefined
+  const next: RepoInitOverride = {
+    ...(nextScript ? { initScript: nextScript } : {}),
+    ...(nextPrompt ? { initPrompt: nextPrompt } : {}),
+  }
+  if (!next.initScript && !next.initPrompt) {
+    const { [normalized]: _dropped, ...rest } = configs
+    state.repoConfigs = rest
+  } else {
+    configs[normalized] = next
+    state.repoConfigs = configs
+  }
+  save(state)
+  return next
+}
+
 export type RemoveResult = { removed: boolean; path: string; total: number }
 
 /**

@@ -79,6 +79,26 @@ Two deliberate non-triggers, so the count only ever reflects real GUIs:
 
 The wedge these exist for: `startDaemonServer` unlinks the socket before `listen`, so a stale socket *file* is harmless — the real trap is an OLD daemon still alive but not servicing the socket, which a fresh launch races by stealing the socket → two daemons on one `tasks.json`. The graceful → SIGTERM → SIGKILL kill that makes the old one go away lives once in [`src/daemon/lifecycle.ts`](./packages/kobe/src/daemon/lifecycle.ts) `stopDaemonProcess()`, shared by both `reset` and `kobe daemon restart`.
 
+## Per-repo init script + first prompt
+
+Each repo can define setup that runs for **every** worktree, so a new task needs no manual init. Two pieces, resolved per field by [`src/state/repo-init.ts`](./packages/kobe/src/state/repo-init.ts) `resolveRepoInit(repoRoot, worktreePath)`:
+
+- **init script** — shell run BEFORE the engine starts, in the worktree.
+- **init prompt** — the engine's FIRST message, pasted once it's ready.
+
+Two sources, **repo files win per field** (the committed `.kobe/` files are the project's authoritative setup; the state.json override is a per-user fallback default for a repo that ships neither):
+
+1. In-repo, checked out in the worktree: `<worktree>/.kobe/init.sh` and `<worktree>/.kobe/init-prompt.md`.
+2. Per-user state.json override (`repoConfigs[repoRoot]`), set via `kobe repo set/show/unset` ([`src/cli/repo-cmd.ts`](./packages/kobe/src/cli/repo-cmd.ts), storage in [`src/state/repos.ts`](./packages/kobe/src/state/repos.ts) `getRepoInitOverride`/`setRepoInitOverride`).
+
+Load-bearing mechanics, don't regress them:
+
+- **Same shell, not a subshell.** The init script is woven into pane 0's launch line by [`session-layout.ts`](./packages/kobe/src/tmux/session-layout.ts) `engineLaunchLine` as a `{ …; }` brace GROUP — so `export`s reach the engine — NOT `( … )` (which would swallow them).
+- **Once per worktree.** A marker under `<home>/.kobe/worktree-init/<hash>` ([`env.ts`](./packages/kobe/src/env.ts) `worktreeInitMarkerPath`) gates re-runs; it lives outside the worktree so it never dirties git, and is touched only on `$? -eq 0` so a failed init retries next launch. Trade-off of "once per worktree": an env-setting init does NOT re-apply on an in-place vendor-switch respawn (the marker exists) — a full kill+rebuild does re-evaluate it via the create path.
+- **First prompt = fresh sessions only.** It's delivered from `ensureSession`'s create branch (fire-and-forget via [`prompt-delivery.ts`](./packages/kobe/src/tmux/prompt-delivery.ts) `deliverFirstPrompt`), so a re-attach never re-sends it. `kobe api …  --prompt` runs the init script but delivers the explicit prompt instead of the repo's first prompt (no double paste).
+
+Resolution happens at the `ensureSession` call sites that have the Task (`direct.ts`, `tasks-pane/host.tsx`, `fullscreen.tsx`, `api-cmd.ts`); `EnsureSessionOpts.initScript`/`initPrompt` only take effect on a fresh build, so passing them on a reuse call is harmless.
+
 ## Reference repos — clone before development
 
 kobe is built by deliberately copying ideas (and sometimes code) from reference projects. New devs / agents must have these refs cloned into `refs/` before touching the codebase. Run the setup block below; agents who skip this miss design context that's not derivable from the kobe source alone.

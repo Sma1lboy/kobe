@@ -301,6 +301,11 @@ async function main(): Promise<void> {
     await runAdoptSubcommand(rest)
     return
   }
+  if (subcommand === "repo") {
+    const { runRepoSubcommand } = await import("./repo-cmd.ts")
+    await runRepoSubcommand(rest)
+    return
+  }
   if (subcommand === "api") {
     const { runApiSubcommand } = await import("./api-cmd.ts")
     await runApiSubcommand(rest)
