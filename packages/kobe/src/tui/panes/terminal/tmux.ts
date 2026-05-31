@@ -36,6 +36,7 @@ import { interactiveEngineCommand } from "@/engine/interactive-command"
 import {
   claudePaneIdStrict,
   getSessionOptions,
+  newWindow,
   paneIdByRole,
   runTmux,
   runTmuxCapturing,
@@ -670,6 +671,26 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   const claudePane = r.stdout.trim()
   if (!claudePane) return
   await buildPanesAround(claudePane, { cwd, taskId, inv, vendor })
+}
+
+/**
+ * Open the Settings page as a dedicated chat-tab window in an existing
+ * task session (the default settings surface — see settings-surface.ts).
+ * A single full-window `kobe settings` page (no engine, no workspace
+ * panes), sitting alongside the engine chat tabs in the status-bar
+ * window list. It is NOT `keepAlive`-wrapped: when the user closes
+ * Settings (q / esc), the page process exits, tmux closes the window and
+ * switches back to the previous tab. The `@kobe_*` tags aren't needed —
+ * the page only reads/writes shared kv state, not a worktree.
+ */
+export async function openSettingsTab(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const command = `${envPrefix}${inv.map(shellQuote).join(" ")} settings`
+  await newWindow(session, { cwd, command, name: "settings" })
 }
 
 /**

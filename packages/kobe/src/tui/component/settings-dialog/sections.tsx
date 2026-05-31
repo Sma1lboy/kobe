@@ -4,12 +4,15 @@ import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus }
 import { VENDOR_LABEL } from "../../../engine/interactive-command"
 import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
+import type { SettingsSurface } from "../../lib/settings-surface"
 import {
   FOCUS_ACCENT_LABEL,
   type NavLevel,
   SECTIONS,
   type SectionId,
   soundRowIndex,
+  surfaceChattabRowIndex,
+  surfaceTaskpanelRowIndex,
   toastRowIndex,
   transparentRowIndex,
 } from "./model"
@@ -63,15 +66,21 @@ export function GeneralSettingsSection(
     soundEnabled: Accessor<boolean>
     toggleToast: () => void
     toggleSound: () => void
+    settingsSurface: Accessor<SettingsSurface>
+    selectSurface: (surface: SettingsSurface) => void
   },
 ) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const toastRow = () => toastRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
   const soundRow = () => soundRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
+  const surfaceChattabRow = () => surfaceChattabRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
+  const surfaceTaskpanelRow = () => surfaceTaskpanelRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
   const isTransparentRow = () => props.bodyRow() === transparentRowIndex(props.themeNames().length)
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
+  const isSurfaceChattabRow = () => props.bodyRow() === surfaceChattabRow()
+  const isSurfaceTaskpanelRow = () => props.bodyRow() === surfaceTaskpanelRow()
 
   return (
     <box flexDirection="column" gap={1}>
@@ -228,6 +237,67 @@ export function GeneralSettingsSection(
             wrapMode="none"
           >
             {props.soundEnabled() ? "[x]" : "[ ]"} Sound
+          </text>
+        </box>
+      </box>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Settings page
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          Where Settings and the other full dialogs (new task, rename) open. ChatTab = a dedicated full-window page
+          alongside the engine tabs; Task panel = an overlay inside the left Tasks pane. enter to pick.
+        </text>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isSurfaceChattabRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(surfaceChattabRow())
+            props.selectSurface("chattab")
+          }}
+        >
+          <text
+            fg={
+              isSurfaceChattabRow()
+                ? theme.selectedListItemText
+                : props.settingsSurface() === "chattab"
+                  ? theme.accent
+                  : theme.textMuted
+            }
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            {props.settingsSurface() === "chattab" ? "[x]" : "[ ]"} ChatTab (separate page)
+          </text>
+        </box>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isSurfaceTaskpanelRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(surfaceTaskpanelRow())
+            props.selectSurface("taskpanel")
+          }}
+        >
+          <text
+            fg={
+              isSurfaceTaskpanelRow()
+                ? theme.selectedListItemText
+                : props.settingsSurface() === "taskpanel"
+                  ? theme.accent
+                  : theme.textMuted
+            }
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            {props.settingsSurface() === "taskpanel" ? "[x]" : "[ ]"} Task panel (in-pane overlay)
           </text>
         </box>
       </box>

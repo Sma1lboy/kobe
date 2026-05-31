@@ -28,6 +28,12 @@ import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
+import {
+  DEFAULT_SETTINGS_SURFACE,
+  SETTINGS_SURFACE_KEY,
+  type SettingsSurface,
+  normalizeSettingsSurface,
+} from "../lib/settings-surface"
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
@@ -38,6 +44,8 @@ import {
   bodyRowCount as countBodyRows,
   focusAccentRowIndex,
   soundRowIndex,
+  surfaceChattabRowIndex,
+  surfaceTaskpanelRowIndex,
   toastRowIndex,
   transparentRowIndex,
 } from "./settings-dialog/model"
@@ -111,6 +119,26 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function isSoundRow(): boolean {
     return section() === "general" && bodyRow() === soundRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+  }
+
+  function isSurfaceChattabRow(): boolean {
+    return (
+      section() === "general" && bodyRow() === surfaceChattabRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+    )
+  }
+
+  function isSurfaceTaskpanelRow(): boolean {
+    return (
+      section() === "general" && bodyRow() === surfaceTaskpanelRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+    )
+  }
+
+  function settingsSurface(): SettingsSurface {
+    return normalizeSettingsSurface(props.kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+  }
+
+  function selectSurface(surface: SettingsSurface): void {
+    props.kv.set(SETTINGS_SURFACE_KEY, surface)
   }
 
   function toastEnabled(): boolean {
@@ -202,6 +230,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
         toggleSound()
         return
       }
+      if (isSurfaceChattabRow()) {
+        selectSurface("chattab")
+        return
+      }
+      if (isSurfaceTaskpanelRow()) {
+        selectSurface("taskpanel")
+        return
+      }
       const name = themeNames()[bodyRow()]
       if (name) themeCtx.set(name)
       return
@@ -270,6 +306,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               soundEnabled={soundEnabled}
               toggleToast={toggleToast}
               toggleSound={toggleSound}
+              settingsSurface={settingsSurface}
+              selectSurface={selectSurface}
             />
           </Show>
           <Show when={section() === "engines"}>

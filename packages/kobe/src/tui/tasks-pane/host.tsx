@@ -34,7 +34,14 @@
  */
 
 import { existsSync } from "node:fs"
-import { getSessionOption, killSession, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
+import {
+  currentSessionName,
+  getSessionOption,
+  killSession,
+  runTmux,
+  sessionExists,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
@@ -57,9 +64,10 @@ import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
-import { ensureSession } from "../panes/terminal/tmux.ts"
+import { ensureSession, openSettingsTab } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -182,7 +190,19 @@ function TasksShell(props: {
     if (createdId) setSelectedId(createdId)
   }
 
-  function openSettings(): void {
+  // Settings opens on the user's chosen surface (default chattab): a
+  // dedicated full-window `kobe settings` page opened as a new tmux tab,
+  // or the in-pane SettingsDialog overlay. If we can't resolve our tmux
+  // session (e.g. running outside a kobe pane), fall back to the overlay.
+  async function openSettings(): Promise<void> {
+    const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+    if (surface === "chattab") {
+      const session = await currentSessionName()
+      if (session) {
+        await openSettingsTab(session)
+        return
+      }
+    }
     void SettingsDialog.show(dialog, kv, props.orch ?? undefined)
   }
 
@@ -340,7 +360,7 @@ function TasksShell(props: {
     enabled: dialog.stack.length === 0,
     bindings: [
       { key: "n", cmd: () => void createTask() },
-      { key: "s", cmd: () => openSettings() },
+      { key: "s", cmd: () => void openSettings() },
       {
         key: "o",
         cmd: () => {

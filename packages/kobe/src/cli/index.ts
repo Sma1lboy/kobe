@@ -392,6 +392,15 @@ async function main(): Promise<void> {
     await startTasksPane()
     return
   }
+  if (subcommand === "settings") {
+    // The Settings page as a standalone full-window surface (the default
+    // `chattab` settings surface). Opened by `openSettingsTab` as a new
+    // tmux window; reuses the same SettingsDialog the in-pane overlay
+    // uses. Dynamic import keeps opentui off the other subcommands' path.
+    const { startSettingsHost } = await import("../tui/settings/host.tsx")
+    await startSettingsHost()
+    return
+  }
   if (subcommand === "ops") {
     // The Ops pane (right side of the per-task tmux session). Runs in
     // its own process inside the tmux pane; mounts the v0.5 FileTree
