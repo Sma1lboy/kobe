@@ -235,6 +235,33 @@ export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): str
   return `${branch.slice(0, Math.max(0, max - 1))}…`
 }
 
+/**
+ * Responsive column breakpoints (cells of total pane width). A task row packs
+ * up to four columns — badge, title, the `+N −M` changes chip, and the branch
+ * label. The branch (≤16 cells) + changes (5) are *metadata*; the title is the
+ * primary content. On a narrow rail those metadata columns are `flexShrink={0}`
+ * and would crush the title to a single character (`(new task)` → `(`), so we
+ * drop them progressively as width shrinks: title-only first, then add the
+ * changes chip, then the branch. The title always survives. Above the branch
+ * breakpoint the full row shows. Tuned so the 32-cell convention width
+ * ({@link SIDEBAR_WIDTH}) keeps the changes chip but hides the branch, leaving
+ * a comfortable title budget; widen the pane and the branch returns.
+ */
+export const SHOW_CHANGES_MIN_WIDTH = 30
+export const SHOW_BRANCH_MIN_WIDTH = 44
+
+/**
+ * Truncate a task title to a cell budget with a trailing ellipsis. Mirrors
+ * {@link truncateBranchLabel} but keeps the prefix unconditionally (a title's
+ * front carries the most meaning). Uses `.length` like the branch path — CJK
+ * wide-char accounting is a known, accepted imprecision shared by both.
+ */
+export function truncateTitle(title: string, max: number): string {
+  if (max <= 0) return ""
+  if (title.length <= max) return title
+  return `${title.slice(0, Math.max(0, max - 1))}…`
+}
+
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
 
@@ -350,6 +377,26 @@ export function Sidebar(props: SidebarProps) {
   const flatIds = createMemo(() => flattenIds(rows()))
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
   const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "")).length)
+
+  // Responsive row columns (see SHOW_*_MIN_WIDTH). The width accessor is the
+  // Shell-driven splitter width in the outer monitor and the live tmux pane
+  // width in the Tasks pane (`useTerminalDimensions` → reflows on resize), so
+  // these recompute as the user drags the pane. The title's cell budget is
+  // what's left after the badge + whichever metadata columns survive; the row
+  // renderer truncates the title to it so a narrow rail shows a clean name
+  // instead of a branch-crushed single glyph.
+  const effectiveWidth = (): number => (props.width ? props.width() : SIDEBAR_WIDTH)
+  const showChangesCol = createMemo(() => effectiveWidth() >= SHOW_CHANGES_MIN_WIDTH)
+  const showBranchCol = createMemo(() => effectiveWidth() >= SHOW_BRANCH_MIN_WIDTH)
+  const titleBudget = createMemo(() => {
+    // Reserved cells: root padding (4) + row padding (2) + scrollbar (1) +
+    // badge glyph + its gap (2), then each visible metadata column with its
+    // gap — changes chip (5+1), branch label (BRANCH_LABEL_MAX+1) + its
+    // leading pad (1). What remains is the title's clean budget.
+    const reserved =
+      9 + (showChangesCol() ? CHANGES_COLUMN_WIDTH + 1 : 0) + (showBranchCol() ? BRANCH_LABEL_MAX + 2 : 0)
+    return Math.max(4, effectiveWidth() - reserved)
+  })
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
@@ -646,7 +693,10 @@ export function Sidebar(props: SidebarProps) {
                     wrapMode="none"
                     flexGrow={1}
                   >
-                    {titleText}
+                    {/* Truncated to the responsive budget so a narrow rail shows
+                        a clean ellipsised name rather than letting flex clip it
+                        mid-glyph or crush it under the metadata columns. */}
+                    {truncateTitle(titleText, titleBudget())}
                   </text>
                   {/* Changes column — fixed width so the chip aligns
                       across rows like a table column rather than floating
@@ -656,25 +706,28 @@ export function Sidebar(props: SidebarProps) {
                       every row's chip. Right-aligned so the digits' right
                       edges line up across rows (what the eye tracks) and
                       so short chips sit closer to the row's right side
-                      rather than crowding the title. */}
-                  <box
-                    width={CHANGES_COLUMN_WIDTH}
-                    flexShrink={0}
-                    flexDirection="row"
-                    justifyContent="flex-end"
-                    gap={1}
-                  >
-                    <Show when={changes().added > 0}>
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
-                        +{changes().added}
-                      </text>
-                    </Show>
-                    <Show when={changes().deleted > 0}>
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
-                        −{changes().deleted}
-                      </text>
-                    </Show>
-                  </box>
+                      rather than crowding the title. Hidden entirely on a
+                      narrow rail (responsive) so the title keeps the space. */}
+                  <Show when={showChangesCol()}>
+                    <box
+                      width={CHANGES_COLUMN_WIDTH}
+                      flexShrink={0}
+                      flexDirection="row"
+                      justifyContent="flex-end"
+                      gap={1}
+                    >
+                      <Show when={changes().added > 0}>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
+                          +{changes().added}
+                        </text>
+                      </Show>
+                      <Show when={changes().deleted > 0}>
+                        <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
+                          −{changes().deleted}
+                        </text>
+                      </Show>
+                    </box>
+                  </Show>
                   {/* Branch label + pin marker — right-aligned (flex-end)
                       so labels line up against the rail's right edge,
                       wrapped so they don't collide with the changes column
@@ -684,8 +737,9 @@ export function Sidebar(props: SidebarProps) {
                       `task.branch`, prefix-truncated for the narrow rail. */}
                   <Show
                     when={
-                      (isMain && branchLabel().length > 0) ||
-                      (!isMain && (task.branch.length > 0 || task.pinned === true))
+                      showBranchCol() &&
+                      ((isMain && branchLabel().length > 0) ||
+                        (!isMain && (task.branch.length > 0 || task.pinned === true)))
                     }
                   >
                     <box flexDirection="row" justifyContent="flex-end" gap={1} paddingLeft={1} flexShrink={0}>

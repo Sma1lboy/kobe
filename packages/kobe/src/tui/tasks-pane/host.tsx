@@ -44,7 +44,7 @@ import {
   tmuxSessionName,
 } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
-import { render } from "@opentui/solid"
+import { render, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -97,6 +97,14 @@ function TasksShell(props: {
   const kv = useKV()
   const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
+  // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
+  // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
+  // must FILL the pane, not sit at its default 32-cell rail width — otherwise
+  // dragging the tmux split wider just leaves dead space to the right. opentui's
+  // renderer tracks the pane size (SIGWINCH → onResize), so feeding the live
+  // terminal width to the Sidebar's width accessor makes it reflow to 100% of the
+  // pane on every resize.
+  const dimensions = useTerminalDimensions()
 
   // Follow the SHARED active-task focus pushed on the daemon's `active-task`
   // channel: whichever task was last switched/entered into (from ANY session
@@ -509,6 +517,10 @@ function TasksShell(props: {
           onSelect={setSelectedId}
           onActivate={(id) => void switchTo(id)}
           activateOnClick
+          // Fill the whole tmux pane and follow live resizes (see `dimensions`
+          // above). Without an explicit width the Sidebar pins to its 32-cell
+          // rail default and leaves the rest of a widened pane blank.
+          width={() => dimensions().width}
           onAddTask={() => void createTask()}
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
