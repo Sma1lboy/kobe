@@ -58,7 +58,7 @@ import { CostDashboard } from "./panes/monitor/CostDashboard"
 import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
-import { killSession, tmuxSessionName } from "./panes/terminal/tmux"
+import { killSession, switchClientBeforeKill, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
@@ -328,8 +328,21 @@ function Shell(props: AppDeps) {
   }
 
   async function archiveTask(taskId: string): Promise<void> {
-    await props.orchestrator.setArchived(taskId).catch((err: unknown) => {
+    try {
+      await props.orchestrator.setArchived(taskId)
+    } catch (err) {
       console.error("[kobe] archive failed:", err)
+      return
+    }
+    const sessionName = tmuxSessionName(taskId)
+    const nextTask = tasksAcc().find((t) => t.id !== taskId && !t.archived)
+    await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
+      (err: unknown) => {
+        console.error("[kobe] switch-client failed:", err)
+      },
+    )
+    await killSession(sessionName).catch((err: unknown) => {
+      console.error("[kobe] kill tmux session failed:", err)
     })
   }
 

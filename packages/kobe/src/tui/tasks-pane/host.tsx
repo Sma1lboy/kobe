@@ -40,6 +40,7 @@ import {
   killSession,
   runTmux,
   sessionExists,
+  switchClientBeforeKill,
   tmuxSessionName,
 } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
@@ -237,6 +238,14 @@ function TasksShell(props: {
     try {
       await props.orch.setArchived(id, nextArchived)
       if (nextArchived) {
+        // Switch away before killing so the terminal doesn't go dark.
+        // Prefer the next non-archived task; fall back to the kobe-home placeholder.
+        const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
+        await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
+          (err: unknown) => {
+            console.error("[kobe tasks] switch-client failed:", err)
+          },
+        )
         await killSession(tmuxSessionName(id)).catch((err: unknown) => {
           console.error("[kobe tasks] kill tmux session failed:", err)
         })
@@ -286,6 +295,12 @@ function TasksShell(props: {
       }
     }
     if (!deleted) return
+    const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
+    await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
+      (err: unknown) => {
+        console.error("[kobe tasks] switch-client failed:", err)
+      },
+    )
     await killSession(tmuxSessionName(id)).catch((err: unknown) => {
       console.error("[kobe tasks] kill tmux session failed:", err)
     })

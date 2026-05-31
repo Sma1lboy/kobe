@@ -67,7 +67,14 @@ import { CURRENT_VERSION } from "@/version"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
-export { attachArgv, killSession, sessionExists, tmuxAvailable, tmuxSessionName } from "@/tmux/client"
+export {
+  attachArgv,
+  killSession,
+  sessionExists,
+  switchClientBeforeKill,
+  tmuxAvailable,
+  tmuxSessionName,
+} from "@/tmux/client"
 
 export const CHAT_TAB_SWITCH_BINDINGS = [
   ["bind-key", "-n", "C-[", "previous-window"],

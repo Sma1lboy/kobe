@@ -332,3 +332,49 @@ export async function currentSessionName(): Promise<string | null> {
 export async function killSession(name: string): Promise<void> {
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
 }
+
+/** Session name for the kobe home/fallback window shown when a task is archived/deleted. */
+export const KOBE_HOME_SESSION = "kobe-home"
+
+/**
+ * Ensure the kobe-home fallback session exists. Creates it if absent with a
+ * placeholder message. Returns the session name.
+ */
+export async function ensureFallbackSession(): Promise<string> {
+  const name = KOBE_HOME_SESSION
+  if (!(await sessionExists(name))) {
+    await runTmux([
+      "new-session",
+      "-d",
+      "-s",
+      name,
+      "-x",
+      "220",
+      "-y",
+      "50",
+      "sh",
+      "-c",
+      'clear; printf "\\n  No active task\\n\\n  Select a task from the sidebar to continue.\\n\\n"; exec ${SHELL:-sh}',
+    ])
+  }
+  return name
+}
+
+/**
+ * If the current tmux client is attached to `killedName`, switch it away
+ * before the session is killed so the terminal doesn't go dark.
+ *
+ * Prefers `nextSessionName` when it exists; falls back to the kobe-home
+ * placeholder session (created on demand). No-ops when the current session
+ * is not `killedName` (e.g. called from the outer monitor).
+ */
+export async function switchClientBeforeKill(killedName: string, nextSessionName?: string): Promise<void> {
+  const current = await currentSessionName()
+  if (current !== killedName) return
+  if (nextSessionName && nextSessionName !== killedName && (await sessionExists(nextSessionName))) {
+    await runTmux(["switch-client", "-t", `=${nextSessionName}`])
+    return
+  }
+  const fallback = await ensureFallbackSession()
+  await runTmux(["switch-client", "-t", `=${fallback}`])
+}
