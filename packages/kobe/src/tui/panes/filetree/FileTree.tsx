@@ -538,13 +538,15 @@ export function FileTree(props: FileTreeProps) {
       {/* Create PR action row — sits above the All / Changes tabs so it's
          reachable from both tabs (bound to `p`). */}
       <Show when={props.onCreatePR}>
-        <box flexDirection="row" gap={1} paddingBottom={1} flexShrink={0} onMouseUp={() => props.onCreatePR?.()}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-            [P]
-          </text>
-          <text fg={theme.text} wrapMode="none">
-            create PR
-          </text>
+        <box flexDirection="row" justifyContent="flex-end" paddingBottom={1} flexShrink={0}>
+          <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+              [P]
+            </text>
+            <text fg={theme.text} wrapMode="none">
+              create PR
+            </text>
+          </box>
         </box>
       </Show>
       {/* Header: tabs row. Each tab is clickable (sets active), and
