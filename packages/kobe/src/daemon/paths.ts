@@ -99,8 +99,3 @@ export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? home
 export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "daemon.log")
 }
-
-export function fallbackTestSocketPath(name: string): string {
-  const dir = process.platform === "darwin" ? "/tmp" : tmpdir()
-  return join(dir, `${name}-${process.pid}.sock`)
-}

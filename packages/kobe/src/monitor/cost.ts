@@ -5,8 +5,8 @@
  * knowledge lives in `engine/claude-code-local/history.ts`
  * (`listSessionFilesForWorktree`) — this module only does the
  * monitor-specific part: read each transcript and SUM the per-message
- * `usage` fields cumulatively (the dashboard wants lifetime cost, not
- * the last-turn snapshot `deriveSessionUsageMetrics` returns).
+ * `usage` fields cumulatively (the dashboard wants lifetime cost, not a
+ * last-turn snapshot).
  *
  * Codex transcripts live under a different root (`~/.codex/sessions/`);
  * we'll plumb them through when KOB-232 lands. For now the dashboard
