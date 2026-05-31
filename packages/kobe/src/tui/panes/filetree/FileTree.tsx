@@ -98,9 +98,8 @@ export type FileTreeProps = {
   onMention?: (relPath: string) => void
   /**
    * Optional Ops-pane action: request PR creation for this worktree.
-   * Rendered as a slim action row above the Changes list and bound to
-   * `p`, so Create PR lives with file changes instead of as an outer
-   * monitor button.
+   * Rendered as a slim action row above the All / Changes tabs and bound
+   * to `p`, so Create PR is reachable from both tabs.
    */
   onCreatePR?: () => void
   /**
@@ -536,6 +535,18 @@ export function FileTree(props: FileTreeProps) {
   // ---------- render ----------
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
+      {/* Create PR action row — sits above the All / Changes tabs so it's
+         reachable from both tabs (bound to `p`). */}
+      <Show when={props.onCreatePR}>
+        <box flexDirection="row" gap={1} paddingBottom={1} flexShrink={0} onMouseUp={() => props.onCreatePR?.()}>
+          <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+            [P]
+          </text>
+          <text fg={theme.text} wrapMode="none">
+            create PR
+          </text>
+        </box>
+      </Show>
       {/* Header: tabs row. Each tab is clickable (sets active), and
          `1` / `2` / `3` switch from the keyboard. */}
       <box flexDirection="row" justifyContent="space-between" paddingBottom={0} flexShrink={0}>
@@ -574,16 +585,6 @@ export function FileTree(props: FileTreeProps) {
          decode single-char git status codes without leaving the TUI. */}
       <Show when={tab() === "changes"}>
         <box flexDirection="column" paddingBottom={1} flexShrink={0} gap={0}>
-          <Show when={props.onCreatePR}>
-            <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [P]
-              </text>
-              <text fg={theme.text} wrapMode="none">
-                create PR
-              </text>
-            </box>
-          </Show>
           <text fg={theme.textMuted} wrapMode="none">
             M modified · A added · D deleted · ? untracked
           </text>
