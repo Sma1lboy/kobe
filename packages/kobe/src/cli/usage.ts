@@ -6,9 +6,13 @@
  * so adding a subcommand updates help in one place.
  */
 
+import { CURRENT_VERSION } from "../version.ts"
+
 /** The full `kobe help` text (no trailing newline). */
 export function topLevelUsage(): string {
   return [
+    `kobe ${CURRENT_VERSION}`,
+    "",
     "Usage: kobe [command] [options]",
     "",
     "Run with no command to launch the TUI.",
