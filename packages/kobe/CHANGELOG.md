@@ -5,7 +5,9 @@ All notable changes to this project are documented here. The format follows [Kee
 ## How to update
 
 1. Land your change as usual.
-2. Add a bullet under `## [Unreleased]` describing it user-facingly (one line, present tense — "Add X", "Fix Y").
+2. Add a bullet under `## [Unreleased]
+
+## [0.6.8] - 2026-05-31` describing it user-facingly (one line, present tense — "Add X", "Fix Y").
 3. When cutting a release: rename the `[Unreleased]` section to `[X.Y.Z] - YYYY-MM-DD`, add a fresh empty `[Unreleased]` above it, bump `package.json`, commit, then push the matching `vX.Y.Z` tag. The release workflow extracts the section for the tag's version and uses it as the GitHub release body.
 
 **Style rule — no soft wraps inside bullets or paragraphs.** GitHub renders release bodies with GFM's hard-break extension: every single newline inside a list item or paragraph becomes a `<br>`, which makes the release page look like a narrow column with text broken every ~70 chars. Write each bullet (and each paragraph) as one long line. Editors can soft-wrap at display time. KOB-13 has the rationale; the [`changelog-generator`](../../.claude/skills/changelog-generator/SKILL.md) skill knows this rule.
@@ -13,6 +15,10 @@ All notable changes to this project are documented here. The format follows [Kee
 ---
 
 ## [Unreleased]
+
+### Fixed
+
+- **Archive/delete from an active task session no longer drops to a black screen** — archiving or deleting the task whose tmux session you are currently inside now switches the tmux client to the next non-archived task (if one exists) before killing the session; when no other tasks are available, a `kobe-home` placeholder session is created and switched to instead, keeping the terminal alive.
 
 ## [0.6.7] - 2026-05-31
 
