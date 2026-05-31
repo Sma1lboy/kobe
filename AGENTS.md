@@ -56,6 +56,20 @@ The daemon is a long-lived background process. Two pieces of infrastructure keep
 
 When adding a fire-and-forget daemon call (`void someAsync()`), attach `.catch((err) => logDaemonError("<subsystem>", err))` so a failure is pinned to its subsystem (`[plan-usage-poller]`, `[daemon-shutdown]`, …) instead of surfacing as an anonymous rejection. Crash handlers are installed only in the real daemon process (`cli/daemon-cmd.ts` `start` branch) — never from code shared with the TUI or tests, since they mutate global `process` state.
 
+### Daemon lifecycle: refcounted lazy shutdown
+
+The daemon's lifetime is bound to the number of **attached GUIs** — a TUI that has sent `subscribe`. The refcount lives in [`src/daemon/server.ts`](./packages/kobe/src/daemon/server.ts) (`subscriberCount()` + an idle grace timer):
+
+- **First GUI launches** → `ensureDaemonReachable` auto-spawns the daemon if the socket isn't answering. Multiple TUIs share the one daemon.
+- **Last GUI quits** → on the `>0 → 0` subscriber transition the daemon arms a grace timer (`KOBE_DAEMON_IDLE_GRACE_MS`, default **3s**), then self-stops via the existing `stopSoon()` path. The grace absorbs reconnect blips (e.g. `manualReconnect()` force-drops then re-subscribes); a re-subscribe inside the window cancels it.
+- **Quitting a TUI doesn't RPC the daemon to die** — closing the socket is enough; the refcount drives shutdown. Ctrl+Q is `focus.sidebar`, not quit; real quit is `q` (sidebar) / `Ctrl+C`×2.
+
+Two deliberate non-triggers, so the count only ever reflects real GUIs:
+- **Transient CLI pokes never subscribe** — `daemon status` / `daemon stop` / `daemon restart` and any `hello`-only client don't bump the count, so they can't trip shutdown.
+- **The timer never arms on boot** — only on a `>0 → 0` transition. A foreground `kobe daemon start` or a freshly-respawned `kobe daemon restart` daemon (both subscriber-less by design) stay up.
+
+**Shutdown never touches tmux.** `server.close()` tears down sockets/pidfile only; task tmux sessions outlive the daemon and are re-adopted on the next launch. The *only* tmux teardown path stays `kobe reset` / `kobe kill-sessions` (`tmux -L kobe kill-server`) — see below. Don't couple tmux kills into daemon shutdown.
+
 ### Packaged-build recovery: `kobe doctor` / `kobe reset` (KOB-258)
 
 `dev:sandbox:reset` is dev-only. The packaged answer to "the daemon wedged/died, reset it" is two top-level commands in [`src/cli/maintenance.ts`](./packages/kobe/src/cli/maintenance.ts):

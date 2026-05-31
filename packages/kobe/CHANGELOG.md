@@ -22,6 +22,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **Adoptable worktrees are ordered most-recently-active first** — the `kobe adopt` listing and the New Task → Adopt Worktree tab now sort discovered worktrees by their HEAD commit time (descending) instead of git's enumeration order, so the worktree you last touched leads the list (KOB-256).
+- **The daemon shuts down on its own once you close the last kobe window** — the background daemon's lifetime is now tied to how many kobe TUIs are attached: it starts with the first window, is shared by all of them, and stops itself a few seconds after the last one closes (tunable via `KOBE_DAEMON_IDLE_GRACE_MS`, default 3s), so it no longer lingers forever after you quit. Your tmux task sessions are never touched by this — they survive the daemon and are picked back up next launch; only `kobe reset` / `kobe kill-sessions` tear sessions down.
 
 ## [0.6.5] - 2026-05-30
 

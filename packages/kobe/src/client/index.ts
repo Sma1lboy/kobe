@@ -17,10 +17,12 @@ export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>
  * the user "Restart daemon or Quit?". Reconnect is user-driven from that
  * prompt; the client does not auto-retry.
  *
- * Why no auto-reconnect: a kobe daemon dying is rare and never transient
- * (the design has no auto-respawn — `docs/design/daemon.md` §8). The user
- * is the one who decides to restart it, so popping a modal beats a
- * backoff loop that just delays the same prompt.
+ * Why no auto-reconnect: a kobe daemon dropping under a still-attached
+ * client is rare and never transient. The daemon's refcounted lazy
+ * shutdown (AGENTS.md "Daemon lifecycle") only self-stops once the LAST
+ * subscriber is gone — so a live client never has the daemon vanish from
+ * under it for that reason. The user is the one who decides to restart,
+ * so popping a modal beats a backoff loop that just delays the same prompt.
  */
 export type LifecycleEvent = "close"
 
