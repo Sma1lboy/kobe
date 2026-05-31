@@ -27,6 +27,8 @@ import { useBindings } from "../lib/keymap"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
+const DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 128)
+
 export function Dialog(
   props: ParentProps<{
     size?: DialogSize
@@ -89,7 +91,7 @@ export function Dialog(
       zIndex={3000}
       left={0}
       top={0}
-      backgroundColor={RGBA.fromInts(0, 0, 0, 150)}
+      backgroundColor={DIALOG_BACKDROP}
     >
       <box
         onMouseUp={(e: { stopPropagation(): void }) => {

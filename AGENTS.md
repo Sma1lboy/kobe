@@ -143,77 +143,18 @@ git clone --depth 1 https://github.com/warpdotdev/warp.git
 
 If a ref disagrees with kobe's existing implementation, kobe wins (we already chose) — but read the ref before deciding to deviate further.
 
-## Issue tracking — Linear
+## Work tracking — local only
 
-kobe **code-level** work is tracked in Linear. The Linear project is the product scoreboard — what's been built and what's queued; commit history is the proof.
+kobe work is maintained locally. Do not create Linear issues, update Linear states, or require `linear` CLI authentication as part of normal agent work.
 
-| | |
-|---|---|
-| Workspace | [`codesfox`](https://linear.app/codesfox) |
-| Team | `KOB` (Kobe) |
-| Active project | `0.6 tmux 版本` |
-| Legacy project | `0.5 opentui 版本` — shipped/stale self-rendered opentui chat work; do not file new v0.6 tmux work here |
-| Workspace labels | `Bug`, `Chore`, `Doc`, `Feature`, `Featurebase`, `Tech Debt` |
+Use local artifacts instead:
 
-### What to file
+- Code changes are tracked by git commits.
+- User-facing shipped behavior is tracked in [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
+- Current risks and follow-ups are tracked in [`HANDOFF.md`](./HANDOFF.md).
+- Durable design decisions belong in `docs/` as Markdown.
 
-**File:** features, bug fixes, refactors, product follow-ups, design decisions that change what kobe *does*.
-
-**Don't file:** tool/process/meta work — `AGENTS.md` / `CLAUDE.md` symlink edits, `.claude/skills/...` rewrites, memory tweaks, agent config, dev-env setup. Linear is not a meta-changelog.
-
-Litmus test: *does this change kobe's behavior, code, or product surface?* Yes → file. No → skip.
-
-**Filing is an invisible, non-negotiable step — never ask the user for permission.** When a code-level change passes the litmus test, file the issue and proceed. Do not say "want me to file a Linear issue?" or wait for confirmation; just run the `linear` CLI as part of the workflow, the same way you run a typecheck. The only decision is the litmus test itself.
-
-### Lifecycle
-
-1. **File** when the work starts (or when a forward requirement surfaces in chat).
-2. **Do the work** — code, test, harness self-validation.
-3. **Mark Done** the moment it lands: `linear issue update KOB-N --state Done`.
-4. **Link the commit** — either reference `KOB-N` in the commit message (Linear's GitHub integration auto-links) or attach a comment with the SHA via `linear issue comment add KOB-N --body-file ...`.
-
-Exception to "mark Done immediately": forward requirements ("we'll need X eventually") stay open in `Todo` / `Backlog` until actually picked up.
-
-### Tooling — `linear` CLI, not MCP
-
-We use [`schpet/linear-cli`](https://github.com/schpet/linear-cli), not the Linear MCP server. The MCP path was flaky; the CLI is `brew`-installed, scriptable, and authenticated once via system keyring.
-
-**Install + auth (one-time per dev / per agent host):**
-
-```bash
-brew install schpet/tap/linear-cli   # or whatever your platform's install path is
-linear auth login                     # interactive browser OAuth — user must do this
-linear auth whoami                    # verify: should print Workspace + User
-```
-
-If keyring auth is unavailable on the agent host, set `LINEAR_API_KEY` in the local shell environment (for example `~/.zshrc`) and run Linear commands from a shell that has sourced it. Never commit the actual API key to `AGENTS.md`, `CLAUDE.md`, or any tracked repo file.
-
-Agents who find `linear` missing on PATH should surface to the user — do not try to fall back to the MCP, and do not silently skip filing.
-
-### Cheat sheet
-
-```bash
-# Create
-cat > /tmp/issue-body.md <<'EOF'
-<markdown body — context, scope, open questions>
-EOF
-linear issue create \
-  --team KOB --project "0.6 tmux 版本" \
-  --title "<short imperative title>" \
-  --description-file /tmp/issue-body.md \
-  --label "Feature" --no-interactive
-
-# Close on completion
-linear issue update KOB-N --state Done
-linear issue comment add KOB-N --body-file /tmp/done-note.md   # commit SHA goes here
-```
-
-Notes:
-- `--no-interactive` is a **create-only** flag. `update` has no such flag — just pass the change directly.
-- Always use `--description-file` / `--body-file` for any markdown body — `-d "..."` / `-b "..."` mangles newlines and shell-quoting.
-- Surface the issue URL after every create / state change.
-
-Full skill at [`.claude/skills/linear/SKILL.md`](./.claude/skills/linear/SKILL.md).
+If a future requirement needs external tracking, surface it to the user first instead of filing it automatically.
 
 ## Hard rules (non-negotiable)
 

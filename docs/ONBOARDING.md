@@ -33,12 +33,12 @@ bun --filter @sma1lboy/kobe test:behavior   # needs node-pty for the test driver
 # 4. run it
 bun --filter @sma1lboy/kobe dev
 
-# 5. linear (optional but recommended)
-linear auth login   # browser OAuth
-linear issue list   # should show KOB issues from this repo's .linear.toml
+# 5. local work tracking
+git status --short
+sed -n '1,80p' HANDOFF.md
 ```
 
-If any step fails, surface in Linear (`Bug` label) before fighting it.
+If any step fails, capture it in `HANDOFF.md` or a focused repo Markdown note before fighting it.
 
 ---
 
@@ -80,9 +80,8 @@ kobe/
 │   ├── ONBOARDING.md  ← you are here
 │   └── PLAN.md
 ├── refs/                          # gitignored study repos (read-only)
-├── .agents/skills/                # installed agent skills (linear, ...)
+├── .agents/skills/                # installed agent skills
 ├── .claude/skills/                # symlinks → .agents/skills/<name>
-├── .linear.toml                   # linear-cli pins workspace + KOB team
 ├── HANDOFF.md                     # latest session state + follow-ups
 └── CLAUDE.md                      # workspace + project rules
 ```
@@ -117,24 +116,20 @@ work in an area, ping the listed owner first to avoid stomping.
 
 1. Reproduce. If you can't, file as `investigate:` and assign to whoever
    knows the area best — don't guess at the root cause in the description.
-2. Open issue in Linear → KOB team → `Pre-1.0 整理` project (default).
-3. Title: `fix: <imperative summary, lowercase>` (see `docs/LINEAR.md`).
+2. Record it locally: `HANDOFF.md` for current risks, or a focused `docs/*.md` note if it is durable.
+3. Title/heading: `fix: <imperative summary, lowercase>`.
 4. Description: **what / why / how-to-repro** for bugs.
-5. Label: `Bug`. Priority: only set High/Urgent when it actually blocks.
-6. Don't @-assign unless you know who owns the area.
+5. Link code paths, logs, or reproduction commands directly in the Markdown note.
 
 ### 4.2 Picking up an issue
 
-1. `linear issue list --cycle active` (or from the Linear app).
-2. Pick something from the cycle, **not the backlog**, unless you're
-   pulling forward urgent work.
-3. `linear issue start KOB-N` — auto-creates a branch, marks In Progress,
-   assigns to you.
-4. Read referenced docs before touching code (the issue links to
-   `docs/*.md` files when relevant).
+1. Read `HANDOFF.md` and the relevant `docs/*.md` note.
+2. Check `git status --short` before editing.
+3. Create a focused branch/worktree if the work is large.
+4. Read referenced docs before touching code.
 5. Tight feedback loop: `bun typecheck` and `bun test` after each change.
    Behavior test if the change is user-visible.
-6. Push, `linear issue pr KOB-N` to open a PR with the ID linked.
+6. Update `CHANGELOG.md` for user-visible changes and commit when green.
 
 ### 4.3 Reviewing a PR
 
@@ -146,12 +141,10 @@ work in an area, ping the listed owner first to avoid stomping.
 
 ### 4.4 Shipping (cycle close)
 
-1. End of cycle: `linear cycle view current` to see what shipped vs.
-   slipped.
+1. Review `HANDOFF.md` and recent commits to see what shipped vs. slipped.
 2. Update `CHANGELOG.md` for user-visible changes.
 3. Tag + publish via the existing release flow (`packages/kobe`).
-4. Anything in the cycle that didn't ship rolls to next cycle (Linear
-   does this automatically on cycle close if configured).
+4. Carry forward unfinished local follow-ups in `HANDOFF.md`.
 
 ### 4.5 Per-domain pitfalls
 
@@ -175,7 +168,7 @@ work in an area, ping the listed owner first to avoid stomping.
 
 ## 5. Communication
 
-- **Async-first**: leave reasoning in commits, PR descriptions, Linear
+- **Async-first**: leave reasoning in commits, PR descriptions, and repo Markdown
   comments — not just chat. Chat is for unblocking, not record.
 - **Escalate to Jackson when**:
   - Architectural decisions not in `DESIGN.md`.

@@ -5,7 +5,7 @@
 
 ## Read First
 
-1. `AGENTS.md` — operator manual, hard rules, reference repos, Linear workflow.
+1. `AGENTS.md` — operator manual, hard rules, reference repos, local work-tracking workflow.
 2. `packages/kobe/CHANGELOG.md` — canonical shipped behavior. Start at `[0.6.4]`, then read `[0.6.2]` for the direct-tmux reshape details.
 3. `docs/KEYBINDINGS.md` — current shortcut model. Important: outer opentui bindings live in `KobeKeymap`, but direct-tmux handover keys live in `src/tui/panes/terminal/tmux.ts`.
 4. `docs/design/v2-tmux-handover.md` — historical design intent. It is now partially stale: outer monitor is deprecated and normal startup opens directly into tmux.
@@ -70,21 +70,9 @@ Worth adding:
 - README section: update path vs reset path.
 - Maybe a `kobe doctor` pane-version check that lists stale `@kobe_pane_version` without killing anything.
 
-### 4. Finish Linear/project hygiene when workspace limit is fixed
+### 4. Keep work tracking local
 
-Linear issue creation currently fails with:
-
-```text
-You've exceeded the free issue limit for this workspace.
-```
-
-Do not silently skip code-level Linear filing once the workspace limit is fixed. Recent work that could be backfilled:
-
-- Direct-tmux key hint/docs sync.
-- Stale kobe-owned pane self-healing.
-- Ops preview redesign.
-
-The active project should be `0.6 tmux 版本`. Older `0.5 opentui 版本` exists for the pre-tmux line.
+Linear filing is no longer part of the agent workflow. Track shipped behavior in `packages/kobe/CHANGELOG.md`, active risks in this handoff, and durable decisions in `docs/`.
 
 ## Known Caveats
 
