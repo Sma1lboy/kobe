@@ -68,7 +68,7 @@ import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
-import { ensureSession, openNewTaskTab, openSettingsTab } from "../panes/terminal/tmux.ts"
+import { ensureSession, openNewTaskTab, openSettingsTab, openUpdateTab } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -220,6 +220,14 @@ function TasksShell(props: {
       }
     }
     void SettingsDialog.show(dialog, kv, props.orch ?? undefined)
+  }
+
+  async function openUpdate(): Promise<void> {
+    const info = updateInfo()
+    if (!info?.hasUpdate) return
+    const session = await currentSessionName()
+    if (!session) return
+    await openUpdateTab(session)
   }
 
   async function archiveTask(id: string): Promise<void> {
@@ -377,6 +385,7 @@ function TasksShell(props: {
     bindings: [
       { key: "n", cmd: () => void createTask() },
       { key: "s", cmd: () => void openSettings() },
+      { key: "u", cmd: () => void openUpdate() },
       {
         key: "o",
         cmd: () => {
@@ -498,7 +507,7 @@ function TasksShell(props: {
           focused={() => dialog.stack.length === 0}
         />
       </box>
-      <ShortcutHints updateInfo={updateInfo} />
+      <ShortcutHints updateInfo={updateInfo} onOpenUpdate={() => void openUpdate()} />
     </box>
   )
 }
@@ -509,7 +518,7 @@ function TasksShell(props: {
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
-function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null> }) {
+function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null>; onOpenUpdate: () => void }) {
   const { theme } = useTheme()
   const updateLabel = createMemo(() => {
     const info = props.updateInfo()
@@ -549,6 +558,9 @@ function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null> }) {
           fg={props.updateInfo()?.hasUpdate ? theme.warning : theme.textMuted}
           attributes={props.updateInfo()?.hasUpdate ? TextAttributes.BOLD : TextAttributes.DIM}
           wrapMode="none"
+          onMouseUp={() => {
+            if (props.updateInfo()?.hasUpdate) props.onOpenUpdate()
+          }}
         >
           {updateLabel()}
         </text>
@@ -557,9 +569,16 @@ function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null> }) {
           command — right here in the tmux-native footer, since the old
           outer-monitor update dialog isn't reachable on normal startup. */}
       <Show when={props.updateInfo()?.hasUpdate}>
-        <text fg={theme.accent} attributes={TextAttributes.DIM} wrapMode="none">
-          run: kobe update
-        </text>
+        <box flexDirection="row" gap={1} onMouseUp={() => props.onOpenUpdate()}>
+          <box width={10} flexShrink={0}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+              [U]
+            </text>
+          </box>
+          <text fg={theme.accent} attributes={TextAttributes.DIM} wrapMode="none">
+            update page
+          </text>
+        </box>
       </Show>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         ── keys ──

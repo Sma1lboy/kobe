@@ -171,6 +171,16 @@ export function previewWindowCommand(args: {
 }
 
 /**
+ * Shell command for the full-window update page opened from the tmux
+ * Tasks pane. This mirrors the Settings/New Task full-page surfaces:
+ * a dedicated window owns update copy, release notes, and the updater
+ * handoff instead of squeezing that state into the Tasks footer.
+ */
+export function updatePageCommand(args: { cliInvocation: readonly string[] }): string {
+  return `${shellQuoteArgv([...args.cliInvocation, "update-page"])}`
+}
+
+/**
  * The far-left Tasks pane command — `kobe tasks` (a read-only task
  * list that `switch-client`s between sessions). `cliInvocation` is the
  * argv prefix that runs the kobe CLI (injected for purity/testability).

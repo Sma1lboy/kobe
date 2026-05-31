@@ -413,6 +413,14 @@ async function main(): Promise<void> {
     await startNewTaskHost({ defaultRepo: flags.repo })
     return
   }
+  if (subcommand === "update-page") {
+    // Internal full-window update surface opened from the tmux-native
+    // Tasks pane. `kobe update` remains the shell updater; this page
+    // presents the version/release context and hands off to that updater.
+    const { startUpdateHost } = await import("../tui/update/host.tsx")
+    await startUpdateHost()
+    return
+  }
   if (subcommand === "ops") {
     // The Ops pane (right side of the per-task tmux session). Runs in
     // its own process inside the tmux pane; mounts the v0.5 FileTree

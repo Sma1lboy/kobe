@@ -59,6 +59,7 @@ import {
   shellQuote,
   shellQuoteArgv,
   tasksPaneCommand,
+  updatePageCommand,
 } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
@@ -743,6 +744,21 @@ export async function openNewTaskTab(session: string, defaultRepo?: string): Pro
   const repoArg = defaultRepo ? ` --repo ${shellQuote(defaultRepo)}` : ""
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} new-task${repoArg}`
   await newWindow(session, { cwd, command, name: "new task" })
+}
+
+/**
+ * Open update details as a dedicated tmux window. The Tasks pane footer
+ * stays compact; the full page owns release notes, clickable actions,
+ * and the terminal handoff for actually running the updater.
+ */
+export async function openUpdateTab(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const command = `${envPrefix}${updatePageCommand({ cliInvocation: inv })}`
+  await newWindow(session, { cwd, command, name: "update" })
 }
 
 /**

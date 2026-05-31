@@ -15,6 +15,7 @@ import {
   previewWindowCommand,
   shellQuote,
   shellQuoteArgv,
+  updatePageCommand,
 } from "../../src/tmux/session-layout.ts"
 
 describe("layout constants", () => {
@@ -125,6 +126,18 @@ describe("previewWindowCommand", () => {
     expect(
       cmd.startsWith("'/bin/bun' '--preload' '/abs/p.ts' '--conditions=browser' '/abs/cli.ts' ops --worktree"),
     ).toBe(true)
+  })
+})
+
+describe("updatePageCommand", () => {
+  test("runs the full-window update page through the kobe CLI invocation", () => {
+    expect(updatePageCommand({ cliInvocation: ["kobe"] })).toBe("'kobe' 'update-page'")
+  })
+
+  test("quotes a multi-token dev invocation", () => {
+    expect(updatePageCommand({ cliInvocation: ["/bin/bun", "--conditions=browser", "/abs/cli.ts"] })).toBe(
+      "'/bin/bun' '--conditions=browser' '/abs/cli.ts' 'update-page'",
+    )
   })
 })
 

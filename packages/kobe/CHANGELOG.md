@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+- **Update opens as a tmux-native page** — clicking the Tasks pane update status (or pressing `u` while the Tasks pane is focused) now opens a dedicated tmux window with the current/latest versions, release notes, a browser jump to the GitHub release, and an in-window updater handoff instead of relying on the deprecated outer TUI update dialog or cramped footer copy.
+
 ## [0.6.6] - 2026-05-31
 
 ### Added
