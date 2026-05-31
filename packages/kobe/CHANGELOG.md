@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **A new task auto-names itself while you're still in it** — previously a task kept its `(new task)` placeholder for the whole session and only picked up a title from your first prompt once you detached back to the task list. The daemon now watches each still-unnamed task's engine transcript and renames it from your first message a few seconds after you send it, so the sidebar updates live without leaving the session. It only ever replaces the placeholder, so a manual rename is never overwritten; the detach-time naming stays as a fallback when no daemon is running.
-- Make dialog backdrops 50% transparent so modals keep more of the tmux context visible behind them.
+- Make dialog backdrops and dialog cards transparent-mode aware so modals keep more of the tmux context visible behind them.
 
 ## [0.6.8] - 2026-05-31
 

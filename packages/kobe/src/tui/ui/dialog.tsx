@@ -28,6 +28,7 @@ import { useBindings } from "../lib/keymap"
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
 const DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 128)
+const TRANSPARENT_DIALOG_BACKDROP = RGBA.fromInts(0, 0, 0, 64)
 
 export function Dialog(
   props: ParentProps<{
@@ -36,7 +37,8 @@ export function Dialog(
   }>,
 ) {
   const dimensions = useTerminalDimensions()
-  const { theme } = useTheme()
+  const themeCtx = useTheme()
+  const { theme } = themeCtx
   const renderer = useRenderer()
 
   let dismiss = false
@@ -91,7 +93,7 @@ export function Dialog(
       zIndex={3000}
       left={0}
       top={0}
-      backgroundColor={DIALOG_BACKDROP}
+      backgroundColor={themeCtx.transparentBackground ? TRANSPARENT_DIALOG_BACKDROP : DIALOG_BACKDROP}
     >
       <box
         onMouseUp={(e: { stopPropagation(): void }) => {
@@ -111,11 +113,9 @@ export function Dialog(
         // cards hit the cap and clip (children that need scrolling —
         // F1 help, settings — wrap their own scrollbox).
         flexGrow={0}
-        // Modals stay opaque even in transparent mode — the user's
-        // terminal can show through the page panels (sidebar / chat
-        // background), but a dialog's content needs a solid surface
-        // to read against. `backgroundDialog` is exempt from the
-        // transparent override (see context/theme.tsx).
+        // In transparent mode the card keeps the theme's dialog tint
+        // but uses 50% alpha; the backdrop is also lighter so two
+        // stacked translucent layers do not black out the terminal.
         backgroundColor={theme.backgroundDialog}
         paddingTop={1}
       >
