@@ -51,7 +51,7 @@
 import type { Task, TaskStatus } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
-import { useRenderer } from "@opentui/solid"
+import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 import { useTheme as _useTheme } from "../../context/theme"
 
@@ -262,6 +262,24 @@ export function truncateTitle(title: string, max: number): string {
   return `${title.slice(0, Math.max(0, max - 1))}…`
 }
 
+/**
+ * Rough display width in terminal cells, counting CJK / fullwidth codepoints
+ * as 2. Not Unicode-exact (no combining-mark or emoji-ZWJ handling) — just
+ * enough to size the hover tooltip so a Chinese task title isn't clipped. A
+ * slight over-estimate only widens the box, which is harmless.
+ */
+export function approxCellWidth(s: string): number {
+  let n = 0
+  for (const ch of s) n += (ch.codePointAt(0) ?? 0) >= 0x1100 ? 2 : 1
+  return n
+}
+
+/** Truncate a filesystem path keeping the TAIL (the leaf carries the meaning). */
+function truncatePathTail(path: string, max: number): string {
+  if (max <= 0 || path.length <= max) return path
+  return `…${path.slice(path.length - Math.max(0, max - 1))}`
+}
+
 export function Sidebar(props: SidebarProps) {
   const { theme } = useTheme()
 
@@ -397,6 +415,16 @@ export function Sidebar(props: SidebarProps) {
       9 + (showChangesCol() ? CHANGES_COLUMN_WIDTH + 1 : 0) + (showBranchCol() ? BRANCH_LABEL_MAX + 2 : 0)
     return Math.max(4, effectiveWidth() - reserved)
   })
+
+  // Hover tooltip (KOB): on a narrow rail the responsive columns hide the
+  // branch and the title is ellipsised, so hovering a row pops a detail
+  // overlay with the full title / branch / worktree path. We snapshot the
+  // cursor coords from the mouse event to anchor it; `useTerminalDimensions`
+  // clamps it inside the screen so a long path near the bottom/right edge
+  // doesn't render off-screen. Cleared on mouse-out (guarded so a fast
+  // row→row move doesn't clear the row we just entered).
+  const dims = useTerminalDimensions()
+  const [hover, setHover] = createSignal<{ task: Task; x: number; y: number } | null>(null)
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
@@ -671,6 +699,8 @@ export function Sidebar(props: SidebarProps) {
                     props.onSelect(task.id)
                     if (props.activateOnClick) props.onActivate?.(task.id)
                   }}
+                  onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
+                  onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
                 >
                   <text
                     fg={isCursor() ? theme.selectedListItemText : badgeColor()}
@@ -784,6 +814,59 @@ export function Sidebar(props: SidebarProps) {
           + New task
         </text>
       </box>
+
+      {/* Hover tooltip overlay. Absolute + high zIndex so it floats above the
+          rows; anchored just below-right of the cursor and clamped inside the
+          screen. `backgroundElement` stays opaque even in transparent mode, so
+          the detail stays readable over whatever is behind it. The full title,
+          branch, and worktree path live here — the place to look when the
+          narrow-rail row had to drop them. */}
+      <Show when={hover()}>
+        {(h) => {
+          const lines = createMemo(() => {
+            const t = h().task
+            const out: { text: string; bold?: boolean; dim?: boolean }[] = []
+            out.push({ text: t.kind === "main" ? repoBasename(t.repo) : t.title, bold: true })
+            if (t.branch.length > 0) out.push({ text: `⎇ ${t.branch}` })
+            if (t.worktreePath.length > 0) out.push({ text: t.worktreePath, dim: true })
+            return out
+          })
+          // Width = widest line (CJK-aware) capped, + padding (2) + border (2).
+          const TOOLTIP_MAX_W = 72
+          const innerW = createMemo(() => Math.min(TOOLTIP_MAX_W - 4, Math.max(...lines().map((l) => approxCellWidth(l.text)))))
+          const boxW = createMemo(() => innerW() + 4)
+          const boxH = createMemo(() => lines().length + 2) // content rows + top/bottom border
+          const left = createMemo(() => Math.max(0, Math.min(h().x + 2, dims().width - boxW() - 1)))
+          const top = createMemo(() => Math.max(0, Math.min(h().y + 1, dims().height - boxH() - 1)))
+          return (
+            <box
+              position="absolute"
+              zIndex={2600}
+              left={left()}
+              top={top()}
+              width={boxW()}
+              flexDirection="column"
+              border
+              borderColor={theme.focusAccent}
+              backgroundColor={theme.backgroundElement}
+              paddingLeft={1}
+              paddingRight={1}
+            >
+              <For each={lines()}>
+                {(l) => (
+                  <text
+                    fg={l.dim ? theme.textMuted : theme.text}
+                    attributes={l.bold ? TextAttributes.BOLD : l.dim ? TextAttributes.DIM : undefined}
+                    wrapMode="none"
+                  >
+                    {l.dim ? truncatePathTail(l.text, innerW()) : truncateTitle(l.text, innerW())}
+                  </text>
+                )}
+              </For>
+            </box>
+          )
+        }}
+      </Show>
     </box>
   )
 }
