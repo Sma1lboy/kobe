@@ -82,6 +82,14 @@ function TasksShell(props: {
   transparent: boolean
   focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
   /**
+   * The task this pane's tmux session belongs to (its `@kobe_task` tag),
+   * resolved before render. Used as the initial highlight so a freshly-built
+   * session lands the cursor on the task you entered — not the first row —
+   * even when the `active-task` broadcast races the pane's subscribe. The
+   * shared active-task effect still follows live cross-session switches.
+   */
+  ownTaskId: string | null
+  /**
    * The shared task-state framework: one daemon-backed RemoteOrchestrator
    * used for BOTH the live subscribe (reads) and every mutation (writes),
    * so the Tasks pane goes through the same single source of truth as the
@@ -96,7 +104,7 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-  const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+  const [selectedId, setSelectedId] = createSignal<string | null>(props.ownTaskId ?? props.tasks()[0]?.id ?? null)
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -664,6 +672,13 @@ export async function startTasksPane(): Promise<void> {
     console.error("[kobe tasks] daemon subscribe unavailable, polling tasks.json:", err)
   }
 
+  // The task this pane's tmux session belongs to — read once before render so
+  // the initial highlight lands on it (a from-scratch session build otherwise
+  // raced the active-task broadcast and defaulted the cursor to the first row).
+  let ownTaskId: string | null = null
+  const sessionName = await currentSessionName()
+  if (sessionName) ownTaskId = (await getSessionOption(sessionName, "@kobe_task")) || null
+
   const tasks: Accessor<readonly Task[]> = orch ? orch.tasksSignal() : fileTasks
   const reload = async (): Promise<void> => {
     // Subscribe keeps the list live; reload only matters in the polling
@@ -684,6 +699,7 @@ export async function startTasksPane(): Promise<void> {
                 <TasksShell
                   tasks={tasks}
                   orch={orch}
+                  ownTaskId={ownTaskId}
                   transparent={prefs.transparent}
                   focusAccent={prefs.focusAccent}
                   reload={reload}
