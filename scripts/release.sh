@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# Cut a kobe release: bump version, update CHANGELOG, commit, tag, push.
+# Cut a kobe release from pending changesets.
 #
 # Usage:
-#   scripts/release.sh          # patch bump (0.6.7 → 0.6.8)
-#   scripts/release.sh minor    # minor bump (0.6.7 → 0.7.0)
-#   scripts/release.sh major    # major bump (0.6.7 → 1.0.0)
-#   scripts/release.sh 0.7.1    # explicit version
+#   scripts/release.sh        # consume .changeset/*.md → version + CHANGELOG → commit + tag + push
+#
+# The bump (patch/minor/major) is NOT passed here — it comes from the pending
+# changeset files. Add changesets while you work with `bun run changeset`; see
+# docs/RELEASING.md.
 #
 # What it does:
-#   1. Bumps packages/kobe/package.json version
-#   2. Renames [Unreleased] → [X.Y.Z] + inserts fresh [Unreleased] in CHANGELOG
-#   3. Commits both files as "chore: release — X.Y.Z"
-#   4. Creates tag vX.Y.Z
-#   5. Asks before pushing (main + tag) — the push triggers GitHub Actions
+#   1. `changeset version` — derives the next version from pending changesets,
+#      rewrites packages/kobe/package.json, prepends notes to CHANGELOG.md, and
+#      deletes the consumed changesets.
+#   2. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
+#      reserialized JSON can't fail the lint gate (the `files` array used to
+#      re-expand to multi-line and break `biome check`).
+#   3. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
+#   4. Asks before pushing (main + tag) — the push triggers GitHub Actions
 #      which typechecks, tests, builds, publishes to npm, and creates the
 #      GitHub release with the extracted CHANGELOG notes.
 set -euo pipefail
@@ -20,46 +24,22 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG_JSON="$REPO_ROOT/packages/kobe/package.json"
 CHANGELOG="$REPO_ROOT/packages/kobe/CHANGELOG.md"
-
-# ── current version ───────────────────────────────────────────────────────────
-CURRENT=$(python3 -c "import json; print(json.load(open('$PKG_JSON'))['version'])")
-BUMP="${1:-patch}"
-
-# ── compute new version ───────────────────────────────────────────────────────
-case "$BUMP" in
-  major|minor|patch)
-    IFS='.' read -r maj min pat <<< "$CURRENT"
-    case "$BUMP" in
-      major) NEW_VERSION="$((maj+1)).0.0" ;;
-      minor) NEW_VERSION="${maj}.$((min+1)).0" ;;
-      patch) NEW_VERSION="${maj}.${min}.$((pat+1))" ;;
-    esac
-    ;;
-  [0-9]*)
-    NEW_VERSION="$BUMP"
-    ;;
-  *)
-    echo "Usage: $0 [patch|minor|major|X.Y.Z]" >&2
-    exit 1
-    ;;
-esac
-
-TAG="v$NEW_VERSION"
-TODAY=$(date +%Y-%m-%d)
-
-echo "──────────────────────────────────────────"
-echo "  kobe $CURRENT  →  $NEW_VERSION  ($TAG)"
-echo "──────────────────────────────────────────"
-
-# ── safety: tag must not already exist ────────────────────────────────────────
 cd "$REPO_ROOT"
-if git rev-parse "$TAG" &>/dev/null 2>&1; then
-  echo "Error: tag $TAG already exists — delete it first if you want to retag." >&2
+
+# ── safety: there must be pending changesets to release ───────────────────────
+PENDING=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l | tr -d ' ')
+if [ "$PENDING" = "0" ]; then
+  echo "No pending changesets in .changeset/ — nothing to release." >&2
+  echo "Add one with: bun run changeset" >&2
   exit 1
 fi
 
-# ── safety: working tree must be clean (except staged/unstaged pkg files) ─────
-DIRTY=$(git diff --name-only HEAD | grep -v '^packages/kobe/package\.json$' | grep -v '^packages/kobe/CHANGELOG\.md$' | grep -v '^bun\.lock$' || true)
+# ── safety: working tree clean (except files the release itself rewrites) ─────
+DIRTY=$(git diff --name-only HEAD \
+  | grep -v '^packages/kobe/package\.json$' \
+  | grep -v '^packages/kobe/CHANGELOG\.md$' \
+  | grep -v '^bun\.lock$' \
+  | grep -v '^\.changeset/' || true)
 if [ -n "$DIRTY" ]; then
   echo "Uncommitted changes in:" >&2
   echo "$DIRTY" | sed 's/^/  /' >&2
@@ -68,68 +48,47 @@ if [ -n "$DIRTY" ]; then
   exit 1
 fi
 
-# ── bump package.json ─────────────────────────────────────────────────────────
-python3 - "$PKG_JSON" "$NEW_VERSION" << 'PYEOF'
-import json, sys
-path, ver = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    pkg = json.load(f)
-pkg["version"] = ver
-with open(path, "w") as f:
-    json.dump(pkg, f, indent=2)
-    f.write("\n")
-PYEOF
-echo "✓  package.json → $NEW_VERSION"
+CURRENT=$(node -p "require('$PKG_JSON').version")
 
-# ── update CHANGELOG ──────────────────────────────────────────────────────────
-# Use ^## \[Unreleased\] (MULTILINE) to match only a line-start header,
-# not the same text appearing inside backtick spans in the "How to update"
-# preamble section.
-python3 - "$CHANGELOG" "$NEW_VERSION" "$TODAY" << 'PYEOF'
-import re, sys
-path, ver, today = sys.argv[1], sys.argv[2], sys.argv[3]
-with open(path) as f:
-    content = f.read()
-marker_re = re.compile(r'^## \[Unreleased\]', re.MULTILINE)
-if not marker_re.search(content):
-    print("Error: '## [Unreleased]' header not found at line start in CHANGELOG.md", file=sys.stderr)
-    sys.exit(1)
-replacement = f"## [Unreleased]\n\n## [{ver}] - {today}"
-with open(path, "w") as f:
-    f.write(marker_re.sub(replacement, content, count=1))
-PYEOF
-echo "✓  CHANGELOG.md  [Unreleased] → [$NEW_VERSION] - $TODAY"
+# ── consume changesets → bump version + write CHANGELOG ───────────────────────
+bun x changeset version
 
-# ── show what's in the release section ────────────────────────────────────────
-# Use MULTILINE so ^ anchors match line starts, not just the string start.
-NOTES=$(python3 - "$CHANGELOG" "$NEW_VERSION" << 'PYEOF'
-import re, sys
-path, ver = sys.argv[1], sys.argv[2]
-content = open(path).read()
-m = re.search(
-    rf'^## \[{re.escape(ver)}\][^\n]*\n(.*?)(?=^## \[|\Z)',
-    content, re.DOTALL | re.MULTILINE,
-)
-print(m.group(1).strip() if m else "(empty)")
-PYEOF
-)
-if [ "$NOTES" = "(empty)" ]; then
-  echo ""
-  echo "  ⚠  The [$NEW_VERSION] CHANGELOG section is empty."
-  echo "     Add release notes under [Unreleased] before tagging."
-  echo ""
-  read -rp "  Continue with empty notes? [y/N] " REPLY
-  [[ "$REPLY" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
-else
-  echo ""
-  echo "  Release notes:"
-  echo "$NOTES" | sed 's/^/    /'
-  echo ""
+NEW_VERSION=$(node -p "require('$PKG_JSON').version")
+if [ "$NEW_VERSION" = "$CURRENT" ]; then
+  echo "Error: version did not change ($CURRENT). Did the changesets carry a bump?" >&2
+  exit 1
+fi
+TAG="v$NEW_VERSION"
+
+# ── neutralize the JSON-reserialize lint trap ─────────────────────────────────
+# `changeset version` rewrites package.json with its own formatter, which can
+# re-expand the single-line `files` array and trip `biome check`. Format the
+# files it touched so the lint gate stays green.
+bun run lint:fix >/dev/null 2>&1 || true
+
+echo "──────────────────────────────────────────"
+echo "  kobe $CURRENT  →  $NEW_VERSION  ($TAG)"
+echo "──────────────────────────────────────────"
+
+# ── safety: tag must not already exist ────────────────────────────────────────
+if git rev-parse "$TAG" &>/dev/null 2>&1; then
+  echo "Error: tag $TAG already exists — delete it first if you want to retag." >&2
+  exit 1
 fi
 
+# ── show what's in the release section ────────────────────────────────────────
+NOTES=$(awk -v ver="$NEW_VERSION" '
+  $0 ~ "^## \\[?" ver "([]). -]|$)" { found=1; next }
+  found && /^## / { exit }
+  found { print }
+' "$CHANGELOG")
+echo ""
+echo "  Release notes:"
+echo "$NOTES" | sed 's/^/    /'
+echo ""
+
 # ── commit & tag ──────────────────────────────────────────────────────────────
-git add packages/kobe/package.json packages/kobe/CHANGELOG.md
-# Include bun.lock only if it was already modified (workspace version bump side-effect)
+git add packages/kobe/package.json packages/kobe/CHANGELOG.md .changeset
 if ! git diff --quiet bun.lock 2>/dev/null; then
   git add bun.lock
 fi

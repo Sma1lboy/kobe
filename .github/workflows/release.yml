@@ -114,11 +114,13 @@ jobs:
         working-directory: packages/kobe
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          # Pull everything between `## [<version>]` and the next `## [`.
+          # Pull everything between this version's heading and the next one.
+          # Matches BOTH the legacy hand-written format (`## [0.6.9] - date`)
+          # and the Changesets format (`## 0.7.0`), so old tags still extract.
           # awk is happier than sed for this multi-line slice.
           NOTES=$(awk -v ver="$VERSION" '
-            $0 ~ "^## \\["ver"\\]" { found=1; next }
-            found && $0 ~ "^## \\[" { exit }
+            $0 ~ "^## \\[?" ver "([]). -]|$)" { found=1; next }
+            found && /^## / { exit }
             found { print }
           ' CHANGELOG.md)
           if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then

@@ -20,10 +20,14 @@
     "test": "bun --filter @sma1lboy/kobe test",
     "test:behavior": "bun --filter @sma1lboy/kobe test:behavior",
     "lint": "biome check .",
-    "lint:fix": "biome check . --write"
+    "lint:fix": "biome check . --write",
+    "changeset": "changeset",
+    "changeset:status": "changeset status",
+    "release": "scripts/release.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.4"
+    "@biomejs/biome": "1.9.4",
+    "@changesets/cli": "^2.31.0"
   },
   "trustedDependencies": []
 }
