@@ -689,6 +689,7 @@ export function Sidebar(props: SidebarProps) {
               })
               const titleText = isMain ? repoBasename(task.repo) : task.title
               return (
+                // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply.
                 <box
                   flexDirection="row"
                   paddingLeft={1}
@@ -833,7 +834,9 @@ export function Sidebar(props: SidebarProps) {
           })
           // Width = widest line (CJK-aware) capped, + padding (2) + border (2).
           const TOOLTIP_MAX_W = 72
-          const innerW = createMemo(() => Math.min(TOOLTIP_MAX_W - 4, Math.max(...lines().map((l) => approxCellWidth(l.text)))))
+          const innerW = createMemo(() =>
+            Math.min(TOOLTIP_MAX_W - 4, Math.max(...lines().map((l) => approxCellWidth(l.text)))),
+          )
           const boxW = createMemo(() => innerW() + 4)
           const boxH = createMemo(() => lines().length + 2) // content rows + top/bottom border
           const left = createMemo(() => Math.max(0, Math.min(h().x + 2, dims().width - boxW() - 1)))
