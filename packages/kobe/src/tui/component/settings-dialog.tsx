@@ -378,11 +378,25 @@ export function SettingsDialog(props: SettingsDialogProps) {
   )
 }
 
-SettingsDialog.show = (dialog: DialogContext, kv: KVContext, orchestrator?: KobeOrchestrator): Promise<void> => {
-  return new Promise<void>((resolve) => {
+SettingsDialog.show = (
+  dialog: DialogContext,
+  kv: KVContext,
+  orchestrator?: KobeOrchestrator,
+): Promise<{ visualPrefsChanged: boolean }> => {
+  let visualPrefsChanged = false
+  return new Promise<{ visualPrefsChanged: boolean }>((resolve) => {
     dialog.replace(
-      () => <SettingsDialog kv={kv} orchestrator={orchestrator} onClose={() => resolve()} />,
-      () => resolve(),
+      () => (
+        <SettingsDialog
+          kv={kv}
+          orchestrator={orchestrator}
+          onVisualPrefsChange={() => {
+            visualPrefsChanged = true
+          }}
+          onClose={() => resolve({ visualPrefsChanged })}
+        />
+      ),
+      () => resolve({ visualPrefsChanged }),
     )
   })
 }

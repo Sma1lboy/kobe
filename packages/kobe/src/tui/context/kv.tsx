@@ -44,16 +44,18 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
     const [store, setStore] = createStore<Record<string, unknown>>(loadInitial())
 
     let writeTimer: ReturnType<typeof setTimeout> | null = null
-    function writeNow(label: string): void {
+    function writeNow(label: string): boolean {
       const statePath = kvStatePath()
       try {
         mkdirSync(dirname(statePath), { recursive: true })
         const tmp = `${statePath}.tmp`
         writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8")
         renameSync(tmp, statePath)
+        return true
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(`[kobe] kv ${label} failed:`, err)
+        return false
       }
     }
 
@@ -88,12 +90,12 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
        * before process.exit(), where the normal debounced write may not
        * get a chance to run.
        */
-      flush() {
+      flush(): boolean {
         if (writeTimer) {
           clearTimeout(writeTimer)
           writeTimer = null
         }
-        writeNow("flush")
+        return writeNow("flush")
       },
       /**
        * Wipe every persisted key and synchronously flush the now-empty

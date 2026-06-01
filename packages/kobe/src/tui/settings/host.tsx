@@ -53,8 +53,8 @@ function SettingsPage(props: {
     if (exiting) return
     exiting = true
     try {
-      kv.flush()
-      if (visualPrefsChanged) {
+      const flushed = kv.flush()
+      if (flushed && visualPrefsChanged) {
         const session = await currentSessionName()
         if (session) await refreshKobeWorkspacePanes(session)
       }
