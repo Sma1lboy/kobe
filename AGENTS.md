@@ -70,6 +70,8 @@ Two deliberate non-triggers, so the count only ever reflects real GUIs:
 - **Transient CLI pokes never subscribe (or subscribe as `pane`)** — `daemon status` / `daemon stop` / `daemon restart` and any `hello`-only client don't bump the count; `kobe api`'s one-shot `subscribe()` is a `pane`. None can trip shutdown.
 - **The timer never arms on boot** — only on a `>0 → 0` transition. A foreground `kobe daemon start` or a freshly-respawned `kobe daemon restart` daemon (both gui-less by design) stay up.
 
+**Rule when you add a new subscribing surface.** Any new in-session pane/window that talks to the daemon (a new `kobe <pane>` host, a dialog window, a CLI poke) must subscribe as `role: "pane"` — which is the default, so just *don't pass a role*. `role: "gui"` is reserved for the one process whose lifetime equals "a human is attached and looking at kobe" (today: `direct.ts`, plus the deprecated `app.tsx` monitor). The failure mode if you get this wrong is silent and only shows up with multiple ChatTabs: a stray `gui` (or counting `pane`s) keeps the daemon alive after quit; a missing `gui` lets the daemon idle-stop while a human is still attached. When unsure, it's `pane`.
+
 **Shutdown never touches tmux.** `server.close()` tears down sockets/pidfile only; task tmux sessions outlive the daemon and are re-adopted on the next launch. The *only* tmux teardown path stays `kobe reset` / `kobe kill-sessions` (`tmux -L kobe kill-server`) — see below. Don't couple tmux kills into daemon shutdown.
 
 ### Packaged-build recovery: `kobe doctor` / `kobe reset` (KOB-258)
