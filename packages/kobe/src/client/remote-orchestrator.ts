@@ -14,6 +14,7 @@ import {
   DAEMON_PROTOCOL_VERSION,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
+  type SubscribeRole,
   isProtocolCompatible,
 } from "../daemon/protocol.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
@@ -40,6 +41,14 @@ export interface RemoteOrchestratorOptions {
    * mode injects a restart function for its per-TUI socket.
    */
   readonly ensureReachable?: () => Promise<unknown>
+  /**
+   * Subscribe role (KOB). `"gui"` keeps the daemon alive while this
+   * orchestrator is connected — pass it only from a real front-end attach
+   * (`direct.ts`, the outer monitor). Default `"pane"`: an in-tmux helper
+   * (Tasks pane, Ops, settings/new-task windows) subscribes for data but
+   * never holds the daemon open after the user quits. See {@link SubscribeRole}.
+   */
+  readonly role?: SubscribeRole
 }
 
 export class RemoteOrchestrator {
@@ -52,6 +61,7 @@ export class RemoteOrchestrator {
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
+  private readonly role: SubscribeRole
 
   constructor(
     private readonly client: KobeDaemonClient,
@@ -70,6 +80,7 @@ export class RemoteOrchestrator {
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
+    this.role = options.role ?? "pane"
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
     // KOB-38: socket drop flips us to `disconnected` and stops there.
     // The host TUI watches this signal, shows a modal, and the user
@@ -113,7 +124,9 @@ export class RemoteOrchestrator {
     // Subscribe to all channels (the daemon replays each channel's current
     // value on connect). We only consume `task.snapshot` here; future
     // channels get their own `client.onChannel(...)` consumers elsewhere.
-    await this.client.subscribe()
+    // Pass our role so the daemon's lazy-shutdown refcount counts only
+    // real front-end attaches (`gui`), not in-tmux helper panes (`pane`).
+    await this.client.subscribe({ role: this.role })
     this.setConnectionState("online")
   }
 

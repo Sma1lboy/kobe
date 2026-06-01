@@ -614,7 +614,9 @@ export async function startApp(): Promise<void> {
     orchestrator = new Orchestrator({ store, worktrees })
   } else {
     const client = await connectOrStartDaemon()
-    orchestrator = new RemoteOrchestrator(client)
+    // role: "gui" — the outer monitor is a front-end attach, so it holds the
+    // daemon alive (like direct.ts). In-tmux panes subscribe as "pane".
+    orchestrator = new RemoteOrchestrator(client, { role: "gui" })
     // Propagate the daemon's socket so every in-session client connects to
     // the SAME daemon. The tmux server + all panes (Tasks pane, quick-create,
     // ops) inherit this env, so a task created / renamed / re-vendored from

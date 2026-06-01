@@ -75,6 +75,25 @@ export type DaemonRequestName =
   | "worktree.adopt"
 
 /**
+ * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
+ * refcounted lazy-shutdown counts only real front-end attaches.
+ *
+ * - `gui`  — a user-facing front-end attach (the `kobe` process parked on
+ *   `tmux attach`, or the deprecated outer monitor). Its lifetime equals
+ *   "a human is looking at kobe", so it HOLDS the daemon alive.
+ * - `pane` — a kobe-spawned helper inside the tmux session (Tasks pane, Ops,
+ *   settings/new-task windows, transient `kobe api` pokes). It subscribes to
+ *   RECEIVE push channels but must NOT keep the daemon alive: these panes
+ *   outlive the attach (the tmux session persists after the user quits), so
+ *   counting them wedged the daemon open forever — N ChatTab windows meant N
+ *   Tasks panes, so the count never reached 0 on quit.
+ *
+ * Default is `pane`: a subscriber that forgets to declare a role is the safe
+ * non-holding kind, so a future client can never accidentally pin the daemon.
+ */
+export type SubscribeRole = "gui" | "pane"
+
+/**
  * Channel registry — the SINGLE source of truth for daemon→client push
  * channels (KOB-246). The daemon is a cross-process pub/sub bus over the
  * socket: each channel carries a last-value the daemon caches and replays

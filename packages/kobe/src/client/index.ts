@@ -5,6 +5,7 @@ import {
   type DaemonEventName,
   type DaemonFrame,
   type DaemonRequestName,
+  type SubscribeRole,
   frameToLine,
 } from "../daemon/protocol.ts"
 
@@ -118,9 +119,17 @@ export class KobeDaemonClient {
    * ALL of them (today's behavior); a `channels` filter is accepted for
    * forward-compat (the daemon currently sends everything regardless). The
    * daemon replays each channel's current value on subscribe.
+   *
+   * `role` declares whether this subscriber HOLDS the daemon alive (KOB):
+   * `"gui"` for a real front-end attach, `"pane"` (default) for an in-tmux
+   * helper pane that receives channels but must not keep the daemon running
+   * after the user quits. See {@link SubscribeRole}.
    */
-  subscribe(channels?: readonly ChannelName[]): Promise<unknown> {
-    return this.request("subscribe", channels ? { channels } : {})
+  subscribe(opts: { channels?: readonly ChannelName[]; role?: SubscribeRole } = {}): Promise<unknown> {
+    const payload: { channels?: readonly ChannelName[]; role?: SubscribeRole } = {}
+    if (opts.channels) payload.channels = opts.channels
+    if (opts.role) payload.role = opts.role
+    return this.request("subscribe", payload)
   }
 
   onLifecycle(name: LifecycleEvent, handler: () => void): () => void {

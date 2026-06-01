@@ -87,7 +87,11 @@ export async function startDirectTmux(): Promise<void> {
   // after detach. Use the stable daemon socket so in-session Tasks/Ops
   // panes survive `Ctrl+Q` and a later `kobe` relaunch.
   const client = await connectOrStartDaemon()
-  const orchestrator = new RemoteOrchestrator(client)
+  // role: "gui" — this is THE front-end attach. It stays parked on
+  // `tmux attach` for the whole session and disposes on quit, so it is the
+  // correct (and only) signal for the daemon's lazy-shutdown refcount. The
+  // in-tmux Tasks/Ops panes subscribe as "pane" and never hold the daemon.
+  const orchestrator = new RemoteOrchestrator(client, { role: "gui" })
   try {
     process.env.KOBE_DAEMON_SOCKET_PATH = client.socketPath
     await orchestrator.init()

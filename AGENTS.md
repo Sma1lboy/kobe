@@ -58,15 +58,17 @@ When adding a fire-and-forget daemon call (`void someAsync()`), attach `.catch((
 
 ### Daemon lifecycle: refcounted lazy shutdown
 
-The daemon's lifetime is bound to the number of **attached GUIs** — a TUI that has sent `subscribe`. The refcount lives in [`src/daemon/server.ts`](./packages/kobe/src/daemon/server.ts) (`subscriberCount()` + an idle grace timer):
+The daemon's lifetime is bound to the number of **attached GUIs** — a front-end that subscribed with `role: "gui"`. The refcount lives in [`src/daemon/server.ts`](./packages/kobe/src/daemon/server.ts) (`guiCount()` + an idle grace timer):
 
+- **`subscribe` carries a role** — `gui` vs `pane` ([`SubscribeRole`](./packages/kobe/src/daemon/protocol.ts)). Only `gui` HOLDS the daemon alive. A `gui` is a real front-end attach: the `kobe` process parked on `tmux attach` ([`tui/direct.ts`](./packages/kobe/src/tui/direct.ts)) or the deprecated outer monitor ([`tui/app.tsx`](./packages/kobe/src/tui/app.tsx)). Everything else subscribes as `pane` — the default — and gets push channels without keeping the daemon up.
+- **Why the split** (the bug it fixes): in the tmux-native model each ChatTab is a tmux window with its own kobe-owned panes (Tasks pane, Ops, settings/new-task windows), and each pane subscribes for live data. Those panes **outlive the attach** — the tmux session persists after the user quits kobe. When *every* subscriber counted, N ChatTab windows meant N Tasks panes still subscribed, so the count never reached 0 on quit and the daemon never idle-stopped. `RemoteOrchestrator` defaults to `role: "pane"`; only `direct.ts` / `app.tsx` pass `role: "gui"`.
 - **First GUI launches** → `ensureDaemonReachable` auto-spawns the daemon if the socket isn't answering. Multiple TUIs share the one daemon.
-- **Last GUI quits** → on the `>0 → 0` subscriber transition the daemon arms a grace timer (`KOBE_DAEMON_IDLE_GRACE_MS`, default **3s**), then self-stops via the existing `stopSoon()` path. The grace absorbs reconnect blips (e.g. `manualReconnect()` force-drops then re-subscribes); a re-subscribe inside the window cancels it.
-- **Quitting a TUI doesn't RPC the daemon to die** — closing the socket is enough; the refcount drives shutdown. Ctrl+Q is `focus.sidebar`, not quit; real quit is `q` (sidebar) / `Ctrl+C`×2.
+- **Last GUI quits** → on the `>0 → 0` gui transition the daemon arms a grace timer (`KOBE_DAEMON_IDLE_GRACE_MS`, default **3s**), then self-stops via the existing `stopSoon()` path. The grace absorbs reconnect blips (e.g. `manualReconnect()` force-drops then re-subscribes); a `gui` re-subscribe inside the window cancels it — a `pane` subscribing mid-grace does **not** rescue the daemon.
+- **Quitting a TUI doesn't RPC the daemon to die** — closing the gui socket is enough; the refcount drives shutdown. Ctrl+Q is `focus.sidebar`, not quit; real quit is `q` (sidebar) / `Ctrl+C`×2.
 
 Two deliberate non-triggers, so the count only ever reflects real GUIs:
-- **Transient CLI pokes never subscribe** — `daemon status` / `daemon stop` / `daemon restart` and any `hello`-only client don't bump the count, so they can't trip shutdown.
-- **The timer never arms on boot** — only on a `>0 → 0` transition. A foreground `kobe daemon start` or a freshly-respawned `kobe daemon restart` daemon (both subscriber-less by design) stay up.
+- **Transient CLI pokes never subscribe (or subscribe as `pane`)** — `daemon status` / `daemon stop` / `daemon restart` and any `hello`-only client don't bump the count; `kobe api`'s one-shot `subscribe()` is a `pane`. None can trip shutdown.
+- **The timer never arms on boot** — only on a `>0 → 0` transition. A foreground `kobe daemon start` or a freshly-respawned `kobe daemon restart` daemon (both gui-less by design) stay up.
 
 **Shutdown never touches tmux.** `server.close()` tears down sockets/pidfile only; task tmux sessions outlive the daemon and are re-adopted on the next launch. The *only* tmux teardown path stays `kobe reset` / `kobe kill-sessions` (`tmux -L kobe kill-server`) — see below. Don't couple tmux kills into daemon shutdown.
 

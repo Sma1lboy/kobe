@@ -82,6 +82,14 @@ type ClientState = DaemonClientConnection & {
   buffer: string
   /** True once the client has called `subscribe` (broadcast target). */
   subscribed: boolean
+  /**
+   * True only when the client subscribed with `role: "gui"` — a real
+   * front-end attach. This is the refcount that gates lazy shutdown; an
+   * in-tmux helper pane (`role: "pane"`) is `subscribed` (gets channels)
+   * but NOT `holdsLifetime`, so closing it never stops the daemon. See
+   * {@link SubscribeRole}.
+   */
+  holdsLifetime: boolean
 }
 
 export async function startDaemonServer(orch: Orchestrator, options: DaemonServerOptions = {}): Promise<DaemonServer> {
@@ -92,22 +100,29 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   let nextClientId = 1
 
   // Refcounted lazy shutdown (KOB): the daemon's lifetime is bound to the
-  // number of attached GUIs — a subscribed TUI client. CLI pokes (hello-only
-  // status/stop, `daemon restart`) never subscribe, so they never count and
-  // never trip shutdown. When the LAST subscriber disconnects we wait a short
-  // grace then self-stop. We arm only on a >0 → 0 transition (never on boot),
-  // so a deliberately-foreground `kobe daemon start` or a freshly-respawned
-  // `kobe daemon restart` daemon — both subscriber-less by design — stay up.
-  // Shutdown runs the normal `stopSoon()` path, which NEVER touches tmux:
-  // task sessions outlive the daemon (only `kobe reset` / `kobe kill-sessions`
-  // tear tmux down, via `tmux -L kobe kill-server`).
+  // number of attached GUIs — a front-end that subscribed with `role: "gui"`
+  // (the `kobe` process parked on `tmux attach`, or the outer monitor). The
+  // count deliberately EXCLUDES in-tmux helper panes (Tasks/Ops/settings,
+  // `role: "pane"`): those subscribe for push channels but persist with the
+  // tmux session after the user quits, so counting them kept the daemon alive
+  // forever (N ChatTab windows = N Tasks panes, count never hit 0 on quit).
+  // CLI pokes (hello-only status/stop, `daemon restart`) never subscribe at
+  // all. When the LAST gui disconnects we wait a short grace then self-stop.
+  // We arm only on a >0 → 0 transition (never on boot), so a deliberately-
+  // foreground `kobe daemon start` or a freshly-respawned `kobe daemon
+  // restart` daemon — both gui-less by design — stay up. Shutdown runs the
+  // normal `stopSoon()` path, which NEVER touches tmux: task sessions outlive
+  // the daemon (only `kobe reset` / `kobe kill-sessions` tear tmux down, via
+  // `tmux -L kobe kill-server`).
   const idleGraceMs = resolveIdleGraceMs()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let stopping = false
 
-  function subscriberCount(): number {
+  // Attached GUIs — the refcount that gates lazy shutdown. Counts only
+  // `holdsLifetime` (role "gui") clients, not every `subscribed` pane.
+  function guiCount(): number {
     let n = 0
-    for (const c of clients) if (c.subscribed) n++
+    for (const c of clients) if (c.holdsLifetime) n++
     return n
   }
 
@@ -119,11 +134,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   }
 
   function maybeArmIdleShutdown(): void {
-    if (stopping || subscriberCount() > 0) return
+    if (stopping || guiCount() > 0) return
     cancelIdleTimer()
     idleTimer = setTimeout(() => {
       idleTimer = null
-      if (stopping || subscriberCount() > 0) return
+      if (stopping || guiCount() > 0) return
       void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err))
     }, idleGraceMs)
     idleTimer.unref?.()
@@ -150,6 +165,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       socket,
       buffer: "",
       subscribed: false,
+      holdsLifetime: false,
     }
     clients.add(client)
 
@@ -160,10 +176,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     socket.on("error", () => {})
     socket.on("close", () => {
       clients.delete(client)
-      // Last GUI gone → start the grace timer toward self-stop. A non-GUI
-      // socket (never subscribed) leaves the count unchanged, so transient
-      // CLI commands never arm it.
-      if (client.subscribed) maybeArmIdleShutdown()
+      // Last GUI gone → start the grace timer toward self-stop. Only a
+      // `holdsLifetime` (role "gui") client arms it: a helper pane or a
+      // transient CLI poke leaves the gui count unchanged, so neither trips
+      // shutdown when it disconnects.
+      if (client.holdsLifetime) maybeArmIdleShutdown()
     })
   })
 
@@ -284,9 +301,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           daemonPid: process.pid,
           uptimeMs: Date.now() - startedAt.getTime(),
           startedAt: startedAt.toISOString(),
-          // Attached GUIs (subscribed TUIs) — the refcount that keeps the
-          // daemon alive — not raw socket count (excludes transient CLI pokes).
-          attachedClients: subscriberCount(),
+          // Attached GUIs (role "gui" front-ends) — the refcount that keeps
+          // the daemon alive. Excludes in-tmux helper panes (role "pane") and
+          // transient CLI pokes, so this reflects "humans looking at kobe".
+          attachedClients: guiCount(),
           taskCount: orch.listTasks().length,
           socketPath,
         }
@@ -395,8 +413,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       case "subscribe": {
         client.subscribed = true
-        // A GUI (re)attached — cancel any pending lazy-shutdown grace.
-        cancelIdleTimer()
+        // role defaults to "pane": a subscriber that omits it is the safe
+        // non-lifetime kind, so a future client can't accidentally pin the
+        // daemon open. Only a "gui" attach holds the daemon alive.
+        const role = payload.role === "gui" ? "gui" : "pane"
+        client.holdsLifetime = role === "gui"
+        // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
+        // pane subscribing must NOT cancel it: panes alone never keep the
+        // daemon up, so a pane connecting during the grace window leaves the
+        // countdown running.
+        if (client.holdsLifetime) cancelIdleTimer()
         // Replay the current value of every populated channel so a late
         // subscriber hydrates without a separate round trip — generalized
         // from the old single task.snapshot send (KOB-246). `payload.channels`
