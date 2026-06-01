@@ -27,6 +27,14 @@ import type { VendorId } from "../../types/task"
 import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
+import {
+  DEFAULT_EDITOR_KIND,
+  EDITOR_CUSTOM_KEY,
+  EDITOR_KINDS,
+  EDITOR_KIND_KEY,
+  type EditorKind,
+  normalizeEditorKind,
+} from "../lib/editor-prefs"
 import { useBindings } from "../lib/keymap"
 import {
   DEFAULT_SETTINGS_SURFACE,
@@ -42,6 +50,8 @@ import {
   SECTIONS,
   type SectionId,
   bodyRowCount as countBodyRows,
+  editorCustomRowIndex,
+  editorKindRowIndex,
   focusAccentRowIndex,
   soundRowIndex,
   surfaceChattabRowIndex,
@@ -134,6 +144,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
     )
   }
 
+  function isEditorKindRow(): boolean {
+    return section() === "general" && bodyRow() === editorKindRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+  }
+
+  function isEditorCustomRow(): boolean {
+    return section() === "general" && bodyRow() === editorCustomRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+  }
+
   function settingsSurface(): SettingsSurface {
     return normalizeSettingsSurface(props.kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
   }
@@ -204,6 +222,30 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(engineCommandKey(vendor), next.trim())
   }
 
+  // Editor preference: which editor the file tree's `e` key launches.
+  // `editor.kind` cycles vim → nano → custom on enter; the custom command
+  // is a free-text field (reused RenameTaskDialog) used only when
+  // kind === "custom". Read cross-process by tmux/editor-launch.
+  function editorKind(): EditorKind {
+    return normalizeEditorKind(props.kv.get(EDITOR_KIND_KEY, DEFAULT_EDITOR_KIND))
+  }
+  function cycleEditorKind(): void {
+    const i = EDITOR_KINDS.indexOf(editorKind())
+    const next = EDITOR_KINDS[(i + 1) % EDITOR_KINDS.length]
+    if (next) props.kv.set(EDITOR_KIND_KEY, next)
+  }
+  function editorCustomCommand(): string {
+    const v = props.kv.get(EDITOR_CUSTOM_KEY, "")
+    return typeof v === "string" ? v : ""
+  }
+  async function editEditorCustom(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, editorCustomCommand(), {
+      dialogTitle: "Custom editor command (use {file} for the path)",
+    })
+    if (next === undefined) return
+    props.kv.set(EDITOR_CUSTOM_KEY, next.trim())
+  }
+
   function enterBody(): void {
     if (level() !== "sidebar" || bodyRowCount() === 0) return
     setLevel("body")
@@ -262,6 +304,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
       }
       if (isSurfaceTaskpanelRow()) {
         selectSurface("taskpanel")
+        return
+      }
+      if (isEditorKindRow()) {
+        cycleEditorKind()
+        return
+      }
+      if (isEditorCustomRow()) {
+        void editEditorCustom()
         return
       }
       const name = themeNames()[bodyRow()]
@@ -337,6 +387,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleSound={toggleSound}
               settingsSurface={settingsSurface}
               selectSurface={selectSurface}
+              editorKind={editorKind}
+              cycleEditorKind={cycleEditorKind}
+              editorCustomCommand={editorCustomCommand}
+              editEditorCustom={() => void editEditorCustom()}
             />
           </Show>
           <Show when={section() === "engines"}>

@@ -5,7 +5,8 @@
  *   - `j` / `down`         next row
  *   - `k` / `up`           previous row
  *   - `1` / `2` / `3`      switch to All / Changes / Checks tab
- *   - `enter` / `return`   open current file (calls `onOpenFile`)
+ *   - `enter` / `return`   open current file read-only preview (calls `onOpenFile`)
+ *   - `e`                  open current file in the editor (calls `onEditFile`)
  *   - `a`                  inject current file as `@<path>` (calls `onMention`)
  *   - `p`                  create PR prompt (Ops host only)
  *   - `r`                  refresh (re-run git commands)
@@ -56,6 +57,8 @@ export type FileTreeBindingsOpts = {
   openCurrent: () => void
   /** `a` — inject the current file as an `@<path>` mention (Ops host only). */
   mentionCurrent?: () => void
+  /** `e` — open the current file in the configured editor (Ops host only). */
+  editCurrent?: () => void
   /** `p` — inject the Create PR prompt into the engine pane (Ops host only). */
   createPR?: () => void
   /** Hand the current row off to the OS default app (audio, video, PDF). */
@@ -95,6 +98,7 @@ export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
         if (next) opts.setTab(next)
       },
       "files.open": () => opts.openCurrent(),
+      "files.edit": () => opts.editCurrent?.(),
       "files.mention": () => opts.mentionCurrent?.(),
       "files.createPR": () => opts.createPR?.(),
       "files.openExternal": () => opts.openExternal(),

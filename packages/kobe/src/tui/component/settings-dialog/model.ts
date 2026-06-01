@@ -39,7 +39,8 @@ export function devRowCount(hasDaemon: boolean): number {
 export function generalRowCount(themeCount: number, focusAccentCount: number): number {
   // themes + transparent(1) + focus accents + toast(1) + sound(1)
   //   + settings surface: ChatTab(1) + Task panel(1)
-  return themeCount + 1 + focusAccentCount + 4
+  //   + editor: kind select(1) + custom command(1)
+  return themeCount + 1 + focusAccentCount + 6
 }
 
 export function bodyRowCount(
@@ -85,4 +86,17 @@ export function surfaceChattabRowIndex(themeCount: number, focusAccentCount: num
 
 export function surfaceTaskpanelRowIndex(themeCount: number, focusAccentCount: number): number {
   return surfaceChattabRowIndex(themeCount, focusAccentCount) + 1
+}
+
+/**
+ * Editor preference rows at the very end of the General section: the
+ * kind select (vim / nano / custom), then the custom-command field. Kept
+ * last so adding them doesn't shift any existing row index.
+ */
+export function editorKindRowIndex(themeCount: number, focusAccentCount: number): number {
+  return surfaceTaskpanelRowIndex(themeCount, focusAccentCount) + 1
+}
+
+export function editorCustomRowIndex(themeCount: number, focusAccentCount: number): number {
+  return editorKindRowIndex(themeCount, focusAccentCount) + 1
 }
