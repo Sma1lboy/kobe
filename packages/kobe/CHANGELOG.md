@@ -19,6 +19,8 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - **A new task auto-names itself while you're still in it** — previously a task kept its `(new task)` placeholder for the whole session and only picked up a title from your first prompt once you detached back to the task list. The daemon now watches each still-unnamed task's engine transcript and renames it from your first message a few seconds after you send it, so the sidebar updates live without leaving the session. It only ever replaces the placeholder, so a manual rename is never overwritten; the detach-time naming stays as a fallback when no daemon is running.
+- **The Tasks pane fills its tmux pane and adapts to its width** — the task list now stretches to 100% of the pane as you drag the tmux split, instead of staying pinned to a narrow rail. On a narrow pane the secondary columns step out of the way so the task name always stays readable: the branch label drops first, then the uncommitted-changes chip, and the title truncates with an ellipsis only when it has to. Widen the pane and they come back.
+- **Hover a task row to see its full details** — a tooltip pops up showing the complete task title, branch, and worktree path, so a name or branch that had to be shortened on a narrow rail is still one hover away.
 - Make dialog backdrops and dialog cards transparent-mode aware so modals keep more of the tmux context visible behind them.
 
 ## [0.6.8] - 2026-05-31
