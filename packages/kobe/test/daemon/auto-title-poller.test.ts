@@ -48,7 +48,8 @@ describe("runAutoTitlePass", () => {
 
     const renamed = await runAutoTitlePass(orch, async (worktree) => `title-for-${worktree}`)
 
-    expect(renamed).toBe(1)
+    expect(renamed.map((r) => r.id)).toEqual([placeholderWithWorktree])
+    expect(renamed[0]?.title).toBe("title-for-/wt/a")
     expect(orch.getTask(placeholderWithWorktree)?.title).toBe("title-for-/wt/a")
     expect(orch.getTask(alreadyNamed)?.title).toBe("Fix login 500")
     expect(orch.getTask(placeholderNoWorktree)?.title).toBe(PLACEHOLDER_TASK_TITLE)
@@ -57,7 +58,7 @@ describe("runAutoTitlePass", () => {
   test("leaves the placeholder when the deriver yields no title", async () => {
     const id = await makeTask({ worktree: "/wt/a" })
     const renamed = await runAutoTitlePass(orch, async () => "")
-    expect(renamed).toBe(0)
+    expect(renamed).toEqual([])
     expect(orch.getTask(id)?.title).toBe(PLACEHOLDER_TASK_TITLE)
   })
 
@@ -70,7 +71,7 @@ describe("runAutoTitlePass", () => {
       return `title-for-${worktree}`
     })
 
-    expect(renamed).toBe(1)
+    expect(renamed.map((r) => r.id)).toEqual([ok])
     expect(orch.getTask(boom)?.title).toBe(PLACEHOLDER_TASK_TITLE)
     expect(orch.getTask(ok)?.title).toBe("title-for-/wt/ok")
   })
@@ -85,7 +86,7 @@ describe("runAutoTitlePass", () => {
       return "derived-title"
     })
 
-    expect(renamed).toBe(0)
+    expect(renamed).toEqual([])
     expect(orch.getTask(id)?.title).toBe("User chose this")
   })
 })

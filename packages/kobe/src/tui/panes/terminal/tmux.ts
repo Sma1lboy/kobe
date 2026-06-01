@@ -32,9 +32,10 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { interactiveEngineCommand } from "@/engine/interactive-command"
+import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import {
+  CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
   getSessionOptions,
   newWindow,
@@ -46,6 +47,7 @@ import {
   sendKeys,
   sessionExists,
   setSessionOption,
+  setWindowOption,
   windowCount,
 } from "@/tmux/client"
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
@@ -277,6 +279,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // in KOB-233). Pane ids (`%N`) are server-global and immune to
   // `base-index`, so we always target by id.
   const inv = kobeCliInvocation()
+  // Force a known session id for a claude launch so this window can be mapped
+  // to its transcript and auto-named from its first prompt (KOB). No-op for
+  // codex/copilot or a command that already pins its session.
+  const launch = withClaudeSessionId(opts.command, opts.vendor)
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
@@ -290,7 +296,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     "#{pane_id}",
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(shellQuoteArgv(opts.command), {
+    engineLaunchLine(shellQuoteArgv(launch.argv), {
       initScript: opts.initScript,
       markerPath: opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
     }),
@@ -300,6 +306,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     console.error("[kobe tmux] new-session returned no pane id; session creation failed")
     return false
   }
+  if (launch.sessionId) await setWindowOption(pane0, CHAT_TAB_SESSION_ID_OPTION, launch.sessionId)
 
   // Tag the session with the task id + worktree so `kobe new-chattab`
   // (the Ctrl+T handler) can rebuild the same workspace in a new window.
@@ -771,6 +778,9 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
   if (vendorOverride) await rememberSessionVendor(session, taskId, vendorOverride)
   const command = interactiveEngineCommand(vendor)
+  // Same forced-session-id mapping as the first window, so a Ctrl+T tab is
+  // auto-named from its OWN first prompt (KOB).
+  const launch = withClaudeSessionId(command, vendor)
   const inv = kobeCliInvocation()
   const r = await runTmuxCapturing([
     "new-window",
@@ -781,10 +791,11 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(shellQuoteArgv(command)),
+    keepAlive(shellQuoteArgv(launch.argv)),
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return
+  if (launch.sessionId) await setWindowOption(claudePane, CHAT_TAB_SESSION_ID_OPTION, launch.sessionId)
   await buildPanesAround(claudePane, { cwd, taskId, inv, vendor })
 }
 

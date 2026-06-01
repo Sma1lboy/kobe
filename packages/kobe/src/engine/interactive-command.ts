@@ -23,6 +23,7 @@
  * the built-in default.
  */
 
+import { randomUUID } from "node:crypto"
 import { getPersistedString } from "@/state/repos"
 import type { VendorId } from "@/types/task"
 
@@ -72,4 +73,33 @@ export function interactiveEngineCommand(vendor: VendorId | undefined): readonly
     if (argv.length > 0) return argv
   }
   return defaultEngineCommand(v)
+}
+
+/**
+ * Claude flags that already pin / fork the conversation's session. If the
+ * launch command carries one of these, we must NOT also append our own
+ * `--session-id` (claude would reject two, or our id would lose to the
+ * resumed one). Covers both long and short forms.
+ */
+const CLAUDE_SESSION_CONTROL_FLAGS = new Set(["--session-id", "--resume", "-r", "--continue", "-c", "--from-pr"])
+
+/**
+ * For a Claude launch, append a kobe-generated `--session-id <uuid>` so the
+ * tmux window it runs in can be mapped to its transcript (recorded as the
+ * `@kobe_session_id` window option) and auto-named from its first prompt
+ * (KOB — per-tab naming). Returns `{ argv, sessionId }` where `sessionId`
+ * is the forced UUID, or `null` when not applicable:
+ *   - the vendor isn't Claude (Codex/Copilot can't take a caller-set id), or
+ *   - the command already controls its session (`--resume`/`--continue`/…).
+ * `--session-id` is a documented Claude flag (`<uuid>` required); we leave a
+ * non-default custom command that pins its own session untouched.
+ */
+export function withClaudeSessionId(
+  argv: readonly string[],
+  vendor: string | undefined,
+): { argv: readonly string[]; sessionId: string | null } {
+  if ((vendor ?? "claude") !== "claude") return { argv, sessionId: null }
+  if (argv.some((a) => CLAUDE_SESSION_CONTROL_FLAGS.has(a))) return { argv, sessionId: null }
+  const sessionId = randomUUID()
+  return { argv: [...argv, "--session-id", sessionId], sessionId }
 }

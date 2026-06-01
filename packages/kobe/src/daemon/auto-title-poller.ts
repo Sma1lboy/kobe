@@ -29,6 +29,7 @@
 import { deriveTitleFromSession } from "@/monitor/auto-title"
 import type { Orchestrator } from "@/orchestrator/core"
 import { PLACEHOLDER_TASK_TITLE } from "@/orchestrator/core"
+import { runChatTabNamingPass } from "@/tmux/chat-tab-naming"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 import { logDaemonError } from "./crash-log"
 
@@ -42,16 +43,24 @@ export const DEFAULT_AUTO_TITLE_POLL_MS = 4000
  */
 export type TitleDeriver = (worktree: string, vendor: VendorId) => Promise<string>
 
+/** A task that this pass renamed, plus the title it was given. */
+export interface AutoTitled {
+  readonly id: string
+  readonly title: string
+}
+
 /**
  * Run one pass: rename every still-placeholder task that now has a
  * usable first-user-prompt title. Sequential (gentle on disk) and
- * best-effort per task. Returns the number of tasks renamed (for tests).
+ * best-effort per task. Returns the tasks it renamed (id + new title) —
+ * the live poller uses that to also rename each task's origin ChatTab
+ * window; tests assert on the list. Pure orchestrator work, no tmux.
  */
 export async function runAutoTitlePass(
   orch: Orchestrator,
   derive: TitleDeriver = deriveTitleFromSession,
-): Promise<number> {
-  let renamed = 0
+): Promise<AutoTitled[]> {
+  const renamed: AutoTitled[] = []
   for (const task of orch.listTasks()) {
     if (task.title !== PLACEHOLDER_TASK_TITLE || !task.worktreePath) continue
     try {
@@ -63,7 +72,7 @@ export async function runAutoTitlePass(
       const current = orch.getTask(task.id)
       if (!current || current.title !== PLACEHOLDER_TASK_TITLE) continue
       await orch.setTitle(task.id, title)
-      renamed++
+      renamed.push({ id: task.id, title })
     } catch (err) {
       logDaemonError("auto-title-poller", err)
     }
@@ -84,7 +93,11 @@ export function startAutoTitlePoller(orch: Orchestrator, intervalMs: number = DE
     // pile up overlapping scans.
     if (running) return
     running = true
+    // Two independent passes: (1) name still-placeholder TASKS from their
+    // first prompt; (2) name still-default ChatTab WINDOWS from each tab's own
+    // first prompt. Both are best-effort and self-limiting.
     void runAutoTitlePass(orch)
+      .then(() => runChatTabNamingPass(orch))
       .catch((err) => logDaemonError("auto-title-poller", err))
       .finally(() => {
         running = false

@@ -25,6 +25,13 @@ import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
 
+/** The vendor's `readHistory(sessionId)` reader. */
+function readerFor(vendor: VendorId): (sessionId: string) => Promise<Message[]> {
+  if (vendor === "codex") return codexHistory.readHistory
+  if (vendor === "copilot") return copilotHistory.readHistory
+  return claudeHistory.readHistory
+}
+
 /** Origin session ids (oldest-first) + the vendor's history reader. */
 async function originSessions(
   worktree: string,
@@ -39,6 +46,17 @@ async function originSessions(
   const files = await claudeHistory.listSessionFilesForWorktree(worktree)
   const ids = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   return { ids, read: claudeHistory.readHistory }
+}
+
+/** First user message's text, truncated to a title, or `""` if none yet. */
+function titleFromMessages(messages: Message[]): string {
+  const firstUser = messages.find((m) => m.role === "user")
+  if (!firstUser) return ""
+  const text = firstUser.blocks
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text)
+    .join(" ")
+  return deriveTitleFromPrompt(text)
 }
 
 /**
@@ -60,15 +78,24 @@ export async function deriveTitleFromSession(
   // give an empty title. Capped so a busy worktree doesn't read dozens
   // of transcripts.
   for (const sessionId of ids.slice(0, MAX_SESSIONS_SCANNED)) {
-    const messages = await read(sessionId)
-    const firstUser = messages.find((m) => m.role === "user")
-    if (!firstUser) continue
-    const text = firstUser.blocks
-      .filter((b): b is { type: "text"; text: string } => b.type === "text")
-      .map((b) => b.text)
-      .join(" ")
-    const title = deriveTitleFromPrompt(text)
+    const title = titleFromMessages(await read(sessionId))
     if (title) return title
   }
   return ""
+}
+
+/**
+ * The truncated first-user-prompt title for ONE specific engine session,
+ * or `""` when that session has no usable user message yet. Used by the
+ * per-ChatTab auto-namer, which knows exactly which session id runs in each
+ * window (claude `--session-id`); `readHistory` finds the transcript by id
+ * across project dirs, so no worktree is needed. Never throws.
+ */
+export async function deriveTitleFromSessionId(vendor: VendorId, sessionId: string): Promise<string> {
+  if (!sessionId) return ""
+  try {
+    return titleFromMessages(await readerFor(vendor)(sessionId))
+  } catch {
+    return ""
+  }
 }
