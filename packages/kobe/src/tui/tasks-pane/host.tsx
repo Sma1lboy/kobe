@@ -72,6 +72,7 @@ import { Sidebar } from "../panes/sidebar/Sidebar"
 import { ensureSession, openNewTaskTab, openSettingsTab, openUpdateTab } from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
+import { PaneErrorBoundary } from "../ui/error-boundary"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
@@ -679,13 +680,15 @@ export async function startTasksPane(): Promise<void> {
         <KVProvider>
           <FocusProvider initial="sidebar">
             <DialogProvider>
-              <TasksShell
-                tasks={tasks}
-                orch={orch}
-                transparent={prefs.transparent}
-                focusAccent={prefs.focusAccent}
-                reload={reload}
-              />
+              <PaneErrorBoundary label="tasks" resetOn={tasks}>
+                <TasksShell
+                  tasks={tasks}
+                  orch={orch}
+                  transparent={prefs.transparent}
+                  focusAccent={prefs.focusAccent}
+                  reload={reload}
+                />
+              </PaneErrorBoundary>
             </DialogProvider>
           </FocusProvider>
         </KVProvider>

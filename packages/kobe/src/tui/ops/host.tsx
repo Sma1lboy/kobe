@@ -33,6 +33,7 @@ import { useBindings } from "../lib/keymap"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
 import { DialogProvider } from "../ui/dialog"
+import { PaneErrorBoundary } from "../ui/error-boundary"
 import { buildPRPrompt } from "./pr-prompt"
 
 const FALLBACK_THEME = "claude"
@@ -223,7 +224,9 @@ function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
   return (
     <ThemeProvider mode="dark" theme={props.prefs.theme}>
       <DialogProvider>
-        <OpsShell {...props} />
+        <PaneErrorBoundary label="ops">
+          <OpsShell {...props} />
+        </PaneErrorBoundary>
       </DialogProvider>
     </ThemeProvider>
   )
