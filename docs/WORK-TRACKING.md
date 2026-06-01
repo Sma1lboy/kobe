@@ -1,6 +1,6 @@
 # Local work tracking
 
-This file used to describe the team's Linear workflow. kobe work is now maintained locally, so agents should not create Linear issues, update Linear states, or require `linear` CLI authentication during normal development.
+kobe work is tracked locally — there is no external issue tracker. Agents should not file or update tickets in any external system, or require its CLI authentication, during normal development.
 
 ## Sources of truth
 

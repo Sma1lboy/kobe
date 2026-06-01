@@ -6,7 +6,7 @@ work.
 
 > Read [`CLAUDE.md`](../CLAUDE.md) (root + `packages/kobe/CLAUDE.md`),
 > [`docs/DESIGN.md`](./DESIGN.md), [`docs/PLAN.md`](./PLAN.md),
-> [`docs/HARNESS.md`](./HARNESS.md), and [`docs/LINEAR.md`](./LINEAR.md)
+> [`docs/HARNESS.md`](./HARNESS.md), and [`docs/WORK-TRACKING.md`](./WORK-TRACKING.md)
 > first. This doc is the human-friendly index, not the source of truth.
 
 ---
@@ -76,9 +76,9 @@ kobe/
 │   ├── ARCHITECTURE.md
 │   ├── DESIGN.md
 │   ├── HARNESS.md
-│   ├── LINEAR.md
 │   ├── ONBOARDING.md  ← you are here
-│   └── PLAN.md
+│   ├── PLAN.md
+│   └── WORK-TRACKING.md
 ├── refs/                          # gitignored study repos (read-only)
 ├── .agents/skills/                # installed agent skills
 ├── .claude/skills/                # symlinks → .agents/skills/<name>

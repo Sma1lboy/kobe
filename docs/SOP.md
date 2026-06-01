@@ -2,7 +2,7 @@
 
 One-page cheat sheet. For setup / domain ownership / pitfalls see
 [`ONBOARDING.md`](./ONBOARDING.md). For local tracking conventions see
-[`LINEAR.md`](./LINEAR.md).
+[`WORK-TRACKING.md`](./WORK-TRACKING.md).
 
 ---
 

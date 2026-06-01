@@ -56,7 +56,6 @@ Every bullet, every paragraph in a changeset body must be on a **single line**. 
 - Lead with what changed, not why. The why goes in a follow-up clause if it's non-obvious.
 - Short bold lead-in for headlines (`**The thing** — explanation...`) is the established pattern.
 - Reference internal anchors with backticks (\`task.new\`, \`ctrl+,\`, \`packages/kobe/src/foo.ts\`) rather than prose.
-- When citing a Linear issue, write `KOB-N` inline (the GitHub release page auto-links via Linear's GitHub integration).
 
 ### Filtering
 
