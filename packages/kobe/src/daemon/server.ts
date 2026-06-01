@@ -18,6 +18,7 @@ import { dirname } from "node:path"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
+import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
@@ -59,6 +60,8 @@ export interface DaemonServerOptions {
   readonly checkUpdate?: () => Promise<UpdateInfo | null>
   /** Re-check interval in ms; `0` disables the poller. Defaults to 6h. */
   readonly updatePollMs?: number
+  /** Auto-title re-scan interval in ms; `0` disables. Defaults to {@link DEFAULT_AUTO_TITLE_POLL_MS}. */
+  readonly autoTitlePollMs?: number
 }
 
 export interface DaemonServer {
@@ -193,6 +196,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     updateTimer.unref?.()
   }
 
+  // Live auto-title (KOB): rename still-placeholder tasks from their
+  // engine transcript on an interval, so a name appears WHILE attached —
+  // the detach-time path in tui/app.tsx / tui/direct.ts only fires on
+  // return. The rename broadcasts via the `task.snapshot` channel above,
+  // so every attached Tasks pane updates without a detach.
+  const autoTitlePollMs = options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS
+  const stopAutoTitlePoller = startAutoTitlePoller(orch, autoTitlePollMs)
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -203,6 +214,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       cancelIdleTimer()
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
+      stopAutoTitlePoller()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
       // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
