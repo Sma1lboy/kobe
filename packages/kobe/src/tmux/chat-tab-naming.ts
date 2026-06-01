@@ -1,29 +1,34 @@
 /**
- * Auto-name a task's first ChatTab window (KOB).
+ * Auto-name every ChatTab window from its own first prompt (KOB).
  *
- * Companion to the daemon's live task auto-title (`daemon/auto-title-poller.ts`):
- * when a task is named from its first prompt, we also rename the task's
- * ORIGIN ChatTab window (the first tmux window of its session) to the same
- * title, so the tab strip stops reading `claude` / `zsh`. Scope is
- * deliberately the first tab only — additional Ctrl+T tabs keep tmux's
- * default name.
+ * Companion to the daemon's live task auto-title (`daemon/auto-title-poller.ts`).
+ * Each ChatTab is a tmux window running its own engine session; for a claude
+ * launch we force a known session id at spawn (`--session-id`) and stash it on
+ * the window as `@kobe_session_id` (see `tui/panes/terminal/tmux.ts`). This
+ * pass walks every task's windows, reads that id, derives the window's first
+ * user prompt from THAT transcript, and renames the window to it — so a
+ * Ctrl+T tab gets its own name, not the task's.
  *
- * Two tmux facts this leans on (verified on tmux 3.5a):
- *   - The origin window is NOT index 0. kobe runs with `base-index 1`, so
- *     the first `new-session` window is index 1 and any `:0` target fails.
- *     We list windows and take the lowest index — the origin ChatTab is
- *     created first (at `new-session`); Ctrl+T tabs and the special
- *     settings/new-task/update windows are all appended at higher indices.
- *   - `rename-window` flips that window's `automatic-rename` to `off` and
- *     the name sticks (this is also why F2 rename sticks). So an untouched
- *     origin window inherits the global `automatic-rename on`, while a
- *     window someone already named (F2, or a prior run) reads `off`. We use
- *     that as the "don't clobber a manual rename" guard — the
- *     `#{automatic_rename}` FORMAT variable is empty on 3.5a, so we query
- *     the option instead.
+ * Per window:
+ *   - Skip if it was named manually. `rename-window` (and F2) flips a window's
+ *     `automatic-rename` to `off`; an untouched window inherits the global
+ *     `on`. So `automatic-rename off` == "already named" — our don't-clobber
+ *     guard. (The `#{automatic_rename}` FORMAT variable is empty on tmux 3.5a,
+ *     so we query the option, not a format.)
+ *   - With a recorded session id → name from that session (claude tabs).
+ *   - Without one, only the ORIGIN (lowest-index) window is named, from the
+ *     task's first session — the codex/legacy fallback, since codex can't take
+ *     a caller-set session id and pre-change windows have no id stashed.
+ *
+ * Self-limiting like the title poller: once a window is renamed its
+ * automatic-rename is off, so later ticks skip it; windows with no prompt yet
+ * derive `""` and stay until their first message lands.
  */
 
-import { runTmux, runTmuxCapturing, tmuxSessionName } from "./client.ts"
+import { deriveTitleFromSession, deriveTitleFromSessionId } from "@/monitor/auto-title"
+import type { Orchestrator } from "@/orchestrator/core"
+import { CHAT_TAB_SESSION_ID_OPTION, runTmux, runTmuxCapturing, tmuxSessionName } from "@/tmux/client"
+import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 /** Seam for tests — the real implementation shells `tmux` via the client. */
 export interface TmuxRunner {
@@ -33,35 +38,89 @@ export interface TmuxRunner {
 
 const realRunner: TmuxRunner = { capture: runTmuxCapturing, run: runTmux }
 
-/**
- * Rename the origin ChatTab window of `taskId`'s session to `title`.
- * Returns true if a rename was issued. No-ops (returns false) when the
- * session is gone, has no windows, or the origin window was already named
- * manually. Best-effort: never throws — a tmux failure just returns false.
- */
-export async function renameOriginChatTab(
-  taskId: string,
-  title: string,
-  runner: TmuxRunner = realRunner,
-): Promise<boolean> {
-  const trimmed = title.trim()
-  if (!trimmed) return false
-  const session = tmuxSessionName(taskId)
-  try {
-    const list = await runner.capture(["list-windows", "-t", `=${session}`, "-F", "#{window_index}"])
-    if (list.code !== 0) return false
-    const origin = list.stdout
-      .split("\n")
-      .map((l) => Number.parseInt(l.trim(), 10))
-      .filter((n) => Number.isInteger(n))
-      .sort((a, b) => a - b)[0]
-    if (origin === undefined) return false
-    const target = `=${session}:${origin}`
-    // Skip a window someone already named (F2 sets automatic-rename off).
-    const opt = await runner.capture(["show-window-options", "-t", target, "automatic-rename"])
-    if (opt.code === 0 && /\boff\b/.test(opt.stdout)) return false
-    return (await runner.run(["rename-window", "-t", target, "--", trimmed])) === 0
-  } catch {
-    return false
+/** One ChatTab window: its tmux index and the engine session id stashed on it. */
+export interface ChatTabWindow {
+  readonly index: number
+  /** `@kobe_session_id` value, or `""` when none was recorded (codex/legacy). */
+  readonly sessionId: string
+}
+
+/** List a session's windows with their recorded engine session id. `[]` when the session is gone. */
+export async function listChatTabWindows(session: string, runner: TmuxRunner = realRunner): Promise<ChatTabWindow[]> {
+  const { code, stdout } = await runner.capture([
+    "list-windows",
+    "-t",
+    `=${session}`,
+    "-F",
+    `#{window_index}\t#{${CHAT_TAB_SESSION_ID_OPTION}}`,
+  ])
+  if (code !== 0) return []
+  const out: ChatTabWindow[] = []
+  for (const line of stdout.split("\n")) {
+    const tab = line.indexOf("\t")
+    const index = Number.parseInt((tab >= 0 ? line.slice(0, tab) : line).trim(), 10)
+    if (!Number.isInteger(index)) continue
+    out.push({ index, sessionId: tab >= 0 ? line.slice(tab + 1).trim() : "" })
   }
+  return out
+}
+
+/** True when a window was named manually (F2 / `-n`): its automatic-rename is off. */
+async function windowNamedManually(session: string, index: number, runner: TmuxRunner): Promise<boolean> {
+  const { code, stdout } = await runner.capture([
+    "show-window-options",
+    "-t",
+    `=${session}:${index}`,
+    "automatic-rename",
+  ])
+  return code === 0 && /\boff\b/.test(stdout)
+}
+
+/** Rename one window. Returns true on success. */
+async function renameWindow(session: string, index: number, title: string, runner: TmuxRunner): Promise<boolean> {
+  return (await runner.run(["rename-window", "-t", `=${session}:${index}`, "--", title])) === 0
+}
+
+/** Injectable title derivers so the pass is testable without disk transcripts. */
+export interface ChatTabNamingDeps {
+  runner: TmuxRunner
+  titleFromSessionId(vendor: VendorId, sessionId: string): Promise<string>
+  titleFromWorktree(worktree: string, vendor: VendorId): Promise<string>
+}
+
+const realDeps: ChatTabNamingDeps = {
+  runner: realRunner,
+  titleFromSessionId: deriveTitleFromSessionId,
+  titleFromWorktree: deriveTitleFromSession,
+}
+
+/**
+ * One pass: name every still-default ChatTab window across all tasks. Returns
+ * the number of windows renamed (for tests). Best-effort per window — a tmux
+ * or read failure on one window never blocks the others.
+ */
+export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNamingDeps = realDeps): Promise<number> {
+  let renamed = 0
+  for (const task of orch.listTasks()) {
+    if (task.kind === "main" || !task.worktreePath) continue
+    const session = tmuxSessionName(task.id)
+    const windows = await listChatTabWindows(session, deps.runner)
+    if (windows.length === 0) continue
+    const originIndex = windows.reduce((min, w) => Math.min(min, w.index), Number.POSITIVE_INFINITY)
+    const vendor = task.vendor ?? DEFAULT_TASK_VENDOR
+    for (const w of windows) {
+      try {
+        if (await windowNamedManually(session, w.index, deps.runner)) continue
+        const title = w.sessionId
+          ? await deps.titleFromSessionId(vendor, w.sessionId)
+          : w.index === originIndex
+            ? await deps.titleFromWorktree(task.worktreePath, vendor)
+            : ""
+        if (title && (await renameWindow(session, w.index, title, deps.runner))) renamed++
+      } catch {
+        // best-effort: skip this window, keep going
+      }
+    }
+  }
+  return renamed
 }

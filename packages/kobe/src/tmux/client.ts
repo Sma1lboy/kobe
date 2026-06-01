@@ -205,6 +205,14 @@ export async function tagPaneRole(paneId: string, role: string): Promise<void> {
   await runTmux(["set-option", "-p", "-t", paneId, PANE_ROLE_OPTION, role])
 }
 
+/**
+ * Window-scoped user option holding the engine session UUID that runs in
+ * this ChatTab window (set at launch via claude's `--session-id`). Lets the
+ * auto-namer map a window → its transcript → its first prompt. Readable as
+ * the `#{@kobe_session_id}` format variable in `list-windows`.
+ */
+export const CHAT_TAB_SESSION_ID_OPTION = "@kobe_session_id"
+
 /** Set a window-scoped user option, targeting any pane/window inside it. */
 export async function setWindowOption(target: string, option: string, value: string): Promise<void> {
   await runTmux(["set-window-option", "-t", target, option, value])
