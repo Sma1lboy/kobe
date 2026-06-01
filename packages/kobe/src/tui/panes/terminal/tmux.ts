@@ -69,6 +69,7 @@ import { CURRENT_VERSION } from "@/version"
 // (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
 export {
   attachArgv,
+  currentSessionName,
   killSession,
   sessionExists,
   switchClientBeforeKill,
@@ -547,6 +548,80 @@ async function healKobePaneVersions(
     }
 
     if (opsPane && claudePane && opsPane.version !== CURRENT_VERSION) {
+      commands.push(
+        [
+          "respawn-pane",
+          "-k",
+          "-t",
+          opsPane.paneId,
+          "-c",
+          cwd,
+          keepAlive(
+            envPrefix +
+              opsPaneCommand({
+                cwd,
+                taskId,
+                claudePaneId: claudePane,
+                cliInvocation: inv,
+                vendor,
+              }),
+          ),
+        ],
+        ["set-option", "-p", "-t", opsPane.paneId, "@kobe_role", "ops"],
+        ["set-option", "-p", "-t", opsPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
+      )
+    }
+  }
+
+  if (commands.length > 0) await runTmuxSequence(commands)
+}
+
+/**
+ * Settings changes like transparent background are read by each kobe-owned
+ * pane process at startup. After the full-window Settings page exits, the
+ * existing Tasks/Ops panes in sibling ChatTabs are still alive, so respawn
+ * only those helper panes in place to make the new UI prefs visible without
+ * touching the user's engine or shell panes.
+ */
+export async function refreshKobeWorkspacePanes(session: string): Promise<void> {
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const taskId = sessionOptions["@kobe_task"] || undefined
+  const vendor = sessionOptions["@kobe_vendor"] || undefined
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    `#{window_id}\t#{pane_id}\t#{@kobe_role}\t#{${PANE_VERSION_OPTION}}`,
+  ])
+  if (code !== 0) return
+
+  const byWindow = new Map<string, KobePaneRow[]>()
+  for (const row of parseKobePaneRows(stdout)) {
+    const panes = byWindow.get(row.windowId) ?? []
+    panes.push(row)
+    byWindow.set(row.windowId, panes)
+  }
+
+  const commands: (readonly string[])[] = []
+  for (const panes of byWindow.values()) {
+    const claudePane = panes.find((pane) => pane.role === "claude")?.paneId
+    const tasksPane = panes.find((pane) => pane.role === "tasks")
+    const opsPane = panes.find((pane) => pane.role === "ops")
+
+    if (tasksPane) {
+      commands.push(
+        ["respawn-pane", "-k", "-t", tasksPane.paneId, "-c", cwd, keepAlive(envPrefix + tasksPaneCommand(inv))],
+        ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
+        ["set-option", "-p", "-t", tasksPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
+      )
+    }
+
+    if (opsPane && claudePane) {
       commands.push(
         [
           "respawn-pane",

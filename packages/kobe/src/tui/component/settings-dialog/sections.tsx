@@ -62,6 +62,9 @@ export function GeneralSettingsSection(
     bodyRow: Accessor<number>
     themeNames: Accessor<readonly string[]>
     setThemeCursor: Setter<number>
+    selectTheme: (name: string) => void
+    toggleTransparent: () => void
+    selectFocusAccent: (slot: (typeof FOCUS_ACCENT_SLOTS)[number]) => void
     toastEnabled: Accessor<boolean>
     soundEnabled: Accessor<boolean>
     toggleToast: () => void
@@ -104,7 +107,7 @@ export function GeneralSettingsSection(
                   props.setLevel("body")
                   props.setBodyRow(i())
                   props.setThemeCursor(i())
-                  themeCtx.set(name)
+                  props.selectTheme(name)
                 }}
               >
                 <text
@@ -135,7 +138,7 @@ export function GeneralSettingsSection(
           onMouseUp={() => {
             props.setLevel("body")
             props.setBodyRow(transparentRowIndex(props.themeNames().length))
-            themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+            props.toggleTransparent()
           }}
         >
           <text
@@ -175,7 +178,7 @@ export function GeneralSettingsSection(
                 onMouseUp={() => {
                   props.setLevel("body")
                   props.setBodyRow(rowIndex())
-                  themeCtx.setFocusAccent(slot)
+                  props.selectFocusAccent(slot)
                 }}
               >
                 <text
