@@ -292,6 +292,31 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.title === trimmed) return
     await this.store.update(task.id, { title: trimmed })
+    await this.followBranchToTitle(task, trimmed)
+  }
+
+  /**
+   * Keep a materialised task's branch in lockstep with its title WHILE the
+   * branch is still the placeholder-derived default (`kobe/new-task-<id>`).
+   * This is what lets a task auto-named from its first prompt also pick up a
+   * meaningful branch instead of staying `kobe/new-task-…`. It fires at most
+   * once: after the first rename the branch no longer matches the placeholder
+   * derivation, so a later title change (or a manual `setBranch`) is never
+   * clobbered. Skipped for `main` (no branch) and for not-yet-materialised
+   * tasks (their branch is derived fresh from the title in {@link ensureWorktree},
+   * so no rename is needed). Best-effort: a git rename failure is logged, not
+   * thrown — the title update already committed and must stand.
+   */
+  private async followBranchToTitle(taskBefore: Task, newTitle: string): Promise<void> {
+    if (taskBefore.kind === "main" || !taskBefore.worktreePath) return
+    if (taskBefore.branch !== autoBranch(PLACEHOLDER_TASK_TITLE, taskBefore.id)) return
+    const nextBranch = autoBranch(newTitle, taskBefore.id)
+    if (nextBranch === taskBefore.branch) return
+    try {
+      await this.setBranch(taskBefore.id, nextBranch)
+    } catch (err) {
+      console.error(`[kobe] follow-branch-to-title failed for ${taskBefore.id}:`, err)
+    }
   }
 
   /**
