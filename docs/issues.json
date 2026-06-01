@@ -1,0 +1,26 @@
+{
+  "nextId": 4,
+  "issues": [
+    {
+      "id": 1,
+      "title": "Hover tooltip can flicker when the cursor moves onto it",
+      "status": "open",
+      "created": "2026-05-31",
+      "body": "The v1 sidebar hover tooltip (cf1cd56) anchors just below-right of the cursor. Moving the cursor down into the tooltip's area leaves the hovered row → onMouseOut clears it → the row beneath re-pops it, so chasing it flickers. In a full-width tmux Tasks pane there's no room to the right, so below is the only anchor. Option to evaluate: a fixed detail panel pinned to the bottom of the sidebar (no cursor follow, zero flicker) instead of a floating tooltip."
+    },
+    {
+      "id": 2,
+      "title": "Hover tooltip is always-on — consider showing only when info was truncated",
+      "status": "open",
+      "created": "2026-05-31",
+      "body": "The tooltip pops on every row hover, including on a wide pane where the branch + full title are already visible (only the worktree path is extra). Consider gating it to fire only when the responsive columns actually dropped the branch/changes or the title was ellipsised, so a wide pane stays quiet."
+    },
+    {
+      "id": 3,
+      "title": "Optional: CI check enforcing a changeset per PR",
+      "status": "open",
+      "created": "2026-05-31",
+      "body": "Now that Changesets is adopted, add a CI step (changeset status gate, or the changesets/action bot) that fails a PR with user-facing code changes but no .changeset/*.md, so entries can't be forgotten. Tooling-only changes opt out with an empty changeset. Deferred from the Changesets migration to keep that change focused."
+    }
+  ]
+}

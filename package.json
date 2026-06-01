@@ -23,7 +23,8 @@
     "lint:fix": "biome check . --write",
     "changeset": "changeset",
     "changeset:status": "changeset status",
-    "release": "scripts/release.sh"
+    "release": "scripts/release.sh",
+    "issues:archive": "node scripts/issues-archive.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
