@@ -29,7 +29,7 @@
 import { deriveTitleFromSession } from "@/monitor/auto-title"
 import type { Orchestrator } from "@/orchestrator/core"
 import { PLACEHOLDER_TASK_TITLE } from "@/orchestrator/core"
-import { renameOriginChatTab } from "@/tmux/chat-tab-naming"
+import { runChatTabNamingPass } from "@/tmux/chat-tab-naming"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 import { logDaemonError } from "./crash-log"
 
@@ -93,15 +93,11 @@ export function startAutoTitlePoller(orch: Orchestrator, intervalMs: number = DE
     // pile up overlapping scans.
     if (running) return
     running = true
+    // Two independent passes: (1) name still-placeholder TASKS from their
+    // first prompt; (2) name still-default ChatTab WINDOWS from each tab's own
+    // first prompt. Both are best-effort and self-limiting.
     void runAutoTitlePass(orch)
-      .then(async (renamed) => {
-        // Mirror the new title onto each task's origin ChatTab window so the
-        // tab strip stops reading `claude`/`zsh`. Best-effort and only the
-        // first tab; skipped silently when the session/window is gone.
-        for (const { id, title } of renamed) {
-          await renameOriginChatTab(id, title).catch((err) => logDaemonError("auto-title-poller", err))
-        }
-      })
+      .then(() => runChatTabNamingPass(orch))
       .catch((err) => logDaemonError("auto-title-poller", err))
       .finally(() => {
         running = false
