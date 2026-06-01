@@ -54,3 +54,8 @@ packages/*/.dev-fixture/
 # worktrees live under here instead of $HOME). Wipe with
 # `bun run dev:sandbox:reset`.
 packages/*/.dev-sandbox/
+
+# Session handoff — local working state / scratchpad for the next agent in
+# THIS environment. Not shared history (the durable record lives in git
+# commits, CHANGELOG.md, docs/, and docs/issues.json). Keep it local.
+HANDOFF.md

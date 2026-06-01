@@ -15,7 +15,7 @@ The TUI is the product. Engine adapters are execution backends. Claude Code is t
 This file is an operator manual for agents. Keep it stable: do not duplicate long release manifests here. For the exact current version and shipped feature list, read [`packages/kobe/package.json`](./packages/kobe/package.json) and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md).
 
 **Read in order before doing anything**:
-1. [`HANDOFF.md`](./HANDOFF.md) — freshest session handoff, current risks, open follow-ups.
+1. [`HANDOFF.md`](./HANDOFF.md) — freshest session handoff, current risks, open follow-ups. **Local + gitignored** (per-environment scratchpad, not shared history); may be absent on a fresh clone — that's fine, just skip it.
 2. [`docs/DESIGN.md`](./docs/DESIGN.md) — design philosophy, architecture decisions, tech stack lock-in.
 3. [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — current source-tree map and ownership boundaries.
 4. [`docs/PLAN.md`](./docs/PLAN.md) — Phase 0 → Phase 1 stream/wave plan and gate history.
