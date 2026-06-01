@@ -27,6 +27,7 @@ import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { currentSessionName, refreshKobeWorkspacePanes } from "../panes/terminal/tmux"
 import { DialogProvider, useDialog } from "../ui/dialog"
 
 const FALLBACK_THEME = "claude"
@@ -40,14 +41,28 @@ function SettingsPage(props: {
   const dialog = useDialog()
   const themeCtx = useTheme()
   const { theme } = themeCtx
+  let visualPrefsChanged = false
+  let exiting = false
 
   onMount(() => {
     themeCtx.setTransparentBackground(props.transparent)
     if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
   })
 
-  function exit(): void {
-    process.exit(0)
+  async function exit(): Promise<void> {
+    if (exiting) return
+    exiting = true
+    try {
+      const flushed = kv.flush()
+      if (flushed && visualPrefsChanged) {
+        const session = await currentSessionName()
+        if (session) await refreshKobeWorkspacePanes(session)
+      }
+    } catch (err) {
+      console.error("[kobe settings] failed to refresh workspace panes:", err)
+    } finally {
+      process.exit(0)
+    }
   }
 
   // Page-level close keys. In the dialog (`taskpanel`) surface the dialog
@@ -66,7 +81,14 @@ function SettingsPage(props: {
 
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background} paddingTop={1}>
-      <SettingsDialog kv={kv} orchestrator={props.orchestrator ?? undefined} onClose={exit} />
+      <SettingsDialog
+        kv={kv}
+        orchestrator={props.orchestrator ?? undefined}
+        onVisualPrefsChange={() => {
+          visualPrefsChanged = true
+        }}
+        onClose={exit}
+      />
     </box>
   )
 }

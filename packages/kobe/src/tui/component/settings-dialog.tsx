@@ -26,7 +26,7 @@ import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engi
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
-import { FOCUS_ACCENT_SLOTS, useTheme } from "../context/theme"
+import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
 import {
   DEFAULT_SETTINGS_SURFACE,
@@ -64,6 +64,7 @@ export type SettingsDialogProps = {
    * button only when we're attached to a daemon (RemoteOrchestrator).
    */
   orchestrator?: KobeOrchestrator
+  onVisualPrefsChange?: () => void
   onClose: () => void
 }
 
@@ -135,6 +136,31 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function settingsSurface(): SettingsSurface {
     return normalizeSettingsSurface(props.kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+  }
+
+  function selectTheme(name: string): void {
+    if (themeCtx.selected === name) return
+    if (!themeCtx.set(name)) return
+    props.kv.set("activeTheme", name)
+    props.onVisualPrefsChange?.()
+  }
+
+  function setTransparentBackground(next: boolean): void {
+    if (themeCtx.transparentBackground === next) return
+    themeCtx.setTransparentBackground(next)
+    props.kv.set("transparentBackground", next)
+    props.onVisualPrefsChange?.()
+  }
+
+  function toggleTransparent(): void {
+    setTransparentBackground(!themeCtx.transparentBackground)
+  }
+
+  function selectFocusAccent(slot: FocusAccentSlot): void {
+    if (themeCtx.focusAccent === slot) return
+    themeCtx.setFocusAccent(slot)
+    props.kv.set("focusAccent", slot)
+    props.onVisualPrefsChange?.()
   }
 
   function selectSurface(surface: SettingsSurface): void {
@@ -213,13 +239,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
   function activateBodyRow(): void {
     if (section() === "general") {
       if (isTransparentRow()) {
-        themeCtx.setTransparentBackground(!themeCtx.transparentBackground)
+        toggleTransparent()
         return
       }
       const focusIdx = currentFocusAccentRow()
       if (focusIdx !== null) {
         const slot = FOCUS_ACCENT_SLOTS[focusIdx]
-        if (slot) themeCtx.setFocusAccent(slot)
+        if (slot) selectFocusAccent(slot)
         return
       }
       if (isToastRow()) {
@@ -239,7 +265,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         return
       }
       const name = themeNames()[bodyRow()]
-      if (name) themeCtx.set(name)
+      if (name) selectTheme(name)
       return
     }
     if (section() === "engines") {
@@ -276,7 +302,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
       },
       {
         key: "t",
-        cmd: () => themeCtx.setTransparentBackground(!themeCtx.transparentBackground),
+        cmd: toggleTransparent,
       },
     ],
   }))
@@ -302,6 +328,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               setBodyRow={setBodyRow}
               themeNames={themeNames}
               setThemeCursor={setThemeCursor}
+              selectTheme={selectTheme}
+              toggleTransparent={toggleTransparent}
+              selectFocusAccent={selectFocusAccent}
               toastEnabled={toastEnabled}
               soundEnabled={soundEnabled}
               toggleToast={toggleToast}
@@ -349,11 +378,25 @@ export function SettingsDialog(props: SettingsDialogProps) {
   )
 }
 
-SettingsDialog.show = (dialog: DialogContext, kv: KVContext, orchestrator?: KobeOrchestrator): Promise<void> => {
-  return new Promise<void>((resolve) => {
+SettingsDialog.show = (
+  dialog: DialogContext,
+  kv: KVContext,
+  orchestrator?: KobeOrchestrator,
+): Promise<{ visualPrefsChanged: boolean }> => {
+  let visualPrefsChanged = false
+  return new Promise<{ visualPrefsChanged: boolean }>((resolve) => {
     dialog.replace(
-      () => <SettingsDialog kv={kv} orchestrator={orchestrator} onClose={() => resolve()} />,
-      () => resolve(),
+      () => (
+        <SettingsDialog
+          kv={kv}
+          orchestrator={orchestrator}
+          onVisualPrefsChange={() => {
+            visualPrefsChanged = true
+          }}
+          onClose={() => resolve({ visualPrefsChanged })}
+        />
+      ),
+      () => resolve({ visualPrefsChanged }),
     )
   })
 }

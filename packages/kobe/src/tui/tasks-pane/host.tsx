@@ -69,7 +69,13 @@ import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
-import { ensureSession, openNewTaskTab, openSettingsTab, openUpdateTab } from "../panes/terminal/tmux.ts"
+import {
+  ensureSession,
+  openNewTaskTab,
+  openSettingsTab,
+  openUpdateTab,
+  refreshKobeWorkspacePanes,
+} from "../panes/terminal/tmux.ts"
 import { DialogProvider, useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
@@ -228,7 +234,15 @@ function TasksShell(props: {
         return
       }
     }
-    void SettingsDialog.show(dialog, kv, props.orch ?? undefined)
+    const result = await SettingsDialog.show(dialog, kv, props.orch ?? undefined)
+    if (!result.visualPrefsChanged) return
+    if (!kv.flush()) return
+    try {
+      const session = await currentSessionName()
+      if (session) await refreshKobeWorkspacePanes(session)
+    } catch (err) {
+      console.error("[kobe tasks] failed to refresh workspace panes:", err)
+    }
   }
 
   async function openUpdate(): Promise<void> {
