@@ -49,6 +49,11 @@ export function readCurrentBranch(repo: string): string {
       cwd: repo,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      // Uniform pane-side policy: read-only git inspection never takes
+      // optional locks. `symbolic-ref`/`rev-parse` don't write the index
+      // today, but setting this keeps every pane git call lock-free so a
+      // future command swap can't reintroduce `.git/index.lock` races.
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     })
     if (out.status === 0 && out.stdout) {
       const name = out.stdout.trim()
@@ -60,6 +65,7 @@ export function readCurrentBranch(repo: string): string {
       cwd: repo,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     })
     if (head.status === 0) return "(detached)"
     return ""

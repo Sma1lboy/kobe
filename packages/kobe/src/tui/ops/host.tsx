@@ -299,6 +299,11 @@ async function gitDiff(worktree: string, relPath: string): Promise<string> {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "ignore",
+      // Read-only diff for the preview. `git diff` would otherwise
+      // rewrite `.git/index`'s stat cache and take `.git/index.lock`,
+      // racing the worktree's engine commits for the lock.
+      // `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     })
     const text = await new Response(proc.stdout).text()
     await proc.exited

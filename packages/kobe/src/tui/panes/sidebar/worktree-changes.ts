@@ -53,6 +53,12 @@ export function readWorktreeChanges(worktreePath: string): WorktreeChanges {
       cwd: worktreePath,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
+      // `git status` opportunistically rewrites `.git/index` (refreshed
+      // stat cache), which takes `.git/index.lock`. This runs on a 2s
+      // poll for every row, so it would race the worktree's engine
+      // commits and other panes for the lock. `GIT_OPTIONAL_LOCKS=0`
+      // makes this read-only: inspect, don't write, never take the lock.
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     })
     if (out.status !== 0 || !out.stdout) return ZERO
     return parsePorcelain(out.stdout)
