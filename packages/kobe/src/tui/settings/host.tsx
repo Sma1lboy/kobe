@@ -84,6 +84,7 @@ function SettingsPage(props: {
       <SettingsDialog
         kv={kv}
         orchestrator={props.orchestrator ?? undefined}
+        standalone={true}
         onVisualPrefsChange={() => {
           visualPrefsChanged = true
         }}

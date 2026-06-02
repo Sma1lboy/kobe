@@ -76,6 +76,19 @@ export type SettingsDialogProps = {
   orchestrator?: KobeOrchestrator
   onVisualPrefsChange?: () => void
   onClose: () => void
+  /**
+   * True when this dialog is the standalone page surface (`kobe settings`),
+   * rendered OUTSIDE the dialog stack rather than pushed onto it. The page
+   * mounts this component permanently, so when it opens a sub-dialog (the
+   * engine-command / custom-editor text input) this component stays mounted
+   * underneath. Without a guard its `j/k/l/h/t` navigation bindings would
+   * keep firing and swallow those letters from the text input (the `{file}`
+   * "l-is-eaten" bug). When standalone we therefore disable our own key
+   * bindings whenever the dialog stack is non-empty — mirroring the page's
+   * own esc/q guard. In the overlay surface this dialog IS the stack entry
+   * and unmounts when a sub-dialog replaces it, so no guard is needed.
+   */
+  standalone?: boolean
 }
 
 export function SettingsDialog(props: SettingsDialogProps) {
@@ -330,6 +343,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
 
   useBindings(() => ({
+    // On the standalone page, suspend our navigation keys while a
+    // sub-dialog (the engine-command / custom-editor text input) is open
+    // so `l`/`t`/`j`/`k`/`h` reach the input instead of being eaten by
+    // this dialog's nav. The overlay surface unmounts us when covered, so
+    // there it's always enabled.
+    enabled: !props.standalone || dialog.stack.length === 0,
     bindings: [
       { key: "down", cmd: () => moveCursor(1) },
       { key: "up", cmd: () => moveCursor(-1) },
