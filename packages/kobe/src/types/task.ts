@@ -111,6 +111,16 @@ export interface Task {
    * missing values normalize to {@link DEFAULT_TASK_VENDOR}.
    */
   readonly vendor?: VendorId
+  /**
+   * User's manual name for the ORIGIN ChatTab window (the tmux F2 rename).
+   * The window itself holds the name while its tmux server is alive; this
+   * durable copy lets the chat-tab namer restore it after a server restart
+   * rebuilds the window fresh — otherwise it would revert to the auto-derived
+   * first-prompt name. Only the origin window is durable (extra Ctrl+T tabs
+   * aren't persisted), so a single per-task field is enough. Empty / unset
+   * means "no manual override; use the auto-derived name."
+   */
+  readonly chatTabName?: string
   readonly prStatus?: TaskPRStatus
   readonly createdAt: string
   readonly updatedAt: string

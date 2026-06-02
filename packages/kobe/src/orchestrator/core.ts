@@ -320,6 +320,22 @@ export class Orchestrator {
   }
 
   /**
+   * Persist the user's manual name for a task's ORIGIN ChatTab window (the
+   * tmux F2 rename). The window holds the name while its tmux server is alive;
+   * this durable copy lets the chat-tab namer restore it after a server
+   * restart rebuilds the window fresh — otherwise it reverts to the
+   * auto-derived first-prompt name. An empty name clears the override (the
+   * window falls back to auto-naming). No tmux work here — the caller has
+   * already renamed the live window; this only records the durable copy.
+   */
+  async setChatTabName(id: TaskId | string, name: string): Promise<void> {
+    const trimmed = name.trim()
+    const task = this.requireTask(id)
+    if ((task.chatTabName ?? "") === trimmed) return
+    await this.store.update(task.id, { chatTabName: trimmed || undefined })
+  }
+
+  /**
    * Rename a task's branch. For a materialised worktree this renames
    * the real git branch (`git branch -m`, which also moves HEAD on the
    * checked-out worktree so a running session keeps streaming); for a

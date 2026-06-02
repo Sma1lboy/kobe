@@ -340,6 +340,7 @@ function coerceTask(value: unknown): Task | null {
     pinned: typeof v.pinned === "boolean" ? v.pinned : false,
     kind: v.kind === "main" ? "main" : "task",
     vendor: isVendorId(v.vendor) ? v.vendor : DEFAULT_TASK_VENDOR,
+    ...(typeof v.chatTabName === "string" && v.chatTabName.trim() ? { chatTabName: v.chatTabName } : {}),
     prStatus: coercePRStatus(v.prStatus),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,

@@ -213,6 +213,15 @@ export async function tagPaneRole(paneId: string, role: string): Promise<void> {
  */
 export const CHAT_TAB_SESSION_ID_OPTION = "@kobe_session_id"
 
+/**
+ * Window-scoped user option recording the name the auto-namer last set on a
+ * window. Lets the chat-tab namer tell its OWN auto name apart from a user's
+ * F2 rename — both flip tmux's `automatic-rename` to `off`, so that flag alone
+ * can't distinguish them. Lost on a tmux server restart, which is fine: the
+ * durable manual name lives in `tasks.json` (`Task.chatTabName`), not here.
+ */
+export const CHAT_TAB_AUTO_NAME_OPTION = "@kobe_auto_name"
+
 /** Set a window-scoped user option, targeting any pane/window inside it. */
 export async function setWindowOption(target: string, option: string, value: string): Promise<void> {
   await runTmux(["set-window-option", "-t", target, option, value])

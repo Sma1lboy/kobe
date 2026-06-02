@@ -87,19 +87,20 @@ function fakeDeps(opts: {
 }
 
 describe("listChatTabWindows", () => {
-  it("parses index + recorded session id, tolerating empty ids", async () => {
+  it("parses index + session id + name + auto name, tolerating missing columns", async () => {
     const runner: TmuxRunner = {
       async capture() {
-        return { code: 0, stdout: "1\tabc-123\n2\t\n3\tdef-456\n" }
+        // line 1: all four columns; line 2: only index+sessionId; line 3: index+id+name
+        return { code: 0, stdout: "1\tabc-123\tFirst Tab\tFirst Tab\n2\t\n3\tdef-456\tmy rename\n" }
       },
       async run() {
         return 0
       },
     }
     expect(await listChatTabWindows("kobe-x", runner)).toEqual([
-      { index: 1, sessionId: "abc-123" },
-      { index: 2, sessionId: "" },
-      { index: 3, sessionId: "def-456" },
+      { index: 1, sessionId: "abc-123", name: "First Tab", autoName: "First Tab" },
+      { index: 2, sessionId: "", name: "", autoName: "" },
+      { index: 3, sessionId: "def-456", name: "my rename", autoName: "" },
     ])
   })
 
@@ -170,6 +171,66 @@ describe("runChatTabNamingPass", () => {
     await makeTask(undefined) // a task with no worktree yet
     const { deps, renames } = fakeDeps({ windows: "1\tsess-1\n", titleFromSessionId: () => "should not run" })
     await runChatTabNamingPass(orch, deps)
+    expect(renames).toEqual([])
+  })
+
+  it("restores a stored manual name on the origin window ahead of the auto-derive", async () => {
+    const id = await makeTask("/wt/a")
+    await orch.setChatTabName(id, "My Tab")
+    // Origin window (index 1) is auto-rename ON — a fresh rebuild after a server
+    // restart. The stored name must win over the transcript-derived title.
+    const { deps, renames } = fakeDeps({
+      windows: "1\tsess-1\tnode\t",
+      titleFromSessionId: () => "auto title",
+    })
+
+    const n = await runChatTabNamingPass(orch, deps)
+
+    expect(n).toBe(1)
+    expect(renames).toEqual([{ index: "1", title: "My Tab" }])
+  })
+
+  it("captures a user's F2 rename of the origin window into the task", async () => {
+    const id = await makeTask("/wt/a")
+    // Origin window named-off (manual) with a name that differs from our
+    // recorded auto name (empty here) → a user rename.
+    const { deps, renames } = fakeDeps({
+      windows: "1\tsess-1\tUser Name\t",
+      autoRenameOff: [1],
+      titleFromSessionId: () => "auto title",
+    })
+
+    await runChatTabNamingPass(orch, deps)
+
+    expect(orch.getTask(id)?.chatTabName).toBe("User Name")
+    expect(renames).toEqual([]) // capture only — the live window already has the name
+  })
+
+  it("does not capture our own auto name as a manual override", async () => {
+    const id = await makeTask("/wt/a")
+    // Named-off, but window_name === @kobe_auto_name → this is OUR auto name.
+    const { deps } = fakeDeps({
+      windows: "1\tsess-1\tAuto Title\tAuto Title",
+      autoRenameOff: [1],
+    })
+
+    await runChatTabNamingPass(orch, deps)
+
+    expect(orch.getTask(id)?.chatTabName).toBeUndefined()
+  })
+
+  it("captures a fresh user rename even when a different name is already stored", async () => {
+    const id = await makeTask("/wt/a")
+    await orch.setChatTabName(id, "Old")
+    // User renamed again (named-off, new name) — must update, never revert.
+    const { deps, renames } = fakeDeps({
+      windows: "1\tsess-1\tNew\t",
+      autoRenameOff: [1],
+    })
+
+    await runChatTabNamingPass(orch, deps)
+
+    expect(orch.getTask(id)?.chatTabName).toBe("New")
     expect(renames).toEqual([])
   })
 })

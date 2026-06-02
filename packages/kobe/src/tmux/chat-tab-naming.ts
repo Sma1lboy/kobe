@@ -23,11 +23,27 @@
  * Self-limiting like the title poller: once a window is renamed its
  * automatic-rename is off, so later ticks skip it; windows with no prompt yet
  * derive `""` and stay until their first message lands.
+ *
+ * Manual-rename persistence (origin window only): a user's F2 rename lives in
+ * tmux and dies with the server. tmux can't tell our auto rename from a user's
+ * (both flip `automatic-rename off`), so we stamp the name WE set as
+ * `@kobe_auto_name`; a window that is named-off with a different `window_name`
+ * was renamed by the user. We CAPTURE that into `Task.chatTabName` (durable in
+ * tasks.json) and, after a server restart rebuilds the origin window fresh,
+ * RESTORE it ahead of the auto-derive. Only the origin survives a rebuild, so
+ * only it gets a stored name (keyed by the task); extra Ctrl+T tabs aren't
+ * persisted and keep the pure auto-name behaviour.
  */
 
 import { deriveTitleFromSession, deriveTitleFromSessionId } from "@/monitor/auto-title"
 import type { Orchestrator } from "@/orchestrator/core"
-import { CHAT_TAB_SESSION_ID_OPTION, runTmux, runTmuxCapturing, tmuxSessionName } from "@/tmux/client"
+import {
+  CHAT_TAB_AUTO_NAME_OPTION,
+  CHAT_TAB_SESSION_ID_OPTION,
+  runTmux,
+  runTmuxCapturing,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 /** Seam for tests — the real implementation shells `tmux` via the client. */
@@ -38,29 +54,33 @@ export interface TmuxRunner {
 
 const realRunner: TmuxRunner = { capture: runTmuxCapturing, run: runTmux }
 
-/** One ChatTab window: its tmux index and the engine session id stashed on it. */
+/** One ChatTab window: its tmux index, the engine session id, current name, and our last auto name. */
 export interface ChatTabWindow {
   readonly index: number
   /** `@kobe_session_id` value, or `""` when none was recorded (codex/legacy). */
   readonly sessionId: string
+  /** Current `#{window_name}` — what the status bar shows. */
+  readonly name: string
+  /** `@kobe_auto_name` — the name WE last auto-set, used to spot a user F2 rename. `""` when unset. */
+  readonly autoName: string
 }
 
-/** List a session's windows with their recorded engine session id. `[]` when the session is gone. */
+/** List a session's windows with their session id, current name, and recorded auto name. `[]` when gone. */
 export async function listChatTabWindows(session: string, runner: TmuxRunner = realRunner): Promise<ChatTabWindow[]> {
   const { code, stdout } = await runner.capture([
     "list-windows",
     "-t",
     `=${session}`,
     "-F",
-    `#{window_index}\t#{${CHAT_TAB_SESSION_ID_OPTION}}`,
+    `#{window_index}\t#{${CHAT_TAB_SESSION_ID_OPTION}}\t#{window_name}\t#{${CHAT_TAB_AUTO_NAME_OPTION}}`,
   ])
   if (code !== 0) return []
   const out: ChatTabWindow[] = []
   for (const line of stdout.split("\n")) {
-    const tab = line.indexOf("\t")
-    const index = Number.parseInt((tab >= 0 ? line.slice(0, tab) : line).trim(), 10)
+    const parts = line.split("\t")
+    const index = Number.parseInt((parts[0] ?? "").trim(), 10)
     if (!Number.isInteger(index)) continue
-    out.push({ index, sessionId: tab >= 0 ? line.slice(tab + 1).trim() : "" })
+    out.push({ index, sessionId: (parts[1] ?? "").trim(), name: parts[2] ?? "", autoName: parts[3] ?? "" })
   }
   return out
 }
@@ -76,9 +96,25 @@ async function windowNamedManually(session: string, index: number, runner: TmuxR
   return code === 0 && /\boff\b/.test(stdout)
 }
 
-/** Rename one window. Returns true on success. */
-async function renameWindow(session: string, index: number, title: string, runner: TmuxRunner): Promise<boolean> {
-  return (await runner.run(["rename-window", "-t", `=${session}:${index}`, "--", title])) === 0
+/**
+ * Rename one window. Returns true on success. When `stampAuto`, also record the
+ * name as `@kobe_auto_name` so a later pass can tell this auto name apart from a
+ * user's F2 rename. A RESTORE of a stored manual name passes `stampAuto: false`
+ * (it isn't our auto name), so the option stays unset and the capture branch
+ * leaves it alone.
+ */
+async function renameWindow(
+  session: string,
+  index: number,
+  title: string,
+  runner: TmuxRunner,
+  stampAuto = false,
+): Promise<boolean> {
+  const ok = (await runner.run(["rename-window", "-t", `=${session}:${index}`, "--", title])) === 0
+  if (ok && stampAuto) {
+    await runner.run(["set-window-option", "-t", `=${session}:${index}`, CHAT_TAB_AUTO_NAME_OPTION, title])
+  }
+  return ok
 }
 
 /** Injectable title derivers so the pass is testable without disk transcripts. */
@@ -108,15 +144,50 @@ export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNami
     if (windows.length === 0) continue
     const originIndex = windows.reduce((min, w) => Math.min(min, w.index), Number.POSITIVE_INFINITY)
     const vendor = task.vendor ?? DEFAULT_TASK_VENDOR
+    const storedName = (task.chatTabName ?? "").trim()
     for (const w of windows) {
       try {
-        if (await windowNamedManually(session, w.index, deps.runner)) continue
+        const namedManually = await windowNamedManually(session, w.index, deps.runner)
+        const isOrigin = w.index === originIndex
+
+        // ORIGIN window: durable manual-name handling. Only the origin survives
+        // a tmux server restart (extra Ctrl+T tabs aren't rebuilt), so it's the
+        // only window whose user rename we persist (keyed by the task) and
+        // restore.
+        if (isOrigin) {
+          if (!namedManually) {
+            // automatic-rename is ON → the window is unnamed/default this
+            // session. A stored manual name means the server was restarted and
+            // the window reverted: RESTORE it (wins over auto-derive). Don't
+            // stamp @kobe_auto_name — this is the user's name, not ours.
+            if (storedName) {
+              if (await renameWindow(session, w.index, storedName, deps.runner)) renamed++
+              continue
+            }
+            // else: no override yet → fall through to auto-derive below.
+          } else {
+            // automatic-rename is OFF → something named it. Tell our own auto
+            // name (@kobe_auto_name) apart from a user's F2 rename and CAPTURE
+            // the latter so it survives a future restart. (A legacy window with
+            // no @kobe_auto_name over-captures its stable first-prompt title —
+            // benign.)
+            const userNamed = w.name.length > 0 && w.name !== w.autoName
+            if (userNamed && w.name !== storedName) await orch.setChatTabName(task.id, w.name)
+            continue
+          }
+        } else if (namedManually) {
+          continue
+        }
+
+        // Auto-derive: the origin without a stored override, or any non-origin
+        // window. Stamp @kobe_auto_name so the next pass won't mistake it for a
+        // user rename.
         const title = w.sessionId
           ? await deps.titleFromSessionId(vendor, w.sessionId)
-          : w.index === originIndex
+          : isOrigin
             ? await deps.titleFromWorktree(task.worktreePath, vendor)
             : ""
-        if (title && (await renameWindow(session, w.index, title, deps.runner))) renamed++
+        if (title && (await renameWindow(session, w.index, title, deps.runner, true))) renamed++
       } catch {
         // best-effort: skip this window, keep going
       }
