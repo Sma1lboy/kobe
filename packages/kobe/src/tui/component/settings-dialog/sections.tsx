@@ -4,15 +4,12 @@ import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus }
 import { VENDOR_LABEL } from "../../../engine/interactive-command"
 import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
-import type { EditorKind } from "../../lib/editor-prefs"
 import type { SettingsSurface } from "../../lib/settings-surface"
 import {
   FOCUS_ACCENT_LABEL,
   type NavLevel,
   SECTIONS,
   type SectionId,
-  editorCustomRowIndex,
-  editorKindRowIndex,
   soundRowIndex,
   surfaceChattabRowIndex,
   surfaceTaskpanelRowIndex,
@@ -74,10 +71,6 @@ export function GeneralSettingsSection(
     toggleSound: () => void
     settingsSurface: Accessor<SettingsSurface>
     selectSurface: (surface: SettingsSurface) => void
-    editorKind: Accessor<EditorKind>
-    cycleEditorKind: () => void
-    editorCustomCommand: Accessor<string>
-    editEditorCustom: () => void
   },
 ) {
   const themeCtx = useTheme()
@@ -86,15 +79,11 @@ export function GeneralSettingsSection(
   const soundRow = () => soundRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
   const surfaceChattabRow = () => surfaceChattabRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
   const surfaceTaskpanelRow = () => surfaceTaskpanelRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const editorKindRow = () => editorKindRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const editorCustomRow = () => editorCustomRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
   const isTransparentRow = () => props.bodyRow() === transparentRowIndex(props.themeNames().length)
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
   const isSurfaceChattabRow = () => props.bodyRow() === surfaceChattabRow()
   const isSurfaceTaskpanelRow = () => props.bodyRow() === surfaceTaskpanelRow()
-  const isEditorKindRow = () => props.bodyRow() === editorKindRow()
-  const isEditorCustomRow = () => props.bodyRow() === editorCustomRow()
 
   return (
     <box flexDirection="column" gap={1}>
@@ -312,60 +301,6 @@ export function GeneralSettingsSection(
             wrapMode="none"
           >
             {props.settingsSurface() === "taskpanel" ? "[x]" : "[ ]"} Task panel (in-pane overlay)
-          </text>
-        </box>
-      </box>
-      <box flexDirection="column" gap={0} paddingTop={1}>
-        <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Editor
-        </text>
-        <text fg={theme.textMuted} wrapMode="word">
-          What `e` opens a file with in the file tree (enter stays the read-only preview). enter cycles vim / nano /
-          custom; if the editor isn't installed it falls back to the preview.
-        </text>
-        <box
-          flexDirection="row"
-          gap={1}
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={isEditorKindRow() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(editorKindRow())
-            props.cycleEditorKind()
-          }}
-        >
-          <text
-            fg={isEditorKindRow() ? theme.selectedListItemText : theme.accent}
-            attributes={TextAttributes.BOLD}
-            wrapMode="none"
-          >
-            {`< ${props.editorKind()} >`}
-          </text>
-        </box>
-        <box
-          flexDirection="row"
-          gap={1}
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={isEditorCustomRow() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(editorCustomRow())
-            props.editEditorCustom()
-          }}
-        >
-          <text
-            fg={
-              isEditorCustomRow()
-                ? theme.selectedListItemText
-                : props.editorKind() === "custom"
-                  ? theme.text
-                  : theme.textMuted
-            }
-            wrapMode="none"
-          >
-            {`custom: ${props.editorCustomCommand().trim() || "(unset — enter to edit)"}`}
           </text>
         </box>
       </box>
