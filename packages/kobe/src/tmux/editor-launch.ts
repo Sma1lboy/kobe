@@ -109,6 +109,16 @@ export async function openInEditor(session: string, worktree: string, absPath: s
   const resolved = resolveEditorCommand(absPath)
   if (!resolved) return false
   if (!(await binaryAvailable(resolved.bin))) return false
-  await newWindow(session, { cwd: worktree, command: resolved.command, name: "edit" })
+  // Name the window after the FILE being edited (its basename), matching
+  // the read-only preview window's labelling. With several files open this
+  // is what tells the tmux window list apart; which editor it is, is
+  // obvious from the editor's own UI.
+  await newWindow(session, { cwd: worktree, command: resolved.command, name: editorWindowLabel(absPath) })
   return true
+}
+
+/** Basename of the file path, for the tmux window label (the edited file). */
+export function editorWindowLabel(absPath: string): string {
+  const base = absPath.slice(absPath.lastIndexOf("/") + 1).trim()
+  return base.length > 0 ? base : "edit"
 }

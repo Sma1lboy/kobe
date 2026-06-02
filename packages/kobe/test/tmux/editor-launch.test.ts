@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEditorCommand } from "../../src/tmux/editor-launch.ts"
+import { buildEditorCommand, editorWindowLabel } from "../../src/tmux/editor-launch.ts"
 import { DEFAULT_EDITOR_KIND, normalizeEditorKind } from "../../src/tui/lib/editor-prefs.ts"
 
 describe("buildEditorCommand", () => {
@@ -40,6 +40,19 @@ describe("buildEditorCommand", () => {
 
   it("shell-escapes a path with spaces and quotes", () => {
     expect(buildEditorCommand("vim", "", "/wt/a b/it's.ts")?.command).toBe("vim '/wt/a b/it'\\''s.ts'")
+  })
+})
+
+describe("editorWindowLabel", () => {
+  it("labels the tmux window with the edited file's name (basename)", () => {
+    expect(editorWindowLabel("/wt/src/index.ts")).toBe("index.ts")
+    expect(editorWindowLabel("/wt/a b/it's.md")).toBe("it's.md")
+    expect(editorWindowLabel("README")).toBe("README")
+  })
+
+  it("falls back to 'edit' for an empty path", () => {
+    expect(editorWindowLabel("")).toBe("edit")
+    expect(editorWindowLabel("  ")).toBe("edit")
   })
 })
 

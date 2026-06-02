@@ -80,16 +80,27 @@ function SettingsPage(props: {
   }))
 
   return (
-    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background} paddingTop={1}>
+    // Scroll, don't compress. The full-window page has no fixed-height card
+    // like the overlay's Dialog, so when the section content is taller than
+    // the tmux window Yoga shrinks the flex rows and they overlap into an
+    // unreadable jumble. A scrollbox gives the content its natural height
+    // and scrolls the overflow instead, so every section row stays legible.
+    <scrollbox
+      flexGrow={1}
+      backgroundColor={theme.background}
+      paddingTop={1}
+      verticalScrollbarOptions={{ trackOptions: { foregroundColor: "transparent" } }}
+    >
       <SettingsDialog
         kv={kv}
         orchestrator={props.orchestrator ?? undefined}
+        standalone={true}
         onVisualPrefsChange={() => {
           visualPrefsChanged = true
         }}
         onClose={exit}
       />
-    </box>
+    </scrollbox>
   )
 }
 
