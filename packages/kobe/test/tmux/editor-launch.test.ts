@@ -44,17 +44,13 @@ describe("buildEditorCommand", () => {
 })
 
 describe("editorWindowLabel", () => {
-  it("labels the tmux window with the editor binary name", () => {
-    expect(editorWindowLabel("vim")).toBe("vim")
-    expect(editorWindowLabel("nano")).toBe("nano")
-    expect(editorWindowLabel("code")).toBe("code")
+  it("labels the tmux window with the edited file's name (basename)", () => {
+    expect(editorWindowLabel("/wt/src/index.ts")).toBe("index.ts")
+    expect(editorWindowLabel("/wt/a b/it's.md")).toBe("it's.md")
+    expect(editorWindowLabel("README")).toBe("README")
   })
 
-  it("uses the basename for an absolute-path custom binary", () => {
-    expect(editorWindowLabel("/usr/local/bin/hx")).toBe("hx")
-  })
-
-  it("falls back to 'edit' for an empty binary", () => {
+  it("falls back to 'edit' for an empty path", () => {
     expect(editorWindowLabel("")).toBe("edit")
     expect(editorWindowLabel("  ")).toBe("edit")
   })
