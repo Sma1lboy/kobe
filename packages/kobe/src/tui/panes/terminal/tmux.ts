@@ -391,8 +391,20 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
   // two-key chord but conflict-free; the prefix is whatever the user's
   // own tmux.conf sets (we load it on the `-L kobe` socket).
+  // Multi-client sizing: a task session can have >1 client attached (two
+  // `kobe` processes on the same task, or a detached big terminal + a fresh
+  // small one). tmux's default sizes a window to the SMALLEST client of the
+  // session regardless of which window that client is actually viewing — so a
+  // small client on chat-tab B drags chat-tab A down for the big client too,
+  // which then squeezes the fixed-width Tasks pane (KOB-248) against a too-narrow
+  // window. `aggressive-resize on` scopes the size to the client(s) for which the
+  // window is CURRENT, so each chat-tab window tracks only its own viewer. The
+  // hard tmux limit remains: two clients on the SAME window share one grid, so
+  // the larger one is letterboxed — that case can't be fixed without per-client
+  // sessions (a larger refactor, deferred).
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
+    ["set-window-option", "-g", "aggressive-resize", "on"],
     ["set-option", "-g", "monitor-activity", "on"],
     ["set-option", "-g", "visual-activity", "off"],
     ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],

@@ -1,6 +1,13 @@
 {
-  "nextId": 4,
+  "nextId": 5,
   "issues": [
+    {
+      "id": 4,
+      "title": "Per-client tmux sessions so two clients on the same window aren't letterboxed",
+      "status": "open",
+      "created": "2026-06-02",
+      "body": "aggressive-resize (shipped) makes each chat-tab window track its own current viewer, but two clients viewing the SAME task+window still share one tmux grid, so the larger terminal is letterboxed to the smaller. The only way to give same-window clients independent sizes is to stop sharing one session per task: give each attached client its own session in a session group (new-session -t <group>) and rework the switch-client task-switch model (direct.ts, tasks-pane/host.tsx, app.tsx, client.ts) to switch within the client's own session set. Larger refactor; ceiling is capped by tmux (grouped sessions still share window grids), so revisit only if same-window multi-client is a real use case. Deferred from the aggressive-resize fix; user chose the small A-tier fix first."
+    },
     {
       "id": 1,
       "title": "Hover tooltip can flicker when the cursor moves onto it",
