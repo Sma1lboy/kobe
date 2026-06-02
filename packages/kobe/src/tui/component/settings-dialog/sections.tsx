@@ -320,8 +320,8 @@ export function GeneralSettingsSection(
           Editor
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          What `e` opens a file with in the file tree (enter stays the read-only preview). enter cycles vim / nano /
-          custom; if the editor isn't installed it falls back to the preview.
+          What `e` opens a file with in the file tree (enter stays the read-only preview). enter on the row below cycles
+          vim / nano / custom; if the editor isn't installed it falls back to the preview.
         </text>
         <box
           flexDirection="row"
@@ -340,7 +340,7 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {`< ${props.editorKind()} >`}
+            {`editor: < ${props.editorKind()} >  (enter to change)`}
           </text>
         </box>
         <box
