@@ -1,22 +1,45 @@
 /**
  * kobe sidebar pane (Stream F → Wave 4.A → Wave 4.5).
  *
- * Wave 4.5 reverses Wave 4.A's repo grouping. Jackson's call: a flat
- * task list is fine, and selected-task metadata (repo / branch /
- * worktree path) is surfaced in the topbar instead. The sidebar now
- * splits tasks into two views, switchable with `[` and `]`:
+ * Wave 4.5 reverses Wave 4.A's repo grouping; the list is NOT grouped
+ * per project. Instead it renders as two flat sections — the PROJECTS
+ * (repo-root `main` rows) on top, a divider, then ALL the TASKS
+ * (worktrees) flat below (Jackson's call). Two views switch with `[`/`]`:
  *
  *   ┌───────────────────────────────────────┐
- *   │ kobe                                   │
+ *   │ KOBE                       v0.6.10     │
  *   │                                        │
- *   │ [ Working session ]   Archives         │
+ *   │ Working session   Archives             │
  *   │                                        │
- *   │   ● fix login redirect bug             │
- *   │   ○ refactor auth service              │
+ *   │ PROJECTS ──────────────────────────    │
+ *   │ ★ kobe                      ~/i/kobe    │
+ *   │ ★ pochi                     ~/i/pochi   │
+ *   │                                        │
+ *   │ TASKS ─────────────────────────────    │
+ *   │ ▌⠹ fix login redirect bug    working   │
+ *   │ ▌  feat/login-fix            +12 −3     │
+ *   │                                        │
  *   │   ○ add password reset                 │
+ *   │     backlog                            │
  *   │                                        │
  *   │ + New task                              │
  *   └───────────────────────────────────────┘
+ *
+ * Each section gets a small BOLD CAPS header + trailing rule. A PROJECT
+ * row is a compact single line: ★ + repo name, with the repo
+ * dir (home-abbreviated) on the right — or an animated `working` chip
+ * while that repo-root session is live. A TASK row is a small two-line
+ * card: line 1 = status badge + title + a `working` chip while the
+ * engine streams; line 2 = the branch (or a status word when the task
+ * has no branch yet) + the `+N −M` uncommitted-change chip. Tasks carry
+ * a trailing blank line so each reads as its own card; projects sit
+ * tight. The cursor row gets a left accent ▌ and a subtle background
+ * tint; the active row keeps a dimmer ▌ when the cursor moves off it.
+ *
+ * Loading is driven by `task.status === "in_progress"` (the Tasks pane's
+ * only liveness signal — chatRunState is unwired there) or a live engine
+ * handle when the outer monitor passes chatRunState: the badge animates
+ * (braille spinner) and a `working` chip appears.
  *
  * The active view shows tasks where `task.archived === false`; the
  * archived view shows the rest. `a` on a row toggles its archived flag
@@ -66,7 +89,6 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
-import { readCurrentBranch } from "./git-head"
 import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { readWorktreeChanges } from "./worktree-changes"
@@ -135,6 +157,15 @@ export type SidebarProps = {
    */
   width?: Accessor<number>
   /**
+   * Optional right-aligned status in the `kobe` brand header — the Tasks pane
+   * wires the version / "update available" chip here (it moved up from the
+   * footer's old `── system ──` block). `emphasize: true` paints it in the
+   * warning colour (an update is waiting); omit / return `null` to hide it.
+   */
+  headerStatus?: Accessor<{ label: string; emphasize: boolean } | null>
+  /** Click handler for {@link headerStatus} — e.g. open the update page. */
+  onHeaderStatusClick?: () => void
+  /**
    * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
    * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
    * spinner animates only when a row's task has at least one tab in
@@ -172,6 +203,21 @@ const STATUS_BADGE: Record<
   backlog: { glyph: "○", tone: "textMuted" },
   canceled: { glyph: "⊘", tone: "textMuted" },
   error: { glyph: "✕", tone: "error" },
+}
+
+/**
+ * Human-readable status words for a card's second (metadata) line, shown
+ * only when the task has no branch yet to put there — so a backlog task
+ * reads `backlog` rather than a blank subtitle, keeping every card a
+ * consistent two lines tall.
+ */
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  done: "done",
+  in_review: "in review",
+  in_progress: "working",
+  backlog: "backlog",
+  canceled: "canceled",
+  error: "error",
 }
 
 /**
@@ -278,6 +324,20 @@ export function approxCellWidth(s: string): number {
 function truncatePathTail(path: string, max: number): string {
   if (max <= 0 || path.length <= max) return path
   return `…${path.slice(path.length - Math.max(0, max - 1))}`
+}
+
+/**
+ * Abbreviate the user's home prefix to `~` for the project (main row)
+ * directory label — `/Users/x/i/kobe` → `~/i/kobe`. Keeps the project
+ * row's repo path compact and recognisable. Falls back to the raw path
+ * when `$HOME` is unset or doesn't prefix the path.
+ */
+export function abbrevHome(path: string): string {
+  const home = process.env.HOME
+  if (home && (path === home || path.startsWith(`${home}/`))) {
+    return `~${path.slice(home.length)}`
+  }
+  return path
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -393,28 +453,34 @@ export function Sidebar(props: SidebarProps) {
   // we don't keep filtering against stale query text after esc-cancel.
   const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
   const flatIds = createMemo(() => flattenIds(rows()))
+  // The list is two sections: PROJECTS (the `main` repo-root rows, which
+  // `buildRows` always emits first) then all TASKS (worktrees) flat — NOT
+  // grouped per project (Jackson's call). `firstTaskFlatIndex` is the
+  // flatIndex of the first non-main row; the renderer draws a divider above
+  // it to split the two sections. -1 when there are no tasks (projects only),
+  // and 0 when there are no projects (the divider then never renders).
+  const firstTaskFlatIndex = createMemo(() => {
+    const r = rows()
+    const idx = r.findIndex((row) => row.task.kind !== "main")
+    return idx < 0 ? -1 : r[idx]!.flatIndex
+  })
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
   const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "")).length)
 
-  // Responsive row columns (see SHOW_*_MIN_WIDTH). The width accessor is the
-  // Shell-driven splitter width in the outer monitor and the live tmux pane
-  // width in the Tasks pane (`useTerminalDimensions` → reflows on resize), so
-  // these recompute as the user drags the pane. The title's cell budget is
-  // what's left after the badge + whichever metadata columns survive; the row
-  // renderer truncates the title to it so a narrow rail shows a clean name
-  // instead of a branch-crushed single glyph.
+  // Two-line card budgets. The width accessor is the Shell-driven splitter
+  // width in the outer monitor and the live tmux pane width in the Tasks pane
+  // (`useTerminalDimensions` → reflows on resize), so these recompute as the
+  // user drags the pane. Splitting each task into a title line + a metadata
+  // (branch · changes) line means the two no longer fight for one row, so the
+  // title gets the WHOLE first line and the branch the whole second line —
+  // each just truncated to its own line budget.
   const effectiveWidth = (): number => (props.width ? props.width() : SIDEBAR_WIDTH)
-  const showChangesCol = createMemo(() => effectiveWidth() >= SHOW_CHANGES_MIN_WIDTH)
-  const showBranchCol = createMemo(() => effectiveWidth() >= SHOW_BRANCH_MIN_WIDTH)
-  const titleBudget = createMemo(() => {
-    // Reserved cells: root padding (4) + row padding (2) + scrollbar (1) +
-    // badge glyph + its gap (2), then each visible metadata column with its
-    // gap — changes chip (5+1), branch label (BRANCH_LABEL_MAX+1) + its
-    // leading pad (1). What remains is the title's clean budget.
-    const reserved =
-      9 + (showChangesCol() ? CHANGES_COLUMN_WIDTH + 1 : 0) + (showBranchCol() ? BRANCH_LABEL_MAX + 2 : 0)
-    return Math.max(4, effectiveWidth() - reserved)
-  })
+  // Line 1: container pad (4) + accent edge (1) + badge + its gap (2) +
+  // scrollbar (1) + right pad (1) = 9 reserved.
+  const titleBudget = createMemo(() => Math.max(6, effectiveWidth() - 9))
+  // Line 2: the above plus the badge-column indent (2) and a reserve for the
+  // right-aligned `+N −M` chip (~6) ≈ 16 reserved.
+  const subtitleBudget = createMemo(() => Math.max(6, effectiveWidth() - 16))
 
   // Hover tooltip (KOB): on a narrow rail the responsive columns hide the
   // branch and the title is ellipsised, so hovering a row pops a detail
@@ -514,6 +580,22 @@ export function Sidebar(props: SidebarProps) {
     onSearchExit: (select) => exitSearch(select),
   })
 
+  // Small section header — a BOLD CAPS label + a trailing dim rule that
+  // fills the row (agent-deck pane-header grammar). Splits the PROJECTS
+  // section from the TASKS section. `topPad` adds a blank line above so the
+  // TASKS header lifts off the tight project list; the PROJECTS header sits
+  // flush under the view tabs.
+  const SectionHeader = (p: { label: string; topPad?: boolean }) => (
+    <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} paddingTop={p.topPad ? 1 : 0}>
+      <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+        {p.label}
+      </text>
+      <text fg={theme.border} wrapMode="none">
+        {"─".repeat(Math.max(2, effectiveWidth() - 9 - p.label.length))}
+      </text>
+    </box>
+  )
+
   return (
     <box
       width={props.width ? props.width() : SIDEBAR_WIDTH}
@@ -521,38 +603,44 @@ export function Sidebar(props: SidebarProps) {
       flexDirection="column"
       paddingTop={1}
       paddingBottom={1}
-      paddingLeft={2}
-      paddingRight={2}
+      paddingLeft={0}
+      paddingRight={0}
     >
-      {/* Header: "kobe" with a focus-aware ▌ marker matching PaneHeader's
-         convention — focus-accent ▌ + focus-accent title when this
-         pane has focus, dimmed when not. Reads `theme.focusAccent`
-         so a Settings change unifies the focus signal across all
-         panes (default = primary / terracotta). */}
-      <box flexDirection="row" gap={1} paddingBottom={1} paddingLeft={1}>
-        {/* Bold `h` flush left — matches WORKSPACE/FILES/TERMINAL
-            shape. Letter is the ctrl+hjkl chord that focuses this
-            pane (h = sidebar, j = workspace, k = files, l = terminal).
-            Focus-tracking color (focusAccent vs textMuted) does the
-            chord-hint job.
-
-            paddingLeft={1} matches the row box's paddingLeft={1} so
-            the header letter aligns with each row's badge column —
-            without it, header sits at col 2 while rows start at col 3. */}
+      {/* Brand header: `kobe` on the left (focus-aware — focusAccent when
+          this pane has focus, dimmed when not), with the version / update
+          chip right-aligned (moved up from the footer's old `── system ──`
+          block). paddingLeft={1} clears the 1-cell selection gutter (the ▌
+          accent edge on each row) so the brand lines up with the row badge
+          column. The root box has no horizontal padding — the pane sits
+          flush to its tmux edges; this 1 cell is the kobe selection gutter,
+          not padding. */}
+      <box
+        flexDirection="row"
+        justifyContent="space-between"
+        gap={1}
+        paddingBottom={1}
+        paddingLeft={1}
+        paddingRight={1}
+      >
         <text
           fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
           attributes={TextAttributes.BOLD}
           wrapMode="none"
         >
-          h
+          KOBE
         </text>
-        <text
-          fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
-          attributes={TextAttributes.BOLD}
-          wrapMode="none"
-        >
-          TASKS
-        </text>
+        <Show when={props.headerStatus?.()}>
+          {(status) => (
+            <text
+              fg={status().emphasize ? theme.warning : theme.textMuted}
+              attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
+              wrapMode="none"
+              onMouseUp={() => props.onHeaderStatusClick?.()}
+            >
+              {status().label}
+            </text>
+          )}
+        </Show>
       </box>
 
       {/* Inline `/`-search input. Only rendered while searchMode is on
@@ -623,6 +711,9 @@ export function Sidebar(props: SidebarProps) {
           },
         }}
       >
+        {/* gap={0} — spacing is per-row: PROJECT rows sit tight as a compact
+            switcher up top, TASK cards each carry a trailing blank line so they
+            read as separate cards, and a divider splits the two sections. */}
         <box flexShrink={0} gap={0} paddingRight={1}>
           <For each={rows()}>
             {(row) => {
@@ -664,17 +755,6 @@ export function Sidebar(props: SidebarProps) {
                     return theme.textMuted
                 }
               }
-              // Main-row branch label: cached behind a memo keyed on
-              // `branchTick()` + the repo path. The tick advances every
-              // MAIN_BRANCH_POLL_MS so the label refreshes without
-              // shelling out on every redraw frame. Non-main rows skip
-              // the git call entirely (the memo body is gated on isMain).
-              const branchLabel = createMemo(() => {
-                if (!isMain) return ""
-                // Read the tick so Solid wires the memo to it.
-                branchTick()
-                return readCurrentBranch(task.repo)
-              })
               // Per-row "uncommitted changes" file counts, rendered on
               // the right edge as `+N −M`. Keyed on the same `branchTick`
               // so we only shell out at the established 2s cadence.
@@ -688,109 +768,142 @@ export function Sidebar(props: SidebarProps) {
                 return readWorktreeChanges(task.worktreePath)
               })
               const titleText = isMain ? repoBasename(task.repo) : task.title
+              // Loading = the engine is actively working this task. Driven by
+              // `task.status === "in_progress"` (the only liveness signal the
+              // Tasks pane has — chatRunState is unwired there) OR a live
+              // engine handle when the outer monitor does pass chatRunState.
+              const loading = () => isLive() || task.status === "in_progress"
+              // Task-card subtitle (line 2): the branch, or a human status word
+              // when there's no branch yet, so every card stays two lines tall.
+              const subtitleText = createMemo(() => {
+                if (task.branch.length > 0) return truncateBranchLabel(task.branch, subtitleBudget())
+                return STATUS_LABEL[task.status]
+              })
+              // Accent edge: focus-accent ▌ on the cursor row, a quieter
+              // (dimmed primary) ▌ on the active row when the two differ after
+              // j/k nav, a bare space otherwise to hold the gutter.
+              const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
+              const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
+              // Section headers split the two flat sections (NOT per-project
+              // grouping): PROJECTS above the first row when it's a project,
+              // TASKS above the first non-main row. `topPad` lifts the TASKS
+              // header off the tight project list only when projects exist.
+              const showProjectsHeader = () => isMain && flatIndex === 0
+              const showTasksHeader = () => !isMain && flatIndex === firstTaskFlatIndex()
               return (
-                // biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply.
-                <box
-                  flexDirection="row"
-                  paddingLeft={1}
-                  paddingRight={1}
-                  gap={1}
-                  backgroundColor={isCursor() ? theme.primary : isSelected() ? theme.backgroundElement : undefined}
-                  onMouseUp={() => {
-                    props.onSelect(task.id)
-                    if (props.activateOnClick) props.onActivate?.(task.id)
-                  }}
-                  onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
-                  onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
-                >
-                  <text
-                    fg={isCursor() ? theme.selectedListItemText : badgeColor()}
-                    attributes={TextAttributes.BOLD}
-                    wrapMode="none"
-                  >
-                    {isMain
-                      ? "★"
-                      : isLive()
-                        ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0])
-                        : task.status === "in_progress"
-                          ? "●"
-                          : badge.glyph}
-                  </text>
-                  <text
-                    fg={isCursor() ? theme.selectedListItemText : theme.text}
-                    attributes={
-                      (isMain || (isSelected() && !isCursor())) && !isCursor() ? TextAttributes.BOLD : undefined
-                    }
-                    wrapMode="none"
-                    flexGrow={1}
-                  >
-                    {/* Truncated to the responsive budget so a narrow rail shows
-                        a clean ellipsised name rather than letting flex clip it
-                        mid-glyph or crush it under the metadata columns. */}
-                    {truncateTitle(titleText, titleBudget())}
-                  </text>
-                  {/* Changes column — fixed width so the chip aligns
-                      across rows like a table column rather than floating
-                      against each title's right edge. Stays present (and
-                      empty) on rows with a clean worktree, which is the
-                      whole point: the eye should land on the same x for
-                      every row's chip. Right-aligned so the digits' right
-                      edges line up across rows (what the eye tracks) and
-                      so short chips sit closer to the row's right side
-                      rather than crowding the title. Hidden entirely on a
-                      narrow rail (responsive) so the title keeps the space. */}
-                  <Show when={showChangesCol()}>
-                    <box
-                      width={CHANGES_COLUMN_WIDTH}
-                      flexShrink={0}
-                      flexDirection="row"
-                      justifyContent="flex-end"
-                      gap={1}
-                    >
-                      <Show when={changes().added > 0}>
-                        <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
-                          +{changes().added}
-                        </text>
-                      </Show>
-                      <Show when={changes().deleted > 0}>
-                        <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
-                          −{changes().deleted}
-                        </text>
-                      </Show>
-                    </box>
+                <box flexDirection="column" gap={0} paddingBottom={isMain ? 0 : 1}>
+                  <Show when={showProjectsHeader()}>
+                    <SectionHeader label="PROJECTS" />
                   </Show>
-                  {/* Branch label + pin marker — right-aligned (flex-end)
-                      so labels line up against the rail's right edge,
-                      wrapped so they don't collide with the changes column
-                      on the left, and so the row stays clean (no empty
-                      container) when there is nothing to show. Main rows
-                      show the live HEAD branch; task rows show their own
-                      `task.branch`, prefix-truncated for the narrow rail. */}
-                  <Show
-                    when={
-                      showBranchCol() &&
-                      ((isMain && branchLabel().length > 0) ||
-                        (!isMain && (task.branch.length > 0 || task.pinned === true)))
-                    }
-                  >
-                    <box flexDirection="row" justifyContent="flex-end" gap={1} paddingLeft={1} flexShrink={0}>
-                      <Show when={isMain && branchLabel().length > 0}>
-                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                          {branchLabel()}
-                        </text>
-                      </Show>
-                      <Show when={!isMain && task.branch.length > 0}>
-                        <text fg={isCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-                          {truncateBranchLabel(task.branch)}
-                        </text>
-                      </Show>
-                      <Show when={!isMain && task.pinned === true}>
-                        <text fg={isCursor() ? theme.selectedListItemText : theme.warning} wrapMode="none">
-                          ▴
-                        </text>
-                      </Show>
-                    </box>
+                  <Show when={showTasksHeader()}>
+                    <SectionHeader label="TASKS" topPad={firstTaskFlatIndex() > 0} />
                   </Show>
+                  {/* Interactive row body. The cursor row carries a SUBTLE
+                      `backgroundElement` tint (a quiet block, not the old
+                      solid-terracotta full fill) so badges / branch / `+N −M`
+                      keep their semantic colours instead of being flattened to
+                      inverted text — warp/agent-deck selection grammar: a left
+                      accent ▌ carries focus, the fill stays quiet.
+                      `backgroundElement` survives transparent mode (theme.tsx
+                      keeps it tinted) and the bar is foreground paint, so the
+                      row reads even when the fill is suppressed. */}
+                  {/* biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply. */}
+                  <box
+                    flexDirection="column"
+                    gap={0}
+                    backgroundColor={isCursor() ? theme.backgroundElement : undefined}
+                    onMouseUp={() => {
+                      props.onSelect(task.id)
+                      if (props.activateOnClick) props.onActivate?.(task.id)
+                    }}
+                    onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
+                    onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
+                  >
+                    {/* PROJECT row (a `main` repo-root) — a compact single line:
+                        ★ + repo name, with the repo dir (or a "working" chip
+                        while its session is live) on the right. */}
+                    <Show when={isMain}>
+                      <box flexDirection="row" gap={0}>
+                        <text fg={barColor()} wrapMode="none">
+                          {barGlyph()}
+                        </text>
+                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
+                          <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
+                            {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : "★"}
+                          </text>
+                          <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
+                            {truncateTitle(titleText, titleBudget())}
+                          </text>
+                          <Show when={loading()}>
+                            <text fg={theme.primary} wrapMode="none">
+                              working
+                            </text>
+                          </Show>
+                          <Show when={!loading()}>
+                            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                              {truncatePathTail(abbrevHome(task.repo), subtitleBudget())}
+                            </text>
+                          </Show>
+                        </box>
+                      </box>
+                    </Show>
+                    {/* TASK row (a worktree) — two-line card. */}
+                    <Show when={!isMain}>
+                      {/* Line 1: accent edge + status badge + title + a
+                          "working" chip while the engine is streaming. */}
+                      <box flexDirection="row" gap={0}>
+                        <text fg={barColor()} wrapMode="none">
+                          {barGlyph()}
+                        </text>
+                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
+                          <text fg={badgeColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+                            {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : badge.glyph}
+                          </text>
+                          <text
+                            fg={theme.text}
+                            attributes={isSelected() || isCursor() ? TextAttributes.BOLD : undefined}
+                            wrapMode="none"
+                            flexGrow={1}
+                          >
+                            {truncateTitle(titleText, titleBudget())}
+                          </text>
+                          <Show when={loading()}>
+                            <text fg={theme.primary} wrapMode="none">
+                              working
+                            </text>
+                          </Show>
+                        </box>
+                      </box>
+                      {/* Line 2: accent edge (continues the bar) + subtitle,
+                          indented under the title. Branch (or status word) on
+                          the left, the `+N −M` change chip pushed to the right. */}
+                      <box flexDirection="row" gap={0}>
+                        <text fg={barColor()} wrapMode="none">
+                          {barGlyph()}
+                        </text>
+                        <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+                            {subtitleText()}
+                          </text>
+                          <Show when={task.pinned === true}>
+                            <text fg={theme.warning} wrapMode="none">
+                              ▴
+                            </text>
+                          </Show>
+                          <Show when={changes().added > 0}>
+                            <text fg={theme.success} wrapMode="none">
+                              +{changes().added}
+                            </text>
+                          </Show>
+                          <Show when={changes().deleted > 0}>
+                            <text fg={theme.error} wrapMode="none">
+                              −{changes().deleted}
+                            </text>
+                          </Show>
+                        </box>
+                      </box>
+                    </Show>
+                  </box>
                 </box>
               )
             }}

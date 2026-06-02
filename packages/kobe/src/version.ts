@@ -128,6 +128,16 @@ export function isNewerSemver(latest: string, current: string): boolean {
  *                     "check for updates" command once we wire one up.
  */
 export async function checkLatestVersion(opts: { force?: boolean } = {}): Promise<UpdateInfo | null> {
+  // Debug hook: `KOBE_FAKE_UPDATE=<version>` returns a synthetic UpdateInfo
+  // (bypassing dev suppression AND the network) so the "update available"
+  // UI — the brand-header chip, the update page — can be exercised in the
+  // sandbox. e.g. `KOBE_FAKE_UPDATE=99.0.0 bun run dev:sandbox`. Compared via
+  // semver so a lower fake version still reads as "no update".
+  const fake = process.env.KOBE_FAKE_UPDATE
+  if (fake) {
+    return { current: CURRENT_VERSION, latest: fake, hasUpdate: isNewerSemver(fake, CURRENT_VERSION) }
+  }
+
   // Dev runs (KOBE_DEV=1, set by `bun run dev`) suppress the check
   // entirely — devs are usually working from a `package.json` that's
   // a few patches behind the published `latest` and don't need the

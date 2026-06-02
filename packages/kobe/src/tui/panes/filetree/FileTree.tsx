@@ -59,6 +59,7 @@
 
 import { type FSWatcher, watch } from "node:fs"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
@@ -201,8 +202,24 @@ const TAB_LABEL: Record<FileTreeTab, string> = {
   changes: "Changes",
 }
 
+/**
+ * Truncate a path keeping its TAIL — the leaf (filename) carries the
+ * meaning, so on a narrow pane we drop the leading directories and show
+ * `…components/sidebar/Sidebar.tsx` rather than clipping the filename
+ * off the right. A leading `…` marks the elided prefix.
+ */
+function truncatePathTail(path: string, max: number): string {
+  if (max <= 0 || path.length <= max) return path
+  return `…${path.slice(path.length - Math.max(0, max - 1))}`
+}
+
 export function FileTree(props: FileTreeProps) {
   const { theme } = useTheme()
+
+  // Pane width — in the Ops pane each FileTree runs in its own tmux pane
+  // process, so `useTerminalDimensions` tracks THIS pane's size and reflows
+  // the Changes-tab path truncation on resize.
+  const dims = useTerminalDimensions()
 
   // Default `focused` accessor — see file header.
   const focusedAccessor = () => (props.focused ? props.focused() : true)
@@ -397,6 +414,19 @@ export function FileTree(props: FileTreeProps) {
     return { added, deleted }
   })
 
+  /**
+   * Cell budget for a Changes-tab path. Tail-truncated to whatever the pane
+   * leaves after the status char, the `+N`/`-N` stat columns, the inter-column
+   * gaps, row padding, and the scrollbar — so the filename always survives and
+   * only the leading directories elide. Recomputes on resize / stat-width change.
+   */
+  const pathBudget = createMemo<number>(() => {
+    const w = statWidths()
+    const stats = (w.added > 0 ? w.added + 1 : 0) + (w.deleted > 0 ? w.deleted + 1 : 0)
+    // row padding (2) + status glyph (1) + gap (1) + stats + scrollbar (1) + slack (1).
+    return Math.max(8, dims().width - 6 - stats)
+  })
+
   // ---------- key bindings ----------
   function moveDown(): void {
     const r = rows()
@@ -552,7 +582,7 @@ export function FileTree(props: FileTreeProps) {
 
   // ---------- render ----------
   return (
-    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={2} paddingRight={2}>
+    <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
       {/* Create PR action row — sits above the All / Changes tabs so it's
          reachable from both tabs (bound to `p`). */}
       <Show when={props.onCreatePR}>
@@ -664,15 +694,26 @@ export function FileTree(props: FileTreeProps) {
             <For each={rows()}>
               {(row, index) => {
                 const isCursor = () => index() === cursorIndex()
+                // Cursor row treatment — matches the Sidebar: a left accent ▌
+                // (focusAccent) + a subtle `backgroundElement` tint, NOT a solid
+                // terracotta fill, so the semantic colours survive instead of
+                // being flattened to inverted text. A bare space holds the
+                // 1-cell gutter on non-cursor rows so content stays aligned.
+                const bar = (
+                  <text fg={isCursor() ? theme.focusAccent : undefined} wrapMode="none">
+                    {isCursor() ? "▌" : " "}
+                  </text>
+                )
+                const rowBg = () => (isCursor() ? theme.backgroundElement : undefined)
                 if (row.kind === "dir") {
                   // Indent: 2 cells per depth level. Marker: ▾ open, ▸ closed.
                   const indent = "  ".repeat(row.depth)
                   const marker = row.expanded ? "▾" : "▸"
                   return (
                     <box
-                      paddingLeft={1}
-                      paddingRight={1}
-                      backgroundColor={isCursor() ? theme.primary : undefined}
+                      flexDirection="row"
+                      gap={0}
+                      backgroundColor={rowBg()}
                       onMouseUp={() => {
                         setCursorIndex(index())
                         setExpandedDirs((prev) => {
@@ -683,13 +724,12 @@ export function FileTree(props: FileTreeProps) {
                         })
                       }}
                     >
-                      <text
-                        fg={isCursor() ? theme.selectedListItemText : theme.textMuted}
-                        attributes={TextAttributes.BOLD}
-                        wrapMode="none"
-                      >
-                        {`${indent}${marker} ${row.name}/`}
-                      </text>
+                      {bar}
+                      <box flexGrow={1} paddingRight={1}>
+                        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+                          {`${indent}${marker} ${row.name}/`}
+                        </text>
+                      </box>
                     </box>
                   )
                 }
@@ -698,17 +738,20 @@ export function FileTree(props: FileTreeProps) {
                   // Two-cell gutter where the dir marker would sit.
                   return (
                     <box
-                      paddingLeft={1}
-                      paddingRight={1}
-                      backgroundColor={isCursor() ? theme.primary : undefined}
+                      flexDirection="row"
+                      gap={0}
+                      backgroundColor={rowBg()}
                       onMouseUp={() => {
                         setCursorIndex(index())
                         props.onOpenFile(row.path)
                       }}
                     >
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.text} wrapMode="none">
-                        {`${indent}  ${row.name}`}
-                      </text>
+                      {bar}
+                      <box flexGrow={1} paddingRight={1}>
+                        <text fg={theme.text} wrapMode="none">
+                          {`${indent}  ${row.name}`}
+                        </text>
+                      </box>
                     </box>
                   )
                 }
@@ -734,31 +777,32 @@ export function FileTree(props: FileTreeProps) {
                 return (
                   <box
                     flexDirection="row"
-                    gap={1}
-                    paddingLeft={1}
-                    paddingRight={1}
-                    backgroundColor={isCursor() ? theme.primary : undefined}
+                    gap={0}
+                    backgroundColor={rowBg()}
                     onMouseUp={() => {
                       setCursorIndex(index())
                       props.onOpenFile(row.path)
                     }}
                   >
-                    <text fg={isCursor() ? theme.selectedListItemText : statusColor()} wrapMode="none">
-                      {row.status}
-                    </text>
-                    <text fg={isCursor() ? theme.selectedListItemText : theme.text} wrapMode="none" flexGrow={1}>
-                      {row.path}
-                    </text>
-                    <Show when={w.added > 0}>
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.success} wrapMode="none">
-                        {addedText}
+                    {bar}
+                    <box flexDirection="row" flexGrow={1} gap={1} paddingRight={1}>
+                      <text fg={statusColor()} wrapMode="none">
+                        {row.status}
                       </text>
-                    </Show>
-                    <Show when={w.deleted > 0}>
-                      <text fg={isCursor() ? theme.selectedListItemText : theme.error} wrapMode="none">
-                        {deletedText}
+                      <text fg={theme.text} wrapMode="none" flexGrow={1}>
+                        {truncatePathTail(row.path, pathBudget())}
                       </text>
-                    </Show>
+                      <Show when={w.added > 0}>
+                        <text fg={theme.success} wrapMode="none">
+                          {addedText}
+                        </text>
+                      </Show>
+                      <Show when={w.deleted > 0}>
+                        <text fg={theme.error} wrapMode="none">
+                          {deletedText}
+                        </text>
+                      </Show>
+                    </box>
                   </box>
                 )
               }}

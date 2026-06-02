@@ -12,9 +12,17 @@
  * for the SELECTED task is shown in the topbar instead — see
  * `src/tui/component/topbar.tsx`.
  *
- * No grouping = no headers in the row list. {@link buildRows} returns a
- * filtered, ordered task list with each row's `flatIndex` so the
+ * No grouping = no per-project headers in the row list. {@link buildRows}
+ * returns a filtered, ordered task list with each row's `flatIndex` so the
  * renderer can compare cursor positions without recounting.
+ *
+ * The renderer (`Sidebar.tsx`) draws this single ordered list as TWO flat
+ * sections: the `main` (repo-root) rows come first — rendered as a compact
+ * PROJECTS list — then a divider, then every non-main row as the flat TASKS
+ * list. This is NOT per-project grouping: a task is not nested under its
+ * repo, it just lives in the one shared tasks section. Because `buildRows`
+ * already emits all `main` rows before any task row, the renderer only needs
+ * the index of the first non-main row to place the divider.
  *
  * No reactivity here: pure functions over `readonly Task[]`. The Solid
  * component (`Sidebar.tsx`) wraps these in `createMemo` so they recompute

@@ -522,6 +522,15 @@ function TasksShell(props: {
     void props.orch?.setActiveTask(id).catch(() => {})
   }
 
+  // Version / update chip for the Sidebar's brand header — moved up from the
+  // footer's old `── system ──` block. Emphasised + clickable (opens the
+  // update page) when an update is waiting, otherwise a quiet version label.
+  const headerStatus = createMemo(() => {
+    const info = updateInfo()
+    if (info?.hasUpdate) return { label: `v${info.latest} ↑`, emphasize: true }
+    return { label: `v${CURRENT_VERSION}`, emphasize: false }
+  })
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexGrow={1} flexShrink={1}>
@@ -531,6 +540,9 @@ function TasksShell(props: {
           onSelect={setSelectedId}
           onActivate={(id) => void switchTo(id)}
           activateOnClick
+          // Brand-header version/update chip (replaces the footer system block).
+          headerStatus={headerStatus}
+          onHeaderStatusClick={() => void openUpdate()}
           // Fill the whole tmux pane and follow live resizes (see `dimensions`
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.
@@ -548,7 +560,7 @@ function TasksShell(props: {
           focused={() => dialog.stack.length === 0}
         />
       </box>
-      <ShortcutHints updateInfo={updateInfo} onOpenUpdate={() => void openUpdate()} />
+      <ShortcutHints />
     </box>
   )
 }
@@ -559,13 +571,8 @@ function TasksShell(props: {
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
-function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null>; onOpenUpdate: () => void }) {
+function ShortcutHints() {
   const { theme } = useTheme()
-  const updateLabel = createMemo(() => {
-    const info = props.updateInfo()
-    if (!info) return `v${CURRENT_VERSION}`
-    return info.hasUpdate ? `v${info.latest} available` : `v${CURRENT_VERSION} latest`
-  })
   // Fixed-width key column so the labels line up — a terminal-grammar
   // legend column, not a proportional pane (allowed hardcode).
   // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
@@ -589,56 +596,43 @@ function ShortcutHints(props: { updateInfo: Accessor<UpdateInfo | null>; onOpenU
     { k: "⌃W", label: "close tab" },
     { k: "⌃Q", label: "detach" },
   ]
+  // Width of the description column = the longest label, but CAPPED so a long
+  // label can't blow the column out past what the 32-cell Tasks pane (minus the
+  // 10-cell keycap column) can hold. Each row right-aligns this fixed-width box
+  // (text left-aligned inside), so every description shares one left edge AND
+  // the whole column hugs the pane's right side. Labels longer than the cap are
+  // ellipsised rather than allowed to overflow.
+  const LABEL_COL_MAX = 18
+  const labelColWidth = Math.min(LABEL_COL_MAX, Math.max(...HINTS.map((h) => h.label.length)))
+  const clipLabel = (s: string): string =>
+    s.length <= labelColWidth ? s : `${s.slice(0, Math.max(0, labelColWidth - 1))}…`
+  // Version + update moved UP to the Sidebar's `kobe` brand header (the old
+  // `── system ──` block lived here); the footer is now just the key legend.
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
-      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-        ── system ──
-      </text>
-      <box flexDirection="row" gap={1}>
-        <text
-          fg={props.updateInfo()?.hasUpdate ? theme.warning : theme.textMuted}
-          attributes={props.updateInfo()?.hasUpdate ? TextAttributes.BOLD : TextAttributes.DIM}
-          wrapMode="none"
-          onMouseUp={() => {
-            if (props.updateInfo()?.hasUpdate) props.onOpenUpdate()
-          }}
-        >
-          {updateLabel()}
-        </text>
-      </box>
-      {/* When an update is published, surface the action — the self-update
-          command — right here in the tmux-native footer, since the old
-          outer-monitor update dialog isn't reachable on normal startup. */}
-      <Show when={props.updateInfo()?.hasUpdate}>
-        <box flexDirection="row" gap={1} onMouseUp={() => props.onOpenUpdate()}>
-          <box width={10} flexShrink={0}>
-            <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-              [U]
-            </text>
-          </box>
-          <text fg={theme.accent} attributes={TextAttributes.DIM} wrapMode="none">
-            update page
-          </text>
-        </box>
-      </Show>
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         ── keys ──
       </text>
       <For each={HINTS}>
         {(h) => (
-          <box flexDirection="row" gap={1}>
+          <box flexDirection="row" gap={1} justifyContent="space-between">
             {/* `[key]` keycap chip — agent-deck style, mirrors the outer
                 monitor's StatusBar Hotkey: bold accent key in brackets,
-                muted label. No fill, so it stays clean in transparent
-                mode. Fixed-width key column so the labels line up. */}
+                muted label. No fill, so it stays clean in transparent mode. */}
             <box width={10} flexShrink={0}>
               <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
                 [{h.k}]
               </text>
             </box>
-            <text fg={theme.textMuted} wrapMode="none">
-              {h.label}
-            </text>
+            {/* Description column — fixed width = longest label, pushed to the
+                right edge by space-between. Text is left-aligned inside, so
+                every description shares one left edge while the whole column
+                hugs the right side and rides the pane width. */}
+            <box width={labelColWidth} flexShrink={0}>
+              <text fg={theme.textMuted} wrapMode="none">
+                {clipLabel(h.label)}
+              </text>
+            </box>
           </box>
         )}
       </For>
