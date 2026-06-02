@@ -80,6 +80,12 @@ export const gitWrapper = {
         cwd,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
+        // All callers here are read-only inspection (`status`, `diff`,
+        // `ls-files`). `git status`/`diff` would otherwise rewrite
+        // `.git/index`'s stat cache and take `.git/index.lock`, racing
+        // the worktree's engine commits and the sidebar poll for the
+        // lock. `GIT_OPTIONAL_LOCKS=0` suppresses that optional write.
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
       })
       let stdout = ""
       let stderr = ""

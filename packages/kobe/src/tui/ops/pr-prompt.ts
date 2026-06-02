@@ -36,6 +36,11 @@ function git(cwd: string, args: readonly string[]): string | null {
       cwd,
       encoding: "utf8",
       timeout: GIT_TIMEOUT_MS,
+      // Read-only inspection (`status`, `rev-parse`, `symbolic-ref`).
+      // `git status` would otherwise rewrite `.git/index`'s stat cache
+      // and take `.git/index.lock`, racing the worktree's engine commits
+      // for the lock. `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
     })
     if (out.error) return null
     if (out.status !== 0) return null
