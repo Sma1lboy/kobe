@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildEditorCommand } from "../../src/tmux/editor-launch.ts"
+import { buildEditorCommand, editorWindowLabel } from "../../src/tmux/editor-launch.ts"
 import { DEFAULT_EDITOR_KIND, normalizeEditorKind } from "../../src/tui/lib/editor-prefs.ts"
 
 describe("buildEditorCommand", () => {
@@ -40,6 +40,23 @@ describe("buildEditorCommand", () => {
 
   it("shell-escapes a path with spaces and quotes", () => {
     expect(buildEditorCommand("vim", "", "/wt/a b/it's.ts")?.command).toBe("vim '/wt/a b/it'\\''s.ts'")
+  })
+})
+
+describe("editorWindowLabel", () => {
+  it("labels the tmux window with the editor binary name", () => {
+    expect(editorWindowLabel("vim")).toBe("vim")
+    expect(editorWindowLabel("nano")).toBe("nano")
+    expect(editorWindowLabel("code")).toBe("code")
+  })
+
+  it("uses the basename for an absolute-path custom binary", () => {
+    expect(editorWindowLabel("/usr/local/bin/hx")).toBe("hx")
+  })
+
+  it("falls back to 'edit' for an empty binary", () => {
+    expect(editorWindowLabel("")).toBe("edit")
+    expect(editorWindowLabel("  ")).toBe("edit")
   })
 })
 

@@ -109,6 +109,17 @@ export async function openInEditor(session: string, worktree: string, absPath: s
   const resolved = resolveEditorCommand(absPath)
   if (!resolved) return false
   if (!(await binaryAvailable(resolved.bin))) return false
-  await newWindow(session, { cwd: worktree, command: resolved.command, name: "edit" })
+  // Name the window after the editor binary (`vim` / `nano` / `code` …)
+  // — not a generic "edit" — so the tmux status bar / window list shows
+  // which editor actually launched. `bin` can be an absolute path for a
+  // custom command, so take its basename for a tidy label.
+  const label = editorWindowLabel(resolved.bin)
+  await newWindow(session, { cwd: worktree, command: resolved.command, name: label })
   return true
+}
+
+/** Basename of the editor binary, for the tmux window label. */
+export function editorWindowLabel(bin: string): string {
+  const base = bin.slice(bin.lastIndexOf("/") + 1).trim()
+  return base.length > 0 ? base : "edit"
 }
