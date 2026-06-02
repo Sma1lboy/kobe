@@ -268,6 +268,10 @@ function TasksShell(props: {
             console.error("[kobe tasks] switch-client failed:", err)
           },
         )
+        // Move the shared active-task focus to where the client landed, so
+        // the sidebar highlights it instead of the archived task (same fix
+        // as deleteTask / switchTo). null → kobe-home, nothing highlighted.
+        await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
         await killSession(tmuxSessionName(id)).catch((err: unknown) => {
           console.error("[kobe tasks] kill tmux session failed:", err)
         })
@@ -323,13 +327,21 @@ function TasksShell(props: {
         console.error("[kobe tasks] switch-client failed:", err)
       },
     )
+    // The client now sits in nextTask's session (its chat pane is what you
+    // see), so move the SHARED active-task focus there too — otherwise every
+    // Tasks pane keeps highlighting the just-deleted task. switchClientBeforeKill
+    // only moves the tmux client, not the active-task signal that drives the
+    // sidebar highlight; `switchTo` sets it after its own switch-client, and
+    // delete must match. null when nothing is left (we land on kobe-home), so
+    // no pane highlights a deleted task.
+    await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
     await killSession(tmuxSessionName(id)).catch((err: unknown) => {
       console.error("[kobe tasks] kill tmux session failed:", err)
     })
     await props.reload()
     if (selectedId() === id) {
       const remaining = props.tasks()
-      setSelectedId((remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
+      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
     }
   }
 
