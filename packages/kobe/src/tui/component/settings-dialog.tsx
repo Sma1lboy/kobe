@@ -256,7 +256,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
       dialogTitle: "Custom editor command (use {file} for the path)",
     })
     if (next === undefined) return
-    props.kv.set(EDITOR_CUSTOM_KEY, next.trim())
+    const cmd = next.trim()
+    props.kv.set(EDITOR_CUSTOM_KEY, cmd)
+    // If the user bothered to type a command here, they want it used —
+    // flip the kind to `custom` so it actually takes effect. Without this,
+    // a command typed while kind is still `vim` is silently ignored (you'd
+    // set `code -w` / `nano` and still get vim), which reads as a bug.
+    if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
   }
 
   function enterBody(): void {
