@@ -94,6 +94,33 @@ describe("dispatchKeyEvent", () => {
     expect(evt.defaultPrevented).toBe(true)
   })
 
+  test("a disabled matching group lets the key fall through (the settings `{file}` l-eaten fix)", () => {
+    // Repro of the bug: the standalone Settings page kept `l`=enterBody
+    // active under an open text input, swallowing the `l` in `{file}`.
+    // The fix disables that nav group while a sub-dialog is open; with it
+    // disabled and no other group binding `l`, dispatch must return false
+    // so the native <input> receives the keystroke.
+    let navFired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(
+        1,
+        "l",
+        () => {
+          navFired = true
+        },
+        /* enabled */ false,
+      ), // settings nav, suspended while the input dialog is open
+      makeReg(2, "escape", () => {}), // the input dialog only binds escape
+    ]
+    const evt = makeEvt("l")
+
+    const handled = dispatchKeyEvent(stack, evt)
+
+    expect(handled).toBe(false)
+    expect(navFired).toBe(false)
+    expect(evt.defaultPrevented).toBe(false)
+  })
+
   test("an already-prevented event short-circuits without firing anything", () => {
     let fired = false
     const stack: RegisteredBinding[] = [
