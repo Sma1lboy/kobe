@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.0
+
+### Minor Changes
+
+- 0fde588: File tree: `e` opens the highlighted file in your editor. `enter` stays the read-only preview/diff; the new `e` key opens the file in a fresh tmux window running your editor, and the window closes back to kobe when you quit it. Pick the editor under Settings → General → Editor: `vim`, `nano`, or a `custom` command (e.g. `code -w`, `subl -w`, `emacsclient`; use `{file}` to place the path, otherwise it's appended). An empty custom command falls back to `$VISUAL`/`$EDITOR`. If the chosen editor isn't installed, `e` falls back to the preview so it's never a dead key. The file pane footer shows `↵ preview · e edit`.
+
+### Patch Changes
+
+- 2722ccd: File-tree editor (`e`) follow-up fixes:
+
+  - **Custom command was un-typeable on the standalone Settings page** — the dialog's `j/k/l/h/t` navigation kept firing under the open text input and swallowed those letters (you couldn't type the `l` in `{file}`). The dialog now suspends its own key bindings while a sub-dialog is open.
+  - **A custom command typed while the kind was still `vim` was silently ignored** — setting a non-empty custom command now auto-switches the editor kind to `custom` so it actually takes effect.
+  - **The editor kind row was unlabelled** (`< vim >`), easy to miss above the custom-command row — it now reads `editor: < vim >  (enter to change)`.
+  - **The standalone Settings page jumbled its text** when the content was taller than the window — the page now scrolls instead of compressing the rows.
+  - The editor opens in a tmux window named after the **file** being edited (matching the preview window) so several open files are easy to tell apart.
+
+- 6b41216: Stop the file/changes panes from racing the engine for `.git/index.lock`.
+
+  The sidebar's per-row `+N −M` chip polls `git status` every 2s, and the file-tree and Ops panes run `git status`/`git diff` on demand. Those commands aren't purely read-only — git opportunistically rewrites `.git/index`'s stat cache, which takes `.git/index.lock`. Running on a poll across every worktree (and across multiple ChatTab pane processes) meant they could collide with the worktree's own engine `git commit`/`git add`, surfacing as intermittent `fatal: Unable to create '.git/index.lock': File exists` errors.
+
+  All pane-side inspection git calls now run with `GIT_OPTIONAL_LOCKS=0`, so they inspect without writing the index or taking the lock. Real writes (engine commits, worktree create/remove, branch rename) are unaffected and still lock as they should.
+
+- 5b648c1: Fix Settings transparent-background changes so they persist and apply after closing the Settings page. The Settings page now flushes UI state before exit and refreshes only kobe-owned Tasks/Ops panes when visual preferences changed, leaving engine and shell panes untouched.
+- d07b2df: Redesign the Tasks pane (sidebar) and tidy the file-changes pane. Tasks now
+  render as compact two-line cards with a left accent bar + subtle tint for the
+  cursor (replacing the heavy full-row fill), split into two labelled sections —
+  `PROJECTS` (repo roots, with their dir) on top and `TASKS` (worktrees) below.
+  The `working` chip + animated spinner now surface a task's in-progress state.
+  Panes sit flush to their tmux edges (horizontal padding removed), the footer
+  key legend right-aligns its descriptions in a capped column, and Changes-tab
+  paths tail-truncate so the filename always shows. The version/update chip moved
+  up into the new `KOBE` brand header; the footer `system` section is gone. The
+  file-changes pane's row selection now matches the sidebar — a left accent bar
+  - subtle tint instead of a solid fill.
+
 ## 0.6.10
 
 ### Patch Changes
