@@ -16,6 +16,10 @@
  * the fix lives in one place.
  */
 
+import { homedir } from "node:os"
+import { kobeCliInvocation } from "@/cli/invocation"
+import { TASKS_PANE_WIDTH, homeWelcomeCommand, keepAlive, tasksPaneCommand } from "./session-layout"
+
 /**
  * Dedicated tmux socket name — isolates kobe's server from the user's,
  * AND isolates kobe environments from each other.
@@ -62,6 +66,22 @@ async function drainText(stream: ReadableStream<Uint8Array> | null | undefined):
 }
 
 /**
+ * cwd for every tmux child spawn — a directory guaranteed to outlive any
+ * task's worktree.
+ *
+ * Each Tasks/Ops pane runs with its task's worktree as the process cwd.
+ * Deleting a task unlinks that worktree, after which `Bun.spawn` fails
+ * with `posix_spawn` ENOENT BEFORE the command runs — even though tmux is
+ * on PATH — because the kernel can't resolve the inherited (now-gone)
+ * cwd. That ENOENT used to throw straight into a pane's opentui loop and
+ * crash the whole pane to a bare shell when its task was deleted.
+ * Anchoring to `$HOME` (→ `/` if unset) keeps the helpers spawnable from
+ * a pane whose worktree just vanished. Read once — `$HOME` is fixed for
+ * the process lifetime.
+ */
+const SAFE_SPAWN_CWD = homedir() || "/"
+
+/**
  * Run a tmux command, logging stderr when it fails. Silent tmux
  * errors are a foot-gun (KOB-233): a `split-window -t :0.0` that
  * failed because of `base-index 1` left the layout broken with no
@@ -74,18 +94,40 @@ async function drainText(stream: ReadableStream<Uint8Array> | null | undefined):
  * but the concurrent read removes the latent hang regardless (KOB-244).
  */
 export async function runTmux(args: string[]): Promise<number> {
-  const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "ignore", stderr: "pipe" })
-  const [errText, code] = await Promise.all([drainText(proc.stderr), proc.exited])
-  if (code !== 0 && errText.trim().length > 0) {
-    console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+  try {
+    const proc = Bun.spawn(tmuxArgs(...args), {
+      stdin: "ignore",
+      cwd: SAFE_SPAWN_CWD,
+      stdout: "ignore",
+      stderr: "pipe",
+    })
+    const [errText, code] = await Promise.all([drainText(proc.stderr), proc.exited])
+    if (code !== 0 && errText.trim().length > 0) {
+      console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+    }
+    return code
+  } catch {
+    // posix_spawn itself failed (e.g. the pane's worktree cwd was just
+    // deleted, or fd exhaustion). Degrade to a non-zero result so callers
+    // running in a crash-net-less pane process see a failed command
+    // instead of an unhandled rejection that kills the pane.
+    return 1
   }
-  return code
 }
 
 /** Run a tmux command without logging failures. Use only for existence probes. */
 async function runTmuxQuiet(args: string[]): Promise<number> {
-  const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
-  return proc.exited
+  try {
+    const proc = Bun.spawn(tmuxArgs(...args), {
+      stdin: "ignore",
+      cwd: SAFE_SPAWN_CWD,
+      stdout: "ignore",
+      stderr: "ignore",
+    })
+    return await proc.exited
+  } catch {
+    return 1
+  }
 }
 
 /** Flatten several tmux commands into one `tmux cmd \; cmd ...` invocation. */
@@ -112,12 +154,20 @@ export async function runTmuxSequence(commands: readonly (readonly string[])[]):
  * (KOB-244).
  */
 export async function runTmuxCapturing(args: string[]): Promise<{ code: number; stdout: string }> {
-  const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", stdout: "pipe", stderr: "pipe" })
-  const [stdout, errText, code] = await Promise.all([drainText(proc.stdout), drainText(proc.stderr), proc.exited])
-  if (code !== 0 && errText.trim().length > 0) {
-    console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+  try {
+    const proc = Bun.spawn(tmuxArgs(...args), { stdin: "ignore", cwd: SAFE_SPAWN_CWD, stdout: "pipe", stderr: "pipe" })
+    const [stdout, errText, code] = await Promise.all([drainText(proc.stdout), drainText(proc.stderr), proc.exited])
+    if (code !== 0 && errText.trim().length > 0) {
+      console.error(`[kobe tmux] ${args.join(" ")} (${code}): ${errText.trim()}`)
+    }
+    return { code, stdout }
+  } catch {
+    // See runTmux: a posix_spawn failure (deleted-worktree cwd, fd
+    // exhaustion) degrades to an empty, non-zero capture rather than
+    // throwing into a polling loop and crashing the pane. capturePaneById
+    // already treats a non-zero code as `""`.
+    return { code: 1, stdout: "" }
   }
-  return { code, stdout }
 }
 
 /** Run several tmux commands in one process and capture combined stdout. */
@@ -131,7 +181,7 @@ export async function runTmuxSequenceCapturing(
 /** Is the `tmux` binary on PATH? */
 export async function tmuxAvailable(): Promise<boolean> {
   try {
-    const proc = Bun.spawn(["tmux", "-V"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
+    const proc = Bun.spawn(["tmux", "-V"], { stdin: "ignore", cwd: SAFE_SPAWN_CWD, stdout: "ignore", stderr: "ignore" })
     return (await proc.exited) === 0
   } catch {
     return false
@@ -341,30 +391,87 @@ export async function killSession(name: string): Promise<void> {
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
 }
 
-/** Session name for the kobe home/fallback window shown when a task is archived/deleted. */
+/** Session name for the kobe home window shown when a task is archived/deleted. */
 export const KOBE_HOME_SESSION = "kobe-home"
 
+/** Session option tagging a kobe-home built as the full Tasks home. */
+const HOME_KIND_OPTION = "@kobe_home"
+
 /**
- * Ensure the kobe-home fallback session exists. Creates it if absent with a
- * placeholder message. Returns the session name.
+ * Ensure the kobe-home session exists and return its name.
+ *
+ * kobe-home is where a client lands when the task it was attached to is
+ * deleted/archived with no other task preferred ({@link switchClientBeforeKill}),
+ * and where `kobe` parks when launched with zero tasks. It runs the same
+ * full-width Tasks pane (`kobe tasks`) a real task session uses for its
+ * sidebar, so the user can create (`n`) or pick a task and switch straight
+ * into it — instead of being stranded on a dead-end placeholder shell (the
+ * pre-fix behaviour: a bare `sh` printing "No active task").
+ *
+ * It keeps the product's layout frame: a welcome "no task" main pane with
+ * the same fixed-width ({@link TASKS_PANE_WIDTH}) Tasks rail a real session
+ * carries on its left, focused so `n`/arrows work immediately. The other
+ * task-bound panes (engine chat, file tree, Ops) are omitted — they have no
+ * worktree/engine to populate until a task is entered.
+ *
+ * cwd is anchored to {@link SAFE_SPAWN_CWD} (no worktree exists here); both
+ * panes keep-alive so a returning command drops to a shell instead of
+ * collapsing the window. A legacy placeholder home (missing the
+ * `@kobe_home` tag) is rebuilt in place — tmux sessions outlive a kobe
+ * relaunch, so a stale bare-shell home from an older build is upgraded
+ * rather than silently reused. Safe to rebuild: this is only called before
+ * switching a client ONTO home, never while one is parked on it.
  */
 export async function ensureFallbackSession(): Promise<string> {
   const name = KOBE_HOME_SESSION
-  if (!(await sessionExists(name))) {
-    await runTmux([
-      "new-session",
-      "-d",
-      "-s",
-      name,
-      "-x",
-      "220",
-      "-y",
-      "50",
-      "sh",
-      "-c",
-      'clear; printf "\\n  No active task\\n\\n  Select a task from the sidebar to continue.\\n\\n"; exec ${SHELL:-sh}',
-    ])
+  if (await sessionExists(name)) {
+    if ((await getSessionOption(name, HOME_KIND_OPTION)) === "tasks") return name
+    await runTmux(["kill-session", "-t", `=${name}`])
   }
+  // Main "no task" welcome pane first, then split the Tasks rail in on its
+  // LEFT (`-b`) at the same fixed cell width a real session uses.
+  const r0 = await runTmuxCapturing([
+    "new-session",
+    "-d",
+    "-s",
+    name,
+    "-c",
+    SAFE_SPAWN_CWD,
+    "-x",
+    "220",
+    "-y",
+    "50",
+    "-P",
+    "-F",
+    "#{pane_id}",
+    homeWelcomeCommand(),
+  ])
+  const mainPane = r0.stdout.trim()
+  if (mainPane) {
+    const r1 = await runTmuxCapturing([
+      "split-window",
+      "-h",
+      "-b",
+      "-t",
+      mainPane,
+      "-l",
+      `${TASKS_PANE_WIDTH}`,
+      "-c",
+      SAFE_SPAWN_CWD,
+      "-P",
+      "-F",
+      "#{pane_id}",
+      keepAlive(tasksPaneCommand(kobeCliInvocation())),
+    ])
+    const tasksPane = r1.stdout.trim()
+    if (tasksPane) {
+      await runTmuxSequence([
+        ["set-option", "-p", "-t", tasksPane, PANE_ROLE_OPTION, "tasks"],
+        ["select-pane", "-t", tasksPane],
+      ])
+    }
+  }
+  await setSessionOption(name, HOME_KIND_OPTION, "tasks")
   return name
 }
 

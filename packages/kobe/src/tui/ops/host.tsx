@@ -80,15 +80,25 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
   onMount(() => {
     let disposed = false
     async function poll(): Promise<void> {
-      const mtime = await latestTranscriptMtime(props.vendor, props.worktree)
-      if (disposed) return
-      if (!primed) {
-        // First read seeds the baseline so we only ever flag activity
-        // that happened after the pane came up.
-        primed = true
-        setBaseline(mtime)
+      try {
+        const mtime = await latestTranscriptMtime(props.vendor, props.worktree)
+        if (disposed) return
+        if (!primed) {
+          // First read seeds the baseline so we only ever flag activity
+          // that happened after the pane came up.
+          primed = true
+          setBaseline(mtime)
+        }
+        setLatest(mtime)
+      } catch {
+        // The worktree can vanish out from under a live pane (the task is
+        // being deleted: kobe removes the worktree, then kills this
+        // session — a multi-second window for a node_modules-heavy tree).
+        // A transient read failure must NOT crash the pane: this process
+        // has no unhandledRejection net (that's daemon-only), so a bare
+        // `void poll()` rejection would drop the whole Ops pane to a raw
+        // shell. Swallow and let the next tick retry / `disposed` stop us.
       }
-      setLatest(mtime)
     }
     void poll()
     const timer = setInterval(() => void poll(), ACTIVITY_POLL_MS)
@@ -125,31 +135,46 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     }
 
     async function prime(): Promise<void> {
-      paneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
-      baselineCompletionId = (await detector.latestCompletion(props.worktree))?.id ?? null
-      await publish(detector.supportsCompletionMarkers() ? "idle" : "unknown")
+      try {
+        paneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
+        baselineCompletionId = (await detector.latestCompletion(props.worktree))?.id ?? null
+        await publish(detector.supportsCompletionMarkers() ? "idle" : "unknown")
+      } catch {
+        // See the activity poll above: transient failures during the
+        // delete→kill teardown window must not crash this crash-net-less
+        // pane process. The next `poll()` tick re-primes naturally.
+      }
     }
 
     async function poll(): Promise<void> {
-      const nextPaneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
-      if (disposed) return
-      if (nextPaneHash !== paneHash) {
-        paneHash = nextPaneHash
-        observedPaneActivity = true
+      try {
+        const nextPaneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
+        if (disposed) return
+        if (nextPaneHash !== paneHash) {
+          paneHash = nextPaneHash
+          observedPaneActivity = true
+          stablePolls = 0
+          await publish(detector.supportsCompletionMarkers() ? "running" : "unknown")
+        } else if (observedPaneActivity) {
+          stablePolls++
+        }
+
+        if (!detector.supportsCompletionMarkers() || !observedPaneActivity || stablePolls < STABLE_POLLS_FOR_DONE)
+          return
+
+        const marker = await detector.latestCompletion(props.worktree)
+        if (disposed || !marker || marker.id === baselineCompletionId) return
+        baselineCompletionId = marker.id
+        observedPaneActivity = false
         stablePolls = 0
-        await publish(detector.supportsCompletionMarkers() ? "running" : "unknown")
-      } else if (observedPaneActivity) {
-        stablePolls++
+        await publish("done")
+      } catch {
+        // capturePaneById / publish (setWindowOption) fire tmux against
+        // `props.targetPane` — once the task is deleted that pane and its
+        // session are torn down, so these reject mid-flight. Swallow so a
+        // teardown race degrades to a quiet no-op instead of crashing the
+        // Ops pane to a shell with a stack dump (the reported bug).
       }
-
-      if (!detector.supportsCompletionMarkers() || !observedPaneActivity || stablePolls < STABLE_POLLS_FOR_DONE) return
-
-      const marker = await detector.latestCompletion(props.worktree)
-      if (disposed || !marker || marker.id === baselineCompletionId) return
-      baselineCompletionId = marker.id
-      observedPaneActivity = false
-      stablePolls = 0
-      await publish("done")
     }
 
     void prime()
