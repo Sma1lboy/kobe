@@ -22,6 +22,7 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { type ChatTabTurnState, createEngineTurnDetector } from "@/engine/turn-detector"
 import { latestTranscriptMtime } from "@/monitor/activity"
 import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmuxSessionName } from "@/tmux/client"
+import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
@@ -176,6 +177,24 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     })
   }
 
+  // `e` on a file → open it in the user's editor (vim / nano / custom) in
+  // a fresh tmux window. Read-only preview (enter) and editor (e) are
+  // separate, deliberate actions — no preview→edit bridge. If the editor
+  // can't launch (binary missing / nothing configured), fall back to the
+  // read-only preview so `e` is never a dead key. Same phantom-session
+  // guard as `openPreview`: a standalone `kobe ops` (no task id) has no
+  // session to open a window in, so just preview.
+  function openEditor(rel: string): void {
+    if (!props.taskId) {
+      openPreview(rel)
+      return
+    }
+    const abs = `${props.worktree}/${rel}`
+    void openInEditor(tmuxSessionName(props.taskId), props.worktree, abs).then((launched) => {
+      if (!launched) openPreview(rel)
+    })
+  }
+
   // `a` on a file → inject `@<path> ` into the engine pane via tmux
   // send-keys (KOB-232). `targetPane` is the claude/codex pane id passed
   // by the launcher (`opsPaneCommand --target-pane`). Literal send (the
@@ -201,6 +220,7 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
         worktreePath={() => props.worktree}
         focused={() => true}
         onOpenFile={openPreview}
+        onEditFile={openEditor}
         onMention={injectMention}
         onCreatePR={() => void createPR()}
         cornerBadge={cornerBadge}
