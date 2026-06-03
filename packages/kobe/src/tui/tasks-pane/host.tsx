@@ -120,9 +120,26 @@ function TasksShell(props: {
   // or the outer monitor) is the one highlighted here, so every Tasks pane
   // shows the same focus instead of its own last click (KOB-247). Local
   // clicks still set selectedId optimistically; this keeps it consistent.
+  //
+  // One guard: a pane SPAWNED for a task session (initialTaskId set) is the
+  // pane for THAT task — its own session's task is the authority for the
+  // initial highlight. But `switchTo` publishes setActiveTask(id) only AFTER
+  // `switch-client`, so when this freshly-built pane first subscribes the
+  // daemon replays the PRE-switch active-task value. Applying it would clobber
+  // our correct initialTaskId selection back to the previously-entered row
+  // (often the top one) for a frame, until our own setActiveTask lands. So we
+  // ignore replayed values until the channel CONFIRMS our own task, then
+  // resume following shared focus normally. Home panes (no initialTaskId)
+  // never enter the guard and behave exactly as before.
+  let activeConfirmed = !props.initialTaskId
   createEffect(() => {
     const active = props.orch?.activeTaskSignal()()
-    if (active) setSelectedId(active)
+    if (!active) return
+    if (!activeConfirmed) {
+      if (active !== props.initialTaskId) return
+      activeConfirmed = true
+    }
+    setSelectedId(active)
   })
 
   onMount(() => {
