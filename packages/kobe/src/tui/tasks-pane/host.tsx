@@ -495,8 +495,8 @@ function TasksShell(props: {
           vendor: task?.vendor,
         })
       }
-      await props.orch?.setActiveTask(id).catch(() => {})
       await runTmux(["switch-client", "-t", `=${name}`])
+      void props.orch?.setActiveTask(id).catch(() => {})
       return
     }
 
@@ -519,7 +519,6 @@ function TasksShell(props: {
       await props.reload()
     }
     if (!cwd || !existsSync(cwd)) return
-    await props.orch?.setActiveTask(id).catch(() => {})
     const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
     const ready = await ensureSession({
       name,
@@ -535,6 +534,7 @@ function TasksShell(props: {
       return
     }
     await runTmux(["switch-client", "-t", `=${name}`])
+    void props.orch?.setActiveTask(id).catch(() => {})
   }
 
   // Version / update chip for the Sidebar's brand header — moved up from the
