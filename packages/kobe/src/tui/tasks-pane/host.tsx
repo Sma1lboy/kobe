@@ -82,6 +82,20 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
 
+function initialSidebarTaskId(tasks: readonly Task[], activeTaskId?: string | null): string | null {
+  if (activeTaskId && tasks.some((t) => t.id === activeTaskId)) return activeTaskId
+  const visible = tasks.filter((t) => !t.archived)
+  const regular = visible.filter((t) => t.kind !== "main")
+  return (
+    regular.find((t) => t.pinned)?.id ??
+    regular[0]?.id ??
+    visible[0]?.id ??
+    tasks.find((t) => t.kind !== "main")?.id ??
+    tasks[0]?.id ??
+    null
+  )
+}
+
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   transparent: boolean
@@ -101,7 +115,9 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-  const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+  const [selectedId, setSelectedId] = createSignal<string | null>(
+    initialSidebarTaskId(props.tasks(), props.orch?.activeTaskSignal()()),
+  )
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
