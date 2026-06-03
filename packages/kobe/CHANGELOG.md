@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.1
+
+### Patch Changes
+
+- f98c721: kobe-home is now a real home, not a dead end. Deleting the task you're in (when no other task is left) used to drop you on a bare shell that printed "No active task" with no sidebar and no way to make a new one. Now you land on a home that keeps the product's layout frame: the same fixed-width Tasks rail a real session carries on its left (focused, so `n` to create and arrows to pick work immediately) next to a "No task selected" welcome pane. Pick or create a task and you switch straight into its full session.
+
+  The task-bound panes (engine chat, file tree, Ops) are intentionally omitted from home — there's no worktree or engine to populate them until a task is entered. They come back the moment you switch into a task.
+
+  The same home backs the zero-task launch case: running `kobe` with no tasks at all used to error out with "no task available to enter" and exit to your shell. It now parks you on this home instead, so a fresh checkout (or one where you just deleted everything) lands somewhere you can actually start work.
+
+  Deleting or archiving the task you're in also keeps the sidebar honest. The flow switched the tmux client to the next task (so the chat pane was right) but never moved the shared active-task focus, so every Tasks pane kept highlighting the task you'd just removed. It now sets the active task to wherever the client landed (or clears it when you fall through to kobe-home), so the sidebar highlight always matches the chat pane — the same `setActiveTask` step `switchTo` already does on a normal switch.
+
+  Mechanics: `ensureFallbackSession` builds a welcome main pane plus a `kobe tasks` rail (`split-window -hb` at `TASKS_PANE_WIDTH`, keep-alive wrapped, cwd anchored to a directory that always exists) and tags the session `@kobe_home=tasks`. A legacy bare-shell kobe-home from an older build is rebuilt in place rather than reused, since tmux sessions outlive a kobe relaunch. `tui/direct.ts` attaches the home session on the zero-task path instead of bailing.
+
+- 2338989: Multi-client window sizing: enable tmux `aggressive-resize` so each chat-tab window tracks the client actually viewing it. Before, a small terminal attached anywhere in a task session dragged every window — including the one a larger terminal was looking at — down to the smallest client's size, which then squeezed the fixed-width Tasks pane against a too-narrow window. Now each window sizes to its own current viewer. (Two clients on the _same_ window still share one grid and the larger is letterboxed — a tmux limit that needs per-client sessions to lift.)
+- f98c721: Opening a task no longer snaps the spawned session's Tasks pane highlight to the first row. Before, every freshly built task session showed its sidebar cursor on the top task instead of the one you opened.
+
+  Root cause was two effects fighting at mount: the sidebar's "reset cursor to 0 on view switch" effect ran once at mount (it wasn't deferred), clobbering the cursor that the select-from-`selectedId` effect had just positioned on the opened task. A fresh pane mounts on every new task session, so the reset always won. Deferring the view-switch reset so it only fires on an actual later view change fixes it; the initial cursor is owned by the selectedId-sync effect.
+
+  Also hardened the related path: a spawned Tasks pane now ignores the daemon's replayed `active-task` value (which, on subscribe, is still the pre-switch task because `setActiveTask` is published after `switch-client`) until the channel confirms its own task — so the highlight no longer flashes the previously-entered task before settling.
+
+- f98c721: Deleting a task no longer crashes the panes of the session you're in. Before, deleting the active task could drop the Ops pane (and the file tree) to a bare shell with a `posix_spawn 'tmux'` stack trace, leaving the GUI stuck in a half-cleaned state.
+
+  Root cause: every Tasks/Ops pane runs with its task's worktree as the process cwd. Deleting the task removes that worktree, but kobe kills the tmux session a beat later — and the kobe-owned panes inside it keep polling on their timers in between. Once the worktree is gone the kernel can't resolve the inherited cwd, so `Bun.spawn` fails with `posix_spawn` ENOENT _before the command runs_ — even though tmux is on PATH. That throw landed in a pane's polling loop, and a pane process has no crash net (those are daemon-only), so the whole pane crashed to a shell.
+
+  Fixed in two layers:
+
+  - **The tmux spawn helpers tolerate a deleted cwd** (`tmux/client.ts`): every `Bun.spawn` is now anchored to a directory that always exists (`$HOME`) instead of inheriting the pane's worktree cwd, and a spawn failure degrades to a non-zero result instead of throwing. This protects _all_ in-session pane spawns — the Ops activity/turn polls, the file tree's git polling, `send-keys`, etc. — not just one call site. `currentSessionName` keeps its documented "returns null when tmux can't answer" contract.
+  - **The Ops pane's poll loops swallow transient teardown errors** (`tui/ops/host.tsx`): the activity and turn-detector polls wrap their bodies so a failure during the delete→kill window degrades to a quiet no-op and the next tick retries, instead of becoming an unhandled rejection.
+
 ## 0.7.0
 
 ### Minor Changes
