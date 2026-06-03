@@ -560,7 +560,15 @@ async function healKobePaneVersions(
 
     if (tasksPane && tasksPane.version !== CURRENT_VERSION) {
       commands.push(
-        ["respawn-pane", "-k", "-t", tasksPane.paneId, "-c", cwd, keepAlive(envPrefix + tasksPaneCommand(inv))],
+        [
+          "respawn-pane",
+          "-k",
+          "-t",
+          tasksPane.paneId,
+          "-c",
+          cwd,
+          keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
+        ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
         ["set-option", "-p", "-t", tasksPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
       )
@@ -634,7 +642,15 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
 
     if (tasksPane) {
       commands.push(
-        ["respawn-pane", "-k", "-t", tasksPane.paneId, "-c", cwd, keepAlive(envPrefix + tasksPaneCommand(inv))],
+        [
+          "respawn-pane",
+          "-k",
+          "-t",
+          tasksPane.paneId,
+          "-c",
+          cwd,
+          keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
+        ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
         ["set-option", "-p", "-t", tasksPane.paneId, PANE_VERSION_OPTION, CURRENT_VERSION],
       )
@@ -739,7 +755,7 @@ async function buildPanesAround(
       "-P",
       "-F",
       "tasks=#{pane_id}",
-      keepAlive(envPrefix + tasksPaneCommand(args.inv)),
+      keepAlive(envPrefix + tasksPaneCommand(args.inv, { initialTaskId: args.taskId })),
     ],
     [
       "split-window",

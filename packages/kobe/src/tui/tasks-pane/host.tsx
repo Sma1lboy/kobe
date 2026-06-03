@@ -84,6 +84,7 @@ const RELOAD_MS = 1500
 
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
+  initialTaskId?: string
   transparent: boolean
   focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
   /**
@@ -101,7 +102,9 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-  const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+  const [selectedId, setSelectedId] = createSignal<string | null>(
+    props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
+  )
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -652,7 +655,7 @@ function ShortcutHints() {
   )
 }
 
-export async function startTasksPane(): Promise<void> {
+export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
@@ -701,6 +704,7 @@ export async function startTasksPane(): Promise<void> {
             <DialogProvider>
               <TasksShell
                 tasks={tasks}
+                initialTaskId={opts.initialTaskId}
                 orch={orch}
                 transparent={prefs.transparent}
                 focusAccent={prefs.focusAccent}

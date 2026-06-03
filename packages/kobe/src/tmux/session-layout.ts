@@ -197,8 +197,13 @@ export function updatePageCommand(args: { cliInvocation: readonly string[] }): s
  * list that `switch-client`s between sessions). `cliInvocation` is the
  * argv prefix that runs the kobe CLI (injected for purity/testability).
  */
-export function tasksPaneCommand(cliInvocation: readonly string[]): string {
-  return shellQuoteArgv([...cliInvocation, "tasks"])
+export function tasksPaneCommand(
+  cliInvocation: readonly string[],
+  opts: { readonly initialTaskId?: string } = {},
+): string {
+  const argv = [...cliInvocation, "tasks"]
+  if (opts.initialTaskId) argv.push("--initial-task-id", opts.initialTaskId)
+  return shellQuoteArgv(argv)
 }
 
 /**
