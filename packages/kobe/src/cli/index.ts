@@ -244,6 +244,8 @@ interface OpsFlags {
   session?: string
   /** Default repo to pre-select (used by `new-task`). */
   repo?: string
+  /** Initial task row to select when a tmux Tasks pane starts. */
+  initialTaskId?: string
 }
 
 /** Parse `kobe ops` / `kobe new-chattab` flags. */
@@ -273,6 +275,9 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--repo") {
       flags.repo = value
+      i++
+    } else if (flag === "--initial-task-id") {
+      flags.initialTaskId = value
       i++
     }
   }
@@ -390,8 +395,9 @@ async function main(): Promise<void> {
   if (subcommand === "tasks") {
     // Experimental Tasks pane (left side of a task's tmux session) —
     // a read-only task list that `switch-client`s between sessions.
+    const flags = parseOpsFlags(rest)
     const { startTasksPane } = await import("../tui/tasks-pane/host.tsx")
-    await startTasksPane()
+    await startTasksPane({ initialTaskId: flags.initialTaskId })
     return
   }
   if (subcommand === "settings") {

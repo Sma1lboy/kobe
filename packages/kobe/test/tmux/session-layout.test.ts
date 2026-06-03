@@ -15,6 +15,7 @@ import {
   previewWindowCommand,
   shellQuote,
   shellQuoteArgv,
+  tasksPaneCommand,
   updatePageCommand,
 } from "../../src/tmux/session-layout.ts"
 
@@ -46,6 +47,13 @@ describe("shellQuoteArgv", () => {
 describe("keepAlive", () => {
   test("appends an exec-shell tail so the pane survives the command", () => {
     expect(keepAlive("claude")).toBe('claude; exec "${SHELL:-/bin/sh}"')
+  })
+})
+
+describe("tasksPaneCommand", () => {
+  test("runs the tasks pane with an optional initial task id", () => {
+    expect(tasksPaneCommand(["kobe"])).toBe("'kobe' 'tasks'")
+    expect(tasksPaneCommand(["kobe"], { initialTaskId: "task 1" })).toBe("'kobe' 'tasks' '--initial-task-id' 'task 1'")
   })
 })
 

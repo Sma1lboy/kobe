@@ -62,6 +62,18 @@ function shQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`
 }
 
+/**
+ * The kobe-home "no task" main pane — the welcome area to the right of the
+ * Tasks rail in the home layout. Purely informational: the Tasks rail owns
+ * every key (n = new task, etc.), so this pane just explains what to do.
+ * Ends in an `exec $SHELL` so the pane survives instead of collapsing the
+ * window if its command ever returns. tmux runs it via its own `sh -c`.
+ */
+export function homeWelcomeCommand(): string {
+  const msg = "\\n  No task selected\\n\\n  Press N to create a task, or pick one on the left.\\n\\n"
+  return `clear; printf ${shQuote(msg)}; exec "\${SHELL:-/bin/sh}"`
+}
+
 export interface EngineInitLaunch {
   /**
    * Raw shell to run before the engine. Runs in the SAME shell that execs
@@ -185,8 +197,13 @@ export function updatePageCommand(args: { cliInvocation: readonly string[] }): s
  * list that `switch-client`s between sessions). `cliInvocation` is the
  * argv prefix that runs the kobe CLI (injected for purity/testability).
  */
-export function tasksPaneCommand(cliInvocation: readonly string[]): string {
-  return shellQuoteArgv([...cliInvocation, "tasks"])
+export function tasksPaneCommand(
+  cliInvocation: readonly string[],
+  opts: { readonly initialTaskId?: string } = {},
+): string {
+  const argv = [...cliInvocation, "tasks"]
+  if (opts.initialTaskId) argv.push("--initial-task-id", opts.initialTaskId)
+  return shellQuoteArgv(argv)
 }
 
 /**

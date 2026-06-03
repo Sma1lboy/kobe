@@ -84,6 +84,7 @@ const RELOAD_MS = 1500
 
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
+  initialTaskId?: string
   transparent: boolean
   focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
   /**
@@ -101,7 +102,9 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
-  const [selectedId, setSelectedId] = createSignal<string | null>(props.tasks()[0]?.id ?? null)
+  const [selectedId, setSelectedId] = createSignal<string | null>(
+    props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
+  )
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -117,9 +120,26 @@ function TasksShell(props: {
   // or the outer monitor) is the one highlighted here, so every Tasks pane
   // shows the same focus instead of its own last click (KOB-247). Local
   // clicks still set selectedId optimistically; this keeps it consistent.
+  //
+  // One guard: a pane SPAWNED for a task session (initialTaskId set) is the
+  // pane for THAT task — its own session's task is the authority for the
+  // initial highlight. But `switchTo` publishes setActiveTask(id) only AFTER
+  // `switch-client`, so when this freshly-built pane first subscribes the
+  // daemon replays the PRE-switch active-task value. Applying it would clobber
+  // our correct initialTaskId selection back to the previously-entered row
+  // (often the top one) for a frame, until our own setActiveTask lands. So we
+  // ignore replayed values until the channel CONFIRMS our own task, then
+  // resume following shared focus normally. Home panes (no initialTaskId)
+  // never enter the guard and behave exactly as before.
+  let activeConfirmed = !props.initialTaskId
   createEffect(() => {
     const active = props.orch?.activeTaskSignal()()
-    if (active) setSelectedId(active)
+    if (!active) return
+    if (!activeConfirmed) {
+      if (active !== props.initialTaskId) return
+      activeConfirmed = true
+    }
+    setSelectedId(active)
   })
 
   onMount(() => {
@@ -268,6 +288,10 @@ function TasksShell(props: {
             console.error("[kobe tasks] switch-client failed:", err)
           },
         )
+        // Move the shared active-task focus to where the client landed, so
+        // the sidebar highlights it instead of the archived task (same fix
+        // as deleteTask / switchTo). null → kobe-home, nothing highlighted.
+        await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
         await killSession(tmuxSessionName(id)).catch((err: unknown) => {
           console.error("[kobe tasks] kill tmux session failed:", err)
         })
@@ -323,13 +347,21 @@ function TasksShell(props: {
         console.error("[kobe tasks] switch-client failed:", err)
       },
     )
+    // The client now sits in nextTask's session (its chat pane is what you
+    // see), so move the SHARED active-task focus there too — otherwise every
+    // Tasks pane keeps highlighting the just-deleted task. switchClientBeforeKill
+    // only moves the tmux client, not the active-task signal that drives the
+    // sidebar highlight; `switchTo` sets it after its own switch-client, and
+    // delete must match. null when nothing is left (we land on kobe-home), so
+    // no pane highlights a deleted task.
+    await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
     await killSession(tmuxSessionName(id)).catch((err: unknown) => {
       console.error("[kobe tasks] kill tmux session failed:", err)
     })
     await props.reload()
     if (selectedId() === id) {
       const remaining = props.tasks()
-      setSelectedId((remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
+      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
     }
   }
 
@@ -640,7 +672,7 @@ function ShortcutHints() {
   )
 }
 
-export async function startTasksPane(): Promise<void> {
+export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
@@ -689,6 +721,7 @@ export async function startTasksPane(): Promise<void> {
             <DialogProvider>
               <TasksShell
                 tasks={tasks}
+                initialTaskId={opts.initialTaskId}
                 orch={orch}
                 transparent={prefs.transparent}
                 focusAccent={prefs.focusAccent}

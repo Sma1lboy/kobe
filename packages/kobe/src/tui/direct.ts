@@ -20,6 +20,7 @@ import {
   normalizeSavedRepos,
   setPersistedString,
 } from "../state/repos.ts"
+import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
 import { attachArgv, ensureSession, sessionExists, tmuxAvailable, tmuxSessionName } from "./panes/terminal/tmux.ts"
 
@@ -102,8 +103,16 @@ export async function startDirectTmux(): Promise<void> {
       cwdRepo,
     })
     if (!task) {
-      console.error("kobe: no task available to enter")
-      process.exitCode = 1
+      // Zero tasks to enter: park on the kobe-home Tasks home instead of
+      // bailing to the launching shell. From there the user can create
+      // (`n`) a task and switch straight into it; deleting the last task
+      // lands back here too (switchClientBeforeKill). No task → no
+      // auto-title pass, so we attach and return directly.
+      const home = await ensureFallbackSession()
+      if ((await attachTmux(attachArgv(home))) === null) {
+        console.error("kobe: failed to attach to the kobe-home session")
+        process.exitCode = 1
+      }
       return
     }
 
