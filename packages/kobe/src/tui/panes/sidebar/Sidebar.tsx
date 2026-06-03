@@ -518,12 +518,22 @@ export function Sidebar(props: SidebarProps) {
 
   // Reset cursor to 0 on view switch — the previous index is meaningless
   // against the new filtered list. `on` so we react only to view
-  // changes, not to upstream task churn.
+  // changes, not to upstream task churn. `defer: true` is load-bearing:
+  // without it this fires once at MOUNT and clobbers the cursor the
+  // sync-from-selectedId effect above just positioned — so a freshly
+  // spawned Tasks pane (every new task session) snapped its highlight to
+  // the first row instead of the task it was opened for. We only want the
+  // reset on an actual later view switch; the initial position is owned by
+  // the selectedId-sync effect.
   createEffect(
-    on(view, () => {
-      const ids = flatIds()
-      setCursorIndex(ids.length > 0 ? 0 : -1)
-    }),
+    on(
+      view,
+      () => {
+        const ids = flatIds()
+        setCursorIndex(ids.length > 0 ? 0 : -1)
+      },
+      { defer: true },
+    ),
   )
 
   // Reset cursor to 0 on every search query keystroke — keeps the

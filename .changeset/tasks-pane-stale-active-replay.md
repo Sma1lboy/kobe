@@ -2,8 +2,8 @@
 "@sma1lboy/kobe": patch
 ---
 
-Opening a task for the first time no longer flashes the spawned session's Tasks pane back to the top row. Before, the freshly built pane briefly highlighted the previously-entered task (often the first one) before snapping to the right one.
+Opening a task no longer snaps the spawned session's Tasks pane highlight to the first row. Before, every freshly built task session showed its sidebar cursor on the top task instead of the one you opened.
 
-Root cause: a spawned Tasks pane initializes its highlight to its own task (`initialTaskId`), but then subscribes to the daemon, which replays the last cached `active-task` value. Because `switchTo` publishes `setActiveTask(id)` only *after* `switch-client`, the replayed value is the pre-switch task — so it clobbered the correct selection for a frame until the new `setActiveTask` landed.
+Root cause was two effects fighting at mount: the sidebar's "reset cursor to 0 on view switch" effect ran once at mount (it wasn't deferred), clobbering the cursor that the select-from-`selectedId` effect had just positioned on the opened task. A fresh pane mounts on every new task session, so the reset always won. Deferring the view-switch reset so it only fires on an actual later view change fixes it; the initial cursor is owned by the selectedId-sync effect.
 
-Fix: a pane spawned for a task session is the authority for its own initial highlight, so it now ignores replayed `active-task` values until the channel confirms its own task, then resumes following shared focus normally. Home panes (no `initialTaskId`) are unchanged.
+Also hardened the related path: a spawned Tasks pane now ignores the daemon's replayed `active-task` value (which, on subscribe, is still the pre-switch task because `setActiveTask` is published after `switch-client`) until the channel confirms its own task — so the highlight no longer flashes the previously-entered task before settling.
