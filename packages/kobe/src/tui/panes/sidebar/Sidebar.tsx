@@ -813,6 +813,7 @@ export function Sidebar(props: SidebarProps) {
                     gap={0}
                     backgroundColor={isCursor() ? theme.backgroundElement : undefined}
                     onMouseUp={() => {
+                      setCursorIndex(flatIndex)
                       props.onSelect(task.id)
                       if (props.activateOnClick) props.onActivate?.(task.id)
                     }}
