@@ -37,16 +37,12 @@ export function chooseInitialTask(tasks: readonly Task[], choice: InitialTaskCho
   if (active) return active
   const persisted = byId(choice.persistedTaskId)
   if (persisted) return persisted
-  const visible = tasks.filter((t) => !t.archived)
-  const regular = visible.filter((t) => t.kind !== "main")
-  const pinnedRegular = regular.find((t) => t.pinned)
-  if (pinnedRegular) return pinnedRegular
-  if (regular[0]) return regular[0]
   if (choice.cwdRepo) {
     const cwdMain = tasks.find((t) => t.kind === "main" && t.repo === choice.cwdRepo)
     if (cwdMain) return cwdMain
   }
-  return visible[0] ?? tasks[0]
+  const visible = tasks.filter((t) => !t.archived)
+  return visible.find((t) => t.pinned) ?? visible[0] ?? tasks[0]
 }
 
 async function attachTmux(command: readonly string[]): Promise<number | null> {

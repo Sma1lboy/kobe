@@ -450,11 +450,11 @@ function Shell(props: AppDeps) {
     ],
   }))
 
-  // Sidebar-scoped shell chords. Row-scoped actions (delete / archive /
-  // rename) live inside <Sidebar>, where they can target the cursor row
-  // instead of the shared active task. Keeping them here would make `d`
-  // act on selectedId, which may be a PROJECT/main row while the visible
-  // cursor is on a TASK row.
+  // Sidebar-scoped letter chords. Gated on `sidebarBindable` (sidebar
+  // focused AND no dialog open) — these are the task actions (n / d / a /
+  // r / q / s) that must NOT fire when a dialog (e.g. settings) is open
+  // over the sidebar, which would otherwise still count as "focused"
+  // and leak the keypress into a task action behind the modal (KOB-244).
   useBindings(() => ({
     enabled: sidebarBindable(),
     bindings: [
@@ -463,6 +463,28 @@ function Shell(props: AppDeps) {
       { key: "?", cmd: () => openHelp() },
       { key: "f1", cmd: () => openHelp() },
       { key: "q", cmd: () => void quit() },
+      {
+        key: "d",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void deleteTask(id)
+        },
+      },
+      {
+        key: "a",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void archiveTask(id)
+        },
+      },
+      {
+        key: "r",
+        cmd: () => {
+          const id = selectedId()
+          if (id) void renameTask(id)
+        },
+      },
+      { key: "d", cmd: toggleDashboard },
     ],
   }))
 

@@ -494,16 +494,15 @@ export function Sidebar(props: SidebarProps) {
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
-  // Sync cursor from external selectedId only when selectedId itself
-  // changes. Task snapshots rebuild `flatIds()` during daemon hydrate and
-  // polling; those updates must not yank a user-moving cursor back to the
-  // shared active task (or the top PROJECT row) just because the array
-  // identity changed.
+  // Sync cursor from external selectedId. Deps are *only* the selected
+  // id and the flat id list — we read `cursorIndex()` inside via
+  // `untrack` so cursor moves from j/k don't refire this effect (which
+  // would yank the cursor back to the selected task's position and
+  // make navigation impossible).
   createEffect(
     on(
-      () => props.selectedId(),
-      (id) => {
-        const ids = untrack(flatIds)
+      () => [props.selectedId(), flatIds()] as const,
+      ([id, ids]) => {
         const cur = untrack(cursorIndex)
         if (id === null) {
           if (cur === -1 && ids.length > 0) setCursorIndex(0)
@@ -515,25 +514,6 @@ export function Sidebar(props: SidebarProps) {
         if (idx >= 0 && idx !== cur) setCursorIndex(idx)
       },
     ),
-  )
-
-  // Keep the cursor in range when rows are inserted, removed, archived, or
-  // filtered. This deliberately preserves the current index instead of
-  // following selectedId; selectedId is a session focus signal, while cursor
-  // is the row-action target.
-  createEffect(
-    on(flatIds, (ids) => {
-      const cur = untrack(cursorIndex)
-      if (ids.length === 0) {
-        if (cur !== -1) setCursorIndex(-1)
-        return
-      }
-      if (cur < 0) {
-        setCursorIndex(0)
-        return
-      }
-      if (cur >= ids.length) setCursorIndex(ids.length - 1)
-    }),
   )
 
   // Reset cursor to 0 on view switch — the previous index is meaningless
@@ -740,6 +720,7 @@ export function Sidebar(props: SidebarProps) {
               const task = row.task
               const flatIndex = row.flatIndex
               const isCursor = () => flatIndex === cursorIndex()
+              const isSelected = () => task.id === props.selectedId()
               const isMain = task.kind === "main"
               const badge = STATUS_BADGE[task.status]
               // "Is this task actually streaming a turn right now?"
@@ -798,13 +779,11 @@ export function Sidebar(props: SidebarProps) {
                 if (task.branch.length > 0) return truncateBranchLabel(task.branch, subtitleBudget())
                 return STATUS_LABEL[task.status]
               })
-              // Accent edge: focus-accent ▌ on the cursor row only. `selectedId`
-              // is the shared active task, not the row-action target; painting
-              // it like selection makes PROJECTS and TASKS look selected at the
-              // same time. Row actions target the cursor, so the cursor is the
-              // only selected-looking state.
-              const barColor = () => (isCursor() ? theme.focusAccent : undefined)
-              const barGlyph = () => (isCursor() ? "▌" : " ")
+              // Accent edge: focus-accent ▌ on the cursor row, a quieter
+              // (dimmed primary) ▌ on the active row when the two differ after
+              // j/k nav, a bare space otherwise to hold the gutter.
+              const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
+              const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
               // Section headers split the two flat sections (NOT per-project
               // grouping): PROJECTS above the first row when it's a project,
               // TASKS above the first non-main row. `topPad` lifts the TASKS
@@ -882,7 +861,7 @@ export function Sidebar(props: SidebarProps) {
                           </text>
                           <text
                             fg={theme.text}
-                            attributes={isCursor() ? TextAttributes.BOLD : undefined}
+                            attributes={isSelected() || isCursor() ? TextAttributes.BOLD : undefined}
                             wrapMode="none"
                             flexGrow={1}
                           >
