@@ -782,7 +782,11 @@ export function Sidebar(props: SidebarProps) {
               // `task.status === "in_progress"` (the only liveness signal the
               // Tasks pane has — chatRunState is unwired there) OR a live
               // engine handle when the outer monitor does pass chatRunState.
-              const loading = () => isLive() || task.status === "in_progress"
+              // A `main` (project) row is EXEMPT from the persisted-status
+              // fallback: its status is never lifecycle-maintained, so a stale
+              // in_progress would pin the "working" chip on forever. A project
+              // only reads as working when there's a genuinely live handle.
+              const loading = () => isLive() || (!isMain && task.status === "in_progress")
               // Task-card subtitle (line 2): the branch, or a human status word
               // when there's no branch yet, so every card stays two lines tall.
               const subtitleText = createMemo(() => {

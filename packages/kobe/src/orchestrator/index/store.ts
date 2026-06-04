@@ -327,7 +327,22 @@ function coerceTask(value: unknown): Task | null {
   // so the sidebar's ✓ glyph only ever means "user archived this as
   // complete." Archived `done` rows are left alone.
   const archived = typeof v.archived === "boolean" ? v.archived : false
-  const healedStatus: TaskStatus = v.status === "done" && !archived ? "in_progress" : v.status
+  const kind: Task["kind"] = v.kind === "main" ? "main" : "task"
+  // A `main` (project root) task has NO session lifecycle that maintains
+  // its status — nothing ever flips it to in_progress on a turn start or
+  // back to backlog on a turn end. So a persisted in_progress/done on a
+  // main row is junk (it came from the old auto-done flip, then the
+  // done→in_progress heal below, leaving the project permanently stuck
+  // showing the "working" chip). Reset a main row to a neutral backlog so
+  // the project's liveness comes ONLY from a real live engine handle.
+  const healedStatus: TaskStatus =
+    kind === "main"
+      ? v.status === "in_progress" || v.status === "done"
+        ? "backlog"
+        : v.status
+      : v.status === "done" && !archived
+        ? "in_progress"
+        : v.status
 
   return {
     id: toTaskId(v.id),
@@ -338,7 +353,7 @@ function coerceTask(value: unknown): Task | null {
     status: healedStatus,
     archived,
     pinned: typeof v.pinned === "boolean" ? v.pinned : false,
-    kind: v.kind === "main" ? "main" : "task",
+    kind,
     vendor: isVendorId(v.vendor) ? v.vendor : DEFAULT_TASK_VENDOR,
     prStatus: coercePRStatus(v.prStatus),
     createdAt: v.createdAt,
