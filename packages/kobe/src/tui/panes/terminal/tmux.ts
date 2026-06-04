@@ -32,6 +32,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
+import { createEngineHookAdapter } from "@/engine/hook-adapter"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import {
@@ -64,7 +65,7 @@ import {
   updatePageCommand,
 } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
-import { ALL_VENDORS } from "@/types/vendor"
+import { ALL_VENDORS, coerceVendorId } from "@/types/vendor"
 import { CURRENT_VERSION } from "@/version"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
@@ -205,6 +206,20 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
 }
 
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
+  // Make sure the engine's activity hooks are on disk in this task's worktree
+  // BEFORE any engine (re)launches here. This is the single install site: it
+  // runs whether the session is reused, rebuilt, or freshly built — and
+  // crucially on EVERY enter, because entering an existing worktree skips the
+  // orchestrator's ensureWorktree (which is why existing tasks never got the
+  // hooks). Idempotent + best-effort (the adapter swallows its own errors and
+  // a per-process guard skips repeat fs/git work). A running engine only picks
+  // the hooks up on its NEXT launch (a rebuild / vendor-switch / new chat-tab).
+  if (opts.taskId && opts.cwd) {
+    await createEngineHookAdapter(coerceVendorId(opts.vendor)).installTaskHooks({
+      worktreeDir: opts.cwd,
+      taskId: opts.taskId,
+    })
+  }
   if (await sessionExists(opts.name)) {
     const sessionOptions = await getSessionOptions(opts.name, ["@kobe_worktree", "@kobe_vendor"])
     const taggedWorktree = sessionOptions["@kobe_worktree"] ?? ""

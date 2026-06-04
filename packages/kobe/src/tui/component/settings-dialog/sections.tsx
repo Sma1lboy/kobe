@@ -320,8 +320,9 @@ export function GeneralSettingsSection(
           Editor
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          What `e` opens a file with in the file tree (enter stays the read-only preview). enter on the row below cycles
-          vim / nano / custom; if the editor isn't installed it falls back to the preview.
+          What `e` opens a file with in the file tree (enter stays the read-only preview). `auto` (default) follows
+          $VISUAL / $EDITOR, else auto-detects nvim / vim / emacs / nano. enter on the row below cycles auto / vim /
+          nvim / nano / emacs / custom; if the editor isn't installed it falls back to the preview.
         </text>
         <box
           flexDirection="row"

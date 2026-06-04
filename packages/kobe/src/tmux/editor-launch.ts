@@ -27,7 +27,13 @@
  */
 
 import { getPersistedString } from "@/state/repos"
-import { EDITOR_CUSTOM_KEY, EDITOR_KIND_KEY, type EditorKind, normalizeEditorKind } from "@/tui/lib/editor-prefs"
+import {
+  AUTO_EDITOR_CANDIDATES,
+  EDITOR_CUSTOM_KEY,
+  EDITOR_KIND_KEY,
+  type EditorKind,
+  normalizeEditorKind,
+} from "@/tui/lib/editor-prefs"
 import { newWindow } from "./client"
 import { shellQuote } from "./session-layout"
 
@@ -61,9 +67,14 @@ export function buildEditorCommand(
   envEditor?: string,
 ): { bin: string; command: string } | null {
   const file = shellQuote(absPath)
+  // Explicit terminal editors map straight to their binary.
   if (kind === "vim") return { bin: "vim", command: `vim ${file}` }
+  if (kind === "nvim") return { bin: "nvim", command: `nvim ${file}` }
   if (kind === "nano") return { bin: "nano", command: `nano ${file}` }
+  if (kind === "emacs") return { bin: "emacs", command: `emacs ${file}` }
 
+  // `custom` (and the `auto` env path, which reuses this with envEditor as the
+  // template): the user's command, or $VISUAL/$EDITOR.
   const tmpl = (customCommand.trim() || (envEditor ?? "").trim()).trim()
   if (!tmpl) return null
   const bin = firstToken(tmpl)
@@ -76,12 +87,25 @@ export function buildEditorCommand(
  * Resolve the editor command from persisted settings + env (the IO wrapper
  * around {@link buildEditorCommand}). Read cross-process via
  * getPersistedString since the Ops host is its own process.
+ *
+ * The default kind is `auto`, which follows the STANDARD convention: prefer
+ * $VISUAL / $EDITOR, and if neither is set, auto-detect the first installed of
+ * {@link AUTO_EDITOR_CANDIDATES} (nvim → vim → emacs → nano). That detection is
+ * why this is async. Explicit kinds resolve synchronously via buildEditorCommand.
  */
-export function resolveEditorCommand(absPath: string): { bin: string; command: string } | null {
+export async function resolveEditorCommand(absPath: string): Promise<{ bin: string; command: string } | null> {
   const kind = normalizeEditorKind(getPersistedString(EDITOR_KIND_KEY))
   const custom = getPersistedString(EDITOR_CUSTOM_KEY) ?? ""
-  const env = process.env.VISUAL ?? process.env.EDITOR ?? ""
-  return buildEditorCommand(kind, custom, absPath, env)
+  const env = (process.env.VISUAL ?? process.env.EDITOR ?? "").trim()
+  if (kind !== "auto") return buildEditorCommand(kind, custom, absPath, env)
+  // auto: honour the standard env first…
+  if (env) return buildEditorCommand("custom", "", absPath, env)
+  // …else probe for an installed terminal editor, in preference order.
+  const file = shellQuote(absPath)
+  for (const bin of AUTO_EDITOR_CANDIDATES) {
+    if (await binaryAvailable(bin)) return { bin, command: `${bin} ${file}` }
+  }
+  return null
 }
 
 /** Is `bin` resolvable on PATH (or as an absolute path)? Pre-flight for fallback. */
@@ -106,7 +130,7 @@ export async function binaryAvailable(bin: string): Promise<boolean> {
  * closes the window and returns to the previous one.
  */
 export async function openInEditor(session: string, worktree: string, absPath: string): Promise<boolean> {
-  const resolved = resolveEditorCommand(absPath)
+  const resolved = await resolveEditorCommand(absPath)
   if (!resolved) return false
   if (!(await binaryAvailable(resolved.bin))) return false
   // Name the window after the FILE being edited (its basename), matching

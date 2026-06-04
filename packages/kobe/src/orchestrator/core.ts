@@ -26,7 +26,6 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
-import { createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -247,14 +246,7 @@ export class Orchestrator {
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
     if (task.kind === "main") return task.repo
-    if (task.worktreePath) {
-      // Backfill: a worktree created before engine hooks existed (or by an
-      // older kobe) gets its hooks installed on the next enter. Idempotent +
-      // best-effort (the adapter swallows failures), so it's safe on the fast
-      // path. This is also why ensureWorktree is the single hook-install site.
-      await this.installEngineHooks(task)
-      return task.worktreePath
-    }
+    if (task.worktreePath) return task.worktreePath
     const inflight = this.worktreeLocks.get(task.id)
     if (inflight) {
       await inflight
@@ -278,10 +270,6 @@ export class Orchestrator {
           worktreePath: info.path,
           branch,
         })
-        // Install the engine's activity hooks into the fresh worktree so the
-        // engine reports turn/permission/error events back to the daemon
-        // (event-driven task state). Same neutral path as the backfill above.
-        await this.installEngineHooks(this.requireTask(task.id))
       } catch (err) {
         this.slugs.cancel(task.repo, slug)
         throw err
@@ -538,20 +526,6 @@ export class Orchestrator {
   }
 
   // --- internals ---
-
-  /**
-   * Install the engine's per-task activity hooks into a task's worktree, via
-   * the neutral {@link createEngineHookAdapter} seam. Skips `main` tasks (their
-   * "worktree" is the user's real repo root — we don't write hooks there) and
-   * tasks without a materialised worktree. Idempotent + best-effort.
-   */
-  private async installEngineHooks(task: Task): Promise<void> {
-    if (task.kind === "main" || !task.worktreePath) return
-    await createEngineHookAdapter(task.vendor ?? DEFAULT_TASK_VENDOR).installTaskHooks({
-      worktreeDir: task.worktreePath,
-      taskId: task.id,
-    })
-  }
 
   /** Optional base-ref per task — consumed once by `ensureWorktree`. */
   private readonly pendingBaseRefs = new Map<TaskId, string>()

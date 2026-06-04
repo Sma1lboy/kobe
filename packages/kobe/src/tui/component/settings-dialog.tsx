@@ -236,8 +236,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
 
   // Editor preference: which editor the file tree's `e` key launches.
-  // `editor.kind` cycles vim → nano → custom on enter; the custom command
-  // is a free-text field (reused RenameTaskDialog) used only when
+  // `editor.kind` cycles auto → vim → nvim → nano → emacs → custom on enter
+  // (auto, the default, follows $VISUAL/$EDITOR then auto-detects); the custom
+  // command is a free-text field (reused RenameTaskDialog) used only when
   // kind === "custom". Read cross-process by tmux/editor-launch.
   function editorKind(): EditorKind {
     return normalizeEditorKind(props.kv.get(EDITOR_KIND_KEY, DEFAULT_EDITOR_KIND))

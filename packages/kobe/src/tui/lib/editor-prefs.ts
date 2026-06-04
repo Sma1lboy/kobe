@@ -10,20 +10,30 @@
  * picks which, `editor.customCommand` is the command for `kind === "custom"`.
  */
 
-/** Which editor the file tree's `e` key launches. */
-export type EditorKind = "vim" | "nano" | "custom"
+/**
+ * Which editor the file tree's `e` key launches.
+ *  - `auto`   — the STANDARD behaviour: honour $VISUAL / $EDITOR, and if
+ *               neither is set, auto-detect the first installed of nvim →
+ *               vim → emacs → nano. This is the default.
+ *  - explicit `vim` / `nvim` / `nano` / `emacs` — force that editor.
+ *  - `custom` — run `editor.customCommand` (e.g. `code -w`, `emacsclient`).
+ */
+export type EditorKind = "auto" | "vim" | "nvim" | "nano" | "emacs" | "custom"
 
 /** Cycle order for the Settings select row. */
-export const EDITOR_KINDS: readonly EditorKind[] = ["vim", "nano", "custom"]
+export const EDITOR_KINDS: readonly EditorKind[] = ["auto", "vim", "nvim", "nano", "emacs", "custom"]
+
+/** Auto-detect probe order when $VISUAL / $EDITOR are unset. */
+export const AUTO_EDITOR_CANDIDATES: readonly string[] = ["nvim", "vim", "emacs", "nano"]
 
 /** Shared `state.json` keys. */
 export const EDITOR_KIND_KEY = "editor.kind"
 export const EDITOR_CUSTOM_KEY = "editor.customCommand"
 
-/** Default when unset: the most universally-present terminal editor. */
-export const DEFAULT_EDITOR_KIND: EditorKind = "vim"
+/** Default when unset: follow the standard env / auto-detect. */
+export const DEFAULT_EDITOR_KIND: EditorKind = "auto"
 
-/** Coerce an unknown persisted value to a valid kind (default vim). */
+/** Coerce an unknown persisted value to a valid kind (default auto). */
 export function normalizeEditorKind(value: unknown): EditorKind {
-  return value === "nano" || value === "custom" || value === "vim" ? value : DEFAULT_EDITOR_KIND
+  return EDITOR_KINDS.includes(value as EditorKind) ? (value as EditorKind) : DEFAULT_EDITOR_KIND
 }

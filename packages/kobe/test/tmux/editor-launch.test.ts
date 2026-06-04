@@ -3,9 +3,11 @@ import { buildEditorCommand, editorWindowLabel } from "../../src/tmux/editor-lau
 import { DEFAULT_EDITOR_KIND, normalizeEditorKind } from "../../src/tui/lib/editor-prefs.ts"
 
 describe("buildEditorCommand", () => {
-  it("vim / nano open the shell-quoted path", () => {
+  it("explicit terminal editors open the shell-quoted path", () => {
     expect(buildEditorCommand("vim", "", "/wt/src/a.ts")).toEqual({ bin: "vim", command: "vim '/wt/src/a.ts'" })
+    expect(buildEditorCommand("nvim", "", "/wt/src/a.ts")).toEqual({ bin: "nvim", command: "nvim '/wt/src/a.ts'" })
     expect(buildEditorCommand("nano", "", "/wt/b.md")).toEqual({ bin: "nano", command: "nano '/wt/b.md'" })
+    expect(buildEditorCommand("emacs", "", "/wt/b.md")).toEqual({ bin: "emacs", command: "emacs '/wt/b.md'" })
   })
 
   it("vim / nano ignore any custom command", () => {
@@ -58,14 +60,15 @@ describe("editorWindowLabel", () => {
 
 describe("normalizeEditorKind", () => {
   it("passes through valid kinds", () => {
-    expect(normalizeEditorKind("vim")).toBe("vim")
-    expect(normalizeEditorKind("nano")).toBe("nano")
-    expect(normalizeEditorKind("custom")).toBe("custom")
+    for (const k of ["auto", "vim", "nvim", "nano", "emacs", "custom"]) {
+      expect(normalizeEditorKind(k)).toBe(k)
+    }
   })
 
-  it("defaults to vim for unset / unknown values", () => {
-    expect(normalizeEditorKind(undefined)).toBe(DEFAULT_EDITOR_KIND)
-    expect(normalizeEditorKind("emacs")).toBe("vim")
-    expect(normalizeEditorKind(42)).toBe("vim")
+  it("defaults to auto for unset / unknown values", () => {
+    expect(DEFAULT_EDITOR_KIND).toBe("auto")
+    expect(normalizeEditorKind(undefined)).toBe("auto")
+    expect(normalizeEditorKind("sublime")).toBe("auto")
+    expect(normalizeEditorKind(42)).toBe("auto")
   })
 })
