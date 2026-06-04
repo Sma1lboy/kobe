@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.11
+
+### Patch Changes
+
+- b63ab67: Auto-adopt a worktree as a task the MOMENT it's created, no engine session required. 0.7.10 made external-worktree sync fire on `SessionStart` — so a worktree you spun up (a manual `git worktree add`, an agent creating one for a side task) only appeared in the sidebar once an engine actually started inside it. Now kobe also installs a global `PostToolUse` hook scoped to the `Bash` tool: the instant a `git worktree add` runs in any Claude session, the new worktree is adopted as a task and shows in the sidebar with no running session. This is the creation-time complement to the session-start path; both stay in place. Crucially it does NOT reintroduce the 0.7.10 footgun — `WorktreeCreate` was a VCS _provider_ hook whose mere presence broke `claude --worktree`, whereas `PostToolUse` is a pure observer fired AFTER the tool, so its presence never changes git or `--worktree` behaviour. The hook no-ops fast for any non-worktree command (and never spawns the daemon), adoption is bounded to repos kobe already tracks, and re-firing is idempotent — so a transient agent isolation worktree (created by Claude Code's own machinery, not a model-issued `git worktree add`) never floods the sidebar.
+
 ## 0.7.10
 
 ### Patch Changes
