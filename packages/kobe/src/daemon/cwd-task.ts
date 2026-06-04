@@ -16,9 +16,13 @@
  * return undefined → the event is dropped.
  */
 
+import { KOBE_WORKTREE_ROOT_SUBPATH } from "../orchestrator/worktree/paths.ts"
+
 export interface CwdMatchTask {
   readonly id: string
   readonly worktreePath?: string | null
+  /** The task's repo root — used to know which repos kobe already tracks. */
+  readonly repo?: string | null
 }
 
 /** Strip a single trailing slash (but keep a bare root "/"). */
@@ -48,4 +52,43 @@ export function matchTaskByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string):
     }
   }
   return bestId
+}
+
+/**
+ * Detect a `cwd` that is an UNADOPTED git worktree under a tracked repo's
+ * `.claude/worktrees/` dir — the replacement for the removed WorktreeCreate
+ * hook. When an external `claude --worktree` (or a manual `git worktree add`)
+ * lands a worktree in `<repo>/.claude/worktrees/<seg>` for a repo kobe already
+ * has tasks in, the daemon adopts it as a task on the engine's `session-start`.
+ *
+ * Pure + git-free (string paths only, bounded to known repos): returns the
+ * `{ repo, worktreePath }` to adopt, or undefined when `cwd` isn't under any
+ * tracked repo's worktrees dir or that worktree is already a task. The caller
+ * still calls `adoptWorktree` (idempotent + git-validated), so a non-worktree
+ * directory that slips through is rejected there.
+ */
+export function findAdoptableWorktree(
+  tasks: ReadonlyArray<CwdMatchTask>,
+  cwd: string,
+): { repo: string; worktreePath: string } | undefined {
+  const target = normalize(cwd)
+  const repos = new Set<string>()
+  const known = new Set<string>()
+  for (const t of tasks) {
+    if (t.repo) repos.add(normalize(t.repo))
+    if (t.worktreePath) known.add(normalize(t.worktreePath))
+  }
+  const seg = `/${KOBE_WORKTREE_ROOT_SUBPATH}/`
+  for (const repo of repos) {
+    const prefix = `${repo}${seg}`
+    if (!target.startsWith(prefix)) continue
+    // First path segment after `<repo>/.claude/worktrees/` is the worktree dir.
+    const rest = target.slice(prefix.length)
+    const name = rest.split("/")[0]
+    if (!name) continue
+    const worktreePath = `${prefix}${name}`
+    if (known.has(worktreePath)) return undefined // already a task → nothing to adopt
+    return { repo, worktreePath }
+  }
+  return undefined
 }

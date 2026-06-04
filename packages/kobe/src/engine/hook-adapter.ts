@@ -38,19 +38,16 @@ export interface EngineHookAdapter {
   removeActivityHooks(settingsFilePath: string): Promise<void>
 
   /**
-   * Whether this engine can create worktrees OUTSIDE kobe that kobe should
-   * sync back (Claude Code's `claude --worktree`). Only such engines get a
-   * worktree-sync hook installed by `kobe hook setup`.
+   * Whether this engine ever installed a worktree-sync (`WorktreeCreate`) hook —
+   * used now only to know whose hook needs CLEANUP. The hook itself is removed:
+   * `WorktreeCreate` is a VCS *provider* hook, so installing kobe's observer
+   * broke `claude --worktree` / `EnterWorktree` everywhere. Sync moved to the
+   * daemon (auto-adopt a worktree under a tracked repo on session-start).
    */
   supportsWorktreeSync(): boolean
-  /**
-   * Add a "worktree created" hook to a settings file (`~/.claude/settings.json`
-   * global, or `<repo>/.claude/settings.json`) so an external worktree-create
-   * pings `kobe hook worktree-created`. Idempotent + merge-safe (tags its own
-   * entry, preserves the user's other hooks). No-op when unsupported.
-   */
-  installWorktreeSyncHook(settingsFilePath: string): Promise<void>
-  /** Remove the worktree-sync hook this adapter installed. Idempotent. */
+  /** Remove the old kobe `WorktreeCreate` hook from a settings file. Idempotent +
+   *  merge-safe (preserves the user's own WorktreeCreate hooks). No-op when
+   *  unsupported. */
   removeWorktreeSyncHook(settingsFilePath: string): Promise<void>
 }
 
@@ -74,9 +71,6 @@ export class NoopHookAdapter implements EngineHookAdapter {
   }
   supportsWorktreeSync(): boolean {
     return false
-  }
-  async installWorktreeSyncHook(): Promise<void> {
-    /* no-op */
   }
   async removeWorktreeSyncHook(): Promise<void> {
     /* no-op */

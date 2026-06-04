@@ -27,7 +27,7 @@ import type { Task, VendorId } from "../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
-import { matchTaskByCwd } from "./cwd-task.ts"
+import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
@@ -504,6 +504,22 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // `taskId` (legacy/direct) wins; otherwise resolve from `cwd`.
         const explicitId = optionalString(payload, "taskId")
         const cwd = optionalString(payload, "cwd")
+        // External-worktree sync (replaces the removed WorktreeCreate hook): a
+        // session starting in an unadopted worktree under a tracked repo's
+        // `.claude/worktrees/` is auto-adopted as a task, so the cwd then maps
+        // to it below. Gated to `session-start` to bound the work; the path
+        // check is git-free and `adoptWorktree` is idempotent + git-validated
+        // (a bogus dir just throws → caught → dropped).
+        if (!explicitId && cwd && kind === "session-start") {
+          const cand = findAdoptableWorktree(orch.listTasks(), cwd)
+          if (cand) {
+            try {
+              await orch.adoptWorktree({ repo: cand.repo, worktreePath: cand.worktreePath, ifExists: "return" })
+            } catch (err) {
+              logDaemonError("worktree-autosync", err)
+            }
+          }
+        }
         const taskId = explicitId ?? (cwd ? matchTaskByCwd(orch.listTasks(), cwd) : undefined)
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)

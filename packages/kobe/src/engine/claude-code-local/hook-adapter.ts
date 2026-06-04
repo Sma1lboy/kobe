@@ -159,11 +159,6 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
     await this.editSettings(settingsFilePath, (cur) => mergeActivityHooks(cur, false))
   }
 
-  async installWorktreeSyncHook(settingsFilePath: string): Promise<void> {
-    const command = shellQuoteArgv([...kobeCliInvocation(), "hook", "worktree-created"])
-    await this.editSettings(settingsFilePath, (cur) => mergeWorktreeSyncHook(cur, command))
-  }
-
   async removeWorktreeSyncHook(settingsFilePath: string): Promise<void> {
     await this.editSettings(settingsFilePath, (cur) => mergeWorktreeSyncHook(cur, null))
   }

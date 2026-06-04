@@ -22,7 +22,7 @@
  */
 
 import { homedir } from "node:os"
-import { dirname, join, resolve } from "node:path"
+import { join, resolve } from "node:path"
 import { connectIfRunning } from "../client/daemon-process.ts"
 import { createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { EngineActivityDetail } from "../engine/hook-events.ts"
@@ -64,18 +64,14 @@ function flagValue(argv: readonly string[], name: string): string | undefined {
 
 export async function runHookSubcommand(argv: readonly string[]): Promise<void> {
   const [verb, ...rest] = argv
-  // `setup` is the only user-facing verb (opt-in worktree-sync install) and
-  // may print/exit non-zero on a usage error. Everything else is a hook
-  // callback: best-effort, always exit 0 (see header).
+  // `setup` is the only user-facing verb (now a deprecated cleanup) and may
+  // print on a usage error. Everything else is a hook callback: best-effort,
+  // always exit 0 (see header).
   if (verb === "setup") {
     await runHookSetup(rest)
     return
   }
   try {
-    if (verb === "worktree-created") {
-      await reportWorktreeCreated()
-      return
-    }
     if (!verb || !isEngineActivityKind(verb)) return // unknown verb → drop silently
 
     const payload = await readStdinPayload()
@@ -109,54 +105,10 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
   }
 }
 
-/**
- * `kobe hook worktree-created` — fired by the WorktreeCreate hook when an
- * engine creates a worktree OUTSIDE kobe (`claude --worktree`). Reads the
- * worktree path from the hook's stdin payload, derives the repo, and asks the
- * daemon to adopt it as a Task (idempotent — a worktree kobe already tracks is
- * a no-op). NON-spawning + always exit 0 (a non-zero exit would FAIL the
- * engine's worktree creation).
- */
-async function reportWorktreeCreated(): Promise<void> {
-  const payload = await readStdinPayload()
-  const worktreePath = typeof payload.worktree_path === "string" ? payload.worktree_path : undefined
-  if (!worktreePath) return
-  const repo = await deriveRepoRoot(worktreePath)
-  if (!repo) return
-  const client = await connectIfRunning() // NON-spawning
-  if (!client) return
-  try {
-    await client.request("worktree.adopt", { repo, worktreePath, ifExists: "return" })
-  } finally {
-    client.close()
-  }
-}
-
-/** Main repo root for a worktree: parent of its git-common-dir (`/repo/.git` → `/repo`). */
-async function deriveRepoRoot(worktreePath: string): Promise<string | undefined> {
-  try {
-    const proc = Bun.spawn(["git", "-C", worktreePath, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    })
-    const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    if (code !== 0) return undefined
-    const commonDir = out.trim()
-    return commonDir ? dirname(commonDir) : undefined
-  } catch {
-    return undefined
-  }
-}
-
 const SYNC_SETTING_KEY = "externalWorktreeSync"
 
-/** Settings file an engine's worktree-sync hook is written into, per scope. */
-function syncSettingsPath(scope: { kind: "global" } | { kind: "repo"; path: string }): string {
-  if (scope.kind === "repo") return join(resolve(scope.path), ".claude", "settings.json")
-  return globalSettingsPath()
-}
-
-/** Engines that can create worktrees outside kobe (only Claude today). */
+/** Engines that once installed a WorktreeCreate hook (only Claude) — used now
+ *  only to CLEAN UP that removed hook. */
 function worktreeSyncAdapters() {
   return ALL_VENDORS.map((v) => createEngineHookAdapter(v)).filter((a) => a.supportsWorktreeSync())
 }
@@ -172,116 +124,86 @@ function globalSettingsPath(): string {
   return join(homedir(), ".claude", "settings.json")
 }
 
-/** Resolve a persisted sync setting to the settings-file path it points at, or
- *  undefined when off/unset. Accepts the current form (an absolute path) AND
- *  the older `global` / `repo:<path>` forms for back-compat. */
+/** Resolve a persisted sync setting to the settings-file path the old
+ *  WorktreeCreate hook was written into (so cleanup finds it), or undefined when
+ *  off/unset. Accepts the current form (an absolute path) AND the older
+ *  `global` / `repo:<path>` forms for back-compat. */
 function persistedSyncPath(stored: string | undefined): string | undefined {
   if (!stored || stored === "off") return undefined
-  if (stored === "global") return syncSettingsPath({ kind: "global" })
-  if (stored.startsWith("repo:")) return syncSettingsPath({ kind: "repo", path: stored.slice(5) })
+  if (stored === "global") return globalSettingsPath()
+  if (stored.startsWith("repo:")) return join(resolve(stored.slice(5)), ".claude", "settings.json")
   return stored // already a resolved path
 }
 
 /**
  * Default-ON global hook install (KOB). Called once per kobe launch. Two pieces,
- * both into the user's global `~/.claude/settings.json`, both idempotent (the
- * adapter skips the write when already in place) and best-effort:
+ * both best-effort and idempotent (the adapter skips the write when nothing
+ * changes):
  *
- *  1. **Activity hooks** — Stop / StopFailure / Notification / … so EVERY Claude
- *     session reports normalized events; the daemon maps each hook's cwd to a
- *     task. Always global (a task's badge must light up wherever its engine
- *     runs), so this is not scope-configurable.
- *  2. **Worktree-sync hook** — `WorktreeCreate` so an external `claude
- *     --worktree` syncs into kobe out of the box. Honours an existing scope
- *     choice (`--repo`) and the `--off` opt-out.
+ *  1. **Activity hooks** — Stop / StopFailure / Notification / Session* into the
+ *     user's global `~/.claude/settings.json`, so EVERY Claude session reports
+ *     normalized events; the daemon maps each hook's cwd to a task. Always
+ *     global (a task's badge must light up wherever its engine runs).
+ *  2. **WorktreeCreate cleanup** — earlier kobe (0.7.4–0.7.9) installed a global
+ *     `WorktreeCreate` hook for external-worktree sync. That was WRONG:
+ *     `WorktreeCreate` is a VCS *provider* hook — its mere presence makes Claude
+ *     Code delegate worktree creation to it and skip the native git path, so
+ *     kobe's observer hook (which returns no path) BROKE `claude --worktree` /
+ *     `EnterWorktree` in every repo. We now remove any such hook we ever wrote.
+ *     External-worktree sync is reborn on the daemon side: a `session-start`
+ *     whose cwd is an unadopted worktree under a tracked repo is auto-adopted
+ *     (see `daemon/cwd-task.ts` `findAdoptableWorktree`) — no hook, no footgun.
  *
  * Writing the user's global settings.json is intentionally invasive but
  * acceptable for now (current users are developers).
  */
 export async function ensureGlobalKobeHooks(): Promise<void> {
   try {
-    // 1. Activity hooks — always global, no opt-out toggle today.
+    // 1. Activity hooks — always global.
     const globalPath = globalSettingsPath()
     for (const a of activityHookAdapters()) await a.installActivityHooks(globalPath)
-
-    // 2. Worktree sync — respects the persisted scope / --off.
-    const stored = getPersistedString(SYNC_SETTING_KEY)
-    if (stored === "off") return // user opted out of sync — respect it
-    const syncAdapters = worktreeSyncAdapters()
-    if (syncAdapters.length === 0) return
-    const path = persistedSyncPath(stored) ?? syncSettingsPath({ kind: "global" })
-    for (const a of syncAdapters) await a.installWorktreeSyncHook(path)
-    if (!stored) setPersistedString(SYNC_SETTING_KEY, path) // remember where, so --off can clean it
+    // 2. Remove the removed WorktreeCreate hook wherever it was ever written.
+    await cleanupWorktreeSyncHook()
   } catch {
     /* best-effort — never block launch */
   }
 }
 
 /**
- * `kobe hook setup [--global | --repo <path> | --off]` — opt-in install of the
- * worktree-sync hook so external `claude --worktree`s sync into kobe. Writes
- * the chosen scope into state.json and the hook into the matching settings
- * file. `--off` removes whatever was installed.
+ * Remove kobe's old `WorktreeCreate` hook from the global settings AND any repo
+ * path it was persisted to, then mark the setting off so we don't rescan. Pure
+ * cleanup — merge-safe (preserves the user's own WorktreeCreate hooks).
  */
-async function runHookSetup(argv: readonly string[]): Promise<void> {
-  if (argv.includes("--help") || argv.includes("-h")) {
-    process.stdout.write(
-      [
-        "Usage: kobe hook setup [--global | --repo <path> | --off]",
-        "",
-        "Syncs an external `claude --worktree` into kobe as a task. This is ON",
-        "by default (installed globally into ~/.claude on launch). Use this to",
-        "move it to one repo (--repo <path>) or to turn it OFF (--off).",
-        "",
-      ].join("\n"),
-    )
-    return
-  }
-
-  const off = argv.includes("--off")
-  const repoIdx = argv.indexOf("--repo")
-  const repoPath = repoIdx !== -1 ? argv[repoIdx + 1] : undefined
-  if (repoIdx !== -1 && !repoPath) {
-    process.stderr.write("kobe hook setup: --repo requires a path\n")
-    process.exit(2)
-  }
-
+async function cleanupWorktreeSyncHook(): Promise<void> {
   const adapters = worktreeSyncAdapters()
-  if (adapters.length === 0) {
-    process.stdout.write("kobe hook setup: no engine supports external worktree sync — nothing to do\n")
-    return
-  }
+  if (adapters.length === 0) return
+  const stored = getPersistedString(SYNC_SETTING_KEY)
+  const paths = new Set<string>([globalSettingsPath()])
+  const prev = persistedSyncPath(stored)
+  if (prev) paths.add(prev)
+  for (const a of adapters) for (const p of paths) await a.removeWorktreeSyncHook(p)
+  if (stored !== "off") setPersistedString(SYNC_SETTING_KEY, "off")
+}
 
-  // Where the hook was LAST installed (we persist the resolved path, so --off
-  // and a scope-switch always find the right file to clean — no orphaned hook).
-  const prevPath = persistedSyncPath(getPersistedString(SYNC_SETTING_KEY))
-
-  if (off) {
-    if (prevPath) {
-      for (const a of adapters) await a.removeWorktreeSyncHook(prevPath)
-    }
-    setPersistedString(SYNC_SETTING_KEY, "off")
-    process.stdout.write(
-      `kobe hook setup: external worktree sync disabled${prevPath ? ` (removed from ${prevPath})` : ""}\n`,
-    )
-    return
-  }
-
-  const scope: { kind: "global" } | { kind: "repo"; path: string } = repoPath
-    ? { kind: "repo", path: repoPath }
-    : { kind: "global" }
-  const path = syncSettingsPath(scope)
-  // Switching scope (e.g. global → repo): remove the hook from the OLD path
-  // first so the previous location isn't left with an orphaned kobe hook.
-  if (prevPath && prevPath !== path) {
-    for (const a of adapters) await a.removeWorktreeSyncHook(prevPath)
-  }
-  for (const a of adapters) await a.installWorktreeSyncHook(path)
-  setPersistedString(SYNC_SETTING_KEY, path)
+/**
+ * `kobe hook setup` — DEPRECATED. The external-worktree-sync it configured used
+ * a global `WorktreeCreate` hook that broke `claude --worktree` / `EnterWorktree`
+ * in every repo (see {@link ensureGlobalKobeHooks}). The command now only cleans
+ * up any previously-installed hook; sync is automatic on the daemon side.
+ */
+async function runHookSetup(_argv: readonly string[]): Promise<void> {
+  await cleanupWorktreeSyncHook()
   process.stdout.write(
     [
-      `kobe hook setup: external worktree sync enabled (${scope.kind}) — wrote ${path}`,
-      "New `claude --worktree` worktrees will appear as kobe tasks.",
+      "kobe hook setup is deprecated and now a no-op (cleanup only).",
+      "",
+      "The old external-worktree sync used a global WorktreeCreate hook, which is",
+      "a VCS provider hook — its presence broke `claude --worktree` / EnterWorktree",
+      "in every repo. Any hook kobe previously installed has been removed.",
+      "",
+      "Sync is now automatic: a `claude --worktree` (or any session) started in a",
+      "worktree under a repo kobe already tracks is adopted as a task on launch.",
+      "To adopt existing worktrees on demand, use the New Task dialog or `kobe adopt`.",
       "",
     ].join("\n"),
   )
