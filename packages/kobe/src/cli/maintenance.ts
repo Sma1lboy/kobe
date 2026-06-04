@@ -200,7 +200,7 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   if (isKobeSkillInstalled()) {
     out.push("skill:   ✓ kobe agent skill installed")
   } else {
-    out.push("skill:   ✗ kobe agent skill not installed (optional — lets Claude Code drive `kobe api`)")
+    out.push("skill:   ✗ kobe agent skill not installed (optional — lets a coding agent drive `kobe api`)")
     out.push(`         → ${SKILL_INSTALL_COMMAND}`)
   }
   out.push("")

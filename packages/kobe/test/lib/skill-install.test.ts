@@ -2,7 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import { SKILL_INSTALL_COMMAND, isKobeSkillInstalled, kobeSkillPaths } from "../../src/lib/skill-install.ts"
+import {
+  DEFAULT_SKILL_AGENT,
+  SKILL_INSTALL_COMMAND,
+  isKobeSkillInstalled,
+  kobeSkillPaths,
+  npxSkillsArgv,
+  npxSkillsCommand,
+} from "../../src/lib/skill-install.ts"
 
 const dirs: string[] = []
 function tempDir(): string {
@@ -47,7 +54,27 @@ describe("isKobeSkillInstalled", () => {
 })
 
 describe("SKILL_INSTALL_COMMAND", () => {
-  it("is the npx skills add command", () => {
-    expect(SKILL_INSTALL_COMMAND).toContain("npx skills add Sma1lboy/kobe")
+  it("is kobe's user-facing wrapper command", () => {
+    expect(SKILL_INSTALL_COMMAND).toBe("kobe skill install")
+  })
+})
+
+describe("npxSkillsArgv / npxSkillsCommand", () => {
+  it("wraps `npx skills add Sma1lboy/kobe` with the default agent", () => {
+    expect(npxSkillsArgv()).toEqual([
+      "skills",
+      "add",
+      "Sma1lboy/kobe",
+      "--skill",
+      "kobe",
+      "--agent",
+      DEFAULT_SKILL_AGENT,
+    ])
+    expect(npxSkillsCommand()).toBe(`npx skills add Sma1lboy/kobe --skill kobe --agent ${DEFAULT_SKILL_AGENT}`)
+  })
+
+  it("lets the caller override the agent", () => {
+    expect(npxSkillsArgv({ agent: "cursor" })).toContain("cursor")
+    expect(npxSkillsCommand({ agent: "cursor" })).toContain("--agent cursor")
   })
 })

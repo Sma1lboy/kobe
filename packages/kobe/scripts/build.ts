@@ -13,10 +13,11 @@
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
- * Skill distribution moved out of npm in v0.6 — the SKILL.md now lives
- * at `.agents/skills/kobe/SKILL.md` in the repo and ships via the
- * Vercel Labs agent-skills CLI (`npx skills add Sma1lboy/kobe`), not in
- * the npm tarball. Nothing to copy here anymore.
+ * Skill distribution stays OUT of the npm tarball: the canonical SKILL.md
+ * lives at `.agents/skills/kobe/SKILL.md` and ships via the Vercel Labs
+ * agent-skills CLI (`npx skills add Sma1lboy/kobe`). `kobe skill install`
+ * is just a convenience WRAPPER that runs that npx flow for the user — kobe
+ * doesn't bundle or copy the file, so there's nothing to emit here.
  */
 
 import { chmod } from "node:fs/promises"

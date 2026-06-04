@@ -1,17 +1,17 @@
 /**
- * Detect whether the kobe agent skill is installed, and nudge the user to
- * install it once if not.
+ * Install + detect the kobe agent skill.
  *
- * The skill (`.agents/skills/kobe/SKILL.md` in this repo) teaches an agent
- * — Claude Code by default — when and how to drive `kobe api` (fan out
- * parallel tasks from a shell). It is installed separately, via the Vercel
- * Labs agent-skills CLI, into the agent's skill directory. kobe itself
- * does not need it; this is purely an onboarding aid so a user who also
- * runs Claude Code knows the capability exists.
+ * The skill teaches a coding agent when and how to drive `kobe api` (the
+ * full task-lifecycle CLI). It is distributed via the Vercel Labs
+ * agent-skills CLI — `npx skills add Sma1lboy/kobe` pulls the canonical
+ * `.agents/skills/kobe/SKILL.md` from the repo and installs it into the
+ * agent's skill dir. `kobe skill install` is a thin CONVENIENCE WRAPPER
+ * that runs exactly that flow for the developer, so nobody has to remember
+ * the `npx skills add Sma1lboy/kobe --skill kobe --agent …` invocation.
  *
- * Reliable check: `kobe doctor`. The startup hint here is best-effort —
- * the tmux/opentui screen takeover can scroll it off — so it fires at most
- * once (gated on a persisted flag) and never nags.
+ * Reliable check: `kobe doctor` / `kobe skill status`. The startup hint
+ * here is best-effort (the tmux/opentui screen takeover can scroll it off),
+ * so it fires at most once (gated on a persisted flag) and never nags.
  */
 
 import { existsSync } from "node:fs"
@@ -20,15 +20,35 @@ import { join } from "node:path"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 
 /**
- * Where the kobe skill lands for Claude Code, relative to a home/project
- * root. This is the OS home's `~/.claude`, NOT kobe's `KOBE_HOME_DIR` —
- * Claude Code installs skills under the real user home regardless of
- * kobe's own state-dir override.
+ * Where the kobe skill lands for a coding agent, relative to a home/project
+ * root. This is `.claude/skills/...`, NOT kobe's `KOBE_HOME_DIR` — agents
+ * read skills from the real project/home regardless of kobe's state-dir.
  */
 const SKILL_REL_PATH = ".claude/skills/kobe/SKILL.md"
 
-/** The `npx skills` command that installs the kobe skill for Claude Code. */
-export const SKILL_INSTALL_COMMAND = "npx skills add Sma1lboy/kobe --skill kobe --agent claude-code"
+/** The kobe-side wrapper command a user runs. Shown in hints / doctor. */
+export const SKILL_INSTALL_COMMAND = "kobe skill install"
+
+/** The agent-skills CLI repo slug the wrapper installs from. */
+export const SKILL_SOURCE_SLUG = "Sma1lboy/kobe"
+
+/** Default coding agent the skill is installed for. */
+export const DEFAULT_SKILL_AGENT = "claude-code"
+
+/**
+ * Build the `npx skills add …` argv that `kobe skill install` wraps. Pure +
+ * testable: the wrapper spawns `npx` with these args. `agent` selects which
+ * coding agent's skill dir to install into (the agent-skills CLI handles the
+ * actual placement under `.claude/skills/...`).
+ */
+export function npxSkillsArgv(opts: { agent?: string } = {}): string[] {
+  return ["skills", "add", SKILL_SOURCE_SLUG, "--skill", "kobe", "--agent", opts.agent ?? DEFAULT_SKILL_AGENT]
+}
+
+/** The full underlying command string, for display in help / hints. */
+export function npxSkillsCommand(opts: { agent?: string } = {}): string {
+  return `npx ${npxSkillsArgv(opts).join(" ")}`
+}
 
 /** Persisted flag: the one-time startup hint has already been shown. */
 const HINT_SEEN_KEY = "skillHintSeen"
@@ -59,6 +79,6 @@ export function maybeHintSkillInstall(): void {
   if (getPersistedString(HINT_SEEN_KEY) === "1") return
   setPersistedString(HINT_SEEN_KEY, "1")
   process.stderr.write(
-    `\nkobe: the kobe agent skill isn't installed — install it so Claude Code can fan out parallel tasks via \`kobe api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (check anytime with \`kobe doctor\`)\n\n`,
+    `\nkobe: the kobe agent skill isn't installed — install it so your coding agent can drive kobe via \`kobe api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (wraps \`${npxSkillsCommand()}\`; check anytime with \`kobe doctor\`)\n\n`,
   )
 }

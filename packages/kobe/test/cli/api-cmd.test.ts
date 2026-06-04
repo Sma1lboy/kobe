@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest"
-import { API_VERBS, ApiError, apiUsage, parseAgentsSpec, parseFlags } from "../../src/cli/api-cmd.ts"
+import {
+  API_VERBS,
+  ApiError,
+  VERBS,
+  apiUsage,
+  buildSchema,
+  findVerb,
+  parseAgentsSpec,
+  parseFlags,
+  validateAgainstSpec,
+  verbHelp,
+} from "../../src/cli/api-cmd.ts"
 
 describe("parseFlags", () => {
   it("parses `--key value` pairs", () => {
@@ -77,8 +88,96 @@ describe("parseAgentsSpec", () => {
   })
 })
 
-describe("API_VERBS", () => {
-  it("is the v0.6 six-verb surface", () => {
-    expect([...API_VERBS]).toEqual(["spawn-task", "fan-out", "send", "get-task", "collect", "list"])
+describe("parseFlags boolean presence flags", () => {
+  it("treats a verb's bool flag as standalone presence (--force ⇒ true)", () => {
+    const { flags } = parseFlags(["--task-id", "t1", "--force"], new Set(["force"]))
+    expect(flags.get("force")).toBe("true")
+    expect(flags.get("task-id")).toBe("t1")
+  })
+
+  it("still requires a value for a non-boolean trailing flag", () => {
+    expect(() => parseFlags(["--task-id"])).toThrow(/--task-id requires a value/)
+  })
+
+  it("parses --help / -h", () => {
+    expect(parseFlags(["--help"]).help).toBe(true)
+    expect(parseFlags(["-h"]).help).toBe(true)
+    expect(parseFlags([]).help).toBe(false)
+  })
+})
+
+describe("API surface (full CRUD)", () => {
+  it("exposes the full task lifecycle, not just the old six", () => {
+    for (const v of [
+      "schema",
+      "list",
+      "get-task",
+      "add",
+      "fan-out",
+      "send",
+      "collect",
+      "rename",
+      "set-branch",
+      "set-vendor",
+      "set-status",
+      "archive",
+      "pin",
+      "set-active",
+      "ensure-worktree",
+      "delete",
+      "discover-adoptable",
+      "adopt",
+    ]) {
+      expect(API_VERBS).toContain(v)
+    }
+  })
+
+  it("keeps `spawn-task` working as an alias of `add`", () => {
+    expect(findVerb("spawn-task")?.name).toBe("add")
+  })
+
+  it("schema is machine-readable and covers every verb + flag types", () => {
+    const schema = buildSchema() as { verbs: { name: string; flags: { name: string; type: string }[] }[] }
+    expect(schema.verbs.map((v) => v.name)).toEqual([...API_VERBS])
+    const add = schema.verbs.find((v) => v.name === "add")
+    expect(add?.flags.find((f) => f.name === "repo")).toMatchObject({ required: true, type: "string" })
+    expect(add?.flags.find((f) => f.name === "status")).toMatchObject({ type: "enum" })
+  })
+
+  it("verbHelp renders a signature + flags for every verb", () => {
+    for (const v of VERBS) {
+      const help = verbHelp(v)
+      expect(help).toContain(`kobe api ${v.name}`)
+      for (const f of v.flags) expect(help).toContain(`--${f.name}`)
+    }
+  })
+})
+
+describe("validateAgainstSpec", () => {
+  const add = findVerb("add")!
+
+  it("rejects an unknown flag with BAD_FLAG", () => {
+    const { flags } = parseFlags(["--repo", "/x", "--bogus", "1"])
+    expect(() => validateAgainstSpec(add, flags)).toThrow(/unknown flag --bogus/)
+  })
+
+  it("rejects a missing required flag with MISSING_FLAG", () => {
+    const { flags } = parseFlags(["--title", "t"])
+    try {
+      validateAgainstSpec(add, flags)
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect((err as ApiError).code).toBe("MISSING_FLAG")
+    }
+  })
+
+  it("rejects an out-of-range enum value", () => {
+    const { flags } = parseFlags(["--repo", "/x", "--status", "nonsense"])
+    expect(() => validateAgainstSpec(add, flags)).toThrow(/must be one of/)
+  })
+
+  it("accepts a well-formed invocation", () => {
+    const { flags } = parseFlags(["--repo", "/x", "--status", "in_progress", "--vendor", "claude"])
+    expect(() => validateAgainstSpec(add, flags)).not.toThrow()
   })
 })

@@ -24,6 +24,7 @@ export function topLevelUsage(): string {
     "  api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)",
     "  daemon <verb>           Manage the daemon (start|stop|status|restart)",
     "  theme <verb>            Manage user themes (list|add|remove)",
+    "  skill <verb>            Install the kobe agent skill (install|status|command)",
     "  update [target]         Self-update kobe",
     "  doctor                  Diagnose daemon / tmux / state (read-only)",
     "  reset [--hard]          Recover a wedged install",

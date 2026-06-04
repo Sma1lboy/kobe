@@ -1,35 +1,32 @@
 /**
- * `kobe api <verb>` — scriptable surface for agents driving kobe from a
- * shell (Bash tool / cron / arbitrary scripts).
+ * `kobe api <verb>` — the scriptable control surface for agents driving
+ * kobe from a shell (Bash tool / cron / arbitrary scripts).
  *
- * Each invocation is a short-lived process: connect to (or auto-start)
- * the daemon, do the work, print a JSON object to stdout, exit. Designed
- * for fan-out — spawn N tasks, send each a scoped prompt, poll state.
+ * Each invocation is a short-lived process: connect to (or auto-start) the
+ * daemon, do the work, print a JSON object to stdout, exit. Designed for
+ * fan-out AND full task lifecycle control — it exposes (almost) everything
+ * the daemon can do, so an agent never has to drop into the TUI for a
+ * scripted operation.
  *
- * v0.5 had this same command, but it was deleted when the headless
- * engine was removed (the daemon used to host live chat streams). v0.6
- * is tmux-native: the daemon is a single writer for the task index, and
- * an engine is the interactive `claude` / `codex` CLI running inside a
- * task's tmux session. So the v0.6 verbs map onto that reality —
- * `spawn-task` / `get-task` / `list` are daemon RPCs, and `send`
- * delivers a prompt by pasting it (tmux bracketed paste) into the task's
- * engine pane, so a multi-line prompt stays one turn.
+ * ## Self-describing (so an agent can EXPLORE the surface)
  *
- * Surface (v0.6 — 6 verbs):
- *   spawn-task   --repo PATH [--prompt TEXT] [--title T] [--base-branch B] [--vendor V]
- *   fan-out      --repo PATH --prompt TEXT [--count N | --agents claude:2,codex:1]
- *   send         [--task-id ID] --prompt TEXT
- *   get-task     --task-id ID
- *   collect      --task-ids a,b,c | --repo PATH
- *   list
+ * The verb table {@link VERBS} is the single source of truth: it drives the
+ * `schema` verb (machine-readable JSON of every verb + flag), per-verb
+ * `--help`, and flag validation (required / enum / unknown-flag rejection).
+ * An agent runs `kobe api schema` once and knows the whole API — names,
+ * types, which flags are required, allowed enum values — without parsing
+ * prose. Add a verb to {@link VERBS} and its help, schema entry, and
+ * validation all come for free.
  *
- * Output contract:
+ * ## Output contract
  *   - success → one JSON object to stdout, `\n` terminated, exit 0
  *   - error   → `{ "error": { "message", "code" } }` to stderr, exit ≠ 0
  *   - `--pretty` → indent stdout JSON (humans only)
+ *   - `--help`   → render that verb's usage to stdout, exit 0
  *
- * The daemon is auto-started if it is not already running (same as
- * `kobe adopt`), so an agent script does not have to babysit it.
+ * The daemon is auto-started if it is not already running, so an agent
+ * script does not have to babysit it (read-only verbs like `schema` skip
+ * the daemon entirely).
  */
 
 import { resolve } from "node:path"
@@ -39,20 +36,25 @@ import type { SerializedTask } from "../daemon/protocol.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
+import type { TaskStatus } from "../types/task.ts"
 import { ALL_VENDORS, type VendorId } from "../types/vendor.ts"
+import { CURRENT_VERSION } from "../version.ts"
 
-/** Verbs this command accepts, in help order. */
-export const API_VERBS = ["spawn-task", "fan-out", "send", "get-task", "collect", "list"] as const
-export type ApiVerb = (typeof API_VERBS)[number]
+/** Bumped when the verb/flag shape changes incompatibly. Agents can gate on it. */
+export const API_SCHEMA_VERSION = 2
 
 /** Safety cap on a single fan-out so a typo can't spawn a runaway fleet. */
 export const FANOUT_CAP = 10
+
+/** Allowed `--status` values, mirrored from {@link TaskStatus}. */
+const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
 
 type Flags = Map<string, string>
 
 interface ParsedArgs {
   readonly flags: Flags
   readonly pretty: boolean
+  readonly help: boolean
 }
 
 class ApiError extends Error {
@@ -64,33 +66,319 @@ class ApiError extends Error {
   }
 }
 
+// ── Declarative verb + flag specs (single source of truth) ───────────────────
+
+type FlagType = "string" | "int" | "bool" | "enum" | "csv"
+
+interface FlagSpec {
+  readonly name: string
+  readonly type: FlagType
+  readonly required?: boolean
+  readonly description: string
+  /** Allowed values when `type === "enum"`. */
+  readonly values?: readonly string[]
+  /** Default shown in schema/help (informational; not auto-applied). */
+  readonly default?: string
+  /** Metavar for help/schema, e.g. PATH / ID / TEXT. */
+  readonly placeholder?: string
+}
+
+interface VerbSpec {
+  readonly name: string
+  readonly summary: string
+  readonly flags: readonly FlagSpec[]
+  /** Verbs that don't need the daemon (e.g. `schema`). */
+  readonly offline?: boolean
+  readonly handler: (client: KobeDaemonClient | null, parsed: ParsedArgs) => Promise<unknown>
+}
+
+// Reusable flag fragments.
+const F = {
+  repo: (required = true): FlagSpec => ({
+    name: "repo",
+    type: "string",
+    required,
+    placeholder: "PATH",
+    description: "Repo root (git toplevel). Relative paths resolve against $PWD.",
+  }),
+  taskId: (required = true): FlagSpec => ({
+    name: "task-id",
+    type: "string",
+    required,
+    placeholder: "ID",
+    description: "Target task id (from `list` / `add`).",
+  }),
+  vendor: (): FlagSpec => ({
+    name: "vendor",
+    type: "enum",
+    values: ALL_VENDORS,
+    placeholder: "V",
+    description: "Engine vendor for the task.",
+  }),
+  title: (): FlagSpec => ({ name: "title", type: "string", placeholder: "T", description: "Human task title." }),
+  prompt: (required: boolean, desc: string): FlagSpec => ({
+    name: "prompt",
+    type: "string",
+    required,
+    placeholder: "TEXT",
+    description: desc,
+  }),
+}
+
+/** Output the alias → canonical map so callers (and the schema) stay in sync. */
+const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
+
+async function handleSchema(_client: KobeDaemonClient | null, _parsed: ParsedArgs): Promise<unknown> {
+  return buildSchema()
+}
+
+// VERBS — ordered for help readability: discovery, reads, create, drive, edit,
+// lifecycle, worktree. Every entry's flags feed schema + --help + validation.
+const VERBS: readonly VerbSpec[] = [
+  {
+    name: "schema",
+    summary: "Print the full machine-readable API spec (every verb + flag). Run this first to explore.",
+    flags: [],
+    offline: true,
+    handler: handleSchema,
+  },
+  { name: "list", summary: "List all tasks (incl. archived). Returns { tasks }.", flags: [], handler: list },
+  {
+    name: "get-task",
+    summary: "Read one task's metadata. `.running` = its tmux session is live.",
+    flags: [F.taskId()],
+    handler: getTask,
+  },
+  {
+    name: "add",
+    summary:
+      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Alias: spawn-task.",
+    flags: [
+      F.repo(),
+      F.title(),
+      {
+        name: "branch",
+        type: "string",
+        placeholder: "B",
+        description: "Explicit branch name (else auto kobe/<slug>-<id>).",
+      },
+      { name: "base-branch", type: "string", placeholder: "B", description: "Base ref the worktree branches from." },
+      F.vendor(),
+      {
+        name: "status",
+        type: "enum",
+        values: TASK_STATUSES,
+        default: "backlog",
+        description: "Initial lifecycle status.",
+      },
+      { name: "pin", type: "bool", description: "Pin the task to the top of the sidebar." },
+      F.prompt(
+        false,
+        "Optional first message — when set, materializes the worktree, starts the engine, and pastes it.",
+      ),
+    ],
+    handler: add,
+  },
+  {
+    name: "fan-out",
+    summary: `Spawn N tasks of ONE prompt in a single call (parallel attempts). Capped at ${FANOUT_CAP}.`,
+    flags: [
+      F.repo(),
+      F.prompt(true, "Shared prompt delivered to every spawned task."),
+      { name: "count", type: "int", placeholder: "N", description: "Number of tasks of one vendor (with --vendor)." },
+      {
+        name: "agents",
+        type: "string",
+        placeholder: "claude:2,codex:1",
+        description: "Per-vendor counts (alternative to --count).",
+      },
+      F.vendor(),
+      F.title(),
+      { name: "base-branch", type: "string", placeholder: "B", description: "Base ref for every worktree." },
+    ],
+    handler: fanOut,
+  },
+  {
+    name: "send",
+    summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
+    flags: [F.taskId(false), F.prompt(true, "Text pasted + submitted into the engine pane.")],
+    handler: send,
+  },
+  {
+    name: "collect",
+    summary: "Read-only comparison snapshot of several tasks (identity, branch, .running, uncommitted .changes).",
+    flags: [
+      { name: "task-ids", type: "csv", placeholder: "a,b,c", description: "Comma-separated task ids." },
+      F.repo(false),
+    ],
+    handler: collect,
+  },
+  {
+    name: "rename",
+    summary: "Set a task's title.",
+    flags: [F.taskId(), { name: "title", type: "string", required: true, placeholder: "T", description: "New title." }],
+    handler: (c, p) =>
+      simpleRpc(c, "task.rename", { taskId: required(p.flags, "task-id"), title: required(p.flags, "title") }),
+  },
+  {
+    name: "set-branch",
+    summary: "Rename a task's branch (git branch -m if materialized, else recorded).",
+    flags: [
+      F.taskId(),
+      { name: "branch", type: "string", required: true, placeholder: "B", description: "New branch name." },
+    ],
+    handler: (c, p) =>
+      simpleRpc(c, "task.setBranch", { taskId: required(p.flags, "task-id"), branch: required(p.flags, "branch") }),
+  },
+  {
+    name: "set-vendor",
+    summary: "Change a task's engine vendor (takes effect on next session rebuild).",
+    flags: [F.taskId(), { ...F.vendor(), required: true }],
+    handler: (c, p) =>
+      simpleRpc(c, "task.setVendor", {
+        taskId: required(p.flags, "task-id"),
+        vendor: requireEnum(p.flags, "vendor", ALL_VENDORS),
+      }),
+  },
+  {
+    name: "set-status",
+    summary: "Set a task's lifecycle status.",
+    flags: [
+      F.taskId(),
+      { name: "status", type: "enum", required: true, values: TASK_STATUSES, description: "New status." },
+    ],
+    handler: (c, p) =>
+      simpleRpc(c, "task.status", {
+        taskId: required(p.flags, "task-id"),
+        status: requireEnum(p.flags, "status", TASK_STATUSES),
+      }),
+  },
+  {
+    name: "archive",
+    summary: "Archive (or with --archived=false, unarchive) a task. Non-destructive: worktree/branch/history stay.",
+    flags: [
+      F.taskId(),
+      { name: "archived", type: "bool", default: "true", description: "true to archive, false to unarchive." },
+    ],
+    handler: (c, p) =>
+      simpleRpc(c, "task.archive", {
+        taskId: required(p.flags, "task-id"),
+        archived: optionalBool(p.flags, "archived") ?? true,
+      }),
+  },
+  {
+    name: "pin",
+    summary: "Pin (or with --pinned=false, unpin) a task to the top of the sidebar.",
+    flags: [F.taskId(), { name: "pinned", type: "bool", default: "true", description: "true to pin, false to unpin." }],
+    handler: (c, p) =>
+      simpleRpc(c, "task.pin", {
+        taskId: required(p.flags, "task-id"),
+        pinned: optionalBool(p.flags, "pinned") ?? true,
+      }),
+  },
+  {
+    name: "set-active",
+    summary: "Set the shared active task (the focus every Tasks pane highlights). Pass --none to clear.",
+    flags: [
+      F.taskId(false),
+      { name: "none", type: "bool", description: "Clear the active task instead of setting one." },
+    ],
+    handler: setActive,
+  },
+  {
+    name: "ensure-worktree",
+    summary: "Materialize a task's git worktree on disk now (without starting an engine). Returns { worktreePath }.",
+    flags: [F.taskId()],
+    handler: (c, p) => simpleRpc(c, "task.ensureWorktree", { taskId: required(p.flags, "task-id") }),
+  },
+  {
+    name: "delete",
+    summary:
+      "Permanently remove a task (and its worktree). DESTRUCTIVE — prefer `archive`. Needs --force on a dirty worktree.",
+    flags: [F.taskId(), { name: "force", type: "bool", description: "Delete even with uncommitted changes." }],
+    handler: (c, p) =>
+      simpleRpc(c, "task.delete", {
+        taskId: required(p.flags, "task-id"),
+        force: optionalBool(p.flags, "force") ?? false,
+      }),
+  },
+  {
+    name: "discover-adoptable",
+    summary: "List existing git worktrees in a repo not yet tracked as kobe tasks. Returns { worktrees }.",
+    flags: [F.repo()],
+    handler: (c, p) => simpleRpc(c, "worktree.discoverAdoptable", { repo: resolveRepoFlag(required(p.flags, "repo")) }),
+  },
+  {
+    name: "adopt",
+    summary: "Import an existing git worktree as a kobe task. Returns { task }.",
+    flags: [
+      F.repo(),
+      {
+        name: "worktree",
+        type: "string",
+        required: true,
+        placeholder: "PATH",
+        description: "Path of the worktree to adopt.",
+      },
+      { name: "branch", type: "string", placeholder: "B", description: "Branch override (else the worktree's own)." },
+      F.vendor(),
+      F.title(),
+    ],
+    handler: adopt,
+  },
+]
+
+/** Verb names in canonical order (schema/help/tests). */
+export const API_VERBS = VERBS.map((v) => v.name)
+export type ApiVerb = (typeof API_VERBS)[number]
+
+function findVerb(name: string): VerbSpec | undefined {
+  const canonical = VERB_ALIASES[name] ?? name
+  return VERBS.find((v) => v.name === canonical)
+}
+
+// ── Flag parsing + spec-driven validation ────────────────────────────────────
+
 /**
- * Parse argv into a flag map + `--pretty` boolean. Accepts both
- * `--key=value` and `--key value`. `--pretty` is the only boolean flag.
- * Unknown forms throw a BAD_FLAG error.
+ * Parse argv into a flag map + `--pretty` / `--help` booleans. Accepts both
+ * `--key=value` and `--key value`. `booleanFlags` (from the verb spec) may be
+ * given as standalone presence flags (`--force` ⇒ "true"); without it, only
+ * `--pretty` / `--help` are standalone. Unknown forms throw BAD_FLAG.
  */
-export function parseFlags(argv: readonly string[]): ParsedArgs {
+export function parseFlags(argv: readonly string[], booleanFlags: ReadonlySet<string> = new Set()): ParsedArgs {
   const flags = new Map<string, string>()
   let pretty = false
+  let help = false
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (!arg.startsWith("--")) {
+    if (!arg.startsWith("--") && arg !== "-h") {
       throw new ApiError(`unexpected positional arg: ${arg}`, "BAD_FLAG")
+    }
+    if (arg === "-h") {
+      help = true
+      continue
     }
     const eq = arg.indexOf("=")
     if (eq !== -1) {
       const key = arg.slice(2, eq)
       const value = arg.slice(eq + 1)
-      if (key === "pretty") {
-        pretty = value !== "false" && value !== "0"
-      } else {
-        flags.set(key, value)
-      }
+      if (key === "pretty") pretty = value !== "false" && value !== "0"
+      else if (key === "help") help = value !== "false" && value !== "0"
+      else flags.set(key, value)
       continue
     }
     const key = arg.slice(2)
     if (key === "pretty") {
       pretty = true
+      continue
+    }
+    if (key === "help") {
+      help = true
+      continue
+    }
+    // A boolean verb flag with no value is a presence flag (`--force`).
+    if (booleanFlags.has(key)) {
+      flags.set(key, "true")
       continue
     }
     const next = argv[i + 1]
@@ -100,14 +388,39 @@ export function parseFlags(argv: readonly string[]): ParsedArgs {
     flags.set(key, next)
     i += 1
   }
-  return { flags, pretty }
+  return { flags, pretty, help }
+}
+
+/** Reject flags not declared on the verb spec, and required flags that are missing. */
+function validateAgainstSpec(verb: VerbSpec, flags: Flags): void {
+  const known = new Set(verb.flags.map((f) => f.name))
+  for (const key of flags.keys()) {
+    if (!known.has(key)) {
+      throw new ApiError(`unknown flag --${key} for "${verb.name}". Run \`kobe api ${verb.name} --help\``, "BAD_FLAG")
+    }
+  }
+  for (const f of verb.flags) {
+    if (f.required && !flags.get(f.name))
+      throw new ApiError(`--${f.name} is required for "${verb.name}"`, "MISSING_FLAG")
+    if (f.type === "enum" && f.values) {
+      const raw = flags.get(f.name)
+      if (raw !== undefined && !f.values.includes(raw)) {
+        throw new ApiError(`--${f.name} must be one of ${f.values.join(", ")}`, "BAD_FLAG")
+      }
+    }
+    if (f.type === "int") {
+      const raw = flags.get(f.name)
+      if (raw !== undefined) {
+        const n = Number.parseInt(raw, 10)
+        if (!Number.isInteger(n) || n <= 0) throw new ApiError(`--${f.name} must be a positive integer`, "BAD_FLAG")
+      }
+    }
+  }
 }
 
 function required(flags: Flags, key: string): string {
   const v = flags.get(key)
-  if (v === undefined || v.length === 0) {
-    throw new ApiError(`--${key} is required`, "MISSING_FLAG")
-  }
+  if (v === undefined || v.length === 0) throw new ApiError(`--${key} is required`, "MISSING_FLAG")
   return v
 }
 
@@ -116,7 +429,12 @@ function optional(flags: Flags, key: string): string | undefined {
   return v && v.length > 0 ? v : undefined
 }
 
-/** Validate an optional `--vendor` flag against the known vendor list. */
+function requireEnum<T extends string>(flags: Flags, key: string, values: readonly T[]): T {
+  const v = required(flags, key)
+  if (!values.includes(v as T)) throw new ApiError(`--${key} must be one of ${values.join(", ")}`, "BAD_FLAG")
+  return v as T
+}
+
 function optionalVendor(flags: Flags): VendorId | undefined {
   const raw = optional(flags, "vendor")
   if (raw === undefined) return undefined
@@ -126,21 +444,29 @@ function optionalVendor(flags: Flags): VendorId | undefined {
   return raw as VendorId
 }
 
-/** Parse an optional positive-integer flag (`--count 3`). */
+function optionalBool(flags: Flags, key: string): boolean | undefined {
+  const raw = optional(flags, key)
+  if (raw === undefined) return undefined
+  if (["true", "1", "yes"].includes(raw)) return true
+  if (["false", "0", "no"].includes(raw)) return false
+  throw new ApiError(`--${key} must be a boolean (true/false)`, "BAD_FLAG")
+}
+
 function optionalPositiveInt(flags: Flags, key: string): number | undefined {
   const raw = optional(flags, key)
   if (raw === undefined) return undefined
   const n = Number.parseInt(raw, 10)
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new ApiError(`--${key} must be a positive integer`, "BAD_FLAG")
-  }
+  if (!Number.isInteger(n) || n <= 0) throw new ApiError(`--${key} must be a positive integer`, "BAD_FLAG")
   return n
+}
+
+function resolveRepoFlag(repo: string): string {
+  return resolve(process.cwd(), repo)
 }
 
 /**
  * Parse a fan-out spec like `claude:2,codex:1` into a flat list with one
- * vendor entry per task to spawn (`[claude, claude, codex]`). Each
- * `vendor:count` pair is validated against the known vendor list.
+ * vendor entry per task to spawn (`[claude, claude, codex]`).
  */
 export function parseAgentsSpec(spec: string): VendorId[] {
   const out: VendorId[] = []
@@ -163,60 +489,111 @@ export function parseAgentsSpec(spec: string): VendorId[] {
   return out
 }
 
-/** One-line usage banner for `kobe api` with no/bad verb. */
+// ── Schema + help (both derived from VERBS) ──────────────────────────────────
+
+function buildSchema(): unknown {
+  return {
+    apiVersion: API_SCHEMA_VERSION,
+    kobeVersion: CURRENT_VERSION,
+    output: {
+      success: "one JSON object on stdout, newline-terminated, exit 0",
+      error: '{"error":{"message","code"}} on stderr, exit != 0',
+      pretty: "--pretty indents stdout JSON",
+    },
+    globalFlags: [
+      { name: "pretty", type: "bool", description: "Pretty-print stdout JSON." },
+      { name: "help", type: "bool", description: "Show usage for the verb and exit." },
+    ],
+    aliases: VERB_ALIASES,
+    verbs: VERBS.map((v) => ({
+      name: v.name,
+      summary: v.summary,
+      offline: v.offline ?? false,
+      flags: v.flags.map((f) => ({
+        name: f.name,
+        type: f.type,
+        required: f.required ?? false,
+        ...(f.values ? { values: f.values } : {}),
+        ...(f.default !== undefined ? { default: f.default } : {}),
+        ...(f.placeholder ? { placeholder: f.placeholder } : {}),
+        description: f.description,
+      })),
+    })),
+  }
+}
+
+/** Render one verb's flag signature, e.g. `--repo PATH [--title T] ...`. */
+function flagSignature(verb: VerbSpec): string {
+  return verb.flags
+    .map((f) => {
+      const meta =
+        f.type === "enum" && f.values ? f.values.join("|") : (f.placeholder ?? (f.type === "bool" ? "" : "X"))
+      const core = meta ? `--${f.name} ${meta}` : `--${f.name}`
+      return f.required ? core : `[${core}]`
+    })
+    .join(" ")
+}
+
+/** Full `kobe api <verb> --help` text. */
+export function verbHelp(verb: VerbSpec): string {
+  const lines = [`kobe api ${verb.name} ${flagSignature(verb)}`.trimEnd(), "", verb.summary, ""]
+  const alias = Object.entries(VERB_ALIASES).find(([, canon]) => canon === verb.name)?.[0]
+  if (alias) lines.push(`Alias: ${alias}`, "")
+  if (verb.flags.length > 0) {
+    lines.push("Flags:")
+    for (const f of verb.flags) {
+      const req = f.required ? " (required)" : ""
+      const def = f.default !== undefined ? ` [default: ${f.default}]` : ""
+      const vals = f.type === "enum" && f.values ? ` {${f.values.join("|")}}` : ""
+      lines.push(`  --${f.name}${vals}${req}${def}  ${f.description}`)
+    }
+    lines.push("")
+  }
+  lines.push("Global: [--pretty] [--help]")
+  return lines.join("\n")
+}
+
+/** One-line-per-verb usage banner for `kobe api` with no/bad verb. */
 export function apiUsage(): string {
+  const rows = VERBS.map((v) => `  ${v.name.padEnd(18)} ${v.summary}`)
   return [
-    "usage: kobe api <verb> [flags] [--pretty]",
+    "usage: kobe api <verb> [flags] [--pretty] [--help]",
+    "",
+    "Explore the full surface (names, flags, types) with:  kobe api schema",
     "",
     "verbs:",
-    "  spawn-task  --repo PATH [--prompt TEXT] [--title T] [--base-branch B] [--vendor V]",
-    "  fan-out     --repo PATH --prompt TEXT [--count N | --agents claude:2,codex:1] [--base-branch B]",
-    "  send        [--task-id ID] --prompt TEXT",
-    "  get-task    --task-id ID",
-    "  collect     --task-ids a,b,c | --repo PATH",
-    "  list",
+    ...rows,
     "",
-    "Output is one JSON object on stdout (exit 0); errors are JSON on stderr (exit ≠ 0).",
+    "Output is one JSON object on stdout (exit 0); errors are JSON on stderr (exit != 0).",
   ].join("\n")
 }
 
-/** Write the success payload to stdout. Always `\n`-terminated. */
+// ── stdout/stderr emit ───────────────────────────────────────────────────────
+
 function emit(value: unknown, pretty: boolean): void {
   const text = pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value)
   process.stdout.write(`${text}\n`)
 }
 
-/**
- * Write `{error:{message,code}}` to stderr and exit non-zero. Stderr is
- * used so `kobe api … | jq` doesn't choke on error text.
- */
 function fail(message: string, code: string, exitCode = 1): never {
   process.stderr.write(`${JSON.stringify({ error: { message, code } })}\n`)
   process.exit(exitCode)
 }
 
-/** Task metadata needed to find/build a session and its engine pane. */
+// ── Prompt delivery (shared by add / fan-out / send) ─────────────────────────
+
 interface PromptTarget {
   readonly id: string
   readonly worktreePath: string
   readonly vendor?: VendorId
-  /** Repo root (git toplevel) — for per-repo init script resolution. */
   readonly repo?: string
 }
 
-/**
- * Deliver a prompt to a task's engine pane, building the task's tmux
- * session first if it is not already running. `engineReady` is false when
- * a freshly-built engine never confirmed it was ready within the wait
- * budget (the prompt is still pasted best-effort).
- */
 async function deliverPrompt(
   client: KobeDaemonClient,
   target: PromptTarget,
   prompt: string,
 ): Promise<{ session: string; pane: string; started: boolean; engineReady: boolean }> {
-  // task.create returns an empty worktreePath (the worktree is
-  // materialized lazily); ensure it exists before we cwd a session into it.
   let worktree = target.worktreePath
   if (!worktree) {
     const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: target.id })
@@ -229,9 +606,6 @@ async function deliverPrompt(
   if (!existed) {
     const { ensureSession } = await import("../tui/panes/terminal/tmux.ts")
     const { resolveRepoInit } = await import("../state/repo-init.ts")
-    // Run the repo's init script before the engine. The init PROMPT is
-    // intentionally NOT passed here: this flow delivers its own explicit
-    // prompt below, which is the engine's first message instead.
     const init = resolveRepoInit(target.repo ?? "", worktree)
     const ok = await ensureSession({
       name: session,
@@ -251,21 +625,12 @@ async function deliverPrompt(
   return { session, pane, started: !existed, engineReady: ready }
 }
 
-/**
- * Read the daemon's current active task id (the session last
- * switched/entered into). It lives only as a last-value on the
- * `active-task` push channel, so we subscribe and read the replay the
- * daemon sends before the subscribe response. `null` if nothing is active.
- */
 async function resolveActiveTaskId(client: KobeDaemonClient): Promise<string | null> {
   let activeId: string | null = null
   const off = client.onChannel("active-task", (payload) => {
     activeId = payload.taskId
   })
   try {
-    // The daemon replays each populated channel's value as event frames
-    // BEFORE the subscribe response; FIFO socket ordering means the
-    // handler above has fired by the time this resolves.
     await client.subscribe()
   } finally {
     off()
@@ -273,42 +638,59 @@ async function resolveActiveTaskId(client: KobeDaemonClient): Promise<string | n
   return activeId
 }
 
-async function spawnTask(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unknown> {
+// ── Handlers ─────────────────────────────────────────────────────────────────
+
+/** Fire one daemon RPC and return its raw payload (the generic CRUD shape). */
+async function simpleRpc(
+  client: KobeDaemonClient | null,
+  name: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
+  // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
+  return client.request(name as any, payload)
+}
+
+async function add(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   const { flags } = parsed
-  const payload: Record<string, string> = { repo: required(flags, "repo") }
+  const payload: Record<string, string> = { repo: resolveRepoFlag(required(flags, "repo")) }
   const title = optional(flags, "title")
   if (title) payload.title = title
+  const branch = optional(flags, "branch")
+  if (branch) payload.branch = branch
   const baseRef = optional(flags, "base-branch")
   if (baseRef) payload.baseRef = baseRef
   const vendor = optionalVendor(flags)
   if (vendor) payload.vendor = vendor
 
   const res = await client.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
+  const taskId = res.taskId
+
+  // status / pin aren't create-time fields on the RPC — apply them as
+  // follow-ups so `add` is the one-stop "make me a task exactly like this".
+  const status = optional(flags, "status")
+  if (status) await client.request("task.status", { taskId, status: requireEnum(flags, "status", TASK_STATUSES) })
+  const pin = optionalBool(flags, "pin")
+  if (pin !== undefined) await client.request("task.pin", { taskId, pinned: pin })
+
+  let task = res.task
+  if (status || pin !== undefined) {
+    task = (await client.request<{ task: SerializedTask }>("task.get", { taskId })).task
+  }
 
   const prompt = optional(flags, "prompt")
-  if (!prompt) {
-    return { taskId: res.taskId, task: res.task, started: false }
-  }
+  if (!prompt) return { taskId, task, started: false }
   const delivered = await deliverPrompt(
     client,
-    {
-      id: res.taskId,
-      worktreePath: res.task.worktreePath,
-      vendor: res.task.vendor as VendorId | undefined,
-      repo: res.task.repo,
-    },
+    { id: taskId, worktreePath: task.worktreePath, vendor: task.vendor as VendorId | undefined, repo: task.repo },
     prompt,
   )
-  return {
-    taskId: res.taskId,
-    task: res.task,
-    started: delivered.started,
-    engineReady: delivered.engineReady,
-    session: delivered.session,
-  }
+  return { taskId, task, started: delivered.started, engineReady: delivered.engineReady, session: delivered.session }
 }
 
-async function send(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unknown> {
+async function send(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   const { flags } = parsed
   const prompt = required(flags, "prompt")
   let taskId = optional(flags, "task-id")
@@ -342,29 +724,47 @@ async function send(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unkno
   }
 }
 
-async function getTask(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unknown> {
+async function getTask(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   const taskId = required(parsed.flags, "task-id")
   const res = await client.request<{ task: SerializedTask }>("task.get", { taskId })
-  // `running` tells a poller whether the task's engine session is live —
-  // the v0.6 replacement for the old per-tab status, since transcripts
-  // live in tmux now, not in the daemon.
   const running = await sessionExists(tmuxSessionName(taskId))
   return { task: res.task, running }
 }
 
-async function list(client: KobeDaemonClient): Promise<unknown> {
+async function list(client: KobeDaemonClient | null): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   return client.request<{ tasks: SerializedTask[] }>("task.list")
 }
 
-/**
- * `fan-out` — spawn N tasks of the same prompt in one call (the uzi-style
- * `--agents claude:2,codex:1` shape, or a flat `--count N` of one vendor).
- * Each task gets its own worktree + tmux session and the prompt delivered.
- * Spawns sequentially so worktree/slug allocation can't race.
- */
-async function fanOut(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unknown> {
+async function setActive(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
+  const none = optionalBool(parsed.flags, "none")
+  const taskId = none ? null : required(parsed.flags, "task-id")
+  await client.request("task.setActive", { taskId })
+  return { ok: true, activeTaskId: taskId }
+}
+
+async function adopt(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   const { flags } = parsed
-  const repo = required(flags, "repo")
+  const input: Record<string, string> = {
+    repo: resolveRepoFlag(required(flags, "repo")),
+    worktreePath: resolveRepoFlag(required(flags, "worktree")),
+  }
+  const branch = optional(flags, "branch")
+  if (branch) input.branch = branch
+  const vendor = optionalVendor(flags)
+  if (vendor) input.vendor = vendor
+  const title = optional(flags, "title")
+  if (title) input.title = title
+  return client.request<{ task: SerializedTask }>("worktree.adopt", input)
+}
+
+async function fanOut(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
+  const { flags } = parsed
+  const repo = resolveRepoFlag(required(flags, "repo"))
   const prompt = required(flags, "prompt")
   const title = optional(flags, "title")
   const baseRef = optional(flags, "base-branch")
@@ -400,14 +800,8 @@ async function fanOut(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unk
   return { count: tasks.length, tasks }
 }
 
-/**
- * `collect` — aggregation snapshot for a set of tasks: identity, branch,
- * whether the session is live, and the worktree's uncommitted change
- * counts (so an orchestrating agent can compare attempts and pick a
- * winner). Read-only; never merges. Target via `--task-ids a,b,c` or all
- * non-archived tasks in `--repo PATH`.
- */
-async function collect(client: KobeDaemonClient, parsed: ParsedArgs): Promise<unknown> {
+async function collect(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
   const { flags } = parsed
   const idsFlag = optional(flags, "task-ids")
   const repoFlag = optional(flags, "repo")
@@ -420,7 +814,7 @@ async function collect(client: KobeDaemonClient, parsed: ParsedArgs): Promise<un
       .filter(Boolean)
   } else if (repoFlag) {
     const { resolveRepoRoot } = await import("../state/repos.ts")
-    const target = resolveRepoRoot(resolve(process.cwd(), repoFlag))
+    const target = resolveRepoRoot(resolveRepoFlag(repoFlag))
     const { tasks } = await client.request<{ tasks: SerializedTask[] }>("task.list")
     taskIds = tasks.filter((t) => !t.archived && resolveRepoRoot(t.repo) === target).map((t) => t.id)
   } else {
@@ -447,68 +841,63 @@ async function collect(client: KobeDaemonClient, parsed: ParsedArgs): Promise<un
   return { tasks: out }
 }
 
+// ── Dispatch ─────────────────────────────────────────────────────────────────
+
 export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
-  const [verb, ...rest] = argv
-  if (!verb || verb === "--help" || verb === "-h" || verb === "help") {
-    if (!verb) {
-      fail(apiUsage(), "MISSING_VERB", 2)
-    }
+  const [verbName, ...rest] = argv
+  if (!verbName || verbName === "--help" || verbName === "-h" || verbName === "help") {
+    if (!verbName) fail(apiUsage(), "MISSING_VERB", 2)
     process.stdout.write(`${apiUsage()}\n`)
     return
   }
-  if (!API_VERBS.includes(verb as ApiVerb)) {
-    fail(`unknown verb: ${verb}\n${apiUsage()}`, "BAD_VERB", 2)
-  }
+  const verb = findVerb(verbName)
+  if (!verb) fail(`unknown verb: ${verbName}\n${apiUsage()}`, "BAD_VERB", 2)
 
+  const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
   let parsed: ParsedArgs
   try {
-    parsed = parseFlags(rest)
+    parsed = parseFlags(rest, booleanFlags)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 2)
     fail(err instanceof Error ? err.message : String(err), "BAD_FLAG", 2)
   }
 
-  let client: KobeDaemonClient
-  try {
-    client = await connectOrStartDaemon()
-  } catch (err) {
-    fail(
-      `could not reach or start the kobe daemon: ${err instanceof Error ? err.message : String(err)}`,
-      "BAD_DAEMON",
-      2,
-    )
+  if (parsed.help) {
+    process.stdout.write(`${verbHelp(verb)}\n`)
+    return
   }
 
   try {
-    let result: unknown
-    switch (verb as ApiVerb) {
-      case "spawn-task":
-        result = await spawnTask(client, parsed)
-        break
-      case "fan-out":
-        result = await fanOut(client, parsed)
-        break
-      case "send":
-        result = await send(client, parsed)
-        break
-      case "get-task":
-        result = await getTask(client, parsed)
-        break
-      case "collect":
-        result = await collect(client, parsed)
-        break
-      case "list":
-        result = await list(client)
-        break
+    validateAgainstSpec(verb, parsed.flags)
+  } catch (err) {
+    if (err instanceof ApiError) fail(err.message, err.code, 2)
+    fail(err instanceof Error ? err.message : String(err), "BAD_FLAG", 2)
+  }
+
+  let client: KobeDaemonClient | null = null
+  if (!verb.offline) {
+    try {
+      client = await connectOrStartDaemon()
+    } catch (err) {
+      fail(
+        `could not reach or start the kobe daemon: ${err instanceof Error ? err.message : String(err)}`,
+        "BAD_DAEMON",
+        2,
+      )
     }
+  }
+
+  try {
+    const result = await verb.handler(client, parsed)
     emit(result, parsed.pretty)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 1)
     fail(err instanceof Error ? err.message : String(err), "RPC_ERROR", 1)
   } finally {
-    client.close()
+    client?.close()
   }
 }
 
 // Exported for tests.
-export { ApiError }
+export { ApiError, VERBS, findVerb, validateAgainstSpec, buildSchema }
+export type { VerbSpec, FlagSpec }

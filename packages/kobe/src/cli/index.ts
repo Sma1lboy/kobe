@@ -351,6 +351,12 @@ async function main(): Promise<void> {
     await runReloadSubcommand(rest)
     return
   }
+  if (subcommand === "skill") {
+    // Install / inspect the kobe agent skill that ships in this package.
+    const { runSkillSubcommand } = await import("./skill-cmd.ts")
+    await runSkillSubcommand(rest)
+    return
+  }
   if (subcommand === "new-chattab") {
     // Ctrl+T handler from inside a task's tmux session — opens a new
     // chat-tab window. Reads the session name from `--session`; an
