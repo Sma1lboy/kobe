@@ -165,6 +165,30 @@ function persistedSyncPath(stored: string | undefined): string | undefined {
 }
 
 /**
+ * Default-ON external worktree sync (KOB). Called once per kobe launch: unless
+ * the user explicitly turned it OFF (`kobe hook setup --off`), ensure the
+ * global `WorktreeCreate` hook is installed so an external `claude --worktree`
+ * syncs into kobe out of the box. Idempotent (the adapter skips the write when
+ * the hook is already in place) and best-effort — never blocks or fails a
+ * launch. Honours an existing scope choice (e.g. a `--repo` install). Writing
+ * the user's global `~/.claude/settings.json` is intentionally invasive but
+ * acceptable for now (current users are developers); `--off` is the escape.
+ */
+export async function ensureDefaultWorktreeSync(): Promise<void> {
+  try {
+    const stored = getPersistedString(SYNC_SETTING_KEY)
+    if (stored === "off") return // user opted out — respect it
+    const adapters = worktreeSyncAdapters()
+    if (adapters.length === 0) return
+    const path = persistedSyncPath(stored) ?? syncSettingsPath({ kind: "global" })
+    for (const a of adapters) await a.installWorktreeSyncHook(path)
+    if (!stored) setPersistedString(SYNC_SETTING_KEY, path) // remember where, so --off can clean it
+  } catch {
+    /* best-effort — never block launch */
+  }
+}
+
+/**
  * `kobe hook setup [--global | --repo <path> | --off]` — opt-in install of the
  * worktree-sync hook so external `claude --worktree`s sync into kobe. Writes
  * the chosen scope into state.json and the hook into the matching settings
@@ -176,8 +200,9 @@ async function runHookSetup(argv: readonly string[]): Promise<void> {
       [
         "Usage: kobe hook setup [--global | --repo <path> | --off]",
         "",
-        "Install (or remove with --off) the hook that syncs an external",
-        "`claude --worktree` into kobe as a task. Default: --global (~/.claude).",
+        "Syncs an external `claude --worktree` into kobe as a task. This is ON",
+        "by default (installed globally into ~/.claude on launch). Use this to",
+        "move it to one repo (--repo <path>) or to turn it OFF (--off).",
         "",
       ].join("\n"),
     )

@@ -142,6 +142,10 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
     const current = await readJsonObject(settingsFilePath)
     const command = install ? shellQuoteArgv([...kobeCliInvocation(), "hook", "worktree-created"]) : null
     const next = mergeWorktreeSyncHook(current, command)
+    // Skip the write when nothing changed — the default-on path calls this on
+    // every launch, and we don't want to churn the user's settings.json mtime
+    // (or its VCS status) when the hook is already exactly in place.
+    if (JSON.stringify(next) === JSON.stringify(current)) return
     await mkdir(dirname(settingsFilePath), { recursive: true })
     await writeFile(settingsFilePath, `${JSON.stringify(next, null, 2)}\n`)
   }

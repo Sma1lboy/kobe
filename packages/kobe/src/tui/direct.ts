@@ -80,6 +80,10 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
 
 export async function startDirectTmux(): Promise<void> {
   setClientLogContext("gui")
+  // External-worktree sync is ON by default: ensure the global hook is in
+  // place on launch (no-op when already installed or the user ran `--off`).
+  // Fire-and-forget — best-effort config, must never delay or fail the launch.
+  void import("../cli/hook-cmd.ts").then((m) => m.ensureDefaultWorktreeSync())
   if (!(await tmuxAvailable())) {
     console.error("kobe: tmux not found on PATH — install tmux to use kobe 0.6 direct mode")
     process.exitCode = 1
