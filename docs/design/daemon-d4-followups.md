@@ -24,7 +24,7 @@ Parent epic: [KOB-35 — Daemon split](https://linear.app/codesfox/issue/KOB-35)
 
 ## 1. Event `seq` + replay-since-seq — pull forward (KOB-38)
 
-`KobeDaemonClient` (`packages/kobe/src/client/index.ts`) has no
+`KobeDaemonClient` (`packages/kobe-daemon/src/client/index.ts`) has no
 reconnect logic at all. `socket.on("close")` rejects pending requests
 and zeroes `this.socket` — that's it. `RemoteOrchestrator` keeps
 holding the dead client.
@@ -46,7 +46,7 @@ clean diagnostics for items 2 and 5.
 
 ## 2. Per-client backpressure — pull forward (KOB-39)
 
-`daemon/server.ts` `broadcast()` ignores `socket.write()`'s return
+`packages/kobe-daemon/src/daemon/server.ts` `broadcast()` ignores `socket.write()`'s return
 value and never handles `drain`. With one slow / paused client and a
 high-frequency `chat.delta` stream, daemon heap grows unbounded — no
 threshold, no eviction, no metric.

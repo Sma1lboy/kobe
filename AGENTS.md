@@ -29,6 +29,7 @@ The architecture decisions are not always obvious from the code. The docs above 
 
 - **Monorepo layout (Bun workspaces).** Source lives under `packages/`:
   - [`packages/kobe/`](./packages/kobe) — the TUI itself, published as `@sma1lboy/kobe`. All `src/...`, `test/...`, `scripts/...` paths in docs are relative to here.
+  - [`packages/kobe-daemon/`](./packages/kobe-daemon) — daemon server, daemon protocol, lifecycle/reset helpers, daemon-owned web transport, and the low-level socket client. Private workspace, consumed by `packages/kobe`.
   - [`packages/branding/`](./packages/branding) — Remotion render pipeline for `docs/assets/brand/`. Private workspace.
   - Run package scripts via `bun --filter @sma1lboy/kobe <script>` or `cd packages/kobe && bun <script>`.
   - Repo-wide tools at root: `biome.json`, `bun.lock`, `.github/workflows/`, `docs/`, `AGENTS.md`, `CLAUDE.md` (symlink), `HANDOFF.md`.
@@ -51,16 +52,16 @@ Each gets its own daemon socket + pidfile under its respective `KOBE_HOME_DIR`, 
 
 The daemon is a long-lived background process. Two pieces of infrastructure keep it debuggable instead of "dying silently" (KOB-193):
 
-- **Crash net** — `installDaemonCrashHandlers()` ([`src/daemon/crash-log.ts`](./packages/kobe/src/daemon/crash-log.ts)) registers `unhandledRejection` / `uncaughtException` handlers in the daemon process. A stray async rejection is **logged, not fatal** — the daemon keeps serving. Without this, any `void someAsync()` that rejected terminated the whole daemon (Node/Bun default).
+- **Crash net** — `installDaemonCrashHandlers()` ([`packages/kobe-daemon/src/daemon/crash-log.ts`](./packages/kobe-daemon/src/daemon/crash-log.ts)) registers `unhandledRejection` / `uncaughtException` handlers in the daemon process. A stray async rejection is **logged, not fatal** — the daemon keeps serving. Without this, any `void someAsync()` that rejected terminated the whole daemon (Node/Bun default).
 - **Log file** — the detached daemon's stdout/stderr are redirected to `<KOBE_HOME>/.kobe/daemon.log`, not `/dev/null`. **When a daemon problem is reported, read that log first** — it carries the stack and a `[subsystem]` tag.
 
 When adding a fire-and-forget daemon call (`void someAsync()`), attach `.catch((err) => logDaemonError("<subsystem>", err))` so a failure is pinned to its subsystem (`[plan-usage-poller]`, `[daemon-shutdown]`, …) instead of surfacing as an anonymous rejection. Crash handlers are installed only in the real daemon process (`cli/daemon-cmd.ts` `start` branch) — never from code shared with the TUI or tests, since they mutate global `process` state.
 
 ### Daemon lifecycle: refcounted lazy shutdown
 
-The daemon's lifetime is bound to the number of **attached GUIs** — a front-end that subscribed with `role: "gui"`. The refcount lives in [`src/daemon/server.ts`](./packages/kobe/src/daemon/server.ts) (`guiCount()` + an idle grace timer):
+The daemon's lifetime is bound to the number of **attached GUIs** — a front-end that subscribed with `role: "gui"`. The refcount lives in [`packages/kobe-daemon/src/daemon/server.ts`](./packages/kobe-daemon/src/daemon/server.ts) (`guiCount()` + an idle grace timer):
 
-- **`subscribe` carries a role** — `gui` vs `pane` ([`SubscribeRole`](./packages/kobe/src/daemon/protocol.ts)). Only `gui` HOLDS the daemon alive. A `gui` is a real front-end attach: the `kobe` process parked on `tmux attach` ([`tui/direct.ts`](./packages/kobe/src/tui/direct.ts)) or the deprecated outer monitor ([`tui/app.tsx`](./packages/kobe/src/tui/app.tsx)). Everything else subscribes as `pane` — the default — and gets push channels without keeping the daemon up.
+- **`subscribe` carries a role** — `gui` vs `pane` ([`SubscribeRole`](./packages/kobe-daemon/src/daemon/protocol.ts)). Only `gui` HOLDS the daemon alive. A `gui` is a real front-end attach: the `kobe` process parked on `tmux attach` ([`tui/direct.ts`](./packages/kobe/src/tui/direct.ts)) or the deprecated outer monitor ([`tui/app.tsx`](./packages/kobe/src/tui/app.tsx)). Everything else subscribes as `pane` — the default — and gets push channels without keeping the daemon up.
 - **Why the split** (the bug it fixes): in the tmux-native model each ChatTab is a tmux window with its own kobe-owned panes (Tasks pane, Ops, settings/new-task windows), and each pane subscribes for live data. Those panes **outlive the attach** — the tmux session persists after the user quits kobe. When *every* subscriber counted, N ChatTab windows meant N Tasks panes still subscribed, so the count never reached 0 on quit and the daemon never idle-stopped. `RemoteOrchestrator` defaults to `role: "pane"`; only `direct.ts` / `app.tsx` pass `role: "gui"`.
 - **First GUI launches** → `ensureDaemonReachable` auto-spawns the daemon if the socket isn't answering. Multiple TUIs share the one daemon.
 - **Last GUI quits** → on the `>0 → 0` gui transition the daemon arms a grace timer (`KOBE_DAEMON_IDLE_GRACE_MS`, default **3s**), then self-stops via the existing `stopSoon()` path. The grace absorbs reconnect blips (e.g. `manualReconnect()` force-drops then re-subscribes); a `gui` re-subscribe inside the window cancels it — a `pane` subscribing mid-grace does **not** rescue the daemon.
@@ -81,7 +82,7 @@ Two deliberate non-triggers, so the count only ever reflects real GUIs:
 - **`kobe doctor`** — read-only diagnosis. Reports daemon state (running / WEDGED = process alive but not answering / stale pidfile / not running), tails `daemon.log` when down, counts kobe tmux sessions, and lists `tasks.json` / `state.json` / `daemon.log`. Never mutates — it only recommends the fix.
 - **`kobe reset [--hard] [--yes]`** — stop the daemon, remove its socket + pidfile, kill all kobe tmux sessions. `--hard` also wipes the task index + UI state. Never touches worktrees; confirms on a TTY; does not respawn (relaunch kobe).
 
-The wedge these exist for: `startDaemonServer` unlinks the socket before `listen`, so a stale socket *file* is harmless — the real trap is an OLD daemon still alive but not servicing the socket, which a fresh launch races by stealing the socket → two daemons on one `tasks.json`. The graceful → SIGTERM → SIGKILL kill that makes the old one go away lives once in [`src/daemon/lifecycle.ts`](./packages/kobe/src/daemon/lifecycle.ts) `stopDaemonProcess()`, shared by both `reset` and `kobe daemon restart`.
+The wedge these exist for: `startDaemonServer` unlinks the socket before `listen`, so a stale socket *file* is harmless — the real trap is an OLD daemon still alive but not servicing the socket, which a fresh launch races by stealing the socket → two daemons on one `tasks.json`. The graceful → SIGTERM → SIGKILL kill that makes the old one go away lives once in [`packages/kobe-daemon/src/daemon/lifecycle.ts`](./packages/kobe-daemon/src/daemon/lifecycle.ts) `stopDaemonProcess()`, shared by both `reset` and `kobe daemon restart`.
 
 ## Per-repo init script + first prompt
 

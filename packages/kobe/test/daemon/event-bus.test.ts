@@ -1,5 +1,5 @@
+import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import { describe, expect, it } from "vitest"
-import { DaemonEventBus } from "../../src/daemon/event-bus.ts"
 
 describe("DaemonEventBus", () => {
   it("fans a publish out to every registered sink", () => {

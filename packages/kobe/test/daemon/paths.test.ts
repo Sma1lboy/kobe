@@ -17,7 +17,7 @@ import {
   defaultDaemonSocketPath,
   fitSocketPath,
   shortHomeTag,
-} from "@/daemon/paths"
+} from "@sma1lboy/kobe-daemon/daemon/paths"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {

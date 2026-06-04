@@ -7,8 +7,8 @@
  */
 
 import { resolve } from "node:path"
-import { setClientLogContext } from "../client/client-log.ts"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
+import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"

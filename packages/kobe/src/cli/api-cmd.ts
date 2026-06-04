@@ -30,9 +30,9 @@
  */
 
 import { resolve } from "node:path"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
-import type { KobeDaemonClient } from "../client/index.ts"
-import type { SerializedTask } from "../daemon/protocol.ts"
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"

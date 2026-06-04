@@ -112,7 +112,7 @@ don't trip parsers.
 
 ### Why these five and not the full daemon protocol
 
-The daemon protocol has ~25 request types (`packages/kobe/src/daemon/protocol.ts`).
+The daemon protocol has ~25 request types (`packages/kobe-daemon/src/daemon/protocol.ts`).
 Most are TUI-driven (focus changes, draft updates, plan-usage polling).
 The five above are the minimum complete set for *fan-out + report
 back*, which is the only agent workflow we want to optimize for in v1.
@@ -448,9 +448,9 @@ messages.
     return
   }
   ```
-- `packages/kobe/src/daemon/protocol.ts` — add `task.get` to
+- `packages/kobe-daemon/src/daemon/protocol.ts` — add `task.get` to
   `DaemonRequestName`.
-- `packages/kobe/src/daemon/server.ts` — handle the new case (one
+- `packages/kobe-daemon/src/daemon/server.ts` — handle the new case (one
   `orch.getTask(taskId)` call).
 
 **Test surface**
@@ -557,9 +557,9 @@ implement X three different ways" and the model uses
 - `packages/kobe/src/bin/kobed.ts` — what gets merged into `kobe daemon ...`.
 - `packages/kobe/src/cli/mcp-bridge.ts` — MCP path that stays as
   fallback.
-- `packages/kobe/src/daemon/protocol.ts` — full daemon RPC surface;
+- `packages/kobe-daemon/src/daemon/protocol.ts` — full daemon RPC surface;
   the five `kobe api` verbs are a strict subset.
-- `packages/kobe/src/client/index.ts` — `KobeDaemonClient`, the
+- `packages/kobe-daemon/src/client/index.ts` — `KobeDaemonClient`, the
   ready-made transport every `kobe api` verb will use.
 - [`bridge.md`](./bridge.md) — sibling design doc for the MCP-bridge
   path; this file supersedes its skill-distribution discussion (§4)

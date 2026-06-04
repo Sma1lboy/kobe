@@ -1,5 +1,5 @@
+import { isDaemonVersionStale, isProtocolCompatible } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { describe, expect, it } from "vitest"
-import { isDaemonVersionStale, isProtocolCompatible } from "../../src/daemon/protocol.ts"
 
 describe("isProtocolCompatible", () => {
   it("accepts two peers on the same version + min", () => {

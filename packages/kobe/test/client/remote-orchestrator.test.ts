@@ -1,5 +1,5 @@
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { describe, expect, it } from "vitest"
-import type { KobeDaemonClient } from "../../src/client/index.ts"
 import { RemoteOrchestrator } from "../../src/client/remote-orchestrator.ts"
 
 /**

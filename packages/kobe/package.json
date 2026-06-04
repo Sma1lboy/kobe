@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@sma1lboy/kobe-daemon": "0.7.11",
     "@tsconfig/bun": "1.0.9",
     "@types/bun": "1.3.12",
     "knip": "^6.14.2",

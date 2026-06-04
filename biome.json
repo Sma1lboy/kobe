@@ -13,7 +13,8 @@
       "packages/*/.dev-sandbox/**",
       "packages/*/.dev-fixture/**",
       "**/.dev-sandbox/**",
-      "**/.dev-fixture/**"
+      "**/.dev-fixture/**",
+      "packages/kobe-web/src/routeTree.gen.ts"
     ]
   },
   "formatter": {

@@ -21,10 +21,11 @@ import {
   type TaskActivityState,
   isEngineActivityKind,
   reduceActivity,
-} from "../engine/hook-events.ts"
-import type { Orchestrator } from "../orchestrator/core.ts"
-import type { Task, VendorId } from "../types/task.ts"
-import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
+} from "@/engine/hook-events"
+import type { Orchestrator } from "@/orchestrator/core"
+import type { Task, VendorId } from "@/types/task"
+import { ALL_VENDORS } from "@/types/vendor"
+import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "@/version"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
@@ -32,6 +33,7 @@ import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
   CHANNEL_NAMES,
+  type ChannelPayloads,
   DAEMON_PROTOCOL_VERSION,
   type DaemonFrame,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
@@ -39,6 +41,7 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
+import { createDaemonWebServer } from "./web.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -110,6 +113,11 @@ type ClientState = DaemonClientConnection & {
   holdsLifetime: boolean
 }
 
+type EventedServer = Server & {
+  once(event: "error", listener: (err: Error) => void): void
+  removeListener(event: "error", listener: (err: Error) => void): void
+}
+
 export async function startDaemonServer(orch: Orchestrator, options: DaemonServerOptions = {}): Promise<DaemonServer> {
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
@@ -135,13 +143,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const idleGraceMs = resolveIdleGraceMs()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let stopping = false
+  let webHoldsLifetime = false
 
   // Attached GUIs — the refcount that gates lazy shutdown. Counts only
   // `holdsLifetime` (role "gui") clients, not every `subscribed` pane.
   function guiCount(): number {
     let n = 0
     for (const c of clients) if (c.holdsLifetime) n++
-    return n
+    return n + (webHoldsLifetime ? 1 : 0)
   }
 
   function cancelIdleTimer(): void {
@@ -209,6 +218,63 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     activity.set(taskId, entry)
     bus.publish("engine-state", { taskId, state, ...(detail ? { detail } : {}), at })
   }
+
+  const webClient = {
+    id: 0,
+    connectedAt: startedAt,
+    socket: undefined as unknown as Socket,
+    buffer: "",
+    subscribed: false,
+    holdsLifetime: false,
+  } satisfies ClientState
+  const web = createDaemonWebServer({
+    orch,
+    bus,
+    snapshot: () => {
+      let activeTaskId: string | null = null
+      let update: UpdateInfo | null = null
+      for (const event of bus.snapshot()) {
+        switch (event.channel) {
+          case "active-task":
+            activeTaskId = (event.payload as ChannelPayloads["active-task"]).taskId
+            break
+          case "update":
+            update = (event.payload as ChannelPayloads["update"]).info
+            break
+        }
+      }
+      const engineStates: Record<string, unknown> = {}
+      for (const [taskId, entry] of activity) {
+        engineStates[taskId] = {
+          taskId,
+          state: entry.state,
+          ...(entry.detail ? { detail: entry.detail } : {}),
+          at: entry.at,
+        }
+      }
+      return {
+        tasks: orch.listTasks().map(serializeTask),
+        activeTaskId,
+        engineStates,
+        update,
+        connected: true,
+      }
+    },
+    rpc: (name, payload) => {
+      if (name === "hello" || name === "subscribe" || name === "daemon.stop" || name.startsWith("daemon.web.")) {
+        throw new Error(`rpc ${name} is not exposed to the web UI`)
+      }
+      return dispatch({ type: "request", id: "web", name, payload }, webClient)
+    },
+    onStarted: () => {
+      webHoldsLifetime = true
+      cancelIdleTimer()
+    },
+    onStopped: () => {
+      webHoldsLifetime = false
+      maybeArmIdleShutdown()
+    },
+  })
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -294,6 +360,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
+      web.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
       // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
@@ -308,9 +375,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   }
 
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
+    const evented = server as EventedServer
+    evented.once("error", reject)
     server.listen(socketPath, () => {
-      server.removeListener("error", reject)
+      evented.removeListener("error", reject)
       resolve()
     })
   })
@@ -381,6 +449,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
       case "daemon.stop":
         await stopSoon()
+        return {}
+      case "daemon.web.start": {
+        const port = optionalNumber(payload, "port")
+        const staticDir = optionalString(payload, "staticDir")
+        const takeover = optionalBoolean(payload, "takeover")
+        return web.start({ port, staticDir, takeover })
+      }
+      case "daemon.web.stop":
+        web.close()
         return {}
       case "task.list":
         return { tasks: orch.listTasks().map(serializeTask) }
@@ -679,12 +756,19 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   return value
 }
 
+function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a number`)
+  return value
+}
+
 function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
   const value = optionalString(payload, key)
-  if (value !== undefined && value !== "claude" && value !== "codex") {
-    throw new Error(`${key} '${value}' is not a supported vendor (expected: claude, codex)`)
+  if (value !== undefined && !ALL_VENDORS.includes(value as VendorId)) {
+    throw new Error(`${key} '${value}' is not a supported vendor (expected: ${ALL_VENDORS.join(", ")})`)
   }
-  return value
+  return value as VendorId | undefined
 }
 
 /** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping

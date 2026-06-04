@@ -1,0 +1,46 @@
+/*
+ * Diff line coloring for the web CHANGES pane. Colors mirror the kobe TUI
+ * theme (packages/kobe/src/tui/context/theme/claude.json):
+ *   added   fg #9aca86  bg #1f2a1f
+ *   removed fg #d47563  bg #2a1f1c
+ * Scoped to .kobe-diff so this never touches global styles.css.
+ */
+
+.kobe-diff {
+  white-space: pre;
+  tab-size: 2;
+}
+
+.kobe-diff-line {
+  display: block;
+  padding: 0 0.75rem;
+  min-height: 1.15rem;
+}
+
+.kobe-diff-add {
+  color: #9aca86;
+  background: #1f2a1f;
+}
+
+.kobe-diff-del {
+  color: #d47563;
+  background: #2a1f1c;
+}
+
+/* hunk @@ headers — muted/structural, like the TUI's context color */
+.kobe-diff-hunk {
+  color: #61aaf2;
+  background: transparent;
+}
+
+/* file headers inside a raw patch (diff --git, index, ---, +++) */
+.kobe-diff-meta {
+  color: #6b665f;
+  background: transparent;
+}
+
+/* unchanged context lines */
+.kobe-diff-ctx {
+  color: #a9a39a;
+  background: transparent;
+}

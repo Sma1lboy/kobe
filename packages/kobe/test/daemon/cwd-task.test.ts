@@ -1,5 +1,5 @@
+import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "@sma1lboy/kobe-daemon/daemon/cwd-task"
 import { describe, expect, it } from "vitest"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "../../src/daemon/cwd-task.ts"
 
 describe("matchTaskByCwd", () => {
   const main = { id: "main", worktreePath: "/repo" }

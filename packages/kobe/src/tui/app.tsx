@@ -23,8 +23,8 @@
 
 import { homedir } from "node:os"
 import { render, useRenderer } from "@opentui/solid"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"

@@ -19,8 +19,8 @@
  */
 
 import { render } from "@opentui/solid"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
-import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task.ts"

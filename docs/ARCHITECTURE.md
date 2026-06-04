@@ -7,10 +7,11 @@
 > [`HARNESS.md`](./HARNESS.md). This document is a tour of the source tree as it
 > currently stands.
 
-> **Path convention.** kobe is the main package in a Bun-workspaces
-> monorepo; its source lives at `packages/kobe/`. **Every `src/...`,
-> `test/...`, and `scripts/...` path in this doc is relative to that
-> package root.** The other workspace, `packages/branding/`, is the
+> **Path convention.** kobe is a Bun-workspaces monorepo. The TUI/CLI
+> package lives at `packages/kobe/`; daemon-owned code lives at
+> `packages/kobe-daemon/`. Unless a path is package-qualified, `src/...`,
+> `test/...`, and `scripts/...` paths in this doc are relative to
+> `packages/kobe/`. The branding workspace, `packages/branding/`, is the
 > Remotion render pipeline for the brand artwork in `docs/assets/brand/`
 > and isn't covered here.
 
@@ -74,6 +75,8 @@ The seams matter:
 
 | Concern | Owner |
 |---|---|
+| Daemon server, protocol, event bus, lifecycle, paths | `packages/kobe-daemon/src/daemon/` |
+| Low-level daemon socket client + autostart helper | `packages/kobe-daemon/src/client/` |
 | AI engine interface | `src/types/engine.ts` (one file, source of truth) |
 | Spawning the `claude` CLI | `src/engine/claude-code-local/spawn.ts` |
 | Parsing stream-json | `src/engine/claude-code-local/stream.ts` |
@@ -96,6 +99,29 @@ The seams matter:
 | Behavior-test driver | `test/behavior/driver.ts` |
 | Fake engine for tests | `test/behavior/fake-engine.ts` |
 | Unit-test type assertions | `test/types/*.test-d.ts` |
+
+### Daemon web transport
+
+The browser dashboard is a daemon transport, not a separate generic
+webserver package. `kobe web` (`src/cli/web-cmd.ts`) connects to the daemon
+and asks it to bind local HTTP/SSE routes via `daemon.web.start`; the daemon
+owns the actual server in `packages/kobe-daemon/src/daemon/web.ts`.
+
+That boundary is deliberate:
+
+- Browser state hydrates from the daemon's own task snapshot, active-task
+  channel, update channel, and in-memory engine activity map.
+- Browser mutations go through the same daemon RPC dispatcher as TUI panes;
+  the web route only exposes the safe task/worktree RPC surface, not daemon
+  lifecycle calls like `daemon.stop` or `subscribe`.
+- Web-specific route helpers (`packages/kobe/src/web/notes.ts`,
+  `packages/kobe/src/web/diff.ts`) are feature modules consumed by the
+  daemon web transport. They are not a second daemon, and they must not
+  keep their own task/event cache.
+- Starting daemon web counts as a GUI lifetime holder while the web command
+  process is alive, so the daemon does not idle-stop underneath an open
+  browser dashboard. Stopping `kobe web` releases that hold and the normal
+  lazy-shutdown rules apply.
 
 ---
 

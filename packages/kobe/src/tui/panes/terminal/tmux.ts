@@ -905,7 +905,7 @@ async function rememberSessionVendor(session: string, taskId: string | undefined
   await setSessionOption(session, "@kobe_vendor", vendor)
   if (!taskId) return
   try {
-    const { connectOrStartDaemon } = await import("@/client/daemon-process")
+    const { connectOrStartDaemon } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
     const client = await connectOrStartDaemon()
     try {
       await client.request("task.setVendor", { taskId, vendor })

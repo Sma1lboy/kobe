@@ -1,9 +1,9 @@
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { type DaemonServer, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { KobeDaemonClient } from "../../src/client/index.ts"
-import { type DaemonServer, startDaemonServer } from "../../src/daemon/server.ts"
 import type { Orchestrator } from "../../src/orchestrator/core.ts"
 
 /**

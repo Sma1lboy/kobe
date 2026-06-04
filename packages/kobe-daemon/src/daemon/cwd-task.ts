@@ -16,7 +16,7 @@
  * return undefined → the event is dropped.
  */
 
-import { KOBE_WORKTREE_ROOT_SUBPATH } from "../orchestrator/worktree/paths.ts"
+import { KOBE_WORKTREE_ROOT_SUBPATH } from "@/orchestrator/worktree/paths"
 
 export interface CwdMatchTask {
   readonly id: string

@@ -16,7 +16,7 @@
     "daemon:restart": "cd packages/kobe && bun run src/cli/index.ts daemon restart",
     "daemon:status": "cd packages/kobe && bun run src/cli/index.ts daemon status",
     "build": "bun --filter @sma1lboy/kobe build",
-    "typecheck": "bun --filter @sma1lboy/kobe typecheck",
+    "typecheck": "bun --filter @sma1lboy/kobe-daemon typecheck && bun --filter @sma1lboy/kobe typecheck",
     "test": "bun --filter @sma1lboy/kobe test",
     "test:behavior": "bun --filter @sma1lboy/kobe test:behavior",
     "lint": "biome check .",

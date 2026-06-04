@@ -115,7 +115,7 @@ async function adoptWorktreesInto(
   list: readonly AdoptableWorktree[],
   vendor: VendorId,
 ): Promise<void> {
-  const { connectIfRunning } = await import("../client/daemon-process.ts")
+  const { connectIfRunning } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
   const client = await connectIfRunning()
   try {
     for (const w of list) {
@@ -337,6 +337,11 @@ async function main(): Promise<void> {
   if (subcommand === "doctor") {
     const { runDoctorSubcommand } = await import("./maintenance.ts")
     await runDoctorSubcommand(rest)
+    return
+  }
+  if (subcommand === "web") {
+    const { runWebSubcommand } = await import("./web-cmd.ts")
+    await runWebSubcommand(rest)
     return
   }
   if (subcommand === "reset") {

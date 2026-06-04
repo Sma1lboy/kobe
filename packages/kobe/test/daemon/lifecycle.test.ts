@@ -2,8 +2,14 @@ import { spawn } from "node:child_process"
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { stopDaemonProcess } from "../../src/daemon/lifecycle.ts"
+
+type EventedChild = {
+  readonly pid?: number
+  once(event: "exit", listener: () => void): void
+  kill(signal: NodeJS.Signals): boolean
+}
 
 /**
  * `stopDaemonProcess` is the shared kill primitive behind `kobe daemon
@@ -45,7 +51,7 @@ describe("stopDaemonProcess", () => {
     // Spawn then immediately kill a child to obtain a guaranteed-dead pid
     // (a made-up pid would race a real process in CI). Use node's spawn —
     // vitest runs under Node, where `Bun` is undefined.
-    const child = spawn("sleep", ["30"], { stdio: "ignore" })
+    const child = spawn("sleep", ["30"], { stdio: "ignore" }) as unknown as EventedChild
     const deadPid = child.pid as number
     await new Promise<void>((resolve) => {
       child.once("exit", () => resolve())

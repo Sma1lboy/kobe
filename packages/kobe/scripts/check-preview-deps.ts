@@ -16,6 +16,11 @@
 import { spawn } from "node:child_process"
 import { platform } from "node:os"
 
+type EventedChild = {
+  on(event: "error", listener: (err: Error) => void): void
+  on(event: "close", listener: (code: number | null) => void): void
+}
+
 type Dep = {
   bin: string
   description: string
@@ -40,7 +45,7 @@ const INSTALL_HINTS: Readonly<Record<string, string>> = {
 
 async function hasBin(bin: string, versionArg: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const child = spawn(bin, [versionArg], { stdio: ["ignore", "ignore", "ignore"] })
+    const child = spawn(bin, [versionArg], { stdio: ["ignore", "ignore", "ignore"] }) as unknown as EventedChild
     child.on("error", () => resolve(false))
     child.on("close", (code) => resolve(code === 0))
   })

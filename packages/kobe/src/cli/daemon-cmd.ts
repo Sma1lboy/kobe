@@ -7,13 +7,13 @@
  * sub-command at `argv[0]` instead of `argv[2]`.
  */
 
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
-import { KobeDaemonClient } from "../client/index.ts"
+import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
+import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
+import { defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
+import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { createKobeCore } from "../core/index.ts"
-import { installDaemonCrashHandlers } from "../daemon/crash-log.ts"
-import { stopDaemonProcess } from "../daemon/lifecycle.ts"
-import { defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
-import { readPidFile, startDaemonServer } from "../daemon/server.ts"
 
 function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(

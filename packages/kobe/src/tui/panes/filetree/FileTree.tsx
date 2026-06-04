@@ -295,7 +295,7 @@ export function FileTree(props: FileTreeProps) {
       if (path == null) return
       if (process.env.KOBE_FILETREE_WATCH !== "1") return
       let debounceTimer: ReturnType<typeof setTimeout> | null = null
-      let watcher: FSWatcher | null = null
+      let watcher: EventedWatcher | null = null
       try {
         watcher = watch(path, { recursive: true }, (_event, filename) => {
           if (filename == null) return
@@ -307,7 +307,7 @@ export function FileTree(props: FileTreeProps) {
             debounceTimer = null
             setRefreshTick((n) => n + 1)
           }, 500)
-        })
+        }) as unknown as EventedWatcher
         watcher.on("error", () => {
           // Swallow — the `r` keystroke remains as the escape hatch.
         })
@@ -825,3 +825,4 @@ export function FileTree(props: FileTreeProps) {
     </box>
   )
 }
+type EventedWatcher = FSWatcher & { on(event: "error", listener: (err: Error) => void): void }

@@ -34,6 +34,14 @@
  */
 
 import { spawn as nodeSpawn } from "node:child_process"
+import type { Readable } from "node:stream"
+
+type EventedGitProcess = {
+  readonly stdout: Readable
+  readonly stderr: Readable
+  on(event: "error", listener: (err: Error) => void): void
+  on(event: "close", listener: (status: number | null, signal: NodeJS.Signals | null) => void): void
+}
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
  * collapsed to a single-char headline. */
@@ -86,7 +94,7 @@ export const gitWrapper = {
         // the worktree's engine commits and the sidebar poll for the
         // lock. `GIT_OPTIONAL_LOCKS=0` suppresses that optional write.
         env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      })
+      }) as unknown as EventedGitProcess
       let stdout = ""
       let stderr = ""
       child.stdout.setEncoding("utf8")
@@ -98,7 +106,7 @@ export const gitWrapper = {
         stderr += chunk
       })
       child.on("error", reject)
-      child.on("close", (status, signal) => {
+      child.on("close", (status: number | null, signal: NodeJS.Signals | null) => {
         resolve({ stdout, stderr, status, signal })
       })
     })
