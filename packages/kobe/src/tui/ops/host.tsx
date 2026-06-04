@@ -19,6 +19,7 @@
 
 import { createHash } from "node:crypto"
 import { kobeCliInvocation } from "@/cli/invocation"
+import { setClientLogContext } from "@/client/client-log"
 import { type ChatTabTurnState, createEngineTurnDetector } from "@/engine/turn-detector"
 import { latestTranscriptMtime } from "@/monitor/activity"
 import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmuxSessionName } from "@/tmux/client"
@@ -275,6 +276,7 @@ function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
 }
 
 export async function startOpsHost(args: OpsHostArgs): Promise<void> {
+  setClientLogContext("ops")
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

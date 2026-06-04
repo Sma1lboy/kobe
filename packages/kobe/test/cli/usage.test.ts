@@ -10,7 +10,7 @@ describe("topLevelUsage", () => {
   })
 
   it("lists every public subcommand, including api", () => {
-    for (const cmd of ["add", "adopt", "repo", "api", "daemon", "theme", "update", "doctor", "reset"]) {
+    for (const cmd of ["add", "adopt", "repo", "api", "daemon", "theme", "update", "doctor", "reset", "reload"]) {
       expect(usage).toContain(cmd)
     }
   })

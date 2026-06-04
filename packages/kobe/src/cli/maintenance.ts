@@ -351,3 +351,71 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
 
   console.log("\nkobe: reset complete. Relaunch kobe to start fresh.")
 }
+
+/**
+ * `kobe reload` — hot-reload kobe's in-tmux helper panes (Tasks + Ops)
+ * across every live session WITHOUT a `kobe reset`. The use case: after
+ * changing kobe TUI-layer code, the long-lived `kobe tasks` / `kobe ops`
+ * pane processes are still running the OLD binary, so new shortcuts /
+ * layout / file-pane behaviour look "missing" until something restarts
+ * them. `kobe reset` would restart them too — but by killing the whole tmux
+ * server, which also kills the user's engine (claude) panes mid-turn.
+ *
+ * This is the surgical alternative: it reuses {@link refreshKobeWorkspacePanes}
+ * (the same in-place `respawn-pane -k` heal the post-Settings refresh uses),
+ * which respawns ONLY the kobe-owned Tasks/Ops panes and leaves pane-0 (the
+ * engine) and shell panes untouched. Each respawned pane re-execs the
+ * current binary and reconnects to the daemon fresh, so it also clears any
+ * accumulated task-list drift. Pure tmux — needs no running daemon.
+ */
+export async function runReloadSubcommand(argv: readonly string[] = []): Promise<void> {
+  if (argv.includes("--help") || argv.includes("-h") || argv.includes("help")) {
+    process.stdout.write(
+      [
+        "Usage: kobe reload",
+        "",
+        "Restart kobe's Tasks + Ops panes in every live session, in place.",
+        "Picks up new kobe code without `kobe reset` — the engine (claude)",
+        "panes and your running turns are never touched. Takes no options.",
+        "",
+      ].join("\n"),
+    )
+    return
+  }
+  const unknown = argv.find((a) => a.length > 0)
+  if (unknown !== undefined) {
+    process.stderr.write(`kobe reload: unexpected argument "${unknown}"\n\nUsage: kobe reload   (takes no options)\n`)
+    process.exit(2)
+  }
+
+  if (!(await tmuxAvailable())) {
+    console.log("kobe reload: tmux is not installed — no panes to reload")
+    return
+  }
+  const { code, stdout } = await tmuxQuiet(["list-sessions", "-F", "#{session_name}"])
+  if (code !== 0) {
+    console.log(`kobe reload: no kobe tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`)
+    return
+  }
+  const sessions = stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  if (sessions.length === 0) {
+    console.log(`kobe reload: no kobe tmux sessions on the \`${KOBE_TMUX_SOCKET}\` socket`)
+    return
+  }
+  // Dynamic import: the heal lives in the TUI/tmux module graph; keep it off
+  // the static path of the other maintenance commands.
+  const { refreshKobeWorkspacePanes } = await import("../tui/panes/terminal/tmux.ts")
+  let reloaded = 0
+  for (const session of sessions) {
+    try {
+      await refreshKobeWorkspacePanes(session)
+      reloaded++
+    } catch (err) {
+      console.error(`  failed to reload session "${session}": ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  console.log(`kobe: reloaded Tasks/Ops panes in ${reloaded}/${sessions.length} session(s) — engine panes untouched`)
+}

@@ -7,6 +7,7 @@
  */
 
 import { resolve } from "node:path"
+import { setClientLogContext } from "../client/client-log.ts"
 import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
@@ -78,6 +79,7 @@ async function ensureRepos(orchestrator: KobeOrchestrator): Promise<string> {
 }
 
 export async function startDirectTmux(): Promise<void> {
+  setClientLogContext("gui")
   if (!(await tmuxAvailable())) {
     console.error("kobe: tmux not found on PATH — install tmux to use kobe 0.6 direct mode")
     process.exitCode = 1

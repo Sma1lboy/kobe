@@ -13,6 +13,8 @@
  *   - `kobe doctor`             Diagnose daemon / tmux / state (read-only).
  *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
  *                               kill sessions (+ wipe state with --hard).
+ *   - `kobe reload`             Restart Tasks/Ops panes in place (engine
+ *                               panes untouched) to pick up new kobe code.
  *   - `kobe kill-sessions`      Tear down kobe's tmux server (dev reset).
  *   - `kobe --version` / `-v`   Print version.
  *   - `kobe --help` / `-h`      Print usage.
@@ -339,6 +341,14 @@ async function main(): Promise<void> {
   if (subcommand === "reset") {
     const { runResetSubcommand } = await import("./maintenance.ts")
     await runResetSubcommand(rest)
+    return
+  }
+  if (subcommand === "reload") {
+    // Hot-reload the in-tmux Tasks/Ops panes across all sessions WITHOUT a
+    // reset: respawn only the kobe-owned helper panes (engine panes stay
+    // alive). Use after changing kobe TUI-layer code.
+    const { runReloadSubcommand } = await import("./maintenance.ts")
+    await runReloadSubcommand(rest)
     return
   }
   if (subcommand === "new-chattab") {

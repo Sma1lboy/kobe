@@ -46,7 +46,8 @@ import {
 import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
-import { connectOrStartDaemon } from "../../client/daemon-process.ts"
+import { logClient, logClientError, setClientLogContext } from "../../client/client-log.ts"
+import { connectIfRunning } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
@@ -673,6 +674,7 @@ function ShortcutHints() {
 }
 
 export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
+  setClientLogContext("tasks")
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
@@ -695,23 +697,50 @@ export async function startTasksPane(opts: { initialTaskId?: string } = {}): Pro
 
   let orch: RemoteOrchestrator | null = null
   try {
-    const client = await connectOrStartDaemon()
-    const remote = new RemoteOrchestrator(client)
-    await remote.init() // hello + subscribe → tasksSignal() is now live
-    orch = remote
+    // NON-spawning connect. A Tasks pane subscribes as role:"pane" and must
+    // NEVER start a daemon — doing so would resurrect an idle-stopped daemon
+    // with no gui to hold it, breaking the refcounted lazy-shutdown. This bit
+    // most visibly via `kobe reload`, which respawns this pane while the user
+    // may be detached (daemon already idle-stopped): a spawning connect would
+    // leave a gui-less daemon running forever. A gui owns daemon lifecycle; if
+    // none is up we fall through to the always-on tasks.json poll below.
+    const client = await connectIfRunning()
+    if (client) {
+      const remote = new RemoteOrchestrator(client)
+      await remote.init() // hello + subscribe → tasksSignal() is now live
+      orch = remote
+    } else {
+      logClient("tasks-boot", "no daemon running — polling tasks.json (a gui owns daemon lifecycle)")
+    }
   } catch (err) {
-    console.error("[kobe tasks] daemon subscribe unavailable, polling tasks.json:", err)
+    logClientError("tasks-boot", err)
+    logClient("tasks-boot", "daemon subscribe failed — polling tasks.json")
   }
 
-  const tasks: Accessor<readonly Task[]> = orch ? orch.tasksSignal() : fileTasks
+  // Display source: prefer the daemon's live snapshot WHILE the socket is
+  // online, otherwise fall back to the file poll. A plain-function accessor
+  // (not createMemo) so it isn't a computation created outside a render root;
+  // it reactively tracks whichever signals it reads on each call. The crucial
+  // fix for the create/delete sync drift: when the daemon idle-stops / restarts
+  // and the socket closes, `connectionStateSignal()` flips to "disconnected"
+  // and the display switches to the always-running file poll instead of
+  // FREEZING on the last daemon snapshot (the old `orch ? orch.tasksSignal()`
+  // had no fallback once subscribed). The orchestrator's own non-spawning
+  // reconnect loop then restores the live path when a daemon returns.
+  const tasks: Accessor<readonly Task[]> = () =>
+    orch && orch.connectionStateSignal()() === "online" ? orch.tasksSignal()() : fileTasks()
   const reload = async (): Promise<void> => {
-    // Subscribe keeps the list live; reload only matters in the polling
-    // fallback (re-read the file after a local mutation).
-    if (orch) return
     await store.load()
     setFileTasks(store.list())
   }
-  const timer = orch ? undefined : setInterval(() => void reload(), RELOAD_MS)
+  // ALWAYS run the backstop poll (not gated on daemon availability, unlike
+  // before — that gate was the freeze bug). It does the file read only when
+  // the daemon push path is NOT the live source, so an online pane pays
+  // nothing and an offline one stays fresh within RELOAD_MS.
+  const timer = setInterval(() => {
+    if (orch && orch.connectionStateSignal()() === "online") return
+    void reload()
+  }, RELOAD_MS)
 
   await render(
     () => (

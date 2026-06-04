@@ -27,6 +27,7 @@ export function topLevelUsage(): string {
     "  update [target]         Self-update kobe",
     "  doctor                  Diagnose daemon / tmux / state (read-only)",
     "  reset [--hard]          Recover a wedged install",
+    "  reload                  Restart Tasks/Ops panes in place (engine untouched)",
     "  kill-sessions           Tear down kobe's tmux server (dev reset)",
     "",
     "Options:",

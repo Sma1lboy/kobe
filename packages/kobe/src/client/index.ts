@@ -8,6 +8,7 @@ import {
   type SubscribeRole,
   frameToLine,
 } from "../daemon/protocol.ts"
+import { logClientError } from "./client-log.ts"
 
 export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>) => void
 
@@ -71,6 +72,13 @@ export class KobeDaemonClient {
     }
     p.then(cleanup, cleanup)
     return p
+  }
+
+  /** True after {@link close} — a deliberately torn-down client that must
+   *  not be revived. The pane reconnect loop checks this to stop retrying
+   *  once its host is disposing. */
+  get isDisposed(): boolean {
+    return this.disposed
   }
 
   close(): void {
@@ -212,7 +220,19 @@ export class KobeDaemonClient {
   }
 
   private onLine(line: string): void {
-    const frame = JSON.parse(line) as DaemonFrame
+    let frame: DaemonFrame
+    try {
+      frame = JSON.parse(line) as DaemonFrame
+    } catch (err) {
+      // A single malformed frame must NOT kill the data handler — without
+      // this catch the throw propagated out of the socket 'data' callback
+      // and silently stopped ALL further event delivery (the socket stays
+      // OS-open, so no 'close' fires and the pane just goes deaf — a quiet
+      // sync-drift mode). Log it and skip the bad line; the buffer's
+      // remaining lines still drain.
+      logClientError("client-frame", err)
+      return
+    }
     if (frame.type === "event") {
       this.emit(frame)
       return

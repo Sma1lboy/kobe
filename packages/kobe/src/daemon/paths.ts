@@ -99,3 +99,18 @@ export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? home
 export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "daemon.log")
 }
+
+/**
+ * Log file for kobe's CLIENT-side processes (the in-tmux Tasks/Ops panes
+ * and the front-end attach). Unlike the daemon, these run inside an
+ * opentui alternate-screen pane, so their `console.*` output is swallowed
+ * by the TUI and a stray "[kobe tasks] daemon subscribe unavailable" never
+ * reaches a human. Routing connection-lifecycle diagnostics to a real file
+ * — next to `daemon.log` under `<home>/.kobe/` — is the only way a pane's
+ * disconnect / reconnect churn is observable after the fact (the reason the
+ * Tasks-pane sync drift was invisible for so long). Honours KOBE_HOME_DIR
+ * like every other state path so sandbox runs stay isolated.
+ */
+export function defaultClientLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".kobe", "client.log")
+}

@@ -656,7 +656,14 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
       )
     }
 
-    if (opsPane && claudePane) {
+    // Respawn the Ops pane even when its window has no claude pane (a degraded
+    // window whose engine pane was destroyed). We used to require `claudePane`
+    // here, which SILENTLY skipped the Ops pane in such a window — so a
+    // `kobe reload` left it on stale code with no feedback. `opsPaneCommand`
+    // already degrades gracefully to its git-status fallback when there's no
+    // claude pane to target, so respawning is always at least as good as
+    // leaving the old process, and keeps "reload refreshes every pane" true.
+    if (opsPane) {
       commands.push(
         [
           "respawn-pane",
@@ -670,7 +677,7 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
               opsPaneCommand({
                 cwd,
                 taskId,
-                claudePaneId: claudePane,
+                claudePaneId: claudePane ?? null,
                 cliInvocation: inv,
                 vendor,
               }),

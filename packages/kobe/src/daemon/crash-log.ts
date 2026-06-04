@@ -73,6 +73,22 @@ export function logDaemonError(subsystem: string, err: unknown): void {
   process.stderr.write(formatDaemonError(subsystem, err))
 }
 
+/** Render a daemon INFO line (non-error lifecycle events). */
+export function formatDaemonInfo(subsystem: string, message: string, now: Date = new Date()): string {
+  return `[${now.toISOString()}] daemon [${subsystem}]: ${message}\n`
+}
+
+/**
+ * Log a tagged daemon info line — captured in `daemon.log`. Use for the
+ * connection lifecycle (subscribe / disconnect / idle-arm / idle-stop) so a
+ * pane that silently desyncs can be correlated against the daemon's view of
+ * the same socket churn. Distinct from {@link logDaemonError}, which is for
+ * the `.catch` of a fire-and-forget; this is for expected events.
+ */
+export function logDaemonInfo(subsystem: string, message: string): void {
+  process.stderr.write(formatDaemonInfo(subsystem, message))
+}
+
 let onRejection: ((reason: unknown) => void) | undefined
 let onException: ((err: Error) => void) | undefined
 

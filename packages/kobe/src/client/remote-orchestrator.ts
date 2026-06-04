@@ -22,6 +22,7 @@ import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import type { UpdateInfo } from "../version.ts"
+import { logClient, logClientError } from "./client-log.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
 
@@ -62,6 +63,9 @@ export class RemoteOrchestrator {
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
+  /** Guards against stacking multiple reconnect loops (one `close` already
+   *  running a retry loop must not spawn a second on the next `close`). */
+  private reconnecting = false
 
   constructor(
     private readonly client: KobeDaemonClient,
@@ -82,10 +86,63 @@ export class RemoteOrchestrator {
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
     this.role = options.role ?? "pane"
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
-    // KOB-38: socket drop flips us to `disconnected` and stops there.
-    // The host TUI watches this signal, shows a modal, and the user
-    // picks Restart (→ `manualReconnect`) or Quit.
-    this.client.onLifecycle("close", () => this.setConnectionState("disconnected"))
+    // Socket drop flips us to `disconnected`. What happens next depends on
+    // the role:
+    //   - gui:  STOP here (KOB-38). The host TUI watches this signal, shows
+    //     a "Restart daemon or Quit?" modal, and the user decides — a gui
+    //     losing its daemon is rare and never transient, so a human prompt
+    //     beats a backoff loop.
+    //   - pane: AUTO-RECONNECT (non-spawning). An in-tmux pane DOES routinely
+    //     lose its daemon — the refcounted lazy-shutdown idle-stops the daemon
+    //     3s after the last gui quits, while the pane persists with the tmux
+    //     session. Without reconnect the pane's task list froze forever at the
+    //     last snapshot (the create/delete sync drift). The loop reconnects to
+    //     the SAME socket when a daemon returns and re-subscribes → the bus
+    //     replays the current task.snapshot → the pane re-syncs. It must NOT
+    //     spawn a daemon (that would resurrect an idle-stopped daemon and break
+    //     lazy-shutdown — panes alone never hold it alive), so it only retries
+    //     a plain connect, never `ensureReachable`.
+    this.client.onLifecycle("close", () => {
+      this.setConnectionState("disconnected")
+      if (this.role === "pane") {
+        logClient("orch", "daemon socket closed — starting non-spawning reconnect loop")
+        void this.reconnectLoop()
+      }
+    })
+  }
+
+  /**
+   * Reconnect a `role: "pane"` orchestrator to the daemon WITHOUT spawning
+   * one. Retries {@link init} (a plain connect + hello + subscribe — never
+   * `ensureReachable`) with capped backoff until it succeeds or the host
+   * disposes the client. On success the daemon replays every channel's
+   * last value, so `tasksSignal()` re-hydrates to the current list with no
+   * extra round-trip. Idempotent: a second `close` while a loop is already
+   * running is a no-op.
+   */
+  private async reconnectLoop(): Promise<void> {
+    if (this.reconnecting) return
+    this.reconnecting = true
+    let delayMs = 500
+    let attempt = 0
+    while (!this.client.isDisposed) {
+      await new Promise((r) => setTimeout(r, delayMs))
+      if (this.client.isDisposed) break
+      attempt++
+      try {
+        await this.init()
+        logClient("orch", `reconnected and re-subscribed after ${attempt} attempt(s) — task list re-synced`)
+        this.reconnecting = false
+        return
+      } catch (err) {
+        // Expected while no daemon is listening yet (ECONNREFUSED): the user
+        // hasn't re-attached, so no gui has spawned a daemon. Keep waiting
+        // quietly — do NOT spawn one ourselves.
+        if (attempt === 1 || attempt % 10 === 0) logClientError("orch-reconnect", err)
+        delayMs = Math.min(delayMs * 2, 3000)
+      }
+    }
+    this.reconnecting = false
   }
 
   /** Open the daemon socket, hello, subscribe to the task snapshot stream. */
@@ -128,6 +185,7 @@ export class RemoteOrchestrator {
     // real front-end attaches (`gui`), not in-tmux helper panes (`pane`).
     await this.client.subscribe({ role: this.role })
     this.setConnectionState("online")
+    logClient("orch", `subscribed as ${this.role} (${this.tasksAcc().length} tasks)`)
   }
 
   connectionStateSignal(): Accessor<DaemonConnectionState> {

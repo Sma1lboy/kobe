@@ -19,7 +19,7 @@ import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
-import { logDaemonError } from "./crash-log.ts"
+import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
@@ -136,9 +136,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   function maybeArmIdleShutdown(): void {
     if (stopping || guiCount() > 0) return
     cancelIdleTimer()
+    logDaemonInfo("idle", `last gui gone — arming ${idleGraceMs}ms idle-stop grace`)
     idleTimer = setTimeout(() => {
       idleTimer = null
       if (stopping || guiCount() > 0) return
+      logDaemonInfo("idle", "grace elapsed with no gui — self-stopping")
       void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err))
     }, idleGraceMs)
     idleTimer.unref?.()
@@ -176,6 +178,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     socket.on("error", () => {})
     socket.on("close", () => {
       clients.delete(client)
+      if (client.subscribed) {
+        logDaemonInfo(
+          "conn",
+          `client #${client.id} (${client.holdsLifetime ? "gui" : "pane"}) disconnected — ${clients.size} client(s), ${guiCount()} gui left`,
+        )
+      }
       // Last GUI gone → start the grace timer toward self-stop. Only a
       // `holdsLifetime` (role "gui") client arms it: a helper pane or a
       // transient CLI poke leaves the gui count unchanged, so neither trips
@@ -423,6 +431,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // daemon up, so a pane connecting during the grace window leaves the
         // countdown running.
         if (client.holdsLifetime) cancelIdleTimer()
+        logDaemonInfo(
+          "conn",
+          `client #${client.id} subscribed as ${role} — ${clients.size} client(s), ${guiCount()} gui`,
+        )
         // Replay the current value of every populated channel so a late
         // subscriber hydrates without a separate round trip — generalized
         // from the old single task.snapshot send (KOB-246). `payload.channels`
