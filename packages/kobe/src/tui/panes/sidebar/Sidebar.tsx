@@ -92,6 +92,7 @@ void _useTheme
 import { useTheme } from "../../context/theme"
 import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
+import { spacedTitle, truncateTitle } from "./labels"
 import { readWorktreeChanges } from "./worktree-changes"
 
 export type SidebarProps = {
@@ -305,18 +306,6 @@ export function truncateBranchLabel(branch: string, max = BRANCH_LABEL_MAX): str
  */
 export const SHOW_CHANGES_MIN_WIDTH = 30
 export const SHOW_BRANCH_MIN_WIDTH = 44
-
-/**
- * Truncate a task title to a cell budget with a trailing ellipsis. Mirrors
- * {@link truncateBranchLabel} but keeps the prefix unconditionally (a title's
- * front carries the most meaning). Uses `.length` like the branch path — CJK
- * wide-char accounting is a known, accepted imprecision shared by both.
- */
-export function truncateTitle(title: string, max: number): string {
-  if (max <= 0) return ""
-  if (title.length <= max) return title
-  return `${title.slice(0, Math.max(0, max - 1))}…`
-}
 
 /**
  * Rough display width in terminal cells, counting CJK / fullwidth codepoints
@@ -872,21 +861,21 @@ export function Sidebar(props: SidebarProps) {
                         <text fg={barColor()} wrapMode="none">
                           {barGlyph()}
                         </text>
-                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
+                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
                             {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : "★"}
                           </text>
                           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-                            {truncateTitle(titleText, titleBudget())}
+                            {spacedTitle(titleText, titleBudget())}
                           </text>
                           <Show when={loading()}>
                             <text fg={theme.primary} wrapMode="none">
-                              working
+                              {" working"}
                             </text>
                           </Show>
                           <Show when={!loading()}>
                             <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                              {truncatePathTail(abbrevHome(task.repo), subtitleBudget())}
+                              {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
                             </text>
                           </Show>
                         </box>
@@ -900,7 +889,7 @@ export function Sidebar(props: SidebarProps) {
                         <text fg={barColor()} wrapMode="none">
                           {barGlyph()}
                         </text>
-                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>
+                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={badgeColor()} attributes={TextAttributes.BOLD} wrapMode="none">
                             {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : badge.glyph}
                           </text>
@@ -910,11 +899,11 @@ export function Sidebar(props: SidebarProps) {
                             wrapMode="none"
                             flexGrow={1}
                           >
-                            {truncateTitle(titleText, titleBudget())}
+                            {spacedTitle(titleText, titleBudget())}
                           </text>
                           <Show when={loading()}>
                             <text fg={theme.primary} wrapMode="none">
-                              working
+                              {" working"}
                             </text>
                           </Show>
                           <Show when={!loading() && activityChip()}>
@@ -929,7 +918,7 @@ export function Sidebar(props: SidebarProps) {
                                 }
                                 wrapMode="none"
                               >
-                                {chip().text}
+                                {` ${chip().text}`}
                               </text>
                             )}
                           </Show>
