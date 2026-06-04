@@ -5,7 +5,8 @@
  * (Claude Code's Stop / StopFailure / Notification / Session*; Codex's
  * hooks.json equivalents later). Each engine's {@link EngineHookAdapter}
  * translates its vendor-specific hook into one of these NORMALIZED verbs and
- * shells out to `kobe hook <verb> --task-id <id>`. Everything downstream —
+ * shells out to `kobe hook <verb>` (cwd-based; the daemon maps it to a task).
+ * Everything downstream —
  * the `kobe hook` CLI, the daemon, the TUI — speaks only this neutral
  * vocabulary, so no vendor strings leak past the adapter (CLAUDE.md
  * "Engine-owned UI data").

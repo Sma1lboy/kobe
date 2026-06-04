@@ -8,10 +8,11 @@
  * vendor-specific. This interface hides ALL of that behind a neutral contract
  * so the orchestrator / daemon / TUI never name a vendor (CLAUDE.md
  * "Engine-owned UI data"): the orchestrator just asks the adapter to install
- * the per-task hooks into a worktree, and the adapter writes whatever its
- * engine reads, pointing each hook at `kobe hook <normalized-verb>` (see
- * {@link ./hook-events}). Adding a new engine = a new adapter file; no neutral
- * code changes.
+ * the GLOBAL activity hooks once, and the adapter writes whatever its engine
+ * reads, pointing each hook at `kobe hook <normalized-verb>` (see
+ * {@link ./hook-events}). The hook reports its `cwd`; the daemon maps that to a
+ * task (`daemon/cwd-task.ts`). Adding a new engine = a new adapter file; no
+ * neutral code changes.
  *
  * Claude is the first real implementation; Codex/Copilot are stubs until their
  * hook formats are wired (the interface is what keeps that change local).
@@ -20,24 +21,21 @@
 import type { VendorId } from "../types/vendor.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 
-export interface HookInstallContext {
-  /** Absolute path of the task's worktree (where engine config is written). */
-  readonly worktreeDir: string
-  /** The kobe task id baked into each hook so the daemon can map events back. */
-  readonly taskId: string
-}
-
 export interface EngineHookAdapter {
   readonly vendor: VendorId
   /** Whether this engine has a wired hook mechanism (false → install is a no-op). */
   supportsHooks(): boolean
   /**
-   * Install the per-task activity hooks into `ctx.worktreeDir` so the engine,
-   * when it runs there, reports normalized events via `kobe hook …`. Must be
-   * IDEMPOTENT (safe to call on every worktree (re)build) and must never throw
-   * fatally — a hook-install failure must not block the task from launching.
+   * Install kobe's activity hooks into a SHARED settings file (the user's
+   * global `~/.claude/settings.json`) so the engine, in ANY session, reports
+   * normalized events via `kobe hook <verb>` (cwd-based; the daemon maps cwd to
+   * a task). Must be IDEMPOTENT (safe on every launch; skips the write when
+   * already in place), merge-safe (preserves the user's own hooks), and must
+   * never throw fatally.
    */
-  installTaskHooks(ctx: HookInstallContext): Promise<void>
+  installActivityHooks(settingsFilePath: string): Promise<void>
+  /** Remove the activity hooks this adapter installed. Idempotent. */
+  removeActivityHooks(settingsFilePath: string): Promise<void>
 
   /**
    * Whether this engine can create worktrees OUTSIDE kobe that kobe should
@@ -68,8 +66,11 @@ export class NoopHookAdapter implements EngineHookAdapter {
   supportsHooks(): boolean {
     return false
   }
-  async installTaskHooks(): Promise<void> {
+  async installActivityHooks(): Promise<void> {
     /* no-op until this engine's hook format is implemented */
+  }
+  async removeActivityHooks(): Promise<void> {
+    /* no-op */
   }
   supportsWorktreeSync(): boolean {
     return false

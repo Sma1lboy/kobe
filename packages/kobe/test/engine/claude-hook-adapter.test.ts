@@ -2,20 +2,19 @@ import { describe, expect, it } from "vitest"
 import {
   KOBE_HOOK_EVENTS,
   buildClaudeHooks,
-  mergeClaudeHooks,
+  mergeActivityHooks,
   mergeWorktreeSyncHook,
 } from "../../src/engine/claude-code-local/hook-adapter.ts"
 
 /**
  * The ONLY place Claude Code hook event names live. These lock the
- * vendor→neutral mapping shape + the non-clobbering merge.
+ * vendor→neutral mapping shape + the non-clobbering merge. Activity hooks are
+ * now GLOBAL + cwd-based (no `--task-id`): one block in ~/.claude makes every
+ * Claude session report, and the daemon maps each hook's cwd to a task.
  */
 describe("buildClaudeHooks", () => {
   // Inject a fixed invocation so the test doesn't depend on the dev/prod CLI resolver.
-  const hooks = buildClaudeHooks("01TASKID", ["kobe"]) as Record<
-    string,
-    Array<{ matcher?: string; hooks: { command: string }[] }>
-  >
+  const hooks = buildClaudeHooks(["kobe"]) as Record<string, Array<{ matcher?: string; hooks: { command: string }[] }>>
 
   it("installs a hook for each Claude event kobe owns", () => {
     for (const event of ["SessionStart", "UserPromptSubmit", "Stop", "StopFailure", "Notification", "SessionEnd"]) {
@@ -23,10 +22,11 @@ describe("buildClaudeHooks", () => {
     }
   })
 
-  it("points each hook at `kobe hook <verb> --task-id <id>` (shell-quoted argv)", () => {
-    expect(hooks.Stop[0].hooks[0].command).toContain("'hook' 'turn-complete' '--task-id' '01TASKID'")
-    expect(hooks.StopFailure[0].hooks[0].command).toContain("'hook' 'turn-failed' '--task-id' '01TASKID'")
-    expect(hooks.SessionStart[0].hooks[0].command).toContain("'hook' 'session-start' '--task-id' '01TASKID'")
+  it("points each hook at `kobe hook <verb>` with NO task id (shell-quoted argv)", () => {
+    expect(hooks.Stop[0].hooks[0].command).toContain("'hook' 'turn-complete'")
+    expect(hooks.Stop[0].hooks[0].command).not.toContain("--task-id")
+    expect(hooks.StopFailure[0].hooks[0].command).toContain("'hook' 'turn-failed'")
+    expect(hooks.SessionStart[0].hooks[0].command).toContain("'hook' 'session-start'")
   })
 
   it("scopes the Notification hook to permission prompts only", () => {
@@ -35,17 +35,50 @@ describe("buildClaudeHooks", () => {
   })
 })
 
-describe("mergeClaudeHooks", () => {
-  it("replaces only kobe-owned events and preserves the user's other hooks", () => {
-    const userHooks = {
-      Stop: [{ hooks: [{ type: "command", command: "user-old-stop" }] }],
-      PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "user-formatter" }] }],
+interface SettingsShape extends Record<string, unknown> {
+  hooks?: { Stop?: unknown[]; PostToolUse?: unknown; WorktreeCreate?: unknown[] }
+  model?: string
+}
+
+describe("mergeActivityHooks (global, cwd-based)", () => {
+  it("adds kobe's events, preserving the user's other hooks + keys", () => {
+    const userSettings = {
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "user-old-stop" }] }],
+        PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "user-formatter" }] }],
+      },
+      model: "opus",
     }
-    const merged = mergeClaudeHooks(userHooks, buildClaudeHooks("01TASKID", ["kobe"])) as Record<string, unknown>
-    // kobe owns Stop now…
-    expect(JSON.stringify(merged.Stop)).toContain("turn-complete")
-    // …but the user's unrelated PostToolUse hook is untouched.
-    expect(merged.PostToolUse).toEqual(userHooks.PostToolUse)
+    const out = mergeActivityHooks(userSettings, true, ["kobe"]) as SettingsShape
+    expect(out.model).toBe("opus") // untouched
+    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse) // untouched
+    // kobe's Stop coexists with the user's Stop hook (both kept).
+    expect(JSON.stringify(out.hooks?.Stop)).toContain("turn-complete")
+    expect(JSON.stringify(out.hooks?.Stop)).toContain("user-old-stop")
+    expect(out.hooks?.Stop).toHaveLength(2)
+  })
+
+  it("is idempotent — re-install replaces only kobe's own entry, no duplicates", () => {
+    const once = mergeActivityHooks({}, true, ["kobe"])
+    const twice = mergeActivityHooks(once, true, ["kobe"]) as SettingsShape
+    expect(twice.hooks?.Stop).toHaveLength(1)
+  })
+
+  it("removes kobe's hooks while keeping the user's same-event hooks", () => {
+    const userSettings = {
+      hooks: { Stop: [{ hooks: [{ type: "command", command: "user-old-stop" }] }] },
+    }
+    const added = mergeActivityHooks(userSettings, true, ["kobe"]) as SettingsShape
+    expect(added.hooks?.Stop).toHaveLength(2)
+    const removed = mergeActivityHooks(added, false, ["kobe"]) as SettingsShape
+    expect(removed.hooks?.Stop).toHaveLength(1)
+    expect(JSON.stringify(removed.hooks?.Stop)).toContain("user-old-stop")
+  })
+
+  it("drops the empty hooks key entirely when only kobe's hooks existed", () => {
+    const added = mergeActivityHooks({}, true, ["kobe"])
+    const removed = mergeActivityHooks(added, false, ["kobe"]) as SettingsShape
+    expect(removed.hooks).toBeUndefined()
   })
 
   it("KOBE_HOOK_EVENTS lists exactly the events it installs", () => {
@@ -55,12 +88,7 @@ describe("mergeClaudeHooks", () => {
   })
 })
 
-interface SettingsShape {
-  hooks?: { WorktreeCreate?: unknown[]; PostToolUse?: unknown }
-  model?: string
-}
-
-describe("mergeWorktreeSyncHook (Feature 2 — external worktree sync)", () => {
+describe("mergeWorktreeSyncHook (external worktree sync)", () => {
   it("adds a WorktreeCreate hook, preserving the user's other hooks", () => {
     const userSettings = {
       hooks: { PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "fmt" }] }] },
@@ -89,9 +117,14 @@ describe("mergeWorktreeSyncHook (Feature 2 — external worktree sync)", () => {
     expect(JSON.stringify(removed.hooks?.WorktreeCreate)).toContain("user-wt-hook")
   })
 
-  it("drops the empty hooks key entirely when the last hook is removed", () => {
-    const added = mergeWorktreeSyncHook({}, "kobe hook worktree-created")
-    const removed = mergeWorktreeSyncHook(added, null) as SettingsShape
-    expect(removed.hooks).toBeUndefined()
+  it("activity + worktree-sync hooks coexist in one settings file", () => {
+    const withActivity = mergeActivityHooks({}, true, ["kobe"])
+    const both = mergeWorktreeSyncHook(withActivity, "kobe hook worktree-created") as SettingsShape
+    expect(both.hooks?.Stop).toHaveLength(1)
+    expect(both.hooks?.WorktreeCreate).toHaveLength(1)
+    // Removing one leaves the other intact.
+    const noSync = mergeWorktreeSyncHook(both, null) as SettingsShape
+    expect(noSync.hooks?.Stop).toHaveLength(1)
+    expect(noSync.hooks?.WorktreeCreate).toBeUndefined()
   })
 })

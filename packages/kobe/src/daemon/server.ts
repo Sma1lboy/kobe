@@ -27,6 +27,7 @@ import type { Task, VendorId } from "../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
+import { matchTaskByCwd } from "./cwd-task.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
@@ -492,12 +493,19 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "engine.reportEvent": {
         // A `kobe hook <verb>` process reporting a NORMALIZED engine activity
         // event (the vendor-specific hook was already translated by the
-        // engine's hook adapter). Fold it into the task's transient activity
-        // state + broadcast on `engine-state`. Unknown kinds are ignored
-        // (forward-compat: a newer adapter, older daemon).
-        const taskId = requireString(payload, "taskId")
+        // engine's hook adapter). The global hooks carry no task id — they
+        // report their `cwd`, which we map to a task by worktree path. Fold it
+        // into the task's transient activity state + broadcast on
+        // `engine-state`. Unknown kinds are ignored (forward-compat: a newer
+        // adapter, older daemon); an unmatched cwd (an unrelated repo, a
+        // project with no kobe task) is silently dropped.
         const kind = requireString(payload, "kind")
         if (!isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
+        // `taskId` (legacy/direct) wins; otherwise resolve from `cwd`.
+        const explicitId = optionalString(payload, "taskId")
+        const cwd = optionalString(payload, "cwd")
+        const taskId = explicitId ?? (cwd ? matchTaskByCwd(orch.listTasks(), cwd) : undefined)
+        if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
         reportActivity(taskId, kind, detail)
         return {}

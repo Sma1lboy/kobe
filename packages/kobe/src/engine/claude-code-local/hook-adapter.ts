@@ -1,30 +1,32 @@
 /**
  * Claude Code hook adapter (KOB) — the first real {@link EngineHookAdapter}.
  *
- * Writes a hooks block into the task worktree's `.claude/settings.local.json`
- * so Claude Code, when it runs there, reports normalized activity events back
- * to kobe via `kobe hook <verb> --task-id <id>`. This is the ONLY module that
- * knows Claude Code's hook event names + settings.json shape; everything
- * downstream speaks the neutral vocabulary in `../hook-events`.
+ * Writes kobe's hooks into the user's GLOBAL `~/.claude/settings.json`, so a
+ * single install makes EVERY Claude Code session report normalized activity
+ * events back to kobe via `kobe hook <verb>`. The hook carries no task id; it
+ * reports its `cwd` and the daemon maps that to a task by worktree path (see
+ * `daemon/cwd-task.ts`). This is the ONLY module that knows Claude Code's hook
+ * event names + settings.json shape; everything downstream speaks the neutral
+ * vocabulary in `../hook-events`.
  *
- * Two care-abouts:
- *  - **Don't pollute the task diff.** settings.local.json lives inside the
- *    worktree (Claude reads project settings from cwd), so it would show up as
- *    an untracked change the user reviews. We add it to the repo's
- *    `.git/info/exclude` (local-only, never committed, honoured by git status)
- *    so it stays invisible.
- *  - **Don't clobber user hooks.** We own only the events kobe drives, writing
- *    them into settings.LOCAL.json (kobe-managed, gitignored). A user's own
- *    hooks in settings.json (committed) still merge in via Claude's scope
- *    stack; other events in settings.local.json are preserved.
+ * Why global, not per-worktree: per-task hooks (written into each worktree's
+ * `.claude/settings.local.json`) had to be installed at the right moment, only
+ * fired after entering a task, didn't reach an already-running engine, and
+ * leaked into a project's real repo root. One global block sidesteps all of
+ * that and lights up every existing task at once. The cost — kobe's `kobe hook`
+ * runs on every Claude session machine-wide — is cheap: it no-ops fast (and
+ * never spawns the daemon) when the cwd isn't a kobe task.
+ *
+ * Don't clobber user hooks: this targets a SHARED file, so each merge tags its
+ * own entries (by the kobe command substring) and replaces only those; the
+ * user's own hooks for the same events are preserved.
  */
 
-import { existsSync } from "node:fs"
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { dirname } from "node:path"
 import { kobeCliInvocation } from "../../cli/invocation.ts"
 import { shellQuoteArgv } from "../../tmux/session-layout.ts"
-import type { EngineHookAdapter, HookInstallContext } from "../hook-adapter.ts"
+import type { EngineHookAdapter } from "../hook-adapter.ts"
 import type { EngineActivityKind } from "../hook-events.ts"
 
 /** Claude Code hook event → normalized kobe verb. The ONE place Claude event
@@ -40,6 +42,11 @@ const EVENT_MAP: ReadonlyArray<{ event: string; matcher?: string; verb: EngineAc
 
 /** The events kobe owns — used to replace only these in a merge. */
 export const KOBE_HOOK_EVENTS: readonly string[] = EVENT_MAP.map((e) => e.event)
+
+/** Substrings that identify a kobe activity hook in a shared settings file —
+ *  the shell-quoted `hook <verb>` fragment of each command, so the marker
+ *  matches kobe's OWN previously-written (quoted) commands exactly. */
+const ACTIVITY_MARKERS = EVENT_MAP.map((e) => shellQuoteArgv(["hook", e.verb]))
 
 /** Substring identifying kobe's WorktreeCreate hook in a shared settings file. */
 const WORKTREE_SYNC_MARKER = "worktree-created"
@@ -66,6 +73,15 @@ function isKobeWorktreeSyncGroup(group: unknown): boolean {
   )
 }
 
+/** True if a hook group is one of kobe's activity groups (by its `kobe hook <verb>` command). */
+function isKobeActivityGroup(group: unknown): boolean {
+  if (!isObject(group) || !Array.isArray(group.hooks)) return false
+  return group.hooks.some(
+    (h) =>
+      isObject(h) && typeof h.command === "string" && ACTIVITY_MARKERS.some((m) => (h.command as string).includes(m)),
+  )
+}
+
 /**
  * Pure merge: add (or with `command === null`, remove) kobe's WorktreeCreate
  * hook in a settings object, preserving the user's own hooks + other keys.
@@ -85,16 +101,13 @@ export function mergeWorktreeSyncHook(
   return Object.keys(nextHooks).length > 0 ? { ...restSettings, hooks: nextHooks } : { ...restSettings }
 }
 
-/** Build the hooks block kobe installs, pointing each event at `kobe hook <verb>`.
- *  `inv` (the kobe CLI argv prefix) is injectable for tests; defaults to the
- *  real {@link kobeCliInvocation}. */
-export function buildClaudeHooks(
-  taskId: string,
-  inv: readonly string[] = kobeCliInvocation(),
-): Record<string, unknown> {
+/** Build the activity hook groups kobe installs, pointing each event at
+ *  `kobe hook <verb>` (cwd-based; no task id). `inv` (the kobe CLI argv prefix)
+ *  is injectable for tests; defaults to the real {@link kobeCliInvocation}. */
+export function buildClaudeHooks(inv: readonly string[] = kobeCliInvocation()): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const { event, matcher, verb } of EVENT_MAP) {
-    const command = shellQuoteArgv([...inv, "hook", verb, "--task-id", taskId])
+    const command = shellQuoteArgv([...inv, "hook", verb])
     const group: Record<string, unknown> = { hooks: [{ type: "command", command }] }
     if (matcher) group.matcher = matcher
     out[event] = [group]
@@ -102,14 +115,29 @@ export function buildClaudeHooks(
   return out
 }
 
-/** Replace kobe-owned events in `existing`; preserve every other event. */
-export function mergeClaudeHooks(
-  existing: Record<string, unknown>,
-  kobeHooks: Record<string, unknown>,
+/**
+ * Pure merge: add (`install`) or remove kobe's activity hooks in a SHARED
+ * settings object, preserving the user's own hooks for those events + every
+ * other key. kobe owns only the groups whose command matches an
+ * {@link ACTIVITY_MARKERS} substring; they're dropped first so re-install is idempotent
+ * and removal is clean.
+ */
+export function mergeActivityHooks(
+  current: Record<string, unknown>,
+  install: boolean,
+  inv: readonly string[] = kobeCliInvocation(),
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...existing }
-  for (const event of KOBE_HOOK_EVENTS) merged[event] = kobeHooks[event]
-  return merged
+  const { hooks: rawHooks, ...restSettings } = current
+  const hooks: Record<string, unknown> = isObject(rawHooks) ? { ...rawHooks } : {}
+  const built = install ? buildClaudeHooks(inv) : {}
+  for (const { event } of EVENT_MAP) {
+    const prior = Array.isArray(hooks[event]) ? (hooks[event] as unknown[]) : []
+    const kept = prior.filter((g) => !isKobeActivityGroup(g))
+    if (install && Array.isArray(built[event])) kept.push(...(built[event] as unknown[]))
+    if (kept.length > 0) hooks[event] = kept
+    else delete hooks[event]
+  }
+  return Object.keys(hooks).length > 0 ? { ...restSettings, hooks } : { ...restSettings }
 }
 
 export class ClaudeHookAdapter implements EngineHookAdapter {
@@ -123,101 +151,42 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
     return true
   }
 
+  async installActivityHooks(settingsFilePath: string): Promise<void> {
+    await this.editSettings(settingsFilePath, (cur) => mergeActivityHooks(cur, true))
+  }
+
+  async removeActivityHooks(settingsFilePath: string): Promise<void> {
+    await this.editSettings(settingsFilePath, (cur) => mergeActivityHooks(cur, false))
+  }
+
   async installWorktreeSyncHook(settingsFilePath: string): Promise<void> {
-    await this.editWorktreeSyncHook(settingsFilePath, true)
+    const command = shellQuoteArgv([...kobeCliInvocation(), "hook", "worktree-created"])
+    await this.editSettings(settingsFilePath, (cur) => mergeWorktreeSyncHook(cur, command))
   }
 
   async removeWorktreeSyncHook(settingsFilePath: string): Promise<void> {
-    await this.editWorktreeSyncHook(settingsFilePath, false)
+    await this.editSettings(settingsFilePath, (cur) => mergeWorktreeSyncHook(cur, null))
   }
 
   /**
-   * Add or remove kobe's `WorktreeCreate` hook in a settings.json. Unlike the
-   * per-task hooks this targets a SHARED file (the user's global or a repo's
-   * committed settings), so we must not clobber the user's own WorktreeCreate
-   * hooks: kobe owns only the entry whose command contains the
-   * {@link WORKTREE_SYNC_MARKER}; everything else is preserved.
+   * Read → transform → write a SHARED settings.json, skipping the write when the
+   * transform is a no-op. The default-on path calls the installers on every
+   * launch; we don't want to churn the user's settings.json mtime (or its VCS
+   * status) when the hooks are already exactly in place. Best-effort: a failure
+   * to read/parse/write the user's settings must never block a launch.
    */
-  private async editWorktreeSyncHook(settingsFilePath: string, install: boolean): Promise<void> {
-    const current = await readJsonObject(settingsFilePath)
-    const command = install ? shellQuoteArgv([...kobeCliInvocation(), "hook", "worktree-created"]) : null
-    const next = mergeWorktreeSyncHook(current, command)
-    // Skip the write when nothing changed — the default-on path calls this on
-    // every launch, and we don't want to churn the user's settings.json mtime
-    // (or its VCS status) when the hook is already exactly in place.
-    if (JSON.stringify(next) === JSON.stringify(current)) return
-    await mkdir(dirname(settingsFilePath), { recursive: true })
-    await writeFile(settingsFilePath, `${JSON.stringify(next, null, 2)}\n`)
-  }
-
-  async installTaskHooks(ctx: HookInstallContext): Promise<void> {
+  private async editSettings(
+    settingsFilePath: string,
+    transform: (current: Record<string, unknown>) => Record<string, unknown>,
+  ): Promise<void> {
     try {
-      const claudeDir = join(ctx.worktreeDir, ".claude")
-      const settingsPath = join(claudeDir, "settings.local.json")
-      await mkdir(claudeDir, { recursive: true })
-
-      let current: Record<string, unknown> = {}
-      try {
-        const raw = await readFile(settingsPath, "utf8")
-        const parsed = JSON.parse(raw) as unknown
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) current = parsed as Record<string, unknown>
-      } catch {
-        /* absent or unparseable → start fresh */
-      }
-
-      const existingHooks =
-        current.hooks && typeof current.hooks === "object" && !Array.isArray(current.hooks)
-          ? (current.hooks as Record<string, unknown>)
-          : {}
-      current.hooks = mergeClaudeHooks(existingHooks, buildClaudeHooks(ctx.taskId))
-      await writeFile(settingsPath, `${JSON.stringify(current, null, 2)}\n`)
-
-      await hideFromGit(ctx.worktreeDir, ".claude/settings.local.json")
+      const current = await readJsonObject(settingsFilePath)
+      const next = transform(current)
+      if (JSON.stringify(next) === JSON.stringify(current)) return
+      await mkdir(dirname(settingsFilePath), { recursive: true })
+      await writeFile(settingsFilePath, `${JSON.stringify(next, null, 2)}\n`)
     } catch {
-      // Best-effort: a hook-install failure must never block task launch.
+      /* best-effort — never block launch */
     }
-  }
-}
-
-/**
- * Per-process guard so `hideFromGit` does its work (a `git` spawn + a
- * read-append) at most ONCE per worktree. installTaskHooks runs on every
- * `ensureWorktree` (the backfill path fires on every task enter), and these
- * all execute in the single daemon process — so a Set both skips the wasteful
- * re-spawn AND serializes the read-check-append against the shared
- * `.git/info/exclude` (no concurrent double-append race).
- */
-const hiddenWorktrees = new Set<string>()
-
-/**
- * Add `relPath` to the worktree repo's `.git/info/exclude` so it never shows
- * in `git status` / the task diff and is never committed. Idempotent + cheap
- * on repeat (the {@link hiddenWorktrees} guard). Silent on any failure (not a
- * git repo, git missing, etc.).
- */
-async function hideFromGit(worktreeDir: string, relPath: string): Promise<void> {
-  if (hiddenWorktrees.has(worktreeDir)) return
-  try {
-    const proc = Bun.spawn(["git", "-C", worktreeDir, "rev-parse", "--git-common-dir"], {
-      stdout: "pipe",
-      stderr: "ignore",
-    })
-    const [out, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
-    if (code !== 0) return
-    let commonDir = out.trim()
-    if (!commonDir) return
-    // `rev-parse` may return a relative path (".git") — resolve against the worktree.
-    if (!commonDir.startsWith("/")) commonDir = join(worktreeDir, commonDir)
-    const excludePath = join(commonDir, "info", "exclude")
-    const existing = existsSync(excludePath) ? await readFile(excludePath, "utf8") : ""
-    if (existing.split("\n").some((l) => l.trim() === relPath)) {
-      hiddenWorktrees.add(worktreeDir)
-      return
-    }
-    await mkdir(join(commonDir, "info"), { recursive: true })
-    await appendFile(excludePath, `${existing.endsWith("\n") || existing === "" ? "" : "\n"}${relPath}\n`)
-    hiddenWorktrees.add(worktreeDir)
-  } catch {
-    /* best-effort */
   }
 }
