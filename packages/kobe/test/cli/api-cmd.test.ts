@@ -4,12 +4,14 @@ import {
   ApiError,
   VERBS,
   apiUsage,
-  buildSchema,
   findVerb,
+  fullSchema,
   parseAgentsSpec,
   parseFlags,
+  schemaIndex,
   validateAgainstSpec,
   verbHelp,
+  verbSchema,
 } from "../../src/cli/api-cmd.ts"
 
 describe("parseFlags", () => {
@@ -136,12 +138,26 @@ describe("API surface (full CRUD)", () => {
     expect(findVerb("spawn-task")?.name).toBe("add")
   })
 
-  it("schema is machine-readable and covers every verb + flag types", () => {
-    const schema = buildSchema() as { verbs: { name: string; flags: { name: string; type: string }[] }[] }
-    expect(schema.verbs.map((v) => v.name)).toEqual([...API_VERBS])
-    const add = schema.verbs.find((v) => v.name === "add")
-    expect(add?.flags.find((f) => f.name === "repo")).toMatchObject({ required: true, type: "string" })
-    expect(add?.flags.find((f) => f.name === "status")).toMatchObject({ type: "enum" })
+  it("the compact index lists every verb + summary but NO flags (context economy)", () => {
+    const idx = schemaIndex() as { verbs: { name: string; group: string; summary: string; flags?: unknown }[] }
+    expect(idx.verbs.map((v) => v.name)).toEqual([...API_VERBS])
+    // Crucially, the index does NOT carry per-verb flags — that's the drill-in level.
+    for (const v of idx.verbs) expect(v.flags).toBeUndefined()
+    expect(idx.verbs.find((v) => v.name === "add")?.group).toBe("create")
+  })
+
+  it("drill-in (verbSchema) carries one verb's full flag detail", () => {
+    const add = findVerb("add")!
+    const detail = verbSchema(add) as { name: string; flags: { name: string; type: string }[] }
+    expect(detail.name).toBe("add")
+    expect(detail.flags.find((f) => f.name === "repo")).toMatchObject({ required: true, type: "string" })
+    expect(detail.flags.find((f) => f.name === "status")).toMatchObject({ type: "enum" })
+  })
+
+  it("--all (fullSchema) covers every verb WITH flags", () => {
+    const full = fullSchema() as { verbs: { name: string; flags: unknown[] }[] }
+    expect(full.verbs.map((v) => v.name)).toEqual([...API_VERBS])
+    expect(full.verbs.every((v) => Array.isArray(v.flags))).toBe(true)
   })
 
   it("verbHelp renders a signature + flags for every verb", () => {

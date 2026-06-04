@@ -14,8 +14,8 @@
 
 import {
   DEFAULT_SKILL_AGENT,
-  isKobeSkillInstalled,
   kobeSkillPaths,
+  kobeSkillState,
   npxSkillsArgv,
   npxSkillsCommand,
 } from "../lib/skill-install.ts"
@@ -71,14 +71,19 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
   }
 
   if (verb === "status") {
-    const installed = isKobeSkillInstalled()
+    const state = kobeSkillState()
     const [userPath, projectPath] = kobeSkillPaths()
+    const head = !state.installed
+      ? "✗ not installed"
+      : state.stale
+        ? `⚠ out of date (installed ${state.installedVersion === null ? "unstamped" : `v${state.installedVersion}`}, this kobe wants v${state.currentVersion})`
+        : `✓ installed (v${state.installedVersion})`
     process.stdout.write(
       [
-        `kobe skill: ${installed ? "✓ installed" : "✗ not installed"}`,
+        `kobe skill: ${head}`,
         `  looked in: ${userPath}`,
         `             ${projectPath}`,
-        installed ? "" : "  → install with `kobe skill install`",
+        state.installed && !state.stale ? "" : "  → run `kobe skill install` to install / refresh",
         "",
       ].join("\n"),
     )

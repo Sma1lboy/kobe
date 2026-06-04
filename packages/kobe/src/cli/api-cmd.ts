@@ -128,8 +128,47 @@ const F = {
 /** Output the alias → canonical map so callers (and the schema) stay in sync. */
 const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
 
-async function handleSchema(_client: KobeDaemonClient | null, _parsed: ParsedArgs): Promise<unknown> {
-  return buildSchema()
+/**
+ * Verb groups for LEVELED exploration. An agent reads the compact index
+ * (groups + verb summaries), then drills into one verb or one group —
+ * instead of slurping every flag of every verb and polluting its context.
+ */
+const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  discover: ["schema"],
+  read: ["list", "get-task", "collect"],
+  create: ["add", "fan-out"],
+  drive: ["send", "set-active"],
+  edit: ["rename", "set-branch", "set-vendor", "set-status"],
+  lifecycle: ["archive", "pin", "delete"],
+  worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
+}
+
+function groupOf(verbName: string): string {
+  for (const [group, names] of Object.entries(VERB_GROUPS)) {
+    if (names.includes(verbName)) return group
+  }
+  return "other"
+}
+
+/**
+ * The `schema` handler — LEVELED so it never dumps everything by default:
+ *   - no flags  → compact index (groups + verb names + summaries, NO flags)
+ *   - --verb N  → one verb's full flag detail
+ *   - --group G → the verbs in one group (compact)
+ *   - --all     → the complete spec (every verb AND every flag)
+ */
+async function handleSchema(_client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  const { flags } = parsed
+  const verbName = optional(flags, "verb")
+  if (verbName) {
+    const v = findVerb(verbName)
+    if (!v) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB")
+    return verbSchema(v)
+  }
+  const group = optional(flags, "group")
+  if (group) return groupSchema(group)
+  if (optionalBool(flags, "all")) return fullSchema()
+  return schemaIndex()
 }
 
 // VERBS — ordered for help readability: discovery, reads, create, drive, edit,
@@ -137,8 +176,17 @@ async function handleSchema(_client: KobeDaemonClient | null, _parsed: ParsedArg
 const VERBS: readonly VerbSpec[] = [
   {
     name: "schema",
-    summary: "Print the full machine-readable API spec (every verb + flag). Run this first to explore.",
-    flags: [],
+    summary:
+      "Explore the API. Default = a COMPACT index (groups + verb summaries, no flags). Drill in with --verb / --group; --all for the full spec.",
+    flags: [
+      { name: "verb", type: "string", placeholder: "NAME", description: "Full flag detail for ONE verb." },
+      { name: "group", type: "string", placeholder: "G", description: "List the verbs in one group (compact)." },
+      {
+        name: "all",
+        type: "bool",
+        description: "The COMPLETE spec — every verb AND every flag (large; avoid by default).",
+      },
+    ],
     offline: true,
     handler: handleSchema,
   },
@@ -489,9 +537,67 @@ export function parseAgentsSpec(spec: string): VendorId[] {
   return out
 }
 
-// ── Schema + help (both derived from VERBS) ──────────────────────────────────
+// ── Schema (LEVELED) + help (all derived from VERBS) ─────────────────────────
 
-function buildSchema(): unknown {
+const GLOBAL_FLAGS = [
+  { name: "pretty", type: "bool", description: "Pretty-print stdout JSON." },
+  { name: "help", type: "bool", description: "Show usage for the verb and exit." },
+]
+
+function flagJson(f: FlagSpec): unknown {
+  return {
+    name: f.name,
+    type: f.type,
+    required: f.required ?? false,
+    ...(f.values ? { values: f.values } : {}),
+    ...(f.default !== undefined ? { default: f.default } : {}),
+    ...(f.placeholder ? { placeholder: f.placeholder } : {}),
+    description: f.description,
+  }
+}
+
+/** ONE verb, full detail (flags + types). The drill-in level. */
+function verbSchema(v: VerbSpec): unknown {
+  return {
+    name: v.name,
+    group: groupOf(v.name),
+    summary: v.summary,
+    offline: v.offline ?? false,
+    flags: v.flags.map(flagJson),
+  }
+}
+
+/** The COMPACT index: groups + verb names + summaries, but NO flags — so an
+ *  agent can survey the surface cheaply, then drill in with --verb. */
+function schemaIndex(): unknown {
+  return {
+    apiVersion: API_SCHEMA_VERSION,
+    kobeVersion: CURRENT_VERSION,
+    hint: "Compact index. Drill into ONE verb: `kobe api schema --verb <name>` (or `kobe api <verb> --help`). One group: `--group <g>`. Whole spec: `--all`.",
+    groups: VERB_GROUPS,
+    verbs: VERBS.map((v) => ({ name: v.name, group: groupOf(v.name), summary: v.summary })),
+    globalFlags: GLOBAL_FLAGS,
+    aliases: VERB_ALIASES,
+  }
+}
+
+/** The verbs in ONE group (compact). */
+function groupSchema(group: string): unknown {
+  const names = VERB_GROUPS[group]
+  if (!names) {
+    throw new ApiError(`unknown group: ${group}. Groups: ${Object.keys(VERB_GROUPS).join(", ")}`, "BAD_FLAG")
+  }
+  return {
+    group,
+    verbs: names.map((n) => {
+      const v = findVerb(n)
+      return { name: n, summary: v?.summary ?? "" }
+    }),
+  }
+}
+
+/** The COMPLETE spec — every verb AND every flag. Opt-in via --all. */
+function fullSchema(): unknown {
   return {
     apiVersion: API_SCHEMA_VERSION,
     kobeVersion: CURRENT_VERSION,
@@ -500,25 +606,10 @@ function buildSchema(): unknown {
       error: '{"error":{"message","code"}} on stderr, exit != 0',
       pretty: "--pretty indents stdout JSON",
     },
-    globalFlags: [
-      { name: "pretty", type: "bool", description: "Pretty-print stdout JSON." },
-      { name: "help", type: "bool", description: "Show usage for the verb and exit." },
-    ],
+    globalFlags: GLOBAL_FLAGS,
     aliases: VERB_ALIASES,
-    verbs: VERBS.map((v) => ({
-      name: v.name,
-      summary: v.summary,
-      offline: v.offline ?? false,
-      flags: v.flags.map((f) => ({
-        name: f.name,
-        type: f.type,
-        required: f.required ?? false,
-        ...(f.values ? { values: f.values } : {}),
-        ...(f.default !== undefined ? { default: f.default } : {}),
-        ...(f.placeholder ? { placeholder: f.placeholder } : {}),
-        description: f.description,
-      })),
-    })),
+    groups: VERB_GROUPS,
+    verbs: VERBS.map(verbSchema),
   }
 }
 
@@ -899,5 +990,5 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
 }
 
 // Exported for tests.
-export { ApiError, VERBS, findVerb, validateAgainstSpec, buildSchema }
+export { ApiError, VERBS, VERB_GROUPS, findVerb, validateAgainstSpec, schemaIndex, verbSchema, fullSchema }
 export type { VerbSpec, FlagSpec }

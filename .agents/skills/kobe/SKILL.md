@@ -3,6 +3,8 @@ name: kobe
 description: Drive kobe — a local TUI that runs many parallel AI coding sessions — from your shell via `kobe api`. Use to spawn/fan-out parallel attempts, AND to manage the full task lifecycle (create, rename, re-branch, archive, delete, pin, switch focus) without leaving the terminal. Each task is its own git worktree + agent session. Run `kobe api schema` to discover the whole surface.
 ---
 
+<!-- kobe-skill-version: 1 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts) whenever this file's guidance changes; that's how `kobe` detects an out-of-date installed skill and prompts `kobe skill install`. -->
+
 # kobe — parallel coding tasks + full task control from your shell
 
 kobe is a local terminal UI that runs many AI coding sessions at once.
@@ -25,21 +27,23 @@ kobe skill install            # wraps `npx skills add Sma1lboy/kobe --skill kobe
 launch first. Re-run `kobe skill install` after a `kobe` upgrade to pull
 the matching skill.
 
-## Explore the surface FIRST (it's self-describing)
+## Explore the surface — LEVELED (don't slurp it all)
 
-The API is highly customizable and self-documenting. Before composing a
-call, discover the exact verbs, flags, types, and required fields:
+The API is self-documenting, but explore it in levels so you don't flood
+your context with every flag of every verb:
 
 ```bash
-kobe api schema          # full machine-readable JSON: every verb + flag + type
-kobe api schema --pretty # same, indented
-kobe api <verb> --help   # usage for one verb (e.g. kobe api add --help)
+kobe api schema                 # COMPACT index: groups + verb summaries (no flags)
+kobe api schema --verb add      # drill into ONE verb's full flag detail
+kobe api schema --group create  # just the verbs in one group
+kobe api <verb> --help          # human-readable usage for one verb
+kobe api schema --all           # the WHOLE spec — large, use only if a tool needs it
 ```
 
-`kobe api schema` is the source of truth — read it instead of guessing
-flags. Every verb writes one JSON object to stdout (exit 0); errors are
-`{"error":{"message","code"}}` on stderr (exit ≠ 0). Add `--pretty` to any
-verb to indent stdout.
+Start with `kobe api schema` (small), then `--verb <name>` for the one you
+need. Read it instead of guessing flags. Every verb writes one JSON object
+to stdout (exit 0); errors are `{"error":{"message","code"}}` on stderr
+(exit ≠ 0). Add `--pretty` to any verb to indent stdout.
 
 ## Triggers — fire fan-out when the user says
 

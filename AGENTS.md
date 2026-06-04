@@ -172,6 +172,7 @@ If a future requirement needs external tracking, surface it to the user first in
 
 ### Releases
 
+- **Changeset bump is `patch` by default.** Every changeset uses `patch` unless the user EXPLICITLY says this one is a `minor` (or `major`) in that turn. Do not infer `minor` from "it's a feature" / new commands / new API surface — pre-1.0 kobe ships features as patches; only an explicit instruction promotes the bump.
 - When cutting a version, the release notes / CHANGELOG section may include a short thank-you line for human developers, contributors, testers, or users who helped shape the release.
 - Keep thanks product-facing and human-facing. Do not add AI, Anthropic, Claude, Codex, or tool-generated attribution, and do not add attribution footers to commits or tags.
 

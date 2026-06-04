@@ -32,7 +32,7 @@ import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { readPidFile } from "../daemon/server.ts"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
-import { SKILL_INSTALL_COMMAND, isKobeSkillInstalled } from "../lib/skill-install.ts"
+import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { KOBE_TMUX_SOCKET, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
@@ -197,11 +197,16 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   out.push("")
 
   // --- agent skill ----------------------------------------------------
-  if (isKobeSkillInstalled()) {
-    out.push("skill:   ✓ kobe agent skill installed")
-  } else {
+  const skill = kobeSkillState()
+  if (!skill.installed) {
     out.push("skill:   ✗ kobe agent skill not installed (optional — lets a coding agent drive `kobe api`)")
     out.push(`         → ${SKILL_INSTALL_COMMAND}`)
+  } else if (skill.stale) {
+    const was = skill.installedVersion === null ? "unstamped" : `v${skill.installedVersion}`
+    out.push(`skill:   ⚠ kobe agent skill out of date (${was}; this kobe wants v${skill.currentVersion})`)
+    out.push(`         → ${SKILL_INSTALL_COMMAND}`)
+  } else {
+    out.push(`skill:   ✓ kobe agent skill installed (v${skill.installedVersion})`)
   }
   out.push("")
 
