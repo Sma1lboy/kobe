@@ -35,6 +35,7 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { createEngineHookAdapter } from "@/engine/hook-adapter"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
+import { KOBE_WORKTREE_ROOT_SUBPATH } from "@/orchestrator/worktree/paths"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
@@ -214,7 +215,13 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // hooks). Idempotent + best-effort (the adapter swallows its own errors and
   // a per-process guard skips repeat fs/git work). A running engine only picks
   // the hooks up on its NEXT launch (a rebuild / vendor-switch / new chat-tab).
-  if (opts.taskId && opts.cwd) {
+  //
+  // ONLY for a real kobe-managed worktree (under `.claude/worktrees/`), NEVER
+  // for a `main` project task whose cwd is the user's real repo ROOT — writing
+  // hooks there would make EVERY claude in that repo (incl. ones kobe didn't
+  // launch) report as this task. The worktree-root subpath is the reliable
+  // signal here without threading the task's kind through every call site.
+  if (opts.taskId && opts.cwd && opts.cwd.includes(`/${KOBE_WORKTREE_ROOT_SUBPATH}/`)) {
     await createEngineHookAdapter(coerceVendorId(opts.vendor)).installTaskHooks({
       worktreeDir: opts.cwd,
       taskId: opts.taskId,
