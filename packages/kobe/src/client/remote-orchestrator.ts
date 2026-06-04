@@ -15,6 +15,7 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
   type SubscribeRole,
+  isDaemonVersionStale,
   isProtocolCompatible,
 } from "../daemon/protocol.ts"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
@@ -22,7 +23,7 @@ import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
-import type { UpdateInfo } from "../version.ts"
+import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
 import { logClient, logClientError } from "./client-log.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
@@ -67,6 +68,8 @@ export class RemoteOrchestrator {
   private readonly setActiveTaskSig: (next: string | null) => void
   private readonly updateAcc: Accessor<UpdateInfo | null>
   private readonly setUpdateSig: (next: UpdateInfo | null) => void
+  private readonly daemonVersionAcc: Accessor<string | null>
+  private readonly setDaemonVersionSig: (next: string | null) => void
   private readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
   private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
@@ -84,6 +87,7 @@ export class RemoteOrchestrator {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [activeTask, setActiveTask] = createSignal<string | null>(null)
     const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
+    const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
@@ -92,6 +96,8 @@ export class RemoteOrchestrator {
     this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.updateAcc = update
     this.setUpdateSig = (next) => setUpdate(() => next)
+    this.daemonVersionAcc = daemonVersion
+    this.setDaemonVersionSig = (next) => setDaemonVersion(() => next)
     this.engineStateAcc = engineState
     this.setEngineStateSig = (next) => setEngineState(() => next)
     this.connectionStateAcc = connectionState
@@ -168,6 +174,11 @@ export class RemoteOrchestrator {
       tasks?: SerializedTask[]
       protocolVersion?: number
       minProtocolVersion?: number
+      // The daemon's BUILD version (package.json). Omitted by a daemon that
+      // predates the field, in which case it stays unknown → never "stale".
+      // Distinct from the protocol versions above: those gate compatibility,
+      // this drives the non-fatal stale-build banner (see daemonStaleSignal).
+      kobeVersion?: string
       // Forward-compat: the daemon advertises its channel/feature set here.
       // Unused today (we negotiate by version range); declared so the field
       // is typed when a future client starts gating on a capability.
@@ -190,6 +201,14 @@ export class RemoteOrchestrator {
         `kobe daemon is protocol v${daemonVersion} (min v${daemonMin}); this client is v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}). Restart the daemon (\`kobe daemon restart\`) or upgrade kobe.`,
       )
     }
+    // Capture the daemon's BUILD version (NON-fatal — the protocol is already
+    // compatible). A patch upgrade keeps the protocol version put, so this is
+    // the only signal that the daemon is running stale code in memory; the TUI
+    // reads `daemonStaleSignal()` to show a "restart the daemon" banner. An old
+    // daemon that omits the field leaves the signal null → never flagged stale.
+    // Re-set on every init so a reconnect to a freshly-restarted daemon clears
+    // the banner once versions match.
+    this.setDaemonVersionSig(typeof hello.kobeVersion === "string" ? hello.kobeVersion : null)
     if (hello.tasks) this.setTasks(hello.tasks.map(deserializeTask))
     // Subscribe to all channels (the daemon replays each channel's current
     // value on connect). We only consume `task.snapshot` here; future
@@ -242,6 +261,31 @@ export class RemoteOrchestrator {
    */
   updateSignal(): Accessor<UpdateInfo | null> {
     return this.updateAcc
+  }
+
+  /**
+   * The daemon's reported BUILD version (from the `hello` handshake), or
+   * `null` when unknown — an older daemon that predates the field, or before
+   * `init()` has resolved. Distinct from {@link updateSignal} ("a newer kobe
+   * exists on npm") — this is "what version is the daemon I'm talking to".
+   */
+  daemonVersionSignal(): Accessor<string | null> {
+    return this.daemonVersionAcc
+  }
+
+  /**
+   * Derived: is the daemon running a DIFFERENT build than this process? True
+   * only when the daemon reported a version that differs from this client's
+   * own {@link CURRENT_VERSION}. NON-fatal — the protocol is still compatible
+   * (that's checked separately and would have thrown); this is the "you
+   * upgraded the binary but the long-lived daemon is still running old code"
+   * case (Bun has no hot-reload). Drives the dismissible restart banner.
+   * `false` while the daemon version is unknown, so an old daemon — or the
+   * pre-handshake window — never shows a false banner. Clears on its own once
+   * a reconnect to a restarted daemon reports the matching version.
+   */
+  daemonStaleSignal(): Accessor<boolean> {
+    return () => isDaemonVersionStale(this.daemonVersionAcc() ?? undefined, CURRENT_VERSION)
   }
 
   /**

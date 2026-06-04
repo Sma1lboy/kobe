@@ -486,6 +486,32 @@ export class Orchestrator {
     if (!input.repo) throw new Error("adoptWorktree: repo is required")
     if (!input.worktreePath) throw new Error("adoptWorktree: worktreePath is required")
     const target = canonPath(input.worktreePath)
+    // Serialize concurrent adopts of the SAME worktree path. Without this, two
+    // WorktreeCreate hooks firing for one path could both pass the "already a
+    // task?" check (it awaits `listAll` before `create`) and create duplicate
+    // tasks. The lock dedupes: the second caller awaits the first's result.
+    const inflight = this.adoptLocks.get(target)
+    if (inflight) return inflight
+    const work = this.adoptWorktreeLocked(input, target)
+    this.adoptLocks.set(target, work)
+    try {
+      return await work
+    } finally {
+      this.adoptLocks.delete(target)
+    }
+  }
+
+  private async adoptWorktreeLocked(
+    input: {
+      readonly repo: string
+      readonly worktreePath: string
+      readonly branch?: string
+      readonly vendor?: VendorId
+      readonly title?: string
+      readonly ifExists?: "error" | "return"
+    },
+    target: string,
+  ): Promise<Task> {
     const existing = this.store.list().find((t) => t.worktreePath && canonPath(t.worktreePath) === target)
     if (existing) {
       if (input.ifExists === "return") return existing
@@ -529,6 +555,9 @@ export class Orchestrator {
 
   /** Optional base-ref per task — consumed once by `ensureWorktree`. */
   private readonly pendingBaseRefs = new Map<TaskId, string>()
+
+  /** In-flight `adoptWorktree` per canonical worktree path — dedupes concurrent adopts. */
+  private readonly adoptLocks = new Map<string, Promise<Task>>()
 
   private requireTask(id: TaskId | string): Task {
     const task = this.store.get(id)

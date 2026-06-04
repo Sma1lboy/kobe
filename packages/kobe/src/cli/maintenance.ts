@@ -34,6 +34,7 @@ import { readPidFile } from "../daemon/server.ts"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { KOBE_TMUX_SOCKET, tmuxArgs, tmuxAvailable } from "../tmux/client.ts"
+import { CURRENT_VERSION } from "../version.ts"
 
 /** `kill(pid, 0)` throws ESRCH once a process is gone; EPERM means it's
  *  alive but owned by someone else. */
@@ -168,6 +169,16 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
     const tasks = typeof status.taskCount === "number" ? status.taskCount : "?"
     const clients = typeof status.attachedClients === "number" ? status.attachedClients : "?"
     out.push(`daemon:  ✓ running (pid ${pid}, up ${up}, ${tasks} task(s), ${clients} client(s))`)
+    // Surface a stale-build daemon: the long-lived daemon may be running an
+    // older binary than the one that launched `kobe doctor` (Bun has no
+    // hot-reload). The TUI shows a banner for this; doctor names the fix.
+    const daemonVersion = typeof status.kobeVersion === "string" ? status.kobeVersion : undefined
+    if (daemonVersion && daemonVersion !== CURRENT_VERSION) {
+      out.push(`         ⚠ stale build: daemon is v${daemonVersion}, you launched v${CURRENT_VERSION}`)
+      out.push("         → run `kobe daemon restart`, then `kobe reload` in any open kobe sessions")
+    } else if (daemonVersion) {
+      out.push(`         build: v${daemonVersion}`)
+    }
   } else {
     const pid = await readPidFile(pidPath)
     if (pid && isProcessAlive(pid)) {

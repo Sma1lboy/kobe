@@ -24,7 +24,7 @@ import {
 } from "../engine/hook-events.ts"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
-import { type UpdateInfo, checkLatestVersion } from "../version.ts"
+import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
@@ -351,6 +351,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         return {
           protocolVersion: DAEMON_PROTOCOL_VERSION,
           minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
+          // The daemon's BUILD version (package.json). The protocol range above
+          // only catches a breaking wire change; this lets the client detect a
+          // stale-build daemon after a patch upgrade (same protocol, old code in
+          // memory) and surface a non-fatal "restart the daemon" banner (KOB).
+          kobeVersion: CURRENT_VERSION,
           capabilities: [...CHANNEL_NAMES],
           daemonPid: process.pid,
           clientId: client.id,
@@ -360,6 +365,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "daemon.status":
         return {
           daemonPid: process.pid,
+          // Build version of the running daemon (package.json) — surfaced in
+          // `daemon status` / `kobe doctor` so a stale-build daemon is visible
+          // even without a TUI attached (KOB).
+          kobeVersion: CURRENT_VERSION,
           uptimeMs: Date.now() - startedAt.getTime(),
           startedAt: startedAt.toISOString(),
           // Attached GUIs (role "gui" front-ends) — the refcount that keeps
@@ -419,6 +428,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const gone = activity.get(taskId)
         if (gone?.lapse) clearTimeout(gone.lapse)
         activity.delete(taskId)
+        // Publish an explicit idle so every subscriber (incl. late ones that
+        // would otherwise replay a stale cached engine-state) clears this
+        // task's badge — important if the id is reused by a quick recreate.
+        if (gone) bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
         return {}
       }
       case "task.pin": {

@@ -61,6 +61,7 @@ import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
+import { VersionSkewBanner } from "../component/version-skew-banner"
 import { FocusProvider } from "../context/focus"
 import { KVProvider, useKV } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
@@ -564,8 +565,24 @@ function TasksShell(props: {
     return { label: `v${CURRENT_VERSION}`, emphasize: false }
   })
 
+  // Daemon build-version skew (KOB). The daemon reports its build version on
+  // the `hello` handshake; when it differs from THIS pane's CURRENT_VERSION the
+  // user upgraded the binary but the long-lived daemon (and this pane) are still
+  // running old code — Bun has no hot-reload, so it silently masks fixes. The
+  // banner is non-fatal (the protocol is still compatible) and auto-hides once a
+  // reconnect to a restarted daemon reports the matching version. Falls back to
+  // not-stale when there's no daemon (file-poll fallback) — nothing to compare.
+  const daemonStale = (): boolean => props.orch?.daemonStaleSignal()() ?? false
+  const daemonVersion = (): string | null => props.orch?.daemonVersionSignal()() ?? null
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
+      <VersionSkewBanner
+        stale={daemonStale}
+        daemonVersion={daemonVersion}
+        clientVersion={CURRENT_VERSION}
+        width={() => dimensions().width}
+      />
       <box flexGrow={1} flexShrink={1}>
         <Sidebar
           tasks={props.tasks}

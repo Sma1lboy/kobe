@@ -43,6 +43,30 @@ export function isProtocolCompatible(args: {
   return args.remoteVersion >= args.localMin && args.localVersion >= args.remoteMin
 }
 
+/**
+ * Build-version skew check (KOB) — distinct from the protocol check above.
+ * The protocol range only catches a BREAKING wire change; a normal patch
+ * upgrade keeps the same protocol version, so a stale-build daemon (the user
+ * upgraded the binary but the long-lived daemon is still running the old code
+ * in memory) is otherwise invisible. This compares the daemon's reported build
+ * version (`hello.kobeVersion` / `daemon.status`'s `kobeVersion`) against the
+ * client's own {@link import("../version").CURRENT_VERSION}.
+ *
+ * NON-FATAL by design: a mismatch means "the code is stale, restart it", not
+ * "these two can't talk" — so this only drives a dismissible banner, never a
+ * thrown error. Returns `false` when the daemon's version is unknown (an older
+ * daemon that predates this field omits it), so an old daemon never produces a
+ * false "stale" signal — it just goes unflagged.
+ *
+ * Pure — unit-tested. A plain string inequality (not semver) is intentional:
+ * any difference at all — newer OR older daemon — is worth a restart prompt,
+ * and the build versions are the package.json strings on both sides.
+ */
+export function isDaemonVersionStale(daemonVersion: string | undefined, clientVersion: string): boolean {
+  if (!daemonVersion) return false
+  return daemonVersion !== clientVersion
+}
+
 export type DaemonFrame =
   | { readonly type: "request"; readonly id: string; readonly name: DaemonRequestName; readonly payload?: unknown }
   | {

@@ -176,11 +176,23 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
 }
 
 /**
+ * Per-process guard so `hideFromGit` does its work (a `git` spawn + a
+ * read-append) at most ONCE per worktree. installTaskHooks runs on every
+ * `ensureWorktree` (the backfill path fires on every task enter), and these
+ * all execute in the single daemon process — so a Set both skips the wasteful
+ * re-spawn AND serializes the read-check-append against the shared
+ * `.git/info/exclude` (no concurrent double-append race).
+ */
+const hiddenWorktrees = new Set<string>()
+
+/**
  * Add `relPath` to the worktree repo's `.git/info/exclude` so it never shows
- * in `git status` / the task diff and is never committed. Idempotent. Silent
- * on any failure (not in a git repo, git missing, etc.).
+ * in `git status` / the task diff and is never committed. Idempotent + cheap
+ * on repeat (the {@link hiddenWorktrees} guard). Silent on any failure (not a
+ * git repo, git missing, etc.).
  */
 async function hideFromGit(worktreeDir: string, relPath: string): Promise<void> {
+  if (hiddenWorktrees.has(worktreeDir)) return
   try {
     const proc = Bun.spawn(["git", "-C", worktreeDir, "rev-parse", "--git-common-dir"], {
       stdout: "pipe",
@@ -194,9 +206,13 @@ async function hideFromGit(worktreeDir: string, relPath: string): Promise<void> 
     if (!commonDir.startsWith("/")) commonDir = join(worktreeDir, commonDir)
     const excludePath = join(commonDir, "info", "exclude")
     const existing = existsSync(excludePath) ? await readFile(excludePath, "utf8") : ""
-    if (existing.split("\n").some((l) => l.trim() === relPath)) return
+    if (existing.split("\n").some((l) => l.trim() === relPath)) {
+      hiddenWorktrees.add(worktreeDir)
+      return
+    }
     await mkdir(join(commonDir, "info"), { recursive: true })
     await appendFile(excludePath, `${existing.endsWith("\n") || existing === "" ? "" : "\n"}${relPath}\n`)
+    hiddenWorktrees.add(worktreeDir)
   } catch {
     /* best-effort */
   }

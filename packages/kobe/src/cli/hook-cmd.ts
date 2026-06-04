@@ -154,6 +154,16 @@ function worktreeSyncAdapters() {
   return ALL_VENDORS.map((v) => createEngineHookAdapter(v)).filter((a) => a.supportsWorktreeSync())
 }
 
+/** Resolve a persisted sync setting to the settings-file path it points at, or
+ *  undefined when off/unset. Accepts the current form (an absolute path) AND
+ *  the older `global` / `repo:<path>` forms for back-compat. */
+function persistedSyncPath(stored: string | undefined): string | undefined {
+  if (!stored || stored === "off") return undefined
+  if (stored === "global") return syncSettingsPath({ kind: "global" })
+  if (stored.startsWith("repo:")) return syncSettingsPath({ kind: "repo", path: stored.slice(5) })
+  return stored // already a resolved path
+}
+
 /**
  * `kobe hook setup [--global | --repo <path> | --off]` — opt-in install of the
  * worktree-sync hook so external `claude --worktree`s sync into kobe. Writes
@@ -188,15 +198,18 @@ async function runHookSetup(argv: readonly string[]): Promise<void> {
     return
   }
 
+  // Where the hook was LAST installed (we persist the resolved path, so --off
+  // and a scope-switch always find the right file to clean — no orphaned hook).
+  const prevPath = persistedSyncPath(getPersistedString(SYNC_SETTING_KEY))
+
   if (off) {
-    // Remove from wherever it was previously installed (persisted scope).
-    const prev = getPersistedString(SYNC_SETTING_KEY)
-    const path = prev?.startsWith("repo:")
-      ? syncSettingsPath({ kind: "repo", path: prev.slice(5) })
-      : syncSettingsPath({ kind: "global" })
-    for (const a of adapters) await a.removeWorktreeSyncHook(path)
+    if (prevPath) {
+      for (const a of adapters) await a.removeWorktreeSyncHook(prevPath)
+    }
     setPersistedString(SYNC_SETTING_KEY, "off")
-    process.stdout.write(`kobe hook setup: external worktree sync disabled (removed from ${path})\n`)
+    process.stdout.write(
+      `kobe hook setup: external worktree sync disabled${prevPath ? ` (removed from ${prevPath})` : ""}\n`,
+    )
     return
   }
 
@@ -204,8 +217,13 @@ async function runHookSetup(argv: readonly string[]): Promise<void> {
     ? { kind: "repo", path: repoPath }
     : { kind: "global" }
   const path = syncSettingsPath(scope)
+  // Switching scope (e.g. global → repo): remove the hook from the OLD path
+  // first so the previous location isn't left with an orphaned kobe hook.
+  if (prevPath && prevPath !== path) {
+    for (const a of adapters) await a.removeWorktreeSyncHook(prevPath)
+  }
   for (const a of adapters) await a.installWorktreeSyncHook(path)
-  setPersistedString(SYNC_SETTING_KEY, scope.kind === "repo" ? `repo:${resolve(scope.path)}` : "global")
+  setPersistedString(SYNC_SETTING_KEY, path)
   process.stdout.write(
     [
       `kobe hook setup: external worktree sync enabled (${scope.kind}) — wrote ${path}`,
