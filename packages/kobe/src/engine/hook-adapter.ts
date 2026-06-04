@@ -38,6 +38,22 @@ export interface EngineHookAdapter {
    * fatally — a hook-install failure must not block the task from launching.
    */
   installTaskHooks(ctx: HookInstallContext): Promise<void>
+
+  /**
+   * Whether this engine can create worktrees OUTSIDE kobe that kobe should
+   * sync back (Claude Code's `claude --worktree`). Only such engines get a
+   * worktree-sync hook installed by `kobe hook setup`.
+   */
+  supportsWorktreeSync(): boolean
+  /**
+   * Add a "worktree created" hook to a settings file (`~/.claude/settings.json`
+   * global, or `<repo>/.claude/settings.json`) so an external worktree-create
+   * pings `kobe hook worktree-created`. Idempotent + merge-safe (tags its own
+   * entry, preserves the user's other hooks). No-op when unsupported.
+   */
+  installWorktreeSyncHook(settingsFilePath: string): Promise<void>
+  /** Remove the worktree-sync hook this adapter installed. Idempotent. */
+  removeWorktreeSyncHook(settingsFilePath: string): Promise<void>
 }
 
 /** Resolve the hook adapter for a vendor (mirrors createEngineTurnDetector). */
@@ -54,5 +70,14 @@ export class NoopHookAdapter implements EngineHookAdapter {
   }
   async installTaskHooks(): Promise<void> {
     /* no-op until this engine's hook format is implemented */
+  }
+  supportsWorktreeSync(): boolean {
+    return false
+  }
+  async installWorktreeSyncHook(): Promise<void> {
+    /* no-op */
+  }
+  async removeWorktreeSyncHook(): Promise<void> {
+    /* no-op */
   }
 }

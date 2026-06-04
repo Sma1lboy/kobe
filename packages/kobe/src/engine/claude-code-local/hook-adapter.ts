@@ -21,7 +21,7 @@
 
 import { existsSync } from "node:fs"
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { kobeCliInvocation } from "../../cli/invocation.ts"
 import { shellQuoteArgv } from "../../tmux/session-layout.ts"
 import type { EngineHookAdapter, HookInstallContext } from "../hook-adapter.ts"
@@ -40,6 +40,50 @@ const EVENT_MAP: ReadonlyArray<{ event: string; matcher?: string; verb: EngineAc
 
 /** The events kobe owns — used to replace only these in a merge. */
 export const KOBE_HOOK_EVENTS: readonly string[] = EVENT_MAP.map((e) => e.event)
+
+/** Substring identifying kobe's WorktreeCreate hook in a shared settings file. */
+const WORKTREE_SYNC_MARKER = "worktree-created"
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v)
+}
+
+/** Read a JSON object from `path`, or {} if absent/unparseable/not-an-object. */
+async function readJsonObject(path: string): Promise<Record<string, unknown>> {
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown
+    return isObject(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+/** True if a WorktreeCreate hook group is the one kobe installed (by its command). */
+function isKobeWorktreeSyncGroup(group: unknown): boolean {
+  if (!isObject(group) || !Array.isArray(group.hooks)) return false
+  return group.hooks.some(
+    (h) => isObject(h) && typeof h.command === "string" && h.command.includes(WORKTREE_SYNC_MARKER),
+  )
+}
+
+/**
+ * Pure merge: add (or with `command === null`, remove) kobe's WorktreeCreate
+ * hook in a settings object, preserving the user's own hooks + other keys.
+ * Drops kobe's prior entry first so re-install is idempotent + removal clean.
+ */
+export function mergeWorktreeSyncHook(
+  current: Record<string, unknown>,
+  command: string | null,
+): Record<string, unknown> {
+  const { hooks: rawHooks, ...restSettings } = current
+  const { WorktreeCreate, ...otherHooks } = isObject(rawHooks) ? rawHooks : {}
+  const prior = Array.isArray(WorktreeCreate) ? (WorktreeCreate as unknown[]) : []
+  const kept = prior.filter((g) => !isKobeWorktreeSyncGroup(g))
+  if (command !== null) kept.push({ hooks: [{ type: "command", command }] })
+  const nextHooks: Record<string, unknown> = { ...otherHooks }
+  if (kept.length > 0) nextHooks.WorktreeCreate = kept
+  return Object.keys(nextHooks).length > 0 ? { ...restSettings, hooks: nextHooks } : { ...restSettings }
+}
 
 /** Build the hooks block kobe installs, pointing each event at `kobe hook <verb>`.
  *  `inv` (the kobe CLI argv prefix) is injectable for tests; defaults to the
@@ -73,6 +117,33 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
 
   supportsHooks(): boolean {
     return true
+  }
+
+  supportsWorktreeSync(): boolean {
+    return true
+  }
+
+  async installWorktreeSyncHook(settingsFilePath: string): Promise<void> {
+    await this.editWorktreeSyncHook(settingsFilePath, true)
+  }
+
+  async removeWorktreeSyncHook(settingsFilePath: string): Promise<void> {
+    await this.editWorktreeSyncHook(settingsFilePath, false)
+  }
+
+  /**
+   * Add or remove kobe's `WorktreeCreate` hook in a settings.json. Unlike the
+   * per-task hooks this targets a SHARED file (the user's global or a repo's
+   * committed settings), so we must not clobber the user's own WorktreeCreate
+   * hooks: kobe owns only the entry whose command contains the
+   * {@link WORKTREE_SYNC_MARKER}; everything else is preserved.
+   */
+  private async editWorktreeSyncHook(settingsFilePath: string, install: boolean): Promise<void> {
+    const current = await readJsonObject(settingsFilePath)
+    const command = install ? shellQuoteArgv([...kobeCliInvocation(), "hook", "worktree-created"]) : null
+    const next = mergeWorktreeSyncHook(current, command)
+    await mkdir(dirname(settingsFilePath), { recursive: true })
+    await writeFile(settingsFilePath, `${JSON.stringify(next, null, 2)}\n`)
   }
 
   async installTaskHooks(ctx: HookInstallContext): Promise<void> {

@@ -464,6 +464,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           branch: optionalString(payload, "branch"),
           vendor: optionalVendor(payload, "vendor"),
           title: optionalString(payload, "title"),
+          ifExists: optionalString(payload, "ifExists") === "return" ? "return" : "error",
         })
         return { task: serializeTask(task) }
       }

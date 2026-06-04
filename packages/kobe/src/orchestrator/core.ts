@@ -247,7 +247,14 @@ export class Orchestrator {
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
     if (task.kind === "main") return task.repo
-    if (task.worktreePath) return task.worktreePath
+    if (task.worktreePath) {
+      // Backfill: a worktree created before engine hooks existed (or by an
+      // older kobe) gets its hooks installed on the next enter. Idempotent +
+      // best-effort (the adapter swallows failures), so it's safe on the fast
+      // path. This is also why ensureWorktree is the single hook-install site.
+      await this.installEngineHooks(task)
+      return task.worktreePath
+    }
     const inflight = this.worktreeLocks.get(task.id)
     if (inflight) {
       await inflight
@@ -273,13 +280,8 @@ export class Orchestrator {
         })
         // Install the engine's activity hooks into the fresh worktree so the
         // engine reports turn/permission/error events back to the daemon
-        // (event-driven task state). Engine-neutral: the factory picks the
-        // right adapter by vendor; a vendor without hooks is a no-op. Awaited
-        // but never fatal — the adapter swallows its own failures.
-        await createEngineHookAdapter(task.vendor ?? DEFAULT_TASK_VENDOR).installTaskHooks({
-          worktreeDir: info.path,
-          taskId: task.id,
-        })
+        // (event-driven task state). Same neutral path as the backfill above.
+        await this.installEngineHooks(this.requireTask(task.id))
       } catch (err) {
         this.slugs.cancel(task.repo, slug)
         throw err
@@ -473,10 +475,22 @@ export class Orchestrator {
     readonly branch?: string
     readonly vendor?: VendorId
     readonly title?: string
+    /**
+     * What to do when a task already tracks this worktree. `"error"` (default,
+     * the user-facing `kobe api adopt` path) throws; `"return"` (the
+     * WorktreeCreate hook path) returns the existing task, making sync
+     * idempotent — a re-fired hook or a worktree kobe already owns is a no-op.
+     */
+    readonly ifExists?: "error" | "return"
   }): Promise<Task> {
     if (!input.repo) throw new Error("adoptWorktree: repo is required")
     if (!input.worktreePath) throw new Error("adoptWorktree: worktreePath is required")
     const target = canonPath(input.worktreePath)
+    const existing = this.store.list().find((t) => t.worktreePath && canonPath(t.worktreePath) === target)
+    if (existing) {
+      if (input.ifExists === "return") return existing
+      throw new Error(`adoptWorktree: ${input.worktreePath} is already adopted as a task`)
+    }
     const candidates = await this.worktrees.listAll(input.repo)
     const match = candidates.find((wt) => canonPath(wt.path) === target)
     if (!match) {
@@ -484,8 +498,6 @@ export class Orchestrator {
         `adoptWorktree: ${input.worktreePath} is not an adoptable git worktree of ${input.repo} (unknown, detached, or the main checkout)`,
       )
     }
-    const alreadyLinked = this.store.list().some((t) => t.worktreePath && canonPath(t.worktreePath) === target)
-    if (alreadyLinked) throw new Error(`adoptWorktree: ${input.worktreePath} is already adopted as a task`)
     const branch = input.branch?.trim() || match.branch
     const title = (input.title ?? basename(match.path)).trim() || PLACEHOLDER_TASK_TITLE
     return this.store.create({
@@ -500,6 +512,20 @@ export class Orchestrator {
   }
 
   // --- internals ---
+
+  /**
+   * Install the engine's per-task activity hooks into a task's worktree, via
+   * the neutral {@link createEngineHookAdapter} seam. Skips `main` tasks (their
+   * "worktree" is the user's real repo root — we don't write hooks there) and
+   * tasks without a materialised worktree. Idempotent + best-effort.
+   */
+  private async installEngineHooks(task: Task): Promise<void> {
+    if (task.kind === "main" || !task.worktreePath) return
+    await createEngineHookAdapter(task.vendor ?? DEFAULT_TASK_VENDOR).installTaskHooks({
+      worktreeDir: task.worktreePath,
+      taskId: task.id,
+    })
+  }
 
   /** Optional base-ref per task — consumed once by `ensureWorktree`. */
   private readonly pendingBaseRefs = new Map<TaskId, string>()

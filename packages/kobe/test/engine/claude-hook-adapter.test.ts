@@ -3,6 +3,7 @@ import {
   KOBE_HOOK_EVENTS,
   buildClaudeHooks,
   mergeClaudeHooks,
+  mergeWorktreeSyncHook,
 } from "../../src/engine/claude-code-local/hook-adapter.ts"
 
 /**
@@ -51,5 +52,46 @@ describe("mergeClaudeHooks", () => {
     expect([...KOBE_HOOK_EVENTS].sort()).toEqual(
       ["Notification", "SessionEnd", "SessionStart", "Stop", "StopFailure", "UserPromptSubmit"].sort(),
     )
+  })
+})
+
+interface SettingsShape {
+  hooks?: { WorktreeCreate?: unknown[]; PostToolUse?: unknown }
+  model?: string
+}
+
+describe("mergeWorktreeSyncHook (Feature 2 — external worktree sync)", () => {
+  it("adds a WorktreeCreate hook, preserving the user's other hooks", () => {
+    const userSettings = {
+      hooks: { PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "fmt" }] }] },
+      model: "opus",
+    }
+    const out = mergeWorktreeSyncHook(userSettings, "kobe hook worktree-created") as SettingsShape
+    expect(out.model).toBe("opus") // untouched
+    expect(out.hooks?.PostToolUse).toEqual(userSettings.hooks.PostToolUse) // untouched
+    expect(JSON.stringify(out.hooks?.WorktreeCreate)).toContain("worktree-created")
+  })
+
+  it("is idempotent — re-install replaces kobe's own entry, no duplicates", () => {
+    const once = mergeWorktreeSyncHook({}, "kobe hook worktree-created")
+    const twice = mergeWorktreeSyncHook(once, "kobe hook worktree-created")
+    expect((twice as SettingsShape).hooks?.WorktreeCreate).toHaveLength(1)
+  })
+
+  it("removes kobe's hook (command=null) while keeping the user's WorktreeCreate hooks", () => {
+    const withUser = {
+      hooks: { WorktreeCreate: [{ hooks: [{ type: "command", command: "user-wt-hook" }] }] },
+    }
+    const added = mergeWorktreeSyncHook(withUser, "kobe hook worktree-created")
+    expect((added as SettingsShape).hooks?.WorktreeCreate).toHaveLength(2)
+    const removed = mergeWorktreeSyncHook(added, null) as SettingsShape
+    expect(removed.hooks?.WorktreeCreate).toHaveLength(1)
+    expect(JSON.stringify(removed.hooks?.WorktreeCreate)).toContain("user-wt-hook")
+  })
+
+  it("drops the empty hooks key entirely when the last hook is removed", () => {
+    const added = mergeWorktreeSyncHook({}, "kobe hook worktree-created")
+    const removed = mergeWorktreeSyncHook(added, null) as SettingsShape
+    expect(removed.hooks).toBeUndefined()
   })
 })
