@@ -17,6 +17,7 @@ import {
   type SubscribeRole,
   isProtocolCompatible,
 } from "../daemon/protocol.ts"
+import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
@@ -25,6 +26,13 @@ import type { UpdateInfo } from "../version.ts"
 import { logClient, logClientError } from "./client-log.ts"
 import { ensureDaemonReachable } from "./daemon-process.ts"
 import type { KobeDaemonClient } from "./index.ts"
+
+/** Per-task engine activity, accumulated from the daemon's `engine-state` channel. */
+export interface TaskEngineState {
+  readonly state: TaskActivityState
+  readonly detail?: EngineActivityDetail
+  readonly at: number
+}
 
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
 
@@ -59,6 +67,8 @@ export class RemoteOrchestrator {
   private readonly setActiveTaskSig: (next: string | null) => void
   private readonly updateAcc: Accessor<UpdateInfo | null>
   private readonly setUpdateSig: (next: UpdateInfo | null) => void
+  private readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
+  private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -74,6 +84,7 @@ export class RemoteOrchestrator {
     const [tasks, setTasks] = createSignal<Task[]>([])
     const [activeTask, setActiveTask] = createSignal<string | null>(null)
     const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
+    const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
@@ -81,6 +92,8 @@ export class RemoteOrchestrator {
     this.setActiveTaskSig = (next) => setActiveTask(() => next)
     this.updateAcc = update
     this.setUpdateSig = (next) => setUpdate(() => next)
+    this.engineStateAcc = engineState
+    this.setEngineStateSig = (next) => setEngineState(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -231,6 +244,16 @@ export class RemoteOrchestrator {
     return this.updateAcc
   }
 
+  /**
+   * Per-task engine activity (running / turn-complete / rate-limited /
+   * permission-needed / error), pushed live on the daemon's `engine-state`
+   * channel from engine hooks. The transient, event-driven counterpart to the
+   * lifecycle `tasksSignal()` — the sidebar reads it for real-time badges.
+   */
+  engineStateSignal(): Accessor<ReadonlyMap<string, TaskEngineState>> {
+    return this.engineStateAcc
+  }
+
   listTasks(): Task[] {
     return this.tasksAcc()
   }
@@ -360,6 +383,16 @@ export class RemoteOrchestrator {
     if (name === "update") {
       const info = (payload as { info?: UpdateInfo | null } | undefined)?.info
       this.setUpdateSig(info ?? null)
+      return
+    }
+    if (name === "engine-state") {
+      const p = payload as { taskId?: string; state?: TaskActivityState; detail?: EngineActivityDetail; at?: number }
+      if (typeof p?.taskId !== "string" || typeof p.state !== "string") return
+      // Accumulate per-task into a fresh Map (new ref → Solid re-renders).
+      const next = new Map(this.engineStateAcc())
+      if (p.state === "idle") next.delete(p.taskId)
+      else next.set(p.taskId, { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 })
+      this.setEngineStateSig(next)
       return
     }
   }

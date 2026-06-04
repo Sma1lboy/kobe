@@ -580,6 +580,10 @@ function TasksShell(props: {
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.
           width={() => dimensions().width}
+          // Event-driven engine activity (turn done / rate-limited / waiting
+          // on approval), pushed from engine hooks via the daemon. Primary
+          // liveness signal; the file-poll turn-detector stays as fallback.
+          engineState={props.orch ? props.orch.engineStateSignal() : undefined}
           onAddTask={() => void createTask()}
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}

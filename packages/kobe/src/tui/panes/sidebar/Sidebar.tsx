@@ -71,6 +71,7 @@
  * don't yet thread the focus signal still get a working sidebar.
  */
 
+import type { TaskEngineState } from "@/client/remote-orchestrator"
 import type { Task, TaskStatus } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
@@ -177,6 +178,15 @@ export type SidebarProps = {
    * (the spinner falls back to a static "active" badge).
    */
   chatRunState?: Accessor<ReadonlyMap<string, ChatRunState>>
+  /**
+   * Per-task engine activity from the daemon's `engine-state` channel
+   * (event-driven, via engine hooks), keyed by taskId. The PRIMARY liveness
+   * signal: `running` animates the spinner + "working" chip; `rate_limited` /
+   * `permission_needed` / `error` show a distinct status chip. Optional — when
+   * absent (or a task has no entry) the row falls back to the chatRunState /
+   * `task.status` heuristics, so the polling turn-detector still covers it.
+   */
+  engineState?: Accessor<ReadonlyMap<string, TaskEngineState>>
 }
 
 /**
@@ -778,15 +788,36 @@ export function Sidebar(props: SidebarProps) {
                 return readWorktreeChanges(task.worktreePath)
               })
               const titleText = isMain ? repoBasename(task.repo) : task.title
-              // Loading = the engine is actively working this task. Driven by
-              // `task.status === "in_progress"` (the only liveness signal the
-              // Tasks pane has — chatRunState is unwired there) OR a live
-              // engine handle when the outer monitor does pass chatRunState.
-              // A `main` (project) row is EXEMPT from the persisted-status
-              // fallback: its status is never lifecycle-maintained, so a stale
-              // in_progress would pin the "working" chip on forever. A project
-              // only reads as working when there's a genuinely live handle.
-              const loading = () => isLive() || (!isMain && task.status === "in_progress")
+              // Engine activity (event-driven, from hooks) — the PRIMARY
+              // signal when present. Falls through to the older heuristics
+              // below when a task has no hook event yet (poll fallback).
+              const activity = () => props.engineState?.().get(task.id)?.state
+              // Loading = the engine is actively working this task. Priority:
+              //   1. event-driven `running` (hooks) → working
+              //   2. a live engine handle (chatRunState, outer monitor)
+              //   3. persisted `in_progress` (Tasks-pane fallback; NEVER for a
+              //      `main` row — its status isn't lifecycle-maintained, so a
+              //      stale in_progress would pin "working" on forever).
+              // A non-idle engine state that ISN'T `running` (rate_limited /
+              // permission_needed / error / turn_complete) is NOT "working" —
+              // it gets its own chip below instead of the spinner.
+              const loading = () => activity() === "running" || isLive() || (!isMain && task.status === "in_progress")
+              // Short status chip for the non-running engine states, shown in
+              // place of the "working" chip. null when there's nothing to flag.
+              const activityChip = (): { text: string; tone: "primary" | "warning" | "error" } | null => {
+                switch (activity()) {
+                  case "rate_limited":
+                    return { text: "limited", tone: "warning" }
+                  case "permission_needed":
+                    return { text: "approve?", tone: "warning" }
+                  case "error":
+                    return { text: "error", tone: "error" }
+                  case "turn_complete":
+                    return { text: "done", tone: "primary" }
+                  default:
+                    return null
+                }
+              }
               // Task-card subtitle (line 2): the branch, or a human status word
               // when there's no branch yet, so every card stays two lines tall.
               const subtitleText = createMemo(() => {
@@ -885,6 +916,22 @@ export function Sidebar(props: SidebarProps) {
                             <text fg={theme.primary} wrapMode="none">
                               working
                             </text>
+                          </Show>
+                          <Show when={!loading() && activityChip()}>
+                            {(chip) => (
+                              <text
+                                fg={
+                                  chip().tone === "error"
+                                    ? theme.error
+                                    : chip().tone === "warning"
+                                      ? theme.warning
+                                      : theme.primary
+                                }
+                                wrapMode="none"
+                              >
+                                {chip().text}
+                              </text>
+                            )}
                           </Show>
                         </box>
                       </box>

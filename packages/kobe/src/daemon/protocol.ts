@@ -9,6 +9,7 @@
  * task-CRUD + subscribe shape.
  */
 
+import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { Task } from "../types/task.ts"
 import type { UpdateInfo } from "../version.ts"
 
@@ -73,6 +74,10 @@ export type DaemonRequestName =
   | "task.setActive"
   | "worktree.discoverAdoptable"
   | "worktree.adopt"
+  // Engine HOOK ingest (KOB): a `kobe hook <verb>` process reports a
+  // normalized engine activity event for a task; the daemon folds it into
+  // the task's transient activity state and broadcasts `engine-state`.
+  | "engine.reportEvent"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -122,6 +127,16 @@ export interface ChannelPayloads {
    * when the check is suppressed (dev mode) or unavailable (offline).
    */
   update: { info: UpdateInfo | null }
+  /**
+   * Transient, engine-driven activity for ONE task — pushed when a hook
+   * event arrives (KOB). Distinct from `task.snapshot`'s lifecycle status:
+   * this is "what is the engine doing right now" (running / turn just
+   * completed / rate-limited / waiting on a permission prompt), reduced from
+   * normalized hook verbs ({@link import("../engine/hook-events").reduceActivity}).
+   * Last-value-per-channel replay means a late subscriber gets the most
+   * recent task's state; the daemon also lets a state lapse back to idle.
+   */
+  "engine-state": { taskId: string; state: TaskActivityState; detail?: EngineActivityDetail; at: number }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -132,7 +147,7 @@ export interface ChannelPayloads {
 export type ChannelName = keyof ChannelPayloads
 
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
-export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task", "update"]
+export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task", "update", "engine-state"]
 
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a

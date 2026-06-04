@@ -24,7 +24,8 @@
  *
  * Internal subcommands fired by tmux key bindings inside a task session
  * (not meant for direct use): `new-chattab`, `quick-create`, `tasks`,
- * `ops` — each takes the session/worktree as flags.
+ * `ops` — each takes the session/worktree as flags. `hook` is fired by an
+ * engine's own hooks inside a worktree to report activity events.
  *
  * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
  * a prompt via `tmux send-keys` into the task's engine pane, not the
@@ -355,6 +356,14 @@ async function main(): Promise<void> {
     // Install / inspect the kobe agent skill that ships in this package.
     const { runSkillSubcommand } = await import("./skill-cmd.ts")
     await runSkillSubcommand(rest)
+    return
+  }
+  if (subcommand === "hook") {
+    // Internal: fired by an engine's hooks inside a task worktree to report a
+    // normalized activity event to the daemon (event-driven task state).
+    // Always exits 0; never spawns the daemon.
+    const { runHookSubcommand } = await import("./hook-cmd.ts")
+    await runHookSubcommand(rest)
     return
   }
   if (subcommand === "new-chattab") {

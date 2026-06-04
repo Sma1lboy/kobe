@@ -26,6 +26,7 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
+import { createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -269,6 +270,15 @@ export class Orchestrator {
         await this.store.update(task.id, {
           worktreePath: info.path,
           branch,
+        })
+        // Install the engine's activity hooks into the fresh worktree so the
+        // engine reports turn/permission/error events back to the daemon
+        // (event-driven task state). Engine-neutral: the factory picks the
+        // right adapter by vendor; a vendor without hooks is a no-op. Awaited
+        // but never fatal — the adapter swallows its own failures.
+        await createEngineHookAdapter(task.vendor ?? DEFAULT_TASK_VENDOR).installTaskHooks({
+          worktreeDir: info.path,
+          taskId: task.id,
         })
       } catch (err) {
         this.slugs.cancel(task.repo, slug)

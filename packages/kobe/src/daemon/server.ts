@@ -15,6 +15,13 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
+import {
+  type EngineActivityDetail,
+  type EngineActivityKind,
+  type TaskActivityState,
+  isEngineActivityKind,
+  reduceActivity,
+} from "../engine/hook-events.ts"
 import type { Orchestrator } from "../orchestrator/core.ts"
 import type { Task, VendorId } from "../types/task.ts"
 import { type UpdateInfo, checkLatestVersion } from "../version.ts"
@@ -48,6 +55,16 @@ function resolveIdleGraceMs(): number {
   if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
   const n = Number(raw)
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
+}
+
+/** How long a non-idle engine-activity state survives with no follow-up event
+ *  before lapsing to idle (safety net for a missed Stop/SessionEnd). */
+const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
+function resolveEngineStateTtlMs(): number {
+  const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
+  if (raw === undefined) return DEFAULT_ENGINE_STATE_TTL_MS
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ENGINE_STATE_TTL_MS
 }
 
 export interface DaemonServerOptions {
@@ -155,6 +172,42 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   bus.onPublish((event) => {
     broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
   })
+
+  // Transient, engine-driven per-task activity (KOB). Folded from normalized
+  // hook events (`engine.reportEvent`) and pushed on the `engine-state`
+  // channel. In-memory only — never persisted (it's "what is the engine doing
+  // RIGHT NOW", not lifecycle). A per-task stale timer lapses a stuck state
+  // back to idle if the terminating hook is ever missed (engine crash, etc.).
+  interface ActivityEntry {
+    state: TaskActivityState
+    detail?: EngineActivityDetail
+    at: number
+    lapse?: ReturnType<typeof setTimeout>
+  }
+  const activity = new Map<string, ActivityEntry>()
+  const ACTIVITY_STALE_MS = resolveEngineStateTtlMs()
+
+  function reportActivity(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail): void {
+    const prev = activity.get(taskId)
+    if (prev?.lapse) clearTimeout(prev.lapse)
+    const state = reduceActivity(prev?.state, kind, detail)
+    const at = Date.now()
+    const entry: ActivityEntry = { state, detail, at }
+    // Safety net: a non-idle state that never gets a follow-up event lapses
+    // back to idle, so a missed Stop/SessionEnd can't pin a badge forever.
+    if (state !== "idle") {
+      entry.lapse = setTimeout(() => {
+        const cur = activity.get(taskId)
+        if (cur && cur.at === at) {
+          activity.set(taskId, { state: "idle", at: Date.now() })
+          bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
+        }
+      }, ACTIVITY_STALE_MS)
+      entry.lapse.unref?.()
+    }
+    activity.set(taskId, entry)
+    bus.publish("engine-state", { taskId, state, ...(detail ? { detail } : {}), at })
+  }
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -363,6 +416,9 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
+        const gone = activity.get(taskId)
+        if (gone?.lapse) clearTimeout(gone.lapse)
+        activity.delete(taskId)
         return {}
       }
       case "task.pin": {
@@ -419,6 +475,19 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         bus.publish("active-task", { taskId: optionalString(payload, "taskId") ?? null })
         return {}
       }
+      case "engine.reportEvent": {
+        // A `kobe hook <verb>` process reporting a NORMALIZED engine activity
+        // event (the vendor-specific hook was already translated by the
+        // engine's hook adapter). Fold it into the task's transient activity
+        // state + broadcast on `engine-state`. Unknown kinds are ignored
+        // (forward-compat: a newer adapter, older daemon).
+        const taskId = requireString(payload, "taskId")
+        const kind = requireString(payload, "kind")
+        if (!isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
+        const detail = optionalActivityDetail(payload)
+        reportActivity(taskId, kind, detail)
+        return {}
+      }
       case "subscribe": {
         client.subscribed = true
         // role defaults to "pane": a subscriber that omits it is the safe
@@ -443,6 +512,18 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // as before. The bus cache is warm (subscribeTasks' eager fire).
         for (const event of bus.snapshot()) {
           writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
+        }
+        // The bus only caches ONE last-value per channel, but `engine-state`
+        // is per-task — so additionally replay EVERY task's current non-idle
+        // activity to this late subscriber (otherwise it'd only learn the most
+        // recently changed task's state).
+        for (const [taskId, entry] of activity) {
+          if (entry.state === "idle") continue
+          writeFrame(client, {
+            type: "event",
+            name: "engine-state",
+            payload: { taskId, state: entry.state, ...(entry.detail ? { detail: entry.detail } : {}), at: entry.at },
+          })
         }
         return {}
       }
@@ -545,4 +626,17 @@ function optionalVendor(payload: Record<string, unknown>, key: string): VendorId
     throw new Error(`${key} '${value}' is not a supported vendor (expected: claude, codex)`)
   }
   return value
+}
+
+/** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping
+ *  anything malformed (the field is best-effort UI hint, never load-bearing). */
+function optionalActivityDetail(payload: Record<string, unknown>): EngineActivityDetail | undefined {
+  const raw = payload.detail
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  const d = raw as Record<string, unknown>
+  const out: { failure?: "rate_limit" | "billing" | "other"; waiting?: "permission" | "input"; note?: string } = {}
+  if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
+  if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
+  if (typeof d.note === "string") out.note = d.note
+  return Object.keys(out).length > 0 ? out : undefined
 }
