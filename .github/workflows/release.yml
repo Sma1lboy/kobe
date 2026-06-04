@@ -170,14 +170,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14            # M1 host
+          - runner: macos-14            # Apple Silicon host (only Mac target)
             asset: kobe-darwin-arm64
-          - runner: macos-13            # Intel host
-            asset: kobe-darwin-x64
           - runner: ubuntu-latest       # x86_64 host
             asset: kobe-linux-x64
           - runner: ubuntu-24.04-arm    # Graviton-class arm64 host
             asset: kobe-linux-arm64
+          # macOS Intel (darwin-x64) intentionally dropped — no longer
+          # targeting Intel Macs, and the macos-13 runner queue stalled
+          # releases waiting for a host.
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
