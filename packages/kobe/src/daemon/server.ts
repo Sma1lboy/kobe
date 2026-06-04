@@ -27,7 +27,7 @@ import type { Task, VendorId } from "../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
-import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
+import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
@@ -481,6 +481,27 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
           ifExists: optionalString(payload, "ifExists") === "return" ? "return" : "error",
         })
         return { task: serializeTask(task) }
+      }
+      case "worktree.reconcile": {
+        // A `kobe hook worktree-created` (global PostToolUse) reporting that a
+        // `git worktree add` just ran in `cwd`, creating `worktreePath`. Adopt
+        // it the MOMENT it's created — no engine session needed (the
+        // creation-time complement to the `session-start` auto-adopt in
+        // `engine.reportEvent` below). Bounded to repos kobe already tracks
+        // (so a stray worktree in an untracked repo is ignored); `adoptWorktree`
+        // is idempotent + git-validated, so a re-fired hook or a bogus path is a
+        // harmless no-op (the path just fails validation → caught → dropped).
+        const cwd = requireString(payload, "cwd")
+        const worktreePath = requireString(payload, "worktreePath")
+        const repo = matchRepoByCwd(orch.listTasks(), cwd) ?? matchRepoByCwd(orch.listTasks(), worktreePath)
+        if (!repo) return { adopted: false }
+        try {
+          const task = await orch.adoptWorktree({ repo, worktreePath, ifExists: "return" })
+          return { adopted: true, taskId: task.id }
+        } catch (err) {
+          logDaemonError("worktree-created", err)
+          return { adopted: false }
+        }
       }
       case "task.setActive": {
         // Pure UI/session focus — not a task-index property — so it lives on

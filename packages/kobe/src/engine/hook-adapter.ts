@@ -49,6 +49,20 @@ export interface EngineHookAdapter {
    *  merge-safe (preserves the user's own WorktreeCreate hooks). No-op when
    *  unsupported. */
   removeWorktreeSyncHook(settingsFilePath: string): Promise<void>
+
+  /**
+   * Install the global worktree-WATCH hook: a creation-time observer that, the
+   * moment a `git worktree add` runs in ANY engine session, adopts the new
+   * worktree as a kobe task so it appears in the sidebar WITHOUT a running
+   * session. Unlike the removed `WorktreeCreate` provider hook, this is a pure
+   * OBSERVER fired AFTER the tool runs (Claude Code's `PostToolUse`), so its
+   * presence never changes git/`--worktree` behaviour. Must be IDEMPOTENT,
+   * merge-safe, and never throw fatally. No-op when {@link supportsHooks} is
+   * false.
+   */
+  installWorktreeWatchHook(settingsFilePath: string): Promise<void>
+  /** Remove the worktree-watch hook this adapter installed. Idempotent + merge-safe. */
+  removeWorktreeWatchHook(settingsFilePath: string): Promise<void>
 }
 
 /** Resolve the hook adapter for a vendor (mirrors createEngineTurnDetector). */
@@ -73,6 +87,12 @@ export class NoopHookAdapter implements EngineHookAdapter {
     return false
   }
   async removeWorktreeSyncHook(): Promise<void> {
+    /* no-op */
+  }
+  async installWorktreeWatchHook(): Promise<void> {
+    /* no-op until this engine's hook format is implemented */
+  }
+  async removeWorktreeWatchHook(): Promise<void> {
     /* no-op */
   }
 }

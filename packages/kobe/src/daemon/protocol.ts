@@ -98,6 +98,11 @@ export type DaemonRequestName =
   | "task.setActive"
   | "worktree.discoverAdoptable"
   | "worktree.adopt"
+  // Creation-time auto-adopt (KOB): a `kobe hook worktree-created` (global
+  // PostToolUse) reports that a `git worktree add` just ran in `cwd`. The
+  // daemon adopts the new worktree as a task the MOMENT it's created — no
+  // engine session needed (the complement to session-start auto-adopt).
+  | "worktree.reconcile"
   // Engine HOOK ingest (KOB): a `kobe hook <verb>` process reports a
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.

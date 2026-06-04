@@ -55,6 +55,31 @@ export function matchTaskByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string):
 }
 
 /**
+ * Map a `cwd` to the tracked repo that CONTAINS it — the longest `repo` root
+ * (from the task store) that is `cwd` itself or an ancestor of it.
+ *
+ * Used by the `worktree.reconcile` path: a `git worktree add` ran in `cwd`, so
+ * the freshly-created worktree belongs to whichever tracked repo `cwd` sits
+ * under. Returns undefined when no tracked repo contains `cwd` — consistent
+ * with {@link findAdoptableWorktree}, kobe only auto-adopts under repos it
+ * already tracks.
+ */
+export function matchRepoByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string): string | undefined {
+  const target = normalize(cwd)
+  let best: string | undefined
+  let bestLen = -1
+  for (const t of tasks) {
+    if (!t.repo) continue
+    const repo = normalize(t.repo)
+    if (isAncestorOrSelf(repo, target) && repo.length > bestLen) {
+      bestLen = repo.length
+      best = repo
+    }
+  }
+  return best
+}
+
+/**
  * Detect a `cwd` that is an UNADOPTED git worktree under a tracked repo's
  * `.claude/worktrees/` dir — the replacement for the removed WorktreeCreate
  * hook. When an external `claude --worktree` (or a manual `git worktree add`)

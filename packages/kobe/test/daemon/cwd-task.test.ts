@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { findAdoptableWorktree, matchTaskByCwd } from "../../src/daemon/cwd-task.ts"
+import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "../../src/daemon/cwd-task.ts"
 
 describe("matchTaskByCwd", () => {
   const main = { id: "main", worktreePath: "/repo" }
@@ -42,6 +42,45 @@ describe("matchTaskByCwd", () => {
   it("tolerates a trailing slash on either side", () => {
     expect(matchTaskByCwd([{ id: "z", worktreePath: "/repo/wt/" }], "/repo/wt")).toBe("z")
     expect(matchTaskByCwd([{ id: "z", worktreePath: "/repo/wt" }], "/repo/wt/")).toBe("z")
+  })
+})
+
+describe("matchRepoByCwd", () => {
+  const tasks = [
+    { id: "main", repo: "/repo", worktreePath: "/repo" },
+    { id: "sub", repo: "/repo", worktreePath: "/repo/.claude/worktrees/known" },
+    { id: "other", repo: "/elsewhere/proj", worktreePath: "/elsewhere/proj" },
+  ]
+
+  it("maps a cwd at the repo root to that repo", () => {
+    expect(matchRepoByCwd(tasks, "/repo")).toBe("/repo")
+  })
+
+  it("maps a cwd inside the repo (or a worktree under it) to the repo root", () => {
+    expect(matchRepoByCwd(tasks, "/repo/src/deep")).toBe("/repo")
+    // A `git worktree add` run from inside an existing worktree still resolves
+    // to the tracked repo root (the longest repo prefix).
+    expect(matchRepoByCwd(tasks, "/repo/.claude/worktrees/known")).toBe("/repo")
+  })
+
+  it("prefers the longest (most specific) repo when repos nest", () => {
+    const nested = [
+      { id: "outer", repo: "/repo", worktreePath: "/repo" },
+      { id: "inner", repo: "/repo/vendor/lib", worktreePath: "/repo/vendor/lib" },
+    ]
+    expect(matchRepoByCwd(nested, "/repo/vendor/lib/src")).toBe("/repo/vendor/lib")
+  })
+
+  it("returns undefined for a cwd not under any tracked repo", () => {
+    expect(matchRepoByCwd(tasks, "/totally/unrelated")).toBeUndefined()
+  })
+
+  it("does not treat a sibling-prefix dir as a match (/repo vs /repo-other)", () => {
+    expect(matchRepoByCwd(tasks, "/repo-other/src")).toBeUndefined()
+  })
+
+  it("ignores tasks with no repo", () => {
+    expect(matchRepoByCwd([{ id: "x", worktreePath: "/repo" }], "/repo")).toBeUndefined()
   })
 })
 

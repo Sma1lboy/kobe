@@ -62,6 +62,78 @@ function flagValue(argv: readonly string[], name: string): string | undefined {
   return undefined
 }
 
+/** The verb of the global `PostToolUse` (Bash) hook that auto-adopts a
+ *  freshly-created worktree. Kept in sync with the engine adapter's
+ *  `WORKTREE_SYNC_MARKER` (the command substring the hook is installed with). */
+const WORKTREE_CREATED_VERB = "worktree-created"
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v)
+}
+
+/** Tokenize a shell command crudely: whitespace-split with single/double quote
+ *  stripping. Good enough to locate a `git worktree add <path>`; anything it
+ *  mis-tokenizes just yields no path → no adopt (best-effort, never throws). */
+function tokenizeCommand(command: string): string[] {
+  const out: string[] = []
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g
+  let m: RegExpExecArray | null
+  // biome-ignore lint/suspicious/noAssignInExpressions: canonical regex-exec loop
+  while ((m = re.exec(command)) !== null) out.push(m[1] ?? m[2] ?? m[3] ?? "")
+  return out
+}
+
+/**
+ * Extract the target path of a `git worktree add` from a (possibly compound)
+ * shell command, or undefined when the command isn't a worktree-add. Finds the
+ * first positional after the `worktree add` tokens, skipping flags and the
+ * values of the value-taking flags (`-b` / `-B` / `--reason`). Stops at a shell
+ * operator so a chained `&& rm -rf x` can't be mistaken for the path.
+ */
+export function parseWorktreeAddPath(command: string): string | undefined {
+  const tokens = tokenizeCommand(command)
+  const valueFlags = new Set(["-b", "-B", "--reason"])
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    if (tokens[i] !== "worktree" || tokens[i + 1] !== "add") continue
+    let j = i + 2
+    while (j < tokens.length) {
+      const t = tokens[j]
+      if (t === "&&" || t === "||" || t === ";" || t === "|" || t === ">" || t === ">>") break
+      if (t.startsWith("-")) {
+        j += valueFlags.has(t) ? 2 : 1 // `--reason=x` (has `=`) is self-contained → skip 1
+        continue
+      }
+      return t // first positional after the flags is the worktree path
+    }
+  }
+  return undefined
+}
+
+/**
+ * `kobe hook worktree-created` — the global `PostToolUse` (Bash) callback. Reads
+ * the hook payload, and ONLY when the Bash command was a `git worktree add`,
+ * asks the daemon (non-spawning) to adopt the new worktree as a task. Everything
+ * is best-effort + swallowed: a hook must never fail the engine.
+ */
+async function runWorktreeCreatedHook(): Promise<void> {
+  const payload = await readStdinPayload()
+  // Claude's PostToolUse payload carries the Bash command under `tool_input`.
+  const toolInput = isPlainObject(payload.tool_input) ? payload.tool_input : {}
+  const command = typeof toolInput.command === "string" ? toolInput.command : ""
+  if (!command.includes("worktree")) return // cheap pre-filter: 99.9% of Bash calls bail here
+  const rawPath = parseWorktreeAddPath(command)
+  if (!rawPath) return
+  const cwd = typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd()
+  const worktreePath = resolve(cwd, rawPath)
+  const client = await connectIfRunning() // NON-spawning by contract
+  if (!client) return
+  try {
+    await client.request("worktree.reconcile", { cwd, worktreePath })
+  } finally {
+    client.close()
+  }
+}
+
 export async function runHookSubcommand(argv: readonly string[]): Promise<void> {
   const [verb, ...rest] = argv
   // `setup` is the only user-facing verb (now a deprecated cleanup) and may
@@ -69,6 +141,17 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
   // always exit 0 (see header).
   if (verb === "setup") {
     await runHookSetup(rest)
+    return
+  }
+  // Creation-time worktree auto-adopt: the global `PostToolUse` (Bash) hook.
+  // Fires after EVERY Bash tool call machine-wide, so it must no-op fast — it
+  // only touches the daemon when the command was a `git worktree add`.
+  if (verb === WORKTREE_CREATED_VERB) {
+    try {
+      await runWorktreeCreatedHook()
+    } catch {
+      /* swallow — hooks must never fail the engine */
+    }
     return
   }
   try {
@@ -136,32 +219,46 @@ function persistedSyncPath(stored: string | undefined): string | undefined {
 }
 
 /**
- * Default-ON global hook install (KOB). Called once per kobe launch. Two pieces,
- * both best-effort and idempotent (the adapter skips the write when nothing
- * changes):
+ * Default-ON global hook install (KOB). Called once per kobe launch. Three
+ * pieces, all best-effort and idempotent (the adapter skips the write when
+ * nothing changes):
  *
  *  1. **Activity hooks** — Stop / StopFailure / Notification / Session* into the
  *     user's global `~/.claude/settings.json`, so EVERY Claude session reports
  *     normalized events; the daemon maps each hook's cwd to a task. Always
  *     global (a task's badge must light up wherever its engine runs).
- *  2. **WorktreeCreate cleanup** — earlier kobe (0.7.4–0.7.9) installed a global
+ *  2. **Worktree-watch hook** — a global `PostToolUse` (Bash) observer that
+ *     adopts a worktree as a task the MOMENT a `git worktree add` runs in any
+ *     session, so it shows in the sidebar WITHOUT a running engine (the
+ *     creation-time complement to the `session-start` auto-adopt below). This is
+ *     a pure OBSERVER fired AFTER the tool, NOT a provider hook — see (3) for why
+ *     that distinction is load-bearing.
+ *  3. **WorktreeCreate cleanup** — earlier kobe (0.7.4–0.7.9) installed a global
  *     `WorktreeCreate` hook for external-worktree sync. That was WRONG:
  *     `WorktreeCreate` is a VCS *provider* hook — its mere presence makes Claude
  *     Code delegate worktree creation to it and skip the native git path, so
  *     kobe's observer hook (which returns no path) BROKE `claude --worktree` /
  *     `EnterWorktree` in every repo. We now remove any such hook we ever wrote.
- *     External-worktree sync is reborn on the daemon side: a `session-start`
- *     whose cwd is an unadopted worktree under a tracked repo is auto-adopted
- *     (see `daemon/cwd-task.ts` `findAdoptableWorktree`) — no hook, no footgun.
+ *     Creation-time sync is reborn via the `PostToolUse` hook in (2) — safe
+ *     because `PostToolUse` only observes, it never provides; plus the daemon's
+ *     `session-start` auto-adopt (`daemon/cwd-task.ts` `findAdoptableWorktree`)
+ *     still catches worktrees first entered by an engine session.
  *
  * Writing the user's global settings.json is intentionally invasive but
  * acceptable for now (current users are developers).
  */
 export async function ensureGlobalKobeHooks(): Promise<void> {
   try {
-    // 1. Activity hooks — always global.
+    // 1. Activity hooks + the creation-time worktree-watch hook — both global.
     const globalPath = globalSettingsPath()
-    for (const a of activityHookAdapters()) await a.installActivityHooks(globalPath)
+    for (const a of activityHookAdapters()) {
+      await a.installActivityHooks(globalPath)
+      // PostToolUse(Bash) observer: a `git worktree add` in ANY session adopts
+      // the new worktree as a task immediately (no session needed). Pure
+      // observer — unlike the removed WorktreeCreate provider hook, it can't
+      // break `claude --worktree`.
+      await a.installWorktreeWatchHook(globalPath)
+    }
     // 2. Remove the removed WorktreeCreate hook wherever it was ever written.
     await cleanupWorktreeSyncHook()
   } catch {
