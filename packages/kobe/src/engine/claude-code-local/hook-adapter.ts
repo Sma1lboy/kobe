@@ -140,6 +140,52 @@ export function mergeActivityHooks(
   return Object.keys(hooks).length > 0 ? { ...restSettings, hooks } : { ...restSettings }
 }
 
+/**
+ * Build kobe's worktree-WATCH hook: a global `PostToolUse` observer scoped to
+ * the `Bash` tool. After every Bash call, `kobe hook worktree-created` runs and
+ * — only when the command was a `git worktree add` — adopts the new worktree as
+ * a task (creation-time, no session required). Unlike the removed
+ * `WorktreeCreate` provider hook, `PostToolUse` is a pure observer: its presence
+ * never changes git/`--worktree` behaviour. `matcher: "Bash"` narrows the fire
+ * to Bash tool calls; the handler no-ops fast for any non-worktree command.
+ */
+export function buildWorktreeWatchHook(inv: readonly string[] = kobeCliInvocation()): Record<string, unknown> {
+  const command = shellQuoteArgv([...inv, "hook", WORKTREE_SYNC_MARKER])
+  return { PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command }] }] }
+}
+
+/** True if a PostToolUse group is kobe's worktree-watch hook (by its `kobe hook
+ *  worktree-created` command). */
+function isKobeWorktreeWatchGroup(group: unknown): boolean {
+  if (!isObject(group) || !Array.isArray(group.hooks)) return false
+  return group.hooks.some(
+    (h) => isObject(h) && typeof h.command === "string" && (h.command as string).includes(WORKTREE_SYNC_MARKER),
+  )
+}
+
+/**
+ * Pure merge: add (`install`) or remove kobe's `PostToolUse` worktree-watch hook
+ * in a SHARED settings object, preserving the user's own PostToolUse hooks +
+ * every other key. kobe owns only the group whose command matches
+ * {@link WORKTREE_SYNC_MARKER}; it's dropped first so re-install is idempotent
+ * and removal is clean.
+ */
+export function mergeWorktreeWatchHook(
+  current: Record<string, unknown>,
+  install: boolean,
+  inv: readonly string[] = kobeCliInvocation(),
+): Record<string, unknown> {
+  const { hooks: rawHooks, ...restSettings } = current
+  const hooks: Record<string, unknown> = isObject(rawHooks) ? { ...rawHooks } : {}
+  const key = "PostToolUse"
+  const prior = Array.isArray(hooks[key]) ? (hooks[key] as unknown[]) : []
+  const kept = prior.filter((g) => !isKobeWorktreeWatchGroup(g))
+  if (install) kept.push(...(buildWorktreeWatchHook(inv)[key] as unknown[]))
+  if (kept.length > 0) hooks[key] = kept
+  else delete hooks[key]
+  return Object.keys(hooks).length > 0 ? { ...restSettings, hooks } : { ...restSettings }
+}
+
 export class ClaudeHookAdapter implements EngineHookAdapter {
   readonly vendor = "claude" as const
 
@@ -161,6 +207,14 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
 
   async removeWorktreeSyncHook(settingsFilePath: string): Promise<void> {
     await this.editSettings(settingsFilePath, (cur) => mergeWorktreeSyncHook(cur, null))
+  }
+
+  async installWorktreeWatchHook(settingsFilePath: string): Promise<void> {
+    await this.editSettings(settingsFilePath, (cur) => mergeWorktreeWatchHook(cur, true))
+  }
+
+  async removeWorktreeWatchHook(settingsFilePath: string): Promise<void> {
+    await this.editSettings(settingsFilePath, (cur) => mergeWorktreeWatchHook(cur, false))
   }
 
   /**

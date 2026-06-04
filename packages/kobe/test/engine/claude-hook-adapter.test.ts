@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 import {
   KOBE_HOOK_EVENTS,
   buildClaudeHooks,
+  buildWorktreeWatchHook,
   mergeActivityHooks,
   mergeWorktreeSyncHook,
+  mergeWorktreeWatchHook,
 } from "../../src/engine/claude-code-local/hook-adapter.ts"
 
 /**
@@ -126,5 +128,65 @@ describe("mergeWorktreeSyncHook (external worktree sync)", () => {
     const noSync = mergeWorktreeSyncHook(both, null) as SettingsShape
     expect(noSync.hooks?.Stop).toHaveLength(1)
     expect(noSync.hooks?.WorktreeCreate).toBeUndefined()
+  })
+})
+
+describe("buildWorktreeWatchHook (creation-time auto-adopt)", () => {
+  const hooks = buildWorktreeWatchHook(["kobe"]) as {
+    PostToolUse: Array<{ matcher?: string; hooks: { command: string }[] }>
+  }
+
+  it("installs a PostToolUse hook scoped to the Bash tool", () => {
+    expect(hooks.PostToolUse).toHaveLength(1)
+    expect(hooks.PostToolUse[0].matcher).toBe("Bash")
+  })
+
+  it("points the hook at `kobe hook worktree-created` (shell-quoted argv)", () => {
+    expect(hooks.PostToolUse[0].hooks[0].command).toContain("'hook' 'worktree-created'")
+  })
+})
+
+describe("mergeWorktreeWatchHook (PostToolUse observer)", () => {
+  it("adds kobe's Bash hook, preserving the user's other PostToolUse hooks + keys", () => {
+    const userSettings = {
+      hooks: { PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "user-fmt" }] }] },
+      model: "opus",
+    }
+    const out = mergeWorktreeWatchHook(userSettings, true, ["kobe"]) as SettingsShape
+    expect(out.model).toBe("opus") // untouched
+    const post = out.hooks?.PostToolUse as Array<{ matcher?: string; hooks: { command: string }[] }>
+    expect(post).toHaveLength(2) // user's Edit hook + kobe's Bash hook coexist
+    expect(JSON.stringify(post)).toContain("user-fmt")
+    expect(JSON.stringify(post)).toContain("worktree-created")
+  })
+
+  it("is idempotent — re-install replaces only kobe's entry, no duplicates", () => {
+    const once = mergeWorktreeWatchHook({}, true, ["kobe"])
+    const twice = mergeWorktreeWatchHook(once, true, ["kobe"]) as SettingsShape
+    expect(twice.hooks?.PostToolUse).toHaveLength(1)
+  })
+
+  it("removes kobe's hook while keeping the user's PostToolUse hooks", () => {
+    const userSettings = {
+      hooks: { PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "user-fmt" }] }] },
+    }
+    const added = mergeWorktreeWatchHook(userSettings, true, ["kobe"]) as SettingsShape
+    expect(added.hooks?.PostToolUse).toHaveLength(2)
+    const removed = mergeWorktreeWatchHook(added, false, ["kobe"]) as SettingsShape
+    expect(removed.hooks?.PostToolUse).toHaveLength(1)
+    expect(JSON.stringify(removed.hooks?.PostToolUse)).toContain("user-fmt")
+  })
+
+  it("drops the empty PostToolUse key when only kobe's hook existed", () => {
+    const added = mergeWorktreeWatchHook({}, true, ["kobe"])
+    const removed = mergeWorktreeWatchHook(added, false, ["kobe"]) as SettingsShape
+    expect(removed.hooks).toBeUndefined()
+  })
+
+  it("coexists with activity hooks in one settings file", () => {
+    const withActivity = mergeActivityHooks({}, true, ["kobe"])
+    const both = mergeWorktreeWatchHook(withActivity, true, ["kobe"]) as SettingsShape
+    expect(both.hooks?.Stop).toHaveLength(1)
+    expect(both.hooks?.PostToolUse).toHaveLength(1)
   })
 })
