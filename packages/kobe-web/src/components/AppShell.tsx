@@ -5,8 +5,8 @@
  * brand/status bar and a bottom status bar.
  */
 
-import { Settings } from "lucide-react"
-import { useState } from "react"
+import { Search, Settings, X } from "lucide-react"
+import { useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import type { ActivityState, EngineState, Task } from "../lib/types.ts"
@@ -50,6 +50,34 @@ function activityLabel(state: ActivityState | undefined): string {
 function tail(path: string, max = 36): string {
   if (path.length <= max) return path
   return `…${path.slice(path.length - max + 1)}`
+}
+
+function taskUpdatedMs(task: Task): number {
+  const parsed = Date.parse(task.updatedAt || task.createdAt)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function sortTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    return taskUpdatedMs(b) - taskUpdatedMs(a)
+  })
+}
+
+function matchesTask(task: Task, query: string): boolean {
+  if (!query) return true
+  const haystack = [
+    task.title,
+    task.branch,
+    task.repo,
+    task.worktreePath,
+    task.vendor,
+    task.status,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+  return haystack.includes(query.toLowerCase())
 }
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -108,7 +136,14 @@ function TaskRow({
 function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { tasks, engineStates } = useAppState()
   const { selectedTaskId } = useTabsState()
-  const visible = tasks.filter((t) => !t.archived)
+  const [query, setQuery] = useState("")
+  const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
+  const visible = useMemo(
+    () => sortTasks(activeTasks.filter((task) => matchesTask(task, query))),
+    [activeTasks, query],
+  )
+  const projects = visible.filter((task) => task.kind === "main")
+  const worktrees = visible.filter((task) => task.kind !== "main")
 
   const open = (id: string): void => {
     selectTask(id)
@@ -117,23 +152,80 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-line bg-bg">
-      <SectionHeader>Tasks</SectionHeader>
+      <div className="border-b border-line bg-surface/50 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+            Tasks
+          </span>
+          <span className="font-mono text-[10px] text-muted">
+            {visible.length}/{activeTasks.length}
+          </span>
+        </div>
+        <label className="mt-2 flex h-8 items-center gap-2 border border-line bg-bg px-2 text-[12px] text-muted focus-within:border-line-active">
+          <Search
+            size={14}
+            strokeWidth={1.8}
+            className="shrink-0 text-subtle"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter tasks"
+            className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-subtle focus:outline-none"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="shrink-0 text-subtle hover:text-fg"
+              aria-label="clear task filter"
+              title="Clear filter"
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          )}
+        </label>
+      </div>
       <div className="flex-1 overflow-y-auto">
-        {visible.length === 0 ? (
+        {activeTasks.length === 0 ? (
           <p className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
-            No tasks yet. Create one in the kobe TUI or via{" "}
-            <code className="text-muted">kobe add</code>.
+            No tasks yet. Add a repo from the TUI or run{" "}
+            <code className="text-muted">kobe add &lt;path&gt;</code>.
           </p>
+        ) : visible.length === 0 ? (
+          <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
+            <div>No matches for “{query}”.</div>
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+            >
+              Clear filter
+            </button>
+          </div>
         ) : (
-          visible.map((t) => (
-            <TaskRow
-              key={t.id}
-              task={t}
-              engine={engineStates[t.id]}
-              active={t.id === selectedTaskId}
-              onClick={() => open(t.id)}
-            />
-          ))
+          <>
+            {projects.length > 0 && <SectionHeader>Projects</SectionHeader>}
+            {projects.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                engine={engineStates[t.id]}
+                active={t.id === selectedTaskId}
+                onClick={() => open(t.id)}
+              />
+            ))}
+            {worktrees.length > 0 && <SectionHeader>Worktrees</SectionHeader>}
+            {worktrees.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                engine={engineStates[t.id]}
+                active={t.id === selectedTaskId}
+                onClick={() => open(t.id)}
+              />
+            ))}
+          </>
         )}
       </div>
       <div className="border-t border-line p-2">
@@ -151,16 +243,31 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
 }
 
 function TopBar() {
-  const { daemonConnected, streamConnected } = useAppState()
+  const { daemonConnected, streamConnected, tasks } = useAppState()
+  const { selectedTaskId } = useTabsState()
+  const task = selectedTaskId
+    ? tasks.find((item) => item.id === selectedTaskId)
+    : null
   const ok = daemonConnected && streamConnected
   return (
     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
       <span className="font-mono text-[13px] font-bold text-primary">
         [kobe]
       </span>
-      <span className="rounded bg-inset px-2 py-0.5 text-[11px] text-muted">
-        Workspace
-      </span>
+      {task ? (
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="max-w-56 truncate rounded bg-inset px-2 py-0.5 text-[11px] text-fg">
+            {task.title || task.branch}
+          </span>
+          <span className="hidden max-w-40 truncate font-mono text-[11px] text-subtle md:inline">
+            {task.branch}
+          </span>
+        </div>
+      ) : (
+        <span className="rounded bg-inset px-2 py-0.5 text-[11px] text-muted">
+          Workspace
+        </span>
+      )}
       <div className="ml-auto flex items-center gap-2 text-[11px] text-subtle">
         <span
           className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
@@ -190,8 +297,9 @@ function StatusBar() {
         {count} task{count === 1 ? "" : "s"}
       </span>
       {task && (
-        <span className="truncate text-muted">
-          {tail(task.worktreePath, 48)}
+        <span className="min-w-0 truncate text-muted">
+          {task.kind === "main" ? "project" : "worktree"} ·{" "}
+          {tail(task.worktreePath, 54)}
         </span>
       )}
       <span className="ml-auto">

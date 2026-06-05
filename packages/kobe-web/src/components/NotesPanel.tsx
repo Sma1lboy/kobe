@@ -132,8 +132,15 @@ export function NotesPanel({
       </SectionHeader>
       <div className={`min-h-0 flex-1 ${full ? "px-0 pb-0" : "px-3 pb-3"}`}>
         {!taskId ? (
-          <div className="flex h-full items-center justify-center text-[12px] text-subtle">
-            Select a task to take notes.
+          <div className="flex h-full items-center justify-center px-4 text-center">
+            <div>
+              <div className="text-[12px] font-semibold text-fg">
+                No task selected
+              </div>
+              <div className="mt-1 max-w-48 text-[12px] leading-relaxed text-subtle">
+                Pick a task to open its web-only scratchpad.
+              </div>
+            </div>
           </div>
         ) : (
           <textarea

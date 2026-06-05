@@ -188,8 +188,15 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
       </div>
 
       {!worktreePath ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
-          Select a task to see its changes.
+        <div className="flex flex-1 items-center justify-center px-4 text-center">
+          <div>
+            <div className="text-[12px] font-semibold text-fg">
+              No worktree selected
+            </div>
+            <div className="mt-1 max-w-56 text-[12px] leading-relaxed text-subtle">
+              Pick a task to inspect its current diff.
+            </div>
+          </div>
         </div>
       ) : error ? (
         <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
@@ -282,16 +289,25 @@ export function ChangesList({
       </div>
 
       {!worktreePath ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
-          Select a task to see changes.
+        <div className="flex flex-1 items-center justify-center px-4 text-center">
+          <div>
+            <div className="text-[12px] font-semibold text-fg">
+              No task selected
+            </div>
+            <div className="mt-1 max-w-48 text-[12px] leading-relaxed text-subtle">
+              Select a task to watch its worktree changes.
+            </div>
+          </div>
         </div>
       ) : error ? (
         <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
           {error}
         </div>
       ) : files.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
-          {loading ? "Loading changes…" : "No changes."}
+        <div className="flex flex-1 items-center justify-center px-4 text-center">
+          <div className="text-[12px] text-subtle">
+            {loading ? "Loading changes…" : "Worktree clean."}
+          </div>
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">

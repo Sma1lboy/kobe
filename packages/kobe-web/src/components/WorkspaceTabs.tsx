@@ -211,8 +211,9 @@ export function WorkspaceTabs() {
     <section className="flex min-w-0 flex-1 flex-col bg-bg">
       <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface">
         {!selectedTaskId ? (
-          <div className="flex items-center px-3 text-[11px] text-subtle">
-            Pick a task on the left
+          <div className="flex items-center gap-2 px-3 text-[11px] text-subtle">
+            <span className="h-1.5 w-1.5 rounded-full bg-subtle" />
+            No task selected
           </div>
         ) : (
           <>
@@ -350,8 +351,21 @@ export function WorkspaceTabs() {
             )}
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center text-[12px] text-subtle">
-            {task ? "Opening a tab…" : "Open a task to begin."}
+          <div className="flex h-full items-center justify-center px-6 text-center">
+            <div className="max-w-md">
+              <div className="font-mono text-[13px] font-bold text-primary">
+                [kobe web]
+              </div>
+              <h1 className="mt-4 text-[18px] font-semibold text-fg">
+                {task
+                  ? "Opening workspace…"
+                  : "Select a task to open its workspace."}
+              </h1>
+              <p className="mt-2 text-[12px] leading-relaxed text-subtle">
+                Web workspaces keep their own browser tabs, split panes, notes,
+                and file previews for each task.
+              </p>
+            </div>
           </div>
         )}
         {draggingTabId && (
