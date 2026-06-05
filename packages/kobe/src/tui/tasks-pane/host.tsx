@@ -107,6 +107,7 @@ function TasksShell(props: {
   const [selectedId, setSelectedId] = createSignal<string | null>(
     props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
   )
+  const [moveMode, setMoveMode] = createSignal(false)
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -448,6 +449,19 @@ function TasksShell(props: {
     }
   }
 
+  async function moveTask(id: string, delta: -1 | 1): Promise<void> {
+    const task = props.tasks().find((t) => t.id === id)
+    if (!task || task.kind === "main" || !props.orch) return
+    try {
+      await props.orch.moveTask(id, delta)
+    } catch (err) {
+      console.error("[kobe tasks] task.move failed:", err)
+      return
+    }
+    setSelectedId(id)
+    await props.reload()
+  }
+
   // Gate on an empty dialog stack so a letter typed INTO a dialog field
   // doesn't re-fire the binding (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
@@ -605,6 +619,15 @@ function TasksShell(props: {
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}
+          onLocalMergeRequest={(id) => {
+            const task = props.tasks().find((t) => t.id === id)
+            if (!task || task.kind === "main") return
+            setSelectedId(id)
+            setMoveMode((cur) => !cur)
+          }}
+          moveMode={moveMode}
+          onMoveRequest={(id, delta) => void moveTask(id, delta)}
+          onMoveModeExit={() => setMoveMode(false)}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // (new-task / rename) leaks past the input to switchTo and yanks
@@ -614,7 +637,7 @@ function TasksShell(props: {
           focused={() => dialog.stack.length === 0}
         />
       </box>
-      <ShortcutHints />
+      <ShortcutHints moveMode={moveMode} />
     </box>
   )
 }
@@ -625,19 +648,20 @@ function TasksShell(props: {
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
-function ShortcutHints() {
+function ShortcutHints(props: { moveMode?: Accessor<boolean> }) {
   const { theme } = useTheme()
   // Fixed-width key column so the labels line up — a terminal-grammar
   // legend column, not a proportional pane (allowed hardcode).
   // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
   // uppercase per the Mac shortcut convention (the binding is still the
   // lowercase key — no shift implied).
-  const HINTS: ReadonlyArray<{ k: string; label: string }> = [
+  const DEFAULT_HINTS: ReadonlyArray<{ k: string; label: string }> = [
     { k: "⏎", label: "open" },
     { k: "N", label: "new task" },
     { k: "S", label: "settings" },
     { k: "O", label: "open wt" },
     { k: "[/]", label: "views" },
+    { k: "M", label: "move task" },
     { k: "A/D", label: "archive/delete" },
     { k: "R/B/V", label: "name/branch/engine" },
     { k: "⌃HJKL", label: "move panes" },
@@ -650,6 +674,11 @@ function ShortcutHints() {
     { k: "⌃W", label: "close tab" },
     { k: "⌃Q", label: "detach" },
   ]
+  const MOVE_HINTS: ReadonlyArray<{ k: string; label: string }> = [
+    { k: "J/K", label: "reorder" },
+    { k: "⏎/Esc", label: "done" },
+  ]
+  const hints = () => (props.moveMode?.() ? MOVE_HINTS : DEFAULT_HINTS)
   // Width of the description column = the longest label, but CAPPED so a long
   // label can't blow the column out past what the 32-cell Tasks pane (minus the
   // 10-cell keycap column) can hold. Each row right-aligns this fixed-width box
@@ -657,9 +686,9 @@ function ShortcutHints() {
   // the whole column hugs the pane's right side. Labels longer than the cap are
   // ellipsised rather than allowed to overflow.
   const LABEL_COL_MAX = 18
-  const labelColWidth = Math.min(LABEL_COL_MAX, Math.max(...HINTS.map((h) => h.label.length)))
+  const labelColWidth = () => Math.min(LABEL_COL_MAX, Math.max(...hints().map((h) => h.label.length)))
   const clipLabel = (s: string): string =>
-    s.length <= labelColWidth ? s : `${s.slice(0, Math.max(0, labelColWidth - 1))}…`
+    s.length <= labelColWidth() ? s : `${s.slice(0, Math.max(0, labelColWidth() - 1))}…`
   // Version + update moved UP to the Sidebar's `kobe` brand header (the old
   // `── system ──` block lived here); the footer is now just the key legend.
   return (
@@ -667,7 +696,7 @@ function ShortcutHints() {
       <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
         ── keys ──
       </text>
-      <For each={HINTS}>
+      <For each={hints()}>
         {(h) => (
           <box flexDirection="row" gap={1} justifyContent="space-between">
             {/* `[key]` keycap chip — agent-deck style, mirrors the outer
@@ -682,7 +711,7 @@ function ShortcutHints() {
                 right edge by space-between. Text is left-aligned inside, so
                 every description shares one left edge while the whole column
                 hugs the right side and rides the pane width. */}
-            <box width={labelColWidth} flexShrink={0}>
+            <box width={labelColWidth()} flexShrink={0}>
               <text fg={theme.textMuted} wrapMode="none">
                 {clipLabel(h.label)}
               </text>

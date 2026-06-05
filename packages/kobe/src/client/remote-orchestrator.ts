@@ -374,6 +374,10 @@ export class RemoteOrchestrator {
     await this.client.request("task.pin", { taskId: String(id), pinned })
   }
 
+  async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
+    await this.client.request("task.move", { taskId: String(id), direction: delta < 0 ? "up" : "down" })
+  }
+
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
     await this.client.request("task.archive", { taskId: String(id), archived })
   }

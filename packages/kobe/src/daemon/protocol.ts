@@ -92,6 +92,7 @@ export type DaemonRequestName =
   | "task.setVendor"
   | "task.delete"
   | "task.pin"
+  | "task.move"
   | "task.status"
   | "task.ensureMain"
   | "task.ensureWorktree"

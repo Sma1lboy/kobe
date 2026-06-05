@@ -70,3 +70,73 @@ describe("TaskIndexStore self-heal on load", () => {
     expect(tasks[0]?.status).toBe("done")
   })
 })
+
+describe("TaskIndexStore task ordering", () => {
+  let home: string
+
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), "kobe-order-"))
+  })
+
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true })
+  })
+
+  async function createStore(): Promise<TaskIndexStore> {
+    const store = new TaskIndexStore({ homeDir: home })
+    await store.load()
+    return store
+  }
+
+  it("moves a task within a caller-provided ordering group", async () => {
+    const store = await createStore()
+    const a = await store.create({
+      title: "a",
+      repo: "/repo",
+      branch: "a",
+      worktreePath: "/repo/a",
+      status: "backlog",
+    })
+    const pinned = await store.create({
+      title: "pinned",
+      repo: "/repo",
+      branch: "pinned",
+      worktreePath: "/repo/pinned",
+      status: "backlog",
+      pinned: true,
+    })
+    const b = await store.create({
+      title: "b",
+      repo: "/repo",
+      branch: "b",
+      worktreePath: "/repo/b",
+      status: "backlog",
+    })
+
+    await store.move(b.id, -1, [String(a.id), String(b.id)])
+
+    expect(store.list().map((t) => t.id)).toEqual([b.id, a.id, pinned.id])
+  })
+
+  it("keeps boundary moves as no-ops", async () => {
+    const store = await createStore()
+    const a = await store.create({
+      title: "a",
+      repo: "/repo",
+      branch: "a",
+      worktreePath: "/repo/a",
+      status: "backlog",
+    })
+    const b = await store.create({
+      title: "b",
+      repo: "/repo",
+      branch: "b",
+      worktreePath: "/repo/b",
+      status: "backlog",
+    })
+
+    await store.move(a.id, -1, [String(a.id), String(b.id)])
+
+    expect(store.list().map((t) => t.id)).toEqual([a.id, b.id])
+  })
+})

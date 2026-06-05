@@ -363,6 +363,25 @@ export class Orchestrator {
     await this.store.update(task.id, { pinned: next })
   }
 
+  /**
+   * Move a regular task up/down within its visible ordering partition.
+   * Main project rows stay sorted by repo name and are not manually moved.
+   */
+  async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
+    const task = this.requireTask(id)
+    if (task.kind === "main") return
+    const groupIds = this.store
+      .list()
+      .filter(
+        (t) =>
+          (t.kind ?? "task") !== "main" &&
+          t.archived === task.archived &&
+          (t.pinned ?? false) === (task.pinned ?? false),
+      )
+      .map((t) => String(t.id))
+    await this.store.move(task.id, delta, groupIds)
+  }
+
   /** Toggle / set the `archived` flag. */
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
     const task = this.requireTask(id)
