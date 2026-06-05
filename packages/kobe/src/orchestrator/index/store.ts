@@ -206,6 +206,36 @@ export class TaskIndexStore {
     return next
   }
 
+  /**
+   * Move a task up/down inside a caller-defined subset of task ids.
+   * The subset lets UI ordering rules keep their partitions intact
+   * (e.g. regular tasks move among regular tasks, pinned among pinned).
+   */
+  async move(id: TaskId | string, delta: -1 | 1, withinIds?: readonly string[]): Promise<Task> {
+    this.assertLoaded()
+    const task = this.cache.tasks.find((t) => t.id === id)
+    if (!task) throw new Error(`task not found: ${id}`)
+    const ids = withinIds?.length ? withinIds : this.cache.tasks.map((t) => t.id)
+    const pos = ids.indexOf(String(id))
+    if (pos < 0) throw new Error(`task not movable in current group: ${id}`)
+    const targetId = ids[pos + delta]
+    if (!targetId) return task
+
+    const fromIdx = this.cache.tasks.findIndex((t) => t.id === id)
+    const toIdx = this.cache.tasks.findIndex((t) => t.id === targetId)
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return task
+
+    const [moved] = this.cache.tasks.splice(fromIdx, 1)
+    if (!moved) return task
+    const adjustedToIdx = fromIdx < toIdx ? toIdx - 1 : toIdx
+    const insertAt = delta > 0 ? adjustedToIdx + 1 : adjustedToIdx
+    const next: Task = { ...moved, updatedAt: new Date().toISOString() }
+    this.cache.tasks.splice(insertAt, 0, next)
+    await this.save()
+    this.notifyListeners()
+    return next
+  }
+
   async archive(id: TaskId | string, status: TaskStatus = "done"): Promise<Task> {
     return this.update(id, { status })
   }

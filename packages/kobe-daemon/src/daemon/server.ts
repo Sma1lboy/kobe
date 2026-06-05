@@ -517,6 +517,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         await orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
         return {}
       }
+      case "task.move": {
+        const taskId = requireString(payload, "taskId")
+        const direction = requireString(payload, "direction")
+        if (direction !== "up" && direction !== "down") throw new Error("direction must be up or down")
+        await orch.moveTask(taskId, direction === "up" ? -1 : 1)
+        return {}
+      }
       case "task.status": {
         const taskId = requireString(payload, "taskId")
         const status = requireString(payload, "status")

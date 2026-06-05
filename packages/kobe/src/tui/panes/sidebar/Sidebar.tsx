@@ -126,6 +126,14 @@ export type SidebarProps = {
   /** Local merge callback. Pressing Shift+M asks the parent to start the merge flow. */
   onLocalMergeRequest?: (taskId: string) => void
   /**
+   * Optional task-reorder mode. In this mode the sidebar keeps the same
+   * cursor row selected, but j/k ask the parent to move that row up/down
+   * in the persisted task order. Used by the tmux Tasks pane.
+   */
+  moveMode?: Accessor<boolean>
+  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
+  onMoveModeExit?: () => void
+  /**
    * Rename callback. Pressing `r` on the cursor task emits this with
    * the task id; the parent (app.tsx) opens an input dialog defaulted
    * to the current title and on submit calls `orchestrator.setTitle`.
@@ -581,6 +589,9 @@ export function Sidebar(props: SidebarProps) {
     onDeleteRequest: (id) => props.onDeleteRequest?.(id),
     onArchiveRequest: (id) => props.onArchiveRequest?.(id),
     onLocalMergeRequest: (id) => props.onLocalMergeRequest?.(id),
+    moveMode: props.moveMode,
+    onMoveRequest: (id, delta) => props.onMoveRequest?.(id, delta),
+    onMoveModeExit: () => props.onMoveModeExit?.(),
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
@@ -781,6 +792,7 @@ export function Sidebar(props: SidebarProps) {
               // signal when present. Falls through to the older heuristics
               // below when a task has no hook event yet (poll fallback).
               const activity = () => props.engineState?.().get(task.id)?.state
+              const hasActivity = () => activity() !== undefined
               // Loading = the engine is actively working this task. Priority:
               //   1. event-driven `running` (hooks) → working
               //   2. a live engine handle (chatRunState, outer monitor)
@@ -790,22 +802,41 @@ export function Sidebar(props: SidebarProps) {
               // A non-idle engine state that ISN'T `running` (rate_limited /
               // permission_needed / error / turn_complete) is NOT "working" —
               // it gets its own chip below instead of the spinner.
-              const loading = () => activity() === "running" || isLive() || (!isMain && task.status === "in_progress")
-              // Short status chip for the non-running engine states, shown in
-              // place of the "working" chip. null when there's nothing to flag.
-              const activityChip = (): { text: string; tone: "primary" | "warning" | "error" } | null => {
+              const loading = () =>
+                activity() === "running" || isLive() || (!hasActivity() && !isMain && task.status === "in_progress")
+              // Single-cell activity badge for non-running engine states.
+              // The row's first glyph slot is the only live-status surface:
+              // spinner while running, icon while waiting/limited/done/error.
+              const activityBadge = (): { glyph: string; tone: "primary" | "warning" | "error" } | null => {
                 switch (activity()) {
                   case "rate_limited":
-                    return { text: "limited", tone: "warning" }
+                    return { glyph: "◷", tone: "warning" }
                   case "permission_needed":
-                    return { text: "approve?", tone: "warning" }
+                    return { glyph: "?", tone: "warning" }
                   case "error":
-                    return { text: "error", tone: "error" }
+                    return { glyph: "✕", tone: "error" }
                   case "turn_complete":
-                    return { text: "done", tone: "primary" }
+                    return { glyph: "✓", tone: "primary" }
                   default:
                     return null
                 }
+              }
+              const stateGlyph = () => {
+                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
+                return activityBadge()?.glyph ?? badge.glyph
+              }
+              const projectGlyph = () => {
+                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
+                return activityBadge()?.glyph ?? "★"
+              }
+              const stateColor = () => {
+                const active = activityBadge()
+                if (!loading() && active) {
+                  if (active.tone === "error") return theme.error
+                  if (active.tone === "warning") return theme.warning
+                  return theme.primary
+                }
+                return badgeColor()
               }
               // Task-card subtitle (line 2): the branch, or a human status word
               // when there's no branch yet, so every card stays two lines tall.
@@ -862,22 +893,15 @@ export function Sidebar(props: SidebarProps) {
                           {barGlyph()}
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-                          <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : "★"}
+                          <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+                            {projectGlyph()}
                           </text>
                           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
                             {spacedTitle(titleText, titleBudget())}
                           </text>
-                          <Show when={loading()}>
-                            <text fg={theme.primary} wrapMode="none">
-                              {" working"}
-                            </text>
-                          </Show>
-                          <Show when={!loading()}>
-                            <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                              {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
-                            </text>
-                          </Show>
+                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                            {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
+                          </text>
                         </box>
                       </box>
                     </Show>
@@ -890,8 +914,8 @@ export function Sidebar(props: SidebarProps) {
                           {barGlyph()}
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-                          <text fg={badgeColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {loading() ? (IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]) : badge.glyph}
+                          <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+                            {stateGlyph()}
                           </text>
                           <text
                             fg={theme.text}
@@ -901,26 +925,10 @@ export function Sidebar(props: SidebarProps) {
                           >
                             {spacedTitle(titleText, titleBudget())}
                           </text>
-                          <Show when={loading()}>
-                            <text fg={theme.primary} wrapMode="none">
-                              {" working"}
+                          <Show when={props.moveMode?.() && isCursor()}>
+                            <text fg={theme.warning} wrapMode="none">
+                              {" move"}
                             </text>
-                          </Show>
-                          <Show when={!loading() && activityChip()}>
-                            {(chip) => (
-                              <text
-                                fg={
-                                  chip().tone === "error"
-                                    ? theme.error
-                                    : chip().tone === "warning"
-                                      ? theme.warning
-                                      : theme.primary
-                                }
-                                wrapMode="none"
-                              >
-                                {` ${chip().text}`}
-                              </text>
-                            )}
                           </Show>
                         </box>
                       </box>

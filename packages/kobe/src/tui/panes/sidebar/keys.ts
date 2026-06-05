@@ -77,6 +77,13 @@ export type SidebarBindingsOpts = {
    */
   onLocalMergeRequest?: (taskId: string) => void
   /**
+   * Task reorder mode. When true, j/k move the cursor task in the
+   * persisted order instead of moving the cursor. Enter / Esc exits.
+   */
+  moveMode?: Accessor<boolean>
+  onMoveRequest?: (taskId: string, delta: -1 | 1) => void
+  onMoveModeExit?: () => void
+  /**
    * Rename callback. Fires on `r` with the task id under the cursor.
    * The sidebar emits a *request* — the parent (app.tsx) owns the
    * input dialog and the `orchestrator.setTitle` call. Optional, in
@@ -156,6 +163,7 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   }
 
   const searchModeAccessor = (): boolean => opts.searchMode?.() ?? false
+  const moveModeAccessor = (): boolean => opts.moveMode?.() ?? false
 
   // Block A — letter chords + `/` to enter search. Disabled while the
   // user is typing in the search input so typed letters reach the
@@ -166,23 +174,39 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       // sidebar.nav covers j/k/down/up — handler discriminates direction
       // via evt.name. The matcher delivers e.g. {name: "j"} or {name: "down"}.
       "sidebar.nav": (evt) => {
+        if (moveModeAccessor()) {
+          const id = cursorTaskId()
+          if (id === undefined) return
+          if (evt.name === "j" || evt.name === "down") opts.onMoveRequest?.(id, 1)
+          else if (evt.name === "k" || evt.name === "up") opts.onMoveRequest?.(id, -1)
+          return
+        }
         if (evt.name === "j" || evt.name === "down") ctrl.moveDown()
         else if (evt.name === "k" || evt.name === "up") ctrl.moveUp()
       },
-      "sidebar.select": () => ctrl.selectCurrent(),
+      "sidebar.select": () => {
+        if (moveModeAccessor()) {
+          opts.onMoveModeExit?.()
+          return
+        }
+        ctrl.selectCurrent()
+      },
       // `g`: gg chord (top) on the second press; shift-G (bottom) on
       // first press. opentui's keymap drops shift on letter keys
       // (lib/keymap.tsx:70), so the chord registered is just "g" and
       // we discriminate via evt.shift inside the handler.
       "sidebar.goto": (evt) => {
+        if (moveModeAccessor()) return
         if (evt.shift) ctrl.pressShiftG()
         else ctrl.pressG()
       },
       "sidebar.delete": () => {
+        if (moveModeAccessor()) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onDeleteRequest?.(id)
       },
       "sidebar.archive": () => {
+        if (moveModeAccessor()) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onArchiveRequest?.(id)
       },
@@ -192,6 +216,7 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         if (id !== undefined) opts.onLocalMergeRequest?.(id)
       },
       "sidebar.rename": () => {
+        if (moveModeAccessor()) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onRenameRequest?.(id)
       },
@@ -200,12 +225,21 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       // same chord candidate. We discriminate via evt.shift; bare
       // lowercase `p` is captured (consumed) but does nothing.
       "sidebar.pin": (evt) => {
+        if (moveModeAccessor()) return
         if (!evt.shift) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onPinRequest?.(id)
       },
-      "sidebar.search.enter": () => opts.onSearchEnter?.(),
+      "sidebar.search.enter": () => {
+        if (moveModeAccessor()) return
+        opts.onSearchEnter?.()
+      },
     }),
+  }))
+
+  useBindings(() => ({
+    enabled: opts.focused() && moveModeAccessor(),
+    bindings: [{ key: "escape", cmd: () => opts.onMoveModeExit?.() }],
   }))
 
   // Block B — view switcher. Always on (even during search) so the
