@@ -1,4 +1,4 @@
-import { RouterProvider, createRouter } from "@tanstack/react-router"
+import { createRouter, RouterProvider } from "@tanstack/react-router"
 import ReactDOM from "react-dom/client"
 import { routeTree } from "./routeTree.gen"
 
@@ -14,7 +14,11 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const rootElement = document.getElementById("app")!
+const rootElement = document.getElementById("app")
+
+if (!rootElement) {
+  throw new Error("missing #app root element")
+}
 
 if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement)

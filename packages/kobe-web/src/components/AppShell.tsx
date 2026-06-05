@@ -55,7 +55,9 @@ function tail(path: string, max = 36): string {
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center px-3 py-2">
-      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">{children}</span>
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+        {children}
+      </span>
     </div>
   )
 }
@@ -65,20 +67,35 @@ function TaskRow({
   engine,
   active,
   onClick,
-}: { task: Task; engine?: EngineState; active: boolean; onClick: () => void }) {
+}: {
+  task: Task
+  engine?: EngineState
+  active: boolean
+  onClick: () => void
+}) {
   const label = activityLabel(engine?.state)
   return (
     <button
       type="button"
       onClick={onClick}
       className={`group w-full border-l-2 px-3 py-2 text-left transition-colors ${
-        active ? "border-primary bg-inset" : "border-transparent hover:bg-surface"
+        active
+          ? "border-primary bg-inset"
+          : "border-transparent hover:bg-surface"
       }`}
     >
       <div className="flex items-center gap-2">
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(engine?.state)}`} />
-        <span className={`truncate text-[13px] ${active ? "text-fg" : "text-fg/90"}`}>{task.title || task.branch}</span>
-        {task.pinned && <span className="ml-auto shrink-0 text-[10px] text-subtle">PIN</span>}
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(engine?.state)}`}
+        />
+        <span
+          className={`truncate text-[13px] ${active ? "text-fg" : "text-fg/90"}`}
+        >
+          {task.title || task.branch}
+        </span>
+        {task.pinned && (
+          <span className="ml-auto shrink-0 text-[10px] text-subtle">PIN</span>
+        )}
       </div>
       <div className="mt-0.5 flex items-center gap-2 pl-3.5 text-[11px] text-subtle">
         <span className="truncate">{task.branch || "—"}</span>
@@ -104,7 +121,8 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
       <div className="flex-1 overflow-y-auto">
         {visible.length === 0 ? (
           <p className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
-            No tasks yet. Create one in the kobe TUI or via <code className="text-muted">kobe add</code>.
+            No tasks yet. Create one in the kobe TUI or via{" "}
+            <code className="text-muted">kobe add</code>.
           </p>
         ) : (
           visible.map((t) => (
@@ -137,11 +155,23 @@ function TopBar() {
   const ok = daemonConnected && streamConnected
   return (
     <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-      <span className="font-mono text-[13px] font-bold text-primary">[kobe]</span>
-      <span className="rounded bg-inset px-2 py-0.5 text-[11px] text-muted">Workspace</span>
+      <span className="font-mono text-[13px] font-bold text-primary">
+        [kobe]
+      </span>
+      <span className="rounded bg-inset px-2 py-0.5 text-[11px] text-muted">
+        Workspace
+      </span>
       <div className="ml-auto flex items-center gap-2 text-[11px] text-subtle">
-        <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`} />
-        <span>{ok ? "daemon connected" : streamConnected ? "no daemon" : "connecting…"}</span>
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
+        />
+        <span>
+          {ok
+            ? "daemon connected"
+            : streamConnected
+              ? "no daemon"
+              : "connecting…"}
+        </span>
       </div>
     </header>
   )
@@ -150,15 +180,23 @@ function TopBar() {
 function StatusBar() {
   const { tasks, update } = useAppState()
   const { selectedTaskId } = useTabsState()
-  const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
+  const task = selectedTaskId
+    ? tasks.find((t) => t.id === selectedTaskId)
+    : null
   const count = tasks.filter((t) => !t.archived).length
   return (
     <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-line bg-surface px-3 text-[11px] text-subtle">
       <span>
         {count} task{count === 1 ? "" : "s"}
       </span>
-      {task && <span className="truncate text-muted">{tail(task.worktreePath, 48)}</span>}
-      <span className="ml-auto">{update?.latest ? `update ${update.latest} available` : "kobe web"}</span>
+      {task && (
+        <span className="truncate text-muted">
+          {tail(task.worktreePath, 48)}
+        </span>
+      )}
+      <span className="ml-auto">
+        {update?.latest ? `update ${update.latest} available` : "kobe web"}
+      </span>
     </footer>
   )
 }
@@ -169,7 +207,9 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-bg">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line bg-surface px-3">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">Settings</span>
+        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
+          Settings
+        </span>
         <button
           type="button"
           onClick={onClose}
@@ -181,37 +221,59 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2">
           <div className="border border-line bg-surface p-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">Connection</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Connection
+            </div>
             <div className="mt-4 space-y-3 text-[12px]">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted">Daemon</span>
-                <span className={daemonConnected ? "text-kobe-green" : "text-kobe-yellow"}>
+                <span
+                  className={
+                    daemonConnected ? "text-kobe-green" : "text-kobe-yellow"
+                  }
+                >
                   {daemonConnected ? "connected" : "offline"}
                 </span>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted">Event stream</span>
-                <span className={streamConnected ? "text-kobe-green" : "text-kobe-yellow"}>
+                <span
+                  className={
+                    streamConnected ? "text-kobe-green" : "text-kobe-yellow"
+                  }
+                >
                   {streamConnected ? "connected" : "connecting"}
                 </span>
               </div>
             </div>
           </div>
           <div className="border border-line bg-surface p-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">Version</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Version
+            </div>
             <div className="mt-4 space-y-3 text-[12px]">
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted">Current</span>
-                <span className="text-fg">{typeof update?.current === "string" ? update.current : "unknown"}</span>
+                <span className="text-fg">
+                  {typeof update?.current === "string"
+                    ? update.current
+                    : "unknown"}
+                </span>
               </div>
               <div className="flex items-center justify-between gap-4">
                 <span className="text-muted">Latest</span>
-                <span className="text-fg">{typeof update?.latest === "string" ? update.latest : "unknown"}</span>
+                <span className="text-fg">
+                  {typeof update?.latest === "string"
+                    ? update.latest
+                    : "unknown"}
+                </span>
               </div>
             </div>
           </div>
           <div className="border border-line bg-surface p-4 md:col-span-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">Workspace</div>
+            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Workspace
+            </div>
             <div className="mt-4 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-3">
               <div className="border border-line-subtle bg-bg p-3">
                 <div className="text-subtle">Brand</div>
@@ -241,7 +303,11 @@ export function AppShell() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <TaskRail onOpenSettings={() => setSettingsOpen(true)} />
-        {settingsOpen ? <SettingsPage onClose={() => setSettingsOpen(false)} /> : <WorkspaceTabs />}
+        {settingsOpen ? (
+          <SettingsPage onClose={() => setSettingsOpen(false)} />
+        ) : (
+          <WorkspaceTabs />
+        )}
         <ToolsPanel />
       </div>
       <StatusBar />

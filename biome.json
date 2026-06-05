@@ -10,11 +10,11 @@
       "bun.lock",
       "packages/branding/**",
       "branding/**",
+      "packages/kobe-web/**",
       "packages/*/.dev-sandbox/**",
       "packages/*/.dev-fixture/**",
       "**/.dev-sandbox/**",
-      "**/.dev-fixture/**",
-      "packages/kobe-web/src/routeTree.gen.ts"
+      "**/.dev-fixture/**"
     ]
   },
   "formatter": {

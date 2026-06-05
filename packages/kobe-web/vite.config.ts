@@ -1,10 +1,9 @@
+import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
-import { defineConfig } from "vite"
 
 import { tanstackRouter } from "@tanstack/router-plugin/vite"
-
-import tailwindcss from "@tailwindcss/vite"
 import viteReact from "@vitejs/plugin-react"
+import { defineConfig } from "vite"
 
 // `kobe web --bridge-only` asks the daemon to bind HTTP/SSE routes on a
 // sibling port. Vite proxies those routes so the browser sees one origin.
@@ -20,10 +19,19 @@ const config = defineConfig({
     proxy: {
       "/api": { target: bridgeTarget, changeOrigin: true },
       "/events": { target: bridgeTarget, changeOrigin: true, ws: false },
-      "/pty": { target: `ws://localhost:${ptyPort}`, ws: true, changeOrigin: true },
+      "/pty": {
+        target: `ws://localhost:${ptyPort}`,
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
-  plugins: [devtools(), tailwindcss(), tanstackRouter({ target: "react", autoCodeSplitting: true }), viteReact()],
+  plugins: [
+    devtools(),
+    tailwindcss(),
+    tanstackRouter({ target: "react", autoCodeSplitting: true }),
+    viteReact(),
+  ],
 })
 
 export default config

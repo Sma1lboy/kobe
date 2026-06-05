@@ -10,7 +10,6 @@ import type { DragEvent, ReactNode } from "react"
 import { useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import {
-  type WorkspaceTab,
   addEmptyTab,
   clearSplitTab,
   closeTab,
@@ -18,6 +17,7 @@ import {
   setActiveTab,
   setSplitTab,
   useTabsState,
+  type WorkspaceTab,
 } from "../lib/tabs.ts"
 import { closePtyTab } from "../lib/terminal.ts"
 import { ChatTerminal } from "./ChatTerminal.tsx"
@@ -29,7 +29,15 @@ function vendorLabel(vendor: string | undefined): string {
   return vendor ?? "claude"
 }
 
-function EmptyTabChooser({ taskId, tabId, vendor }: { taskId: string; tabId: string; vendor: string }) {
+function EmptyTabChooser({
+  taskId,
+  tabId,
+  vendor,
+}: {
+  taskId: string
+  tabId: string
+  vendor: string
+}) {
   const cards = [
     {
       title: "Vendor",
@@ -63,10 +71,16 @@ function EmptyTabChooser({ taskId, tabId, vendor }: { taskId: string; tabId: str
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-line bg-bg text-muted group-hover:border-primary group-hover:text-primary">
                   <Icon size={17} strokeWidth={1.8} />
                 </span>
-                <span className="truncate text-[10px] uppercase text-subtle">{card.detail}</span>
+                <span className="truncate text-[10px] uppercase text-subtle">
+                  {card.detail}
+                </span>
               </div>
-              <div className="mt-5 text-[12px] font-bold uppercase tracking-[0.12em] text-fg">{card.title}</div>
-              <div className="mt-2 text-[12px] leading-relaxed text-subtle">{card.body}</div>
+              <div className="mt-5 text-[12px] font-bold uppercase tracking-[0.12em] text-fg">
+                {card.title}
+              </div>
+              <div className="mt-2 text-[12px] leading-relaxed text-subtle">
+                {card.body}
+              </div>
             </button>
           )
         })}
@@ -86,11 +100,23 @@ function TabContent({
   taskWorktreePath: string | null
   vendor: string
 }) {
-  if (tab?.kind === "empty") return <EmptyTabChooser taskId={taskId} tabId={tab.id} vendor={vendor} />
-  if (tab?.kind === "vendor") return <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="engine" />
-  if (tab?.kind === "terminal") return <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="shell" />
-  if (tab?.kind === "file") return <FilePreview worktreePath={taskWorktreePath} path={tab.path} />
-  return <div className="flex h-full items-center justify-center text-[12px] text-subtle">Opening a tab…</div>
+  if (tab?.kind === "empty")
+    return <EmptyTabChooser taskId={taskId} tabId={tab.id} vendor={vendor} />
+  if (tab?.kind === "vendor")
+    return (
+      <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="engine" />
+    )
+  if (tab?.kind === "terminal")
+    return (
+      <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="shell" />
+    )
+  if (tab?.kind === "file")
+    return <FilePreview worktreePath={taskWorktreePath} path={tab.path} />
+  return (
+    <div className="flex h-full items-center justify-center text-[12px] text-subtle">
+      Opening a tab…
+    </div>
+  )
 }
 
 function PaneFrame({
@@ -108,7 +134,9 @@ function PaneFrame({
     <div className="flex min-w-0 flex-1 flex-col">
       {side === "right" && (
         <div className="flex h-8 shrink-0 items-center justify-between border-b border-line bg-surface px-3">
-          <span className="truncate text-[11px] text-muted">{tab?.title ?? "Split"}</span>
+          <span className="truncate text-[11px] text-muted">
+            {tab?.title ?? "Split"}
+          </span>
           <button
             type="button"
             onClick={onCloseSplit}
@@ -129,9 +157,12 @@ export function WorkspaceTabs() {
   const [vendorOpen, setVendorOpen] = useState(false)
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
   const [splitDropActive, setSplitDropActive] = useState(false)
-  const { selectedTaskId, tabsByTask, activeByTask, splitByTask } = useTabsState()
+  const { selectedTaskId, tabsByTask, activeByTask, splitByTask } =
+    useTabsState()
   const { tasks } = useAppState()
-  const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
+  const task = selectedTaskId
+    ? tasks.find((t) => t.id === selectedTaskId)
+    : null
   const tabs = selectedTaskId ? (tabsByTask[selectedTaskId] ?? []) : []
   const active = selectedTaskId ? activeByTask[selectedTaskId] : undefined
   const split = selectedTaskId ? splitByTask[selectedTaskId] : undefined
@@ -140,16 +171,22 @@ export function WorkspaceTabs() {
     if (!selectedTaskId) return
     const tab = tabs.find((t) => t.id === tabId)
     closeTab(selectedTaskId, tabId)
-    if (tab?.kind === "vendor" || tab?.kind === "terminal") void closePtyTab(tabId)
+    if (tab?.kind === "vendor" || tab?.kind === "terminal")
+      void closePtyTab(tabId)
   }
 
   const activeTab = tabs.find((t) => t.id === active) ?? tabs[0]
-  const splitTab = split && split !== activeTab?.id ? tabs.find((t) => t.id === split) : undefined
+  const splitTab =
+    split && split !== activeTab?.id
+      ? tabs.find((t) => t.id === split)
+      : undefined
   const vendor = vendorLabel(task?.vendor)
   const setVendor = (next: string): void => {
     if (!selectedTaskId) return
     setVendorOpen(false)
-    void rpc("task.setVendor", { taskId: selectedTaskId, vendor: next }).catch(() => {})
+    void rpc("task.setVendor", { taskId: selectedTaskId, vendor: next }).catch(
+      () => {},
+    )
   }
   const onContentDragOver = (event: DragEvent<HTMLDivElement>): void => {
     if (!selectedTaskId || !draggingTabId) return
@@ -174,16 +211,24 @@ export function WorkspaceTabs() {
     <section className="flex min-w-0 flex-1 flex-col bg-bg">
       <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface">
         {!selectedTaskId ? (
-          <div className="flex items-center px-3 text-[11px] text-subtle">Pick a task on the left</div>
+          <div className="flex items-center px-3 text-[11px] text-subtle">
+            Pick a task on the left
+          </div>
         ) : (
           <>
-            <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+            <div
+              className="flex min-w-0 flex-1 items-stretch overflow-x-auto"
+              role="tablist"
+            >
               {tabs.map((t) => {
                 const isActive = t.id === activeTab?.id
                 const isSplit = t.id === splitTab?.id
                 return (
                   <div
                     key={t.id}
+                    role="tab"
+                    aria-selected={isActive}
+                    tabIndex={0}
                     draggable
                     onDragStart={(event) => {
                       event.dataTransfer.effectAllowed = "move"
@@ -210,7 +255,11 @@ export function WorkspaceTabs() {
                     >
                       {t.title}
                     </button>
-                    {isSplit && <span className="text-[9px] font-bold uppercase text-kobe-blue">Split</span>}
+                    {isSplit && (
+                      <span className="text-[9px] font-bold uppercase text-kobe-blue">
+                        Split
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => onClose(t.id)}
@@ -263,8 +312,9 @@ export function WorkspaceTabs() {
         )}
       </div>
 
-      <div
+      <section
         className="relative min-h-0 flex-1"
+        aria-label="Workspace"
         onDragOver={onContentDragOver}
         onDragLeave={() => setSplitDropActive(false)}
         onDrop={onContentDrop}
@@ -307,7 +357,9 @@ export function WorkspaceTabs() {
         {draggingTabId && (
           <div
             className={`pointer-events-none absolute inset-y-2 right-2 flex w-[calc(50%-0.5rem)] items-center justify-center border border-dashed ${
-              splitDropActive ? "border-primary bg-primary/10" : "border-line bg-inset/40"
+              splitDropActive
+                ? "border-primary bg-primary/10"
+                : "border-line bg-inset/40"
             }`}
           >
             <span className="border border-line bg-bg px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
@@ -315,7 +367,7 @@ export function WorkspaceTabs() {
             </span>
           </div>
         )}
-      </div>
+      </section>
     </section>
   )
 }

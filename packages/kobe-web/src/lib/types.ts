@@ -26,7 +26,13 @@ export interface Task {
 }
 
 /** Transient engine activity (what the agent is doing right now). */
-export type ActivityState = "idle" | "running" | "waiting_permission" | "rate_limited" | "error" | string
+export type ActivityState =
+  | "idle"
+  | "running"
+  | "waiting_permission"
+  | "rate_limited"
+  | "error"
+  | string
 
 export interface EngineState {
   taskId: string

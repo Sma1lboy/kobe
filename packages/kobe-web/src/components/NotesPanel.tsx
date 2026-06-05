@@ -16,10 +16,18 @@ const AUTOSAVE_DEBOUNCE_MS = 600
 
 type SaveState = "idle" | "saving" | "saved" | "error"
 
-function SectionHeader({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
+function SectionHeader({
+  children,
+  right,
+}: {
+  children: React.ReactNode
+  right?: React.ReactNode
+}) {
   return (
     <div className="flex items-center justify-between px-3 py-2">
-      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">{children}</span>
+      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+        {children}
+      </span>
       {right}
     </div>
   )
@@ -38,7 +46,13 @@ function statusLabel(state: SaveState): string {
   }
 }
 
-export function NotesPanel({ taskId, full = false }: { taskId: string | null; full?: boolean }) {
+export function NotesPanel({
+  taskId,
+  full = false,
+}: {
+  taskId: string | null
+  full?: boolean
+}) {
   const [markdown, setMarkdown] = useState("")
   const [loading, setLoading] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>("idle")
@@ -106,7 +120,9 @@ export function NotesPanel({ taskId, full = false }: { taskId: string | null; fu
       <SectionHeader
         right={
           taskId && saveState !== "idle" ? (
-            <span className={`text-[10px] ${saveState === "error" ? "text-kobe-red" : "text-subtle"}`}>
+            <span
+              className={`text-[10px] ${saveState === "error" ? "text-kobe-red" : "text-subtle"}`}
+            >
               {statusLabel(saveState)}
             </span>
           ) : null
@@ -124,7 +140,11 @@ export function NotesPanel({ taskId, full = false }: { taskId: string | null; fu
             value={markdown}
             onChange={(e) => onChange(e.target.value)}
             spellCheck={false}
-            placeholder={loading ? "loading notes…" : "Notes for this task — markdown, autosaved."}
+            placeholder={
+              loading
+                ? "loading notes…"
+                : "Notes for this task — markdown, autosaved."
+            }
             disabled={loading}
             className={`h-full w-full resize-none border-line bg-surface px-4 py-3 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none disabled:opacity-60 ${
               full ? "border-x-0 border-b-0 border-t" : "rounded border"

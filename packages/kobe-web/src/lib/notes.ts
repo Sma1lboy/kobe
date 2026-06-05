@@ -9,14 +9,19 @@ export async function fetchNotes(taskId: string): Promise<string> {
   const res = await fetch(`/api/notes?taskId=${encodeURIComponent(taskId)}`)
   if (!res.ok) {
     const detail = await res.text().catch(() => "")
-    throw new Error(`failed to load notes (${res.status})${detail ? `: ${detail}` : ""}`)
+    throw new Error(
+      `failed to load notes (${res.status})${detail ? `: ${detail}` : ""}`,
+    )
   }
   const data = (await res.json()) as { markdown?: string }
   return data.markdown ?? ""
 }
 
 /** Persist the markdown for a task. */
-export async function saveNotes(taskId: string, markdown: string): Promise<void> {
+export async function saveNotes(
+  taskId: string,
+  markdown: string,
+): Promise<void> {
   const res = await fetch("/api/notes", {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -24,6 +29,8 @@ export async function saveNotes(taskId: string, markdown: string): Promise<void>
   })
   if (!res.ok) {
     const detail = await res.text().catch(() => "")
-    throw new Error(`failed to save notes (${res.status})${detail ? `: ${detail}` : ""}`)
+    throw new Error(
+      `failed to save notes (${res.status})${detail ? `: ${detail}` : ""}`,
+    )
   }
 }

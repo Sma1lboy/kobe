@@ -15,7 +15,9 @@ export function ToolsPanel() {
   const [tool, setTool] = useState<Tool>("notes")
   const { selectedTaskId } = useTabsState()
   const { tasks } = useAppState()
-  const task = selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) : null
+  const task = selectedTaskId
+    ? tasks.find((t) => t.id === selectedTaskId)
+    : null
 
   return (
     <aside className="hidden w-80 shrink-0 flex-col border-l border-line bg-bg lg:flex">
@@ -26,7 +28,9 @@ export function ToolsPanel() {
             type="button"
             onClick={() => setTool(t)}
             className={`px-3 text-[10px] font-bold uppercase tracking-[0.12em] ${
-              tool === t ? "border-b-2 border-primary text-fg" : "text-subtle hover:text-muted"
+              tool === t
+                ? "border-b-2 border-primary text-fg"
+                : "text-subtle hover:text-muted"
             }`}
           >
             {t === "notes" ? "Notes" : "Changes"}

@@ -6,7 +6,13 @@
  */
 
 import { useSyncExternalStore } from "react"
-import type { BridgeEvent, BridgeSnapshot, EngineState, Task, UpdateInfo } from "./types.ts"
+import type {
+  BridgeEvent,
+  BridgeSnapshot,
+  EngineState,
+  Task,
+  UpdateInfo,
+} from "./types.ts"
 
 export interface AppState {
   tasks: Task[]
@@ -45,7 +51,12 @@ function applyEvent(event: BridgeEvent): void {
       set({ activeTaskId: event.payload.taskId })
       break
     case "engine-state":
-      set({ engineStates: { ...state.engineStates, [event.payload.taskId]: event.payload } })
+      set({
+        engineStates: {
+          ...state.engineStates,
+          [event.payload.taskId]: event.payload,
+        },
+      })
       break
     case "update":
       set({ update: event.payload.info })
@@ -94,13 +105,17 @@ export function useAppState(): AppState {
 }
 
 /** Forward a daemon RPC. Resolves with the daemon's result, throws on error. */
-export async function rpc<T = unknown>(name: string, payload?: unknown): Promise<T> {
+export async function rpc<T = unknown>(
+  name: string,
+  payload?: unknown,
+): Promise<T> {
   const res = await fetch("/api/rpc", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, payload }),
   })
   const json = (await res.json()) as { result?: T; error?: string }
-  if (!res.ok || json.error) throw new Error(json.error ?? `rpc ${name} failed (${res.status})`)
+  if (!res.ok || json.error)
+    throw new Error(json.error ?? `rpc ${name} failed (${res.status})`)
   return json.result as T
 }

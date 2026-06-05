@@ -95,7 +95,8 @@ function load(): TabsState {
           taskId,
           tabs.map((tab) => {
             const stored = tab as Partial<WorkspaceTab> & { kind?: string }
-            const kind = stored.kind === "chat" ? "vendor" : (stored.kind ?? "vendor")
+            const kind =
+              stored.kind === "chat" ? "vendor" : (stored.kind ?? "vendor")
             if (kind === "notes") return emptyTab()
             return { ...stored, kind } as WorkspaceTab
           }),
@@ -107,7 +108,9 @@ function load(): TabsState {
         activeByTask: p.activeByTask ?? {},
         splitByTask: p.splitByTask ?? {},
       }
-      return loaded.selectedTaskId ? withTaskTab(loaded, loaded.selectedTaskId) : loaded
+      return loaded.selectedTaskId
+        ? withTaskTab(loaded, loaded.selectedTaskId)
+        : loaded
     }
   } catch {
     /* ignore corrupt storage */
@@ -174,7 +177,11 @@ export function addEmptyTab(taskId: string): string {
   return tab.id
 }
 
-export function configureTab(taskId: string, tabId: string, kind: "vendor" | "terminal"): void {
+export function configureTab(
+  taskId: string,
+  tabId: string,
+  kind: "vendor" | "terminal",
+): void {
   const list = state.tabsByTask[taskId] ?? []
   const next = list.map((tab) => {
     if (tab.id !== tabId) return tab
@@ -236,7 +243,11 @@ export function closeTab(taskId: string, tabId: string): void {
     const nextIndex = Math.max(0, Math.min(closedIndex, list.length - 1))
     activeByTask[taskId] = list[nextIndex].id
   }
-  if (splitByTask[taskId] === tabId || splitByTask[taskId] === activeByTask[taskId]) delete splitByTask[taskId]
+  if (
+    splitByTask[taskId] === tabId ||
+    splitByTask[taskId] === activeByTask[taskId]
+  )
+    delete splitByTask[taskId]
   set({
     ...state,
     tabsByTask: { ...state.tabsByTask, [taskId]: list },
@@ -249,7 +260,11 @@ export function setActiveTab(taskId: string, tabId: string): void {
   const splitByTask = { ...state.splitByTask }
   const activeByTask = { ...state.activeByTask }
   const currentActive = activeByTask[taskId]
-  if (splitByTask[taskId] === tabId && currentActive && currentActive !== tabId) {
+  if (
+    splitByTask[taskId] === tabId &&
+    currentActive &&
+    currentActive !== tabId
+  ) {
     splitByTask[taskId] = currentActive
   } else if (splitByTask[taskId] === tabId) {
     delete splitByTask[taskId]
@@ -268,7 +283,11 @@ export function setSplitTab(taskId: string, tabId: string): void {
     if (!nextPrimary) return
     activeByTask[taskId] = nextPrimary.id
   }
-  set({ ...state, activeByTask, splitByTask: { ...state.splitByTask, [taskId]: tabId } })
+  set({
+    ...state,
+    activeByTask,
+    splitByTask: { ...state.splitByTask, [taskId]: tabId },
+  })
 }
 
 export function clearSplitTab(taskId: string): void {

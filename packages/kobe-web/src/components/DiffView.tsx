@@ -106,14 +106,26 @@ function FileList({
             onClick={() => onSelect(f.path)}
             title={f.path}
             className={`flex items-center gap-2 border-l-2 px-2 py-1.5 text-left transition-colors ${
-              active ? "border-primary bg-inset" : "border-transparent hover:bg-surface"
+              active
+                ? "border-primary bg-inset"
+                : "border-transparent hover:bg-surface"
             }`}
           >
-            <span className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}>
+            <span
+              className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}
+            >
               {badge.label}
             </span>
-            <span className={`truncate text-[12px] ${active ? "text-fg" : "text-fg/90"}`}>{tail(f.path, 28)}</span>
-            {f.staged && <span className="ml-auto shrink-0 text-[9px] uppercase text-subtle">staged</span>}
+            <span
+              className={`truncate text-[12px] ${active ? "text-fg" : "text-fg/90"}`}
+            >
+              {tail(f.path, 28)}
+            </span>
+            {f.staged && (
+              <span className="ml-auto shrink-0 text-[9px] uppercase text-subtle">
+                staged
+              </span>
+            )}
           </button>
         )
       })}
@@ -180,7 +192,9 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
           Select a task to see its changes.
         </div>
       ) : error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">{error}</div>
+        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
+          {error}
+        </div>
       ) : files.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
           {loading ? "Loading changes…" : "No changes in this worktree."}
@@ -191,7 +205,10 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
           <div className="flex min-w-0 flex-1 flex-col">
             {current && (
               <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
-                <span className="truncate font-mono text-[11px] text-fg" title={current.path}>
+                <span
+                  className="truncate font-mono text-[11px] text-fg"
+                  title={current.path}
+                >
                   {current.path}
                 </span>
                 <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-subtle">
@@ -202,7 +219,9 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
             {current ? (
               <DiffBody patch={current.patch} />
             ) : (
-              <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">Select a file.</div>
+              <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
+                Select a file.
+              </div>
             )}
           </div>
         </div>
@@ -267,7 +286,9 @@ export function ChangesList({
           Select a task to see changes.
         </div>
       ) : error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">{error}</div>
+        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
+          {error}
+        </div>
       ) : files.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
           {loading ? "Loading changes…" : "No changes."}
@@ -284,11 +305,19 @@ export function ChangesList({
                 title={f.path}
                 className="flex w-full items-center gap-2 border-l-2 border-transparent px-3 py-2 text-left transition-colors hover:border-primary hover:bg-inset"
               >
-                <span className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}>
+                <span
+                  className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}
+                >
                   {badge.label}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">{tail(f.path, 34)}</span>
-                {f.staged && <span className="shrink-0 text-[9px] uppercase text-subtle">staged</span>}
+                <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
+                  {tail(f.path, 34)}
+                </span>
+                {f.staged && (
+                  <span className="shrink-0 text-[9px] uppercase text-subtle">
+                    staged
+                  </span>
+                )}
               </button>
             )
           })}
@@ -323,7 +352,8 @@ export function FilePreview({
         setFile(result.files.find((item) => item.path === path) ?? null)
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -340,17 +370,25 @@ export function FilePreview({
           {path}
         </span>
         {file && (
-          <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-subtle">{file.status}</span>
+          <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-subtle">
+            {file.status}
+          </span>
         )}
       </div>
       {error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">{error}</div>
+        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
+          {error}
+        </div>
       ) : loading ? (
-        <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">Loading preview…</div>
+        <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
+          Loading preview…
+        </div>
       ) : file ? (
         <DiffBody patch={file.patch} />
       ) : (
-        <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">No diff for this file.</div>
+        <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
+          No diff for this file.
+        </div>
       )}
     </div>
   )

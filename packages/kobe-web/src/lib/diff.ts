@@ -25,7 +25,9 @@ export interface DiffResult {
 
 /** Fetch the working-tree changes for a worktree. Throws on a non-OK response. */
 export async function fetchDiff(worktreePath: string): Promise<DiffResult> {
-  const res = await fetch(`/api/diff?worktreePath=${encodeURIComponent(worktreePath)}`)
+  const res = await fetch(
+    `/api/diff?worktreePath=${encodeURIComponent(worktreePath)}`,
+  )
   const json = (await res.json()) as Partial<DiffResult> & { error?: string }
   if (!res.ok || json.error) {
     throw new Error(json.error ?? `diff fetch failed (${res.status})`)

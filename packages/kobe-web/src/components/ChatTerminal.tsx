@@ -92,7 +92,10 @@ export function ChatTerminal({
       ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows))
       ws.binaryType = "arraybuffer"
       ws.onmessage = (e) => {
-        const data = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data as ArrayBuffer)
+        const data =
+          typeof e.data === "string"
+            ? e.data
+            : new TextDecoder().decode(e.data as ArrayBuffer)
         term?.write(data)
       }
       ws.onclose = () => {

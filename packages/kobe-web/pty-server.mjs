@@ -19,6 +19,8 @@ import { WebSocketServer } from "ws"
 const PORT = Number.parseInt(process.env.KOBE_PTY_PORT ?? "5175", 10)
 const BRIDGE_PORT = Number.parseInt(process.env.KOBE_BRIDGE_PORT ?? "5174", 10)
 const SCROLLBACK_CAP = 256 * 1024 // bytes of recent output replayed on (re)attach
+const HEALTH_PATH = "/__kobe_web"
+const HEALTH_MARKER = "kobe-web"
 
 /** tabId → { pty, buffer, sockets } */
 const tabs = new Map()
@@ -77,6 +79,20 @@ function closeTab(tabId) {
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
+  if (url.pathname === HEALTH_PATH) {
+    res.writeHead(200, { "content-type": "text/plain" })
+    res.end(HEALTH_MARKER)
+    return
+  }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "POST, OPTIONS",
+      "access-control-allow-headers": "content-type",
+    })
+    res.end()
+    return
+  }
   if (req.method === "POST" && url.pathname === "/pty/close") {
     let body = ""
     req.on("data", (c) => {
@@ -90,7 +106,10 @@ const server = createServer((req, res) => {
         /* ignore */
       }
       const ok = tab ? closeTab(tab) : false
-      res.writeHead(200, { "content-type": "application/json" })
+      res.writeHead(200, {
+        "content-type": "application/json",
+        "access-control-allow-origin": "*",
+      })
       res.end(JSON.stringify({ closed: ok }))
     })
     return
