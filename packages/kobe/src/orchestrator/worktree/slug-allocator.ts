@@ -4,8 +4,8 @@
  * Replaces the old "directory = task ULID" scheme (which produced 26-
  * char dir names that overflowed the terminal pane). The new shape is:
  *
- *   <repo>/.kobe/worktrees/panda/
- *   <repo>/.kobe/worktrees/panda-v2/   # if `panda` was recycled
+ *   ~/.kobe/worktrees/<repo-key>/panda/
+ *   ~/.kobe/worktrees/<repo-key>/panda-v2/   # if `panda` was recycled
  *
  * Mechanism (mirrors Conductor's city-name scheme, KOB-65):
  *   1. Build the "occupied" set: every slug currently held by a

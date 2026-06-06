@@ -70,7 +70,7 @@ guarantee comes from giving each Task its own git worktree.
 
 Concretely:
 
-- Task `panda` lives at `<repo>/.kobe/worktrees/panda/` checked
+- Task `panda` lives at `~/.kobe/worktrees/<repo-key>/panda/` checked
   out to whatever branch the task owns.
 - Edits made in one task's worktree do not appear in another's until
   the user merges branches.
@@ -78,13 +78,15 @@ Concretely:
   worktree persists across kobe restarts; it persists across the task
   going to `done`; it persists across archiving. The user removes
   worktrees explicitly, never as a side effect.
-- kobe owns its worktree root (`.kobe/worktrees/`). Older tasks created
-  under `.claude/worktrees/` stay valid and are still listed/adopted, but
-  new kobe-created worktrees are engine-neutral.
+- kobe owns its worktree root under its state dir (`~/.kobe/worktrees/`,
+  or `$KOBE_HOME_DIR/.kobe/worktrees/` in isolated dev/test homes). Older
+  tasks created under repo-local `.kobe/worktrees/` or `.claude/worktrees/`
+  stay valid and are still listed/adopted, but new kobe-created worktrees
+  no longer require a repo-level `.gitignore` entry.
 
 The single source of truth for the path is
 [`worktreePathFor(repo, taskId)`](../../packages/kobe/src/orchestrator/worktree/paths.ts).
-Nothing else should concatenate `repo + '/.kobe/worktrees/' + id`.
+Nothing else should concatenate a worktree root by hand.
 
 ### Boundary: the orchestrator does not coordinate writes inside a worktree
 
@@ -243,7 +245,7 @@ setting describes "this particular conversation," it's tab-level.
 | What                          | Where                                                  | Format                       |
 |-------------------------------|--------------------------------------------------------|------------------------------|
 | Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
-| Per-task worktree             | `<repo>/.kobe/worktrees/<slug>/`                       | git worktree                 |
+| Per-task worktree             | `~/.kobe/worktrees/<repo-key>/<slug>/`                 | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
 | Spawned-engine resume cwd     | typed `opts.cwd` on `engine.resume()` (+ legacy env var) | string                     |
 
@@ -294,8 +296,8 @@ When the schema changes again:
 - **Sharing one worktree across tasks.** Defeats the entire model.
   Every task gets its own worktree.
 - **Hardcoding the worktree path.** Use `worktreePathFor`. New kobe
-  worktrees use `.kobe/worktrees/`, while path recognition also supports
-  legacy `.claude/worktrees/`.
+  worktrees use `~/.kobe/worktrees/<repo-key>/`, while path recognition
+  also supports repo-local `.kobe/worktrees/` and legacy `.claude/worktrees/`.
 - **Storing conversation history in `tasks.json`.** It's a manifest,
   not a database. JSONL via the engine is the source of truth.
 - **Auto-deleting worktrees on archive / done / cancel.** kobe never

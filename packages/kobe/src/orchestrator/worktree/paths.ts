@@ -1,15 +1,17 @@
 /**
  * Canonical filesystem layout for kobe-managed worktrees.
  *
- * The worktree root is per-repo and lives adjacent to the source tree
- * at `<repo>/.kobe/worktrees/<slug>/`. `<slug>` is an animal-name slug
- * (KOB-65) for tasks created after the switch, or the task's ULID for
- * older records whose path is already persisted.
+ * The worktree root is per-repo and lives in kobe's state dir at
+ * `~/.kobe/worktrees/<repo-key>/<slug>/` (or under `$KOBE_HOME_DIR`
+ * when overridden). `<slug>` is an animal-name slug (KOB-65) for tasks
+ * created after the switch, or the task's ULID for older records whose
+ * path is already persisted.
  *
- * Backwards compatibility: kobe used `<repo>/.claude/worktrees/<slug>/`
- * before it supported multiple engines. Existing tasks there remain
- * managed and discoverable, but new kobe-created tasks use `.kobe` so
- * neutral task storage is not named after one engine vendor.
+ * Backwards compatibility: kobe briefly used repo-local
+ * `<repo>/.kobe/worktrees/<slug>/`, and before multi-engine support it
+ * used `<repo>/.claude/worktrees/<slug>/`. Existing tasks in both roots
+ * remain managed and discoverable, but new kobe-created tasks use the
+ * global kobe state dir so no repo-level `.gitignore` entry is needed.
  *
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
@@ -19,25 +21,28 @@
  * `<repo>` is always absolute. Callers must normalize before invoking.
  */
 
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
+import { kobeStateDir } from "../../env.ts"
 
 /**
- * Directory under each repo where kobe stores all of its worktrees.
+ * Directory under kobe's state dir where kobe stores all of its worktrees.
  *
  * Exposed so the worktree manager's `list()` implementation can scope
  * its enumeration to "kobe-managed only" without reaching into another
  * module's private constant.
  */
-export const KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
+export const KOBE_WORKTREE_ROOT_DIR = "worktrees"
+export const REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
 export const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
 
 /**
- * Managed worktree roots, primary first. Creation uses only
- * {@link KOBE_WORKTREE_ROOT_SUBPATH}; recognition/listing checks both.
+ * Repo-local compatibility roots. Creation does not use these; recognition and
+ * listing keep old task records working.
  */
-export const KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
-  KOBE_WORKTREE_ROOT_SUBPATH,
+export const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
+  REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
   LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
 ] as const
 
@@ -45,13 +50,13 @@ export const KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
  * Absolute path of the worktree root for a given repo.
  *
  * Example: `worktreeRootFor("/Users/x/proj")` →
- * `/Users/x/proj/.kobe/worktrees`.
+ * `/Users/x/.kobe/worktrees/proj-a1b2c3d4e5f6`.
  */
 export function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {
     throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
   }
-  return path.join(repo, KOBE_WORKTREE_ROOT_SUBPATH)
+  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo))
 }
 
 /**
@@ -62,7 +67,10 @@ export function managedWorktreeRootsFor(repo: string): readonly string[] {
   if (!path.isAbsolute(repo)) {
     throw new Error(`managedWorktreeRootsFor: repo must be an absolute path, got: ${repo}`)
   }
-  return KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath))
+  return [
+    worktreeRootFor(repo),
+    ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath)),
+  ]
 }
 
 /**
@@ -147,4 +155,11 @@ function canonicalize(p: string): string {
   } catch {
     return path.resolve(p)
   }
+}
+
+function repoWorktreeDirName(repo: string): string {
+  const base = path.basename(repo) || "repo"
+  const safeBase = base.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "repo"
+  const hash = createHash("sha1").update(path.resolve(repo)).digest("hex").slice(0, 12)
+  return `${safeBase}-${hash}`
 }

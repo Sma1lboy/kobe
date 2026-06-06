@@ -3,8 +3,8 @@
  *
  * See DESIGN.md §5.3 (orchestrator owns worktree manager) and §11.3
  * (resolved: new kobe-created worktrees use
- * `<repo>/.kobe/worktrees/<slug>/`; legacy `.claude/worktrees` task
- * paths remain supported).
+ * `~/.kobe/worktrees/<repo-key>/<slug>/`; repo-local `.kobe/worktrees`
+ * and legacy `.claude/worktrees` task paths remain supported).
  *
  * The orchestrator depends on this interface; `GitWorktreeManager` is
  * the production implementation. The orchestrator must never shell out

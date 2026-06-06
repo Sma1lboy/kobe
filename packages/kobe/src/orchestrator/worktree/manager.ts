@@ -18,7 +18,7 @@
  *     "I lost my changes because kobe deleted the worktree" must be
  *     impossible without explicit consent.
  *   - `list()` only returns worktrees inside kobe-managed roots
- *     (`<repo>/.kobe/worktrees/` plus legacy `<repo>/.claude/worktrees/`).
+ *     (`~/.kobe/worktrees/<repo-key>/` plus repo-local compatibility roots).
  *     Worktrees the user created outside these roots are invisible to kobe.
  *
  * Reference (read, not ported): `refs/vibe-kanban/crates/worktree-manager/`
@@ -75,7 +75,7 @@ export class GitWorktreeManager implements WorktreeManager {
       throw new Error(`create(): ${worktreePath} exists but is not a registered git worktree`)
     }
 
-    // Make sure the parent dir exists (`.kobe/worktrees/` may be the
+    // Make sure the parent dir exists (`~/.kobe/worktrees/...` may be the
     // first time we write into the repo).
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true })
 
@@ -359,7 +359,7 @@ export class GitWorktreeManager implements WorktreeManager {
     if (!match || !match.path || !match.branch || match.detached) return null
     return {
       // Return the caller's requested path verbatim — they passed in
-      // `<repo>/.kobe/worktrees/<id>` (or a persisted legacy path) and may compare against that
+      // `~/.kobe/worktrees/<repo-key>/<id>` (or a persisted legacy path) and may compare against that
       // exact string later. Returning git's macOS-resolved
       // `/private/...` form would surprise them.
       path: worktreePath,

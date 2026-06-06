@@ -394,7 +394,7 @@ state lives in dedicated dirs we own.
 | `~/.kobe/<lockfile>` | `src/orchestrator/index/lockfile.ts` | Multi-process safety for the manifest |
 | `~/.config/kobe/state.json` | `src/tui/context/kv.tsx` (`KVProvider`) | Per-user UI state — selected theme, transparent-bg toggle, pane sizes, last-open task, expanded sidebar groups |
 | `~/.claude/projects/<encoded-cwd>/<sessionUUID>.jsonl` | Claude Code itself; we *read* via `engine.readHistory()` and *delete* via `engine.deleteHistory()` | Full message history per session. kobe never writes here. |
-| `<repo>/.kobe/worktrees/<slug>/` | `GitWorktreeManager` (`src/orchestrator/worktree/manager.ts`) | Per-task git worktree for new kobe-created tasks. Convention defined at `src/orchestrator/worktree/paths.ts:30`; legacy `<repo>/.claude/worktrees/<slug>/` paths remain recognized for existing tasks. |
+| `~/.kobe/worktrees/<repo-key>/<slug>/` | `GitWorktreeManager` (`src/orchestrator/worktree/manager.ts`) | Per-task git worktree for new kobe-created tasks. Convention defined at `src/orchestrator/worktree/paths.ts:30`; repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` paths remain recognized for existing tasks. |
 | `<worktreePath>/.kobe/pr-instructions.md` | Read by `src/orchestrator/pr/instructions.ts` | Optional per-repo override for the PR-creation prompt |
 
 What's deliberately NOT persisted:

@@ -10,7 +10,7 @@
  *
  * Each test gets a fresh tmp repo built by
  * `test/behavior/fixtures/repo-init.sh`. We tear it down explicitly so
- * macOS's `/var/folders` doesn't fill up with stale `.kobe/worktrees`
+ * macOS's `/var/folders` doesn't fill up with stale test worktrees
  * trees if a run is interrupted.
  */
 
@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import {
   LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
+  REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
   worktreePathFor,
   worktreeRootFor,
 } from "../../src/orchestrator/worktree/paths.ts"
@@ -30,9 +31,12 @@ const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
 
 let tmpRoot: string
 let repo: string
+let prevHome: string | undefined
 
 beforeEach(() => {
+  prevHome = process.env.KOBE_HOME_DIR
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-worktree-"))
+  process.env.KOBE_HOME_DIR = path.join(tmpRoot, "home")
   repo = path.join(tmpRoot, "repo")
   const result = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (result.status !== 0) {
@@ -41,6 +45,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (prevHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+  else process.env.KOBE_HOME_DIR = prevHome
   // Best-effort cleanup. We don't fail the test if the rm trips —
   // some platforms leave file handles momentarily after git operations.
   try {
@@ -63,7 +69,7 @@ describe("GitWorktreeManager.create", () => {
     expect(info.dirty).toBe(false)
     expect(fs.existsSync(target)).toBe(true)
     expect(fs.existsSync(path.join(target, "README.md"))).toBe(true)
-    expect(target.startsWith(path.join(repo, ".kobe", "worktrees"))).toBe(true)
+    expect(target.startsWith(path.join(tmpRoot, "home", ".kobe", "worktrees"))).toBe(true)
   })
 
   test("is idempotent: second call with the same args returns equivalent info", async () => {
@@ -117,6 +123,15 @@ describe("GitWorktreeManager.list", () => {
 
     const list = await mgr.list(repo)
     expect(list.find((w) => w.branch === "kobe/legacy")?.path).toBe(legacyTarget)
+  })
+
+  test("still lists repo-local .kobe/worktrees tasks without rewriting their paths", async () => {
+    const mgr = new GitWorktreeManager()
+    const localTarget = path.join(repo, REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH, "local")
+    await mgr.create(repo, "kobe/local", localTarget)
+
+    const list = await mgr.list(repo)
+    expect(list.find((w) => w.branch === "kobe/local")?.path).toBe(localTarget)
   })
 })
 
@@ -261,7 +276,7 @@ describe("createForTask helper", () => {
 describe("GitWorktreeManager.listAll (KOB-256)", () => {
   test("includes external worktrees + excludes main checkout, with kobeManaged flags", async () => {
     const mgr = new GitWorktreeManager()
-    // kobe-managed worktree under <repo>/.kobe/worktrees/
+    // kobe-managed worktree under KOBE_HOME_DIR/.kobe/worktrees/
     const managed = await mgr.createForTask({ repo, slug: "managed-wt", branch: "kobe/managed" })
     // external worktree created by the user OUTSIDE the convention root
     const extPath = path.join(tmpRoot, "external-wt")
