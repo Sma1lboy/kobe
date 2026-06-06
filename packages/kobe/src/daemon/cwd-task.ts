@@ -8,15 +8,16 @@
  * whose `worktreePath` is the cwd or the LONGEST path-prefix of it.
  *
  * Longest-prefix matters because task worktrees live UNDER a repo root
- * (`<repo>/.claude/worktrees/<id>`), and a `main` task's worktreePath IS that
- * repo root — so a sub-task's cwd prefix-matches both. The more specific
- * (longer) worktree wins, so a sub-task is never misattributed to the project.
+ * (`<repo>/.kobe/worktrees/<id>` or legacy `.claude/worktrees/<id>`), and a
+ * `main` task's worktreePath IS that repo root — so a sub-task's cwd
+ * prefix-matches both. The more specific (longer) worktree wins, so a sub-task
+ * is never misattributed to the project.
  *
  * cwds that match no task (an unrelated repo, a project root with no main task)
  * return undefined → the event is dropped.
  */
 
-import { KOBE_WORKTREE_ROOT_SUBPATH } from "../orchestrator/worktree/paths.ts"
+import { KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS } from "../orchestrator/worktree/paths.ts"
 
 export interface CwdMatchTask {
   readonly id: string
@@ -81,10 +82,11 @@ export function matchRepoByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string):
 
 /**
  * Detect a `cwd` that is an UNADOPTED git worktree under a tracked repo's
- * `.claude/worktrees/` dir — the replacement for the removed WorktreeCreate
- * hook. When an external `claude --worktree` (or a manual `git worktree add`)
- * lands a worktree in `<repo>/.claude/worktrees/<seg>` for a repo kobe already
- * has tasks in, the daemon adopts it as a task on the engine's `session-start`.
+ * managed worktree roots — the replacement for the removed WorktreeCreate
+ * hook. When an external engine worktree (or a manual `git worktree add`) lands
+ * in `<repo>/.kobe/worktrees/<seg>` or legacy `<repo>/.claude/worktrees/<seg>`
+ * for a repo kobe already has tasks in, the daemon adopts it as a task on the
+ * engine's `session-start`.
  *
  * Pure + git-free (string paths only, bounded to known repos): returns the
  * `{ repo, worktreePath }` to adopt, or undefined when `cwd` isn't under any
@@ -103,17 +105,18 @@ export function findAdoptableWorktree(
     if (t.repo) repos.add(normalize(t.repo))
     if (t.worktreePath) known.add(normalize(t.worktreePath))
   }
-  const seg = `/${KOBE_WORKTREE_ROOT_SUBPATH}/`
   for (const repo of repos) {
-    const prefix = `${repo}${seg}`
-    if (!target.startsWith(prefix)) continue
-    // First path segment after `<repo>/.claude/worktrees/` is the worktree dir.
-    const rest = target.slice(prefix.length)
-    const name = rest.split("/")[0]
-    if (!name) continue
-    const worktreePath = `${prefix}${name}`
-    if (known.has(worktreePath)) return undefined // already a task → nothing to adopt
-    return { repo, worktreePath }
+    for (const subpath of KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS) {
+      const prefix = `${repo}/${subpath}/`
+      if (!target.startsWith(prefix)) continue
+      // First path segment after the managed root is the worktree dir.
+      const rest = target.slice(prefix.length)
+      const name = rest.split("/")[0]
+      if (!name) continue
+      const worktreePath = `${prefix}${name}`
+      if (known.has(worktreePath)) return undefined // already a task → nothing to adopt
+      return { repo, worktreePath }
+    }
   }
   return undefined
 }

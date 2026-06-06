@@ -70,7 +70,7 @@ guarantee comes from giving each Task its own git worktree.
 
 Concretely:
 
-- Task `01HX...` lives at `<repo>/.claude/worktrees/01HX.../` checked
+- Task `panda` lives at `<repo>/.kobe/worktrees/panda/` checked
   out to whatever branch the task owns.
 - Edits made in one task's worktree do not appear in another's until
   the user merges branches.
@@ -78,13 +78,13 @@ Concretely:
   worktree persists across kobe restarts; it persists across the task
   going to `done`; it persists across archiving. The user removes
   worktrees explicitly, never as a side effect.
-- The worktree root is shared with Claude Code's own agent-spawn root
-  (`.claude/worktrees/`, **not** `.kobe/worktrees/`). One hidden dir,
-  both tools' worktrees inside, one mental model.
+- kobe owns its worktree root (`.kobe/worktrees/`). Older tasks created
+  under `.claude/worktrees/` stay valid and are still listed/adopted, but
+  new kobe-created worktrees are engine-neutral.
 
 The single source of truth for the path is
 [`worktreePathFor(repo, taskId)`](../../packages/kobe/src/orchestrator/worktree/paths.ts).
-Nothing else should concatenate `repo + '/.claude/worktrees/' + id`.
+Nothing else should concatenate `repo + '/.kobe/worktrees/' + id`.
 
 ### Boundary: the orchestrator does not coordinate writes inside a worktree
 
@@ -243,7 +243,7 @@ setting describes "this particular conversation," it's tab-level.
 | What                          | Where                                                  | Format                       |
 |-------------------------------|--------------------------------------------------------|------------------------------|
 | Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
-| Per-task worktree             | `<repo>/.claude/worktrees/<task-id>/`                  | git worktree                 |
+| Per-task worktree             | `<repo>/.kobe/worktrees/<slug>/`                       | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
 | Spawned-engine resume cwd     | typed `opts.cwd` on `engine.resume()` (+ legacy env var) | string                     |
 
@@ -293,9 +293,9 @@ When the schema changes again:
   conversation title, transcript).
 - **Sharing one worktree across tasks.** Defeats the entire model.
   Every task gets its own worktree.
-- **Hardcoding the worktree path.** Use `worktreePathFor`. The
-  `.claude/worktrees/` convention is settled; the `.kobe/worktrees/`
-  proposal is dead and any survivors are drift.
+- **Hardcoding the worktree path.** Use `worktreePathFor`. New kobe
+  worktrees use `.kobe/worktrees/`, while path recognition also supports
+  legacy `.claude/worktrees/`.
 - **Storing conversation history in `tasks.json`.** It's a manifest,
   not a database. JSONL via the engine is the source of truth.
 - **Auto-deleting worktrees on archive / done / cancel.** kobe never

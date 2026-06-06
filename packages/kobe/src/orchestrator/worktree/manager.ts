@@ -17,9 +17,9 @@
  *     true. The single most important safety property of this module:
  *     "I lost my changes because kobe deleted the worktree" must be
  *     impossible without explicit consent.
- *   - `list()` only returns worktrees inside `<repo>/.claude/worktrees/`
- *     (the convention from DESIGN.md §11 / PLAN.md §B). Worktrees the
- *     user created outside this root are invisible to kobe.
+ *   - `list()` only returns worktrees inside kobe-managed roots
+ *     (`<repo>/.kobe/worktrees/` plus legacy `<repo>/.claude/worktrees/`).
+ *     Worktrees the user created outside these roots are invisible to kobe.
  *
  * Reference (read, not ported): `refs/vibe-kanban/crates/worktree-manager/`
  * for cleanup invariants and dirty-state semantics.
@@ -29,7 +29,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { AdoptableWorktree, WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
 import { GitCommandError, git } from "./git.ts"
-import { isKobeManagedPath, worktreePathFor, worktreeRootFor } from "./paths.ts"
+import { isKobeManagedPath, managedWorktreeRootForPath, worktreePathFor } from "./paths.ts"
 
 export class GitWorktreeManager implements WorktreeManager {
   /**
@@ -75,7 +75,7 @@ export class GitWorktreeManager implements WorktreeManager {
       throw new Error(`create(): ${worktreePath} exists but is not a registered git worktree`)
     }
 
-    // Make sure the parent dir exists (`.claude/worktrees/` may be the
+    // Make sure the parent dir exists (`.kobe/worktrees/` may be the
     // first time we write into the repo).
     fs.mkdirSync(path.dirname(worktreePath), { recursive: true })
 
@@ -193,28 +193,28 @@ export class GitWorktreeManager implements WorktreeManager {
    * List kobe-managed worktrees under `repo`.
    *
    * Parses `git worktree list --porcelain` and filters to entries
-   * whose path lives inside `<repo>/.claude/worktrees/`. Worktrees the
-   * user created elsewhere are invisible to kobe — we don't enumerate
-   * the whole world.
+   * whose path lives inside a kobe-managed root. Worktrees the user
+   * created elsewhere are invisible to kobe — we don't enumerate the
+   * whole world.
    */
   async list(repo: string): Promise<readonly WorktreeInfo[]> {
     requireAbsolute("repo", repo)
     const out = git(["worktree", "list", "--porcelain"], { cwd: repo })
     const all = parsePorcelain(out.stdout)
 
-    // Re-root paths into the caller's form. Git on macOS reports
-    // `/private/var/...` but the caller passed in `/var/...`; we hand
-    // back paths that satisfy `path.startsWith(worktreeRootFor(repo))`
-    // so callers can use string ops without surprise.
-    const callerRoot = worktreeRootFor(repo)
-    const canonRoot = canonicalize(callerRoot)
-
     const infos: WorktreeInfo[] = []
     for (const entry of all) {
       if (!entry.path) continue
-      if (!isKobeManagedPath(repo, entry.path)) continue
+      const callerRoot = managedWorktreeRootForPath(repo, entry.path)
+      if (!callerRoot) continue
       // Detached / bare entries don't have a branch we care about.
       if (!entry.branch || entry.detached) continue
+      // Re-root paths into the caller's form. Git on macOS reports
+      // `/private/var/...` but the caller passed in `/var/...`; we hand
+      // back paths that satisfy `path.startsWith(callerRoot)` so callers
+      // can use string ops without surprise. Legacy paths stay under the
+      // legacy root instead of being rewritten to the primary root.
+      const canonRoot = canonicalize(callerRoot)
       const canonEntry = canonicalize(entry.path)
       const rel = path.relative(canonRoot, canonEntry)
       const callerPath = path.join(callerRoot, rel)
@@ -231,7 +231,7 @@ export class GitWorktreeManager implements WorktreeManager {
 
   /**
    * List ALL git worktrees registered on `repo` — including ones the
-   * user created outside `<repo>/.claude/worktrees/` (KOB-256). Unlike
+   * user created outside kobe-managed roots (KOB-256). Unlike
    * {@link list}, this does NOT filter to the kobe convention root; it's
    * the discovery source for "adopt an existing worktree as a task".
    *
@@ -359,7 +359,7 @@ export class GitWorktreeManager implements WorktreeManager {
     if (!match || !match.path || !match.branch || match.detached) return null
     return {
       // Return the caller's requested path verbatim — they passed in
-      // `<repo>/.claude/worktrees/<id>` and may compare against that
+      // `<repo>/.kobe/worktrees/<id>` (or a persisted legacy path) and may compare against that
       // exact string later. Returning git's macOS-resolved
       // `/private/...` form would surprise them.
       path: worktreePath,

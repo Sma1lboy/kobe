@@ -219,13 +219,13 @@ After G0. All four can ship without seeing each other.
 - `manager.ts` — `class GitWorktreeManager implements WorktreeManager`
 - Methods: `create(repo, branch, path)`, `remove(path, { force })`, `list(repo)`, `isDirty(path)`, `currentBranch(path)`
 - Use `bun.spawn` or Node `execFile` for git calls; never shell-string-concatenate.
-- Per task convention from DESIGN.md §11.3 (resolved: `<repo>/.claude/worktrees/<task-id>/`, shared with Claude Code's own agent-spawn root)
+- Per task convention from DESIGN.md §11.3 (current: `<repo>/.kobe/worktrees/<slug>/` for new tasks; legacy `.claude/worktrees` recognized)
 - Tests: in `test/fixtures/`, init a tiny repo, create + remove worktrees, assert state.
 
 **Done when**: All methods green in unit tests; round-trip create→remove leaves no orphan files or branches.
 
 **Agent prompt seed**:
-> Implement `GitWorktreeManager` per `src/types/worktree.ts`. Use `git worktree` subcommands via `bun.spawn` (no shell concat — pass args as array). Per DESIGN.md §11.3, default worktree root is `<repo>/.claude/worktrees/<task-id>/` (shared namespace with Claude Code's own agent-spawn worktrees). Read `refs/vibe-kanban/crates/worktree-manager/` for invariants on cleanup and dirty-state detection. Tests must use a real fixture repo (`test/fixtures/repo-init.sh`); no mocking git. ~300 LoC.
+> Implement `GitWorktreeManager` per `src/types/worktree.ts`. Use `git worktree` subcommands via `bun.spawn` (no shell concat — pass args as array). Per DESIGN.md §11.3, default worktree root is `<repo>/.kobe/worktrees/<slug>/` for new tasks, with legacy `<repo>/.claude/worktrees/<slug>/` recognized. Read `refs/vibe-kanban/crates/worktree-manager/` for invariants on cleanup and dirty-state detection. Tests must use a real fixture repo (`test/fixtures/repo-init.sh`); no mocking git. ~300 LoC.
 
 ---
 
@@ -514,7 +514,7 @@ Constraint: each stream agent gets one focus area. **No cross-stream commits.** 
 | # | Decision | Stream | Resolution |
 |---|---|---|---|
 | 1 | Default theme | D | **`tokyonight`** (matches agent-deck's Tokyo Night palette; already lifted from opencode) |
-| 2 | Worktree root | B | **`<repo>/.claude/worktrees/<task-id>/`** (per-repo, gitignored, shared namespace with Claude Code's own agent-spawn worktrees — Wave 4 resolution; do not move back to `.kobe/`) |
+| 2 | Worktree root | B | **Updated 2026-06-06: `<repo>/.kobe/worktrees/<slug>/` for new kobe-created tasks; legacy `<repo>/.claude/worktrees/<slug>/` remains recognized.** The earlier Claude-shared root was retired after multi-engine support made vendor-named task storage misleading. |
 | 3 | Branch naming | E | **Auto** `kobe/<slug>-<ulid-suffix>`; user can override per-task |
 | 4 | Concurrency cap | E | **4** simultaneous running tasks; configurable via `~/.kobe/config.json` later |
 | 5 | Terminal pane | J | **One pty per task**, kept alive while task is `in_progress`, killed on archive |

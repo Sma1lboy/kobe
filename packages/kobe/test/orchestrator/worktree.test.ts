@@ -10,7 +10,7 @@
  *
  * Each test gets a fresh tmp repo built by
  * `test/behavior/fixtures/repo-init.sh`. We tear it down explicitly so
- * macOS's `/var/folders` doesn't fill up with stale `.claude/worktrees`
+ * macOS's `/var/folders` doesn't fill up with stale `.kobe/worktrees`
  * trees if a run is interrupted.
  */
 
@@ -20,7 +20,11 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
-import { worktreePathFor, worktreeRootFor } from "../../src/orchestrator/worktree/paths.ts"
+import {
+  LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
+  worktreePathFor,
+  worktreeRootFor,
+} from "../../src/orchestrator/worktree/paths.ts"
 
 const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
 
@@ -59,6 +63,7 @@ describe("GitWorktreeManager.create", () => {
     expect(info.dirty).toBe(false)
     expect(fs.existsSync(target)).toBe(true)
     expect(fs.existsSync(path.join(target, "README.md"))).toBe(true)
+    expect(target.startsWith(path.join(repo, ".kobe", "worktrees"))).toBe(true)
   })
 
   test("is idempotent: second call with the same args returns equivalent info", async () => {
@@ -103,6 +108,15 @@ describe("GitWorktreeManager.list", () => {
     for (const w of list) {
       expect(w.path.startsWith(worktreeRootFor(repo))).toBe(true)
     }
+  })
+
+  test("still lists legacy .claude/worktrees tasks without rewriting their paths", async () => {
+    const mgr = new GitWorktreeManager()
+    const legacyTarget = path.join(repo, LEGACY_KOBE_WORKTREE_ROOT_SUBPATH, "legacy")
+    await mgr.create(repo, "kobe/legacy", legacyTarget)
+
+    const list = await mgr.list(repo)
+    expect(list.find((w) => w.branch === "kobe/legacy")?.path).toBe(legacyTarget)
   })
 })
 
@@ -247,7 +261,7 @@ describe("createForTask helper", () => {
 describe("GitWorktreeManager.listAll (KOB-256)", () => {
   test("includes external worktrees + excludes main checkout, with kobeManaged flags", async () => {
     const mgr = new GitWorktreeManager()
-    // kobe-managed worktree under <repo>/.claude/worktrees/
+    // kobe-managed worktree under <repo>/.kobe/worktrees/
     const managed = await mgr.createForTask({ repo, slug: "managed-wt", branch: "kobe/managed" })
     // external worktree created by the user OUTSIDE the convention root
     const extPath = path.join(tmpRoot, "external-wt")

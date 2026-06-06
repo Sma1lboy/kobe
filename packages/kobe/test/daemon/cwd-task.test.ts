@@ -3,7 +3,7 @@ import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "../../src
 
 describe("matchTaskByCwd", () => {
   const main = { id: "main", worktreePath: "/repo" }
-  const sub = { id: "sub", worktreePath: "/repo/.claude/worktrees/snipe" }
+  const sub = { id: "sub", worktreePath: "/repo/.kobe/worktrees/snipe" }
   const other = { id: "other", worktreePath: "/elsewhere/proj" }
   const tasks = [main, sub, other]
 
@@ -18,8 +18,8 @@ describe("matchTaskByCwd", () => {
   it("prefers the longest (most specific) worktree — sub-task over its repo root", () => {
     // A sub-task's worktree lives UNDER the main task's repo root, so the cwd
     // prefix-matches both; the longer path must win.
-    expect(matchTaskByCwd(tasks, "/repo/.claude/worktrees/snipe")).toBe("sub")
-    expect(matchTaskByCwd(tasks, "/repo/.claude/worktrees/snipe/pkg")).toBe("sub")
+    expect(matchTaskByCwd(tasks, "/repo/.kobe/worktrees/snipe")).toBe("sub")
+    expect(matchTaskByCwd(tasks, "/repo/.kobe/worktrees/snipe/pkg")).toBe("sub")
   })
 
   it("falls back to the repo-root (main) task for a cwd not under any sub-worktree", () => {
@@ -48,7 +48,7 @@ describe("matchTaskByCwd", () => {
 describe("matchRepoByCwd", () => {
   const tasks = [
     { id: "main", repo: "/repo", worktreePath: "/repo" },
-    { id: "sub", repo: "/repo", worktreePath: "/repo/.claude/worktrees/known" },
+    { id: "sub", repo: "/repo", worktreePath: "/repo/.kobe/worktrees/known" },
     { id: "other", repo: "/elsewhere/proj", worktreePath: "/elsewhere/proj" },
   ]
 
@@ -60,7 +60,7 @@ describe("matchRepoByCwd", () => {
     expect(matchRepoByCwd(tasks, "/repo/src/deep")).toBe("/repo")
     // A `git worktree add` run from inside an existing worktree still resolves
     // to the tracked repo root (the longest repo prefix).
-    expect(matchRepoByCwd(tasks, "/repo/.claude/worktrees/known")).toBe("/repo")
+    expect(matchRepoByCwd(tasks, "/repo/.kobe/worktrees/known")).toBe("/repo")
   })
 
   it("prefers the longest (most specific) repo when repos nest", () => {
@@ -88,10 +88,18 @@ describe("findAdoptableWorktree", () => {
   // kobe tracks repo "/repo" (main task) + one sub-task worktree.
   const tasks = [
     { id: "main", repo: "/repo", worktreePath: "/repo" },
-    { id: "sub", repo: "/repo", worktreePath: "/repo/.claude/worktrees/known" },
+    { id: "sub", repo: "/repo", worktreePath: "/repo/.kobe/worktrees/known" },
+    { id: "legacy", repo: "/repo", worktreePath: "/repo/.claude/worktrees/old" },
   ]
 
-  it("adopts an external worktree under a tracked repo's .claude/worktrees", () => {
+  it("adopts an external worktree under a tracked repo's .kobe/worktrees", () => {
+    expect(findAdoptableWorktree(tasks, "/repo/.kobe/worktrees/external")).toEqual({
+      repo: "/repo",
+      worktreePath: "/repo/.kobe/worktrees/external",
+    })
+  })
+
+  it("still adopts legacy external worktrees under a tracked repo's .claude/worktrees", () => {
     expect(findAdoptableWorktree(tasks, "/repo/.claude/worktrees/external")).toEqual({
       repo: "/repo",
       worktreePath: "/repo/.claude/worktrees/external",
@@ -99,15 +107,16 @@ describe("findAdoptableWorktree", () => {
   })
 
   it("derives the worktree dir even when cwd is a subdir of it", () => {
-    expect(findAdoptableWorktree(tasks, "/repo/.claude/worktrees/external/src/deep")).toEqual({
+    expect(findAdoptableWorktree(tasks, "/repo/.kobe/worktrees/external/src/deep")).toEqual({
       repo: "/repo",
-      worktreePath: "/repo/.claude/worktrees/external",
+      worktreePath: "/repo/.kobe/worktrees/external",
     })
   })
 
   it("returns undefined when that worktree is already a task", () => {
-    expect(findAdoptableWorktree(tasks, "/repo/.claude/worktrees/known")).toBeUndefined()
-    expect(findAdoptableWorktree(tasks, "/repo/.claude/worktrees/known/pkg")).toBeUndefined()
+    expect(findAdoptableWorktree(tasks, "/repo/.kobe/worktrees/known")).toBeUndefined()
+    expect(findAdoptableWorktree(tasks, "/repo/.kobe/worktrees/known/pkg")).toBeUndefined()
+    expect(findAdoptableWorktree(tasks, "/repo/.claude/worktrees/old")).toBeUndefined()
   })
 
   it("ignores a cwd at the repo root or in a normal subdir (not a worktree)", () => {
@@ -116,10 +125,10 @@ describe("findAdoptableWorktree", () => {
   })
 
   it("ignores a cwd under an UNtracked repo", () => {
-    expect(findAdoptableWorktree(tasks, "/other/.claude/worktrees/x")).toBeUndefined()
+    expect(findAdoptableWorktree(tasks, "/other/.kobe/worktrees/x")).toBeUndefined()
   })
 
   it("ignores a sibling-prefix repo (/repo vs /repo-other)", () => {
-    expect(findAdoptableWorktree(tasks, "/repo-other/.claude/worktrees/x")).toBeUndefined()
+    expect(findAdoptableWorktree(tasks, "/repo-other/.kobe/worktrees/x")).toBeUndefined()
   })
 })

@@ -4,13 +4,13 @@
  * Replaces the old "directory = task ULID" scheme (which produced 26-
  * char dir names that overflowed the terminal pane). The new shape is:
  *
- *   <repo>/.claude/worktrees/panda/
- *   <repo>/.claude/worktrees/panda-v2/   # if `panda` was recycled
+ *   <repo>/.kobe/worktrees/panda/
+ *   <repo>/.kobe/worktrees/panda-v2/   # if `panda` was recycled
  *
  * Mechanism (mirrors Conductor's city-name scheme, KOB-65):
  *   1. Build the "occupied" set: every slug currently held by a
  *      non-archived task in the store, PLUS every directory name
- *      already present on disk under `<repo>/.claude/worktrees/`,
+ *      already present on disk under kobe-managed worktree roots,
  *      PLUS any slugs picked for the same repo by an earlier
  *      `allocate()` call that haven't yet been committed (race window
  *      between picking and persisting to the store).

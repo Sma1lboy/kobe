@@ -1,14 +1,15 @@
 /**
  * Canonical filesystem layout for kobe-managed worktrees.
  *
- * Per DESIGN.md §11.3 (resolved) the worktree root is per-repo and lives
- * adjacent to the source tree at `<repo>/.claude/worktrees/<slug>/`.
- * `<slug>` is an animal-name slug (KOB-65) for tasks created after the
- * switch, or the task's ULID for legacy worktrees. Shared namespace
- * with Claude Code's own agent-spawn worktrees — one hidden dir, both
- * tools' worktrees inside. Do NOT move this back to `.kobe/worktrees/`;
- * that proposal pre-dates Jackson's resolution and keeps cropping up
- * in stale comments / test fixtures.
+ * The worktree root is per-repo and lives adjacent to the source tree
+ * at `<repo>/.kobe/worktrees/<slug>/`. `<slug>` is an animal-name slug
+ * (KOB-65) for tasks created after the switch, or the task's ULID for
+ * older records whose path is already persisted.
+ *
+ * Backwards compatibility: kobe used `<repo>/.claude/worktrees/<slug>/`
+ * before it supported multiple engines. Existing tasks there remain
+ * managed and discoverable, but new kobe-created tasks use `.kobe` so
+ * neutral task storage is not named after one engine vendor.
  *
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
@@ -28,19 +29,40 @@ import path from "node:path"
  * its enumeration to "kobe-managed only" without reaching into another
  * module's private constant.
  */
-export const KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
+export const KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
+export const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
+
+/**
+ * Managed worktree roots, primary first. Creation uses only
+ * {@link KOBE_WORKTREE_ROOT_SUBPATH}; recognition/listing checks both.
+ */
+export const KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
+  KOBE_WORKTREE_ROOT_SUBPATH,
+  LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
+] as const
 
 /**
  * Absolute path of the worktree root for a given repo.
  *
  * Example: `worktreeRootFor("/Users/x/proj")` →
- * `/Users/x/proj/.claude/worktrees`.
+ * `/Users/x/proj/.kobe/worktrees`.
  */
 export function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {
     throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
   }
   return path.join(repo, KOBE_WORKTREE_ROOT_SUBPATH)
+}
+
+/**
+ * Absolute paths of every worktree root kobe recognizes for `repo`.
+ * Primary root is first; legacy roots follow for existing task records.
+ */
+export function managedWorktreeRootsFor(repo: string): readonly string[] {
+  if (!path.isAbsolute(repo)) {
+    throw new Error(`managedWorktreeRootsFor: repo must be an absolute path, got: ${repo}`)
+  }
+  return KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath))
 }
 
 /**
@@ -63,44 +85,60 @@ export function worktreePathFor(repo: string, slug: string): string {
 }
 
 /**
- * Immediate child directory names under {@link worktreeRootFor}`(repo)`.
+ * Immediate child directory names under every managed root for `repo`.
  *
- * Returns an empty array when the root doesn't exist yet (the very
+ * Returns an empty array when no root exists yet (the very
  * first task in a repo) or can't be read. Used by the slug allocator
  * to discover on-disk-occupied slugs (so a stale dir from an aborted
  * task still counts as taken) and by `diagnose` to reconcile the task
  * index against disk state. Symlinks are not followed.
  */
 export function listWorktreeDirNames(repo: string): string[] {
-  const root = worktreeRootFor(repo)
-  try {
-    return fs
-      .readdirSync(root, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-  } catch {
-    return []
+  const names = new Set<string>()
+  for (const root of managedWorktreeRootsFor(repo)) {
+    try {
+      for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+        if (e.isDirectory()) names.add(e.name)
+      }
+    } catch {
+      // A missing/unreadable root simply contributes no occupied names.
+    }
   }
+  return [...names]
 }
 
 /**
- * True iff `candidate` lives inside the kobe-managed worktree root for
- * `repo`. Used by `list()` to filter out worktrees the user (or another
- * tool) created via plain `git worktree add`.
+ * Return the caller-form managed root that contains `candidate`, or
+ * null when `candidate` is not inside any kobe-managed worktree root
+ * for `repo`.
  *
  * Canonicalizes both sides via `fs.realpathSync` when possible so that
  * macOS's `/tmp` ↔ `/private/tmp` symlink aliasing doesn't cause us to
- * miss our own worktrees (git reports the resolved form,
- * `worktreeRootFor()` returns the caller's form).
+ * miss our own worktrees (git reports the resolved form, helpers return
+ * the caller's form).
+ */
+export function managedWorktreeRootForPath(repo: string, candidate: string): string | null {
+  if (!path.isAbsolute(repo) || !path.isAbsolute(candidate)) return null
+  const target = canonicalize(candidate)
+  for (const rootPath of managedWorktreeRootsFor(repo)) {
+    const root = canonicalize(rootPath)
+    const rel = path.relative(root, target)
+    // path.relative returns ".." prefix when outside; an absolute path
+    // when on a different drive (Windows). Either rules it out.
+    if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+      return rootPath
+    }
+  }
+  return null
+}
+
+/**
+ * True iff `candidate` lives inside a kobe-managed worktree root for
+ * `repo`. Used by `list()` to filter out worktrees the user (or another
+ * tool) created via plain `git worktree add`.
  */
 export function isKobeManagedPath(repo: string, candidate: string): boolean {
-  if (!path.isAbsolute(repo) || !path.isAbsolute(candidate)) return false
-  const root = canonicalize(worktreeRootFor(repo))
-  const target = canonicalize(candidate)
-  const rel = path.relative(root, target)
-  // path.relative returns ".." prefix when outside; an absolute path
-  // when on a different drive (Windows). Either rules it out.
-  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
+  return managedWorktreeRootForPath(repo, candidate) !== null
 }
 
 function canonicalize(p: string): string {

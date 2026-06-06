@@ -90,8 +90,9 @@ export interface Task {
    * `"main"` tasks are pinned to a saved repo's root checkout (no
    * `git worktree add`); they set `worktreePath === repo` and
    * `branch === ""`. Regular `"task"` tasks live in a per-task
-   * worktree under `<repo>/.claude/worktrees/<id>/`. Optional on
-   * disk: records without it normalize to `"task"` at load time.
+   * worktree under `<repo>/.kobe/worktrees/<slug>/` (or legacy
+   * `.claude/worktrees` for older records). Optional on disk: records
+   * without it normalize to `"task"` at load time.
    */
   readonly kind?: "main" | "task"
   readonly status: TaskStatus
