@@ -38,9 +38,11 @@ kobe
 
 ## A quick look
 
-<p align="center">
-  <img src="docs/assets/brand/pane-grid.gif" alt="kobe pane layout" width="720" />
-</p>
+
+
+https://github.com/user-attachments/assets/b37c5199-9a16-4a31-8ac6-79e968658867
+
+
 
 kobe opens into a tmux workspace with:
 
