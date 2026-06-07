@@ -138,8 +138,8 @@ async function adoptWorktreesInto(
 
 /**
  * `kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]` — scan a
- * repo's existing git worktrees (including ones outside
- * `.claude/worktrees/`) and import the ones not yet linked to a task
+ * repo's existing git worktrees (including ones outside kobe-managed
+ * roots) and import the ones not yet linked to a task
  * (KOB-256). No glob → dry-run listing. With a path glob → list matches;
  * `--yes` actually adopts them. Goes through the daemon so a running TUI
  * sees the new tasks live.

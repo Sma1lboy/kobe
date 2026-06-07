@@ -2,8 +2,9 @@
  * Worktree manager — kobe's wrapper around `git worktree`.
  *
  * See DESIGN.md §5.3 (orchestrator owns worktree manager) and §11.3
- * (resolved: worktree root is `<repo>/.claude/worktrees/<task-id>/`,
- * shared namespace with Claude Code's own agent-spawn worktrees).
+ * (resolved: new kobe-created worktrees use
+ * `~/.kobe/worktrees/<repo-key>/<slug>/`; repo-local `.kobe/worktrees`
+ * and legacy `.claude/worktrees` task paths remain supported).
  *
  * The orchestrator depends on this interface; `GitWorktreeManager` is
  * the production implementation. The orchestrator must never shell out
@@ -28,7 +29,7 @@ export interface WorktreeInfo {
 /**
  * A git worktree discovered on disk that COULD be adopted as a kobe
  * task (KOB-256). Unlike {@link WorktreeInfo} (kobe-managed only), this
- * includes worktrees the user created outside `<repo>/.claude/worktrees/`
+ * includes worktrees the user created outside kobe-managed worktree roots
  * via plain `git worktree add`. `kobeManaged` marks whether the path
  * lives under the kobe convention root, so the UI can label its origin.
  */
