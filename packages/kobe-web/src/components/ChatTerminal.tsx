@@ -98,8 +98,11 @@ export function ChatTerminal({
             : new TextDecoder().decode(e.data as ArrayBuffer)
         term?.write(data)
       }
-      ws.onclose = () => {
-        if (!disposed) term?.writeln("\r\n[38;5;245m[detached][0m")
+      ws.onclose = (event) => {
+        if (!disposed) {
+          const reason = event.reason ? `: ${event.reason}` : ""
+          term?.writeln(`\r\n[detached${reason}]`)
+        }
       }
       term.onData((d) => {
         if (ws?.readyState === WebSocket.OPEN) ws.send(d)

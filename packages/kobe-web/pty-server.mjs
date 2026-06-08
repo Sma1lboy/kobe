@@ -141,7 +141,7 @@ wss.on("connection", (ws, req) => {
         entry = spawnTab(tabId, spec, cols, rows)
       } catch (err) {
         if (ws.readyState === ws.OPEN) {
-          ws.send(`\r\n[31m  failed to start ${mode}: ${err?.message ?? err}[0m\r\n`)
+          ws.send(`\r\nfailed to start ${mode}: ${err?.message ?? err}\r\n`)
           ws.close(1011, "spawn failed")
         }
         return

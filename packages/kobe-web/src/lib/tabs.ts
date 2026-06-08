@@ -94,10 +94,13 @@ function load(): TabsState {
         Object.entries(p.tabsByTask ?? {}).map(([taskId, tabs]) => [
           taskId,
           tabs.map((tab) => {
-            const stored = tab as Partial<WorkspaceTab> & { kind?: string }
+            const stored = tab as Partial<WorkspaceTab>
+            const raw = tab as { kind?: unknown }
+            const storedKind =
+              typeof raw.kind === "string" ? raw.kind : undefined
+            if (storedKind === "notes") return emptyTab()
             const kind =
-              stored.kind === "chat" ? "vendor" : (stored.kind ?? "vendor")
-            if (kind === "notes") return emptyTab()
+              storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
             return { ...stored, kind } as WorkspaceTab
           }),
         ]),
@@ -144,6 +147,10 @@ function newId(): string {
 
 export function selectTask(taskId: string): void {
   set(withTaskTab({ ...state, selectedTaskId: taskId }, taskId))
+}
+
+export function clearSelectedTask(): void {
+  set({ ...state, selectedTaskId: null })
 }
 
 /** Open a new vendor tab for a task; returns the new tab id (now active). */
