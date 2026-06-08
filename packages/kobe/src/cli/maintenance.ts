@@ -260,9 +260,9 @@ async function removeStateFile(path: string, label: string): Promise<void> {
  * `kobe reset [--hard] [--yes]` — the packaged equivalent of
  * `dev:sandbox:reset`. Tears down the daemon + all kobe tmux sessions so a
  * fresh `kobe` launch starts clean. `--hard` additionally wipes the task
- * index + UI state. Git worktrees (and everything under
- * `.claude/worktrees/`) are NEVER touched. Does not respawn the daemon —
- * relaunch kobe for that.
+ * index + UI state. Git worktrees (under `~/.kobe/worktrees/` or legacy
+ * repo-local roots) are NEVER touched. Does not respawn the daemon — relaunch
+ * kobe for that.
  *
  * Confirmation: interactive y/N on a TTY; `--yes`/`-y` skips it; on a
  * non-TTY without `--yes` it prints the plan and exits without acting.
@@ -317,7 +317,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     console.log(`  • DELETE the task index${count === null ? "" : ` (${count} task(s))`} — ${tasksPath}`)
     console.log(`  • DELETE the UI state — ${statePath}`)
   }
-  console.log("  • NOT touch your git worktrees or any code under .claude/worktrees/")
+  console.log("  • NOT touch your git worktrees under ~/.kobe/worktrees/ or legacy repo-local roots")
   if (!hard) {
     console.log("  (your task list & worktrees are kept — add --hard to also wipe the task index + UI state)")
   }

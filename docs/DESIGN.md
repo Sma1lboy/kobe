@@ -347,7 +347,7 @@ Messages are **not** in this index. Messages live in Claude Code's JSONL files; 
 
 1. ~~**Tech stack lock-in**: TS + opentui + Solid + Bun.~~ ✅ Locked 2026-05-08.
 2. **City codename → real name**: when do we rename `kobe`?
-3. ~~**Worktree root**~~ ✅ Resolved Wave 4: `<repo>/.claude/worktrees/<task-id>/` — per-repo, adjacent to source, shared namespace with Claude Code's own agent-spawn worktrees so users don't have two separate hidden dirs to gitignore. Do NOT move back to `.kobe/worktrees/`.
+3. ~~**Worktree root**~~ ✅ Updated 2026-06-06: new kobe-created worktrees live at `~/.kobe/worktrees/<repo-key>/<slug>/`; repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` tasks remain supported. The earlier repo-local roots were retired so users do not need repo-level `.gitignore` entries for kobe runtime worktrees.
 4. **Branch naming**: auto-generate (`kobe/<slug>-<id>`) or prompt? Conductor auto-generates from task title.
 5. **Concurrency cap**: max simultaneous running tasks? (Claude Code rate-limits; we should respect.) Suggestion: 4 concurrent, configurable. **OPEN**.
 6. **Phase 2 ref repo**: when does the Conductor-backend reference repo land in `refs/`?

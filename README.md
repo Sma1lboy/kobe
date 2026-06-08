@@ -12,6 +12,21 @@
   <a href="./packages/kobe/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-latest-blue" alt="changelog" /></a>
 </p>
 
+## A quick look
+
+
+
+https://github.com/user-attachments/assets/b37c5199-9a16-4a31-8ac6-79e968658867
+
+
+
+kobe opens into a tmux workspace with:
+
+- **Tasks** - create, switch, archive, rename, retarget.
+- **Engine** - the live AI CLI session.
+- **Ops** - changed files, previews, `@file` mentions, PR prompts.
+- **Shell** - a normal shell inside the task worktree.
+
 ---
 
 AI agents are useful one at a time. kobe is for when you want five attempts running at once.
@@ -35,19 +50,6 @@ kobe
 - **Safe parallelism** - every attempt gets its own branch and worktree.
 - **Real environment** - agents run next to your dependencies, services, credentials, and build cache.
 - **Scriptable fan-out** - `kobe api` lets another agent or shell script spawn more tasks.
-
-## A quick look
-
-<p align="center">
-  <img src="docs/assets/brand/pane-grid.gif" alt="kobe pane layout" width="720" />
-</p>
-
-kobe opens into a tmux workspace with:
-
-- **Tasks** - create, switch, archive, rename, retarget.
-- **Engine** - the live AI CLI session.
-- **Ops** - changed files, previews, `@file` mentions, PR prompts.
-- **Shell** - a normal shell inside the task worktree.
 
 ## Install
 

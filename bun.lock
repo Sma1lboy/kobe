@@ -26,7 +26,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.7.11",
+      "version": "0.7.12",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -43,6 +43,7 @@
         "@sma1lboy/kobe-daemon": "0.7.11",
         "@tsconfig/bun": "1.0.9",
         "@types/bun": "1.3.12",
+        "@types/node": "25.6.2",
         "knip": "^6.14.2",
         "typescript": "5.8.2",
         "vitest": "2.1.9",

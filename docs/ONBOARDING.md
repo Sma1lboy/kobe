@@ -104,7 +104,7 @@ work in an area, ping the listed owner first to avoid stomping.
 | **Preview / diff** | `src/tui/panes/preview/` | Jackson | "open*" diff naming TBD — `opendiff` / `claudediff` candidates. |
 | **Engine (subprocess)** | `src/engine/claude-code-local/` | Jackson | Algorithmically ported from `refs/opcode/src-tauri/.../claude.rs`. Mirror opcode's stream-json parser when extending. |
 | **Orchestrator / task state** | `src/orchestrator/`, `src/state/` | Jackson | State definition recently simplified (5 states removed). Spec doc forthcoming. |
-| **Worktrees** | `.claude/worktrees/`, orchestrator integration | Jackson | Always `.claude/worktrees/`, never `.kobe/worktrees/`. |
+| **Worktrees** | `~/.kobe/worktrees/`, orchestrator integration | Jackson | New kobe-created tasks use `~/.kobe/worktrees/<repo-key>/`; repo-local `.kobe/worktrees/` and legacy `.claude/worktrees/` paths remain supported. |
 | **Behavior tests** | `test/behavior/` | Jackson | PTY driven (`docs/HARNESS.md`). Local-only — CI runs unit + typecheck only. |
 | **General triage** | — | Allen | First responder for "saw a bug, fix it" — small fixes go through Allen. |
 

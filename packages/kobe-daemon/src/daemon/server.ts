@@ -611,7 +611,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const cwd = optionalString(payload, "cwd")
         // External-worktree sync (replaces the removed WorktreeCreate hook): a
         // session starting in an unadopted worktree under a tracked repo's
-        // `.claude/worktrees/` is auto-adopted as a task, so the cwd then maps
+        // a managed worktree root is auto-adopted as a task, so the cwd then maps
         // to it below. Gated to `session-start` to bound the work; the path
         // check is git-free and `adoptWorktree` is idempotent + git-validated
         // (a bogus dir just throws → caught → dropped).

@@ -12,7 +12,7 @@ import { join } from "node:path"
  * We use a conservative 100-byte ceiling so even the longest reasonable
  * `bridge-<pid>.sock` suffix has room. Hitting this matters for
  * `bun run dev:sandbox` inside a deeply-nested worktree
- * (`/Users/.../.claude/worktrees/<ULID>/packages/kobe/.dev-sandbox/...`)
+ * (`/Users/.../.kobe/worktrees/<ULID>/packages/kobe/.dev-sandbox/...`)
  * where the natural `~/.kobe/.../daemon.sock` form blows past 104 chars
  * and `listen()` rejects silently.
  */
