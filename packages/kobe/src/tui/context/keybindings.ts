@@ -644,25 +644,16 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "h/l", label: "level" },
   },
   {
+    // enter → one-key "just open it": opens the file in the user's
+    // nvim/vim (side-by-side `nvim -d` diff vs HEAD when changed, a plain
+    // editable open otherwise), falling back to our own opentui read-only
+    // preview only when no nvim/vim is installed.
     id: "files.open",
     scope: "files",
     keys: ["return"],
     category: "Files",
-    description: "Open file read-only preview",
-    hint: { keys: "enter", label: "preview" },
-  },
-  {
-    // `e` → open the current file in the configured editor (vim / nano /
-    // custom) in a new tmux window. Separate, deliberate action from the
-    // `enter` read-only preview — no preview→edit bridge. Plain letter,
-    // files-scoped per the keybinding-boundaries rule (docs/KEYBINDINGS.md)
-    // so it can't collide with composer typing.
-    id: "files.edit",
-    scope: "files",
-    keys: ["e"],
-    category: "Files",
-    description: "Open file in the configured editor (vim / nano / custom)",
-    hint: { keys: "e", label: "edit" },
+    description: "Open file in nvim (diff vs HEAD when changed)",
+    hint: { keys: "enter", label: "open" },
   },
   {
     // `[` / `]` cycle the All / Changes tabs. Bracket pair matches
