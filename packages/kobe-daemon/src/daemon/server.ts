@@ -588,11 +588,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
       }
       case "task.setActive": {
-        // Pure UI/session focus — not a task-index property — so it lives on
-        // the bus, not the orchestrator. Publishing caches the last value so
-        // a late-subscribing Tasks pane gets the current focus on connect
-        // and every pane highlights the same active task (KOB-247).
-        bus.publish("active-task", { taskId: optionalString(payload, "taskId") ?? null })
+        // UI/session focus lives on the bus, but setting it also touches the
+        // task's updatedAt so "recent" task sorting reflects actual use.
+        // Publishing caches the last value so a late-subscribing Tasks pane
+        // gets the current focus on connect and every pane highlights the
+        // same active task (KOB-247).
+        const taskId = optionalString(payload, "taskId") ?? null
+        await orch.setActiveTask(taskId)
+        bus.publish("active-task", { taskId })
         return {}
       }
       case "engine.reportEvent": {

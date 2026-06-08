@@ -71,6 +71,7 @@ import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
+import type { TaskSortMode } from "../panes/sidebar/groups"
 import {
   ensureSession,
   openNewTaskTab,
@@ -108,6 +109,7 @@ function TasksShell(props: {
     props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
   )
   const [moveMode, setMoveMode] = createSignal(false)
+  const [sortMode, setSortMode] = createSignal<TaskSortMode>("default")
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -628,6 +630,8 @@ function TasksShell(props: {
           moveMode={moveMode}
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
+          sortMode={sortMode}
+          onSortModeToggle={() => setSortMode((cur) => (cur === "default" ? "recent" : "default"))}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // (new-task / rename) leaks past the input to switchTo and yanks
@@ -661,6 +665,7 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean> }) {
     { k: "S", label: "settings" },
     { k: "O", label: "open wt" },
     { k: "[/]", label: "views" },
+    { k: "T", label: "sort" },
     { k: "M", label: "move task" },
     { k: "A/D", label: "archive/delete" },
     { k: "R/B/V", label: "name/branch/engine" },

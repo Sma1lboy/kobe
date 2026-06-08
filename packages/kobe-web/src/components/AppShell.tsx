@@ -57,11 +57,24 @@ function taskUpdatedMs(task: Task): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function sortTasks(tasks: Task[]): Task[] {
-  return [...tasks].sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-    return taskUpdatedMs(b) - taskUpdatedMs(a)
-  })
+type TaskSortMode = "default" | "recent"
+
+function compareRecent(a: Task, b: Task): number {
+  const byTime = taskUpdatedMs(b) - taskUpdatedMs(a)
+  if (byTime !== 0) return byTime
+  return b.id.localeCompare(a.id)
+}
+
+function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
+  const projects = tasks.filter((task) => task.kind === "main")
+  const pinned = tasks.filter((task) => task.kind !== "main" && task.pinned)
+  const regular = tasks.filter((task) => task.kind !== "main" && !task.pinned)
+  if (mode === "recent") {
+    projects.sort(compareRecent)
+    pinned.sort(compareRecent)
+    regular.sort(compareRecent)
+  }
+  return [...projects, ...pinned, ...regular]
 }
 
 function matchesTask(task: Task, query: string): boolean {
@@ -137,10 +150,15 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { tasks, engineStates } = useAppState()
   const { selectedTaskId } = useTabsState()
   const [query, setQuery] = useState("")
+  const [sortMode, setSortMode] = useState<TaskSortMode>("default")
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const visible = useMemo(
-    () => sortTasks(activeTasks.filter((task) => matchesTask(task, query))),
-    [activeTasks, query],
+    () =>
+      sortTasks(
+        activeTasks.filter((task) => matchesTask(task, query)),
+        sortMode,
+      ),
+    [activeTasks, query, sortMode],
   )
   const projects = visible.filter((task) => task.kind === "main")
   const worktrees = visible.filter((task) => task.kind !== "main")
@@ -157,9 +175,25 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
             Tasks
           </span>
-          <span className="font-mono text-[10px] text-muted">
-            {visible.length}/{activeTasks.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                setSortMode((cur) => (cur === "default" ? "recent" : "default"))
+              }
+              className={`font-mono text-[10px] uppercase ${
+                sortMode === "recent"
+                  ? "text-primary"
+                  : "text-muted hover:text-fg"
+              }`}
+              title="Toggle task sort"
+            >
+              {sortMode}
+            </button>
+            <span className="font-mono text-[10px] text-muted">
+              {visible.length}/{activeTasks.length}
+            </span>
+          </div>
         </div>
         <label className="mt-2 flex h-8 items-center gap-2 border border-line bg-bg px-2 text-[12px] text-muted focus-within:border-line-active">
           <Search

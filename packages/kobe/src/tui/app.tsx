@@ -57,6 +57,7 @@ import { useThemePersistence } from "./lib/use-theme-persistence"
 import { CostDashboard } from "./panes/monitor/CostDashboard"
 import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
+import type { TaskSortMode } from "./panes/sidebar/groups"
 import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
 import { killSession, switchClientBeforeKill, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
@@ -266,6 +267,7 @@ function Shell(props: AppDeps) {
   // or `ctrl+d` globally. Defaults to preview so a fresh user sees
   // what their task is doing.
   const [view, setView] = createSignal<"preview" | "dashboard">("preview")
+  const [taskSortMode, setTaskSortMode] = createSignal<TaskSortMode>("default")
   const toggleDashboard = (): void => {
     setView((v) => (v === "dashboard" ? "preview" : "dashboard"))
   }
@@ -515,6 +517,8 @@ function Shell(props: AppDeps) {
             onRenameRequest={(id) => void renameTask(id)}
             onPinRequest={(id) => void pinTask(id)}
             onAddTask={() => void newTask()}
+            sortMode={taskSortMode}
+            onSortModeToggle={() => setTaskSortMode((cur) => (cur === "default" ? "recent" : "default"))}
             width={sidebarWidth}
           />
         </box>

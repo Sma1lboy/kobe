@@ -90,7 +90,7 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
-import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
+import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
 import { readWorktreeChanges } from "./worktree-changes"
@@ -145,6 +145,10 @@ export type SidebarProps = {
    * stateless of the toggle.
    */
   onPinRequest?: (taskId: string) => void
+  /** Display ordering for task rows. Defaults to the persisted/manual order. */
+  sortMode?: Accessor<TaskSortMode>
+  /** Cycle the display ordering (`t`). */
+  onSortModeToggle?: () => void
   /**
    * Optional callback for the `+ New task` footer affordance. Left
    * undefined this stream; the global `n`/`ctrl+n` bindings remain the
@@ -458,7 +462,8 @@ export function Sidebar(props: SidebarProps) {
   // the upstream tasks accessor, the view, or the search query
   // changes. Search query is only applied when `searchMode` is on so
   // we don't keep filtering against stale query text after esc-cancel.
-  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
+  const sortMode = (): TaskSortMode => props.sortMode?.() ?? "default"
+  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode()))
   const flatIds = createMemo(() => flattenIds(rows()))
   // The list is two sections: PROJECTS (the `main` repo-root rows, which
   // `buildRows` always emits first) then all TASKS (worktrees) flat — NOT
@@ -472,7 +477,7 @@ export function Sidebar(props: SidebarProps) {
     return idx < 0 ? -1 : r[idx]!.flatIndex
   })
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
-  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "")).length)
+  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "", sortMode())).length)
 
   // Two-line card budgets. The width accessor is the Shell-driven splitter
   // width in the outer monitor and the live tmux pane width in the Tasks pane
@@ -595,6 +600,7 @@ export function Sidebar(props: SidebarProps) {
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
+    onSortModeToggle: () => props.onSortModeToggle?.(),
     searchMode,
     onSearchEnter: () => enterSearch(),
     onSearchExit: (select) => exitSearch(select),
@@ -701,24 +707,43 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* View switcher: tab strip with the active view emphasized by
-          colour + bold, no brackets. `[` / `]` toggles. */}
-      <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1}>
-        <For each={VIEW_TABS}>
-          {(tab) => {
-            const active = () => view() === tab.view
-            return (
-              <text
-                fg={active() ? theme.primary : theme.textMuted}
-                attributes={active() ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                onMouseUp={() => setView(tab.view)}
-              >
-                {tab.label}
-              </text>
-            )
-          }}
-        </For>
+      {/* View switcher + sort mode. `[` / `]` toggles the view; `t`
+          cycles default/manual order vs recent-use order. */}
+      <box
+        flexDirection="row"
+        justifyContent="space-between"
+        gap={1}
+        paddingBottom={1}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <box flexDirection="row" gap={2}>
+          <For each={VIEW_TABS}>
+            {(tab) => {
+              const active = () => view() === tab.view
+              return (
+                <text
+                  fg={active() ? theme.primary : theme.textMuted}
+                  attributes={active() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => setView(tab.view)}
+                >
+                  {tab.label}
+                </text>
+              )
+            }}
+          </For>
+        </box>
+        <Show when={props.sortMode}>
+          <text
+            fg={sortMode() === "recent" ? theme.info : theme.textMuted}
+            attributes={sortMode() === "recent" ? TextAttributes.BOLD : TextAttributes.DIM}
+            wrapMode="none"
+            onMouseUp={() => props.onSortModeToggle?.()}
+          >
+            {sortMode() === "recent" ? "recent" : "default"}
+          </text>
+        </Show>
       </box>
 
       {/* Body: scrollable flat task list. Stretches with flexGrow so

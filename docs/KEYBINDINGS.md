@@ -108,7 +108,7 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 | `F2` | no-prefix tmux | Rename the current ChatTab window. |
 | tmux `prefix f` | tmux prefix | Focus the Tasks pane and open the new-task dialog. |
 
-Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
+Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `t` toggle task sort (default/manual vs recent), `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
 The Tasks/Ops panes are version-tagged with `@kobe_pane_version`. After an upgrade, `ensureSession` respawns stale kobe-owned panes in place while preserving the engine pane and ChatTab windows. Do not use `kobe reset` as the normal update path; reset is the runtime-recovery fallback for wedged tmux/daemon state.
 

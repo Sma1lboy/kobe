@@ -393,6 +393,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "[/]", label: "view", status: false },
   },
   {
+    id: "sidebar.sort",
+    scope: "sidebar",
+    keys: ["t"],
+    category: "Sidebar",
+    description: "Switch task sort (default ↔ recent)",
+    hint: { keys: "t", label: "sort", status: false },
+  },
+  {
     id: "sidebar.delete",
     scope: "sidebar",
     keys: ["d"],

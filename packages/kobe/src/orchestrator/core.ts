@@ -133,9 +133,13 @@ export class Orchestrator {
     return this.activeTaskAcc
   }
 
-  /** Set the active-task focus (local signal; no daemon to broadcast to). */
+  /** Set the active-task focus and touch recency for task-list sorting. */
   async setActiveTask(id: TaskId | string | null): Promise<void> {
-    this.setActiveTaskSig(id === null ? null : String(id))
+    const next = id === null ? null : String(id)
+    this.setActiveTaskSig(next)
+    if (next && this.store.get(next)) {
+      await this.store.update(next, {})
+    }
   }
 
   /** Solid signal of the current task list. */

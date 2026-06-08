@@ -110,6 +110,8 @@ export type SidebarBindingsOpts = {
    * (+1, "next view"). The parent owns the active-view signal.
    */
   onViewSwitch?: (delta: -1 | 1) => void
+  /** Fires when the user cycles task sort mode (`t`). */
+  onSortModeToggle?: () => void
   /**
    * Whether the `/`-search filter is currently active. When true, the
    * sidebar's single-letter chords (j/k/g/G/d/a/r/P/m) are de-registered
@@ -233,6 +235,10 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       "sidebar.search.enter": () => {
         if (moveModeAccessor()) return
         opts.onSearchEnter?.()
+      },
+      "sidebar.sort": () => {
+        if (moveModeAccessor()) return
+        opts.onSortModeToggle?.()
       },
     }),
   }))

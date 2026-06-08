@@ -37,6 +37,7 @@ import { fuzzyMatch } from "./fuzzy"
  * the pane; switched with `[` (left) and `]` (right).
  */
 export type SidebarView = "active" | "archived"
+export type TaskSortMode = "default" | "recent"
 
 /**
  * One visible row in the sidebar body. Wave 4.5 collapsed the row union
@@ -87,7 +88,12 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * Pure: no Solid, no opentui. Component code calls this inside a memo;
  * tests call it directly.
  */
-export function buildRows(tasks: readonly Task[], view: SidebarView, searchQuery?: string): SidebarRow[] {
+export function buildRows(
+  tasks: readonly Task[],
+  view: SidebarView,
+  searchQuery?: string,
+  sortMode: TaskSortMode = "default",
+): SidebarRow[] {
   const filteredByView = filterByView(tasks, view)
   const q = searchQuery?.trim() ?? ""
   const filtered = q
@@ -101,10 +107,16 @@ export function buildRows(tasks: readonly Task[], view: SidebarView, searchQuery
     else if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
-  // Pinned section is alphabetised by repo basename so two repos with
-  // the same prefix sit predictably (kobe < kobe-fork). Regular tasks
-  // keep their orchestrator-supplied order.
-  main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
+  if (sortMode === "recent") {
+    main.sort(compareRecent)
+    pinnedRegular.sort(compareRecent)
+    regular.sort(compareRecent)
+  } else {
+    // Pinned section is alphabetised by repo basename so two repos with
+    // the same prefix sit predictably (kobe < kobe-fork). Regular tasks
+    // keep their orchestrator-supplied order.
+    main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
+  }
   const rows: SidebarRow[] = []
   let flatIndex = 0
   for (const task of main) {
@@ -120,6 +132,17 @@ export function buildRows(tasks: readonly Task[], view: SidebarView, searchQuery
     flatIndex++
   }
   return rows
+}
+
+function compareRecent(a: Task, b: Task): number {
+  const byTime = taskTime(b) - taskTime(a)
+  if (byTime !== 0) return byTime
+  return String(b.id).localeCompare(String(a.id))
+}
+
+function taskTime(task: Task): number {
+  const parsed = Date.parse(task.updatedAt || task.createdAt)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 /**
