@@ -30,7 +30,7 @@ import { type Accessor, type ParentProps, createContext, createSignal, useContex
 import { pulse as pulseSound } from "../lib/sound"
 import { useKV } from "./kv"
 
-export type NotificationKind = "done" | "needs_input"
+export type NotificationKind = "done" | "needs_input" | "error"
 
 export interface Toast {
   readonly id: number
@@ -75,10 +75,11 @@ export function NotificationsProvider(props: ParentProps) {
     setUnread((prev) => {
       const next = new Map(prev)
       const key = unreadKey(input.taskId, input.tabId)
-      // `needs_input` outranks `done` if both fire for the same key
-      // before the user clears it — yellow trumps green.
+      // Attention-demanding kinds outrank `done` if both fire for the
+      // same key before the user clears it — yellow (`needs_input`) /
+      // red (`error`) trump green.
       const existing = prev.get(key)
-      if (existing === "needs_input") return prev
+      if (existing === "needs_input" || existing === "error") return prev
       next.set(key, input.kind)
       return next
     })

@@ -920,8 +920,17 @@ export function Sidebar(props: SidebarProps) {
                 {searchMode() && searchQuery().trim().length > 0
                   ? "No matching tasks — esc to clear."
                   : view() === "active"
-                    ? "No active tasks."
+                    ? "No active tasks — press n or [+] to create one."
                     : "No archived tasks."}
+              </text>
+            </box>
+          </Show>
+          {/* Non-empty Archives: remind the user `a` returns a row to Working.
+              Only shown when there's actually a row to act on. */}
+          <Show when={view() === "archived" && flatIds().length > 0}>
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                a to unarchive
               </text>
             </box>
           </Show>

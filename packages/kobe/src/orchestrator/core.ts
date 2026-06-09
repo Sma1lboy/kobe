@@ -386,9 +386,16 @@ export class Orchestrator {
     await this.store.move(task.id, delta, groupIds)
   }
 
-  /** Toggle / set the `archived` flag. */
+  /**
+   * Toggle / set the `archived` flag. No-op for `kind: "main"`: a main
+   * task is a saved repo's root, removed by un-saving the repo, not by
+   * archiving — mirrors `deleteTask`'s main-row guard so the sidebar's
+   * `a` chord can't silently archive (and kill the session of) a whole
+   * repo entry from the default cursor row.
+   */
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
     const task = this.requireTask(id)
+    if (task.kind === "main") return
     const next = archived ?? !task.archived
     if (task.archived === next) return
     await this.store.update(task.id, { archived: next })
