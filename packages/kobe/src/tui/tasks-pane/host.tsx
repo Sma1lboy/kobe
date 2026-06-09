@@ -581,6 +581,8 @@ function TasksShell(props: {
           // Brand-header version/update chip (replaces the footer system block).
           headerStatus={headerStatus}
           onHeaderStatusClick={() => void openUpdate()}
+          // Brand-header `+` new-task button — same flow as the `n` chord.
+          onAddTask={() => void createTask()}
           // Fill the whole tmux pane and follow live resizes (see `dimensions`
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.

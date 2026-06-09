@@ -164,14 +164,22 @@ export type SidebarProps = {
    */
   width?: Accessor<number>
   /**
-   * Optional right-aligned status in the `kobe` brand header — the Tasks pane
-   * wires the version / "update available" chip here (it moved up from the
-   * footer's old `── system ──` block). `emphasize: true` paints it in the
-   * warning colour (an update is waiting); omit / return `null` to hide it.
+   * Optional status chip in the `kobe` brand header — the Tasks pane wires
+   * the version / "update available" chip here (it moved up from the footer's
+   * old `── system ──` block). It sits in the left cluster right after the
+   * KOBE name. `emphasize: true` paints it in the warning colour (an update is
+   * waiting); omit / return `null` to hide it.
    */
   headerStatus?: Accessor<{ label: string; emphasize: boolean } | null>
   /** Click handler for {@link headerStatus} — e.g. open the update page. */
   onHeaderStatusClick?: () => void
+  /**
+   * Optional new-task affordance: when wired, a clickable `+` renders at the
+   * end of the brand-header cluster (after the version) and fires this — the
+   * SAME create flow as the `n` chord. Omitted (e.g. the deprecated outer
+   * monitor) renders no `+`.
+   */
+  onAddTask?: () => void
   /**
    * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
    * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
@@ -585,14 +593,11 @@ export function Sidebar(props: SidebarProps) {
           column. The root box has no horizontal padding — the pane sits
           flush to its tmux edges; this 1 cell is the kobe selection gutter,
           not padding. */}
-      <box
-        flexDirection="row"
-        justifyContent="space-between"
-        gap={1}
-        paddingBottom={1}
-        paddingLeft={1}
-        paddingRight={1}
-      >
+      {/* Brand-header cluster: KOBE, then the version/update chip hugging the
+          name, then a clickable `+` new-task affordance — all left-aligned
+          (no space-between, so the version sits next to the name, not the far
+          edge). */}
+      <box flexDirection="row" gap={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
         <text
           fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
           attributes={TextAttributes.BOLD}
@@ -611,6 +616,16 @@ export function Sidebar(props: SidebarProps) {
               {status().label}
             </text>
           )}
+        </Show>
+        <Show when={props.onAddTask}>
+          <text
+            fg={theme.primary}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+            onMouseUp={() => props.onAddTask?.()}
+          >
+            +
+          </text>
         </Show>
       </box>
 
