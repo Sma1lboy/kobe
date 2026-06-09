@@ -25,7 +25,7 @@ import {
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
 import type { VendorId } from "../../types/task"
-import { ALL_VENDORS } from "../../types/vendor"
+import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import {
@@ -130,7 +130,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   })
 
   function bodyRowCount(): number {
-    return countBodyRows(section(), themeNames().length, FOCUS_ACCENT_SLOTS.length, hasDaemon)
+    return countBodyRows(section(), themeNames().length, FOCUS_ACCENT_SLOTS.length, hasDaemon, customEngines().length)
   }
 
   function isTransparentRow(): boolean {
@@ -222,6 +222,19 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // Engines section: per-vendor launch command. Stored in the shared
   // state.json under engineCommandKey via kv (reactive here; read
   // cross-process by interactiveEngineCommand). Empty override = default.
+  //
+  // The row list is the three built-ins PLUS the user's custom engines
+  // (customEngineIds registry); custom engines reuse the SAME engineCommand.
+  // <id> / engineName.<id> keys as built-ins, so editEngine/renameEngine work
+  // for them unchanged. A trailing "+ Add engine" row (index === engineList
+  // length) registers a new one.
+  function customEngines(): string[] {
+    const raw = props.kv.get("customEngineIds", [])
+    return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : []
+  }
+  function engineList(): VendorId[] {
+    return [...ALL_VENDORS, ...customEngines()]
+  }
   function engineOverride(vendor: VendorId): string {
     const v = props.kv.get(engineCommandKey(vendor), "")
     return typeof v === "string" ? v.trim() : ""
@@ -230,9 +243,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
   }
   function engineIsDefault(vendor: VendorId): boolean {
-    return engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
+    // Custom engines have no built-in default, so they never read as "(default)".
+    return isBuiltinVendor(vendor) && engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
   }
-  // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL.
+  // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL / id.
   function engineNameOverride(vendor: VendorId): string {
     const v = props.kv.get(engineNameKey(vendor), "")
     return typeof v === "string" ? v.trim() : ""
@@ -241,7 +255,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineNameOverride(vendor).length > 0
   }
   function engineName(vendor: VendorId): string {
-    return engineNameOverride(vendor) || VENDOR_LABEL[vendor]
+    // Built-ins fall back to VENDOR_LABEL; a custom engine falls back to its id.
+    return engineNameOverride(vendor) || VENDOR_LABEL[vendor] || vendor
   }
   async function editEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
@@ -252,21 +267,47 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }
   async function renameEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineName(vendor), {
-      dialogTitle: `${VENDOR_LABEL[vendor]} display name (blank = default)`,
+      dialogTitle: `${engineName(vendor)} display name (blank = default)`,
     })
     if (next === undefined) return
     props.kv.set(engineNameKey(vendor), next.trim())
   }
-  // Reset BOTH overrides to the built-in default — clearing the keys is the
-  // reset (empty = default, no sentinel). Apply sites pick it up automatically.
+  // `x` on an engine row. Built-in → reset its command + name overrides to the
+  // default (clearing the keys; empty = default, no sentinel). Custom → REMOVE
+  // it entirely (drop from the registry + clear its keys). Apply sites pick the
+  // change up automatically (cross-process via the cleared/removed keys).
   function resetEngine(vendor: VendorId): void {
     props.kv.set(engineCommandKey(vendor), "")
     props.kv.set(engineNameKey(vendor), "")
+    if (!isBuiltinVendor(vendor)) {
+      props.kv.set(
+        "customEngineIds",
+        customEngines().filter((id) => id !== vendor),
+      )
+      // Keep the cursor in range after the list shrinks.
+      setBodyRow((r) => Math.max(0, Math.min(r, engineList().length)))
+    }
   }
-  /** The engine row under the body cursor, or null when not on an engine row. */
+  // The "+ Add engine" row: collect id + launch command + display name and
+  // register a new custom engine. Reuses RenameTaskDialog for each field.
+  async function addEngineFlow(): Promise<void> {
+    const idRaw = await RenameTaskDialog.show(dialog, "", { dialogTitle: "New engine id (lowercase slug, e.g. aider)" })
+    if (idRaw === undefined) return
+    const id = idRaw.trim().toLowerCase()
+    if (!id || isBuiltinVendor(id) || customEngines().includes(id)) return // no blank / shadow / dup
+    const command = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: `${id} launch command (e.g. aider --model sonnet)`,
+    })
+    if (command === undefined) return
+    const name = await RenameTaskDialog.show(dialog, id, { dialogTitle: `${id} display name (blank = the id)` })
+    props.kv.set("customEngineIds", [...customEngines(), id])
+    if (command.trim()) props.kv.set(engineCommandKey(id), command.trim())
+    if (name?.trim()) props.kv.set(engineNameKey(id), name.trim())
+  }
+  /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
   function currentEngineRow(): VendorId | null {
     if (section() !== "engines" || level() !== "body") return null
-    return ALL_VENDORS[bodyRow()] ?? null
+    return engineList()[bodyRow()] ?? null
   }
 
   // Editor preference: which editor the file tree's `e` key launches.
@@ -403,8 +444,13 @@ export function SettingsDialog(props: SettingsDialogProps) {
       return
     }
     if (section() === "engines") {
-      const vendor = ALL_VENDORS[bodyRow()]
-      if (vendor) void editEngine(vendor)
+      const list = engineList()
+      if (bodyRow() < list.length) {
+        const vendor = list[bodyRow()]
+        if (vendor) void editEngine(vendor)
+      } else {
+        void addEngineFlow() // the trailing "+ Add engine" row
+      }
       return
     }
     if (section() === "feedback") {
@@ -452,8 +498,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
       },
       {
         // Engines section only: `r` renames the focused engine's display
-        // label, `x` resets that engine (command + name) to the built-in
-        // default. Gated to a focused engine row so they're inert elsewhere.
+        // label, `x` resets a built-in (or removes a custom) engine. Gated to a
+        // focused engine row (currentEngineRow null on the +Add row / elsewhere).
         key: "r",
         cmd: () => {
           const v = currentEngineRow()
@@ -512,13 +558,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
               bodyRow={bodyRow}
               setLevel={setLevel}
               setBodyRow={setBodyRow}
-              vendors={ALL_VENDORS}
+              vendors={engineList()}
+              isCustom={(v) => !isBuiltinVendor(v)}
               displayName={engineName}
               commandText={engineCommandText}
               isDefault={engineIsDefault}
               editEngine={(v) => void editEngine(v)}
               renameEngine={(v) => void renameEngine(v)}
               resetEngine={resetEngine}
+              onAddEngine={() => void addEngineFlow()}
             />
           </Show>
           <Show when={section() === "accounts"}>

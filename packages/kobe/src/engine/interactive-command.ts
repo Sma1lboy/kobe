@@ -56,9 +56,17 @@ export function engineNameKey(vendor: VendorId): string {
   return `engineName.${vendor}`
 }
 
-/** Built-in default launch argv for a vendor (undefined → claude). */
+/**
+ * Built-in default launch argv for a vendor (undefined → claude). A custom
+ * engine id has no built-in default — its command lives in the
+ * `engineCommand.<id>` override the user set when adding it, which
+ * {@link interactiveEngineCommand} reads first; this fallback only fires if
+ * that override is somehow empty, in which case we run a bare binary named
+ * after the id rather than silently launching claude.
+ */
 export function defaultEngineCommand(vendor: VendorId | undefined): readonly string[] {
-  return DEFAULT_COMMANDS[vendor ?? "claude"] ?? DEFAULT_COMMANDS.claude
+  const v = vendor ?? "claude"
+  return DEFAULT_COMMANDS[v] ?? [v]
 }
 
 /**

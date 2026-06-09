@@ -115,6 +115,22 @@ export function setPersistedString(key: string, value: string): void {
   save(state)
 }
 
+/**
+ * The ids of user-registered custom engines (KOB — user-addable engines).
+ * Stored under the shared state.json `customEngineIds` key as a `string[]`;
+ * each id's display name + launch command live in the SAME flat keys the
+ * built-ins use (`engineName.<id>` / `engineCommand.<id>`), so Settings →
+ * Engines manages built-in and custom engines through one mechanism. Read
+ * cross-process (the new-task selector, the ctrl+T prompt) via this atomic
+ * loader; written by the Settings dialog through its reactive kv. Built-in
+ * ids are never present here.
+ */
+export function getCustomEngineIds(): readonly string[] {
+  const raw = load().customEngineIds
+  if (!Array.isArray(raw)) return []
+  return raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+}
+
 export type AddResult = { added: boolean; path: string; total: number }
 
 /**

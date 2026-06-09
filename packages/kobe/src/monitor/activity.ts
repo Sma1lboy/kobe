@@ -33,7 +33,11 @@ export async function latestTranscriptMtime(vendor: VendorId, worktree: string):
       return codexHistory.latestTranscriptMtimeForWorktree(worktree)
     case "copilot":
       return copilotHistory.latestTranscriptMtimeForWorktree(worktree)
-    default:
+    case "claude":
       return claudeHistory.latestTranscriptMtimeForWorktree(worktree)
+    default:
+      // Custom (user-added) engine: no transcript store → no activity badge.
+      // Must NOT fall through to claude, which would read another engine's store.
+      return 0
   }
 }

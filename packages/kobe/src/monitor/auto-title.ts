@@ -25,11 +25,20 @@ import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
 
-/** The vendor's `readHistory(sessionId)` reader. */
+/** A reader for an engine that has no on-disk transcript store (custom engines). */
+const emptyReader = async (): Promise<Message[]> => []
+
+/**
+ * The vendor's `readHistory(sessionId)` reader. A custom (user-added) engine
+ * has no transcript store, so it gets an EMPTY reader — auto-title then keeps
+ * the placeholder title rather than mis-reading claude's transcripts (the old
+ * `else → claude` default would do exactly that for any unknown id).
+ */
 function readerFor(vendor: VendorId): (sessionId: string) => Promise<Message[]> {
   if (vendor === "codex") return codexHistory.readHistory
   if (vendor === "copilot") return copilotHistory.readHistory
-  return claudeHistory.readHistory
+  if (vendor === "claude") return claudeHistory.readHistory
+  return emptyReader
 }
 
 /** Origin session ids (oldest-first) + the vendor's history reader. */
@@ -43,6 +52,8 @@ async function originSessions(
   if (vendor === "copilot") {
     return { ids: await copilotHistory.listSessionIdsForWorktree(worktree), read: copilotHistory.readHistory }
   }
+  // Custom engine: no transcript store → no sessions, empty reader.
+  if (vendor !== "claude") return { ids: [], read: emptyReader }
   const files = await claudeHistory.listSessionFilesForWorktree(worktree)
   const ids = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   return { ids, read: claudeHistory.readHistory }

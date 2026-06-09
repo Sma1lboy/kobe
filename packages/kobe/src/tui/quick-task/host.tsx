@@ -27,7 +27,7 @@ import { render } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { detectAvailableVendors } from "../../engine/account-detect.ts"
+import { availableEngineIds } from "../../engine/account-detect.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { getSessionOptions, sessionExists, tmuxSessionName } from "../../tmux/client.ts"
@@ -40,9 +40,9 @@ import { KVProvider } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { NewTaskPage } from "../new-task/host.tsx"
 import { repoBasename } from "../panes/sidebar/groups"
 import { DialogProvider, useDialog } from "../ui/dialog"
-import { NewTaskPage } from "../new-task/host.tsx"
 
 const FALLBACK_THEME = "claude"
 
@@ -81,7 +81,7 @@ async function resolveQuickTaskContext(
 
   // Engine: last-selected vendor, clamped to a detected one. With nothing
   // detected we keep the preference (the dialog-less path can't ask).
-  const detected = await detectAvailableVendors()
+  const detected = await availableEngineIds()
   const pref = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
   const vendor: VendorId = detected.length === 0 || detected.includes(pref) ? pref : (detected[0] ?? pref)
   const baseRef = getCurrentBranch(expandHome(repo)) ?? DEFAULT_BASE_REF

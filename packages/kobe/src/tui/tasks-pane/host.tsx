@@ -41,7 +41,7 @@ import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-d
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { detectAvailableVendors } from "../../engine/account-detect.ts"
+import { availableEngineIds } from "../../engine/account-detect.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
@@ -194,7 +194,7 @@ function TasksShell(props: {
     // (`maxWidth = dimensions().width - 2`), so it renders fine in the
     // ~22%-wide pane — just narrower — and the other panes stay visible.
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const availableVendors = await detectAvailableVendors()
+    const availableVendors = await availableEngineIds()
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
       availableVendors,

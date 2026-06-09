@@ -22,9 +22,13 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "dev", label: "Dev" },
 ]
 
-/** One row per vendor — each edits that engine's launch command. */
-export function engineRowCount(): number {
-  return ALL_VENDORS.length
+/**
+ * One row per engine (the built-ins + `customCount` user-added engines),
+ * plus a trailing "+ Add engine" row. Each engine row edits that engine's
+ * launch command; the add row registers a new custom engine.
+ */
+export function engineRowCount(customCount: number): number {
+  return ALL_VENDORS.length + customCount + 1
 }
 
 export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
@@ -53,9 +57,10 @@ export function bodyRowCount(
   themeCount: number,
   focusAccentCount: number,
   hasDaemon: boolean,
+  customEngineCount: number,
 ): number {
   if (section === "general") return generalRowCount(themeCount, focusAccentCount)
-  if (section === "engines") return engineRowCount()
+  if (section === "engines") return engineRowCount(customEngineCount)
   // Accounts is a read-only display — no navigable rows.
   if (section === "accounts") return 0
   if (section === "feedback") return feedbackRowCount()

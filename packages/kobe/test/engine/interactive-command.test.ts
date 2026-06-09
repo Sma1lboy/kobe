@@ -43,6 +43,12 @@ describe("defaultEngineCommand", () => {
   it("falls back to claude for an undefined vendor", () => {
     expect(defaultEngineCommand(undefined)).toEqual(["claude"])
   })
+
+  it("runs a custom engine id as a bare binary (not claude)", () => {
+    // A custom engine's real command lives in its engineCommand.<id> override;
+    // this fallback only fires if that's empty, and must NOT launch claude.
+    expect(defaultEngineCommand("aider")).toEqual(["aider"])
+  })
 })
 
 describe("engineCommandKey", () => {

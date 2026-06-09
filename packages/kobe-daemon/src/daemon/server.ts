@@ -15,13 +15,9 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
-import {
-  type EngineActivityDetail,
-  isEngineActivityKind,
-} from "@/engine/hook-events"
+import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
 import type { Orchestrator } from "@/orchestrator/core"
 import type { Task, VendorId } from "@/types/task"
-import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "@/version"
 import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
@@ -713,11 +709,13 @@ function optionalNumber(payload: Record<string, unknown>, key: string): number |
 }
 
 function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
+  // Engines are open: a vendor id may be a built-in OR a user-registered
+  // custom engine (its launch command lives in the kobe-side customEngineIds
+  // registry, which the daemon can't see). So accept any non-empty string and
+  // let the launch path resolve it — a bogus id just fails to launch its
+  // (missing) binary in the pane. Empty/absent stays undefined (→ claude).
   const value = optionalString(payload, key)
-  if (value !== undefined && !ALL_VENDORS.includes(value as VendorId)) {
-    throw new Error(`${key} '${value}' is not a supported vendor (expected: ${ALL_VENDORS.join(", ")})`)
-  }
-  return value as VendorId | undefined
+  return value && value.trim().length > 0 ? (value as VendorId) : undefined
 }
 
 /** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping

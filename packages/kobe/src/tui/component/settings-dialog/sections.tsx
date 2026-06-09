@@ -388,20 +388,26 @@ export function EngineSettingsSection(
     editEngine: (vendor: VendorId) => void
     /** Edit a vendor's custom display name (`r`). */
     renameEngine: (vendor: VendorId) => void
-    /** Reset a vendor's command + name to the built-in default (`x`). */
+    /** Reset a built-in (or remove a custom) engine (`x`). */
     resetEngine: (vendor: VendorId) => void
+    /** True for a user-added engine (shown with a `(custom)` tag; `x` removes it). */
+    isCustom: (vendor: VendorId) => boolean
+    /** Register a new custom engine — the trailing "+ Add engine" row. */
+    onAddEngine: () => void
   },
 ) {
   const { theme } = useTheme()
+  // The "+ Add engine" row sits right after the last engine, at index = count.
+  const addRowIndex = () => props.vendors.length
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
         Launch command
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        The command each engine's task pane runs. Override it when your binary isn't on PATH as `claude` / `codex` (e.g.
-        it's `cl`) or to pass default flags. enter edit command · r rename · x reset to default · takes effect on the
-        next task enter.
+        The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` /
+        `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. enter edit command · r rename · x
+        reset/remove · takes effect on the next task enter.
       </text>
       <box flexDirection="column" gap={0}>
         <For each={props.vendors}>
@@ -434,12 +440,33 @@ export function EngineSettingsSection(
                   wrapMode="none"
                 >
                   {props.commandText(vendor)}
-                  {props.isDefault(vendor) ? "  (default)" : ""}
+                  {props.isDefault(vendor) ? "  (default)" : props.isCustom(vendor) ? "  (custom)" : ""}
                 </text>
               </box>
             )
           }}
         </For>
+        {/* Trailing "+ Add engine" row. */}
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={props.level() === "body" && props.bodyRow() === addRowIndex() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(addRowIndex())
+            props.onAddEngine()
+          }}
+        >
+          <text
+            fg={
+              props.level() === "body" && props.bodyRow() === addRowIndex() ? theme.selectedListItemText : theme.primary
+            }
+            wrapMode="none"
+          >
+            + Add engine
+          </text>
+        </box>
       </box>
     </box>
   )
