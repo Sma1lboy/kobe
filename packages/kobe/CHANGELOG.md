@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.13
+
+### Patch Changes
+
+- 0d6f049: Keep hook-driven completed-turn badges visible until the next engine activity event. A `turn-complete` hook now stays as the checkmark instead of expiring back to the neutral status circle on the daemon activity TTL.
+- 90424dd: Add the local `kobe web` dashboard with task selection, independent vendor and terminal tabs, notes, worktree changes, centered file previews, and bundled Nerd Font terminal rendering. As of 2026-06-09, `kobe web` is an early experimental feature built for exploration and fun; it is not the primary kobe experience or a product commitment. The Web shell now has a task-search rail with project/worktree grouping, selected-task context in the top and bottom bars, and clearer no-task/no-worktree states for the workspace, Notes, and Changes surfaces. The production `kobe web` command also ships the built SPA and starts the Node PTY server alongside the daemon web transport, so terminal-backed tabs work outside the Vite dev launcher.
+- 28f8f8a: kobe-created task worktrees now live under `~/.kobe/worktrees/<repo-key>/<slug>/` instead of a hidden directory inside the source repo, so users no longer need repo-level `.gitignore` entries for kobe runtime worktrees. Existing repo-local `.kobe/worktrees` and `.claude/worktrees` tasks remain recognized by listing, slug allocation, and daemon auto-adoption, so current task records keep working without migration.
+- 533f8f2: Add explicit task sort modes to the TUI Tasks list and local web dashboard. Task lists now expose default/manual ordering separately from recent-use ordering, and entering or selecting a task touches its `updatedAt` timestamp so recent sorting reflects actual task usage.
+- f5eae62: Add a Task overview tab to the local web dashboard right rail. The panel can rename tasks, change status/vendor, pin, ensure worktrees, copy the worktree path, and archive the selected task from the browser UI; the web terminal also reports detach reasons in plain text and the web package now typechecks with Bun globals.
+
 ## 0.7.12
 
 ### Patch Changes
