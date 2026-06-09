@@ -2,6 +2,8 @@
 
 Local browser dashboard for kobe.
 
+Status as of 2026-06-09: `kobe web` is an early experimental feature built for exploration and fun. It is not a product commitment, not the primary kobe experience, and does not carry broader significance beyond local experimentation for now.
+
 The development server runs three cooperating processes:
 
 - Vite SPA on `:5173`
