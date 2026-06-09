@@ -451,6 +451,73 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Cancel search (restore prior selection)",
   },
 
+  // ─── Tasks pane ───────────────────────────────────────────────────────
+  // The standalone Tasks pane (`kobe tasks`, src/tui/tasks-pane/host.tsx)
+  // registers these as RAW `{ key: "…" }` bindings — it deliberately does NOT
+  // go through `bindByIds`, so these rows are DISPLAY-ONLY: they exist so the
+  // F1 HelpDialog can list the pane's verbs that were previously invisible
+  // (they're literals in host.tsx, not in this table). No pane consumes these
+  // ids via `bindByIds`, so adding them changes no live binding. New-task (n),
+  // settings (s), rename (r), archive (a), delete (d), merge (M), views ([/]),
+  // sort (t) are already covered by the Sidebar / Global rows above and aren't
+  // duplicated here.
+  {
+    id: "tasks.openWorktree",
+    scope: "sidebar",
+    keys: ["o"],
+    category: "Tasks pane",
+    description: "Open selected task's worktree in your editor",
+    hint: { keys: "o", label: "open wt", status: false },
+  },
+  {
+    id: "tasks.renameBranch",
+    scope: "sidebar",
+    keys: ["b"],
+    category: "Tasks pane",
+    description: "Rename the selected task's git branch",
+    hint: { keys: "b", label: "branch", status: false },
+  },
+  {
+    id: "tasks.cycleEngine",
+    scope: "sidebar",
+    keys: ["v"],
+    category: "Tasks pane",
+    description: "Cycle engine vendor (claude ↔ codex ↔ …) — applies on reopen",
+    hint: { keys: "v", label: "engine", status: false },
+  },
+  {
+    id: "tasks.update",
+    scope: "sidebar",
+    keys: ["u"],
+    category: "Tasks pane",
+    description: "Open the update page (when a new version is available)",
+    hint: { keys: "u", label: "update", status: false },
+  },
+
+  // ─── Workspace (tmux) ─────────────────────────────────────────────────
+  // tmux-handover chords that drive the task SESSION (windows/tabs/detach),
+  // not opentui bindings. Listed here so the HelpDialog advertises them; the
+  // bracket / ctrl rows below in "Workspace (chat)" register the real opentui
+  // handlers, while the `prefix f` quick-task is a tmux key-table binding the
+  // session installs (not registered through this keymap at all) — DISPLAY
+  // ONLY, with `keys: []` so nothing tries to bind a literal "prefix f" chord.
+  {
+    id: "tmux.quickTask",
+    scope: "global",
+    keys: [],
+    category: "Workspace (tmux)",
+    description: "Quick new task (tmux prefix, then f)",
+    hint: { keys: "prefix f", label: "new task", status: false },
+  },
+  {
+    id: "tmux.engineTab",
+    scope: "global",
+    keys: [],
+    category: "Workspace (tmux)",
+    description: "Open the engine in a new tab (tmux prefix, then t)",
+    hint: { keys: "prefix t", label: "engine tab", status: false },
+  },
+
   // ─── Workspace (chat) ─────────────────────────────────────────────────
   {
     // Composer textarea handles enter via its own onKeyDown. This row

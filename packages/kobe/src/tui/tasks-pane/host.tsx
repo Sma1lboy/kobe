@@ -34,7 +34,14 @@
  */
 
 import { existsSync } from "node:fs"
-import { currentSessionName, getSessionOption, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
+import {
+  currentSessionName,
+  getSessionOption,
+  runTmux,
+  runTmuxCapturing,
+  sessionExists,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
 import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
@@ -42,7 +49,7 @@ import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { engineDisplayName, interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
@@ -51,6 +58,7 @@ import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } f
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendorWithin } from "../../types/vendor.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
+import { HelpDialog } from "../component/help-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
@@ -117,6 +125,12 @@ function TasksShell(props: {
   // never renders.
   function notifyError(message: string): void {
     notif.notify({ kind: "error", taskId: selectedId() ?? "", tabId: "", title: message })
+  }
+  // Neutral (non-error) toast — same on-screen surfacing as notifyError but
+  // green/`done` styling, for "this happened" confirmations (engine cycled,
+  // creating task, already up to date) that aren't failures.
+  function notifyInfo(message: string): void {
+    notif.notify({ kind: "done", taskId: selectedId() ?? "", tabId: "", title: message })
   }
   const [moveMode, setMoveMode] = createSignal(false)
   const [sortMode, setSortMode] = createSignal<TaskSortMode>("default")
@@ -211,6 +225,13 @@ function TasksShell(props: {
     // ~22%-wide pane — just narrower — and the other panes stay visible.
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
     const availableVendors = await availableEngineIds()
+    // First-run guard (#24): no built-in engine detected AND no custom engine
+    // configured. The dialog would still let the user pick a vendor, then the
+    // missing binary surfaces only as a raw shell error inside the pane. Warn
+    // up front but still allow proceeding (they may install it after picking).
+    if (availableVendors.length === 0) {
+      notifyInfo("No engine CLI detected — install claude or codex, or add one in Settings → Engines")
+    }
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
       availableVendors,
@@ -228,6 +249,11 @@ function TasksShell(props: {
       console.error("[kobe tasks] no daemon; cannot create task")
       return
     }
+    // The create/adopt awaits a real git-worktree operation with no other
+    // feedback — the dialog just vanishes. Surface a transient "working" toast
+    // so the wait reads as progress; failure replaces it with the error toast
+    // raised in the catch below.
+    notifyInfo("Creating task…")
     let createdId: string | undefined
     try {
       if (result.mode === "adopt") {
@@ -285,7 +311,12 @@ function TasksShell(props: {
 
   async function openUpdate(): Promise<void> {
     const info = updateInfo()
-    if (!info?.hasUpdate) return
+    if (!info?.hasUpdate) {
+      // The `u` chord / update chip would otherwise no-op silently when
+      // nothing is pending — confirm the up-to-date state instead (#23a).
+      notifyInfo(`Already on the latest version (v${CURRENT_VERSION})`)
+      return
+    }
     const session = await currentSessionName()
     if (!session) return
     await openUpdateTab(session)
@@ -425,6 +456,10 @@ function TasksShell(props: {
       notifyError(`Couldn't switch engine: ${err instanceof Error ? err.message : String(err)}`)
       return
     }
+    // The new vendor only takes effect on the task's NEXT enter (ensureSession
+    // rebuilds the pane when its `@kobe_vendor` tag no longer matches), so a
+    // bare `v` press looks like a no-op. Surface the deferred-rebuild contract.
+    notifyInfo(`Engine → ${engineDisplayName(next)} (applies on reopen)`)
     await props.reload()
   }
 
@@ -479,6 +514,12 @@ function TasksShell(props: {
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
     bindings: [
+      // F1 → the shared HelpDialog (#8). In the real direct-tmux flow the
+      // global `help.open` (app.tsx outer monitor) never runs, so F1 was dead
+      // in the Tasks pane. The pane has its own DialogProvider (mounted in
+      // startTasksPane), so we open it the same way app.tsx does. Gated on an
+      // empty dialog stack so it doesn't `replace` an open dialog.
+      { key: "f1", cmd: () => HelpDialog.show(dialog) },
       { key: "n", cmd: () => void createTask() },
       { key: "s", cmd: () => void openSettings() },
       { key: "u", cmd: () => void openUpdate() },
@@ -666,6 +707,27 @@ function TasksShell(props: {
 }
 
 /**
+ * Render a tmux prefix string (`tmux show-options -g prefix` value, e.g.
+ * `C-b` / `C-a` / `M-x`) as a compact macOS-style key cap (`⌃B`, `⌃A`, `⌥X`)
+ * for the footer legend (#12). kobe never rebinds the prefix, so we must read
+ * whatever the user actually set — `Prefix F` is un-actionable if the user
+ * doesn't know their own prefix. Returns null for anything we can't parse, so
+ * the caller can fall back to the literal `Prefix` label.
+ */
+function tmuxPrefixGlyph(raw: string): string | null {
+  // `show-options -g prefix` prints e.g. `prefix C-b`; the value is the last
+  // token. Accept either the full `prefix C-b` line or a bare `C-b`.
+  const value = raw.trim().split(/\s+/).pop() ?? ""
+  const m = /^([CM])-(.+)$/.exec(value)
+  if (!m) return null
+  const mod = m[1] === "C" ? "⌃" : "⌥"
+  const key = m[2]
+  // Single letters render uppercase to match the other ⌃-prefixed caps; named
+  // keys (`Space`, etc.) pass through as-is.
+  return `${mod}${key.length === 1 ? key.toUpperCase() : key}`
+}
+
+/**
  * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
  * shows the in-pane task actions plus the session-level tmux chords so the
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
@@ -673,45 +735,65 @@ function TasksShell(props: {
  */
 function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: Accessor<boolean> }) {
   const { theme } = useTheme()
+  // Resolve the user's REAL tmux prefix at runtime (#12). kobe loads the
+  // user's own prefix, so a literal `Prefix F` is un-actionable — the user may
+  // not know their prefix is C-a. Shell `tmux show-options -g prefix` on the
+  // -L kobe socket (runTmuxCapturing already targets it) and render `C-b` as
+  // `⌃B`. Falls back to the literal `Prefix` when resolution fails / is flaky.
+  const [prefixCap, setPrefixCap] = createSignal("Prefix")
+  onMount(() => {
+    void runTmuxCapturing(["show-options", "-g", "prefix"]).then(({ code, stdout }) => {
+      if (code !== 0) return
+      const glyph = tmuxPrefixGlyph(stdout)
+      if (glyph) setPrefixCap(glyph)
+    })
+  })
+  const tmuxPrefixCap = (): string => `${prefixCap()} T`
+  const quickTaskCap = (): string => `${prefixCap()} F`
   // A hint row. `dimWhenMain` flags a keycap whose action early-returns on a
   // `main` (project root) row — the footer dims that cap so a press there
   // reads as "doesn't apply here" rather than a silent no-op (Issue #7).
   type Hint = { k: string; label: string; dimWhenMain?: boolean }
   // Fixed-width key column so the labels line up — a terminal-grammar
   // legend column, not a proportional pane (allowed hardcode).
-  // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
-  // uppercase per the Mac shortcut convention (the binding is still the
-  // lowercase key — no shift implied).
-  const DEFAULT_HINTS: ReadonlyArray<Hint> = [
+  // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare-letter caps show
+  // the EXACT key to press: lowercase for plain-letter chords (n/s/o/t/a/d/
+  // r/b/v), so the legend is literally typeable (#14). `M` stays capital
+  // because move-task is Shift+M (the keymap drops shift on letters, but the
+  // user really does hold shift). Modifier glyphs stay uppercase by grammar.
+  // Derived (not a static const) so the two `Prefix …` rows re-render once
+  // the async prefix resolution lands (#12).
+  const defaultHints = (): ReadonlyArray<Hint> => [
     { k: "⏎", label: "open" },
-    { k: "N", label: "new task" },
-    { k: "S", label: "settings" },
-    { k: "O", label: "open wt" },
+    { k: "n", label: "new task" },
+    { k: "s", label: "settings" },
+    { k: "o", label: "open wt" },
     { k: "[/]", label: "views" },
-    { k: "T", label: "sort" },
-    // Move (`M`) early-returns on a main row — dim it there.
+    { k: "t", label: "sort" },
+    // Move (`M`) is Shift+M and early-returns on a main row — dim it there.
     { k: "M", label: "move task", dimWhenMain: true },
     // `a` is a TOGGLE — archive AND unarchive — so the label says both.
-    { k: "A/D", label: "un/archive·delete" },
-    // Rename title (`R`) and cycle engine (`V`) work on a main row; only
-    // rename branch (`B`) early-returns there, so the row dims as a whole
+    { k: "a/d", label: "un/archive·delete" },
+    // Rename title (`r`) and cycle engine (`v`) work on a main row; only
+    // rename branch (`b`) early-returns there, so the row dims as a whole
     // on main to signal the branch action is unavailable.
-    { k: "R/B/V", label: "name/branch/engine", dimWhenMain: true },
+    { k: "r/b/v", label: "name/branch/engine", dimWhenMain: true },
+    { k: "F1", label: "help" },
     { k: "⌃HJKL", label: "move panes" },
     { k: "⌃[/]", label: "switch tabs" },
     { k: "⌃T", label: "new tab" },
     { k: "⌃⇧T", label: "engine tab" },
-    { k: "Prefix T", label: "engine tab" },
-    { k: "Prefix F", label: "new task" },
+    { k: tmuxPrefixCap(), label: "engine tab" },
+    { k: quickTaskCap(), label: "new task" },
     { k: "F2", label: "rename tab" },
     { k: "⌃W", label: "close tab" },
-    { k: "⌃Q", label: "detach" },
+    { k: "⌃Q", label: "tasks→detach" },
   ]
   const MOVE_HINTS: ReadonlyArray<Hint> = [
     { k: "J/K", label: "reorder" },
     { k: "⏎/Esc", label: "done" },
   ]
-  const hints = () => (props.moveMode?.() ? MOVE_HINTS : DEFAULT_HINTS)
+  const hints = () => (props.moveMode?.() ? MOVE_HINTS : defaultHints())
   // Width of the description column = the longest label, but CAPPED so a long
   // label can't blow the column out past what the 32-cell Tasks pane (minus the
   // 10-cell keycap column) can hold. Each row right-aligns this fixed-width box

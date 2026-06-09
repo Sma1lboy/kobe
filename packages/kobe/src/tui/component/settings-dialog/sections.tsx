@@ -750,6 +750,10 @@ export function DevSettingsSection(
           </box>
         </box>
       </Show>
+      <text fg={theme.textMuted} wrapMode="word">
+        Daemon wedged or unresponsive? From a shell, run `kobe doctor` to diagnose, or `kobe reset` to stop the daemon +
+        kill sessions (keeps your tasks). Use `kobe reset --hard` only to also wipe the task index + UI state.
+      </text>
     </box>
   )
 }

@@ -702,6 +702,12 @@ export function Sidebar(props: SidebarProps) {
               )
             }}
           </For>
+          {/* Subtle chord hint so new users discover `[`/`]` switches the
+              view without hunting the footer legend. Quiet (muted + DIM),
+              non-interactive — it doesn't alter tab layout or clicks. */}
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+            [/]
+          </text>
         </box>
         <Show when={props.sortMode}>
           <text

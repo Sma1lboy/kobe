@@ -79,7 +79,7 @@ export function TopBar(props: {
             [Update]
           </text>
           <text fg={theme.warning} onMouseUp={() => void confirmUpdate()}>
-            ↑ v{props.updateInfo()?.latest} available!
+            ↑ v{props.updateInfo()?.latest} available! [u]
           </text>
         </Show>
       </box>
