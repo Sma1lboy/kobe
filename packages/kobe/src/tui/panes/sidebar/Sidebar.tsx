@@ -593,30 +593,38 @@ export function Sidebar(props: SidebarProps) {
           column. The root box has no horizontal padding — the pane sits
           flush to its tmux edges; this 1 cell is the kobe selection gutter,
           not padding. */}
-      {/* Brand-header cluster: KOBE, then the version/update chip hugging the
-          name, then a clickable `+` new-task affordance — all left-aligned
-          (no space-between, so the version sits next to the name, not the far
-          edge). */}
-      <box flexDirection="row" gap={1} paddingBottom={1} paddingLeft={1} paddingRight={1}>
-        <text
-          fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
-          attributes={TextAttributes.BOLD}
-          wrapMode="none"
-        >
-          KOBE
-        </text>
-        <Show when={props.headerStatus?.()}>
-          {(status) => (
-            <text
-              fg={status().emphasize ? theme.warning : theme.textMuted}
-              attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
-              wrapMode="none"
-              onMouseUp={() => props.onHeaderStatusClick?.()}
-            >
-              {status().label}
-            </text>
-          )}
-        </Show>
+      {/* Brand header: a left cluster (KOBE + the version/update chip hugging
+          the name) and a clickable `[+]` new-task button pushed to the far
+          right (justify space-between). */}
+      <box
+        flexDirection="row"
+        justifyContent="space-between"
+        gap={1}
+        paddingBottom={1}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <box flexDirection="row" gap={1}>
+          <text
+            fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            KOBE
+          </text>
+          <Show when={props.headerStatus?.()}>
+            {(status) => (
+              <text
+                fg={status().emphasize ? theme.warning : theme.textMuted}
+                attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
+                wrapMode="none"
+                onMouseUp={() => props.onHeaderStatusClick?.()}
+              >
+                {status().label}
+              </text>
+            )}
+          </Show>
+        </box>
         <Show when={props.onAddTask}>
           <text
             fg={theme.primary}
@@ -624,7 +632,7 @@ export function Sidebar(props: SidebarProps) {
             wrapMode="none"
             onMouseUp={() => props.onAddTask?.()}
           >
-            +
+            [+]
           </text>
         </Show>
       </box>
