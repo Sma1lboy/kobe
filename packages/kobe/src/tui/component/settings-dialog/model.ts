@@ -12,12 +12,13 @@ import type { FocusAccentSlot } from "../../context/theme"
 
 export type NavLevel = "sidebar" | "body"
 
-export type SectionId = "general" | "engines" | "accounts" | "dev"
+export type SectionId = "general" | "engines" | "accounts" | "feedback" | "dev"
 
 export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "engines", label: "Engines" },
   { id: "accounts", label: "Accounts" },
+  { id: "feedback", label: "Feedback" },
   { id: "dev", label: "Dev" },
 ]
 
@@ -34,6 +35,10 @@ export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
 
 export function devRowCount(hasDaemon: boolean): number {
   return hasDaemon ? 2 : 1
+}
+
+export function feedbackRowCount(): number {
+  return 3
 }
 
 export function generalRowCount(themeCount: number, focusAccentCount: number): number {
@@ -53,6 +58,7 @@ export function bodyRowCount(
   if (section === "engines") return engineRowCount()
   // Accounts is a read-only display — no navigable rows.
   if (section === "accounts") return 0
+  if (section === "feedback") return feedbackRowCount()
   if (section === "dev") return devRowCount(hasDaemon)
   return 0
 }

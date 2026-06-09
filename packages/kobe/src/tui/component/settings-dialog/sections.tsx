@@ -564,6 +564,94 @@ export function AccountsSettingsSection(props: {
   )
 }
 
+export function FeedbackSettingsSection(
+  props: CursorSetters & {
+    level: Accessor<NavLevel>
+    bodyRow: Accessor<number>
+    title: Accessor<string>
+    body: Accessor<string>
+    status: Accessor<string>
+    editTitle: () => void
+    editBody: () => void
+    submit: () => void
+  },
+) {
+  const { theme } = useTheme()
+  const titleIsCursor = () => props.level() === "body" && props.bodyRow() === 0
+  const bodyIsCursor = () => props.level() === "body" && props.bodyRow() === 1
+  const submitIsCursor = () => props.level() === "body" && props.bodyRow() === 2
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        Feedback
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to General.
+      </text>
+      <box flexDirection="column" gap={0}>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={titleIsCursor() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(0)
+            props.editTitle()
+          }}
+        >
+          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
+            title
+          </text>
+          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+            {props.title().trim() || "(enter to edit)"}
+          </text>
+        </box>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={bodyIsCursor() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(1)
+            props.editBody()
+          }}
+        >
+          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
+            body
+          </text>
+          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
+            {props.body().trim() || "(enter to edit)"}
+          </text>
+        </box>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={submitIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(2)
+            props.submit()
+          }}
+        >
+          <text fg={submitIsCursor() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
+            [enter] Send to GitHub Discussions
+          </text>
+        </box>
+      </box>
+      <Show when={props.status()}>
+        <text fg={props.status().startsWith("error:") ? theme.warning : theme.success} wrapMode="word">
+          {props.status()}
+        </text>
+      </Show>
+    </box>
+  )
+}
+
 export function DevSettingsSection(
   props: CursorSetters & {
     level: Accessor<NavLevel>

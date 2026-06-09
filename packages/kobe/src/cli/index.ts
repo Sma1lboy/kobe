@@ -9,6 +9,7 @@
  *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
+ *   - `kobe feedback`           Send feedback to GitHub Discussions.
  *   - `kobe update [target]`    Self-update (when packaged).
  *   - `kobe doctor`             Diagnose daemon / tmux / state (read-only).
  *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
@@ -327,6 +328,11 @@ async function main(): Promise<void> {
   if (subcommand === "theme") {
     const { runThemeSubcommand } = await import("./theme.ts")
     await runThemeSubcommand(rest)
+    return
+  }
+  if (subcommand === "feedback") {
+    const { runFeedbackSubcommand } = await import("./feedback-cmd.ts")
+    await runFeedbackSubcommand(rest)
     return
   }
   if (subcommand === "daemon") {

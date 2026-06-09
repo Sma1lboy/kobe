@@ -23,6 +23,7 @@ import {
   detectCopilotAccount,
 } from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
+import { submitFeedback } from "../../lib/feedback"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
@@ -63,6 +64,7 @@ import {
   AccountsSettingsSection,
   DevSettingsSection,
   EngineSettingsSection,
+  FeedbackSettingsSection,
   GeneralSettingsSection,
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
@@ -100,6 +102,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [section, setSection] = createSignal<SectionId>("general")
   const [cursor, setCursor] = createSignal(0)
   const [bodyRow, setBodyRow] = createSignal(0)
+  const [feedbackTitle, setFeedbackTitle] = createSignal("")
+  const [feedbackBody, setFeedbackBody] = createSignal("")
+  const [feedbackStatus, setFeedbackStatus] = createSignal("")
   const themeNames = createMemo<readonly string[]>(() => themeCtx.all().slice().sort())
   const [, setThemeCursor] = createSignal(
     Math.max(
@@ -266,6 +271,36 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
   }
 
+  async function editFeedbackTitle(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, feedbackTitle(), {
+      dialogTitle: "Feedback title",
+    })
+    if (next === undefined) return
+    setFeedbackTitle(next)
+    setFeedbackStatus("")
+  }
+
+  async function editFeedbackBody(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, feedbackBody(), {
+      dialogTitle: "Feedback body",
+    })
+    if (next === undefined) return
+    setFeedbackBody(next)
+    setFeedbackStatus("")
+  }
+
+  async function sendFeedback(): Promise<void> {
+    setFeedbackStatus("submitting...")
+    try {
+      const result = submitFeedback({ title: feedbackTitle(), body: feedbackBody() })
+      setFeedbackStatus(`sent: ${result.url}`)
+      setFeedbackTitle("")
+      setFeedbackBody("")
+    } catch (err) {
+      setFeedbackStatus(`error: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
   function enterBody(): void {
     if (level() !== "sidebar" || bodyRowCount() === 0) return
     setLevel("body")
@@ -341,6 +376,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (section() === "engines") {
       const vendor = ALL_VENDORS[bodyRow()]
       if (vendor) void editEngine(vendor)
+      return
+    }
+    if (section() === "feedback") {
+      if (bodyRow() === 0) void editFeedbackTitle()
+      else if (bodyRow() === 1) void editFeedbackBody()
+      else if (bodyRow() === 2) void sendFeedback()
       return
     }
     if (section() === "dev") {
@@ -436,6 +477,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
               claudeStatus={claudeStatus}
               codexStatus={codexStatus}
               copilotStatus={copilotStatus}
+            />
+          </Show>
+          <Show when={section() === "feedback"}>
+            <FeedbackSettingsSection
+              level={level}
+              bodyRow={bodyRow}
+              setLevel={setLevel}
+              setBodyRow={setBodyRow}
+              title={feedbackTitle}
+              body={feedbackBody}
+              status={feedbackStatus}
+              editTitle={() => void editFeedbackTitle()}
+              editBody={() => void editFeedbackBody()}
+              submit={() => void sendFeedback()}
             />
           </Show>
           <Show when={section() === "dev"}>
