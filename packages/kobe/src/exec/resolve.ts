@@ -11,7 +11,7 @@
  */
 
 import { remoteControlSocketPath } from "../env.ts"
-import { type RemoteRepoConfig, getRemoteRepoConfig } from "../state/repos.ts"
+import { type RemoteRepoConfig, getRemoteRepoConfig, getRemoteRepos } from "../state/repos.ts"
 import { type ExecHost, LocalExecHost, type RemoteAuth, RemoteExecHost, type RemoteSpec } from "./exec-host.ts"
 import { getKeychainPassword } from "./keychain.ts"
 
@@ -41,4 +41,20 @@ export function execHostForRepo(repoKey: string): ExecHost {
   const config = getRemoteRepoConfig(repoKey)
   if (!config) return new LocalExecHost()
   return new RemoteExecHost(remoteSpecFromConfig(config))
+}
+
+/**
+ * The ExecHost for a WORKTREE path (a path, not a project key). The
+ * worktree-side manager methods (`isDirty`, `currentBranch`, `remove`, …)
+ * receive only a path, so remoteness is recovered by matching the path
+ * against each remote project's `basePath`. A local path matches nothing and
+ * gets a `LocalExecHost` — zero regression for local tasks.
+ */
+export function execHostForWorktreePath(worktreePath: string): ExecHost {
+  for (const config of Object.values(getRemoteRepos())) {
+    if (worktreePath === config.basePath || worktreePath.startsWith(`${config.basePath}/`)) {
+      return new RemoteExecHost(remoteSpecFromConfig(config))
+    }
+  }
+  return new LocalExecHost()
 }

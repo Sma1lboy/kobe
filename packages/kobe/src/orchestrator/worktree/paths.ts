@@ -149,6 +149,28 @@ export function isKobeManagedPath(repo: string, candidate: string): boolean {
   return managedWorktreeRootForPath(repo, candidate) !== null
 }
 
+/**
+ * Worktree layout for a REMOTE project. The local `~/.kobe/worktrees/...`
+ * root can't be used — the worktree lives on the remote host. We root it
+ * under the project's remote `basePath` in a `.kobe/worktrees/<slug>` subdir
+ * (POSIX join: the remote is always POSIX). The main checkout the worktree is
+ * added from is `basePath` itself.
+ */
+export function remoteWorktreeRootFor(basePath: string): string {
+  return `${stripTrailingSlash(basePath)}/.kobe/worktrees`
+}
+
+export function remoteWorktreePathFor(basePath: string, slug: string): string {
+  if (!slug || /[/\\\0]/.test(slug)) {
+    throw new Error(`remoteWorktreePathFor: invalid slug: ${JSON.stringify(slug)}`)
+  }
+  return `${remoteWorktreeRootFor(basePath)}/${slug}`
+}
+
+function stripTrailingSlash(p: string): string {
+  return p.length > 1 && p.endsWith("/") ? p.replace(/\/+$/, "") : p
+}
+
 function canonicalize(p: string): string {
   try {
     return fs.realpathSync(p)
