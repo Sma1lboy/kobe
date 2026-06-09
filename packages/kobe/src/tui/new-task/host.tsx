@@ -22,6 +22,7 @@ import { render } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { detectAvailableVendors } from "../../engine/account-detect.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
@@ -53,10 +54,12 @@ function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator
     const repos = getSavedRepos()
     const defaultRepo = props.defaultRepo || repos[0] || process.cwd()
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const availableVendors = await detectAvailableVendors()
     const orch = props.orchestrator
 
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
+      availableVendors,
       discoverAdoptable: orch ? (repo) => orch.discoverAdoptableWorktrees(repo) : undefined,
     })
     if (!result) {

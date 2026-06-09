@@ -37,6 +37,12 @@ export type NewTaskDialogOptions = {
    */
   defaultVendor?: VendorId
   /**
+   * Vendors whose engine CLI was detected on this machine. The engine
+   * selector lists only these. Omit/empty falls back to all vendors so the
+   * selector is never empty (see `detectAvailableVendors`).
+   */
+  availableVendors?: readonly VendorId[]
+  /**
    * Discover existing git worktrees on `repo` not yet linked to a task
    * (KOB-256) — powers the Adopt tab. Omit to disable adoption (the tab
    * still renders but shows nothing to import).
@@ -70,6 +76,7 @@ function show(
           savedRepos={savedRepos}
           defaultCloneParent={options?.defaultCloneParent}
           defaultVendor={options?.defaultVendor}
+          availableVendors={options?.availableVendors}
           discoverAdoptable={options?.discoverAdoptable}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}

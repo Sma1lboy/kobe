@@ -28,6 +28,18 @@ export function nextVendor(current: VendorId): VendorId {
 }
 
 /**
+ * Next vendor within an arbitrary subset (e.g. the detected-only list the
+ * new-task dialog renders), wrapping around. `current` need not be in the
+ * list — cycling starts from the first entry. Empty list returns `current`
+ * unchanged so a caller with nothing detected never crashes.
+ */
+export function nextVendorWithin(list: readonly VendorId[], current: VendorId): VendorId {
+  if (list.length === 0) return current
+  const i = list.indexOf(current)
+  return list[(i + 1) % list.length] ?? list[0] ?? current
+}
+
+/**
  * Coerce an untrusted string (a CLI flag, a persisted record) to a
  * {@link VendorId}, falling back to `"claude"` for anything unrecognised
  * or absent — the same default the rest of v0.6 assumes when a task has

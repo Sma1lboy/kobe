@@ -26,6 +26,7 @@ import { render, useRenderer } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
+import { detectAvailableVendors } from "../engine/account-detect.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
@@ -283,8 +284,10 @@ function Shell(props: AppDeps) {
     // make the user re-pick.
     const defaultRepo = activeTask()?.repo ?? repos[0] ?? process.cwd()
     const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const availableVendors = await detectAvailableVendors()
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
+      availableVendors,
       discoverAdoptable: (repo) => props.orchestrator.discoverAdoptableWorktrees(repo),
     })
     if (!result) return

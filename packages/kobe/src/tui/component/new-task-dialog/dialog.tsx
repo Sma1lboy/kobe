@@ -31,7 +31,7 @@
  * stack or opentui.
  */
 
-import { ALL_VENDORS, type VendorId, nextVendor } from "@/types/vendor"
+import { ALL_VENDORS, type VendorId, nextVendorWithin } from "@/types/vendor"
 import type { AdoptableWorktree } from "@/types/worktree"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
@@ -97,6 +97,13 @@ export type NewTaskDialogProps = {
    */
   defaultVendor?: VendorId
   /**
+   * Vendors whose engine CLI was detected on this machine — the engine
+   * selector renders only these, so a vendor you can't run is never
+   * offered. Omitted or empty falls back to {@link ALL_VENDORS} (so the
+   * selector is never empty and task creation is never blocked).
+   */
+  availableVendors?: readonly VendorId[]
+  /**
    * Discover existing git worktrees on a repo not yet linked to a task
    * (KOB-256) — powers the Adopt tab's list. Omit to leave the tab empty.
    */
@@ -110,9 +117,20 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   // Which sub-tab is currently visible. Switched via Ctrl+[ / Ctrl+].
   const [tab, setTab] = createSignal<DialogTab>("existing")
 
+  // Engine selector source: detected vendors only, falling back to the full
+  // list when the caller passed nothing/empty (so the selector is never empty).
+  const availableVendors = (): readonly VendorId[] => {
+    const a = props.availableVendors
+    return a && a.length > 0 ? a : ALL_VENDORS
+  }
   // Engine vendor for the new task — defaults to the last-selected one,
-  // cycled with `ctrl+e`. Rides out on the submit payload.
-  const [vendor, setVendor] = createSignal<VendorId>(props.defaultVendor ?? "claude")
+  // clamped to a detected vendor, cycled with `ctrl+e`. Rides out on submit.
+  const initialVendor = ((): VendorId => {
+    const set = availableVendors()
+    const pref = props.defaultVendor ?? "claude"
+    return set.includes(pref) ? pref : (set[0] ?? "claude")
+  })()
+  const [vendor, setVendor] = createSignal<VendorId>(initialVendor)
 
   // Dialog only asks for repo + branch on the existing tab. The first
   // prompt lives in the chat composer — orchestrator.runTask back-fills
@@ -472,9 +490,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         cmd: () => switchToTab(nextDialogTab(tab())),
       },
       {
-        // Ctrl+E cycles the engine vendor (claude / codex / …).
+        // Ctrl+E cycles the engine vendor within the detected set.
         key: "ctrl+e",
-        cmd: () => setVendor((v) => nextVendor(v)),
+        cmd: () => setVendor((v) => nextVendorWithin(availableVendors(), v)),
       },
       {
         key: "up",
@@ -614,11 +632,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </text>
         </box>
         {/* Engine selector — common to both tabs. Defaults to the user's
-            last-selected vendor; ctrl+e cycles, click picks. New engines
-            (gemini / copilot) appear automatically via ALL_VENDORS. */}
+            last-selected vendor (clamped to a detected one); ctrl+e cycles,
+            click picks. Only vendors whose CLI was detected are listed. */}
         <box flexDirection="row" gap={2}>
           <text fg={theme.textMuted}>engine</text>
-          <For each={ALL_VENDORS}>
+          <For each={availableVendors()}>
             {(v) => (
               <text
                 fg={vendor() === v ? theme.primary : theme.textMuted}
