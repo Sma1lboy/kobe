@@ -29,6 +29,11 @@ export async function toggleTaskArchivedFlow(opts: {
   }
   if (!archived) return { archived }
 
+  // Archive is non-destructive: the worktree, branch, chat history AND the
+  // live tmux/engine session all stay. We only switch the client away from the
+  // archived task and clear active-task focus — the session is re-adopted on
+  // unarchive / next launch. (Delete still kills the session; see
+  // finishDeletedTaskFlow.)
   const sessionName = tmuxSessionName(opts.taskId)
   const nextTask = nextActiveTask(opts.tasks, opts.taskId)
   await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
@@ -37,9 +42,6 @@ export async function toggleTaskArchivedFlow(opts: {
     },
   )
   if (opts.updateActiveTask) await opts.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
-  await killSession(sessionName).catch((err: unknown) => {
-    opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
-  })
   return { archived, nextTask }
 }
 

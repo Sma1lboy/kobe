@@ -1,6 +1,7 @@
 import type { TaskEngineState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
 import type { Task, TaskStatus } from "@/types/task"
+import { isBuiltinVendor } from "@/types/vendor"
 import { repoBasename } from "./groups"
 
 export type SidebarTone = "success" | "warning" | "primary" | "textMuted" | "error"
@@ -60,6 +61,30 @@ export const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸
 
 export const SPINNER_FRAME_MS = 100
 
+/**
+ * Static dim glyph for a custom-engine task with no live signal. A custom
+ * engine has no transcript store the monitor can watch (see
+ * `monitor/activity.ts`), so its activity badge would otherwise sit on the
+ * perpetual spinner / empty backlog dot and read as "stuck". We show a
+ * neutral filled dot instead — present, but explicitly NOT animating.
+ */
+const NO_TRACKING_GLYPH = "·"
+
+/** Muted subtitle shown when a custom-engine task has nothing else to say. */
+const NO_TRACKING_SUBTITLE = "no activity tracking"
+
+/**
+ * True when this task runs on a user-added (custom) engine, which has no
+ * transcript store for the activity monitor to read — so liveness simply
+ * isn't tracked. A missing vendor normalizes to the built-in default
+ * ({@link DEFAULT_TASK_VENDOR}), so `undefined` is NOT custom. `main` tasks
+ * never carry a real engine session, so they're excluded.
+ */
+function isCustomEngineTask(task: Task): boolean {
+  if (task.kind === "main") return false
+  return task.vendor !== undefined && !isBuiltinVendor(task.vendor)
+}
+
 export function buildSidebarRowView(opts: {
   readonly task: Task
   readonly activity?: TaskEngineState
@@ -73,26 +98,44 @@ export function buildSidebarRowView(opts: {
   const badge = STATUS_BADGE[task.status]
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
-  const loading = activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")
   const activityBadge = activityBadgeFor(activityState)
   const activityLabel = activityLabelFor(activityState)
+  // A custom-engine task with no genuine activity signal has nothing to
+  // animate — the monitor can't read its transcript (monitor/activity.ts),
+  // so a spinner here would lie. Hook-driven words (rate limited / needs
+  // permission / error) are engine-agnostic, so if one DID fire we still
+  // honour it; we only fall back to the neutral affordance when there isn't
+  // one. `hasActivity` also covers `turn_complete` / `running` from hooks.
+  const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
+  const loading =
+    !untrackedCustomEngine &&
+    (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress"))
   const spinner = IN_PROGRESS_SPINNER[opts.spinnerFrame] ?? IN_PROGRESS_SPINNER[0]
-  const tone = activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? badge.tone))
+  const tone = untrackedCustomEngine
+    ? "textMuted"
+    : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? badge.tone)))
   // Subtitle priority: a non-normal activity word (rate limited / needs
-  // permission / error) outranks the branch, then the branch, then the
-  // lifecycle label — which is a neutral dash for `backlog`, never the word.
+  // permission / error) outranks the branch, then the branch, then — for an
+  // untracked custom engine with no branch — an explicit "no activity
+  // tracking" note so the row reads as un-tracked rather than stuck, then
+  // the lifecycle label (a neutral dash for `backlog`, never the word).
+  const fallbackSubtitle = untrackedCustomEngine ? NO_TRACKING_SUBTITLE : STATUS_LABEL[task.status]
   const subtitleText = activityLabel
     ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
     : task.branch.length > 0
       ? opts.truncateBranch(task.branch, opts.subtitleBudget)
-      : STATUS_LABEL[task.status]
+      : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
+  // Untracked custom engine: a static dim dot instead of the spinner / empty
+  // backlog badge, so liveness reads as "not tracked" rather than frozen.
+  const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? badge.glyph)
+  const restProjectGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "★")
   return {
     isMain,
     titleText: isMain ? repoBasename(task.repo) : task.title,
     subtitleText,
     loading,
-    stateGlyph: loading ? spinner : (activityBadge?.glyph ?? badge.glyph),
-    projectGlyph: loading ? spinner : (activityBadge?.glyph ?? "★"),
+    stateGlyph: loading ? spinner : restGlyph,
+    projectGlyph: loading ? spinner : restProjectGlyph,
     tone,
   }
 }
