@@ -69,6 +69,7 @@ import { KVProvider, useKV } from "../context/kv"
 import { NotificationsProvider, useNotifications } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
+import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
@@ -721,27 +722,6 @@ function TasksShell(props: {
 }
 
 /**
- * Render a tmux prefix string (`tmux show-options -g prefix` value, e.g.
- * `C-b` / `C-a` / `M-x`) as a compact macOS-style key cap (`⌃B`, `⌃A`, `⌥X`)
- * for the footer legend (#12). kobe never rebinds the prefix, so we must read
- * whatever the user actually set — `Prefix F` is un-actionable if the user
- * doesn't know their own prefix. Returns null for anything we can't parse, so
- * the caller can fall back to the literal `Prefix` label.
- */
-function tmuxPrefixGlyph(raw: string): string | null {
-  // `show-options -g prefix` prints e.g. `prefix C-b`; the value is the last
-  // token. Accept either the full `prefix C-b` line or a bare `C-b`.
-  const value = raw.trim().split(/\s+/).pop() ?? ""
-  const m = /^([CM])-(.+)$/.exec(value)
-  if (!m) return null
-  const mod = m[1] === "C" ? "⌃" : "⌥"
-  const key = m[2]
-  // Single letters render uppercase to match the other ⌃-prefixed caps; named
-  // keys (`Space`, etc.) pass through as-is.
-  return `${mod}${key.length === 1 ? key.toUpperCase() : key}`
-}
-
-/**
  * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
  * shows the in-pane task actions plus the session-level tmux chords so the
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
@@ -762,23 +742,22 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
       if (glyph) setPrefixCap(glyph)
     })
   })
-  const tmuxPrefixCap = (): string => `${prefixCap()} T`
-  const quickTaskCap = (): string => `${prefixCap()} F`
-  // A hint row. `dimWhenMain` flags a keycap whose action early-returns on a
-  // `main` (project root) row — the footer dims that cap so a press there
-  // reads as "doesn't apply here" rather than a silent no-op (Issue #7).
+  // A hint row. `k` is a MACHINE chord string (`ctrl+q`, `prefix f`, `a/d`);
+  // it's rendered as macOS glyphs via `formatChord` at draw time, so the
+  // footer, the F1 help, and the status bar all read the same (one formatter,
+  // no drift). `dimWhenMain` flags a keycap whose action early-returns on a
+  // `main` (project root) row — the footer dims that cap so a press there reads
+  // as "doesn't apply here" rather than a silent no-op (Issue #7).
   type Hint = { k: string; label: string; dimWhenMain?: boolean }
-  // Fixed-width key column so the labels line up — a terminal-grammar
-  // legend column, not a proportional pane (allowed hardcode).
-  // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare-letter caps show
-  // the EXACT key to press: lowercase for plain-letter chords (n/s/o/t/a/d/
-  // r/b/v), so the legend is literally typeable (#14). `M` stays capital
-  // because move-task is Shift+M (the keymap drops shift on letters, but the
-  // user really does hold shift). Modifier glyphs stay uppercase by grammar.
-  // Derived (not a static const) so the two `Prefix …` rows re-render once
-  // the async prefix resolution lands (#12).
+  // Fixed-width key column so labels line up — a terminal-grammar legend
+  // column, not a proportional pane (allowed hardcode). formatChord keeps
+  // plain-letter caps lowercase (the EXACT key to press, #14), uppercases the
+  // key of modifier chords (`⌃ Q`), shows `tab` as a word, and renders the two
+  // `prefix …` rows with the user's REAL resolved prefix (`prefixCap()`, #12).
+  // Derived (not a static const) so those rows re-render once the async prefix
+  // resolution lands.
   const defaultHints = (): ReadonlyArray<Hint> => [
-    { k: "⏎", label: "open" },
+    { k: "enter", label: "open" },
     { k: "n", label: "new task" },
     { k: "s", label: "settings" },
     { k: "o", label: "open wt" },
@@ -792,20 +771,20 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
     // rename branch (`b`) early-returns there, so the row dims as a whole
     // on main to signal the branch action is unavailable.
     { k: "r/b/v", label: "name/branch/engine", dimWhenMain: true },
-    { k: "F1", label: "help" },
-    { k: "⌃HJKL", label: "move panes" },
-    { k: "⌃[/]", label: "switch tabs" },
-    { k: "⌃T", label: "new tab" },
-    { k: "⌃⇧T", label: "engine tab" },
-    { k: tmuxPrefixCap(), label: "engine tab" },
-    { k: quickTaskCap(), label: "new task" },
-    { k: "F2", label: "rename tab" },
-    { k: "⌃W", label: "close tab" },
-    { k: "⌃Q", label: "tasks→detach" },
+    { k: "f1", label: "help" },
+    { k: "ctrl+hjkl", label: "move panes" },
+    { k: "ctrl+[/]", label: "switch tabs" },
+    { k: "ctrl+t", label: "new tab" },
+    { k: "ctrl+shift+t", label: "engine tab" },
+    { k: "prefix t", label: "engine tab" },
+    { k: "prefix f", label: "new task" },
+    { k: "f2", label: "rename tab" },
+    { k: "ctrl+w", label: "close tab" },
+    { k: "ctrl+q", label: "tasks→detach" },
   ]
   const MOVE_HINTS: ReadonlyArray<Hint> = [
-    { k: "J/K", label: "reorder" },
-    { k: "⏎/Esc", label: "done" },
+    { k: "j/k", label: "reorder" },
+    { k: "enter/esc", label: "done" },
   ]
   const hints = () => (props.moveMode?.() ? MOVE_HINTS : defaultHints())
   // Width of the description column = the longest label, but CAPPED so a long
@@ -842,7 +821,7 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
                   attributes={dim() ? TextAttributes.DIM : TextAttributes.BOLD}
                   wrapMode="none"
                 >
-                  [{h.k}]
+                  [{formatChord(h.k, prefixCap())}]
                 </text>
               </box>
               {/* Description column — fixed width = longest label, pushed to the

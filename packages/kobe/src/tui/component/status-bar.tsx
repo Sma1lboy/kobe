@@ -12,6 +12,7 @@ import { For, Show } from "solid-js"
 import { useFocus } from "../context/focus"
 import { KobeKeymap, useCtrlCArmed } from "../context/keybindings"
 import { useTheme } from "../context/theme"
+import { formatChord } from "../lib/chord-glyphs"
 
 /**
  * `[Key]` chip — agent-deck-style key affordance. The key is wrapped in
@@ -67,7 +68,7 @@ export function StatusBar() {
         <text fg={theme.primary} attributes={TextAttributes.BOLD} wrapMode="none">
           {sectionLabel()}
         </text>
-        <For each={leftHints()}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
+        <For each={leftHints()}>{(b) => <Hotkey keys={formatChord(b.hint!.keys)} label={b.hint!.label} />}</For>
       </box>
       {/* Right: global hotkeys (always available). Driven by KobeKeymap's
           `pin: "right"` rows. When ctrl+c is armed for double-tap quit,
@@ -76,10 +77,10 @@ export function StatusBar() {
           the LEFT column when sidebar is focused, so the right column
           is just for cross-pane reminders now.) */}
       <box flexDirection="row" gap={2} flexShrink={0}>
-        <For each={rightHints}>{(b) => <Hotkey keys={b.hint!.keys} label={b.hint!.label} />}</For>
+        <For each={rightHints}>{(b) => <Hotkey keys={formatChord(b.hint!.keys)} label={b.hint!.label} />}</For>
         <Show when={ctrlCArmed()}>
           <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-            Press Ctrl+C again to exit
+            Press ⌃C again to exit
           </text>
         </Show>
       </box>
