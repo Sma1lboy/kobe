@@ -12,8 +12,10 @@
  *   │ Working session   Archives             │
  *   │                                        │
  *   │ PROJECTS ──────────────────────────    │
- *   │ ★ kobe                      ~/i/kobe    │
- *   │ ★ pochi                     ~/i/pochi   │
+ *   │ ★ kobe                                 │
+ *   │   main                       +3 −1     │
+ *   │ ★ pochi                                │
+ *   │   feat/login-fix                       │
  *   │                                        │
  *   │ TASKS ─────────────────────────────    │
  *   │ ▌⠹ fix login redirect bug    working   │
@@ -24,15 +26,16 @@
  *   └───────────────────────────────────────┘
  *
  * Each section gets a small BOLD CAPS header + trailing rule. A PROJECT
- * row is a compact single line: ★ + repo name, with the repo
- * dir (home-abbreviated) on the right — or an animated `working` chip
- * while that repo-root session is live. A TASK row is a small two-line
- * card: line 1 = status badge + title + a `working` chip while the
- * engine streams; line 2 = the branch (or a status word when the task
- * has no branch yet) + the `+N −M` uncommitted-change chip. Tasks carry
- * a trailing blank line so each reads as its own card; projects sit
- * tight. The cursor row gets a left accent ▌ and a subtle background
- * tint; the active row keeps a dimmer ▌ when the cursor moves off it.
+ * row is a two-line card like a task: line 1 = ★ (an animated spinner
+ * while its repo-root session is live) + repo name; line 2 = the repo
+ * root's current branch + the `+N −M` uncommitted-change chip. (The repo
+ * dir moved to the hover tooltip.) A TASK row is the same two-line card:
+ * line 1 = status badge + title + a `working` chip while the engine
+ * streams; line 2 = the branch (or a status word when the task has no
+ * branch yet) + the `+N −M` change chip. Tasks carry a trailing blank
+ * line so each reads as its own card; projects sit tight. The cursor row
+ * gets a left accent ▌ and a subtle background tint; the active row keeps
+ * a dimmer ▌ when the cursor moves off it.
  *
  * Loading is driven by `task.status === "in_progress"` (the Tasks pane's
  * only liveness signal — chatRunState is unwired there) or a live engine
@@ -88,6 +91,7 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
+import { readCurrentBranch } from "./git-head"
 import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
@@ -783,6 +787,14 @@ export function Sidebar(props: SidebarProps) {
                 branchTick()
                 return readWorktreeChanges(task.worktreePath)
               })
+              // A `main` (project) row's branch isn't stored on the task — it's
+              // the repo root's live checkout. Resolve it on the same 2s tick as
+              // the change chip so the two-line project card shows `main` /
+              // `feat/x` on line 2 like a task.
+              const projectBranch = createMemo(() => {
+                branchTick()
+                return isMain ? readCurrentBranch(task.repo) : ""
+              })
               const rowView = createMemo(() =>
                 buildSidebarRowView({
                   task,
@@ -791,6 +803,7 @@ export function Sidebar(props: SidebarProps) {
                   spinnerFrame: spinnerFrame(),
                   subtitleBudget: subtitleBudget(),
                   truncateBranch: truncateBranchLabel,
+                  mainBranch: projectBranch(),
                 }),
               )
               const stateColor = () => (isMain && !rowView().loading ? theme.primary : toneColor(rowView().tone))
@@ -838,10 +851,12 @@ export function Sidebar(props: SidebarProps) {
                     onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
                     onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
                   >
-                    {/* PROJECT row (a `main` repo-root) — a compact single line:
-                        ★ + repo name, with the repo dir (or a "working" chip
-                        while its session is live) on the right. */}
+                    {/* PROJECT row (a `main` repo-root) — a two-line card like a
+                        task: line 1 = ★ (or spinner while its session is live) +
+                        repo name; line 2 = the repo root's current branch + the
+                        `+N −M` change chip. The repo path lives in the hover. */}
                     <Show when={isMain}>
+                      {/* Line 1: accent edge + ★/spinner + repo name. */}
                       <box flexDirection="row" gap={0}>
                         <text fg={barColor()} wrapMode="none">
                           {barGlyph()}
@@ -853,9 +868,28 @@ export function Sidebar(props: SidebarProps) {
                           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
                             {spacedTitle(rowView().titleText, titleBudget())}
                           </text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                            {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
+                        </box>
+                      </box>
+                      {/* Line 2: accent edge + repo-root branch + change chip,
+                          indented under the name (mirrors the task card's line 2). */}
+                      <box flexDirection="row" gap={0}>
+                        <text fg={barColor()} wrapMode="none">
+                          {barGlyph()}
+                        </text>
+                        <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+                            {rowView().subtitleText}
                           </text>
+                          <Show when={changes().added > 0}>
+                            <text fg={theme.success} wrapMode="none">
+                              +{changes().added}
+                            </text>
+                          </Show>
+                          <Show when={changes().deleted > 0}>
+                            <text fg={theme.error} wrapMode="none">
+                              −{changes().deleted}
+                            </text>
+                          </Show>
                         </box>
                       </box>
                     </Show>

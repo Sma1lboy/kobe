@@ -92,9 +92,19 @@ export function buildSidebarRowView(opts: {
   readonly spinnerFrame: number
   readonly subtitleBudget: number
   readonly truncateBranch: (branch: string, budget: number) => string
+  /**
+   * The repo root's current branch, for a `main` (project) row — its
+   * `task.branch` is always `""`, so the sidebar resolves the checked-out
+   * branch separately and passes it here so a project's two-line card shows
+   * `main` / `feat/x` on line 2 like a task does.
+   */
+  readonly mainBranch?: string
 }): SidebarRowView {
   const { task } = opts
   const isMain = task.kind === "main"
+  // Regular tasks store their branch; a `main` row's branch lives in the repo
+  // root checkout, resolved by the caller and passed as `mainBranch`.
+  const branch = isMain ? (opts.mainBranch ?? "") : task.branch
   const badge = STATUS_BADGE[task.status]
   const activityState = opts.activity?.state
   const hasActivity = activityState !== undefined
@@ -122,8 +132,8 @@ export function buildSidebarRowView(opts: {
   const fallbackSubtitle = untrackedCustomEngine ? NO_TRACKING_SUBTITLE : STATUS_LABEL[task.status]
   const subtitleText = activityLabel
     ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
-    : task.branch.length > 0
-      ? opts.truncateBranch(task.branch, opts.subtitleBudget)
+    : branch.length > 0
+      ? opts.truncateBranch(branch, opts.subtitleBudget)
       : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
   // Untracked custom engine: a static dim dot instead of the spinner / empty
   // backlog badge, so liveness reads as "not tracked" rather than frozen.

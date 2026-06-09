@@ -56,4 +56,28 @@ describe("buildSidebarRowView", () => {
       tone: "warning",
     })
   })
+
+  it("shows the repo-root branch (mainBranch) as a project row's subtitle", () => {
+    const v = buildSidebarRowView({
+      task: task({ kind: "main", branch: "", status: "backlog" }),
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+      mainBranch: "main",
+    })
+    expect(v).toMatchObject({ isMain: true, titleText: "kobe", subtitleText: "main" })
+  })
+
+  it("falls back to a neutral dash for a project with no resolvable branch", () => {
+    const v = buildSidebarRowView({
+      task: task({ kind: "main", branch: "", status: "backlog" }),
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+      mainBranch: "",
+    })
+    expect(v.subtitleText).toBe("—")
+  })
 })
