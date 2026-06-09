@@ -24,7 +24,8 @@ import {
 } from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
-import type { VendorId } from "../../types/task"
+import { getPersistedString, setPersistedString } from "../../state/repos"
+import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
@@ -271,6 +272,21 @@ export function SettingsDialog(props: SettingsDialogProps) {
   function engineName(vendor: VendorId): string {
     // Built-ins fall back to VENDOR_LABEL; a custom engine falls back to its id.
     return engineNameOverride(vendor) || VENDOR_LABEL[vendor] || vendor
+  }
+  // The DEFAULT engine for new tasks — the single `lastSelectedVendor` reference
+  // the new-task dialog / quick-task read and Ctrl+Shift+T writes. Read fresh on
+  // open (getPersistedString) so a default set via Ctrl+Shift+T in another
+  // process is reflected here; `d` on an engine row sets it (the ● marker).
+  const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(
+    (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR,
+  )
+  function isDefaultEngine(vendor: VendorId): boolean {
+    return defaultEngine() === vendor
+  }
+  function setEngineDefault(vendor: VendorId): void {
+    setPersistedString("lastSelectedVendor", vendor)
+    props.kv.set("lastSelectedVendor", vendor) // keep the in-process kv consistent
+    setDefaultEngineSig(vendor)
   }
   async function editEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
@@ -557,6 +573,15 @@ export function SettingsDialog(props: SettingsDialogProps) {
           if (v) resetEngine(v)
         },
       },
+      {
+        // Engines section: `d` sets the focused engine as the DEFAULT for new
+        // tasks (the ● marker) — the same `lastSelectedVendor` Ctrl+Shift+T sets.
+        key: "d",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) setEngineDefault(v)
+        },
+      },
     ],
   }))
 
@@ -607,6 +632,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
               displayName={engineName}
               commandText={engineCommandText}
               isDefault={engineIsDefault}
+              isDefaultEngine={isDefaultEngine}
               editEngine={(v) => void editEngine(v)}
               renameEngine={(v) => void renameEngine(v)}
               resetEngine={resetEngine}

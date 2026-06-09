@@ -392,6 +392,8 @@ export function EngineSettingsSection(
     resetEngine: (vendor: VendorId) => void
     /** True for a user-added engine (shown with a `(custom)` tag; `x` removes it). */
     isCustom: (vendor: VendorId) => boolean
+    /** True for the DEFAULT engine for new tasks (the ● marker; set with `d`). */
+    isDefaultEngine: (vendor: VendorId) => boolean
     /** Register a new custom engine — the trailing "+ Add engine" row. */
     onAddEngine: () => void
   },
@@ -406,8 +408,8 @@ export function EngineSettingsSection(
       </text>
       <text fg={theme.textMuted} wrapMode="word">
         The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` /
-        `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. enter edit command · r rename · x
-        reset/remove · takes effect on the next task enter.
+        `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = default engine for new tasks
+        (also set by Ctrl+Shift+T). enter edit command · r rename · x reset/remove · d set default.
       </text>
       <box flexDirection="column" gap={0}>
         <For each={props.vendors}>
@@ -426,6 +428,15 @@ export function EngineSettingsSection(
                   props.editEngine(vendor)
                 }}
               >
+                {/* ● marks the DEFAULT engine for new tasks (radio-style, like
+                    the theme list); a space holds the column on the others. */}
+                <text
+                  fg={isCursor() ? theme.selectedListItemText : theme.accent}
+                  attributes={TextAttributes.BOLD}
+                  wrapMode="none"
+                >
+                  {props.isDefaultEngine(vendor) ? "●" : " "}
+                </text>
                 <text
                   fg={isCursor() ? theme.selectedListItemText : theme.text}
                   attributes={TextAttributes.BOLD}
