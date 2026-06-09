@@ -106,12 +106,27 @@ export const CHAT_TAB_RENAME_BINDING = [
   "rename-window -- '%%'",
 ] as const
 
-export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")})`
+// The prompt names the built-ins as examples but ends with `…` so it doesn't
+// imply a CLOSED list — users can register custom engines (Settings → Engines),
+// and typing a registered custom id here is accepted (validated against
+// `availableEngineIds()` in the `new-chattab` handler).
+export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")}/…)`
 
 export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
   ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
   ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
 ] as const
+
+/**
+ * Minimal, muted `status-right` shown on the `-L kobe` socket. From inside the
+ * engine/shell pane the user has no other on-screen hint for kobe's
+ * escape-hatch chords, so we surface the three most useful ones. `^h` returns
+ * to the Tasks pane (the two-stage Ctrl+Q first stage is reachable from there),
+ * `^q` is the two-stage detach, `^t` opens a new chat tab. Dimmed with
+ * `fg=brightblack` so it reads as a muted hint rather than fighting the user's
+ * theme; the trailing space keeps it off the terminal's right edge.
+ */
+export const KOBE_STATUS_RIGHT = "#[fg=brightblack]^h tasks  ^q detach  ^t tab "
 
 export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 export const PANE_VERSION_OPTION = "@kobe_pane_version"
@@ -341,12 +356,20 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // set `on` (not just "leave default") so a server that an older
   // kobe turned OFF flips back.
   //
-  // We deliberately do NOT set status-style / status-left /
-  // status-right: the `-L kobe` socket still loads the user's
-  // `~/.tmux.conf` (the `-L` flag only changes the socket path, not
-  // the config file), so the user's own status-bar theme applies.
-  // The session name (`kobe-<task-id>`, shown via the user's
-  // default `#S` in status-left) is the only identity we impose.
+  // We deliberately do NOT set status-style / status-left: the `-L
+  // kobe` socket still loads the user's `~/.tmux.conf` (the `-L` flag
+  // only changes the socket path, not the config file), so the user's
+  // own status-bar theme applies. The session name (`kobe-<task-id>`,
+  // shown via the user's default `#S` in status-left) is the only
+  // identity we impose on the left.
+  //
+  // status-right IS set — but minimally: from inside the engine/shell
+  // pane the user otherwise has zero on-screen hint for kobe's
+  // escape-hatch chords (get back to Tasks, detach, new tab). We show
+  // the three most useful ones, dimmed (`fg=brightblack`) so they read
+  // as a muted hint and don't fight the user's theme. Server-scoped on
+  // the isolated `-L kobe` socket, so the user's real tmux status-right
+  // is never touched.
   // Window-status format: a compact activity icon in each ChatTab label.
   // `monitor-activity` is tmux-native and means "this window produced
   // output since you last viewed it", which is the reliable signal we have
@@ -422,6 +445,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["set-option", "-g", "visual-activity", "off"],
     ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],
     ["set-option", "-g", "window-status-current-format", CHAT_TAB_STATUS_CURRENT_FORMAT],
+    ["set-option", "-g", "status-right", KOBE_STATUS_RIGHT],
     ["set-option", "-g", "mouse", "on"],
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
     // focus the current window's Tasks pane first. `#{@kobe_role}` is the

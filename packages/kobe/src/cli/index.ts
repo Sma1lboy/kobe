@@ -390,11 +390,26 @@ async function main(): Promise<void> {
     }
     let vendor: VendorId | undefined
     if (flags.vendor !== undefined) {
-      if (!ALL_VENDORS.includes(flags.vendor as VendorId)) {
-        console.error(`kobe new-chattab: --vendor must be one of ${ALL_VENDORS.join(", ")}`)
+      // Accept any built-in (claude/codex/copilot) OR a registered custom
+      // engine id (Settings → Engines). A genuine typo is rejected — but
+      // VISIBLY: this runs under tmux `run-shell`, so a bare `process.exit(2)`
+      // produces no new tab and no feedback. Surface the error via tmux
+      // `display-message` so the user sees "unknown engine '…'" instead of
+      // silence (the engine-choice prompt now ends with `…`, implying the list
+      // is open, so a custom id is a legitimate entry).
+      const typed = flags.vendor.trim()
+      const { getCustomEngineIds } = await import("../state/repos.ts")
+      const { isBuiltinVendor } = await import("../types/vendor.ts")
+      const accepted = isBuiltinVendor(typed) || getCustomEngineIds().includes(typed)
+      if (!accepted) {
+        const knownList = [...ALL_VENDORS, ...getCustomEngineIds()].join(", ")
+        const msg = `kobe: unknown engine '${typed}' (known: ${knownList})`
+        const { runTmux } = await import("../tmux/client.ts")
+        await runTmux(["display-message", "-t", session, msg])
+        console.error(msg)
         process.exit(2)
       }
-      vendor = flags.vendor as VendorId
+      vendor = typed as VendorId
     }
     const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
     await newChatTab(session, vendor)

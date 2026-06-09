@@ -75,7 +75,7 @@ describe("CHAT_TAB_RENAME_BINDING", () => {
 
 describe("CHAT_TAB_CHOOSE_ENGINE_BINDINGS", () => {
   test("maps Ctrl+Shift+T and prefix T to the engine-choice prompt", () => {
-    expect(CHAT_TAB_ENGINE_PROMPT).toBe("engine (claude/codex/copilot)")
+    expect(CHAT_TAB_ENGINE_PROMPT).toBe("engine (claude/codex/copilot/…)")
     expect(CHAT_TAB_CHOOSE_ENGINE_BINDINGS).toEqual([
       ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
       ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],

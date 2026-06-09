@@ -69,6 +69,20 @@ import {
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
 
+/**
+ * Turn a custom-engine slug into a presentable display name: split on `-`/`_`
+ * and title-case each word. `my-local-agent` → `My Local Agent`, `aider` →
+ * `Aider`. Used so a custom engine added with no name still reads like the
+ * title-cased built-ins instead of its raw lowercase-hyphenated id.
+ */
+function humanizeSlug(id: string): string {
+  return id
+    .split(/[-_]+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
+
 export type SettingsDialogProps = {
   kv: KVContext
   /**
@@ -317,11 +331,14 @@ export function SettingsDialog(props: SettingsDialogProps) {
       dialogTitle: `Add engine · ${id}`,
       fieldLabel: "name",
       submitLabel: "add",
-      allowEmpty: true, // blank = the id
+      allowEmpty: true, // blank = humanized id (e.g. my-local-agent → My Local Agent)
     })
     props.kv.set("customEngineIds", [...customEngines(), id])
     if (command.trim()) props.kv.set(engineCommandKey(id), command.trim())
-    if (name?.trim()) props.kv.set(engineNameKey(id), name.trim())
+    // A typed name wins; otherwise (blank or left as the raw id) seed a
+    // humanized form so the chip reads "My Local Agent", not "my-local-agent".
+    const typedName = name?.trim() ?? ""
+    props.kv.set(engineNameKey(id), typedName && typedName !== id ? typedName : humanizeSlug(id))
   }
   /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
   function currentEngineRow(): VendorId | null {
