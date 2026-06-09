@@ -1,5 +1,0 @@
----
-"@sma1lboy/kobe": patch
----
-
-**kobe is easier to learn and gives more feedback.** `F1` now opens the keyboard help from the normal (direct-tmux) flow — previously it only worked in a deprecated path, so the whole help screen was effectively invisible; the help now also lists the Tasks-pane and tmux-window chords. The footer key hints match the actual keys (lowercase `n`/`s`/`o`/`t` instead of misleading capitals), the `prefix F`/`prefix T` hints resolve and show your real tmux prefix (e.g. `⌃B F`), and the `⌃Q` hint reads `tasks→detach` to reflect its two-stage behavior. The Working/Archives tabs show a small `[/]` hint so the switch chord is discoverable, and the update chip advertises its `[u]` key. You also get feedback where there was none: cycling the engine with `v` confirms `Engine → … (applies on reopen)`, creating a task shows a brief `Creating task…`, pressing `u` when you're up to date says so, trying to create a task with no engine CLI installed warns you, and the Settings → Dev section points at `kobe doctor` / `kobe reset` for recovering a wedged daemon.
