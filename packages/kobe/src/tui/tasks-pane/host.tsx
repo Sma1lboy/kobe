@@ -324,6 +324,20 @@ function TasksShell(props: {
 
   async function archiveTask(id: string): Promise<void> {
     if (!props.orch) return
+    const task = props.tasks().find((t) => t.id === id)
+    if (!task) return
+    // Unarchive is harmless (brings the task back) — no confirm. Archiving
+    // STOPS the task's running engine session, so confirm first.
+    if (!task.archived) {
+      const ok = await DialogConfirm.show(
+        dialog,
+        `Archive "${task.title}"?`,
+        "Moves it to Archives and stops its running session. The worktree, branch, and chat history stay — unarchive to bring it back.",
+        "cancel",
+        "archive",
+      )
+      if (ok !== true) return
+    }
     const result = await toggleTaskArchivedFlow({
       orch: props.orch,
       tasks: props.tasks(),

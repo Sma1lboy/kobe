@@ -333,6 +333,19 @@ function Shell(props: AppDeps) {
   }
 
   async function archiveTask(taskId: string): Promise<void> {
+    const task = props.orchestrator.getTask(taskId)
+    if (!task) return
+    // Archiving stops the running session — confirm first; unarchive is harmless.
+    if (!task.archived) {
+      const ok = await DialogConfirm.show(
+        dialog,
+        `Archive "${task.title}"?`,
+        "Moves it to Archives and stops its running session. The worktree, branch, and chat history stay — unarchive to bring it back.",
+        "cancel",
+        "archive",
+      )
+      if (ok !== true) return
+    }
     await toggleTaskArchivedFlow({
       orch: props.orchestrator,
       tasks: tasksAcc(),
