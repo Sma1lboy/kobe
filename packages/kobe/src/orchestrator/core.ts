@@ -26,6 +26,7 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
+import { getRemoteRepoConfig } from "../state/repos.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -41,6 +42,15 @@ import { autoBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { worktreePathFor } from "./worktree/paths.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
+
+/**
+ * The on-disk working dir a project key resolves to: the local repo path, or a
+ * remote project's `basePath` (the ssh:// key isn't a usable path). The main
+ * task and the engine's `cd` target both key off this.
+ */
+function repoWorkingDir(repo: string): string {
+  return getRemoteRepoConfig(repo)?.basePath ?? repo
+}
 
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
@@ -224,7 +234,8 @@ export class Orchestrator {
         repo,
         title: titleFromRepo(repo),
         branch: "",
-        worktreePath: repo,
+        // Remote main task lives at the remote basePath, not the ssh:// key.
+        worktreePath: repoWorkingDir(repo),
         status: "backlog",
         kind: "main",
         vendor: DEFAULT_TASK_VENDOR,
@@ -249,7 +260,7 @@ export class Orchestrator {
    */
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
-    if (task.kind === "main") return task.repo
+    if (task.kind === "main") return repoWorkingDir(task.repo)
     if (task.worktreePath) return task.worktreePath
     const inflight = this.worktreeLocks.get(task.id)
     if (inflight) {

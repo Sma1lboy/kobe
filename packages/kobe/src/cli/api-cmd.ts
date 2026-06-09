@@ -716,6 +716,7 @@ async function deliverPrompt(
   if (!existed) {
     const { ensureSession } = await import("../tui/panes/terminal/tmux.ts")
     const { resolveRepoInit } = await import("../state/repo-init.ts")
+    const { isRemoteRepoKey } = await import("../state/repos.ts")
     const init = resolveRepoInit(target.repo ?? "", worktree)
     const ok = await ensureSession({
       name: session,
@@ -723,6 +724,7 @@ async function deliverPrompt(
       command: interactiveEngineCommand(target.vendor),
       taskId: target.id,
       vendor: target.vendor,
+      remoteKey: target.repo && isRemoteRepoKey(target.repo) ? target.repo : undefined,
       initScript: init.initScript,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")

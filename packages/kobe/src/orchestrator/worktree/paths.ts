@@ -25,6 +25,8 @@ import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { kobeStateDir } from "../../env.ts"
+import { execHostForRepo } from "../../exec/resolve.ts"
+import { getRemoteRepoConfig, isRemoteRepoKey } from "../../state/repos.ts"
 
 /**
  * Directory under kobe's state dir where kobe stores all of its worktrees.
@@ -102,6 +104,13 @@ export function worktreePathFor(repo: string, slug: string): string {
  * index against disk state. Symlinks are not followed.
  */
 export function listWorktreeDirNames(repo: string): string[] {
+  // A remote project lists its worktree dirs over SSH (its key isn't a local
+  // path, so the local-root scan below would throw on the non-absolute key).
+  if (isRemoteRepoKey(repo)) {
+    const basePath = getRemoteRepoConfig(repo)?.basePath
+    if (!basePath) return []
+    return execHostForRepo(repo).readdir(remoteWorktreeRootFor(basePath))
+  }
   const names = new Set<string>()
   for (const root of managedWorktreeRootsFor(repo)) {
     try {
