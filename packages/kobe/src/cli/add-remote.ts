@@ -15,7 +15,7 @@ import { createInterface } from "node:readline"
 import { remoteControlSocketPath } from "../env.ts"
 import { RemoteExecHost, type RemoteSpec } from "../exec/exec-host.ts"
 import { getKeychainPassword, isKeychainSupported, remoteKeychainRef, setKeychainPassword } from "../exec/keychain.ts"
-import { addRemoteRepo } from "../state/repos.ts"
+import { addRemoteRepo, isRemoteProjectsEnabled } from "../state/repos.ts"
 
 export interface ParsedFlags {
   host?: string
@@ -108,6 +108,9 @@ async function promptHidden(prompt: string): Promise<string> {
 }
 
 export async function runAddRemote(args: readonly string[]): Promise<void> {
+  if (!isRemoteProjectsEnabled()) {
+    fail("remote projects are experimental and disabled — enable Settings → Dev → Experimental → Remote projects first")
+  }
   const f = parseRemoteFlags(args)
   if (!f.host) fail("--host is required")
   if (!f.user) fail("--user is required")

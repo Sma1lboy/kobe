@@ -38,6 +38,16 @@ export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
 }
 
 export function devRowCount(hasDaemon: boolean): number {
+  // Reset (always) + Restart (daemon only) + the Experimental remote-projects toggle.
+  return (hasDaemon ? 2 : 1) + 1
+}
+
+/**
+ * Row index of the Experimental → "Remote projects" toggle in the Dev section
+ * — last row, after Reset (0) and the daemon-only Restart (1). Kept last so it
+ * doesn't shift the existing reset/restart indices.
+ */
+export function experimentalRemoteRowIndex(hasDaemon: boolean): number {
   return hasDaemon ? 2 : 1
 }
 

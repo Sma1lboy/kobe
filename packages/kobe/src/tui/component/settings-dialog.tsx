@@ -54,6 +54,7 @@ import {
   bodyRowCount as countBodyRows,
   editorCustomRowIndex,
   editorKindRowIndex,
+  experimentalRemoteRowIndex,
   focusAccentRowIndex,
   soundRowIndex,
   surfaceChattabRowIndex,
@@ -232,6 +233,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleSound(): void {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
+  }
+
+  // Experimental: SSH-backed remote projects (off by default). Gates
+  // `kobe add --remote`; see docs/design/remote-projects.md.
+  function remoteProjectsEnabled(): boolean {
+    return props.kv.get("experimental.remoteProjects", false) === true
+  }
+
+  function toggleRemoteProjects(): void {
+    props.kv.set("experimental.remoteProjects", !remoteProjectsEnabled())
   }
 
   // Engines section: per-vendor launch command. Stored in the shared
@@ -522,6 +533,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (section() === "dev") {
       if (bodyRow() === 0) void confirmResetState(dialog, props.kv, renderer)
       else if (hasDaemon && bodyRow() === 1) void confirmRestartDaemon(dialog, props.orchestrator, renderer)
+      else if (bodyRow() === experimentalRemoteRowIndex(hasDaemon)) toggleRemoteProjects()
     }
   }
 
@@ -669,6 +681,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               hasDaemon={hasDaemon}
               confirmReset={() => void confirmResetState(dialog, props.kv, renderer)}
               confirmRestartDaemon={() => void confirmRestartDaemon(dialog, props.orchestrator, renderer)}
+              remoteProjectsEnabled={remoteProjectsEnabled}
+              toggleRemoteProjects={toggleRemoteProjects}
             />
           </Show>
         </box>

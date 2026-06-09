@@ -1,12 +1,14 @@
-import { mkdtempSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { kvStatePath } from "../../src/env.ts"
 import { execHostForRepo, remoteSpecFromConfig } from "../../src/exec/resolve.ts"
 import {
   addRemoteRepo,
   getRemoteRepoConfig,
   getSavedRepos,
+  isRemoteProjectsEnabled,
   isRemoteRepoKey,
   remoteRepoKey,
   resolveRepoRoot,
@@ -57,6 +59,27 @@ describe("addRemoteRepo", () => {
     expect(second.added).toBe(false)
     expect(getSavedRepos().filter((r) => r === "ssh://dev@box")).toHaveLength(1)
     expect(getRemoteRepoConfig("ssh://dev@box")?.basePath).toBe("/b")
+  })
+})
+
+describe("isRemoteProjectsEnabled", () => {
+  function writeState(obj: Record<string, unknown>): void {
+    const p = kvStatePath()
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(p, JSON.stringify(obj), "utf8")
+  }
+
+  it("is false by default / when the key is absent or not exactly true", () => {
+    expect(isRemoteProjectsEnabled()).toBe(false)
+    writeState({ "experimental.remoteProjects": false })
+    expect(isRemoteProjectsEnabled()).toBe(false)
+    writeState({ "experimental.remoteProjects": "1" })
+    expect(isRemoteProjectsEnabled()).toBe(false)
+  })
+
+  it("is true only when the flag is the boolean true", () => {
+    writeState({ "experimental.remoteProjects": true })
+    expect(isRemoteProjectsEnabled()).toBe(true)
   })
 })
 

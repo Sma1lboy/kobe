@@ -297,6 +297,17 @@ export function isRemoteRepoKey(key: string): boolean {
   return key.startsWith("ssh://")
 }
 
+/**
+ * Whether the experimental SSH-backed remote-projects feature is enabled
+ * (Settings → Dev → Experimental). Off by default. Stored as a boolean under
+ * the shared state.json `experimental.remoteProjects` key (written by the
+ * Settings dialog's reactive kv); read here cross-process so `kobe add
+ * --remote` can refuse when the feature is off. See `docs/design/remote-projects.md`.
+ */
+export function isRemoteProjectsEnabled(): boolean {
+  return load()["experimental.remoteProjects"] === true
+}
+
 /** The stable savedRepos key for a remote project: `ssh://user@host[:port]`. */
 export function remoteRepoKey(host: string, user: string, port?: number): string {
   return port ? `ssh://${user}@${host}:${port}` : `ssh://${user}@${host}`
