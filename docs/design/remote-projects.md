@@ -1,6 +1,7 @@
 # Remote projects (SSH-backed)
 
-> Status: **in progress** (branch `remote-projects`). Built phase-by-phase; see "Phases" + commit history.
+> Status: **phases 1–6 done, 7–8 remaining** (branch `remote-projects`). Built phase-by-phase; see "Phases" + commit history.
+> The headline path works (register → worktree-on-remote → engine-over-SSH); file/diff panes still degrade for remote. **Not yet tested against a live remote host.**
 > This is the design source of truth for the review. Written from the read-only dive (`docs/` + git history).
 
 ## Goal
@@ -71,14 +72,19 @@ type RemoteRepoConfig = { host: string; user: string; port?: number; basePath: s
 
 ## Phases (each its own commit, kept green)
 
-1. **ExecHost** — interface + `LocalExecHost` + `RemoteExecHost` + `RemoteSpec` + ssh argv/command construction + ControlMaster + `execHostForRepo` resolver. Unit-test the pure ssh-construction.
-2. **Keychain helper** — macOS `security` store/read/delete, DI + tests.
-3. **Data model** — `RemoteRepoConfig` in `state/repos.ts` (get/set, `ssh://` key handling), tests.
-4. **CLI** — `kobe add --remote --host --user [--port] --path [--key <path> | --password]`.
-5. **Remote worktree** — inject ExecHost into `GitWorktreeManager`; route its direct fs calls; branch `paths.ts` so a remote worktree root is under `basePath`; `ensureWorktree` resolves the ExecHost per repo.
-6. **Engine launch** — `wrapForRemote(engineCmd, spec)` in `session-layout.ts`; thread `remote?` through `EnsureSessionOpts`; apply at the THREE launch points (`ensureSession` create, `relaunchEngineInAllWindows`, `newChatTab` via a new `@kobe_remote` session tag); local-cwd fallback for `-c`.
-7. **FS panes over SSH** — `filetree/git.ts`, sidebar `worktree-changes.ts` (async + last-known cache for remote, keep sync fast-path for local), `git-head.ts`, ops diff/read.
-8. **Deferred / v1-degrade** — telemetry (auto-title / activity / cost read the engine transcript, which is on the **remote**; proxy via the existing `HistoryDeps` seam or degrade like a custom engine), the web diff route, the new-task dialog remote tab + sidebar remote-project card, the once-per-worktree init marker semantics on remote.
+**Phases 1–6 are DONE** (branch `remote-projects`). The headline behavior works end to end: `kobe add --remote …` registers an SSH project; clicking it / creating a task materialises the worktree **on the remote** and launches the engine in a local tmux pane via `ssh -tt … 'cd <wt> && <engine>'`. All local behavior is unchanged (454 fast tests + web build green). **Untested against a live remote host** — no remote was available; the SSH paths are exercised only by fake-`Spawner`/fake-`ExecHost` unit tests.
+
+1. **ExecHost** ✅ — `exec/exec-host.ts`: `LocalExecHost` / `RemoteExecHost` / `RemoteSpec` + pure ssh construction (`sshConnectArgs`, `remoteShellCommand`, `shQuote`) + ControlMaster `ensureReady` (sshpass `-e` once). `exec/resolve.ts`: `execHostForRepo` / `execHostForWorktreePath` / `remoteSpecFromConfig`. Tests: `test/exec/exec-host.test.ts`.
+2. **Keychain** ✅ — `exec/keychain.ts`: macOS `security` store/read/delete behind injected `KeychainDeps`, non-darwin degrades to no-op. Tests: `test/exec/keychain.test.ts`.
+3. **Data model** ✅ — `state/repos.ts`: `RemoteRepoConfig` + `remoteRepos` map, synthetic `ssh://user@host[:port]` savedRepos key, `resolveRepoRoot` passes ssh:// through. `remoteControlSocketPath` in `env.ts`. Tests: `test/exec/remote-repos.test.ts`.
+4. **CLI** ✅ — `cli/add-remote.ts`: `kobe add --remote --host --user --path [--port] [--key [path] | --password]`. Password prompted with echo off → keychain; best-effort connectivity probe. Tests: `test/cli/add-remote.test.ts`.
+5. **Remote worktree** ✅ — `GitWorktreeManager` routes git + fs through an injected `WorktreeExecDeps`; remote worktrees live under `<basePath>/.kobe/worktrees`; `paths.ts` `remoteWorktreePathFor` + remote-aware `listWorktreeDirNames`. Tests: `test/orchestrator/worktree-remote.test.ts` + all 60 existing worktree tests still pass.
+6. **Engine launch** ✅ — `tmux.ts` `wrapEngineLaunch` (ssh-wrap via the ControlMaster, no secret in the pane command) + `localSpawnCwd` (panes spawn in a LOCAL dir, the worktree is remote) applied at all three launch points + every `-c` site; `@kobe_remote` session tag re-wraps chat tabs. `EnsureSessionOpts.remoteKey` set at all six call sites. Tasks-pane `existsSync` gates became `worktreeCwdUsable` so a remote task isn't blocked. Orchestrator main task + `ensureWorktree` resolve a remote project to its `basePath`.
+
+### Remaining (not yet built)
+
+7. **FS panes over SSH** — `filetree/git.ts`, sidebar `worktree-changes.ts` (the 2s sync poll must become **async + last-known cache** for remote — a sync SSH call would freeze the TUI; keep the sync fast-path for local), `git-head.ts`, ops diff/read (`Bun.file().text()` → `cat` over SSH). Until this lands, a remote task's **Ops/file panes degrade to a shell** (the `cd <remoteWt>` fails locally) — the engine pane itself works. The `ExecHost.readFile`/`run` seam is ready; the work is routing these pane readers through `execHostForWorktreePath(cwd)` and converting the sidebar chip to async.
+8. **Deferred / v1-degrade** — **repo init script + first prompt on remote** (currently skipped for remote in `ensureSession` — they run locally today; the init must move inside the ssh command and the once-per-worktree marker must key on the remote worktree). Telemetry (auto-title / activity / cost read the engine transcript, which is on the **remote**; proxy via `HistoryDeps` or degrade like a custom engine). The web diff route. The new-task dialog remote tab + sidebar remote-project card (today a remote project is added only via `kobe add --remote`).
 
 ## Known traps (from the dive)
 
