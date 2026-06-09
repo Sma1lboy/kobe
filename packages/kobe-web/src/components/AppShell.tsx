@@ -93,12 +93,26 @@ function matchesTask(task: Task, query: string): boolean {
   return haystack.includes(query.toLowerCase())
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({
+  children,
+  suffix,
+}: {
+  children: React.ReactNode
+  suffix?: string
+}) {
   return (
-    <div className="flex items-center px-3 py-2">
+    <div className="flex items-center gap-2 px-3 py-2">
       <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
         {children}
       </span>
+      {suffix ? (
+        <>
+          <span className="h-px flex-1 bg-line" />
+          <span className="font-mono text-[10px] font-bold uppercase text-primary">
+            {suffix}
+          </span>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -249,7 +263,13 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
                 onClick={() => open(t.id)}
               />
             ))}
-            {worktrees.length > 0 && <SectionHeader>Worktrees</SectionHeader>}
+            {worktrees.length > 0 && (
+              <SectionHeader
+                suffix={sortMode === "default" ? undefined : sortMode}
+              >
+                Worktrees
+              </SectionHeader>
+            )}
             {worktrees.map((t) => (
               <TaskRow
                 key={t.id}

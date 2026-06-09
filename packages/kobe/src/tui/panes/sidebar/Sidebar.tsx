@@ -611,14 +611,19 @@ export function Sidebar(props: SidebarProps) {
   // section from the TASKS section. `topPad` adds a blank line above so the
   // TASKS header lifts off the tight project list; the PROJECTS header sits
   // flush under the view tabs.
-  const SectionHeader = (p: { label: string; topPad?: boolean }) => (
+  const SectionHeader = (p: { label: string; suffix?: string; topPad?: boolean }) => (
     <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} paddingTop={p.topPad ? 1 : 0}>
       <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
         {p.label}
       </text>
       <text fg={theme.border} wrapMode="none">
-        {"─".repeat(Math.max(2, effectiveWidth() - 9 - p.label.length))}
+        {"─".repeat(Math.max(2, effectiveWidth() - 10 - p.label.length - (p.suffix?.length ?? 0)))}
       </text>
+      <Show when={p.suffix}>
+        <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none">
+          {p.suffix}
+        </text>
+      </Show>
     </box>
   )
 
@@ -886,7 +891,11 @@ export function Sidebar(props: SidebarProps) {
                     <SectionHeader label="PROJECTS" />
                   </Show>
                   <Show when={showTasksHeader()}>
-                    <SectionHeader label="TASKS" topPad={firstTaskFlatIndex() > 0} />
+                    <SectionHeader
+                      label="TASKS"
+                      suffix={sortMode() === "default" ? undefined : sortMode()}
+                      topPad={firstTaskFlatIndex() > 0}
+                    />
                   </Show>
                   {/* Interactive row body. The cursor row carries a SUBTLE
                       `backgroundElement` tint (a quiet block, not the old
