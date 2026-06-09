@@ -166,6 +166,14 @@ describe("runChatTabNamingPass", () => {
     expect(renames).toEqual([])
   })
 
+  it("skips an archived task before any tmux/disk work", async () => {
+    const id = await makeTask("/wt/a")
+    await store.update(id, { archived: true })
+    const { deps, renames } = fakeDeps({ windows: "1\tsess-1\n", titleFromSessionId: () => "should not run" })
+    await runChatTabNamingPass(orch, deps)
+    expect(renames).toEqual([])
+  })
+
   it("skips a task that has no worktree yet", async () => {
     await makeTask(undefined) // a task with no worktree yet
     const { deps, renames } = fakeDeps({ windows: "1\tsess-1\n", titleFromSessionId: () => "should not run" })
