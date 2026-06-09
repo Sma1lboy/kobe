@@ -18,7 +18,14 @@
 
 import { homedir } from "node:os"
 import { kobeCliInvocation } from "@/cli/invocation"
-import { TASKS_PANE_WIDTH, homeWelcomeCommand, keepAlive, tasksPaneCommand } from "./session-layout"
+import {
+  TASKS_PANE_WIDTH,
+  TASKS_WIDTH_OPTION,
+  clampTasksPaneWidth,
+  homeWelcomeCommand,
+  keepAlive,
+  tasksPaneCommand,
+} from "./session-layout"
 
 /**
  * Dedicated tmux socket name — isolates kobe's server from the user's,
@@ -244,6 +251,33 @@ export async function getSessionOptions(
   return values
 }
 
+/**
+ * Set a server-scoped (global to the whole tmux server) user option. Unlike a
+ * session option, one value is shared by every task session on the socket and
+ * outlives any single session — the natural home for a cross-task UI preference
+ * like the global Tasks-rail width.
+ */
+export async function setServerOption(option: string, value: string): Promise<void> {
+  await runTmux(["set-option", "-s", option, value])
+}
+
+/** Read a server-scoped user option. `""` when unset (tmux errors on unset). */
+export async function getServerOption(option: string): Promise<string> {
+  const { code, stdout } = await runTmuxCapturing(["show-options", "-sv", option])
+  return code === 0 ? stdout.trim() : ""
+}
+
+/**
+ * The user's GLOBAL Tasks-rail width in cells — one value shared by every task
+ * session (server option {@link TASKS_WIDTH_OPTION}), so the rail is the same
+ * width in every task. Falls back to the convention default when unset/garbage.
+ */
+export async function globalTasksPaneWidth(): Promise<number> {
+  const raw = await getServerOption(TASKS_WIDTH_OPTION)
+  const n = Number.parseInt(raw, 10)
+  return Number.isFinite(n) && n > 0 ? clampTasksPaneWidth(n) : TASKS_PANE_WIDTH
+}
+
 /** Per-pane user option marking a pane's role (set by `ensureSession`). */
 export const PANE_ROLE_OPTION = "@kobe_role"
 /** Back-compat alias — older callers imported `CLAUDE_ROLE_OPTION`. */
@@ -448,6 +482,8 @@ export async function ensureFallbackSession(): Promise<string> {
   ])
   const mainPane = r0.stdout.trim()
   if (mainPane) {
+    // Match the user's global rail width so home looks like the tasks do.
+    const tasksWidth = await globalTasksPaneWidth()
     const r1 = await runTmuxCapturing([
       "split-window",
       "-h",
@@ -455,7 +491,7 @@ export async function ensureFallbackSession(): Promise<string> {
       "-t",
       mainPane,
       "-l",
-      `${TASKS_PANE_WIDTH}`,
+      `${tasksWidth}`,
       "-c",
       SAFE_SPAWN_CWD,
       "-P",

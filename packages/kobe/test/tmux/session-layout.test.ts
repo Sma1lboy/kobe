@@ -8,6 +8,9 @@
 import { describe, expect, test } from "vitest"
 import {
   TASKS_PANE_WIDTH,
+  TASKS_PANE_WIDTH_MAX,
+  TASKS_PANE_WIDTH_MIN,
+  clampTasksPaneWidth,
   engineLaunchLine,
   fallbackOpsScript,
   keepAlive,
@@ -22,6 +25,23 @@ import {
 describe("layout constants", () => {
   test("keeps the direct-tmux Tasks pane wide enough for labels", () => {
     expect(TASKS_PANE_WIDTH).toBe(32)
+  })
+})
+
+describe("clampTasksPaneWidth", () => {
+  test("passes a sane in-range width through (rounded)", () => {
+    expect(clampTasksPaneWidth(48)).toBe(48)
+    expect(clampTasksPaneWidth(48.6)).toBe(49)
+  })
+
+  test("clamps below the minimum and above the maximum", () => {
+    expect(clampTasksPaneWidth(TASKS_PANE_WIDTH_MIN - 5)).toBe(TASKS_PANE_WIDTH_MIN)
+    expect(clampTasksPaneWidth(TASKS_PANE_WIDTH_MAX + 100)).toBe(TASKS_PANE_WIDTH_MAX)
+  })
+
+  test("falls back to the convention default on garbage", () => {
+    expect(clampTasksPaneWidth(Number.NaN)).toBe(TASKS_PANE_WIDTH)
+    expect(clampTasksPaneWidth(Number.POSITIVE_INFINITY)).toBe(TASKS_PANE_WIDTH)
   })
 })
 

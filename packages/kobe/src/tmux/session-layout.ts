@@ -25,6 +25,25 @@
  */
 export const TASKS_PANE_WIDTH = 32
 
+/**
+ * Server-scoped tmux user option holding the user's GLOBAL Tasks-rail width in
+ * cells. One value shared by every task session, so the rail stays the same
+ * width across task switches: the user drags it once and it sticks everywhere
+ * (captured on switch-away, applied on every session build/reuse). Unset → the
+ * `TASKS_PANE_WIDTH` convention default.
+ */
+export const TASKS_WIDTH_OPTION = "@kobe_tasks_width"
+
+/** Sane bounds for a user-chosen Tasks-rail width (cells). */
+export const TASKS_PANE_WIDTH_MIN = 16
+export const TASKS_PANE_WIDTH_MAX = 120
+
+/** Clamp a candidate Tasks-rail width to the sane range; default on garbage. */
+export function clampTasksPaneWidth(width: number): number {
+  if (!Number.isFinite(width)) return TASKS_PANE_WIDTH
+  return Math.max(TASKS_PANE_WIDTH_MIN, Math.min(TASKS_PANE_WIDTH_MAX, Math.round(width)))
+}
+
 /** Left (claude) pane width as a % of the window. */
 export const CLAUDE_PANE_PERCENT = 60
 

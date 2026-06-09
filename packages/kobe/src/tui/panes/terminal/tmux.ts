@@ -38,6 +38,7 @@ import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
   getSessionOptions,
+  globalTasksPaneWidth,
   newWindow,
   paneIdByRole,
   runTmux,
@@ -46,6 +47,7 @@ import {
   runTmuxSequenceCapturing,
   sendKeys,
   sessionExists,
+  setServerOption,
   setSessionOption,
   setWindowOption,
   windowCount,
@@ -54,7 +56,8 @@ import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
-  TASKS_PANE_WIDTH,
+  TASKS_WIDTH_OPTION,
+  clampTasksPaneWidth,
   engineLaunchLine,
   keepAlive,
   opsPaneCommand,
@@ -481,24 +484,65 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
   return true
 }
 
-/** Heal existing sessions built before the direct-tmux Tasks pane widened. */
+/**
+ * Force every Tasks rail in a session to the global width.
+ *
+ * Runs on each session build/reuse (every task switch / re-attach). The point
+ * is cross-task CONSISTENCY: the rail is one shared size, so switching never
+ * changes its width. The size itself is user-adjustable — a manual drag is
+ * captured into the global option on switch-away ({@link captureTasksPaneWidth})
+ * and applied here on the next reuse — so this is what makes a resize "stick"
+ * everywhere rather than reset. Idempotent: panes already at the target width
+ * are skipped, so a healthy switch issues no resize.
+ */
 async function healTaskPaneWidths(session: string): Promise<void> {
+  const target = await globalTasksPaneWidth()
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-s",
     "-t",
     `=${session}`,
     "-F",
-    "#{pane_id}\t#{@kobe_role}",
+    "#{pane_id}\t#{@kobe_role}\t#{pane_width}",
   ])
   if (code !== 0) return
-  const taskPanes = stdout
+  const mismatched = stdout
     .split("\n")
     .map((line) => line.split("\t"))
     .filter(([, role]) => role?.trim() === "tasks")
+    .filter(([, , width]) => Number.parseInt(width?.trim() ?? "", 10) !== target)
     .map(([id]) => id?.trim())
     .filter((id): id is string => !!id)
-  await runTmuxSequence(taskPanes.map((pane) => ["resize-pane", "-t", pane, "-x", `${TASKS_PANE_WIDTH}`]))
+  if (mismatched.length === 0) return
+  await runTmuxSequence(mismatched.map((pane) => ["resize-pane", "-t", pane, "-x", `${target}`]))
+}
+
+/**
+ * Persist a session's CURRENT (active-window) Tasks-rail width as the new
+ * global width, so a manual resize in one task becomes the shared width every
+ * other task uses. Called when switching AWAY from a task. No-op when the
+ * session has no Tasks pane or the width is unreadable; the value is clamped to
+ * a sane range before it is stored.
+ */
+export async function captureTasksPaneWidth(session: string): Promise<void> {
+  // No `-s`: the active window's panes, i.e. the rail the user can actually see
+  // and drag — not stale siblings in background chat-tab windows.
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{@kobe_role}\t#{pane_width}",
+  ])
+  if (code !== 0) return
+  const row = stdout
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .find(([role]) => role?.trim() === "tasks")
+  if (!row) return
+  const width = Number.parseInt(row[1]?.trim() ?? "", 10)
+  if (!Number.isFinite(width) || width <= 0) return
+  await setServerOption(TASKS_WIDTH_OPTION, `${clampTasksPaneWidth(width)}`)
 }
 
 type KobePaneRow = {
@@ -730,6 +774,9 @@ async function buildPanesAround(
   // position when the Tasks pane is inserted on the left, so the
   // monitor can't rely on "first pane" to find claude (KOB-233).
   const envPrefix = inheritedEnvPrefix()
+  // Build the rail at the user's global width so a brand-new task matches the
+  // size every existing task already shows (consistency across switches).
+  const tasksWidth = await globalTasksPaneWidth()
 
   // Tasks pane to the LEFT (`-hb` inserts before). Task list that
   // switch-clients between task sessions + creates tasks. Tagged
@@ -760,8 +807,9 @@ async function buildPanesAround(
       claudePane,
       "-l",
       // Fixed cell width (no `%`) so the Tasks rail is the same size in every
-      // window + across engine rebuilds (KOB-248).
-      `${TASKS_PANE_WIDTH}`,
+      // window + across engine rebuilds (KOB-248). The width is the user's
+      // global preference, applied uniformly so every task shows one size.
+      `${tasksWidth}`,
       "-c",
       args.cwd,
       "-P",
