@@ -20,7 +20,9 @@
  * Everything is rendered by tmux, so claude repaints at native speed
  * without kobe's outer renderer fighting for the TTY.
  *
- * `Ctrl+Q` detaches back to the launching shell; `Ctrl+h/j/k/l` move
+ * `Ctrl+Q` is two-stage: it first focuses the current window's Tasks
+ * pane, and only detaches back to the launching shell on a second press
+ * from the Tasks pane. `Ctrl+h/j/k/l` move
  * between panes. All bindings are server-scoped on `-L kobe`, so the
  * user's own tmux is untouched. Sessions persist across detach AND a
  * kobe restart.
@@ -354,7 +356,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
   // kobe` socket so the feature doesn't depend on the user's config.
-  // No-prefix Ctrl+Q detaches back to the launching shell.
+  // No-prefix Ctrl+Q is two-stage: focus the current window's Tasks pane,
+  // then detach back to the launching shell on a second press from there.
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
   // vim-tmux-navigator convention. (Ctrl+1/2/3 was tried first but
   // terminals can't encode Ctrl+<digit> without the kitty protocol, so
@@ -386,6 +389,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const newChatTabCommand = `${envStr}${invStr} new-chattab --session '#{session_name}'`
   const chooseEngineCommand = `${newChatTabCommand} --vendor '%%'`
   const chooseEngineTmuxCommand = `run-shell ${shellQuote(chooseEngineCommand)}`
+  // Two-stage Ctrl+Q: `kobe focus-tasks` selects the current window's Tasks
+  // pane (the else branch of the if-shell below). The "are we already on the
+  // Tasks pane?" test is the native `@kobe_role` pane tag, so only the
+  // detach branch is reached once focus is on Tasks.
+  const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
+  const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
   // `<prefix> f` = quick-create: focus the Tasks pane and open the
   // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
   // the tmux world). `kobe quick-create` selects the tasks pane and
@@ -415,7 +424,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],
     ["set-option", "-g", "window-status-current-format", CHAT_TAB_STATUS_CURRENT_FORMAT],
     ["set-option", "-g", "mouse", "on"],
-    ["bind-key", "-n", "C-q", "detach-client"],
+    // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
+    // focus the current window's Tasks pane first. `#{@kobe_role}` is the
+    // active pane's role tag.
+    ["bind-key", "-n", "C-q", "if-shell", "-F", "#{==:#{@kobe_role},tasks}", "detach-client", focusTasksTmuxCommand],
     ["bind-key", "-n", "C-h", "select-pane", "-L"],
     ["bind-key", "-n", "C-j", "select-pane", "-D"],
     ["bind-key", "-n", "C-k", "select-pane", "-U"],
@@ -918,17 +930,31 @@ async function rememberSessionVendor(session: string, taskId: string | undefined
 }
 
 /**
- * Quick-create (Ctrl+F): focus the active window's Tasks pane and open
+ * Focus the active window's Tasks pane. The first stage of two-stage
+ * Ctrl+Q (`kobe focus-tasks`): the if-shell binding only reaches this when
+ * the active pane is NOT already the Tasks pane, so this is an
+ * unconditional select. No-op when the session is gone or the active window
+ * has no tagged Tasks pane (legacy session). Returns the pane id it
+ * selected, or `""`.
+ */
+export async function selectTasksPane(session: string): Promise<string> {
+  if (!(await sessionExists(session))) return ""
+  const tasksPane = await paneIdByRole(session, "tasks")
+  if (!tasksPane) return ""
+  await runTmux(["select-pane", "-t", tasksPane])
+  return tasksPane
+}
+
+/**
+ * Quick-create (`<prefix> f`): focus the active window's Tasks pane and open
  * its new-task dialog. Implemented by selecting the tasks pane and
  * injecting an `n` keystroke — the Tasks pane's own `n` binding then
  * runs `createTask`, so the dialog and its logic are identical to
  * pressing `n` in the pane directly. Invoked by `kobe quick-create`
- * (the Ctrl+F handler), which passes only the session name.
+ * (the `<prefix> f` handler), which passes only the session name.
  */
 export async function quickCreate(session: string): Promise<void> {
-  if (!(await sessionExists(session))) return
-  const tasksPane = await paneIdByRole(session, "tasks")
+  const tasksPane = await selectTasksPane(session)
   if (!tasksPane) return
-  await runTmux(["select-pane", "-t", tasksPane])
   await sendKeys(tasksPane, "n")
 }

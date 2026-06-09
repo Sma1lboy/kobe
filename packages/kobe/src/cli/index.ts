@@ -24,9 +24,9 @@
  * NOT fall through to launching the TUI).
  *
  * Internal subcommands fired by tmux key bindings inside a task session
- * (not meant for direct use): `new-chattab`, `quick-create`, `tasks`,
- * `ops` — each takes the session/worktree as flags. `hook` is fired by an
- * engine's own hooks inside a worktree to report activity events.
+ * (not meant for direct use): `new-chattab`, `quick-create`, `focus-tasks`,
+ * `tasks`, `ops` — each takes the session/worktree as flags. `hook` is fired
+ * by an engine's own hooks inside a worktree to report activity events.
  *
  * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
  * a prompt via `tmux send-keys` into the task's engine pane, not the
@@ -426,6 +426,22 @@ async function main(): Promise<void> {
     }
     const { quickCreate } = await import("../tui/panes/terminal/tmux.ts")
     await quickCreate(session)
+    return
+  }
+  if (subcommand === "focus-tasks") {
+    // First stage of two-stage Ctrl+Q from inside a task's tmux session:
+    // focus the current window's Tasks pane. The if-shell binding only
+    // invokes this when the active pane is NOT already the Tasks pane (it
+    // detaches there instead), so this is an unconditional select. Reads
+    // `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe focus-tasks: --session <name> is required")
+      process.exit(2)
+    }
+    const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
+    await selectTasksPane(session)
     return
   }
   if (subcommand === "tasks") {

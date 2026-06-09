@@ -99,7 +99,7 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 | Chord | Scope | Action |
 | --- | --- | --- |
 | `ctrl+h/j/k/l` | no-prefix tmux | Move between Tasks / engine / Ops / shell panes directionally. |
-| `ctrl+q` | no-prefix tmux | Detach to the launching shell; the session keeps running. |
+| `ctrl+q` | no-prefix tmux | Two-stage: focus the current window's Tasks pane; press again from the Tasks pane to detach to the launching shell (session keeps running). `prefix d` / `ctrl+b d` still detaches in one step. |
 | `ctrl+t` | no-prefix tmux | Create a same-engine ChatTab window for the current task/worktree. |
 | `ctrl+shift+t` | no-prefix tmux, terminal-dependent | Prompt for engine, then create a ChatTab window. |
 | tmux `prefix T` | tmux prefix fallback | Same engine picker as `ctrl+shift+t`, for terminals that do not forward the shifted control chord. |
