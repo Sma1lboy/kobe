@@ -40,15 +40,25 @@ import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { topLevelUsage } from "./usage.ts"
 
-async function runAddSubcommand(arg: string | undefined): Promise<void> {
+const ADD_USAGE =
+  "Usage: kobe add [path]\n" +
+  "       kobe add --remote --host <host> --user <user> --path <basePath> [--port N] [--key <path> | --password]\n\n" +
+  "Save a repo for the new-task picker. With --remote, register an SSH-backed\n" +
+  "project whose worktrees + engine run on <host> under <basePath>.\n"
+
+async function runAddSubcommand(rest: readonly string[]): Promise<void> {
+  const arg = rest[0]
   if (arg === "--help" || arg === "-h" || arg === "help") {
-    process.stdout.write(
-      "Usage: kobe add [path]\n\nSave a repo path (default: the current directory) for the new-task picker.\n",
-    )
+    process.stdout.write(ADD_USAGE)
+    return
+  }
+  if (arg === "--remote") {
+    const { runAddRemote } = await import("./add-remote.ts")
+    await runAddRemote(rest.slice(1))
     return
   }
   if (arg?.startsWith("-")) {
-    process.stderr.write(`kobe add: unknown flag "${arg}"\n\nUsage: kobe add [path]\n`)
+    process.stderr.write(`kobe add: unknown flag "${arg}"\n\n${ADD_USAGE}`)
     process.exit(2)
   }
   const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
@@ -304,7 +314,7 @@ async function main(): Promise<void> {
   }
 
   if (subcommand === "add") {
-    await runAddSubcommand(rest[0])
+    await runAddSubcommand(rest)
     return
   }
   if (subcommand === "adopt") {
