@@ -38,6 +38,10 @@ import { kvStatePath } from "../env.ts"
  *     on macOS rather than being rewritten to the canonical form).
  */
 export function resolveRepoRoot(absPath: string): string {
+  // A remote project's key is a synthetic `ssh://…` URL, not a local path —
+  // there is nothing to canonicalize (and no local git repo to ask). Pass it
+  // through untouched so it round-trips as the stable savedRepos key.
+  if (isRemoteRepoKey(absPath)) return absPath
   const r = spawnSync("git", ["rev-parse", "--show-toplevel"], {
     cwd: absPath,
     encoding: "utf8",
@@ -263,4 +267,82 @@ export function removeSavedRepo(absPath: string): RemoveResult {
   state.savedRepos = cur.filter((p) => p !== absPath)
   save(state)
   return { removed: true, path: absPath, total: cur.length - 1 }
+}
+
+// ── Remote projects (SSH-backed) ─────────────────────────────────────────────
+//
+// A remote project is a saved repo whose worktrees + engine live on another
+// host over SSH. Its `savedRepos` key is a synthetic `ssh://user@host:port`
+// URL (it has no local path), and its connection details live under the
+// separate `remoteRepos` map. The PASSWORD is never stored here — only a
+// `keychainRef` pointing at the OS keychain (see `exec/keychain.ts`). See
+// `docs/design/remote-projects.md`.
+
+/** Persisted auth: a key path, or a pointer to a keychain-stored password. */
+export type RemoteAuthConfig =
+  | { readonly kind: "key"; readonly keyPath?: string }
+  | { readonly kind: "password"; readonly keychainRef: { readonly service: string; readonly account: string } }
+
+export interface RemoteRepoConfig {
+  readonly host: string
+  readonly user: string
+  readonly port?: number
+  /** The directory on the remote under which task worktrees are created. */
+  readonly basePath: string
+  readonly auth: RemoteAuthConfig
+}
+
+/** True for a synthetic remote-project key (`ssh://…`). */
+export function isRemoteRepoKey(key: string): boolean {
+  return key.startsWith("ssh://")
+}
+
+/**
+ * Whether the experimental SSH-backed remote-projects feature is enabled
+ * (Settings → Dev → Experimental). Off by default. Stored as a boolean under
+ * the shared state.json `experimental.remoteProjects` key (written by the
+ * Settings dialog's reactive kv); read here cross-process so `kobe add
+ * --remote` can refuse when the feature is off. See `docs/design/remote-projects.md`.
+ */
+export function isRemoteProjectsEnabled(): boolean {
+  return load()["experimental.remoteProjects"] === true
+}
+
+/** The stable savedRepos key for a remote project: `ssh://user@host[:port]`. */
+export function remoteRepoKey(host: string, user: string, port?: number): string {
+  return port ? `ssh://${user}@${host}:${port}` : `ssh://${user}@${host}`
+}
+
+function readRemoteRepos(state: Record<string, unknown>): Record<string, RemoteRepoConfig> {
+  const raw = state.remoteRepos
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  return raw as Record<string, RemoteRepoConfig>
+}
+
+/** Read a remote project's connection config, or null when the key isn't remote. */
+export function getRemoteRepoConfig(key: string): RemoteRepoConfig | null {
+  return readRemoteRepos(load())[key] ?? null
+}
+
+/** All remote-project configs, keyed by their `ssh://` savedRepos key. */
+export function getRemoteRepos(): Readonly<Record<string, RemoteRepoConfig>> {
+  return readRemoteRepos(load())
+}
+
+/**
+ * Register a remote project: store its config under `remoteRepos[key]` AND add
+ * the synthetic key to `savedRepos` so it shows up as a project. Idempotent on
+ * the savedRepos side; the config is overwritten so re-adding updates it.
+ */
+export function addRemoteRepo(config: RemoteRepoConfig): { key: string; added: boolean } {
+  const key = remoteRepoKey(config.host, config.user, config.port)
+  const state = load()
+  const repos = { ...readRemoteRepos(state) }
+  repos[key] = config
+  state.remoteRepos = repos
+  const saved = getSavedRepos()
+  const added = !saved.includes(key)
+  if (added) state.savedRepos = [...saved, key]
+  save(state)
+  return { key, added }
 }

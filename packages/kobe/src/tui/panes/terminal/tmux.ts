@@ -35,7 +35,9 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
-import { worktreeInitMarkerPath } from "@/env"
+import { homeDir, worktreeInitMarkerPath } from "@/env"
+import { execHostForRepo, execHostForWorktreePath } from "@/exec/resolve"
+import { isRemoteRepoKey } from "@/state/repos"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
@@ -112,6 +114,37 @@ export const CHAT_TAB_RENAME_BINDING = [
 // `availableEngineIds()` in the `new-chattab` handler).
 export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")}/…)`
 
+/** Session tag carrying a remote project's key (`ssh://…`) so chat tabs + the
+ * vendor-switch respawn re-wrap the engine over SSH. Absent for local tasks. */
+const REMOTE_KEY_OPTION = "@kobe_remote"
+
+/**
+ * The LOCAL directory a tmux pane is spawned in (`-c`). For a LOCAL task this
+ * is the worktree itself. For a REMOTE task the worktree path lives on another
+ * host and can't be `cd`'d locally — tmux would refuse to spawn — so panes
+ * spawn in the local home dir while the engine pane's wrapped `ssh … 'cd <wt>'`
+ * carries the real remote dir. Pure for local paths → zero regression.
+ */
+function localSpawnCwd(cwd: string): string {
+  return execHostForWorktreePath(cwd).isRemote ? homeDir() : cwd
+}
+
+/**
+ * Wrap a built engine command so it runs on the remote host over the project's
+ * multiplexed SSH connection (`ssh -tt … 'cd <remoteWt> && <engine>'`). Returns
+ * the command unchanged for a local task (no `remoteKey`, or the key resolves
+ * local). Opens the ControlMaster once via `ensureReady` so the pane's ssh
+ * reuses it with no re-auth (no secret in the pane command). See
+ * `docs/design/remote-projects.md`.
+ */
+function wrapEngineLaunch(engineCmd: string, remoteKey: string | undefined, remoteCwd: string): string {
+  if (!remoteKey || !isRemoteRepoKey(remoteKey)) return engineCmd
+  const host = execHostForRepo(remoteKey)
+  if (!host.isRemote) return engineCmd
+  host.ensureReady()
+  return host.wrapCommand(engineCmd, { tty: true, cwd: remoteCwd })
+}
+
 export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
   ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
   ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
@@ -172,6 +205,14 @@ export interface EnsureSessionOpts {
    * hard-coded `claude`.
    */
   readonly vendor?: string
+  /**
+   * Remote project key (`ssh://user@host[:port]`) when this task belongs to a
+   * remote project — the engine then launches over SSH on the remote host and
+   * every pane spawns in a local dir (the worktree is remote). Absent/undefined
+   * for a local task (the common case; behavior unchanged). Resolve via
+   * `isRemoteRepoKey(task.repo) ? task.repo : undefined` at the call site.
+   */
+  readonly remoteKey?: string
   /**
    * Per-repo init script woven before the engine on a FRESH session (runs
    * in the same shell so `export`s reach the engine; once-per-worktree via
@@ -267,7 +308,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // --target-pane stays valid (KOB-232). Falls through to a full rebuild if
     // no engine pane is found to respawn.
     if (worktreeOk && !vendorOk && opts.command.length > 0) {
-      if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
+      if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, opts.remoteKey)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
         await healTaskPaneWidths(opts.name)
         await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
@@ -304,22 +345,28 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // to its transcript and auto-named from its first prompt (KOB). No-op for
   // codex/copilot or a command that already pins its session.
   const launch = withClaudeSessionId(opts.command, opts.vendor)
+  // Remote task: the engine runs over SSH on the remote host (`ssh … 'cd <wt>
+  // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
+  // remote. The repo's init script is deferred for remote (it runs locally
+  // today — see docs/design/remote-projects.md phase 8), so it's skipped here.
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launch.argv), opts.remoteKey, opts.cwd)
+  const remote = Boolean(opts.remoteKey && isRemoteRepoKey(opts.remoteKey))
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
     "-s",
     opts.name,
     "-c",
-    opts.cwd,
+    localSpawnCwd(opts.cwd),
     ...tmuxInitialSizeArgs(),
     "-P",
     "-F",
     "#{pane_id}",
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(shellQuoteArgv(launch.argv), {
-      initScript: opts.initScript,
-      markerPath: opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+    engineLaunchLine(engineCmd, {
+      initScript: remote ? undefined : opts.initScript,
+      markerPath: !remote && opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
     }),
   ])
   const pane0 = r0.stdout.trim()
@@ -335,6 +382,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(opts.taskId ? ([["set-option", "-t", opts.name, "@kobe_task", opts.taskId]] as const) : []),
     ["set-option", "-t", opts.name, "@kobe_worktree", opts.cwd],
     ...(opts.vendor ? ([["set-option", "-t", opts.name, "@kobe_vendor", opts.vendor]] as const) : []),
+    ...(remote ? ([["set-option", "-t", opts.name, REMOTE_KEY_OPTION, opts.remoteKey as string]] as const) : []),
   ])
 
   await buildPanesAround(pane0, {
@@ -491,7 +539,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
  * multi-window session without `kill-session` dropping sibling chat tabs
  * (KOB-232).
  */
-async function relaunchEngineInAllWindows(session: string, cwd: string, command: readonly string[]): Promise<boolean> {
+async function relaunchEngineInAllWindows(
+  session: string,
+  cwd: string,
+  command: readonly string[],
+  remoteKey?: string,
+): Promise<boolean> {
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-s",
@@ -508,10 +561,11 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
     .map(([id]) => id?.trim())
     .filter((id): id is string => !!id)
   if (enginePanes.length === 0) return false
-  const cmd = keepAlive(shellQuoteArgv(command))
+  const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(command), remoteKey, cwd))
   for (const pane of enginePanes) {
-    // `-k` kills the old engine process; `-c` keeps the worktree cwd.
-    await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
+    // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
+    // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
+    await runTmux(["respawn-pane", "-k", "-c", localSpawnCwd(cwd), "-t", pane, cmd])
   }
   return true
 }
@@ -606,7 +660,7 @@ async function healKobePaneVersions(
           "-t",
           tasksPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
         ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
@@ -622,7 +676,7 @@ async function healKobePaneVersions(
           "-t",
           opsPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(
             envPrefix +
               opsPaneCommand({
@@ -688,7 +742,7 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
           "-t",
           tasksPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
         ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
@@ -711,7 +765,7 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
           "-t",
           opsPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(
             envPrefix +
               opsPaneCommand({
@@ -798,7 +852,7 @@ async function buildPanesAround(
       // window + across engine rebuilds (KOB-248).
       `${TASKS_PANE_WIDTH}`,
       "-c",
-      args.cwd,
+      localSpawnCwd(args.cwd),
       "-P",
       "-F",
       "tasks=#{pane_id}",
@@ -812,13 +866,13 @@ async function buildPanesAround(
       "-l",
       `${100 - CLAUDE_PANE_PERCENT}%`,
       "-c",
-      args.cwd,
+      localSpawnCwd(args.cwd),
       "-P",
       "-F",
       "ops=#{pane_id}",
       opsCmd,
     ],
-    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", args.cwd],
+    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", localSpawnCwd(args.cwd)],
     ["select-pane", "-t", claudePane],
   ])
   const ids = Object.fromEntries(
@@ -847,9 +901,15 @@ async function buildPanesAround(
  */
 export async function newChatTab(session: string, vendorOverride?: VendorId): Promise<void> {
   if (!(await sessionExists(session))) return
-  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
+  const sessionOptions = await getSessionOptions(session, [
+    "@kobe_worktree",
+    "@kobe_task",
+    "@kobe_vendor",
+    REMOTE_KEY_OPTION,
+  ])
   const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
   const taskId = sessionOptions["@kobe_task"] || undefined
+  const remoteKey = sessionOptions[REMOTE_KEY_OPTION] || undefined
   const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
   if (vendorOverride) await rememberSessionVendor(session, taskId, vendorOverride)
   const command = interactiveEngineCommand(vendor)
@@ -862,11 +922,13 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
     "-t",
     `=${session}`,
     "-c",
-    cwd,
+    localSpawnCwd(cwd),
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(shellQuoteArgv(launch.argv)),
+    // Re-wrap the engine over SSH for a remote task's chat tab (same engine the
+    // task launched with), reusing the project's ControlMaster connection.
+    keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd)),
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return
@@ -891,7 +953,7 @@ export async function openSettingsTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} settings`
-  await newWindow(session, { cwd, command, name: "settings" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "settings" })
 }
 
 /**
@@ -911,7 +973,7 @@ export async function openNewTaskTab(session: string, defaultRepo?: string): Pro
   const envPrefix = inheritedEnvPrefix()
   const repoArg = defaultRepo ? ` --repo ${shellQuote(defaultRepo)}` : ""
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} new-task${repoArg}`
-  await newWindow(session, { cwd, command, name: "new task" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "new task" })
 }
 
 /**
@@ -926,7 +988,7 @@ export async function openUpdateTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${updatePageCommand({ cliInvocation: inv })}`
-  await newWindow(session, { cwd, command, name: "update" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "update" })
 }
 
 /**
@@ -983,5 +1045,5 @@ export async function quickCreate(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} quick-task --session ${shellQuote(session)}`
-  await newWindow(session, { cwd, command, name: "quick task" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "quick task" })
 }

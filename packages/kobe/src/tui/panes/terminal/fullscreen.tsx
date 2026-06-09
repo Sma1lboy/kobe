@@ -25,6 +25,7 @@
 import type { CliRenderer } from "@opentui/core"
 import { type Accessor, type JSXElement, Show } from "solid-js"
 import { resolveRepoInit } from "../../../state/repo-init.ts"
+import { isRemoteRepoKey } from "../../../state/repos.ts"
 import type { VendorId } from "../../../types/task.ts"
 import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
@@ -118,6 +119,7 @@ export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTa
     command: opts.command,
     taskId: opts.taskId,
     vendor: opts.vendor,
+    remoteKey: opts.repo && isRemoteRepoKey(opts.repo) ? opts.repo : undefined,
     initScript: init.initScript,
     initPrompt: init.initPrompt,
   })

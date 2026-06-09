@@ -12,6 +12,7 @@ import {
   type SectionId,
   editorCustomRowIndex,
   editorKindRowIndex,
+  experimentalRemoteRowIndex,
   soundRowIndex,
   surfaceChattabRowIndex,
   surfaceTaskpanelRowIndex,
@@ -704,11 +705,15 @@ export function DevSettingsSection(
     hasDaemon: boolean
     confirmReset: () => void
     confirmRestartDaemon: () => void
+    remoteProjectsEnabled: Accessor<boolean>
+    toggleRemoteProjects: () => void
   },
 ) {
   const { theme } = useTheme()
   const resetIsCursor = () => props.level() === "body" && props.bodyRow() === 0
   const restartIsCursor = () => props.level() === "body" && props.bodyRow() === 1
+  const experimentalRow = () => experimentalRemoteRowIndex(props.hasDaemon)
+  const remoteIsCursor = () => props.level() === "body" && props.bodyRow() === experimentalRow()
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -765,6 +770,34 @@ export function DevSettingsSection(
         Daemon wedged or unresponsive? From a shell, run `kobe doctor` to diagnose, or `kobe reset` to stop the daemon +
         kill sessions (keeps your tasks). Use `kobe reset --hard` only to also wipe the task index + UI state.
       </text>
+
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Experimental
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven
+          from this local kobe. Unfinished — file/diff panes still degrade for remote. Enables `kobe add --remote`.
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={remoteIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(experimentalRow())
+            props.toggleRemoteProjects()
+          }}
+        >
+          <text
+            fg={remoteIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.remoteProjectsEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.remoteProjectsEnabled() ? "[x] Remote projects (on)" : "[ ] Remote projects (off)"}
+          </text>
+        </box>
+      </box>
     </box>
   )
 }

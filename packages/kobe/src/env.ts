@@ -74,6 +74,21 @@ export function kvStatePath(): string {
 }
 
 /**
+ * SSH ControlMaster socket for a remote project — one multiplexed connection
+ * per host/user/port, reused by every `ssh` kobe runs against that remote (see
+ * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket
+ * so `kobe reset` cleans it. Keyed by a short hash so a long `user@host:port`
+ * never blows past the ~104-char unix-socket path limit.
+ */
+export function remoteControlSocketPath(host: string, user: string, port?: number): string {
+  const hash = createHash("sha1")
+    .update(`${user}@${host}:${port ?? 22}`)
+    .digest("hex")
+    .slice(0, 16)
+  return join(kobeStateDir(), "ssh", `${hash}.sock`)
+}
+
+/**
  * Per-worktree marker proving the repo's init script already ran for that
  * worktree (once-per-worktree semantics). Kept under `<home>/.kobe/` —
  * NOT inside the worktree — so it never shows up as an uncommitted change.

@@ -51,10 +51,17 @@ import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
 import { engineDisplayName, interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
+import { execHostForWorktreePath } from "../../exec/resolve.ts"
 import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { resolveRepoInit } from "../../state/repo-init.ts"
-import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
+import {
+  addSavedRepo,
+  getPersistedString,
+  getSavedRepos,
+  isRemoteRepoKey,
+  setPersistedString,
+} from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendorWithin } from "../../types/vendor.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
@@ -89,6 +96,17 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 
 const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
+
+/**
+ * Whether a worktree path is usable as a session cwd. A REMOTE worktree lives
+ * on another host, so a local `existsSync` would (wrongly) say "missing" and
+ * block opening the task — for a remote path we trust it exists remotely (the
+ * orchestrator created it over SSH). Local paths keep the real on-disk check.
+ */
+function worktreeCwdUsable(cwd: string | undefined): cwd is string {
+  if (!cwd) return false
+  return execHostForWorktreePath(cwd).isRemote || existsSync(cwd)
+}
 
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
@@ -586,13 +604,14 @@ function TasksShell(props: {
     // block the switch.
     if (exists) {
       const cwd = (await getSessionOption(name, "@kobe_worktree")) || task?.worktreePath || ""
-      if (cwd && existsSync(cwd)) {
+      if (worktreeCwdUsable(cwd)) {
         await ensureSession({
           name,
           cwd,
           command: interactiveEngineCommand(task?.vendor),
           taskId: id,
           vendor: task?.vendor,
+          remoteKey: task?.repo && isRemoteRepoKey(task.repo) ? task.repo : undefined,
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
@@ -605,7 +624,7 @@ function TasksShell(props: {
     // worktree add — only the Orchestrator can do it) — then build the
     // session and switch.
     let cwd = task?.worktreePath
-    if (!cwd || !existsSync(cwd)) {
+    if (!worktreeCwdUsable(cwd)) {
       if (!props.orch) {
         console.error("[kobe tasks] no daemon; cannot materialise worktree")
         notifyError("No daemon running — can't open this task")
@@ -620,7 +639,7 @@ function TasksShell(props: {
       }
       await props.reload()
     }
-    if (!cwd || !existsSync(cwd)) return
+    if (!worktreeCwdUsable(cwd)) return
     const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
     const ready = await ensureSession({
       name,
@@ -628,6 +647,7 @@ function TasksShell(props: {
       command: interactiveEngineCommand(task?.vendor),
       taskId: id,
       vendor: task?.vendor,
+      remoteKey: task?.repo && isRemoteRepoKey(task.repo) ? task.repo : undefined,
       initScript: init.initScript,
       initPrompt: init.initPrompt,
     })
