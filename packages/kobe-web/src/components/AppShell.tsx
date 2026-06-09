@@ -202,7 +202,7 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
               }`}
               title="Toggle task sort"
             >
-              {sortMode}
+              sort
             </button>
             <span className="font-mono text-[10px] text-muted">
               {visible.length}/{activeTasks.length}

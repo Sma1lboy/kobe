@@ -712,8 +712,9 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* View switcher + sort mode. `[` / `]` toggles the view; `t`
-          cycles default/manual order vs recent-use order. */}
+      {/* View switcher + sort toggle. `[` / `]` toggles the view; `t`
+          cycles default/manual order vs recent-use order. Non-default
+          sort state is shown on the TASKS section header. */}
       <box
         flexDirection="row"
         justifyContent="space-between"
@@ -741,12 +742,12 @@ export function Sidebar(props: SidebarProps) {
         </box>
         <Show when={props.sortMode}>
           <text
-            fg={sortMode() === "recent" ? theme.info : theme.textMuted}
-            attributes={sortMode() === "recent" ? TextAttributes.BOLD : TextAttributes.DIM}
+            fg={theme.textMuted}
+            attributes={TextAttributes.DIM}
             wrapMode="none"
             onMouseUp={() => props.onSortModeToggle?.()}
           >
-            {sortMode() === "recent" ? "recent" : "default"}
+            sort
           </text>
         </Show>
       </box>
