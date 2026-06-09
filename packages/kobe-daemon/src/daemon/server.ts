@@ -17,15 +17,13 @@ import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import {
   type EngineActivityDetail,
-  type EngineActivityKind,
-  type TaskActivityState,
   isEngineActivityKind,
-  reduceActivity,
 } from "@/engine/hook-events"
 import type { Orchestrator } from "@/orchestrator/core"
 import type { Task, VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "@/version"
+import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
@@ -59,16 +57,6 @@ function resolveIdleGraceMs(): number {
   if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
   const n = Number(raw)
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
-}
-
-/** How long a non-idle, non-complete engine-activity state survives with no
- *  follow-up event before lapsing to idle (safety net for a missed Stop/SessionEnd). */
-const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
-function resolveEngineStateTtlMs(): number {
-  const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
-  if (raw === undefined) return DEFAULT_ENGINE_STATE_TTL_MS
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ENGINE_STATE_TTL_MS
 }
 
 export interface DaemonServerOptions {
@@ -183,44 +171,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
   })
 
-  // Transient, engine-driven per-task activity (KOB). Folded from normalized
-  // hook events (`engine.reportEvent`) and pushed on the `engine-state`
-  // channel. In-memory only — never persisted (it's "what is the engine doing
-  // RIGHT NOW", not lifecycle). A per-task stale timer lapses a stuck state
-  // back to idle if the terminating hook is ever missed (engine crash, etc.).
-  interface ActivityEntry {
-    state: TaskActivityState
-    detail?: EngineActivityDetail
-    at: number
-    lapse?: ReturnType<typeof setTimeout>
-  }
-  const activity = new Map<string, ActivityEntry>()
-  const ACTIVITY_STALE_MS = resolveEngineStateTtlMs()
-
-  function reportActivity(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail): void {
-    const prev = activity.get(taskId)
-    if (prev?.lapse) clearTimeout(prev.lapse)
-    const state = reduceActivity(prev?.state, kind, detail)
-    const at = Date.now()
-    const entry: ActivityEntry = { state, detail, at }
-    // Safety net: an in-flight/blocking/error state that never gets a
-    // follow-up event lapses back to idle, so a missed Stop/SessionEnd can't
-    // pin a badge forever. A completed turn is already terminal; keep the
-    // checkmark visible until the next activity event instead of refreshing
-    // itself back to the neutral status circle.
-    if (state !== "idle" && state !== "turn_complete") {
-      entry.lapse = setTimeout(() => {
-        const cur = activity.get(taskId)
-        if (cur && cur.at === at) {
-          activity.set(taskId, { state: "idle", at: Date.now() })
-          bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
-        }
-      }, ACTIVITY_STALE_MS)
-      entry.lapse.unref?.()
-    }
-    activity.set(taskId, entry)
-    bus.publish("engine-state", { taskId, state, ...(detail ? { detail } : {}), at })
-  }
+  const activity = new DaemonActivityRegistry(bus)
 
   const webClient = {
     id: 0,
@@ -246,19 +197,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
             break
         }
       }
-      const engineStates: Record<string, unknown> = {}
-      for (const [taskId, entry] of activity) {
-        engineStates[taskId] = {
-          taskId,
-          state: entry.state,
-          ...(entry.detail ? { detail: entry.detail } : {}),
-          at: entry.at,
-        }
-      }
       return {
         tasks: orch.listTasks().map(serializeTask),
         activeTaskId,
-        engineStates,
+        engineStates: activity.snapshotByTask(),
         update,
         connected: true,
       }
@@ -363,6 +305,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
+      activity.close()
       web.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
@@ -506,13 +449,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
-        const gone = activity.get(taskId)
-        if (gone?.lapse) clearTimeout(gone.lapse)
-        activity.delete(taskId)
-        // Publish an explicit idle so every subscriber (incl. late ones that
-        // would otherwise replay a stale cached engine-state) clears this
-        // task's badge — important if the id is reused by a quick recreate.
-        if (gone) bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
+        activity.clearTask(taskId)
         return {}
       }
       case "task.pin": {
@@ -634,7 +571,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const taskId = explicitId ?? (cwd ? matchTaskByCwd(orch.listTasks(), cwd) : undefined)
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
-        reportActivity(taskId, kind, detail)
+        activity.report(taskId, kind, detail)
         return {}
       }
       case "subscribe": {
@@ -666,12 +603,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // is per-task — so additionally replay EVERY task's current non-idle
         // activity to this late subscriber (otherwise it'd only learn the most
         // recently changed task's state).
-        for (const [taskId, entry] of activity) {
-          if (entry.state === "idle") continue
+        for (const payload of activity.currentNonIdle()) {
           writeFrame(client, {
             type: "event",
             name: "engine-state",
-            payload: { taskId, state: entry.state, ...(entry.detail ? { detail: entry.detail } : {}), at: entry.at },
+            payload,
           })
         }
         return {}

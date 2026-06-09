@@ -72,7 +72,7 @@
  */
 
 import type { TaskEngineState } from "@/client/remote-orchestrator"
-import type { Task, TaskStatus } from "@/types/task"
+import type { Task } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
@@ -93,6 +93,7 @@ import { useTheme } from "../../context/theme"
 import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
+import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
 import { readWorktreeChanges } from "./worktree-changes"
 
 export type SidebarProps = {
@@ -201,59 +202,6 @@ export type SidebarProps = {
    */
   engineState?: Accessor<ReadonlyMap<string, TaskEngineState>>
 }
-
-/**
- * Glyph + theme-token name for each status's badge. We render the glyph
- * with the theme colour resolved at render time; storing the *tone* (not
- * the resolved RGBA) keeps badges reactive to theme switches.
- *
- * Each status now uses a *distinct* glyph so the row is readable without
- * relying on colour alone — teammate feedback was that the old
- * dot-on-dot-on-half-dot set wasn't legible. `in_progress` is special:
- * its glyph is the empty string here and the renderer substitutes the
- * current frame of {@link IN_PROGRESS_SPINNER} (rotating braille) so an
- * active task visibly *moves*.
- *
- * Per-task hint only — no grouping reads from this map.
- */
-const STATUS_BADGE: Record<
-  TaskStatus,
-  { glyph: string; tone: "success" | "warning" | "primary" | "textMuted" | "error" }
-> = {
-  done: { glyph: "✓", tone: "success" },
-  in_review: { glyph: "◐", tone: "warning" },
-  in_progress: { glyph: "", tone: "primary" },
-  backlog: { glyph: "○", tone: "textMuted" },
-  canceled: { glyph: "⊘", tone: "textMuted" },
-  error: { glyph: "✕", tone: "error" },
-}
-
-/**
- * Human-readable status words for a card's second (metadata) line, shown
- * only when the task has no branch yet to put there — so a backlog task
- * reads `backlog` rather than a blank subtitle, keeping every card a
- * consistent two lines tall.
- */
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  done: "done",
-  in_review: "in review",
-  in_progress: "working",
-  backlog: "backlog",
-  canceled: "canceled",
-  error: "error",
-}
-
-/**
- * Braille spinner frames for the `in_progress` row badge. Standard
- * dots-rotating cycle (the same one npm / yarn / most CLI loaders use),
- * picked because it reads as motion in a *single cell* — drop-in for the
- * one-cell badge slot. Sub-pixel-style rotation makes "active" obvious
- * without enlarging the row.
- */
-const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-/** Spinner tick (ms). 100ms matches the standard CLI loader cadence. */
-const SPINNER_FRAME_MS = 100
 
 /**
  * Tab labels for the view switcher. Order matches the `SidebarView`
@@ -773,7 +721,6 @@ export function Sidebar(props: SidebarProps) {
               const isCursor = () => flatIndex === cursorIndex()
               const isSelected = () => task.id === props.selectedId()
               const isMain = task.kind === "main"
-              const badge = STATUS_BADGE[task.status]
               // "Is this task actually streaming a turn right now?"
               // True when the orchestrator holds a live engine handle for
               // ANY of this task's tabs — covers multi-tab tasks where the
@@ -789,11 +736,8 @@ export function Sidebar(props: SidebarProps) {
                 }
                 return false
               })
-              const badgeColor = () => {
-                if (isMain) return theme.primary
-                // Any live tab → use primary (spinner) colour.
-                if (isLive()) return theme.primary
-                switch (badge.tone) {
+              const toneColor = (tone: SidebarTone) => {
+                switch (tone) {
                   case "success":
                     return theme.success
                   case "warning":
@@ -818,63 +762,17 @@ export function Sidebar(props: SidebarProps) {
                 branchTick()
                 return readWorktreeChanges(task.worktreePath)
               })
-              const titleText = isMain ? repoBasename(task.repo) : task.title
-              // Engine activity (event-driven, from hooks) — the PRIMARY
-              // signal when present. Falls through to the older heuristics
-              // below when a task has no hook event yet (poll fallback).
-              const activity = () => props.engineState?.().get(task.id)?.state
-              const hasActivity = () => activity() !== undefined
-              // Loading = the engine is actively working this task. Priority:
-              //   1. event-driven `running` (hooks) → working
-              //   2. a live engine handle (chatRunState, outer monitor)
-              //   3. persisted `in_progress` (Tasks-pane fallback; NEVER for a
-              //      `main` row — its status isn't lifecycle-maintained, so a
-              //      stale in_progress would pin "working" on forever).
-              // A non-idle engine state that ISN'T `running` (rate_limited /
-              // permission_needed / error / turn_complete) is NOT "working" —
-              // it gets its own chip below instead of the spinner.
-              const loading = () =>
-                activity() === "running" || isLive() || (!hasActivity() && !isMain && task.status === "in_progress")
-              // Single-cell activity badge for non-running engine states.
-              // The row's first glyph slot is the only live-status surface:
-              // spinner while running, icon while waiting/limited/done/error.
-              const activityBadge = (): { glyph: string; tone: "primary" | "warning" | "error" } | null => {
-                switch (activity()) {
-                  case "rate_limited":
-                    return { glyph: "◷", tone: "warning" }
-                  case "permission_needed":
-                    return { glyph: "?", tone: "warning" }
-                  case "error":
-                    return { glyph: "✕", tone: "error" }
-                  case "turn_complete":
-                    return { glyph: "✓", tone: "primary" }
-                  default:
-                    return null
-                }
-              }
-              const stateGlyph = () => {
-                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
-                return activityBadge()?.glyph ?? badge.glyph
-              }
-              const projectGlyph = () => {
-                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
-                return activityBadge()?.glyph ?? "★"
-              }
-              const stateColor = () => {
-                const active = activityBadge()
-                if (!loading() && active) {
-                  if (active.tone === "error") return theme.error
-                  if (active.tone === "warning") return theme.warning
-                  return theme.primary
-                }
-                return badgeColor()
-              }
-              // Task-card subtitle (line 2): the branch, or a human status word
-              // when there's no branch yet, so every card stays two lines tall.
-              const subtitleText = createMemo(() => {
-                if (task.branch.length > 0) return truncateBranchLabel(task.branch, subtitleBudget())
-                return STATUS_LABEL[task.status]
-              })
+              const rowView = createMemo(() =>
+                buildSidebarRowView({
+                  task,
+                  activity: props.engineState?.().get(task.id),
+                  live: isLive(),
+                  spinnerFrame: spinnerFrame(),
+                  subtitleBudget: subtitleBudget(),
+                  truncateBranch: truncateBranchLabel,
+                }),
+              )
+              const stateColor = () => (isMain && !rowView().loading ? theme.primary : toneColor(rowView().tone))
               // Accent edge: focus-accent ▌ on the cursor row, a quieter
               // (dimmed primary) ▌ on the active row when the two differ after
               // j/k nav, a bare space otherwise to hold the gutter.
@@ -929,10 +827,10 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {projectGlyph()}
+                            {rowView().projectGlyph}
                           </text>
                           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-                            {spacedTitle(titleText, titleBudget())}
+                            {spacedTitle(rowView().titleText, titleBudget())}
                           </text>
                           <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
                             {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
@@ -950,7 +848,7 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {stateGlyph()}
+                            {rowView().stateGlyph}
                           </text>
                           <text
                             fg={theme.text}
@@ -958,7 +856,7 @@ export function Sidebar(props: SidebarProps) {
                             wrapMode="none"
                             flexGrow={1}
                           >
-                            {spacedTitle(titleText, titleBudget())}
+                            {spacedTitle(rowView().titleText, titleBudget())}
                           </text>
                           <Show when={props.moveMode?.() && isCursor()}>
                             <text fg={theme.warning} wrapMode="none">
@@ -976,7 +874,7 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
                           <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                            {subtitleText()}
+                            {rowView().subtitleText}
                           </text>
                           <Show when={task.pinned === true}>
                             <text fg={theme.warning} wrapMode="none">

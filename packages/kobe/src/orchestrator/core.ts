@@ -10,8 +10,8 @@
  *     kobe never drives them as subprocesses anymore.
  *   - `pumpEvents` / event-bus / per-tab subscribers / user-input
  *     broker. No live event stream from inside an engine to surface.
- *   - Chat-tab CRUD. There's exactly one engine session per task and
- *     tmux is its persistence.
+ *   - Orchestrator-owned ChatTab CRUD. ChatTabs are tmux windows inside a
+ *     task's tmux Session now, so tmux owns their lifecycle/persistence.
  *   - Create-PR / merge / refresh-PR-status. KOB-232 will re-introduce
  *     create-PR as a `tmux send-keys` injection from the Ops pane.
  *

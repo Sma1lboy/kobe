@@ -52,6 +52,7 @@ import { SyncProvider } from "./context/sync"
 import { ThemeProvider, addTheme, useTheme } from "./context/theme"
 import { loadUserThemes } from "./context/theme/loader"
 import { useBindings } from "./lib/keymap"
+import { finishDeletedTaskFlow, toggleTaskArchivedFlow, toggleTaskPinnedFlow } from "./lib/task-actions"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { CostDashboard } from "./panes/monitor/CostDashboard"
@@ -59,7 +60,6 @@ import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
 import type { TaskSortMode } from "./panes/sidebar/groups"
 import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
-import { killSession, switchClientBeforeKill, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
@@ -330,21 +330,12 @@ function Shell(props: AppDeps) {
   }
 
   async function archiveTask(taskId: string): Promise<void> {
-    try {
-      await props.orchestrator.setArchived(taskId)
-    } catch (err) {
-      console.error("[kobe] archive failed:", err)
-      return
-    }
-    const sessionName = tmuxSessionName(taskId)
-    const nextTask = tasksAcc().find((t) => t.id !== taskId && !t.archived)
-    await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-      (err: unknown) => {
-        console.error("[kobe] switch-client failed:", err)
-      },
-    )
-    await killSession(sessionName).catch((err: unknown) => {
-      console.error("[kobe] kill tmux session failed:", err)
+    await toggleTaskArchivedFlow({
+      orch: props.orchestrator,
+      tasks: tasksAcc(),
+      taskId,
+      logger: console,
+      logPrefix: "[kobe]",
     })
   }
 
@@ -359,9 +350,7 @@ function Shell(props: AppDeps) {
   }
 
   async function pinTask(taskId: string): Promise<void> {
-    await props.orchestrator.setPinned(taskId).catch((err: unknown) => {
-      console.error("[kobe] pin failed:", err)
-    })
+    await toggleTaskPinnedFlow({ orch: props.orchestrator, taskId, logger: console, logPrefix: "[kobe]" })
   }
 
   async function deleteTask(taskId: string): Promise<void> {
@@ -408,13 +397,7 @@ function Shell(props: AppDeps) {
     // Only tear down the session + drop selection if the task was actually
     // removed — a failed/declined delete must leave everything in place.
     if (!deleted) return
-    // Tear down the tmux session for this task so a re-created task
-    // with the same id (theoretically possible across kobe restarts
-    // if the user crafted a manifest) doesn't attach into the dead
-    // task's stale claude pane.
-    await killSession(tmuxSessionName(taskId)).catch((err: unknown) => {
-      console.error("[kobe] kill tmux session failed:", err)
-    })
+    await finishDeletedTaskFlow({ tasks: tasksAcc(), taskId, logger: console, logPrefix: "[kobe]" })
     // Drop selection if we just deleted the selected task.
     if (selectedId() === taskId) {
       const remaining = tasksAcc()

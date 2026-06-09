@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
+import { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
 import { type DaemonServer, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type { TaskActivityState } from "../../src/engine/hook-events.ts"
@@ -60,5 +62,21 @@ describe("daemon activity state", () => {
 
     expect(states).toEqual(["turn_complete"])
     client.close()
+  })
+
+  it("replays every current non-idle activity, not just the bus cache", () => {
+    const bus = new DaemonEventBus()
+    const registry = new DaemonActivityRegistry(bus, 1_000)
+
+    registry.report("task-1", "turn-start")
+    registry.report("task-2", "awaiting-input", { waiting: "permission" })
+
+    expect(registry.currentNonIdle().map((p) => [p.taskId, p.state])).toEqual([
+      ["task-1", "running"],
+      ["task-2", "permission_needed"],
+    ])
+    expect(bus.snapshot().filter((event) => event.channel === "engine-state")).toHaveLength(1)
+
+    registry.close()
   })
 })

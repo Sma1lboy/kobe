@@ -9,6 +9,7 @@
     "./client": "./src/client/index.ts",
     "./client/client-log": "./src/client/client-log.ts",
     "./client/daemon-process": "./src/client/daemon-process.ts",
+    "./daemon/activity-registry": "./src/daemon/activity-registry.ts",
     "./daemon/auto-title-poller": "./src/daemon/auto-title-poller.ts",
     "./daemon/crash-log": "./src/daemon/crash-log.ts",
     "./daemon/cwd-task": "./src/daemon/cwd-task.ts",

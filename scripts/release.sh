@@ -12,11 +12,13 @@
 #   1. `changeset version` — derives the next version from pending changesets,
 #      rewrites packages/kobe/package.json, prepends notes to CHANGELOG.md, and
 #      deletes the consumed changesets.
-#   2. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
+#   2. `bun install` — refreshes bun.lock after the package version changed,
+#      then `bun install --frozen-lockfile` verifies the lockfile is complete.
+#   3. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
 #      reserialized JSON can't fail the lint gate (the `files` array used to
 #      re-expand to multi-line and break `biome check`).
-#   3. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
-#   4. Asks before pushing (main + tag) — the push triggers GitHub Actions
+#   4. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
+#   5. Asks before pushing (main + tag) — the push triggers GitHub Actions
 #      which typechecks, tests, builds, publishes to npm, and creates the
 #      GitHub release with the extracted CHANGELOG notes.
 set -euo pipefail
@@ -59,6 +61,13 @@ if [ "$NEW_VERSION" = "$CURRENT" ]; then
   exit 1
 fi
 TAG="v$NEW_VERSION"
+
+# ── refresh + verify lockfile ────────────────────────────────────────────────
+# Changesets updates package versions but does not update Bun's workspace
+# lockfile. Refresh it here so the release commit is the exact state CI will
+# validate with --frozen-lockfile.
+bun install
+bun install --frozen-lockfile
 
 # ── neutralize the JSON-reserialize lint trap ─────────────────────────────────
 # `changeset version` rewrites package.json with its own formatter, which can

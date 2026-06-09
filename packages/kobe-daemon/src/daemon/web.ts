@@ -12,10 +12,7 @@ import { join, normalize } from "node:path"
 import { interactiveEngineCommand } from "@/engine/interactive-command"
 import type { Orchestrator } from "@/orchestrator/core"
 import { resolveRepoInit } from "@/state/repo-init"
-import { runTmuxCapturing } from "@/tmux/client"
-import { ensureSession, newChatTab, sessionExists, tmuxSessionName } from "@/tui/panes/terminal/tmux"
-import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
-import { ALL_VENDORS } from "@/types/vendor"
+import { ensureSession, sessionExists, tmuxSessionName } from "@/tui/panes/terminal/tmux"
 import { handleDiffRequest } from "@/web/diff"
 import { handleNotesRequest } from "@/web/notes"
 import type { DaemonEventBus } from "./event-bus.ts"
@@ -47,12 +44,6 @@ interface Deps {
   rpc: RpcDispatch
   onStarted?: () => void
   onStopped?: () => void
-}
-
-interface WebTab {
-  readonly index: number
-  readonly name: string
-  readonly active: boolean
 }
 
 function sseResponse(bus: DaemonEventBus, snapshot: () => unknown): Response {
@@ -176,49 +167,6 @@ async function terminalSpecResponse(url: URL, orch: Orchestrator): Promise<Respo
   }
 }
 
-async function listTaskTabs(orch: Orchestrator, taskId: string): Promise<{ session: string; tabs: WebTab[] }> {
-  const { session } = await ensureTaskSession(orch, taskId)
-  const { code, stdout } = await runTmuxCapturing([
-    "list-windows",
-    "-t",
-    `=${session}`,
-    "-F",
-    "#{window_index}\t#{window_name}\t#{window_active}",
-  ])
-  const tabs: WebTab[] = []
-  if (code === 0) {
-    for (const line of stdout.split("\n")) {
-      if (!line.trim()) continue
-      const [idxRaw, name = "", active = "0"] = line.split("\t")
-      const index = Number.parseInt((idxRaw ?? "").trim(), 10)
-      if (!Number.isInteger(index)) continue
-      tabs.push({ index, name: name.trim(), active: active.trim() === "1" })
-    }
-  }
-  return { session, tabs }
-}
-
-async function tabsResponse(req: Request, url: URL, orch: Orchestrator): Promise<Response> {
-  try {
-    if (req.method === "GET") {
-      const taskId = url.searchParams.get("taskId")
-      if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
-      return Response.json(await listTaskTabs(orch, taskId))
-    }
-    if (req.method === "POST") {
-      const { taskId, vendor } = (await req.json()) as { taskId?: string; vendor?: string }
-      if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
-      const { session } = await ensureTaskSession(orch, taskId)
-      const safeVendor = ALL_VENDORS.includes(vendor as VendorId) ? (vendor as VendorId) : undefined
-      await newChatTab(session, safeVendor ?? taskOrThrow(orch, taskId).vendor ?? DEFAULT_TASK_VENDOR)
-      return Response.json(await listTaskTabs(orch, taskId))
-    }
-    return new Response("method not allowed", { status: 405 })
-  } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-  }
-}
-
 async function staticResponse(pathname: string, staticDir: string): Promise<Response> {
   const rel = pathname === "/" ? "/index.html" : pathname
   const resolved = normalize(join(staticDir, rel))
@@ -301,7 +249,6 @@ export function createDaemonWebServer(deps: Deps): DaemonWebServer {
           if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(req, deps.orch)
           if (url.pathname === "/api/engine-spec" && req.method === "GET") return engineSpecResponse(url, deps.orch)
           if (url.pathname === "/api/terminal-spec" && req.method === "GET") return terminalSpecResponse(url, deps.orch)
-          if (url.pathname === "/api/tabs") return tabsResponse(req, url, deps.orch)
           const notes = await handleNotesRequest(req, url)
           if (notes) return notes
           const diff = await handleDiffRequest(req, url)

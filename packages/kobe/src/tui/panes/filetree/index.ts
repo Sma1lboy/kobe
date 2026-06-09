@@ -9,9 +9,8 @@
  * Note for tests: importing `FileTree` (the JSX component) drags in
  * `@opentui/core`, which requires Bun's runtime. Vitest runs under
  * Node, so unit tests should import directly from `./git` for parser
- * coverage. The pane's full visual flow is exercised by the behavior
- * test (`test/behavior/filetree.test.ts`) which spawns kobe in a
- * PTY against a real fixture worktree.
+ * coverage. If the full visual flow changes, use the local PTY harness
+ * described in `docs/HARNESS.md` against a real fixture worktree.
  */
 
 export { FILETREE_WIDTH, FileTree, type FileTreeProps } from "./FileTree"

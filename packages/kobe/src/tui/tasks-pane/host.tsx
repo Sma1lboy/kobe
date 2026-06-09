@@ -34,15 +34,7 @@
  */
 
 import { existsSync } from "node:fs"
-import {
-  currentSessionName,
-  getSessionOption,
-  killSession,
-  runTmux,
-  sessionExists,
-  switchClientBeforeKill,
-  tmuxSessionName,
-} from "@/tmux/client"
+import { currentSessionName, getSessionOption, runTmux, sessionExists, tmuxSessionName } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
 import { render, useTerminalDimensions } from "@opentui/solid"
 import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
@@ -69,6 +61,7 @@ import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
 import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
+import { finishDeletedTaskFlow, toggleTaskArchivedFlow } from "../lib/task-actions"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
@@ -279,32 +272,16 @@ function TasksShell(props: {
   }
 
   async function archiveTask(id: string): Promise<void> {
-    const task = props.tasks().find((t) => t.id === id)
-    if (!task || !props.orch) return
-    const nextArchived = !task.archived
-    try {
-      await props.orch.setArchived(id, nextArchived)
-      if (nextArchived) {
-        // Switch away before killing so the terminal doesn't go dark.
-        // Prefer the next non-archived task; fall back to the kobe-home placeholder.
-        const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
-        await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-          (err: unknown) => {
-            console.error("[kobe tasks] switch-client failed:", err)
-          },
-        )
-        // Move the shared active-task focus to where the client landed, so
-        // the sidebar highlights it instead of the archived task (same fix
-        // as deleteTask / switchTo). null → kobe-home, nothing highlighted.
-        await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
-        await killSession(tmuxSessionName(id)).catch((err: unknown) => {
-          console.error("[kobe tasks] kill tmux session failed:", err)
-        })
-      }
-    } catch (err) {
-      console.error("[kobe tasks] archive failed:", err)
-      return
-    }
+    if (!props.orch) return
+    const result = await toggleTaskArchivedFlow({
+      orch: props.orch,
+      tasks: props.tasks(),
+      taskId: id,
+      logger: console,
+      logPrefix: "[kobe tasks]",
+      updateActiveTask: true,
+    })
+    if (!result) return
     await props.reload()
   }
 
@@ -346,22 +323,14 @@ function TasksShell(props: {
       }
     }
     if (!deleted) return
-    const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
-    await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-      (err: unknown) => {
-        console.error("[kobe tasks] switch-client failed:", err)
-      },
-    )
-    // The client now sits in nextTask's session (its chat pane is what you
-    // see), so move the SHARED active-task focus there too — otherwise every
-    // Tasks pane keeps highlighting the just-deleted task. switchClientBeforeKill
-    // only moves the tmux client, not the active-task signal that drives the
-    // sidebar highlight; `switchTo` sets it after its own switch-client, and
-    // delete must match. null when nothing is left (we land on kobe-home), so
-    // no pane highlights a deleted task.
-    await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
-    await killSession(tmuxSessionName(id)).catch((err: unknown) => {
-      console.error("[kobe tasks] kill tmux session failed:", err)
+    const { nextTask } = await finishDeletedTaskFlow({
+      orch: props.orch,
+      tasks: props.tasks(),
+      taskId: id,
+      logger: console,
+      logPrefix: "[kobe tasks]",
+      switchBeforeKill: true,
+      updateActiveTask: true,
     })
     await props.reload()
     if (selectedId() === id) {
