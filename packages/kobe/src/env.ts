@@ -74,6 +74,28 @@ export function kvStatePath(): string {
 }
 
 /**
+ * Directory for user-editable kobe settings files — `~/.kobe/settings/`.
+ * Unlike the KV blob (`kvStatePath()`, machine-written JSON), files in
+ * here are hand-authored YAML the user owns (keybindings today; future
+ * settings files land alongside). Not created eagerly — readers treat a
+ * missing dir as "no overrides", writers mkdir at the write site.
+ */
+export function kobeSettingsDir(): string {
+  return join(kobeStateDir(), "settings")
+}
+
+/**
+ * User keybinding overrides — `~/.kobe/settings/keybindings.yaml`.
+ * Loaded once per process at TUI boot (see
+ * `src/tui/context/keybindings-user.ts`) and applied onto `KobeKeymap`.
+ * `.yml` is accepted as a fallback spelling when the `.yaml` file is
+ * absent.
+ */
+export function keybindingsConfigPath(): string {
+  return join(kobeSettingsDir(), "keybindings.yaml")
+}
+
+/**
  * SSH ControlMaster socket for a remote project — one multiplexed connection
  * per host/user/port, reused by every `ssh` kobe runs against that remote (see
  * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket

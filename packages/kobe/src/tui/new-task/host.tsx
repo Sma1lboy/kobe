@@ -27,6 +27,7 @@ import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } f
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { FocusProvider } from "../context/focus"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -106,6 +107,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
 }
 
 export async function startNewTaskHost(args: NewTaskHostArgs): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

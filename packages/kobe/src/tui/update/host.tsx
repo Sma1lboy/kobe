@@ -22,6 +22,7 @@ import {
   releasePageUrl,
 } from "../../version.ts"
 import { FocusProvider } from "../context/focus"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -265,6 +266,7 @@ function UpdatePage() {
 }
 
 export async function startUpdateHost(): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

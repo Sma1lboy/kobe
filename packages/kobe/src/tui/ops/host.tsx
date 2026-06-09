@@ -31,6 +31,7 @@ import { SyntaxStyle } from "@opentui/core"
 import { render } from "@opentui/solid"
 import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
 import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { useBindings } from "../lib/keymap"
@@ -278,6 +279,7 @@ function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
 
 export async function startOpsHost(args: OpsHostArgs): Promise<void> {
   setClientLogContext("ops")
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
@@ -457,6 +459,7 @@ function PreviewScreen(props: OpsPreviewArgs) {
 }
 
 export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

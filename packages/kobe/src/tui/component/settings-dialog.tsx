@@ -68,6 +68,7 @@ import {
   EngineSettingsSection,
   FeedbackSettingsSection,
   GeneralSettingsSection,
+  KeybindingsSettingsSection,
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
 
@@ -657,6 +658,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               codexStatus={codexStatus}
               copilotStatus={copilotStatus}
             />
+          </Show>
+          <Show when={section() === "keys"}>
+            <KeybindingsSettingsSection />
           </Show>
           <Show when={section() === "feedback"}>
             <FeedbackSettingsSection

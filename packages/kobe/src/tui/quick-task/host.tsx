@@ -38,6 +38,7 @@ import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.
 import { DEFAULT_BASE_REF, expandHome, getCurrentBranch } from "../component/new-task-dialog/state.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
 import { FocusProvider } from "../context/focus"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -203,6 +204,7 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
 }
 
 export async function startQuickTaskHost(args: QuickTaskHostArgs): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

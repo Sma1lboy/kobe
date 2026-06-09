@@ -72,6 +72,8 @@ import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
 import { FocusProvider } from "../context/focus"
+import { bindByIds } from "../context/keybindings"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider, useKV } from "../context/kv"
 import { NotificationsProvider, useNotifications } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
@@ -546,38 +548,32 @@ function TasksShell(props: {
   // the dialog stack is the focus signal here).
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      // F1 → the shared HelpDialog (#8). In the real direct-tmux flow the
-      // global `help.open` (app.tsx outer monitor) never runs, so F1 was dead
-      // in the Tasks pane. The pane has its own DialogProvider (mounted in
-      // startTasksPane), so we open it the same way app.tsx does. Gated on an
-      // empty dialog stack so it doesn't `replace` an open dialog.
-      { key: "f1", cmd: () => HelpDialog.show(dialog) },
-      { key: "n", cmd: () => void createTask() },
-      { key: "s", cmd: () => void openSettings() },
-      { key: "u", cmd: () => void openUpdate() },
-      {
-        key: "o",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void openSelectedWorktree(id)
-        },
+    // Chords come from KobeKeymap via bindByIds (f1=help.open, n=task.new,
+    // s=settings.open.sidebar, u=tasks.update, o/b/v=tasks.*) so user
+    // overrides from ~/.kobe/settings/keybindings.yaml apply here too.
+    // F1 → the shared HelpDialog (#8). In the real direct-tmux flow the
+    // global `help.open` (app.tsx outer monitor) never runs, so F1 was dead
+    // in the Tasks pane. The pane has its own DialogProvider (mounted in
+    // startTasksPane), so we open it the same way app.tsx does. Gated on an
+    // empty dialog stack so it doesn't `replace` an open dialog.
+    bindings: bindByIds({
+      "help.open": () => HelpDialog.show(dialog),
+      "task.new": () => void createTask(),
+      "settings.open.sidebar": () => void openSettings(),
+      "tasks.update": () => void openUpdate(),
+      "tasks.openWorktree": () => {
+        const id = selectedId()
+        if (id) void openSelectedWorktree(id)
       },
-      {
-        key: "b",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void renameBranch(id)
-        },
+      "tasks.renameBranch": () => {
+        const id = selectedId()
+        if (id) void renameBranch(id)
       },
-      {
-        key: "v",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void cycleVendor(id)
-        },
+      "tasks.cycleEngine": () => {
+        const id = selectedId()
+        if (id) void cycleVendor(id)
       },
-    ],
+    }),
   }))
 
   // Enter / click on a task → switch this tmux client to that task's
@@ -863,6 +859,7 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
 
 export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
   setClientLogContext("tasks")
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

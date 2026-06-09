@@ -1,7 +1,7 @@
 # Keybindings — boundaries, conflicts, conventions
 
 Single source of truth for "what keys do what, where, and why."
-Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
+Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
 Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings and live in [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts), with the in-session Tasks pane footer in [`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx). Keep those three surfaces in sync when changing a handover key.
 
@@ -111,6 +111,64 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `t` toggle task sort (default/manual vs recent), `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
 The Tasks/Ops panes are version-tagged with `@kobe_pane_version`. After an upgrade, `ensureSession` respawns stale kobe-owned panes in place while preserving the engine pane and ChatTab windows. Do not use `kobe reset` as the normal update path; reset is the runtime-recovery fallback for wedged tmux/daemon state.
+
+## User customization — `~/.kobe/settings/keybindings.yaml`
+
+Users can rebind most chords without touching the code. The config lives in the
+hand-authored settings directory (`~/.kobe/settings/`, distinct from the
+machine-written KV blob) and is loaded ONCE per process at TUI boot by
+`applyUserKeybindings()` ([`src/tui/context/keybindings-user.ts`](../packages/kobe/src/tui/context/keybindings-user.ts)),
+which mutates the matching `KobeKeymap` rows in place. Because every pane
+registers through `bindByIds` and the F1 help dialog / status bar render from
+the same table, one mutation re-points every surface — chord, Help copy, and
+footer hint follow automatically (overridden rows get their `hint.keys`
+refreshed; an unbound row loses its hint). Restart kobe — or respawn the pane —
+to apply edits. Pure parsing/validation logic lives in
+[`src/tui/lib/keymap-overrides.ts`](../packages/kobe/src/tui/lib/keymap-overrides.ts)
+(vitest-covered, no opentui imports, mirroring the keymap-dispatch split).
+
+```yaml
+bindings:                 # applies on every platform
+  chat.fork.new: ctrl+g   # string = one chord
+  sidebar.select: [enter] # list  = several chords (all fire the action)
+  files.createPR: null    # null / [] = unbind (hint disappears too)
+darwin:                   # platform overlay — wins over `bindings` per id
+  bindings:               # (aliases: macos / mac; also: linux, windows)
+    palette.open: [cmd+p, ctrl+p]
+linux:
+  bindings:
+    palette.open: ctrl+p
+```
+
+Semantics and guard rails:
+
+- **Ids come from `KobeKeymap`** — press F1 for the live list, or open
+  Settings → Keybindings (read-only section showing the config path, applied
+  overrides, and every load warning; warnings also go to `console.warn` →
+  the pane log).
+- **Chord grammar mirrors `matchKey()`**: `mod+...+key`, modifier aliases
+  (`control`/`command`/`meta`/`option`…) are canonicalized to
+  `ctrl`/`cmd`/`alt`/`shift` in the dispatcher's order. `esc`→`escape`,
+  `pgup`→`pageup`. `left`/`right` are the arrow keys; left vs right
+  *modifier* keys cannot be distinguished by terminal protocols, so there is
+  no `lctrl`/`rcmd` syntax.
+- **The boundary rule is enforced on user input**: a bare single character on
+  a `global` / `workspace` / `terminal`-scope binding is dropped with a
+  warning (it would steal typed input). `shift+<letter>` chords are rejected
+  (terminals deliver shift+letter as a plain character — see the KOB-74
+  decision log below).
+- **Conflicts warn but apply**: an override colliding with another binding in
+  an overlapping scope logs "last registration wins; consider a different
+  chord".
+- **Fixed (not rebindable) in v1**: ids whose handlers discriminate BETWEEN
+  their chords by key name (`sidebar.nav`, `files.nav`, `files.hierarchy`,
+  `sidebar.view`, `files.tab`, `sidebar.goto`/`pin`/`localMerge` shift-gates,
+  `chat.question.nav`/`pick-number`, `focus.numeric`) — listed in
+  `FIXED_BINDING_IDS` with reasons; doc-only rows (`keys: []`, e.g. composer
+  enter/shift+enter); and the **tmux-layer handover keys** (`ctrl+t`,
+  `ctrl+[`/`ctrl+]`, `ctrl+w`, `ctrl+q`, `ctrl+hjkl` inside a task session,
+  installed by `tmux.ts`). Making the tmux layer follow the same YAML is the
+  natural follow-up.
 
 ## Adding a new binding — checklist
 

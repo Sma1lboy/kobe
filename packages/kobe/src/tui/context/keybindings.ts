@@ -32,10 +32,12 @@
  *     four real chords or "1/2/3") — that's `hint.keys`. The actually
  *     registered chords stay in `keys` and remain individually testable.
  *
- * Re-binding a chord = mutate `keys` for the relevant id (today: edit
- * this file; later: a settings dialog writing into a runtime overlay).
- * No pane code has to change because pane registration goes through
- * `bindByIds`.
+ * Re-binding a chord = mutate `keys` for the relevant id. Users do this
+ * via `~/.kobe/settings/keybindings.yaml`, applied once at TUI boot by
+ * `applyUserKeybindings()` (context/keybindings-user.ts), which mutates
+ * this table in place. No pane code has to change because pane
+ * registration goes through `bindByIds` and the help dialog / status bar
+ * render from the (already-overridden) rows.
  *
  * Cmd / Option / Ctrl on macOS — three different modifiers, three different
  * chord prefixes:
@@ -453,13 +455,12 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Tasks pane ───────────────────────────────────────────────────────
   // The standalone Tasks pane (`kobe tasks`, src/tui/tasks-pane/host.tsx)
-  // registers these as RAW `{ key: "…" }` bindings — it deliberately does NOT
-  // go through `bindByIds`, so these rows are DISPLAY-ONLY: they exist so the
-  // F1 HelpDialog can list the pane's verbs that were previously invisible
-  // (they're literals in host.tsx, not in this table). No pane consumes these
-  // ids via `bindByIds`, so adding them changes no live binding. New-task (n),
-  // settings (s), rename (r), archive (a), delete (d), merge (M), views ([/]),
-  // sort (t) are already covered by the Sidebar / Global rows above and aren't
+  // consumes these ids via `bindByIds` (since the keybindings-customization
+  // pass; they were raw `{ key: "…" }` literals before), so the rows are
+  // LIVE bindings there and follow user overrides from
+  // `~/.kobe/settings/keybindings.yaml`. New-task (n), settings (s),
+  // rename (r), archive (a), delete (d), merge (M), views ([/]), sort (t)
+  // are already covered by the Sidebar / Global rows above and aren't
   // duplicated here.
   {
     id: "tasks.openWorktree",

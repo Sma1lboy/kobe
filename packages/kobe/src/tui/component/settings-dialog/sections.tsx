@@ -2,8 +2,10 @@ import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
 import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
 import type { VendorId } from "../../../types/task"
+import { userKeybindingsReport } from "../../context/keybindings-user"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import type { EditorKind } from "../../lib/editor-prefs"
+import { FIXED_BINDING_IDS } from "../../lib/keymap-overrides"
 import type { SettingsSurface } from "../../lib/settings-surface"
 import {
   FOCUS_ACCENT_LABEL,
@@ -798,6 +800,90 @@ export function DevSettingsSection(
           </text>
         </box>
       </box>
+    </box>
+  )
+}
+
+/**
+ * Keybindings section — read-only view of the user keybinding overrides
+ * loaded at boot from `~/.kobe/settings/keybindings.yaml` (see
+ * `src/tui/context/keybindings-user.ts`). Editing happens in the YAML
+ * file, not here; the section's job is to make the config discoverable,
+ * show which overrides actually landed, and surface every load warning
+ * that otherwise only reaches the pane's console log.
+ */
+export function KeybindingsSettingsSection() {
+  const { theme } = useTheme()
+  // Boot-time snapshot — overrides only change on restart, so a plain
+  // (non-reactive) read is correct here.
+  const report = userKeybindingsReport()
+  const fixedIds = Object.keys(FIXED_BINDING_IDS).sort()
+  return (
+    <box flexDirection="column" gap={1}>
+      <text fg={theme.text} attributes={TextAttributes.BOLD}>
+        Keybindings
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        Rebind chords by editing the YAML below, then restart kobe (or respawn the pane). Press F1 anywhere for the live
+        keymap with every binding id.
+      </text>
+      <box flexDirection="column" gap={0}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Config file
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {report.path}
+          {report.exists ? "" : "  (not created yet)"}
+        </text>
+      </box>
+      <Show when={!report.exists}>
+        <box flexDirection="column" gap={0}>
+          <text fg={theme.text} attributes={TextAttributes.BOLD}>
+            Example
+          </text>
+          <text fg={theme.textMuted}>bindings:</text>
+          <text fg={theme.textMuted}>{"  chat.fork.new: ctrl+g      # string = one chord"}</text>
+          <text fg={theme.textMuted}>{"  sidebar.select: [enter]    # list = several chords"}</text>
+          <text fg={theme.textMuted}>{"  files.createPR: null       # null = unbind"}</text>
+          <text fg={theme.textMuted}>{"darwin:                      # platform overlay (also: linux)"}</text>
+          <text fg={theme.textMuted}>{"  bindings:"}</text>
+          <text fg={theme.textMuted}>{"    palette.open: [cmd+p, ctrl+p]"}</text>
+        </box>
+      </Show>
+      <Show when={report.exists}>
+        <box flexDirection="column" gap={0}>
+          <text fg={theme.text} attributes={TextAttributes.BOLD}>
+            Overrides applied
+          </text>
+          <Show when={report.applied.length === 0}>
+            <text fg={theme.textMuted}>none</text>
+          </Show>
+          <For each={report.applied}>
+            {(o) => (
+              <text fg={theme.text} wrapMode="word">
+                {`${o.id} → ${o.keys.length > 0 ? o.keys.join(" / ") : "(unbound)"}  (default: ${o.defaultKeys.join(" / ")})`}
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
+      <Show when={report.warnings.length > 0}>
+        <box flexDirection="column" gap={0}>
+          <text fg={theme.warning} attributes={TextAttributes.BOLD}>
+            Warnings
+          </text>
+          <For each={report.warnings}>
+            {(w) => (
+              <text fg={theme.warning} wrapMode="word">
+                {`! ${w}`}
+              </text>
+            )}
+          </For>
+        </box>
+      </Show>
+      <text fg={theme.textMuted} wrapMode="word">
+        {`Fixed (not rebindable): ${fixedIds.join(", ")} — plus tmux-layer session keys (ctrl+t / ctrl+[ / ctrl+] / ctrl+w / ctrl+hjkl inside a task session).`}
+      </text>
     </box>
   )
 }

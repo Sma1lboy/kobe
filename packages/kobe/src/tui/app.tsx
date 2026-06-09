@@ -47,6 +47,7 @@ import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
+import { applyUserKeybindings } from "./context/keybindings-user"
 import { KVProvider, useKV } from "./context/kv"
 import { NotificationsProvider } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
@@ -604,6 +605,7 @@ function App(props: AppDeps) {
 }
 
 export async function startApp(): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }

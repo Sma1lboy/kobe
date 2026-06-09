@@ -22,6 +22,7 @@ import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SettingsDialog } from "../component/settings-dialog"
 import { FocusProvider } from "../context/focus"
+import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider, useKV } from "../context/kv"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
@@ -105,6 +106,7 @@ function SettingsPage(props: {
 }
 
 export async function startSettingsHost(): Promise<void> {
+  applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
   }
