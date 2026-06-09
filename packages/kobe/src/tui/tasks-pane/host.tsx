@@ -18,7 +18,7 @@
  *   - Engine: `v` cycles the task's vendor (`task.setVendor` RPC). Takes
  *     effect on next enter — ensureSession rebuilds the session when its
  *     `@kobe_vendor` tag no longer matches, launching the new engine.
- *   - Create: `n` (or the footer "+ New task") opens the SAME
+ *   - Create: `n` opens the SAME
  *     NewTaskDialog as the outer app (repo picker + base branch + clone
  *     tab) and fires the daemon's `task.create` RPC — the first
  *     write-path here, the step toward retiring the outer "page 1".
@@ -153,7 +153,7 @@ function TasksShell(props: {
     if (info) setUpdateInfo(info)
   })
 
-  // `n` (and the footer "+ New task" click) creates a new task using the
+  // `n` creates a new task using the
   // SAME NewTaskDialog the outer app uses (repo picker + base-branch +
   // clone tab) — parity matters; this pane is meant to replace the outer
   // "page 1". The standalone pane has no Orchestrator, so it fires the
@@ -586,7 +586,6 @@ function TasksShell(props: {
           // on approval), pushed from engine hooks via the daemon. Primary
           // liveness signal; the file-poll turn-detector stays as fallback.
           engineState={props.orch ? props.orch.engineStateSignal() : undefined}
-          onAddTask={() => void createTask()}
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}

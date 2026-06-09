@@ -21,8 +21,6 @@
  *   │                                        │
  *   │   ○ add password reset                 │
  *   │     backlog                            │
- *   │                                        │
- *   │ + New task                              │
  *   └───────────────────────────────────────┘
  *
  * Each section gets a small BOLD CAPS header + trailing rule. A PROJECT
@@ -150,12 +148,6 @@ export type SidebarProps = {
   sortMode?: Accessor<TaskSortMode>
   /** Cycle the display ordering (`t`). */
   onSortModeToggle?: () => void
-  /**
-   * Optional callback for the `+ New task` footer affordance. Left
-   * undefined this stream; the global `n`/`ctrl+n` bindings remain the
-   * canonical entry point.
-   */
-  onAddTask?: () => void
   /**
    * Fires when the `/`-search filter opens or closes. Lifted out of
    * the sidebar so the app-level Shell can gate its sidebar-scoped
@@ -912,13 +904,6 @@ export function Sidebar(props: SidebarProps) {
           </Show>
         </box>
       </scrollbox>
-
-      {/* Footer: "+ New task" affordance. */}
-      <box flexShrink={0} paddingTop={1} paddingLeft={1}>
-        <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => props.onAddTask?.()}>
-          + New task
-        </text>
-      </box>
 
       {/* Hover tooltip overlay. Absolute + high zIndex so it floats above the
           rows; anchored just below-right of the cursor and clamped inside the

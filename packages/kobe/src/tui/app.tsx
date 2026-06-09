@@ -499,7 +499,6 @@ function Shell(props: AppDeps) {
             onArchiveRequest={(id) => void archiveTask(id)}
             onRenameRequest={(id) => void renameTask(id)}
             onPinRequest={(id) => void pinTask(id)}
-            onAddTask={() => void newTask()}
             sortMode={taskSortMode}
             onSortModeToggle={() => setTaskSortMode((cur) => (cur === "default" ? "recent" : "default"))}
             width={sidebarWidth}
