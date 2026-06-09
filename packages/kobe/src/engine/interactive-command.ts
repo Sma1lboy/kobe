@@ -57,6 +57,18 @@ export function engineNameKey(vendor: VendorId): string {
 }
 
 /**
+ * Display name for an engine id, resolved cross-process from the shared
+ * state.json: the user's custom name override (`engineName.<id>`) when set,
+ * else the built-in {@link VENDOR_LABEL}, else the id itself (a custom
+ * engine with no name set). Used where the reactive settings kv isn't
+ * available — e.g. the quick-task composer's engine chips.
+ */
+export function engineDisplayName(vendor: VendorId): string {
+  const override = getPersistedString(engineNameKey(vendor))?.trim()
+  return override || VENDOR_LABEL[vendor] || vendor
+}
+
+/**
  * Built-in default launch argv for a vendor (undefined → claude). A custom
  * engine id has no built-in default — its command lives in the
  * `engineCommand.<id>` override the user set when adding it, which
