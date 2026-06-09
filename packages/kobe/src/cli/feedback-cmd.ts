@@ -13,7 +13,7 @@ const FEEDBACK_USAGE = [
   "  --title <text>       Discussion title",
   "  --body <text>        Discussion body",
   "  --body-file <path>   Read the Discussion body from a file; use - for stdin",
-  "  --category <slug>    Discussion category slug (default: general)",
+  "  --category <slug>    Discussion category slug (default: feedback)",
   "  -h, --help           Print this help",
   "",
 ].join("\n")

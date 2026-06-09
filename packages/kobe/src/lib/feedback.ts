@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process"
 import { CURRENT_VERSION, repoSlug } from "../version.ts"
 
-export const DEFAULT_FEEDBACK_CATEGORY_SLUG = "general"
+export const DEFAULT_FEEDBACK_CATEGORY_SLUG = "feedback"
 
 type SpawnSync = typeof spawnSync
 

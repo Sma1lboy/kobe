@@ -21,7 +21,7 @@ describe("submitFeedback", () => {
             repository: {
               id: "repo-id",
               discussionCategories: {
-                nodes: [{ id: "cat-id", name: "General", slug: "general" }],
+                nodes: [{ id: "cat-id", name: "Feedback", slug: "feedback" }],
               },
             },
           },
@@ -73,9 +73,9 @@ describe("submitFeedback", () => {
 
     expect(() =>
       submitFeedback(
-        { title: "Bug", body: "Something happened.", categorySlug: "general" },
+        { title: "Bug", body: "Something happened.", categorySlug: "feedback" },
         { spawn, repoSlug: () => "Sma1lboy/kobe" },
       ),
-    ).toThrow("GitHub Discussion category not found: general")
+    ).toThrow("GitHub Discussion category not found: feedback")
   })
 })
