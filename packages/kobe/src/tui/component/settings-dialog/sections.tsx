@@ -845,6 +845,7 @@ export function KeybindingsSettingsSection() {
           <text fg={theme.textMuted}>{"  chat.fork.new: ctrl+g      # string = one chord"}</text>
           <text fg={theme.textMuted}>{"  sidebar.select: [enter]    # list = several chords"}</text>
           <text fg={theme.textMuted}>{"  files.createPR: null       # null = unbind"}</text>
+          <text fg={theme.textMuted}>{"  tmux.tab.new: ctrl+y       # tmux session key (see below)"}</text>
           <text fg={theme.textMuted}>{"darwin:                      # platform overlay (also: linux)"}</text>
           <text fg={theme.textMuted}>{"  bindings:"}</text>
           <text fg={theme.textMuted}>{"    palette.open: [cmd+p, ctrl+p]"}</text>
@@ -882,7 +883,12 @@ export function KeybindingsSettingsSection() {
         </box>
       </Show>
       <text fg={theme.textMuted} wrapMode="word">
-        {`Fixed (not rebindable): ${fixedIds.join(", ")} — plus tmux-layer session keys (ctrl+t / ctrl+[ / ctrl+] / ctrl+w / ctrl+hjkl inside a task session).`}
+        {
+          "tmux session keys use the same file: tmux.tab.new (ctrl+t), tmux.tab.prev/next (ctrl+[/]), tmux.tab.close (ctrl+w), tmux.tab.rename (f2), tmux.tab.chooseEngine (ctrl+shift+t), tmux.detach (ctrl+q), tmux.focus (4 chords, left/down/up/right). They apply when a session is (re)built."
+        }
+      </text>
+      <text fg={theme.textMuted} wrapMode="word">
+        {`Fixed (not rebindable): ${fixedIds.join(", ")}.`}
       </text>
     </box>
   )

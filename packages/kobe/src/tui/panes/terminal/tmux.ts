@@ -53,6 +53,13 @@ import {
   setWindowOption,
   windowCount,
 } from "@/tmux/client"
+import {
+  TMUX_FOCUS_DEFAULTS,
+  TMUX_FOCUS_ID,
+  TMUX_SINGLE_BINDING_DEFAULTS,
+  chordToTmuxKey,
+  resolveUserTmuxKeys,
+} from "@/tmux/keybindings"
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import {
   CLAUDE_PANE_PERCENT,
@@ -82,31 +89,33 @@ export {
   tmuxSessionName,
 } from "@/tmux/client"
 
-export const CHAT_TAB_SWITCH_BINDINGS = [
-  ["bind-key", "-n", "C-[", "previous-window"],
-  ["bind-key", "-n", "C-]", "next-window"],
-] as const
+// ChatTab binding builders. The KEY argument comes from the user-
+// resolvable tmux key set (`resolveUserTmuxKeys` — defaults C-[ / C-] /
+// C-w / F2); the COMMAND halves are fixed. Builders instead of consts so
+// `~/.kobe/settings/keybindings.yaml` overrides flow through one place.
+export function chatTabSwitchBindings(prevKey: string, nextKey: string) {
+  return [
+    ["bind-key", "-n", prevKey, "previous-window"],
+    ["bind-key", "-n", nextKey, "next-window"],
+  ] as const
+}
 
-export const CHAT_TAB_CLOSE_BINDING = [
-  "bind-key",
-  "-n",
-  "C-w",
-  "if-shell",
-  "-F",
-  "#{>:#{session_windows},1}",
-  "kill-window",
-  "display-message 'Cannot close the only ChatTab'",
-] as const
+export function chatTabCloseBinding(key: string) {
+  return [
+    "bind-key",
+    "-n",
+    key,
+    "if-shell",
+    "-F",
+    "#{>:#{session_windows},1}",
+    "kill-window",
+    "display-message 'Cannot close the only ChatTab'",
+  ] as const
+}
 
-export const CHAT_TAB_RENAME_BINDING = [
-  "bind-key",
-  "-n",
-  "F2",
-  "command-prompt",
-  "-I",
-  "#{window_name}",
-  "rename-window -- '%%'",
-] as const
+export function chatTabRenameBinding(key: string) {
+  return ["bind-key", "-n", key, "command-prompt", "-I", "#{window_name}", "rename-window -- '%%'"] as const
+}
 
 // The prompt names the built-ins as examples but ends with `…` so it doesn't
 // imply a CLOSED list — users can register custom engines (Settings → Engines),
@@ -145,21 +154,44 @@ function wrapEngineLaunch(engineCmd: string, remoteKey: string | undefined, remo
   return host.wrapCommand(engineCmd, { tty: true, cwd: remoteCwd })
 }
 
-export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
-  ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
-  ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
-] as const
+// Engine-choice ChatTab bindings: the no-prefix chord is user-resolvable
+// (default C-S-T); the `prefix T` fallback row stays fixed — it exists
+// precisely for terminals that can't forward the shifted control chord.
+export function chatTabChooseEngineBindings(key: string) {
+  return [
+    ["bind-key", "-n", key, "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+    ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+  ] as const
+}
+
+/** Compact display form of a tmux key for the status-right hint (`C-h` → `^h`). */
+function tmuxKeyCap(key: string): string {
+  return key.startsWith("C-") && key.length === 3 ? `^${key.slice(2)}` : key
+}
 
 /**
  * Minimal, muted `status-right` shown on the `-L kobe` socket. From inside the
  * engine/shell pane the user has no other on-screen hint for kobe's
- * escape-hatch chords, so we surface the three most useful ones. `^h` returns
- * to the Tasks pane (the two-stage Ctrl+Q first stage is reachable from there),
- * `^q` is the two-stage detach, `^t` opens a new chat tab. Dimmed with
- * `fg=brightblack` so it reads as a muted hint rather than fighting the user's
- * theme; the trailing space keeps it off the terminal's right edge.
+ * escape-hatch chords, so we surface the three most useful ones. `^h` (the
+ * focus-left key) returns to the Tasks pane (the two-stage Ctrl+Q first stage
+ * is reachable from there), `^q` is the two-stage detach, `^t` opens a new
+ * chat tab. Built from the RESOLVED key set so user overrides show their own
+ * chords; an unbound key drops its segment. Dimmed with `fg=brightblack` so it
+ * reads as a muted hint rather than fighting the user's theme; the trailing
+ * space keeps it off the terminal's right edge.
  */
-export const KOBE_STATUS_RIGHT = "#[fg=brightblack]^h tasks  ^q detach  ^t tab "
+export function kobeStatusRight(keys: {
+  focusLeft: string | null
+  detach: string | null
+  newTab: string | null
+}): string {
+  const segments = [
+    keys.focusLeft ? `${tmuxKeyCap(keys.focusLeft)} tasks` : null,
+    keys.detach ? `${tmuxKeyCap(keys.detach)} detach` : null,
+    keys.newTab ? `${tmuxKeyCap(keys.newTab)} tab` : null,
+  ].filter((s): s is string => s !== null)
+  return `#[fg=brightblack]${segments.join("  ")} `
+}
 
 export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 export const PANE_VERSION_OPTION = "@kobe_pane_version"
@@ -486,6 +518,34 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // hard tmux limit remains: two clients on the SAME window share one grid, so
   // the larger one is letterboxed — that case can't be fixed without per-client
   // sessions (a larger refactor, deferred).
+  // Session keys come from the user-resolvable tmux key set (defaults
+  // C-q / C-hjkl / C-t / C-S-T / C-[ / C-] / C-w / F2; overridable via
+  // `~/.kobe/settings/keybindings.yaml`, `tmux.*` ids). For every
+  // OVERRIDDEN id we first unbind its DEFAULT key: the tmux server is
+  // long-lived, so a previous run (or an older kobe) may have bound it —
+  // without the unbind both the old and new chord would fire. Unbinding
+  // a never-bound root key exits 0 silently, so this is safe on a fresh
+  // server too. An id resolved to null installs nothing (user unbind).
+  const userKeys = resolveUserTmuxKeys()
+  const unbinds: (readonly string[])[] = []
+  if (userKeys.overridden.has(TMUX_FOCUS_ID)) {
+    for (const chord of TMUX_FOCUS_DEFAULTS) {
+      const t = chordToTmuxKey(chord)
+      if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
+    }
+  }
+  for (const id of userKeys.overridden) {
+    if (id === TMUX_FOCUS_ID) continue
+    const def = TMUX_SINGLE_BINDING_DEFAULTS[id as keyof typeof TMUX_SINGLE_BINDING_DEFAULTS]
+    const t = chordToTmuxKey(def)
+    if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
+  }
+  const focusDirections = ["-L", "-D", "-U", "-R"] as const
+  const focusBinds = userKeys.focus.flatMap((bind, i) => {
+    const dir = focusDirections[i]
+    return bind && dir ? [["bind-key", "-n", bind.key, "select-pane", dir] as const] : []
+  })
+  const b = userKeys.binds
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
     ["set-window-option", "-g", "aggressive-resize", "on"],
@@ -493,21 +553,51 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["set-option", "-g", "visual-activity", "off"],
     ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],
     ["set-option", "-g", "window-status-current-format", CHAT_TAB_STATUS_CURRENT_FORMAT],
-    ["set-option", "-g", "status-right", KOBE_STATUS_RIGHT],
+    [
+      "set-option",
+      "-g",
+      "status-right",
+      kobeStatusRight({
+        focusLeft: userKeys.focus[0]?.key ?? null,
+        detach: b["tmux.detach"]?.key ?? null,
+        newTab: b["tmux.tab.new"]?.key ?? null,
+      }),
+    ],
     ["set-option", "-g", "mouse", "on"],
+    ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
     // focus the current window's Tasks pane first. `#{@kobe_role}` is the
     // active pane's role tag.
-    ["bind-key", "-n", "C-q", "if-shell", "-F", "#{==:#{@kobe_role},tasks}", "detach-client", focusTasksTmuxCommand],
-    ["bind-key", "-n", "C-h", "select-pane", "-L"],
-    ["bind-key", "-n", "C-j", "select-pane", "-D"],
-    ["bind-key", "-n", "C-k", "select-pane", "-U"],
-    ["bind-key", "-n", "C-l", "select-pane", "-R"],
-    ["bind-key", "-n", "C-t", "run-shell", newChatTabCommand],
-    ...CHAT_TAB_CHOOSE_ENGINE_BINDINGS.map((binding) => [...binding, chooseEngineTmuxCommand] as const),
-    ...CHAT_TAB_SWITCH_BINDINGS,
-    CHAT_TAB_CLOSE_BINDING,
-    CHAT_TAB_RENAME_BINDING,
+    ...(b["tmux.detach"]
+      ? [
+          [
+            "bind-key",
+            "-n",
+            b["tmux.detach"].key,
+            "if-shell",
+            "-F",
+            "#{==:#{@kobe_role},tasks}",
+            "detach-client",
+            focusTasksTmuxCommand,
+          ] as const,
+        ]
+      : []),
+    ...focusBinds,
+    ...(b["tmux.tab.new"] ? [["bind-key", "-n", b["tmux.tab.new"].key, "run-shell", newChatTabCommand] as const] : []),
+    ...(b["tmux.tab.chooseEngine"]
+      ? chatTabChooseEngineBindings(b["tmux.tab.chooseEngine"].key).map(
+          (binding) => [...binding, chooseEngineTmuxCommand] as const,
+        )
+      : []),
+    ...(b["tmux.tab.prev"] && b["tmux.tab.next"]
+      ? chatTabSwitchBindings(b["tmux.tab.prev"].key, b["tmux.tab.next"].key)
+      : b["tmux.tab.prev"]
+        ? [["bind-key", "-n", b["tmux.tab.prev"].key, "previous-window"] as const]
+        : b["tmux.tab.next"]
+          ? [["bind-key", "-n", b["tmux.tab.next"].key, "next-window"] as const]
+          : []),
+    ...(b["tmux.tab.close"] ? [chatTabCloseBinding(b["tmux.tab.close"].key)] : []),
+    ...(b["tmux.tab.rename"] ? [chatTabRenameBinding(b["tmux.tab.rename"].key)] : []),
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
   ])
 

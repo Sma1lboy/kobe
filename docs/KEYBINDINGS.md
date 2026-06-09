@@ -3,7 +3,7 @@
 Single source of truth for "what keys do what, where, and why."
 Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
-Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings and live in [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts), with the in-session Tasks pane footer in [`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx). Keep those three surfaces in sync when changing a handover key.
+Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings installed by [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts). Their DEFAULT chords live in [`packages/kobe/src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) (`TMUX_SINGLE_BINDING_DEFAULTS` / `TMUX_FOCUS_DEFAULTS`, user-overridable via `tmux.*` ids — see "User customization" below), and the in-session Tasks pane footer ([`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx)) renders from the same resolved set. Change a handover default in the defaults table, not at the install site.
 
 ---
 
@@ -160,15 +160,28 @@ Semantics and guard rails:
 - **Conflicts warn but apply**: an override colliding with another binding in
   an overlapping scope logs "last registration wins; consider a different
   chord".
+- **tmux-layer session keys use the same file** via `tmux.*` ids resolved by
+  [`src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) and
+  installed by `ensureSession` (overridden defaults are `unbind-key`'d first,
+  so a long-lived server doesn't keep both chords): `tmux.tab.new` (ctrl+t),
+  `tmux.tab.chooseEngine` (ctrl+shift+t — shift+letter IS allowed here, tmux
+  binds `C-S-…` on extended-keys terminals), `tmux.tab.prev`/`tmux.tab.next`
+  (ctrl+[ / ctrl+]), `tmux.tab.close` (ctrl+w), `tmux.tab.rename` (f2),
+  `tmux.detach` (ctrl+q two-stage), and `tmux.focus` — a POSITIONAL group of
+  exactly 4 chords in order left/down/up/right (default ctrl+h/j/k/l). One
+  chord per single id; `null` skips installing the binding. Extra guard rails:
+  `cmd+` chords are rejected (Command never reaches tmux) and bare keys are
+  rejected unless they're F-keys (no-prefix root bindings live in every pane —
+  a bare letter would shadow typing). The Tasks-pane footer legend and the
+  tmux `status-right` hint render from the resolved set, so overrides show
+  their own chords. Overrides apply when a session is (re)built, not to a
+  session that's already running. The `prefix T` / `prefix f` rows stay fixed.
 - **Fixed (not rebindable) in v1**: ids whose handlers discriminate BETWEEN
   their chords by key name (`sidebar.nav`, `files.nav`, `files.hierarchy`,
   `sidebar.view`, `files.tab`, `sidebar.goto`/`pin`/`localMerge` shift-gates,
   `chat.question.nav`/`pick-number`, `focus.numeric`) — listed in
-  `FIXED_BINDING_IDS` with reasons; doc-only rows (`keys: []`, e.g. composer
-  enter/shift+enter); and the **tmux-layer handover keys** (`ctrl+t`,
-  `ctrl+[`/`ctrl+]`, `ctrl+w`, `ctrl+q`, `ctrl+hjkl` inside a task session,
-  installed by `tmux.ts`). Making the tmux layer follow the same YAML is the
-  natural follow-up.
+  `FIXED_BINDING_IDS` with reasons; and doc-only rows (`keys: []`, e.g.
+  composer enter/shift+enter).
 
 ## Adding a new binding — checklist
 

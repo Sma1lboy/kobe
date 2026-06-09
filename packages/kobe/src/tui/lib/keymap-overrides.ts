@@ -150,11 +150,21 @@ const MOD_ORDER: ReadonlyArray<"ctrl" | "cmd" | "alt" | "shift"> = ["ctrl", "cmd
 
 export type ChordResult = { chord: string; warning?: string } | { error: string }
 
+export type NormalizeChordOpts = {
+  /**
+   * Permit `shift+<single char>` chords. The opentui keymap layer can
+   * never match them (terminals deliver shift+letter as a plain
+   * character), but tmux CAN bind `C-S-T` on extended-keys terminals —
+   * the tmux-layer resolver opts in; everything else keeps the rejection.
+   */
+  allowShiftCharacter?: boolean
+}
+
 /**
  * Normalize one user-written chord into the exact candidate string
  * `matchKey()` mints, or explain why it can't work.
  */
-export function normalizeChord(raw: string): ChordResult {
+export function normalizeChord(raw: string, opts?: NormalizeChordOpts): ChordResult {
   const trimmed = raw.trim().toLowerCase()
   if (!trimmed) return { error: "empty chord" }
 
@@ -178,7 +188,7 @@ export function normalizeChord(raw: string): ChordResult {
 
   key = KEY_ALIASES[key] ?? key
 
-  if (mods.has("shift") && key.length === 1) {
+  if (mods.has("shift") && key.length === 1 && !opts?.allowShiftCharacter) {
     return {
       error: `"${raw}": shift+<character> can never match — terminals deliver shift+letter as a plain character, not a modifier event`,
     }
@@ -212,13 +222,26 @@ function extractBindingsMap(section: unknown): Record<string, unknown> | null {
   return section
 }
 
+export type ExtractOverridesOpts = {
+  /**
+   * Per-id chord-normalization options. The tmux-layer resolver passes
+   * `(id) => id.startsWith("tmux.") ? { allowShiftCharacter: true } : {}`
+   * so `tmux.tab.chooseEngine: ctrl+shift+t` round-trips while opentui
+   * ids keep the shift+letter rejection.
+   */
+  chordOptsFor?: (id: string) => NormalizeChordOpts
+}
+
 /**
  * Turn a parsed YAML document into a flat override list for `platform`.
- * Never throws; malformed pieces degrade to warnings.
+ * Never throws; malformed pieces degrade to warnings. Each warning string
+ * is prefixed `"<id>: "` when it concerns a specific binding — consumers
+ * that split the id namespace (opentui vs tmux) filter on that prefix.
  */
 export function extractKeybindingOverrides(
   doc: unknown,
   platform: string,
+  opts?: ExtractOverridesOpts,
 ): { entries: KeymapOverrideEntry[]; warnings: string[] } {
   const warnings: string[] = []
   if (doc === null || doc === undefined) return { entries: [], warnings }
@@ -262,7 +285,7 @@ export function extractKeybindingOverrides(
           anyError = true
           continue
         }
-        const result = normalizeChord(rawChord)
+        const result = normalizeChord(rawChord, opts?.chordOptsFor?.(id))
         if ("error" in result) {
           warnings.push(`${id}: ${result.error}`)
           anyError = true

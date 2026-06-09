@@ -62,6 +62,7 @@ import {
   isRemoteRepoKey,
   setPersistedString,
 } from "../../state/repos.ts"
+import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { nextVendorWithin } from "../../types/vendor.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
@@ -765,6 +766,37 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
   // `main` (project root) row — the footer dims that cap so a press there reads
   // as "doesn't apply here" rather than a silent no-op (Issue #7).
   type Hint = { k: string; label: string; dimWhenMain?: boolean }
+  // tmux session-key rows derive from the RESOLVED key set so user
+  // overrides (`tmux.*` ids in ~/.kobe/settings/keybindings.yaml) show
+  // their own chords here; an unbound id drops its row. Pseudo-chords
+  // ("ctrl+hjkl", "ctrl+[/]") are kept only while the relevant keys are
+  // still at their defaults — overridden keys render as plain chords.
+  const tmuxHints = (): ReadonlyArray<Hint> => {
+    const res = resolveUserTmuxKeys()
+    const b = res.binds
+    const out: Hint[] = []
+    const focusChords = res.focus.filter((f): f is NonNullable<typeof f> => f !== null).map((f) => f.chord)
+    if (focusChords.length === 4 && focusChords.every((c, i) => c === TMUX_FOCUS_DEFAULTS[i])) {
+      out.push({ k: "ctrl+hjkl", label: "move panes" })
+    } else if (focusChords.length > 0) {
+      out.push({ k: focusChords[0] as string, label: "move panes" })
+    }
+    const prev = b["tmux.tab.prev"]
+    const next = b["tmux.tab.next"]
+    if (prev?.chord === "ctrl+[" && next?.chord === "ctrl+]") {
+      out.push({ k: "ctrl+[/]", label: "switch tabs" })
+    } else {
+      if (prev) out.push({ k: prev.chord, label: "prev tab" })
+      if (next) out.push({ k: next.chord, label: "next tab" })
+    }
+    if (b["tmux.tab.new"]) out.push({ k: b["tmux.tab.new"].chord, label: "new tab" })
+    if (b["tmux.tab.chooseEngine"]) out.push({ k: b["tmux.tab.chooseEngine"].chord, label: "engine tab" })
+    out.push({ k: "prefix t", label: "engine tab" }, { k: "prefix f", label: "new task" })
+    if (b["tmux.tab.rename"]) out.push({ k: b["tmux.tab.rename"].chord, label: "rename tab" })
+    if (b["tmux.tab.close"]) out.push({ k: b["tmux.tab.close"].chord, label: "close tab" })
+    if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
+    return out
+  }
   // Fixed-width key column so labels line up — a terminal-grammar legend
   // column, not a proportional pane (allowed hardcode). formatChord keeps
   // plain-letter caps lowercase (the EXACT key to press, #14), uppercases the
@@ -788,15 +820,7 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
     // on main to signal the branch action is unavailable.
     { k: "r/b/v", label: "name/branch/engine", dimWhenMain: true },
     { k: "f1", label: "help" },
-    { k: "ctrl+hjkl", label: "move panes" },
-    { k: "ctrl+[/]", label: "switch tabs" },
-    { k: "ctrl+t", label: "new tab" },
-    { k: "ctrl+shift+t", label: "engine tab" },
-    { k: "prefix t", label: "engine tab" },
-    { k: "prefix f", label: "new task" },
-    { k: "f2", label: "rename tab" },
-    { k: "ctrl+w", label: "close tab" },
-    { k: "ctrl+q", label: "tasks→detach" },
+    ...tmuxHints(),
   ]
   const MOVE_HINTS: ReadonlyArray<Hint> = [
     { k: "j/k", label: "reorder" },
