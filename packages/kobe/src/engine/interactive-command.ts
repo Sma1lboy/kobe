@@ -46,6 +46,16 @@ export function engineCommandKey(vendor: VendorId): string {
   return `engineCommand.${vendor}`
 }
 
+/**
+ * state.json key holding a vendor's custom DISPLAY-NAME override (KOB-244).
+ * Parallel to {@link engineCommandKey}; an empty/unset value means "use the
+ * built-in {@link VENDOR_LABEL}", so resetting an engine to default is just
+ * clearing both keys — no sentinel value.
+ */
+export function engineNameKey(vendor: VendorId): string {
+  return `engineName.${vendor}`
+}
+
 /** Built-in default launch argv for a vendor (undefined → claude). */
 export function defaultEngineCommand(vendor: VendorId | undefined): readonly string[] {
   return DEFAULT_COMMANDS[vendor ?? "claude"] ?? DEFAULT_COMMANDS.claude

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { defaultEngineCommand, engineCommandKey, parseEngineCommand } from "../../src/engine/interactive-command.ts"
+import {
+  defaultEngineCommand,
+  engineCommandKey,
+  engineNameKey,
+  parseEngineCommand,
+} from "../../src/engine/interactive-command.ts"
 
 describe("parseEngineCommand", () => {
   it("splits a bare binary name", () => {
@@ -44,5 +49,12 @@ describe("engineCommandKey", () => {
   it("namespaces the override key per vendor", () => {
     expect(engineCommandKey("claude")).toBe("engineCommand.claude")
     expect(engineCommandKey("codex")).toBe("engineCommand.codex")
+  })
+})
+
+describe("engineNameKey", () => {
+  it("namespaces the display-name key per vendor, parallel to the command key", () => {
+    expect(engineNameKey("claude")).toBe("engineName.claude")
+    expect(engineNameKey("copilot")).toBe("engineName.copilot")
   })
 })

@@ -1,7 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, For, type Setter, Show } from "solid-js"
 import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
-import { VENDOR_LABEL } from "../../../engine/interactive-command"
 import type { VendorId } from "../../../types/task"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import type { EditorKind } from "../../lib/editor-prefs"
@@ -379,12 +378,18 @@ export function EngineSettingsSection(
     level: Accessor<NavLevel>
     bodyRow: Accessor<number>
     vendors: readonly VendorId[]
+    /** Display label for a vendor — custom name override, else VENDOR_LABEL. */
+    displayName: (vendor: VendorId) => string
     /** Current launch command shown for a vendor (override or default). */
     commandText: (vendor: VendorId) => string
-    /** Whether the shown command is the built-in default (dims it). */
+    /** Whether the engine is fully at its built-in default (dims it). */
     isDefault: (vendor: VendorId) => boolean
-    /** Open the editor for a vendor's launch command. */
+    /** Open the editor for a vendor's launch command (`enter`). */
     editEngine: (vendor: VendorId) => void
+    /** Edit a vendor's custom display name (`r`). */
+    renameEngine: (vendor: VendorId) => void
+    /** Reset a vendor's command + name to the built-in default (`x`). */
+    resetEngine: (vendor: VendorId) => void
   },
 ) {
   const { theme } = useTheme()
@@ -395,7 +400,8 @@ export function EngineSettingsSection(
       </text>
       <text fg={theme.textMuted} wrapMode="word">
         The command each engine's task pane runs. Override it when your binary isn't on PATH as `claude` / `codex` (e.g.
-        it's `cl`) or to pass default flags. enter to edit · takes effect on the next task enter.
+        it's `cl`) or to pass default flags. enter edit command · r rename · x reset to default · takes effect on the
+        next task enter.
       </text>
       <box flexDirection="column" gap={0}>
         <For each={props.vendors}>
@@ -419,7 +425,7 @@ export function EngineSettingsSection(
                   attributes={TextAttributes.BOLD}
                   wrapMode="none"
                 >
-                  {VENDOR_LABEL[vendor]}
+                  {props.displayName(vendor)}
                 </text>
                 <text
                   fg={
@@ -586,7 +592,8 @@ export function FeedbackSettingsSection(
         Feedback
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to General.
+        Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to
+        Feedback.
       </text>
       <box flexDirection="column" gap={0}>
         <box

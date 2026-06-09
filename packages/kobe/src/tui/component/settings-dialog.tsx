@@ -22,7 +22,7 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "../../engine/account-detect"
-import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
+import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
 import type { VendorId } from "../../types/task"
 import { ALL_VENDORS } from "../../types/vendor"
@@ -230,14 +230,43 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
   }
   function engineIsDefault(vendor: VendorId): boolean {
-    return engineOverride(vendor).length === 0
+    return engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
+  }
+  // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL.
+  function engineNameOverride(vendor: VendorId): string {
+    const v = props.kv.get(engineNameKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
+  }
+  function engineNameIsCustom(vendor: VendorId): boolean {
+    return engineNameOverride(vendor).length > 0
+  }
+  function engineName(vendor: VendorId): string {
+    return engineNameOverride(vendor) || VENDOR_LABEL[vendor]
   }
   async function editEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
-      dialogTitle: `${VENDOR_LABEL[vendor]} launch command`,
+      dialogTitle: `${engineName(vendor)} launch command`,
     })
     if (next === undefined) return
     props.kv.set(engineCommandKey(vendor), next.trim())
+  }
+  async function renameEngine(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, engineName(vendor), {
+      dialogTitle: `${VENDOR_LABEL[vendor]} display name (blank = default)`,
+    })
+    if (next === undefined) return
+    props.kv.set(engineNameKey(vendor), next.trim())
+  }
+  // Reset BOTH overrides to the built-in default — clearing the keys is the
+  // reset (empty = default, no sentinel). Apply sites pick it up automatically.
+  function resetEngine(vendor: VendorId): void {
+    props.kv.set(engineCommandKey(vendor), "")
+    props.kv.set(engineNameKey(vendor), "")
+  }
+  /** The engine row under the body cursor, or null when not on an engine row. */
+  function currentEngineRow(): VendorId | null {
+    if (section() !== "engines" || level() !== "body") return null
+    return ALL_VENDORS[bodyRow()] ?? null
   }
 
   // Editor preference: which editor the file tree's `e` key launches.
@@ -421,6 +450,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
         key: "t",
         cmd: toggleTransparent,
       },
+      {
+        // Engines section only: `r` renames the focused engine's display
+        // label, `x` resets that engine (command + name) to the built-in
+        // default. Gated to a focused engine row so they're inert elsewhere.
+        key: "r",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) void renameEngine(v)
+        },
+      },
+      {
+        key: "x",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) resetEngine(v)
+        },
+      },
     ],
   }))
 
@@ -467,9 +513,12 @@ export function SettingsDialog(props: SettingsDialogProps) {
               setLevel={setLevel}
               setBodyRow={setBodyRow}
               vendors={ALL_VENDORS}
+              displayName={engineName}
               commandText={engineCommandText}
               isDefault={engineIsDefault}
               editEngine={(v) => void editEngine(v)}
+              renameEngine={(v) => void renameEngine(v)}
+              resetEngine={resetEngine}
             />
           </Show>
           <Show when={section() === "accounts"}>
