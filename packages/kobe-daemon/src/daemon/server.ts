@@ -61,8 +61,8 @@ function resolveIdleGraceMs(): number {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
 }
 
-/** How long a non-idle engine-activity state survives with no follow-up event
- *  before lapsing to idle (safety net for a missed Stop/SessionEnd). */
+/** How long a non-idle, non-complete engine-activity state survives with no
+ *  follow-up event before lapsing to idle (safety net for a missed Stop/SessionEnd). */
 const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
 function resolveEngineStateTtlMs(): number {
   const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
@@ -203,9 +203,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     const state = reduceActivity(prev?.state, kind, detail)
     const at = Date.now()
     const entry: ActivityEntry = { state, detail, at }
-    // Safety net: a non-idle state that never gets a follow-up event lapses
-    // back to idle, so a missed Stop/SessionEnd can't pin a badge forever.
-    if (state !== "idle") {
+    // Safety net: an in-flight/blocking/error state that never gets a
+    // follow-up event lapses back to idle, so a missed Stop/SessionEnd can't
+    // pin a badge forever. A completed turn is already terminal; keep the
+    // checkmark visible until the next activity event instead of refreshing
+    // itself back to the neutral status circle.
+    if (state !== "idle" && state !== "turn_complete") {
       entry.lapse = setTimeout(() => {
         const cur = activity.get(taskId)
         if (cur && cur.at === at) {
