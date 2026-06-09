@@ -368,7 +368,10 @@ function TasksShell(props: {
   async function renameBranch(id: string): Promise<void> {
     const current = props.tasks().find((t) => t.id === id)
     if (!current || current.kind === "main") return
-    const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
+    const next = await RenameTaskDialog.show(dialog, current.branch, {
+      dialogTitle: "Rename branch",
+      fieldLabel: "branch",
+    })
     if (!next || !props.orch) return
     try {
       await props.orch.setBranch(id, next)

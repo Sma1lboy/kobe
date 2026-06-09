@@ -22,7 +22,17 @@ import { RenameTaskDialogView } from "./dialog"
 function show(
   dialog: DialogContext,
   currentTitle: string,
-  opts: { dialogTitle?: string } = {},
+  opts: {
+    dialogTitle?: string
+    /** Inner field label — override for non-title reuses (e.g. `"command"`). */
+    fieldLabel?: string
+    /** Footer verb after `enter` (default `"rename"`). */
+    submitLabel?: string
+    /** Input placeholder (default = `currentTitle`). */
+    placeholder?: string
+    /** Allow submitting an empty value (e.g. "blank = default"). */
+    allowEmpty?: boolean
+  } = {},
 ): Promise<string | undefined> {
   return new Promise<string | undefined>((resolve) => {
     dialog.replace(
@@ -30,6 +40,10 @@ function show(
         <RenameTaskDialogView
           currentTitle={currentTitle}
           dialogTitle={opts.dialogTitle}
+          fieldLabel={opts.fieldLabel}
+          submitLabel={opts.submitLabel}
+          placeholder={opts.placeholder}
+          allowEmpty={opts.allowEmpty}
           onSubmit={(v) => resolve(v)}
           onCancel={() => resolve(undefined)}
         />

@@ -261,6 +261,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function editEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
       dialogTitle: `${engineName(vendor)} launch command`,
+      fieldLabel: "command",
+      submitLabel: "save",
+      allowEmpty: true, // blank clears the override → built-in default
     })
     if (next === undefined) return
     props.kv.set(engineCommandKey(vendor), next.trim())
@@ -268,6 +271,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function renameEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineName(vendor), {
       dialogTitle: `${engineName(vendor)} display name (blank = default)`,
+      fieldLabel: "name",
+      submitLabel: "save",
+      allowEmpty: true, // blank clears the name override → default label
     })
     if (next === undefined) return
     props.kv.set(engineNameKey(vendor), next.trim())
@@ -291,15 +297,28 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // The "+ Add engine" row: collect id + launch command + display name and
   // register a new custom engine. Reuses RenameTaskDialog for each field.
   async function addEngineFlow(): Promise<void> {
-    const idRaw = await RenameTaskDialog.show(dialog, "", { dialogTitle: "New engine id (lowercase slug, e.g. aider)" })
+    const idRaw = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: "Add engine",
+      fieldLabel: "id",
+      submitLabel: "next",
+      placeholder: "lowercase slug, e.g. aider",
+    })
     if (idRaw === undefined) return
     const id = idRaw.trim().toLowerCase()
     if (!id || isBuiltinVendor(id) || customEngines().includes(id)) return // no blank / shadow / dup
     const command = await RenameTaskDialog.show(dialog, "", {
-      dialogTitle: `${id} launch command (e.g. aider --model sonnet)`,
+      dialogTitle: `Add engine · ${id}`,
+      fieldLabel: "command",
+      submitLabel: "next",
+      placeholder: "e.g. aider --model sonnet",
     })
     if (command === undefined) return
-    const name = await RenameTaskDialog.show(dialog, id, { dialogTitle: `${id} display name (blank = the id)` })
+    const name = await RenameTaskDialog.show(dialog, id, {
+      dialogTitle: `Add engine · ${id}`,
+      fieldLabel: "name",
+      submitLabel: "add",
+      allowEmpty: true, // blank = the id
+    })
     props.kv.set("customEngineIds", [...customEngines(), id])
     if (command.trim()) props.kv.set(engineCommandKey(id), command.trim())
     if (name?.trim()) props.kv.set(engineNameKey(id), name.trim())
@@ -330,6 +349,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function editEditorCustom(): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, editorCustomCommand(), {
       dialogTitle: "Custom editor command (use {file} for the path)",
+      fieldLabel: "command",
+      submitLabel: "save",
+      allowEmpty: true,
     })
     if (next === undefined) return
     const cmd = next.trim()
@@ -344,6 +366,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function editFeedbackTitle(): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, feedbackTitle(), {
       dialogTitle: "Feedback title",
+      fieldLabel: "title",
+      submitLabel: "save",
     })
     if (next === undefined) return
     setFeedbackTitle(next)
@@ -353,6 +377,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function editFeedbackBody(): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, feedbackBody(), {
       dialogTitle: "Feedback body",
+      fieldLabel: "body",
+      submitLabel: "save",
+      allowEmpty: true,
     })
     if (next === undefined) return
     setFeedbackBody(next)
