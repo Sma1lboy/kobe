@@ -92,14 +92,6 @@ export type FileTreeProps = {
    */
   onOpenFile: (relPath: string) => void
   /**
-   * Fires when the user requests to EDIT the current file (the `e` key) —
-   * the Ops host opens it in the configured editor (vim / nano / custom)
-   * in a new tmux window. Distinct from `onOpenFile` (enter), which is the
-   * read-only preview. Omit it elsewhere (the key no-ops on dirs / when
-   * unwired).
-   */
-  onEditFile?: (relPath: string) => void
-  /**
    * Fires when the user requests an `@<path>` mention of the current
    * file (the `a` key). The Ops host wires this to a tmux send-keys
    * injection into the engine pane; omit it elsewhere (the key no-ops).
@@ -518,15 +510,6 @@ export function FileTree(props: FileTreeProps) {
     if (!row || row.kind === "dir") return
     props.onMention?.(row.path)
   }
-  function editCurrent(): void {
-    const r = rows()
-    const i = cursorIndex()
-    if (i < 0 || i >= r.length) return
-    const row = r[i]
-    // Only files open in an editor; dirs are ignored (enter toggles them).
-    if (!row || row.kind === "dir") return
-    props.onEditFile?.(row.path)
-  }
   function refresh(): void {
     setRefreshTick((n) => n + 1)
     props.onRefresh?.()
@@ -551,7 +534,6 @@ export function FileTree(props: FileTreeProps) {
     currentTab: tab,
     openCurrent,
     mentionCurrent,
-    editCurrent,
     createPR: props.onCreatePR,
     openExternal,
     refresh,
@@ -811,14 +793,14 @@ export function FileTree(props: FileTreeProps) {
         </Show>
       </scrollbox>
 
-      {/* Footer hint — the two file-open actions. `enter` is the read-only
-         preview/diff; `e` opens the file in the configured editor
-         (vim / nano / custom) in a new tmux window. Shown only when a
-         worktree is loaded so the "no task" placeholder stays clean. */}
+      {/* Footer hint — `enter` opens the file (nvim diff vs HEAD when
+         changed, plain edit otherwise; opentui preview if no nvim/vim).
+         Shown only when a worktree is loaded so the "no task" placeholder
+         stays clean. */}
       <Show when={props.worktreePath() != null}>
         <box flexDirection="row" paddingTop={1} flexShrink={0}>
           <text fg={theme.textMuted} wrapMode="none">
-            ↵ preview · e edit
+            ↵ open
           </text>
         </box>
       </Show>
