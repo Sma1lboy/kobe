@@ -46,7 +46,6 @@ import {
   runTmuxCapturing,
   runTmuxSequence,
   runTmuxSequenceCapturing,
-  sendKeys,
   sessionExists,
   setSessionOption,
   setWindowOption,
@@ -395,11 +394,11 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // detach branch is reached once focus is on Tasks.
   const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
   const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
-  // `<prefix> f` = quick-create: focus the Tasks pane and open the
-  // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
-  // the tmux world). `kobe quick-create` selects the tasks pane and
-  // injects `n`, so the dialog + its logic are exactly the Tasks pane's
-  // createTask — no separate code path. PREFIX-scoped (not no-prefix
+  // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
+  // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
+  // quick-create` opens `kobe quick-task` in its own window, which asks for
+  // ONLY a prompt and fills repo / engine / base branch from this task's
+  // defaults, then creates + delivers and exits. PREFIX-scoped (not no-prefix
   // C-f): a no-prefix Ctrl+F was unusable — it shadows readline
   // forward-char in the claude/shell panes and several apps grab it, so
   // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
@@ -946,15 +945,19 @@ export async function selectTasksPane(session: string): Promise<string> {
 }
 
 /**
- * Quick-create (`<prefix> f`): focus the active window's Tasks pane and open
- * its new-task dialog. Implemented by selecting the tasks pane and
- * injecting an `n` keystroke — the Tasks pane's own `n` binding then
- * runs `createTask`, so the dialog and its logic are identical to
- * pressing `n` in the pane directly. Invoked by `kobe quick-create`
- * (the `<prefix> f` handler), which passes only the session name.
+ * Quick-create (`<prefix> f`): open the prompt-only quick-task page as a
+ * dedicated chat-tab window (mirroring {@link openNewTaskTab}). The page
+ * (`kobe quick-task`) asks for ONLY a prompt and fills repo / engine / base
+ * branch from defaults derived from this session's task, then creates the
+ * task + delivers the prompt and exits. Invoked by `kobe quick-create`,
+ * which passes only the session name.
  */
 export async function quickCreate(session: string): Promise<void> {
-  const tasksPane = await selectTasksPane(session)
-  if (!tasksPane) return
-  await sendKeys(tasksPane, "n")
+  if (!(await sessionExists(session))) return
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const command = `${envPrefix}${inv.map(shellQuote).join(" ")} quick-task --session ${shellQuote(session)}`
+  await newWindow(session, { cwd, command, name: "quick task" })
 }

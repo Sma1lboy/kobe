@@ -40,7 +40,7 @@ export interface NewTaskHostArgs {
   readonly defaultRepo?: string
 }
 
-function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator | null }) {
+export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator | null }) {
   const { theme } = useTheme()
   const dialog = useDialog()
 

@@ -24,9 +24,10 @@
  * NOT fall through to launching the TUI).
  *
  * Internal subcommands fired by tmux key bindings inside a task session
- * (not meant for direct use): `new-chattab`, `quick-create`, `focus-tasks`,
- * `tasks`, `ops` — each takes the session/worktree as flags. `hook` is fired
- * by an engine's own hooks inside a worktree to report activity events.
+ * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
+ * `focus-tasks`, `tasks`, `ops` — each takes the session/worktree as flags.
+ * `hook` is fired by an engine's own hooks inside a worktree to report
+ * activity events.
  *
  * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
  * a prompt via `tmux send-keys` into the task's engine pane, not the
@@ -442,6 +443,16 @@ async function main(): Promise<void> {
     }
     const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
     await selectTasksPane(session)
+    return
+  }
+  if (subcommand === "quick-task") {
+    // The prompt-only quick-create page, opened in its own window by
+    // `quickCreate` (the `<prefix> f` / `kobe quick-create` handler). Asks
+    // for only a prompt and fills the rest from the firing task's defaults.
+    // Reads `--session` to resolve those defaults.
+    const flags = parseOpsFlags(rest)
+    const { startQuickTaskHost } = await import("../tui/quick-task/host.tsx")
+    await startQuickTaskHost({ session: flags.session })
     return
   }
   if (subcommand === "tasks") {

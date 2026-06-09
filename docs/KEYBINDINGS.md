@@ -106,7 +106,7 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 | `ctrl+[` / `ctrl+]` | no-prefix tmux | Previous / next ChatTab window. |
 | `ctrl+w` | no-prefix tmux | Close the current ChatTab window if another window remains. |
 | `F2` | no-prefix tmux | Rename the current ChatTab window. |
-| tmux `prefix f` | tmux prefix | Focus the Tasks pane and open the new-task dialog. |
+| tmux `prefix f` | tmux prefix | Open the prompt-only quick-task page (asks for just a prompt; repo / engine / base branch default from the current task). |
 
 Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `t` toggle task sort (default/manual vs recent), `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
