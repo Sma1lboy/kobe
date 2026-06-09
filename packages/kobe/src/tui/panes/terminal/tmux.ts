@@ -37,6 +37,7 @@ import { worktreeInitMarkerPath } from "@/env"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
+  getServerOption,
   getSessionOptions,
   globalTasksPaneWidth,
   newWindow,
@@ -47,7 +48,6 @@ import {
   runTmuxSequenceCapturing,
   sendKeys,
   sessionExists,
-  setServerOption,
   setSessionOption,
   setWindowOption,
   windowCount,
@@ -55,8 +55,11 @@ import {
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import {
   CLAUDE_PANE_PERCENT,
+  OPS_HEIGHT_OPTION,
   OPS_PANE_PERCENT,
+  RIGHT_COLUMN_WIDTH_OPTION,
   TASKS_WIDTH_OPTION,
+  clampPanePercent,
   clampTasksPaneWidth,
   engineLaunchLine,
   keepAlive,
@@ -242,6 +245,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // Happy path: healthy + right place + right engine → reuse as-is.
     if (claudeAlive && worktreeOk && vendorOk) {
       await healTaskPaneWidths(opts.name)
+      await healRightColumn(opts.name)
       await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
@@ -257,6 +261,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
         if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
         await healTaskPaneWidths(opts.name)
+        await healRightColumn(opts.name)
         await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
         return true
       }
@@ -269,6 +274,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // engine pane survives (KOB-244).
     if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
       await healTaskPaneWidths(opts.name)
+      await healRightColumn(opts.name)
       await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
@@ -517,32 +523,106 @@ async function healTaskPaneWidths(session: string): Promise<void> {
   await runTmuxSequence(mismatched.map((pane) => ["resize-pane", "-t", pane, "-x", `${target}`]))
 }
 
+/** The user's global right-column geometry (window %), `null` per axis when unset. */
+async function rightColumnPercents(): Promise<{ widthPct: number | null; heightPct: number | null }> {
+  const [width, height] = await Promise.all([
+    getServerOption(RIGHT_COLUMN_WIDTH_OPTION),
+    getServerOption(OPS_HEIGHT_OPTION),
+  ])
+  return {
+    widthPct: clampPanePercent(Number.parseInt(width, 10)),
+    heightPct: clampPanePercent(Number.parseInt(height, 10)),
+  }
+}
+
+/** Build the `resize-pane -x/-y N%` args for an Ops pane from a geometry pair. */
+function rightColumnResizeArgs(geom: { widthPct: number | null; heightPct: number | null }): string[] {
+  const args: string[] = []
+  if (geom.widthPct !== null) args.push("-x", `${geom.widthPct}%`)
+  if (geom.heightPct !== null) args.push("-y", `${geom.heightPct}%`)
+  return args
+}
+
 /**
- * Persist a session's CURRENT (active-window) Tasks-rail width as the new
- * global width, so a manual resize in one task becomes the shared width every
- * other task uses. Called when switching AWAY from a task. No-op when the
- * session has no Tasks pane or the width is unreadable; the value is clamped to
- * a sane range before it is stored.
+ * Apply the user's global right-column geometry to every window in a session.
+ *
+ * The right column is the Ops (file-tree) pane stacked over the terminal. One
+ * `resize-pane` on the Ops pane sets BOTH boundaries: `-x` (column width) pulls
+ * from the Claude chat pane (the Tasks rail stays fixed), `-y` (file-tree
+ * height) pulls from the terminal below. Mirrors {@link healTaskPaneWidths} so
+ * the right column is one shared shape across tasks. No-op when neither option
+ * is set — a user who never dragged the column keeps the default split.
  */
-export async function captureTasksPaneWidth(session: string): Promise<void> {
-  // No `-s`: the active window's panes, i.e. the rail the user can actually see
-  // and drag — not stale siblings in background chat-tab windows.
+async function healRightColumn(session: string): Promise<void> {
+  const geom = await rightColumnPercents()
+  const args = rightColumnResizeArgs(geom)
+  if (args.length === 0) return
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-s",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{pane_id}\t#{@kobe_role}",
+  ])
+  if (code !== 0) return
+  const opsPanes = stdout
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .filter(([, role]) => role?.trim() === "ops")
+    .map(([id]) => id?.trim())
+    .filter((id): id is string => !!id)
+  if (opsPanes.length === 0) return
+  await runTmuxSequence(opsPanes.map((pane) => ["resize-pane", "-t", pane, ...args]))
+}
+
+/**
+ * Persist a session's CURRENT (active-window) pane geometry as the new global
+ * layout, so a manual resize in one task becomes the shared shape every other
+ * task uses. Called when switching AWAY from a task. Captures the Tasks-rail
+ * width (cells) and the right column's width + file-tree height (each as a % of
+ * the window, the unit {@link healRightColumn} re-applies with). Each axis is
+ * skipped if unreadable; values are clamped before they are stored.
+ */
+export async function captureGlobalLayout(session: string): Promise<void> {
+  // No `-s`: the active window's panes — the ones the user can see and drag,
+  // not stale siblings in background chat-tab windows.
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-t",
     `=${session}`,
     "-F",
-    "#{@kobe_role}\t#{pane_width}",
+    "#{@kobe_role}\t#{pane_width}\t#{pane_height}\t#{window_width}\t#{window_height}",
   ])
   if (code !== 0) return
-  const row = stdout
+  const rows = stdout
     .split("\n")
     .map((line) => line.split("\t"))
-    .find(([role]) => role?.trim() === "tasks")
-  if (!row) return
-  const width = Number.parseInt(row[1]?.trim() ?? "", 10)
-  if (!Number.isFinite(width) || width <= 0) return
-  await setServerOption(TASKS_WIDTH_OPTION, `${clampTasksPaneWidth(width)}`)
+    .filter((cols) => (cols[0]?.trim() ?? "") !== "")
+  if (rows.length === 0) return
+  const winW = Number.parseInt(rows[0][3]?.trim() ?? "", 10)
+  const winH = Number.parseInt(rows[0][4]?.trim() ?? "", 10)
+  const sets: (readonly string[])[] = []
+
+  const tasks = rows.find(([role]) => role?.trim() === "tasks")
+  if (tasks) {
+    const width = Number.parseInt(tasks[1]?.trim() ?? "", 10)
+    if (Number.isFinite(width) && width > 0) {
+      sets.push(["set-option", "-s", TASKS_WIDTH_OPTION, `${clampTasksPaneWidth(width)}`])
+    }
+  }
+
+  const ops = rows.find(([role]) => role?.trim() === "ops")
+  if (ops && Number.isFinite(winW) && winW > 0 && Number.isFinite(winH) && winH > 0) {
+    const opsW = Number.parseInt(ops[1]?.trim() ?? "", 10)
+    const opsH = Number.parseInt(ops[2]?.trim() ?? "", 10)
+    const widthPct = Number.isFinite(opsW) ? clampPanePercent((100 * opsW) / winW) : null
+    const heightPct = Number.isFinite(opsH) ? clampPanePercent((100 * opsH) / winH) : null
+    if (widthPct !== null) sets.push(["set-option", "-s", RIGHT_COLUMN_WIDTH_OPTION, `${widthPct}`])
+    if (heightPct !== null) sets.push(["set-option", "-s", OPS_HEIGHT_OPTION, `${heightPct}`])
+  }
+
+  if (sets.length > 0) await runTmuxSequence(sets)
 }
 
 type KobePaneRow = {
@@ -847,6 +927,14 @@ async function buildPanesAround(
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", "ops"]] as const) : []),
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
   ])
+
+  // Override the default %-split with the user's global right-column geometry
+  // (if any) so a freshly built window — first window or a new Ctrl+T chat tab
+  // — matches the column shape every existing task already shows.
+  if (ids.ops) {
+    const rcArgs = rightColumnResizeArgs(await rightColumnPercents())
+    if (rcArgs.length > 0) await runTmux(["resize-pane", "-t", ids.ops, ...rcArgs])
+  }
 }
 
 /**

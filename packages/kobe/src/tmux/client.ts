@@ -252,16 +252,11 @@ export async function getSessionOptions(
 }
 
 /**
- * Set a server-scoped (global to the whole tmux server) user option. Unlike a
- * session option, one value is shared by every task session on the socket and
- * outlives any single session — the natural home for a cross-task UI preference
- * like the global Tasks-rail width.
+ * Read a server-scoped (global to the whole tmux server) user option. `""`
+ * when unset (tmux errors on unset). Server scope is the natural home for a
+ * cross-task UI preference: one value shared by every task session on the
+ * socket, outliving any single session. Set it with `set-option -s`.
  */
-export async function setServerOption(option: string, value: string): Promise<void> {
-  await runTmux(["set-option", "-s", option, value])
-}
-
-/** Read a server-scoped user option. `""` when unset (tmux errors on unset). */
 export async function getServerOption(option: string): Promise<string> {
   const { code, stdout } = await runTmuxCapturing(["show-options", "-sv", option])
   return code === 0 ? stdout.trim() : ""

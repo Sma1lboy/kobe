@@ -7,9 +7,12 @@
 
 import { describe, expect, test } from "vitest"
 import {
+  PANE_PERCENT_MAX,
+  PANE_PERCENT_MIN,
   TASKS_PANE_WIDTH,
   TASKS_PANE_WIDTH_MAX,
   TASKS_PANE_WIDTH_MIN,
+  clampPanePercent,
   clampTasksPaneWidth,
   engineLaunchLine,
   fallbackOpsScript,
@@ -42,6 +45,23 @@ describe("clampTasksPaneWidth", () => {
   test("falls back to the convention default on garbage", () => {
     expect(clampTasksPaneWidth(Number.NaN)).toBe(TASKS_PANE_WIDTH)
     expect(clampTasksPaneWidth(Number.POSITIVE_INFINITY)).toBe(TASKS_PANE_WIDTH)
+  })
+})
+
+describe("clampPanePercent", () => {
+  test("passes a sane in-range percentage through (rounded)", () => {
+    expect(clampPanePercent(40)).toBe(40)
+    expect(clampPanePercent(33.4)).toBe(33)
+  })
+
+  test("clamps below the minimum and above the maximum", () => {
+    expect(clampPanePercent(PANE_PERCENT_MIN - 5)).toBe(PANE_PERCENT_MIN)
+    expect(clampPanePercent(PANE_PERCENT_MAX + 20)).toBe(PANE_PERCENT_MAX)
+  })
+
+  test("returns null on garbage so callers skip the axis", () => {
+    expect(clampPanePercent(Number.NaN)).toBeNull()
+    expect(clampPanePercent(Number.POSITIVE_INFINITY)).toBeNull()
   })
 })
 
