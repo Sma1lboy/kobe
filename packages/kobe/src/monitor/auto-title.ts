@@ -9,55 +9,23 @@
  * `deriveTitleFromPrompt` (no model call — pure string work, the cheap
  * replacement for the old headless `claude -p` naming path).
  *
- * Engine-aware: the task's `vendor` selects which on-disk transcript
- * store to read — claude-code's per-worktree `~/.claude/projects/*`
- * vs Codex's global `~/.codex/sessions/**` rollouts (filtered by the
- * recorded cwd). Both expose a `readHistory(sessionId)` returning the
- * neutral `Message[]`, so the extraction below stays vendor-neutral.
+ * Engine-aware via the registry: the task's `vendor` resolves an
+ * `EngineHistoryReader` (claude-code's per-worktree `~/.claude/projects/*`
+ * vs Codex's global `~/.codex/sessions/**` rollouts vs Copilot's
+ * session-state dirs), all exposing the same oldest-first session list
+ * + `readHistory(sessionId)` returning neutral `Message[]`, so the
+ * extraction below stays vendor-neutral. A custom (user-added) engine
+ * resolves to the registry's documented EMPTY reader — auto-title then
+ * keeps the placeholder title rather than mis-reading claude's
+ * transcripts.
  */
 
-import * as claudeHistory from "@/engine/claude-code-local/history"
-import * as codexHistory from "@/engine/codex-local/history"
-import * as copilotHistory from "@/engine/copilot-local/history"
+import { engineEntry } from "@/engine/registry"
 import { deriveTitleFromPrompt } from "@/orchestrator/title"
 import type { Message } from "@/types/engine"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
-
-/** A reader for an engine that has no on-disk transcript store (custom engines). */
-const emptyReader = async (): Promise<Message[]> => []
-
-/**
- * The vendor's `readHistory(sessionId)` reader. A custom (user-added) engine
- * has no transcript store, so it gets an EMPTY reader — auto-title then keeps
- * the placeholder title rather than mis-reading claude's transcripts (the old
- * `else → claude` default would do exactly that for any unknown id).
- */
-function readerFor(vendor: VendorId): (sessionId: string) => Promise<Message[]> {
-  if (vendor === "codex") return codexHistory.readHistory
-  if (vendor === "copilot") return copilotHistory.readHistory
-  if (vendor === "claude") return claudeHistory.readHistory
-  return emptyReader
-}
-
-/** Origin session ids (oldest-first) + the vendor's history reader. */
-async function originSessions(
-  worktree: string,
-  vendor: VendorId,
-): Promise<{ ids: readonly string[]; read: (sessionId: string) => Promise<Message[]> }> {
-  if (vendor === "codex") {
-    return { ids: await codexHistory.listSessionIdsForWorktree(worktree), read: codexHistory.readHistory }
-  }
-  if (vendor === "copilot") {
-    return { ids: await copilotHistory.listSessionIdsForWorktree(worktree), read: copilotHistory.readHistory }
-  }
-  // Custom engine: no transcript store → no sessions, empty reader.
-  if (vendor !== "claude") return { ids: [], read: emptyReader }
-  const files = await claudeHistory.listSessionFilesForWorktree(worktree)
-  const ids = [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
-  return { ids, read: claudeHistory.readHistory }
-}
 
 /** First user message's text, truncated to a title, or `""` if none yet. */
 function titleFromMessages(messages: Message[]): string {
@@ -81,7 +49,8 @@ export async function deriveTitleFromSession(
   vendor: VendorId = DEFAULT_TASK_VENDOR,
 ): Promise<string> {
   if (!worktree) return ""
-  const { ids, read } = await originSessions(worktree, vendor)
+  const { history } = engineEntry(vendor)
+  const ids = await history.listSessionIdsForWorktree(worktree)
   // Walk sessions oldest-first (the task's origin conversation comes
   // first) and return the first that yields a usable title. We don't
   // stop at the very earliest session: its opening "user" record can be
@@ -89,7 +58,7 @@ export async function deriveTitleFromSession(
   // give an empty title. Capped so a busy worktree doesn't read dozens
   // of transcripts.
   for (const sessionId of ids.slice(0, MAX_SESSIONS_SCANNED)) {
-    const title = titleFromMessages(await read(sessionId))
+    const title = titleFromMessages(await history.readHistory(sessionId))
     if (title) return title
   }
   return ""
@@ -105,7 +74,7 @@ export async function deriveTitleFromSession(
 export async function deriveTitleFromSessionId(vendor: VendorId, sessionId: string): Promise<string> {
   if (!sessionId) return ""
   try {
-    return titleFromMessages(await readerFor(vendor)(sessionId))
+    return titleFromMessages(await engineEntry(vendor).history.readHistory(sessionId))
   } catch {
     return ""
   }

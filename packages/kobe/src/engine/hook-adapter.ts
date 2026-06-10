@@ -19,7 +19,7 @@
  */
 
 import type { VendorId } from "../types/vendor.ts"
-import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
+import { engineEntry } from "./registry.ts"
 
 export interface EngineHookAdapter {
   readonly vendor: VendorId
@@ -65,10 +65,17 @@ export interface EngineHookAdapter {
   removeWorktreeWatchHook(settingsFilePath: string): Promise<void>
 }
 
-/** Resolve the hook adapter for a vendor (mirrors createEngineTurnDetector). */
+/**
+ * Resolve the hook adapter for a vendor — a thin delegate to the engine
+ * registry, which owns the claude-vs-noop choice (one entry per engine;
+ * see `registry.ts`). Kept exported here so call sites (`cli/hook-cmd.ts`)
+ * keep their import. NB: registry.ts imports `NoopHookAdapter` from this
+ * module, so this pair is an intentional import cycle — both sides only
+ * dereference the other's bindings inside function bodies (never at module
+ * top-level), which keeps the cycle safe under ESM evaluation order.
+ */
 export function createEngineHookAdapter(vendor: VendorId): EngineHookAdapter {
-  if (vendor === "claude") return new ClaudeHookAdapter()
-  return new NoopHookAdapter(vendor)
+  return engineEntry(vendor).createHookAdapter()
 }
 
 /** Stub for engines whose hook mechanism isn't wired yet (Codex, Copilot). */

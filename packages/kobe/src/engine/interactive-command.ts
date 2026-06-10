@@ -3,10 +3,11 @@
  *
  * The "middle" pane of a task session runs a vendor's *interactive* CLI
  * (the same binary a human would run in a terminal) — not the headless
- * path. This is the single place that maps a task's `vendor` to that
- * argv, so wiring a new engine (gemini, copilot, …) is a one-line case
- * here plus its history reader; every launch site (the outer monitor's
- * Handover, the Tasks-pane switch, `new-chattab`) goes through this.
+ * path. The vendor → default-argv mapping itself lives on the engine
+ * registry (`registry.ts` `defaultCommand`); this module layers the
+ * user's per-vendor override on top. Every launch site (the outer
+ * monitor's Handover, the Tasks-pane switch, `new-chattab`) goes
+ * through this.
  *
  * Codex's bare `codex` (no subcommand) opens its interactive TUI, the
  * same way bare `claude` does — `codex exec` is the headless path we
@@ -24,22 +25,20 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { engineEntry } from "@/engine/registry"
 import { getPersistedString } from "@/state/repos"
 import type { VendorId } from "@/types/task"
+import { BUILTIN_VENDORS } from "@/types/vendor"
 
-/** Built-in launch argv per vendor, before any user override. */
-const DEFAULT_COMMANDS: Record<VendorId, readonly string[]> = {
-  claude: ["claude"],
-  codex: ["codex"],
-  copilot: ["copilot"],
-}
-
-/** Human label for a vendor (Settings → Engines rows). */
-export const VENDOR_LABEL: Record<VendorId, string> = {
-  claude: "Claude",
-  codex: "Codex",
-  copilot: "Copilot",
-}
+/**
+ * Human label for a vendor (Settings → Engines rows). Sourced from the
+ * engine registry's `displayName` — the registry is the one place
+ * built-in identity lives; this record stays exported for the settings
+ * dialog's existing import.
+ */
+export const VENDOR_LABEL: Record<VendorId, string> = Object.fromEntries(
+  BUILTIN_VENDORS.map((v) => [v, engineEntry(v).displayName]),
+) as Record<VendorId, string>
 
 /** state.json key holding a vendor's launch-command override string. */
 export function engineCommandKey(vendor: VendorId): string {
@@ -69,16 +68,16 @@ export function engineDisplayName(vendor: VendorId): string {
 }
 
 /**
- * Built-in default launch argv for a vendor (undefined → claude). A custom
- * engine id has no built-in default — its command lives in the
- * `engineCommand.<id>` override the user set when adding it, which
- * {@link interactiveEngineCommand} reads first; this fallback only fires if
- * that override is somehow empty, in which case we run a bare binary named
- * after the id rather than silently launching claude.
+ * Built-in default launch argv for a vendor (undefined → claude), read
+ * from the engine registry. A custom engine id has no built-in default —
+ * its command lives in the `engineCommand.<id>` override the user set when
+ * adding it, which {@link interactiveEngineCommand} reads first; the
+ * registry's custom entry only fires if that override is somehow empty, in
+ * which case we run a bare binary named after the id rather than silently
+ * launching claude.
  */
 export function defaultEngineCommand(vendor: VendorId | undefined): readonly string[] {
-  const v = vendor ?? "claude"
-  return DEFAULT_COMMANDS[v] ?? [v]
+  return engineEntry(vendor ?? "claude").defaultCommand
 }
 
 /**
