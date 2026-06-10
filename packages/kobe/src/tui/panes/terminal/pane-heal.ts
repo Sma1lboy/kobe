@@ -254,7 +254,7 @@ async function rightColumnPercents(): Promise<{ widthPct: number | null; heightP
 }
 
 /** Build the `resize-pane -x/-y N%` args for an Ops pane from a geometry pair. */
-export function rightColumnResizeArgs(geom: { widthPct: number | null; heightPct: number | null }): string[] {
+function rightColumnResizeArgs(geom: { widthPct: number | null; heightPct: number | null }): string[] {
   const args: string[] = []
   if (geom.widthPct !== null) args.push("-x", `${geom.widthPct}%`)
   if (geom.heightPct !== null) args.push("-y", `${geom.heightPct}%`)
