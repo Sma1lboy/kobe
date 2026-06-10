@@ -61,6 +61,7 @@ import {
   resolveUserTmuxKeys,
 } from "@/tmux/keybindings"
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
+import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
@@ -293,75 +294,70 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
   }
 }
 
+/**
+ * Snapshot the facts about an existing session that the reuse/respawn/
+ * rebuild decision needs (`null` when no session exists). All read-only
+ * tmux queries live here; the policy that consumes them is the pure
+ * `decideSessionAction` in `tmux/session-decision.ts`. `windowCount` is
+ * now queried up front (pre-extraction it was lazy, only fetched on the
+ * degraded-reuse branch) — one extra read-only `list-windows` per
+ * ensureSession, same decision either way.
+ */
+async function observeSession(name: string): Promise<ObservedSession | null> {
+  if (!(await sessionExists(name))) return null
+  const sessionOptions = await getSessionOptions(name, ["@kobe_worktree", "@kobe_vendor"])
+  return {
+    worktree: sessionOptions["@kobe_worktree"] ?? "",
+    vendor: sessionOptions["@kobe_vendor"] ?? "",
+    claudePaneAlive: (await claudePaneIdStrict(name)) !== "",
+    windowCount: await windowCount(name),
+  }
+}
+
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // (Engine activity hooks are NOT installed here — they live in the user's
   // global ~/.claude/settings.json, installed once on launch by
   // `ensureGlobalKobeHooks`, and report their cwd so the daemon maps each event
   // to a task. No per-worktree write, so reuse/rebuild/fresh all behave the
   // same and a project's real repo root is never touched.)
-  if (await sessionExists(opts.name)) {
-    const sessionOptions = await getSessionOptions(opts.name, ["@kobe_worktree", "@kobe_vendor"])
-    const taggedWorktree = sessionOptions["@kobe_worktree"] ?? ""
-    const taggedVendor = sessionOptions["@kobe_vendor"] ?? ""
-    // Reuse ONLY a healthy session that matches this task. We key health
-    // off the LOAD-BEARING claude pane (its `@kobe_role=claude` tag in the
-    // active window), NOT a raw pane COUNT. Rationale + failure modes:
-    //   - Pane present? `claudePaneIdStrict` returns "" when the active
-    //     window has no tagged claude pane: a legacy/pre-tag (v0.5/KOB-225)
-    //     one-pane session, or a window whose claude pane was destroyed →
-    //     rebuild. Critically, this does NOT fire just because a DISPOSABLE
-    //     pane (the shell, or ops) was closed — typing `exit` in the shell
-    //     pane used to drop the count below 4 and nuke the whole session,
-    //     destroying the live engine conversation (KOB-244). The claude
-    //     pane survives that, so we reuse. The check is active-window
-    //     scoped, so each Ctrl+T chat-tab window is judged on its own.
-    //   - Wrong PLACE: a different/empty `@kobe_worktree` (a stale session
-    //     from before env+socket isolation, panes in the wrong dir / wrong
-    //     KOBE_HOME) → rebuild so the user isn't dropped into the wrong env.
-    //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since the
-    //     session was built, so `@kobe_vendor` no longer matches the OLD
-    //     engine pane → rebuild so the new pane launches the wanted engine.
-    const worktreeOk = taggedWorktree === opts.cwd
-    const vendorOk = !opts.vendor || taggedVendor === opts.vendor
-    const claudeAlive = (await claudePaneIdStrict(opts.name)) !== ""
+  //
+  // Observe → decide → apply. The WHY of each branch (KOB-244 pane-count
+  // trap, KOB-232 sibling-tab preservation, legacy/pre-tag rebuilds) is
+  // documented on `decideSessionAction`; this function only applies the
+  // chosen action against the real tmux server.
+  const observed = await observeSession(opts.name)
+  const action = decideSessionAction(observed, {
+    cwd: opts.cwd,
+    vendor: opts.vendor,
+    hasEngineCommand: opts.command.length > 0,
+  })
 
-    // Happy path: healthy + right place + right engine → reuse as-is.
-    if (claudeAlive && worktreeOk && vendorOk) {
+  // Reuse (healthy, or degraded multi-window — see the decision's reason):
+  // leave the session running, just heal pane widths + stale kobe-owned
+  // pane versions.
+  if (action.kind === "reuse") {
+    await healTaskPaneWidths(opts.name)
+    await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
+    return true
+  }
+
+  // Vendor switch: relaunch the engine pane IN PLACE in every window via
+  // respawn-pane (keeps pane ids + @kobe_role tags, so the Ops pane's
+  // --target-pane stays valid — KOB-232). Falls through to a full rebuild
+  // when no engine pane is found to respawn — that fact is only knowable
+  // here at apply time, so it's the applier's fallback, not the decision's.
+  if (action.kind === "respawn-engine") {
+    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, opts.remoteKey)) {
+      if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
       await healTaskPaneWidths(opts.name)
       await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
+  }
 
-    // Vendor-only drift (right worktree, the task switched engines via `v`):
-    // relaunch the engine pane IN PLACE in EVERY window via respawn-pane
-    // instead of kill-session, so the switch takes effect WITHOUT destroying
-    // the session's other Ctrl+T chat-tab windows (each its own conversation).
-    // respawn-pane keeps each pane's id + @kobe_role tag, so the Ops pane's
-    // --target-pane stays valid (KOB-232). Falls through to a full rebuild if
-    // no engine pane is found to respawn.
-    if (worktreeOk && !vendorOk && opts.command.length > 0) {
-      if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, opts.remoteKey)) {
-        if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-        await healTaskPaneWidths(opts.name)
-        await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
-        return true
-      }
-    }
-
-    // Right place + right engine but the active window's engine pane is gone,
-    // and sibling windows exist: don't `kill-session` (that would drop those
-    // sibling chat tabs). Reuse — per-window recreate of a destroyed pane is a
-    // future follow-up; the common shell-exit case never gets here because the
-    // engine pane survives (KOB-244).
-    if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
-      await healTaskPaneWidths(opts.name)
-      await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
-      return true
-    }
-
-    // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
-    // a wrong-PLACE session (different @kobe_worktree), or a single-window
-    // session whose engine pane was destroyed.
+  // Rebuild (or a respawn that found no engine pane): kill, then fall
+  // through to the shared create path below.
+  if (action.kind === "rebuild" || action.kind === "respawn-engine") {
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
