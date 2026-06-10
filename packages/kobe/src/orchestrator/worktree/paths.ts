@@ -25,6 +25,8 @@ import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { kobeStateDir } from "../../env.ts"
+import { execHostForRepo } from "../../exec/resolve.ts"
+import { getRemoteRepoConfig, isRemoteRepoKey } from "../../state/repos.ts"
 
 /**
  * Directory under kobe's state dir where kobe stores all of its worktrees.
@@ -100,8 +102,19 @@ export function worktreePathFor(repo: string, slug: string): string {
  * to discover on-disk-occupied slugs (so a stale dir from an aborted
  * task still counts as taken) and by `diagnose` to reconcile the task
  * index against disk state. Symlinks are not followed.
+ *
+ * ASYNC: the remote branch is an ssh round-trip (`ExecHost.readdir`) and
+ * runs inside the daemon (slug allocation) — it must not block the event
+ * loop. The local branch stays a cheap sync scan under the hood.
  */
-export function listWorktreeDirNames(repo: string): string[] {
+export async function listWorktreeDirNames(repo: string): Promise<string[]> {
+  // A remote project lists its worktree dirs over SSH (its key isn't a local
+  // path, so the local-root scan below would throw on the non-absolute key).
+  if (isRemoteRepoKey(repo)) {
+    const basePath = getRemoteRepoConfig(repo)?.basePath
+    if (!basePath) return []
+    return execHostForRepo(repo).readdir(remoteWorktreeRootFor(basePath))
+  }
   const names = new Set<string>()
   for (const root of managedWorktreeRootsFor(repo)) {
     try {
@@ -147,6 +160,28 @@ export function managedWorktreeRootForPath(repo: string, candidate: string): str
  */
 export function isKobeManagedPath(repo: string, candidate: string): boolean {
   return managedWorktreeRootForPath(repo, candidate) !== null
+}
+
+/**
+ * Worktree layout for a REMOTE project. The local `~/.kobe/worktrees/...`
+ * root can't be used — the worktree lives on the remote host. We root it
+ * under the project's remote `basePath` in a `.kobe/worktrees/<slug>` subdir
+ * (POSIX join: the remote is always POSIX). The main checkout the worktree is
+ * added from is `basePath` itself.
+ */
+export function remoteWorktreeRootFor(basePath: string): string {
+  return `${stripTrailingSlash(basePath)}/.kobe/worktrees`
+}
+
+export function remoteWorktreePathFor(basePath: string, slug: string): string {
+  if (!slug || /[/\\\0]/.test(slug)) {
+    throw new Error(`remoteWorktreePathFor: invalid slug: ${JSON.stringify(slug)}`)
+  }
+  return `${remoteWorktreeRootFor(basePath)}/${slug}`
+}
+
+function stripTrailingSlash(p: string): string {
+  return p.length > 1 && p.endsWith("/") ? p.replace(/\/+$/, "") : p
 }
 
 function canonicalize(p: string): string {

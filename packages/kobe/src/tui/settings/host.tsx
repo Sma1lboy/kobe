@@ -16,26 +16,22 @@
  * light up the Dev section's "Restart backend" action.
  */
 
-import { render } from "@opentui/solid"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
-import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SettingsDialog } from "../component/settings-dialog"
-import { FocusProvider } from "../context/focus"
-import { KVProvider, useKV } from "../context/kv"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { useKV } from "../context/kv"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { currentSessionName, refreshKobeWorkspacePanes } from "../panes/terminal/tmux"
-import { DialogProvider, useDialog } from "../ui/dialog"
-
-const FALLBACK_THEME = "claude"
+import { useDialog } from "../ui/dialog"
 
 function SettingsPage(props: {
   orchestrator: RemoteOrchestrator | null
   transparent: boolean
-  focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
+  focusAccent: PersistedUiPrefs["focusAccent"]
 }) {
   const kv = useKV()
   const dialog = useDialog()
@@ -105,42 +101,25 @@ function SettingsPage(props: {
 }
 
 export async function startSettingsHost(): Promise<void> {
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-
-  let orch: RemoteOrchestrator | null = null
-  try {
-    const client = await connectOrStartDaemon()
-    const remote = new RemoteOrchestrator(client)
-    await remote.init()
-    orch = remote
-  } catch (err) {
-    console.error("[kobe settings] daemon unavailable; Restart backend disabled:", err)
-  }
-
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              <SettingsPage orchestrator={orch} transparent={prefs.transparent} focusAccent={prefs.focusAccent} />
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-      onDestroy: () => {
-        orch?.dispose()
-      },
+  await bootPaneHost({
+    setup: async (prefs) => {
+      let orch: RemoteOrchestrator | null = null
+      try {
+        const client = await connectOrStartDaemon()
+        const remote = new RemoteOrchestrator(client)
+        await remote.init()
+        orch = remote
+      } catch (err) {
+        console.error("[kobe settings] daemon unavailable; Restart backend disabled:", err)
+      }
+      return {
+        root: () => (
+          <SettingsPage orchestrator={orch} transparent={prefs.transparent} focusAccent={prefs.focusAccent} />
+        ),
+        onDestroy: () => {
+          orch?.dispose()
+        },
+      }
     },
-  )
+  })
 }

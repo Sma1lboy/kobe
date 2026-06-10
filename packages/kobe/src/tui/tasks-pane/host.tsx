@@ -18,7 +18,7 @@
  *   - Engine: `v` cycles the task's vendor (`task.setVendor` RPC). Takes
  *     effect on next enter — ensureSession rebuilds the session when its
  *     `@kobe_vendor` tag no longer matches, launching the new engine.
- *   - Create: `n` (or the footer "+ New task") opens the SAME
+ *   - Create: `n` opens the SAME
  *     NewTaskDialog as the outer app (repo picker + base branch + clone
  *     tab) and fires the daemon's `task.create` RPC — the first
  *     write-path here, the step toward retiring the outer "page 1".
@@ -37,40 +37,53 @@ import { existsSync } from "node:fs"
 import {
   currentSessionName,
   getSessionOption,
-  killSession,
   runTmux,
+  runTmuxCapturing,
   sessionExists,
-  switchClientBeforeKill,
   tmuxSessionName,
 } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
-import { render, useTerminalDimensions } from "@opentui/solid"
+import { useTerminalDimensions } from "@opentui/solid"
+import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
+import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
-import { logClient, logClientError, setClientLogContext } from "../../client/client-log.ts"
-import { connectIfRunning } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
-import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
+import { worktreeUsable } from "../../exec/resolve.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { resolveRepoInit } from "../../state/repo-init.ts"
-import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
-import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
-import { nextVendor } from "../../types/vendor.ts"
+import { getPersistedString, setPersistedString } from "../../state/repos.ts"
+import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
+import type { Task, VendorId } from "../../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
+import { HelpDialog } from "../component/help-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
+import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
-import { FocusProvider } from "../context/focus"
-import { KVProvider, useKV } from "../context/kv"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { bindByIds } from "../context/keybindings"
+import { useKV } from "../context/kv"
+import { useNotifications } from "../context/notifications"
+import { useTheme } from "../context/theme"
+import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
+import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
+import {
+  type CreateTaskContext,
+  archiveTaskFlow,
+  createTaskFlow,
+  cycleVendorFlow,
+  deleteTaskFlow,
+  renameBranchFlow,
+  renameTaskFlow,
+} from "../lib/task-actions"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
+import type { TaskSortMode } from "../panes/sidebar/groups"
 import {
   captureGlobalLayout,
   ensureSession,
@@ -79,17 +92,25 @@ import {
   openUpdateTab,
   refreshKobeWorkspacePanes,
 } from "../panes/terminal/tmux.ts"
-import { DialogProvider, useDialog } from "../ui/dialog"
+import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
-const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
+
+/**
+ * Type-guard wrapper over the exec seam's {@link worktreeUsable}: whether a
+ * worktree path is usable as a session cwd (a remote worktree is trusted; a
+ * local one keeps the real on-disk check — the remoteness lives in `exec/`).
+ */
+function worktreeCwdUsable(cwd: string | undefined): cwd is string {
+  return !!cwd && worktreeUsable(cwd)
+}
 
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   initialTaskId?: string
   transparent: boolean
-  focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
+  focusAccent: PersistedUiPrefs["focusAccent"]
   /**
    * The shared task-state framework: one daemon-backed RemoteOrchestrator
    * used for BOTH the live subscribe (reads) and every mutation (writes),
@@ -105,10 +126,31 @@ function TasksShell(props: {
   const { theme } = themeCtx
   const dialog = useDialog()
   const kv = useKV()
+  const notif = useNotifications()
   const [selectedId, setSelectedId] = createSignal<string | null>(
     props.tasks().some((t) => t.id === props.initialTaskId) ? props.initialTaskId! : (props.tasks()[0]?.id ?? null),
   )
+
+  // Surface a user-action FAILURE as a red error toast. Under tmux's
+  // alternate screen a bare `console.error` is invisible (it only reaches
+  // the daemon log), so a failed key press would otherwise look like a
+  // silent no-op. We KEEP the matching `console.error` at each call site for
+  // log forensics — this is the on-screen half. The notifications context is
+  // per-ChatTab (taskId/tabId-keyed); a pane action isn't tab-scoped, so we
+  // tag it with the selected task and an empty tab — only the toast queue is
+  // consumed here, the unread-dot map is harmless side state the Tasks pane
+  // never renders.
+  function notifyError(message: string): void {
+    notif.notify({ kind: "error", taskId: selectedId() ?? "", tabId: "", title: message })
+  }
+  // Neutral (non-error) toast — same on-screen surfacing as notifyError but
+  // green/`done` styling, for "this happened" confirmations (engine cycled,
+  // creating task, already up to date) that aren't failures.
+  function notifyInfo(message: string): void {
+    notif.notify({ kind: "done", taskId: selectedId() ?? "", tabId: "", title: message })
+  }
   const [moveMode, setMoveMode] = createSignal(false)
+  const [sortMode, setSortMode] = createSignal<TaskSortMode>("default")
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -159,90 +201,74 @@ function TasksShell(props: {
     if (info) setUpdateInfo(info)
   })
 
-  // `n` (and the footer "+ New task" click) creates a new task using the
-  // SAME NewTaskDialog the outer app uses (repo picker + base-branch +
-  // clone tab) — parity matters; this pane is meant to replace the outer
-  // "page 1". The standalone pane has no Orchestrator, so it fires the
-  // daemon's `task.create` RPC instead of calling it in-process. Default
-  // repo is the cursor task's repo (fallback: first saved repo), matching
-  // the outer app's "spawn a sibling" default. Backlog task (worktree
-  // lazy on first enter); list reloads immediately after.
-  async function createTask(): Promise<void> {
-    const repos = getSavedRepos()
-    const list = props.tasks()
-    const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-    // First run (no saved repos): default the dialog to the cwd so the
-    // user picks a path in-TUI instead of being sent to a shell for
-    // `kobe add` (saved mode preselects it; typing `/` flips to the
-    // directory browser). Otherwise default to the cursor task's repo
-    // (the "spawn a sibling" default).
-    const defaultRepo = cursorRepo ?? repos[0] ?? process.cwd()
-
-    // Same surface preference as Settings (default chattab): open the
-    // new-task flow as a dedicated full-window page in a new tmux tab.
-    // The page performs the create/adopt itself and the subscribe pushes
-    // the new task back into this list. Fall back to the in-pane overlay
-    // if we can't resolve our tmux session.
-    const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
-    if (surface === "chattab") {
-      const session = await currentSessionName()
-      if (session) {
-        await openNewTaskTab(session, defaultRepo)
-        return
-      }
-    }
-
-    // Show the dialog IN the Tasks pane without zooming it full-window
+  // Shared task-action context (lib/task-actions). The flow bodies —
+  // confirm copy, DIRTY_WORKTREE force-delete branch, error handling —
+  // live in the shared module so this pane and the deprecated outer
+  // monitor can't drift apart. What stays here is only what's genuinely
+  // this host's: dialog wiring, toast surfacing, disk-only persistence,
+  // the chattab create surface, and selection.
+  const taskActions: CreateTaskContext = {
+    orch: props.orch,
+    tasks: () => props.tasks(),
+    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
+    // Dialogs show IN the Tasks pane without zooming it full-window
     // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
     // panes for the dialog's lifetime, which felt like the whole layout
     // "popped out". The dialog overlay already caps to the pane width
     // (`maxWidth = dimensions().width - 2`), so it renders fine in the
     // ~22%-wide pane — just narrower — and the other panes stay visible.
-    const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
-      defaultVendor,
-      discoverAdoptable: props.orch ? (repo) => props.orch!.discoverAdoptableWorktrees(repo) : undefined,
-    })
-    if (!result) return
-    // Remember the choice (shared kv state.json) so the next new-task
-    // dialog — here or in the outer monitor — defaults to it.
-    setPersistedString("lastSelectedVendor", result.vendor)
-    // Auto-save the chosen repo so the saved list self-populates and
-    // `kobe add` stays optional. This pane uses disk-only persistence
-    // (no in-process kv store), so the atomic disk write is sufficient.
-    addSavedRepo(result.repo)
-    if (!props.orch) {
-      console.error("[kobe tasks] no daemon; cannot create task")
-      return
-    }
-    let createdId: string | undefined
-    try {
-      if (result.mode === "adopt") {
-        for (const w of result.adopt) {
-          const t = await props.orch.adoptWorktree({
-            repo: result.repo,
-            worktreePath: w.worktreePath,
-            branch: w.branch,
-            vendor: result.vendor,
-          })
-          createdId = t.id
-        }
-      } else {
-        const task = await props.orch.createTask({
-          repo: result.repo,
-          baseRef: result.baseRef,
-          vendor: result.vendor,
-        })
-        createdId = task.id
-      }
-    } catch (err) {
-      console.error("[kobe tasks] task.create/adopt failed:", err)
-      return
-    }
-    await props.reload()
+    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    logger: console,
+    logPrefix: "[kobe tasks]",
+    notifyError,
+    notifyInfo,
+    reload: () => props.reload(),
+    // This pane runs INSIDE the tmux client whose session a delete kills —
+    // switch away first so the kill doesn't yank the user's terminal.
+    switchBeforeKill: true,
+    // Publish the shared active-task focus so every surface follows (KOB-247).
+    updateActiveTask: true,
+    onTaskDeleted: (taskId, nextTask) => {
+      if (selectedId() !== taskId) return
+      const remaining = props.tasks()
+      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
+    },
+    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    // "Spawn a sibling" default: the cursor task's repo (fallback: the
+    // first listed task's).
+    cursorRepo: () => {
+      const list = props.tasks()
+      return (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+    },
+    // This pane uses disk-only persistence (no in-process kv store), so the
+    // atomic disk write is sufficient — no onRepoSaved kv mirror needed.
+    lastVendor: () => getPersistedString("lastSelectedVendor") as VendorId | undefined,
+    rememberVendor: (vendor) => setPersistedString("lastSelectedVendor", vendor),
+    // Same surface preference as Settings (default chattab): open the
+    // new-task flow as a dedicated full-window page in a new tmux tab.
+    // The page performs the create/adopt itself and the subscribe pushes
+    // the new task back into this list. Fall back to the in-pane overlay
+    // if we can't resolve our tmux session.
+    openCreateSurface: async (defaultRepo) => {
+      const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+      if (surface !== "chattab") return false
+      const session = await currentSessionName()
+      if (!session) return false
+      await openNewTaskTab(session, defaultRepo)
+      return true
+    },
     // Land the cursor on the new task so Enter / click enters it next.
     // (The daemon subscribe pushes the new task into the list momentarily.)
-    if (createdId) setSelectedId(createdId)
+    selectTask: (id) => setSelectedId(id),
+  }
+
+  // `n` creates a new task using the SAME NewTaskDialog (and now the same
+  // createTaskFlow) as the outer app — parity matters; this pane is meant
+  // to replace the outer "page 1". The standalone pane has no Orchestrator,
+  // so the flow fires the daemon's `task.create` RPC instead of calling it
+  // in-process. Backlog task (worktree lazy on first enter).
+  async function createTask(): Promise<void> {
+    await createTaskFlow(taskActions)
   }
 
   // Settings opens on the user's chosen surface (default chattab): a
@@ -271,156 +297,40 @@ function TasksShell(props: {
 
   async function openUpdate(): Promise<void> {
     const info = updateInfo()
-    if (!info?.hasUpdate) return
+    if (!info?.hasUpdate) {
+      // The `u` chord / update chip would otherwise no-op silently when
+      // nothing is pending — confirm the up-to-date state instead (#23a).
+      notifyInfo(`Already on the latest version (v${CURRENT_VERSION})`)
+      return
+    }
     const session = await currentSessionName()
     if (!session) return
     await openUpdateTab(session)
   }
 
   async function archiveTask(id: string): Promise<void> {
-    const task = props.tasks().find((t) => t.id === id)
-    if (!task || !props.orch) return
-    const nextArchived = !task.archived
-    try {
-      await props.orch.setArchived(id, nextArchived)
-      if (nextArchived) {
-        // Switch away before killing so the terminal doesn't go dark.
-        // Prefer the next non-archived task; fall back to the kobe-home placeholder.
-        const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
-        await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-          (err: unknown) => {
-            console.error("[kobe tasks] switch-client failed:", err)
-          },
-        )
-        // Move the shared active-task focus to where the client landed, so
-        // the sidebar highlights it instead of the archived task (same fix
-        // as deleteTask / switchTo). null → kobe-home, nothing highlighted.
-        await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
-        await killSession(tmuxSessionName(id)).catch((err: unknown) => {
-          console.error("[kobe tasks] kill tmux session failed:", err)
-        })
-      }
-    } catch (err) {
-      console.error("[kobe tasks] archive failed:", err)
-      return
-    }
-    await props.reload()
+    await archiveTaskFlow(taskActions, id)
   }
 
   async function deleteTask(id: string): Promise<void> {
-    const task = props.tasks().find((t) => t.id === id)
-    if (!task || !props.orch) return
-    const ok = await DialogConfirm.show(
-      dialog,
-      `Delete "${task.title}"?`,
-      "Removes the task entry and its worktree. The tmux session (if any) is killed.",
-      "cancel",
-      "delete",
-    )
-    if (ok !== true) return
-    let deleted = false
-    try {
-      await props.orch.deleteTask(id)
-      deleted = true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (message.includes(DIRTY_WORKTREE_CODE)) {
-        const forceOk = await DialogConfirm.show(
-          dialog,
-          `"${task.title}" has uncommitted changes`,
-          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
-          "cancel",
-          "force delete",
-        )
-        if (forceOk === true) {
-          try {
-            await props.orch.deleteTask(id, { force: true })
-            deleted = true
-          } catch (forceErr) {
-            console.error("[kobe tasks] force delete failed:", forceErr)
-          }
-        }
-      } else {
-        console.error("[kobe tasks] delete failed:", err)
-      }
-    }
-    if (!deleted) return
-    const nextTask = props.tasks().find((t) => t.id !== id && !t.archived)
-    await switchClientBeforeKill(tmuxSessionName(id), nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-      (err: unknown) => {
-        console.error("[kobe tasks] switch-client failed:", err)
-      },
-    )
-    // The client now sits in nextTask's session (its chat pane is what you
-    // see), so move the SHARED active-task focus there too — otherwise every
-    // Tasks pane keeps highlighting the just-deleted task. switchClientBeforeKill
-    // only moves the tmux client, not the active-task signal that drives the
-    // sidebar highlight; `switchTo` sets it after its own switch-client, and
-    // delete must match. null when nothing is left (we land on kobe-home), so
-    // no pane highlights a deleted task.
-    await props.orch.setActiveTask(nextTask?.id ?? null).catch(() => {})
-    await killSession(tmuxSessionName(id)).catch((err: unknown) => {
-      console.error("[kobe tasks] kill tmux session failed:", err)
-    })
-    await props.reload()
-    if (selectedId() === id) {
-      const remaining = props.tasks()
-      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
-    }
+    await deleteTaskFlow(taskActions, id)
   }
 
-  // Rename a task's title via the daemon's `task.rename` RPC (same path
+  // Rename a task's title via the daemon's `task.rename` RPC (same flow
   // the outer app's `r` uses). No pane zoom (KOB-244) — the dialog shows
-  // in place; the other panes stay visible. The branch follows the title
-  // for not-yet-materialised tasks (autoBranch derives from it); a
-  // worktree that already exists keeps its git branch.
+  // in place; the other panes stay visible.
   async function renameTask(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current) return
-    const next = await RenameTaskDialog.show(dialog, current.title)
-    if (!next || !props.orch) return
-    try {
-      await props.orch.setTitle(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.rename failed:", err)
-      return
-    }
-    await props.reload()
+    await renameTaskFlow(taskActions, id)
   }
 
-  // Rename a task's branch via `task.setBranch` RPC. For a materialised
-  // worktree the daemon runs `git branch -m` (HEAD moves on the
-  // checked-out worktree, a running session keeps streaming); otherwise
-  // it just records the name for the eventual `ensureWorktree`.
+  // Rename a task's branch via the `task.setBranch` RPC (`b`).
   async function renameBranch(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current || current.kind === "main") return
-    const next = await RenameTaskDialog.show(dialog, current.branch, { dialogTitle: "Rename branch" })
-    if (!next || !props.orch) return
-    try {
-      await props.orch.setBranch(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.setBranch failed:", err)
-      return
-    }
-    await props.reload()
+    await renameBranchFlow(taskActions, id)
   }
 
-  // Cycle the cursor task's engine vendor (claude ↔ codex ↔ …) via the
-  // `task.setVendor` RPC. Takes effect on the task's next enter:
-  // `ensureSession` rebuilds a session whose `@kobe_vendor` tag no longer
-  // matches, so the new tmux pane launches the new engine.
+  // Cycle the cursor task's engine vendor (`v`) via `task.setVendor`.
   async function cycleVendor(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current || !props.orch) return
-    const next = nextVendor(current.vendor ?? DEFAULT_TASK_VENDOR)
-    try {
-      await props.orch.setVendor(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.setVendor failed:", err)
-      return
-    }
-    await props.reload()
+    await cycleVendorFlow(taskActions, id)
   }
 
   async function openSelectedWorktree(id: string): Promise<void> {
@@ -429,12 +339,14 @@ function TasksShell(props: {
     if (!worktree || !existsSync(worktree)) {
       if (!props.orch) {
         console.error("[kobe tasks] no daemon; cannot materialise worktree")
+        notifyError("No daemon running — can't create the worktree")
         return
       }
       try {
         worktree = await props.orch.ensureWorktree(id)
       } catch (err) {
         console.error("[kobe tasks] task.ensureWorktree failed:", err)
+        notifyError(`Couldn't create worktree: ${err instanceof Error ? err.message : String(err)}`)
         return
       }
       await props.reload()
@@ -443,10 +355,12 @@ function TasksShell(props: {
     const opener = detectWorktreeOpener()
     if (!opener) {
       console.error("[kobe tasks] no editor/opener found; set KOBE_OPEN_EDITOR")
+      notifyError("No editor found — set KOBE_OPEN_EDITOR (e.g. 'code', 'cursor', 'nvim')")
       return
     }
     if (!openWorktree(worktree, opener)) {
       console.error(`[kobe tasks] failed to open worktree with ${opener.label}`)
+      notifyError(`Couldn't open worktree with ${opener.label}`)
     }
   }
 
@@ -457,6 +371,7 @@ function TasksShell(props: {
       await props.orch.moveTask(id, delta)
     } catch (err) {
       console.error("[kobe tasks] task.move failed:", err)
+      notifyError(`Couldn't move task: ${err instanceof Error ? err.message : String(err)}`)
       return
     }
     setSelectedId(id)
@@ -468,32 +383,32 @@ function TasksShell(props: {
   // the dialog stack is the focus signal here).
   useBindings(() => ({
     enabled: dialog.stack.length === 0,
-    bindings: [
-      { key: "n", cmd: () => void createTask() },
-      { key: "s", cmd: () => void openSettings() },
-      { key: "u", cmd: () => void openUpdate() },
-      {
-        key: "o",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void openSelectedWorktree(id)
-        },
+    // Chords come from KobeKeymap via bindByIds (f1=help.open, n=task.new,
+    // s=settings.open.sidebar, u=tasks.update, o/b/v=tasks.*) so user
+    // overrides from ~/.kobe/settings/keybindings.yaml apply here too.
+    // F1 → the shared HelpDialog (#8). In the real direct-tmux flow the
+    // global `help.open` (app.tsx outer monitor) never runs, so F1 was dead
+    // in the Tasks pane. The pane has its own DialogProvider (mounted in
+    // startTasksPane), so we open it the same way app.tsx does. Gated on an
+    // empty dialog stack so it doesn't `replace` an open dialog.
+    bindings: bindByIds({
+      "help.open": () => HelpDialog.show(dialog),
+      "task.new": () => void createTask(),
+      "settings.open.sidebar": () => void openSettings(),
+      "tasks.update": () => void openUpdate(),
+      "tasks.openWorktree": () => {
+        const id = selectedId()
+        if (id) void openSelectedWorktree(id)
       },
-      {
-        key: "b",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void renameBranch(id)
-        },
+      "tasks.renameBranch": () => {
+        const id = selectedId()
+        if (id) void renameBranch(id)
       },
-      {
-        key: "v",
-        cmd: () => {
-          const id = selectedId()
-          if (id) void cycleVendor(id)
-        },
+      "tasks.cycleEngine": () => {
+        const id = selectedId()
+        if (id) void cycleVendor(id)
       },
-    ],
+    }),
   }))
 
   // Enter / click on a task → switch this tmux client to that task's
@@ -526,13 +441,14 @@ function TasksShell(props: {
     // block the switch.
     if (exists) {
       const cwd = (await getSessionOption(name, "@kobe_worktree")) || task?.worktreePath || ""
-      if (cwd && existsSync(cwd)) {
+      if (worktreeCwdUsable(cwd)) {
         await ensureSession({
           name,
           cwd,
           command: interactiveEngineCommand(task?.vendor),
           taskId: id,
           vendor: task?.vendor,
+          repo: task?.repo,
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
@@ -545,20 +461,22 @@ function TasksShell(props: {
     // worktree add — only the Orchestrator can do it) — then build the
     // session and switch.
     let cwd = task?.worktreePath
-    if (!cwd || !existsSync(cwd)) {
+    if (!worktreeCwdUsable(cwd)) {
       if (!props.orch) {
         console.error("[kobe tasks] no daemon; cannot materialise worktree")
+        notifyError("No daemon running — can't open this task")
         return
       }
       try {
         cwd = await props.orch.ensureWorktree(id)
       } catch (err) {
         console.error("[kobe tasks] task.ensureWorktree failed:", err)
+        notifyError(`Couldn't create worktree: ${err instanceof Error ? err.message : String(err)}`)
         return
       }
       await props.reload()
     }
-    if (!cwd || !existsSync(cwd)) return
+    if (!worktreeCwdUsable(cwd)) return
     const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
     const ready = await ensureSession({
       name,
@@ -566,11 +484,13 @@ function TasksShell(props: {
       command: interactiveEngineCommand(task?.vendor),
       taskId: id,
       vendor: task?.vendor,
+      repo: task?.repo,
       initScript: init.initScript,
       initPrompt: init.initPrompt,
     })
     if (!ready) {
       console.error(`[kobe tasks] failed to start session ${name}`)
+      notifyError("Couldn't start this task's session")
       return
     }
     await runTmux(["switch-client", "-t", `=${name}`])
@@ -596,6 +516,12 @@ function TasksShell(props: {
   const daemonStale = (): boolean => props.orch?.daemonStaleSignal()() ?? false
   const daemonVersion = (): string | null => props.orch?.daemonVersionSignal()() ?? null
 
+  // Whether the cursor row is a `main` (project root) task. The branch (`B`)
+  // and move (`M`) actions early-return on a main row, so the footer dims
+  // those keycaps to signal "doesn't apply here" rather than letting the
+  // press look like a silent no-op.
+  const selectedIsMain = createMemo(() => props.tasks().find((t) => t.id === selectedId())?.kind === "main")
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <VersionSkewBanner
@@ -614,6 +540,8 @@ function TasksShell(props: {
           // Brand-header version/update chip (replaces the footer system block).
           headerStatus={headerStatus}
           onHeaderStatusClick={() => void openUpdate()}
+          // Brand-header `+` new-task button — same flow as the `n` chord.
+          onAddTask={() => void createTask()}
           // Fill the whole tmux pane and follow live resizes (see `dimensions`
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.
@@ -622,7 +550,6 @@ function TasksShell(props: {
           // on approval), pushed from engine hooks via the daemon. Primary
           // liveness signal; the file-poll turn-detector stays as fallback.
           engineState={props.orch ? props.orch.engineStateSignal() : undefined}
-          onAddTask={() => void createTask()}
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}
@@ -635,6 +562,8 @@ function TasksShell(props: {
           moveMode={moveMode}
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
+          sortMode={sortMode}
+          onSortModeToggle={() => setSortMode((cur) => (cur === "default" ? "recent" : "default"))}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // (new-task / rename) leaks past the input to switchTo and yanks
@@ -644,7 +573,7 @@ function TasksShell(props: {
           focused={() => dialog.stack.length === 0}
         />
       </box>
-      <ShortcutHints moveMode={moveMode} />
+      <ShortcutHints moveMode={moveMode} selectedIsMain={selectedIsMain} />
     </box>
   )
 }
@@ -655,37 +584,89 @@ function TasksShell(props: {
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
  */
-function ShortcutHints(props: { moveMode?: Accessor<boolean> }) {
+function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: Accessor<boolean> }) {
   const { theme } = useTheme()
-  // Fixed-width key column so the labels line up — a terminal-grammar
-  // legend column, not a proportional pane (allowed hardcode).
-  // macOS-style key glyphs: ⌃ = control, ⏎ = return. Bare letters shown
-  // uppercase per the Mac shortcut convention (the binding is still the
-  // lowercase key — no shift implied).
-  const DEFAULT_HINTS: ReadonlyArray<{ k: string; label: string }> = [
-    { k: "⏎", label: "open" },
-    { k: "N", label: "new task" },
-    { k: "S", label: "settings" },
-    { k: "O", label: "open wt" },
+  // Resolve the user's REAL tmux prefix at runtime (#12). kobe loads the
+  // user's own prefix, so a literal `Prefix F` is un-actionable — the user may
+  // not know their prefix is C-a. Shell `tmux show-options -g prefix` on the
+  // -L kobe socket (runTmuxCapturing already targets it) and render `C-b` as
+  // `⌃B`. Falls back to the literal `Prefix` when resolution fails / is flaky.
+  const [prefixCap, setPrefixCap] = createSignal("Prefix")
+  onMount(() => {
+    void runTmuxCapturing(["show-options", "-g", "prefix"]).then(({ code, stdout }) => {
+      if (code !== 0) return
+      const glyph = tmuxPrefixGlyph(stdout)
+      if (glyph) setPrefixCap(glyph)
+    })
+  })
+  // A hint row. `k` is a MACHINE chord string (`ctrl+q`, `prefix f`, `a/d`);
+  // it's rendered as macOS glyphs via `formatChord` at draw time, so the
+  // footer, the F1 help, and the status bar all read the same (one formatter,
+  // no drift). `dimWhenMain` flags a keycap whose action early-returns on a
+  // `main` (project root) row — the footer dims that cap so a press there reads
+  // as "doesn't apply here" rather than a silent no-op (Issue #7).
+  type Hint = { k: string; label: string; dimWhenMain?: boolean }
+  // tmux session-key rows derive from the RESOLVED key set so user
+  // overrides (`tmux.*` ids in ~/.kobe/settings/keybindings.yaml) show
+  // their own chords here; an unbound id drops its row. Pseudo-chords
+  // ("ctrl+hjkl", "ctrl+[/]") are kept only while the relevant keys are
+  // still at their defaults — overridden keys render as plain chords.
+  const tmuxHints = (): ReadonlyArray<Hint> => {
+    const res = resolveUserTmuxKeys()
+    const b = res.binds
+    const out: Hint[] = []
+    const focusChords = res.focus.filter((f): f is NonNullable<typeof f> => f !== null).map((f) => f.chord)
+    if (focusChords.length === 4 && focusChords.every((c, i) => c === TMUX_FOCUS_DEFAULTS[i])) {
+      out.push({ k: "ctrl+hjkl", label: "move panes" })
+    } else if (focusChords.length > 0) {
+      out.push({ k: focusChords[0] as string, label: "move panes" })
+    }
+    const prev = b["tmux.tab.prev"]
+    const next = b["tmux.tab.next"]
+    if (prev?.chord === "ctrl+[" && next?.chord === "ctrl+]") {
+      out.push({ k: "ctrl+[/]", label: "switch tabs" })
+    } else {
+      if (prev) out.push({ k: prev.chord, label: "prev tab" })
+      if (next) out.push({ k: next.chord, label: "next tab" })
+    }
+    if (b["tmux.tab.new"]) out.push({ k: b["tmux.tab.new"].chord, label: "new tab" })
+    if (b["tmux.tab.chooseEngine"]) out.push({ k: b["tmux.tab.chooseEngine"].chord, label: "engine tab" })
+    out.push({ k: "prefix t", label: "engine tab" }, { k: "prefix f", label: "new task" })
+    if (b["tmux.tab.rename"]) out.push({ k: b["tmux.tab.rename"].chord, label: "rename tab" })
+    if (b["tmux.tab.close"]) out.push({ k: b["tmux.tab.close"].chord, label: "close tab" })
+    if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
+    return out
+  }
+  // Fixed-width key column so labels line up — a terminal-grammar legend
+  // column, not a proportional pane (allowed hardcode). formatChord keeps
+  // plain-letter caps lowercase (the EXACT key to press, #14), uppercases the
+  // key of modifier chords (`⌃ Q`), shows `tab` as a word, and renders the two
+  // `prefix …` rows with the user's REAL resolved prefix (`prefixCap()`, #12).
+  // Derived (not a static const) so those rows re-render once the async prefix
+  // resolution lands.
+  const defaultHints = (): ReadonlyArray<Hint> => [
+    { k: "enter", label: "open" },
+    { k: "n", label: "new task" },
+    { k: "s", label: "settings" },
+    { k: "o", label: "open wt" },
     { k: "[/]", label: "views" },
-    { k: "M", label: "move task" },
-    { k: "A/D", label: "archive/delete" },
-    { k: "R/B/V", label: "name/branch/engine" },
-    { k: "⌃HJKL", label: "move panes" },
-    { k: "⌃[/]", label: "switch tabs" },
-    { k: "⌃T", label: "new tab" },
-    { k: "⌃⇧T", label: "engine tab" },
-    { k: "Prefix T", label: "engine tab" },
-    { k: "Prefix F", label: "new task" },
-    { k: "F2", label: "rename tab" },
-    { k: "⌃W", label: "close tab" },
-    { k: "⌃Q", label: "detach" },
+    { k: "t", label: "sort" },
+    // Move (`M`) is Shift+M and early-returns on a main row — dim it there.
+    { k: "M", label: "move task", dimWhenMain: true },
+    // `a` is a TOGGLE — archive AND unarchive — so the label says both.
+    { k: "a/d", label: "un/archive·delete" },
+    // Rename title (`r`) and cycle engine (`v`) work on a main row; only
+    // rename branch (`b`) early-returns there, so the row dims as a whole
+    // on main to signal the branch action is unavailable.
+    { k: "r/b/v", label: "name/branch/engine", dimWhenMain: true },
+    { k: "f1", label: "help" },
+    ...tmuxHints(),
   ]
-  const MOVE_HINTS: ReadonlyArray<{ k: string; label: string }> = [
-    { k: "J/K", label: "reorder" },
-    { k: "⏎/Esc", label: "done" },
+  const MOVE_HINTS: ReadonlyArray<Hint> = [
+    { k: "j/k", label: "reorder" },
+    { k: "enter/esc", label: "done" },
   ]
-  const hints = () => (props.moveMode?.() ? MOVE_HINTS : DEFAULT_HINTS)
+  const hints = () => (props.moveMode?.() ? MOVE_HINTS : defaultHints())
   // Width of the description column = the longest label, but CAPPED so a long
   // label can't blow the column out past what the 32-cell Tasks pane (minus the
   // 10-cell keycap column) can hold. Each row right-aligns this fixed-width box
@@ -704,39 +685,57 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean> }) {
         ── keys ──
       </text>
       <For each={hints()}>
-        {(h) => (
-          <box flexDirection="row" gap={1} justifyContent="space-between">
-            {/* `[key]` keycap chip — agent-deck style, mirrors the outer
+        {(h) => {
+          // Dim a cap whose action early-returns on a `main` row (`B`/`M`):
+          // muted + DIM instead of bold accent, so the user sees it doesn't
+          // apply to the project row rather than pressing it into silence.
+          const dim = () => h.dimWhenMain === true && (props.selectedIsMain?.() ?? false)
+          return (
+            <box flexDirection="row" gap={1} justifyContent="space-between">
+              {/* `[key]` keycap chip — agent-deck style, mirrors the outer
                 monitor's StatusBar Hotkey: bold accent key in brackets,
                 muted label. No fill, so it stays clean in transparent mode. */}
-            <box width={10} flexShrink={0}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                [{h.k}]
-              </text>
-            </box>
-            {/* Description column — fixed width = longest label, pushed to the
+              <box width={10} flexShrink={0}>
+                <text
+                  fg={dim() ? theme.textMuted : theme.accent}
+                  attributes={dim() ? TextAttributes.DIM : TextAttributes.BOLD}
+                  wrapMode="none"
+                >
+                  [{formatChord(h.k, prefixCap())}]
+                </text>
+              </box>
+              {/* Description column — fixed width = longest label, pushed to the
                 right edge by space-between. Text is left-aligned inside, so
                 every description shares one left edge while the whole column
                 hugs the right side and rides the pane width. */}
-            <box width={labelColWidth()} flexShrink={0}>
-              <text fg={theme.textMuted} wrapMode="none">
-                {clipLabel(h.label)}
-              </text>
+              <box width={labelColWidth()} flexShrink={0}>
+                <text fg={theme.textMuted} attributes={dim() ? TextAttributes.DIM : undefined} wrapMode="none">
+                  {clipLabel(h.label)}
+                </text>
+              </box>
             </box>
-          </box>
-        )}
+          )
+        }}
       </For>
     </box>
   )
 }
 
 export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
-  setClientLogContext("tasks")
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
+  await bootPaneHost({
+    logContext: "tasks",
+    // Notifications power the bottom-right error toasts: under tmux's
+    // alternate screen a failed action's `console.error` is invisible
+    // (daemon log only), so a rejected key press surfaces as a red
+    // chip here instead of looking like a silent no-op. The pane
+    // only consumes the error toasts; per-ChatTab completion
+    // notifications belong to the outer chat surface.
+    providers: { notifications: true },
+    setup: (prefs) => setupTasksPane(opts, prefs),
+  })
+}
 
+async function setupTasksPane(opts: { initialTaskId?: string }, prefs: PersistedUiPrefs): Promise<HostScreen> {
   // Task source. PRIMARY = a live daemon SUBSCRIBE (via RemoteOrchestrator):
   // a task created / renamed / deleted in ANY session's Tasks pane or in
   // the outer monitor is pushed to THIS pane in real time, so every
@@ -799,41 +798,29 @@ export async function startTasksPane(opts: { initialTaskId?: string } = {}): Pro
     void reload()
   }, RELOAD_MS)
 
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              <TasksShell
-                tasks={tasks}
-                initialTaskId={opts.initialTaskId}
-                orch={orch}
-                transparent={prefs.transparent}
-                focusAccent={prefs.focusAccent}
-                reload={reload}
-              />
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
+  return {
+    root: () => (
+      <>
+        <TasksShell
+          tasks={tasks}
+          initialTaskId={opts.initialTaskId}
+          orch={orch}
+          transparent={prefs.transparent}
+          focusAccent={prefs.focusAccent}
+          reload={reload}
+        />
+        <ToastOverlay />
+      </>
     ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-      // Tear down on ACTUAL exit, not after render() resolves: `render`
-      // resolves at mount (cf. startApp, which also cleans up via
-      // onDestroy), so disposing here is the only correct place. Disposing
-      // after `await render(...)` killed the daemon client + poll the moment
-      // the pane mounted → "daemon client disposed" on the next switch and
-      // a dead subscribe (KOB-247).
-      onDestroy: () => {
-        if (timer) clearInterval(timer)
-        orch?.dispose()
-      },
+    // Tear down on ACTUAL exit, not after render() resolves: `render`
+    // resolves at mount (cf. startApp, which also cleans up via
+    // onDestroy), so disposing here is the only correct place. Disposing
+    // after `await render(...)` killed the daemon client + poll the moment
+    // the pane mounted → "daemon client disposed" on the next switch and
+    // a dead subscribe (KOB-247).
+    onDestroy: () => {
+      if (timer) clearInterval(timer)
+      orch?.dispose()
     },
-  )
+  }
 }

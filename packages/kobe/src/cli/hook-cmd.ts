@@ -23,7 +23,7 @@
 
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
-import { connectIfRunning } from "../client/daemon-process.ts"
+import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { EngineActivityDetail } from "../engine/hook-events.ts"
 import { isEngineActivityKind } from "../engine/hook-events.ts"

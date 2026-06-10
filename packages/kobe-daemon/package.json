@@ -1,0 +1,31 @@
+{
+  "name": "@sma1lboy/kobe-daemon",
+  "version": "0.7.11",
+  "description": "Daemon server, protocol, lifecycle, and socket client for kobe.",
+  "type": "module",
+  "private": true,
+  "packageManager": "bun@1.3.13",
+  "exports": {
+    "./client": "./src/client/index.ts",
+    "./client/client-log": "./src/client/client-log.ts",
+    "./client/daemon-process": "./src/client/daemon-process.ts",
+    "./daemon/activity-registry": "./src/daemon/activity-registry.ts",
+    "./daemon/auto-title-poller": "./src/daemon/auto-title-poller.ts",
+    "./daemon/crash-log": "./src/daemon/crash-log.ts",
+    "./daemon/cwd-task": "./src/daemon/cwd-task.ts",
+    "./daemon/event-bus": "./src/daemon/event-bus.ts",
+    "./daemon/lifecycle": "./src/daemon/lifecycle.ts",
+    "./daemon/paths": "./src/daemon/paths.ts",
+    "./daemon/protocol": "./src/daemon/protocol.ts",
+    "./daemon/server": "./src/daemon/server.ts",
+    "./daemon/web": "./src/daemon/web.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "1.0.9",
+    "@types/bun": "1.3.12",
+    "typescript": "5.8.2"
+  }
+}

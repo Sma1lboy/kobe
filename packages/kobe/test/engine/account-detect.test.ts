@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   type DetectDeps,
+  detectAvailableVendors,
   detectClaudeAccount,
   detectCodexAccount,
   detectCopilotAccount,
@@ -69,6 +70,28 @@ describe("detectCodexAccount", () => {
   it("falls back to api-key login", async () => {
     const status = await detectCodexAccount(deps({ readFile: () => JSON.stringify({ OPENAI_API_KEY: "sk-x" }) }))
     expect(status.account).toEqual({ kind: "apikey" })
+  })
+})
+
+describe("detectAvailableVendors", () => {
+  const notFound = async () => {
+    throw new Error("not on PATH")
+  }
+
+  it("lists every vendor whose binary resolves, in cycle order", async () => {
+    expect(await detectAvailableVendors(deps())).toEqual(["claude", "codex", "copilot"])
+  })
+
+  it("excludes vendors whose binary is missing", async () => {
+    const only = await detectAvailableVendors(deps({ findClaudeBinary: notFound, findCopilotBinary: notFound }))
+    expect(only).toEqual(["codex"])
+  })
+
+  it("returns [] when no engine CLI is found", async () => {
+    const none = await detectAvailableVendors(
+      deps({ findClaudeBinary: notFound, findCodexBinary: notFound, findCopilotBinary: notFound }),
+    )
+    expect(none).toEqual([])
   })
 })
 

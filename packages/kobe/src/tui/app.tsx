@@ -23,17 +23,16 @@
 
 import { homedir } from "node:os"
 import { render, useRenderer } from "@opentui/solid"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
 import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
-import { DIRTY_WORKTREE_CODE } from "../orchestrator/errors.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
-import { addSavedRepo, getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
-import { DEFAULT_TASK_VENDOR, type VendorId } from "../types/task.ts"
+import { getSavedRepos, normalizeSavedRepos } from "../state/repos.ts"
+import type { VendorId } from "../types/task.ts"
 import type { UpdateInfo } from "../version.ts"
 import { HelpDialog } from "./component/help-dialog"
 import { NewTaskDialog } from "./component/new-task-dialog"
@@ -49,16 +48,24 @@ import { FocusProvider, type PaneId, useFocus } from "./context/focus"
 import { KVProvider, useKV } from "./context/kv"
 import { NotificationsProvider } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
-import { ThemeProvider, addTheme, useTheme } from "./context/theme"
-import { loadUserThemes } from "./context/theme/loader"
+import { ThemeProvider, useTheme } from "./context/theme"
+import { applyHostBootSteps, hostRenderOptions } from "./lib/host-boot"
 import { useBindings } from "./lib/keymap"
+import {
+  type CreateTaskContext,
+  archiveTaskFlow,
+  createTaskFlow,
+  deleteTaskFlow,
+  renameTaskFlow,
+  toggleTaskPinnedFlow,
+} from "./lib/task-actions"
 import { usePaneSizes } from "./lib/use-pane-sizes"
 import { useThemePersistence } from "./lib/use-theme-persistence"
 import { CostDashboard } from "./panes/monitor/CostDashboard"
 import { LivePreview } from "./panes/monitor/LivePreview"
 import { Sidebar } from "./panes/sidebar/Sidebar"
+import type { TaskSortMode } from "./panes/sidebar/groups"
 import { ClaudeLauncher, type LaunchTaskTmuxResult, launchTaskTmux } from "./panes/terminal/fullscreen"
-import { killSession, switchClientBeforeKill, tmuxSessionName } from "./panes/terminal/tmux"
 import { DialogProvider, useDialog } from "./ui/dialog"
 import { DialogConfirm } from "./ui/dialog-confirm"
 
@@ -266,57 +273,50 @@ function Shell(props: AppDeps) {
   // or `ctrl+d` globally. Defaults to preview so a fresh user sees
   // what their task is doing.
   const [view, setView] = createSignal<"preview" | "dashboard">("preview")
+  const [taskSortMode, setTaskSortMode] = createSignal<TaskSortMode>("default")
   const toggleDashboard = (): void => {
     setView((v) => (v === "dashboard" ? "preview" : "dashboard"))
   }
 
-  // Sidebar callbacks.
+  // Shared task-action context (lib/task-actions). The flows themselves —
+  // confirm copy, DIRTY_WORKTREE force-delete branch, error handling — live
+  // in the shared module so this deprecated shell and the Tasks pane can't
+  // drift apart, and retiring app.tsx later is a deletion, not a port. What
+  // stays here is only what's genuinely this host's: dialog wiring, kv
+  // persistence, and selection. Divergences from the Tasks pane (no toasts,
+  // no reload, no switch-before-kill — we're outside tmux) are expressed by
+  // OMITTING the optional context members, not by separate flow copies.
+  const taskActions: CreateTaskContext = {
+    orch: props.orchestrator,
+    tasks: () => tasksAcc(),
+    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
+    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    logger: console,
+    logPrefix: "[kobe]",
+    // Drop selection if we just deleted the selected task. (This host
+    // recomputes from the remaining list rather than using the flow's
+    // nextTask — preserved pre-consolidation behavior.)
+    onTaskDeleted: (taskId) => {
+      if (selectedId() !== taskId) return
+      const remaining = tasksAcc()
+      const next = remaining.find((t) => !t.archived) ?? remaining[0]
+      setSelectedId(next?.id ?? null)
+    },
+    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    // "Spawn a sibling" default: the active task's repo.
+    cursorRepo: () => activeTask()?.repo,
+    lastVendor: () => kv.get("lastSelectedVendor") as VendorId | undefined,
+    rememberVendor: (vendor) => kv.set("lastSelectedVendor", vendor),
+    // Mirror the fresh saved-repo list into the kv store so its debounced
+    // whole-store flush doesn't clobber the disk write (savedRepos is not
+    // otherwise a kv-managed key).
+    onRepoSaved: () => kv.set("savedRepos", getSavedRepos()),
+    selectTask,
+  }
+
+  // Sidebar callbacks — thin wrappers over the shared flows.
   async function newTask(): Promise<void> {
-    const repos = getSavedRepos()
-    // First run (no saved repos): instead of bouncing the user to a
-    // shell for `kobe add`, open the dialog defaulted to the cwd so they
-    // pick a path in-TUI (the picker's saved mode preselects it; typing
-    // `/` flips to the directory browser). Otherwise default to the
-    // active task's repo so the common "spawn a sibling" flow doesn't
-    // make the user re-pick.
-    const defaultRepo = activeTask()?.repo ?? repos[0] ?? process.cwd()
-    const defaultVendor = (kv.get("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
-      defaultVendor,
-      discoverAdoptable: (repo) => props.orchestrator.discoverAdoptableWorktrees(repo),
-    })
-    if (!result) return
-    // Remember the choice so the next new-task dialog defaults to it.
-    kv.set("lastSelectedVendor", result.vendor)
-    // Auto-save the chosen repo so the saved list self-populates and
-    // `kobe add` stays optional. addSavedRepo normalizes to the git
-    // root + dedupes on disk; mirror the fresh list into the kv store so
-    // its debounced whole-store flush doesn't clobber the write
-    // (savedRepos is not otherwise a kv-managed key).
-    addSavedRepo(result.repo)
-    kv.set("savedRepos", getSavedRepos())
-    // Adopt: import one or more existing worktrees as tasks, then focus
-    // the last one (KOB-256).
-    if (result.mode === "adopt") {
-      let lastId: string | undefined
-      for (const w of result.adopt) {
-        const t = await props.orchestrator.adoptWorktree({
-          repo: result.repo,
-          worktreePath: w.worktreePath,
-          branch: w.branch,
-          vendor: result.vendor,
-        })
-        lastId = t.id
-      }
-      if (lastId) selectTask(lastId)
-      return
-    }
-    const task = await props.orchestrator.createTask({
-      repo: result.repo,
-      baseRef: result.baseRef,
-      vendor: result.vendor,
-    })
-    selectTask(task.id)
+    await createTaskFlow(taskActions)
   }
 
   function openSettings(): void {
@@ -328,97 +328,19 @@ function Shell(props: AppDeps) {
   }
 
   async function archiveTask(taskId: string): Promise<void> {
-    try {
-      await props.orchestrator.setArchived(taskId)
-    } catch (err) {
-      console.error("[kobe] archive failed:", err)
-      return
-    }
-    const sessionName = tmuxSessionName(taskId)
-    const nextTask = tasksAcc().find((t) => t.id !== taskId && !t.archived)
-    await switchClientBeforeKill(sessionName, nextTask ? tmuxSessionName(nextTask.id) : undefined).catch(
-      (err: unknown) => {
-        console.error("[kobe] switch-client failed:", err)
-      },
-    )
-    await killSession(sessionName).catch((err: unknown) => {
-      console.error("[kobe] kill tmux session failed:", err)
-    })
+    await archiveTaskFlow(taskActions, taskId)
   }
 
   async function renameTask(taskId: string): Promise<void> {
-    const task = props.orchestrator.getTask(taskId)
-    if (!task) return
-    const next = await RenameTaskDialog.show(dialog, task.title)
-    if (!next) return
-    await props.orchestrator.setTitle(taskId, next).catch((err: unknown) => {
-      console.error("[kobe] rename failed:", err)
-    })
+    await renameTaskFlow(taskActions, taskId)
   }
 
   async function pinTask(taskId: string): Promise<void> {
-    await props.orchestrator.setPinned(taskId).catch((err: unknown) => {
-      console.error("[kobe] pin failed:", err)
-    })
+    await toggleTaskPinnedFlow({ orch: props.orchestrator, taskId, logger: console, logPrefix: "[kobe]" })
   }
 
   async function deleteTask(taskId: string): Promise<void> {
-    const task = props.orchestrator.getTask(taskId)
-    if (!task) return
-    const ok = await DialogConfirm.show(
-      dialog,
-      `Delete "${task.title}"?`,
-      "Removes the task entry and its worktree. The tmux session (if any) is killed.",
-      "cancel",
-      "delete",
-    )
-    if (ok !== true) return
-    // First attempt is non-force: the orchestrator refuses to destroy a
-    // worktree with uncommitted/untracked work and throws a DIRTY_WORKTREE
-    // error instead. Catch that and re-prompt for an explicit force-delete
-    // so the user can't lose unsaved work silently (KOB-244).
-    let deleted = false
-    try {
-      await props.orchestrator.deleteTask(taskId)
-      deleted = true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (message.includes(DIRTY_WORKTREE_CODE)) {
-        const forceOk = await DialogConfirm.show(
-          dialog,
-          `"${task.title}" has uncommitted changes`,
-          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
-          "cancel",
-          "force delete",
-        )
-        if (forceOk === true) {
-          try {
-            await props.orchestrator.deleteTask(taskId, { force: true })
-            deleted = true
-          } catch (forceErr) {
-            console.error("[kobe] force delete failed:", forceErr)
-          }
-        }
-      } else {
-        console.error("[kobe] delete failed:", err)
-      }
-    }
-    // Only tear down the session + drop selection if the task was actually
-    // removed — a failed/declined delete must leave everything in place.
-    if (!deleted) return
-    // Tear down the tmux session for this task so a re-created task
-    // with the same id (theoretically possible across kobe restarts
-    // if the user crafted a manifest) doesn't attach into the dead
-    // task's stale claude pane.
-    await killSession(tmuxSessionName(taskId)).catch((err: unknown) => {
-      console.error("[kobe] kill tmux session failed:", err)
-    })
-    // Drop selection if we just deleted the selected task.
-    if (selectedId() === taskId) {
-      const remaining = tasksAcc()
-      const next = remaining.find((t) => !t.archived) ?? remaining[0]
-      setSelectedId(next?.id ?? null)
-    }
+    await deleteTaskFlow(taskActions, taskId)
   }
 
   // Global keybindings — minimal in v0.6 (no chat composer, so most
@@ -514,7 +436,8 @@ function Shell(props: AppDeps) {
             onArchiveRequest={(id) => void archiveTask(id)}
             onRenameRequest={(id) => void renameTask(id)}
             onPinRequest={(id) => void pinTask(id)}
-            onAddTask={() => void newTask()}
+            sortMode={taskSortMode}
+            onSortModeToggle={() => setTaskSortMode((cur) => (cur === "default" ? "recent" : "default"))}
             width={sidebarWidth}
           />
         </box>
@@ -602,9 +525,13 @@ function App(props: AppDeps) {
 }
 
 export async function startApp(): Promise<void> {
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
+  // Partial adoption of `lib/host-boot`: the outer monitor shares the boot
+  // steps + render options but NOT `bootPaneHost` — its theme is KV-persisted
+  // via `useThemePersistence` (not `readPersistedUiPrefs`), and its provider
+  // tree is different in kind (SyncProvider + CommandPaletteProvider, Dialog
+  // OUTSIDE Focus). Molding the deprecated shell into the pane-host shape
+  // would distort the shared module for everyone else.
+  applyHostBootSteps()
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   let orchestrator: KobeOrchestrator
   if (process.env.KOBE_NO_DAEMON === "1") {
@@ -633,11 +560,5 @@ export async function startApp(): Promise<void> {
       console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
     }
   }
-  await render(() => <App orchestrator={orchestrator} />, {
-    backgroundColor: "transparent",
-    externalOutputMode: "passthrough",
-    exitOnCtrlC: false,
-    screenMode: "alternate-screen",
-    useKittyKeyboard: {},
-  })
+  await render(() => <App orchestrator={orchestrator} />, hostRenderOptions())
 }

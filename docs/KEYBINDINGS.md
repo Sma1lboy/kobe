@@ -1,9 +1,9 @@
 # Keybindings — boundaries, conflicts, conventions
 
 Single source of truth for "what keys do what, where, and why."
-Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
+Outer opentui bindings live in [`packages/kobe/src/tui/context/keybindings.ts`](../packages/kobe/src/tui/context/keybindings.ts) — `KobeKeymap` is the canonical table for those. Users can override most of them via `~/.kobe/settings/keybindings.yaml` (see "User customization" below). **Do not hardcode outer-TUI chord strings outside that table.** Pane code reaches in via `bindByIds({ id: handler })`; the help dialog (F1) reads every row, while the status bar reads only rows whose friendly `hint` has not opted out with `status: false`. A single edit there is enough to update chord, Help copy, and footer eligibility.
 
-Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings and live in [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts), with the in-session Tasks pane footer in [`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx). Keep those three surfaces in sync when changing a handover key.
+Direct-tmux handover bindings are the explicit exception: they are real tmux server/window bindings installed by [`packages/kobe/src/tui/panes/terminal/tmux.ts`](../packages/kobe/src/tui/panes/terminal/tmux.ts). Their DEFAULT chords live in [`packages/kobe/src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) (`TMUX_SINGLE_BINDING_DEFAULTS` / `TMUX_FOCUS_DEFAULTS`, user-overridable via `tmux.*` ids — see "User customization" below), and the in-session Tasks pane footer ([`packages/kobe/src/tui/tasks-pane/host.tsx`](../packages/kobe/src/tui/tasks-pane/host.tsx)) renders from the same resolved set. Change a handover default in the defaults table, not at the install site.
 
 ---
 
@@ -99,18 +99,89 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 | Chord | Scope | Action |
 | --- | --- | --- |
 | `ctrl+h/j/k/l` | no-prefix tmux | Move between Tasks / engine / Ops / shell panes directionally. |
-| `ctrl+q` | no-prefix tmux | Detach to the launching shell; the session keeps running. |
+| `ctrl+q` | no-prefix tmux | Two-stage: focus the current window's Tasks pane; press again from the Tasks pane to detach to the launching shell (session keeps running). `prefix d` / `ctrl+b d` still detaches in one step. |
 | `ctrl+t` | no-prefix tmux | Create a same-engine ChatTab window for the current task/worktree. |
 | `ctrl+shift+t` | no-prefix tmux, terminal-dependent | Prompt for engine, then create a ChatTab window. |
 | tmux `prefix T` | tmux prefix fallback | Same engine picker as `ctrl+shift+t`, for terminals that do not forward the shifted control chord. |
 | `ctrl+[` / `ctrl+]` | no-prefix tmux | Previous / next ChatTab window. |
 | `ctrl+w` | no-prefix tmux | Close the current ChatTab window if another window remains. |
 | `F2` | no-prefix tmux | Rename the current ChatTab window. |
-| tmux `prefix f` | tmux prefix | Focus the Tasks pane and open the new-task dialog. |
+| tmux `prefix f` | tmux prefix | Open the prompt-only quick-task page (asks for just a prompt; repo / engine / base branch default from the current task). |
 
-Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
+Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `t` toggle task sort (default/manual vs recent), `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, and `[` / `]` Working session vs Archives. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
 
 The Tasks/Ops panes are version-tagged with `@kobe_pane_version`. After an upgrade, `ensureSession` respawns stale kobe-owned panes in place while preserving the engine pane and ChatTab windows. Do not use `kobe reset` as the normal update path; reset is the runtime-recovery fallback for wedged tmux/daemon state.
+
+## User customization — `~/.kobe/settings/keybindings.yaml`
+
+Users can rebind most chords without touching the code. The config lives in the
+hand-authored settings directory (`~/.kobe/settings/`, distinct from the
+machine-written KV blob) and is loaded ONCE per process at TUI boot by
+`applyUserKeybindings()` ([`src/tui/context/keybindings-user.ts`](../packages/kobe/src/tui/context/keybindings-user.ts)),
+which mutates the matching `KobeKeymap` rows in place. Because every pane
+registers through `bindByIds` and the F1 help dialog / status bar render from
+the same table, one mutation re-points every surface — chord, Help copy, and
+footer hint follow automatically (overridden rows get their `hint.keys`
+refreshed; an unbound row loses its hint). Restart kobe — or respawn the pane —
+to apply edits. Pure parsing/validation logic lives in
+[`src/tui/lib/keymap-overrides.ts`](../packages/kobe/src/tui/lib/keymap-overrides.ts)
+(vitest-covered, no opentui imports, mirroring the keymap-dispatch split).
+
+```yaml
+bindings:                 # applies on every platform
+  chat.fork.new: ctrl+g   # string = one chord
+  sidebar.select: [enter] # list  = several chords (all fire the action)
+  files.createPR: null    # null / [] = unbind (hint disappears too)
+darwin:                   # platform overlay — wins over `bindings` per id
+  bindings:               # (aliases: macos / mac; also: linux, windows)
+    palette.open: [cmd+p, ctrl+p]
+linux:
+  bindings:
+    palette.open: ctrl+p
+```
+
+Semantics and guard rails:
+
+- **Ids come from `KobeKeymap`** — press F1 for the live list, or open
+  Settings → Keybindings (read-only section showing the config path, applied
+  overrides, and every load warning; warnings also go to `console.warn` →
+  the pane log).
+- **Chord grammar mirrors `matchKey()`**: `mod+...+key`, modifier aliases
+  (`control`/`command`/`meta`/`option`…) are canonicalized to
+  `ctrl`/`cmd`/`alt`/`shift` in the dispatcher's order. `esc`→`escape`,
+  `pgup`→`pageup`. `left`/`right` are the arrow keys; left vs right
+  *modifier* keys cannot be distinguished by terminal protocols, so there is
+  no `lctrl`/`rcmd` syntax.
+- **The boundary rule is enforced on user input**: a bare single character on
+  a `global` / `workspace` / `terminal`-scope binding is dropped with a
+  warning (it would steal typed input). `shift+<letter>` chords are rejected
+  (terminals deliver shift+letter as a plain character — see the KOB-74
+  decision log below).
+- **Conflicts warn but apply**: an override colliding with another binding in
+  an overlapping scope logs "last registration wins; consider a different
+  chord".
+- **tmux-layer session keys use the same file** via `tmux.*` ids resolved by
+  [`src/tmux/keybindings.ts`](../packages/kobe/src/tmux/keybindings.ts) and
+  installed by `ensureSession` (overridden defaults are `unbind-key`'d first,
+  so a long-lived server doesn't keep both chords): `tmux.tab.new` (ctrl+t),
+  `tmux.tab.chooseEngine` (ctrl+shift+t — shift+letter IS allowed here, tmux
+  binds `C-S-…` on extended-keys terminals), `tmux.tab.prev`/`tmux.tab.next`
+  (ctrl+[ / ctrl+]), `tmux.tab.close` (ctrl+w), `tmux.tab.rename` (f2),
+  `tmux.detach` (ctrl+q two-stage), and `tmux.focus` — a POSITIONAL group of
+  exactly 4 chords in order left/down/up/right (default ctrl+h/j/k/l). One
+  chord per single id; `null` skips installing the binding. Extra guard rails:
+  `cmd+` chords are rejected (Command never reaches tmux) and bare keys are
+  rejected unless they're F-keys (no-prefix root bindings live in every pane —
+  a bare letter would shadow typing). The Tasks-pane footer legend and the
+  tmux `status-right` hint render from the resolved set, so overrides show
+  their own chords. Overrides apply when a session is (re)built, not to a
+  session that's already running. The `prefix T` / `prefix f` rows stay fixed.
+- **Fixed (not rebindable) in v1**: ids whose handlers discriminate BETWEEN
+  their chords by key name (`sidebar.nav`, `files.nav`, `files.hierarchy`,
+  `sidebar.view`, `files.tab`, `sidebar.goto`/`pin`/`localMerge` shift-gates,
+  `chat.question.nav`/`pick-number`, `focus.numeric`) — listed in
+  `FIXED_BINDING_IDS` with reasons; and doc-only rows (`keys: []`, e.g.
+  composer enter/shift+enter).
 
 ## Adding a new binding — checklist
 

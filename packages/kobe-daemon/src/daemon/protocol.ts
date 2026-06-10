@@ -9,9 +9,9 @@
  * task-CRUD + subscribe shape.
  */
 
-import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
-import type { Task } from "../types/task.ts"
-import type { UpdateInfo } from "../version.ts"
+import type { EngineActivityDetail, TaskActivityState } from "@/engine/hook-events"
+import type { Task } from "@/types/task"
+import type { UpdateInfo } from "@/version"
 
 /**
  * Bumped to 2 in v0.6 to signal the shape change. The handshake now
@@ -82,6 +82,8 @@ export type DaemonRequestName =
   | "hello"
   | "daemon.status"
   | "daemon.stop"
+  | "daemon.web.start"
+  | "daemon.web.stop"
   | "subscribe"
   | "task.list"
   | "task.get"

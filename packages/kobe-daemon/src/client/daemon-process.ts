@@ -139,10 +139,12 @@ export async function testDaemonResponds(
  * Returns `[command, ...args]`; callers pass to `child_process.spawn`
  * as `spawn(command, args, opts)`.
  *
- * Three layouts are possible:
- *  - dev: running from source. `import.meta.url` points at
- *    `.../src/client/daemon-process.ts`; the cli entry sits at
+ * Four layouts are possible:
+ *  - dev, pre-extraction: running from kobe source. `import.meta.url`
+ *    points at `.../src/client/daemon-process.ts`; the cli entry sits at
  *    `../cli/index.ts` relative to it.
+ *  - dev, daemon workspace: running from `packages/kobe-daemon` source.
+ *    The cli entry sits in sibling workspace `packages/kobe/src/cli`.
  *  - npm package: daemon-process is bundled INTO `dist/cli/index.js`, so
  *    `import.meta.url` resolves there. `../cli/index.js` resolves back
  *    to the same bundled entry — bun re-executes itself against it.
@@ -156,9 +158,12 @@ function resolveKobeSpawn(subcommand: readonly string[]): string[] {
     return [process.execPath, ...subcommand]
   }
   const dir = dirname(here)
-  const sourceEntry = resolve(dir, "../cli/index.ts")
-  if (existsSync(sourceEntry)) return [process.execPath, sourceEntry, ...subcommand]
-  const distEntry = resolve(dir, "../cli/index.js")
-  if (existsSync(distEntry)) return [process.execPath, distEntry, ...subcommand]
-  throw new Error(`kobe: could not locate kobe entry near ${dir}; expected ../cli/index.{ts,js}`)
+  const candidates = [
+    resolve(dir, "../cli/index.ts"),
+    resolve(dir, "../../../kobe/src/cli/index.ts"),
+    resolve(dir, "../cli/index.js"),
+  ]
+  const entry = candidates.find((candidate) => existsSync(candidate))
+  if (entry) return [process.execPath, entry, ...subcommand]
+  throw new Error(`kobe: could not locate kobe entry near ${dir}; checked ${candidates.join(", ")}`)
 }

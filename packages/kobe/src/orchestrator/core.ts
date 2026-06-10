@@ -10,8 +10,8 @@
  *     kobe never drives them as subprocesses anymore.
  *   - `pumpEvents` / event-bus / per-tab subscribers / user-input
  *     broker. No live event stream from inside an engine to surface.
- *   - Chat-tab CRUD. There's exactly one engine session per task and
- *     tmux is its persistence.
+ *   - Orchestrator-owned ChatTab CRUD. ChatTabs are tmux windows inside a
+ *     task's tmux Session now, so tmux owns their lifecycle/persistence.
  *   - Create-PR / merge / refresh-PR-status. KOB-232 will re-introduce
  *     create-PR as a `tmux send-keys` injection from the Ops pane.
  *
@@ -26,6 +26,7 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
+import { getRemoteRepoConfig } from "../state/repos.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -41,6 +42,15 @@ import { autoBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { worktreePathFor } from "./worktree/paths.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
+
+/**
+ * The on-disk working dir a project key resolves to: the local repo path, or a
+ * remote project's `basePath` (the ssh:// key isn't a usable path). The main
+ * task and the engine's `cd` target both key off this.
+ */
+function repoWorkingDir(repo: string): string {
+  return getRemoteRepoConfig(repo)?.basePath ?? repo
+}
 
 /** Input to {@link Orchestrator.createTask}. */
 export interface CreateTaskInput {
@@ -133,9 +143,13 @@ export class Orchestrator {
     return this.activeTaskAcc
   }
 
-  /** Set the active-task focus (local signal; no daemon to broadcast to). */
+  /** Set the active-task focus and touch recency for task-list sorting. */
   async setActiveTask(id: TaskId | string | null): Promise<void> {
-    this.setActiveTaskSig(id === null ? null : String(id))
+    const next = id === null ? null : String(id)
+    this.setActiveTaskSig(next)
+    if (next && this.store.get(next)) {
+      await this.store.update(next, {})
+    }
   }
 
   /** Solid signal of the current task list. */
@@ -220,7 +234,8 @@ export class Orchestrator {
         repo,
         title: titleFromRepo(repo),
         branch: "",
-        worktreePath: repo,
+        // Remote main task lives at the remote basePath, not the ssh:// key.
+        worktreePath: repoWorkingDir(repo),
         status: "backlog",
         kind: "main",
         vendor: DEFAULT_TASK_VENDOR,
@@ -245,7 +260,7 @@ export class Orchestrator {
    */
   async ensureWorktree(id: TaskId | string): Promise<string> {
     const task = this.requireTask(id)
-    if (task.kind === "main") return task.repo
+    if (task.kind === "main") return repoWorkingDir(task.repo)
     if (task.worktreePath) return task.worktreePath
     const inflight = this.worktreeLocks.get(task.id)
     if (inflight) {
@@ -382,9 +397,16 @@ export class Orchestrator {
     await this.store.move(task.id, delta, groupIds)
   }
 
-  /** Toggle / set the `archived` flag. */
+  /**
+   * Toggle / set the `archived` flag. No-op for `kind: "main"`: a main
+   * task is a saved repo's root, removed by un-saving the repo, not by
+   * archiving — mirrors `deleteTask`'s main-row guard so the sidebar's
+   * `a` chord can't silently archive (and kill the session of) a whole
+   * repo entry from the default cursor row.
+   */
   async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
     const task = this.requireTask(id)
+    if (task.kind === "main") return
     const next = archived ?? !task.archived
     if (task.archived === next) return
     await this.store.update(task.id, { archived: next })

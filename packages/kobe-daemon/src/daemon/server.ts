@@ -15,16 +15,11 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
-import {
-  type EngineActivityDetail,
-  type EngineActivityKind,
-  type TaskActivityState,
-  isEngineActivityKind,
-  reduceActivity,
-} from "../engine/hook-events.ts"
-import type { Orchestrator } from "../orchestrator/core.ts"
-import type { Task, VendorId } from "../types/task.ts"
-import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "../version.ts"
+import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
+import type { Orchestrator } from "@/orchestrator/core"
+import type { Task, VendorId } from "@/types/task"
+import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "@/version"
+import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
@@ -32,6 +27,7 @@ import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
   CHANNEL_NAMES,
+  type ChannelPayloads,
   DAEMON_PROTOCOL_VERSION,
   type DaemonFrame,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
@@ -39,6 +35,7 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
+import { createDaemonWebServer } from "./web.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -56,16 +53,6 @@ function resolveIdleGraceMs(): number {
   if (raw === undefined) return DEFAULT_IDLE_GRACE_MS
   const n = Number(raw)
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_IDLE_GRACE_MS
-}
-
-/** How long a non-idle engine-activity state survives with no follow-up event
- *  before lapsing to idle (safety net for a missed Stop/SessionEnd). */
-const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
-function resolveEngineStateTtlMs(): number {
-  const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
-  if (raw === undefined) return DEFAULT_ENGINE_STATE_TTL_MS
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ENGINE_STATE_TTL_MS
 }
 
 export interface DaemonServerOptions {
@@ -110,6 +97,11 @@ type ClientState = DaemonClientConnection & {
   holdsLifetime: boolean
 }
 
+type EventedServer = Server & {
+  once(event: "error", listener: (err: Error) => void): void
+  removeListener(event: "error", listener: (err: Error) => void): void
+}
+
 export async function startDaemonServer(orch: Orchestrator, options: DaemonServerOptions = {}): Promise<DaemonServer> {
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
@@ -135,13 +127,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const idleGraceMs = resolveIdleGraceMs()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let stopping = false
+  let webHoldsLifetime = false
 
   // Attached GUIs — the refcount that gates lazy shutdown. Counts only
   // `holdsLifetime` (role "gui") clients, not every `subscribed` pane.
   function guiCount(): number {
     let n = 0
     for (const c of clients) if (c.holdsLifetime) n++
-    return n
+    return n + (webHoldsLifetime ? 1 : 0)
   }
 
   function cancelIdleTimer(): void {
@@ -174,41 +167,55 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
   })
 
-  // Transient, engine-driven per-task activity (KOB). Folded from normalized
-  // hook events (`engine.reportEvent`) and pushed on the `engine-state`
-  // channel. In-memory only — never persisted (it's "what is the engine doing
-  // RIGHT NOW", not lifecycle). A per-task stale timer lapses a stuck state
-  // back to idle if the terminating hook is ever missed (engine crash, etc.).
-  interface ActivityEntry {
-    state: TaskActivityState
-    detail?: EngineActivityDetail
-    at: number
-    lapse?: ReturnType<typeof setTimeout>
-  }
-  const activity = new Map<string, ActivityEntry>()
-  const ACTIVITY_STALE_MS = resolveEngineStateTtlMs()
+  const activity = new DaemonActivityRegistry(bus)
 
-  function reportActivity(taskId: string, kind: EngineActivityKind, detail?: EngineActivityDetail): void {
-    const prev = activity.get(taskId)
-    if (prev?.lapse) clearTimeout(prev.lapse)
-    const state = reduceActivity(prev?.state, kind, detail)
-    const at = Date.now()
-    const entry: ActivityEntry = { state, detail, at }
-    // Safety net: a non-idle state that never gets a follow-up event lapses
-    // back to idle, so a missed Stop/SessionEnd can't pin a badge forever.
-    if (state !== "idle") {
-      entry.lapse = setTimeout(() => {
-        const cur = activity.get(taskId)
-        if (cur && cur.at === at) {
-          activity.set(taskId, { state: "idle", at: Date.now() })
-          bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
+  const webClient = {
+    id: 0,
+    connectedAt: startedAt,
+    socket: undefined as unknown as Socket,
+    buffer: "",
+    subscribed: false,
+    holdsLifetime: false,
+  } satisfies ClientState
+  const web = createDaemonWebServer({
+    orch,
+    bus,
+    snapshot: () => {
+      let activeTaskId: string | null = null
+      let update: UpdateInfo | null = null
+      for (const event of bus.snapshot()) {
+        switch (event.channel) {
+          case "active-task":
+            activeTaskId = (event.payload as ChannelPayloads["active-task"]).taskId
+            break
+          case "update":
+            update = (event.payload as ChannelPayloads["update"]).info
+            break
         }
-      }, ACTIVITY_STALE_MS)
-      entry.lapse.unref?.()
-    }
-    activity.set(taskId, entry)
-    bus.publish("engine-state", { taskId, state, ...(detail ? { detail } : {}), at })
-  }
+      }
+      return {
+        tasks: orch.listTasks().map(serializeTask),
+        activeTaskId,
+        engineStates: activity.snapshotByTask(),
+        update,
+        connected: true,
+      }
+    },
+    rpc: (name, payload) => {
+      if (name === "hello" || name === "subscribe" || name === "daemon.stop" || name.startsWith("daemon.web.")) {
+        throw new Error(`rpc ${name} is not exposed to the web UI`)
+      }
+      return dispatch({ type: "request", id: "web", name, payload }, webClient)
+    },
+    onStarted: () => {
+      webHoldsLifetime = true
+      cancelIdleTimer()
+    },
+    onStopped: () => {
+      webHoldsLifetime = false
+      maybeArmIdleShutdown()
+    },
+  })
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -294,6 +301,8 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
+      activity.close()
+      web.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
       // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
@@ -308,9 +317,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   }
 
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject)
+    const evented = server as EventedServer
+    evented.once("error", reject)
     server.listen(socketPath, () => {
-      server.removeListener("error", reject)
+      evented.removeListener("error", reject)
       resolve()
     })
   })
@@ -382,6 +392,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "daemon.stop":
         await stopSoon()
         return {}
+      case "daemon.web.start": {
+        const port = optionalNumber(payload, "port")
+        const staticDir = optionalString(payload, "staticDir")
+        const takeover = optionalBoolean(payload, "takeover")
+        return web.start({ port, staticDir, takeover })
+      }
+      case "daemon.web.stop":
+        web.close()
+        return {}
       case "task.list":
         return { tasks: orch.listTasks().map(serializeTask) }
       case "task.get": {
@@ -426,13 +445,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       case "task.delete": {
         const taskId = requireString(payload, "taskId")
         await orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
-        const gone = activity.get(taskId)
-        if (gone?.lapse) clearTimeout(gone.lapse)
-        activity.delete(taskId)
-        // Publish an explicit idle so every subscriber (incl. late ones that
-        // would otherwise replay a stale cached engine-state) clears this
-        // task's badge — important if the id is reused by a quick recreate.
-        if (gone) bus.publish("engine-state", { taskId, state: "idle", at: Date.now() })
+        activity.clearTask(taskId)
         return {}
       }
       case "task.pin": {
@@ -511,11 +524,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
       }
       case "task.setActive": {
-        // Pure UI/session focus — not a task-index property — so it lives on
-        // the bus, not the orchestrator. Publishing caches the last value so
-        // a late-subscribing Tasks pane gets the current focus on connect
-        // and every pane highlights the same active task (KOB-247).
-        bus.publish("active-task", { taskId: optionalString(payload, "taskId") ?? null })
+        // UI/session focus lives on the bus, but setting it also touches the
+        // task's updatedAt so "recent" task sorting reflects actual use.
+        // Publishing caches the last value so a late-subscribing Tasks pane
+        // gets the current focus on connect and every pane highlights the
+        // same active task (KOB-247).
+        const taskId = optionalString(payload, "taskId") ?? null
+        await orch.setActiveTask(taskId)
+        bus.publish("active-task", { taskId })
         return {}
       }
       case "engine.reportEvent": {
@@ -551,7 +567,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         const taskId = explicitId ?? (cwd ? matchTaskByCwd(orch.listTasks(), cwd) : undefined)
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
-        reportActivity(taskId, kind, detail)
+        activity.report(taskId, kind, detail)
         return {}
       }
       case "subscribe": {
@@ -583,12 +599,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         // is per-task — so additionally replay EVERY task's current non-idle
         // activity to this late subscriber (otherwise it'd only learn the most
         // recently changed task's state).
-        for (const [taskId, entry] of activity) {
-          if (entry.state === "idle") continue
+        for (const payload of activity.currentNonIdle()) {
           writeFrame(client, {
             type: "event",
             name: "engine-state",
-            payload: { taskId, state: entry.state, ...(entry.detail ? { detail: entry.detail } : {}), at: entry.at },
+            payload,
           })
         }
         return {}
@@ -686,12 +701,21 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   return value
 }
 
-function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
-  const value = optionalString(payload, key)
-  if (value !== undefined && value !== "claude" && value !== "codex") {
-    throw new Error(`${key} '${value}' is not a supported vendor (expected: claude, codex)`)
-  }
+function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a number`)
   return value
+}
+
+function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
+  // Engines are open: a vendor id may be a built-in OR a user-registered
+  // custom engine (its launch command lives in the kobe-side customEngineIds
+  // registry, which the daemon can't see). So accept any non-empty string and
+  // let the launch path resolve it — a bogus id just fails to launch its
+  // (missing) binary in the pane. Empty/absent stays undefined (→ claude).
+  const value = optionalString(payload, key)
+  return value && value.trim().length > 0 ? (value as VendorId) : undefined
 }
 
 /** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping

@@ -22,9 +22,11 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "../../engine/account-detect"
-import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey } from "../../engine/interactive-command"
-import type { VendorId } from "../../types/task"
-import { ALL_VENDORS } from "../../types/vendor"
+import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
+import { submitFeedback } from "../../lib/feedback"
+import { getPersistedString, setPersistedString } from "../../state/repos"
+import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
+import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import {
@@ -45,27 +47,30 @@ import {
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
-import {
-  type NavLevel,
-  SECTIONS,
-  type SectionId,
-  bodyRowCount as countBodyRows,
-  editorCustomRowIndex,
-  editorKindRowIndex,
-  focusAccentRowIndex,
-  soundRowIndex,
-  surfaceChattabRowIndex,
-  surfaceTaskpanelRowIndex,
-  toastRowIndex,
-  transparentRowIndex,
-} from "./settings-dialog/model"
+import { type NavLevel, SECTIONS, type SectionId, type SettingsRow, rowAt, sectionRows } from "./settings-dialog/model"
 import {
   AccountsSettingsSection,
   DevSettingsSection,
   EngineSettingsSection,
+  FeedbackSettingsSection,
   GeneralSettingsSection,
+  KeybindingsSettingsSection,
   SettingsSectionSidebar,
 } from "./settings-dialog/sections"
+
+/**
+ * Turn a custom-engine slug into a presentable display name: split on `-`/`_`
+ * and title-case each word. `my-local-agent` → `My Local Agent`, `aider` →
+ * `Aider`. Used so a custom engine added with no name still reads like the
+ * title-cased built-ins instead of its raw lowercase-hyphenated id.
+ */
+function humanizeSlug(id: string): string {
+  return id
+    .split(/[-_]+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+}
 
 export type SettingsDialogProps = {
   kv: KVContext
@@ -100,6 +105,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const [section, setSection] = createSignal<SectionId>("general")
   const [cursor, setCursor] = createSignal(0)
   const [bodyRow, setBodyRow] = createSignal(0)
+  const [feedbackTitle, setFeedbackTitle] = createSignal("")
+  const [feedbackBody, setFeedbackBody] = createSignal("")
+  const [feedbackStatus, setFeedbackStatus] = createSignal("")
   const themeNames = createMemo<readonly string[]>(() => themeCtx.all().slice().sort())
   const [, setThemeCursor] = createSignal(
     Math.max(
@@ -124,45 +132,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
     void detectCopilotAccount().then(setCopilotStatus)
   })
 
+  /**
+   * The active section's ordered navigable rows (the row registry). A
+   * row's body index is its position here — recomputed per call, like
+   * the old count helpers, so kv-driven changes (custom engines) are
+   * always fresh in key handlers.
+   */
+  function bodyRows(): SettingsRow[] {
+    return sectionRows(section(), {
+      themeNames: themeNames(),
+      focusAccentSlots: FOCUS_ACCENT_SLOTS,
+      engineList: engineList(),
+      hasDaemon,
+    })
+  }
+
   function bodyRowCount(): number {
-    return countBodyRows(section(), themeNames().length, FOCUS_ACCENT_SLOTS.length, hasDaemon)
-  }
-
-  function isTransparentRow(): boolean {
-    return section() === "general" && bodyRow() === transparentRowIndex(themeNames().length)
-  }
-
-  function currentFocusAccentRow(): number | null {
-    if (section() !== "general") return null
-    return focusAccentRowIndex(bodyRow(), themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isToastRow(): boolean {
-    return section() === "general" && bodyRow() === toastRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isSoundRow(): boolean {
-    return section() === "general" && bodyRow() === soundRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isSurfaceChattabRow(): boolean {
-    return (
-      section() === "general" && bodyRow() === surfaceChattabRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-    )
-  }
-
-  function isSurfaceTaskpanelRow(): boolean {
-    return (
-      section() === "general" && bodyRow() === surfaceTaskpanelRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-    )
-  }
-
-  function isEditorKindRow(): boolean {
-    return section() === "general" && bodyRow() === editorKindRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isEditorCustomRow(): boolean {
-    return section() === "general" && bodyRow() === editorCustomRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+    return bodyRows().length
   }
 
   function settingsSurface(): SettingsSurface {
@@ -214,9 +200,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
   }
 
+  // Experimental: SSH-backed remote projects (off by default). Gates
+  // `kobe add --remote`; see docs/design/remote-projects.md.
+  function remoteProjectsEnabled(): boolean {
+    return props.kv.get("experimental.remoteProjects", false) === true
+  }
+
+  function toggleRemoteProjects(): void {
+    props.kv.set("experimental.remoteProjects", !remoteProjectsEnabled())
+  }
+
   // Engines section: per-vendor launch command. Stored in the shared
   // state.json under engineCommandKey via kv (reactive here; read
   // cross-process by interactiveEngineCommand). Empty override = default.
+  //
+  // The row list is the three built-ins PLUS the user's custom engines
+  // (customEngineIds registry); custom engines reuse the SAME engineCommand.
+  // <id> / engineName.<id> keys as built-ins, so editEngine/renameEngine work
+  // for them unchanged. A trailing "+ Add engine" row (index === engineList
+  // length) registers a new one.
+  function customEngines(): string[] {
+    const raw = props.kv.get("customEngineIds", [])
+    return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : []
+  }
+  function engineList(): VendorId[] {
+    return [...ALL_VENDORS, ...customEngines()]
+  }
   function engineOverride(vendor: VendorId): string {
     const v = props.kv.get(engineCommandKey(vendor), "")
     return typeof v === "string" ? v.trim() : ""
@@ -225,14 +234,109 @@ export function SettingsDialog(props: SettingsDialogProps) {
     return engineOverride(vendor) || defaultEngineCommand(vendor).join(" ")
   }
   function engineIsDefault(vendor: VendorId): boolean {
-    return engineOverride(vendor).length === 0
+    // Custom engines have no built-in default, so they never read as "(default)".
+    return isBuiltinVendor(vendor) && engineOverride(vendor).length === 0 && !engineNameIsCustom(vendor)
+  }
+  // Custom display name override (engineName.<vendor>), empty = VENDOR_LABEL / id.
+  function engineNameOverride(vendor: VendorId): string {
+    const v = props.kv.get(engineNameKey(vendor), "")
+    return typeof v === "string" ? v.trim() : ""
+  }
+  function engineNameIsCustom(vendor: VendorId): boolean {
+    return engineNameOverride(vendor).length > 0
+  }
+  function engineName(vendor: VendorId): string {
+    // Built-ins fall back to VENDOR_LABEL; a custom engine falls back to its id.
+    return engineNameOverride(vendor) || VENDOR_LABEL[vendor] || vendor
+  }
+  // The DEFAULT engine for new tasks — the single `lastSelectedVendor` reference
+  // the new-task dialog / quick-task read and Ctrl+Shift+T writes. Read fresh on
+  // open (getPersistedString) so a default set via Ctrl+Shift+T in another
+  // process is reflected here; `d` on an engine row sets it (the ● marker).
+  const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(
+    (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR,
+  )
+  function isDefaultEngine(vendor: VendorId): boolean {
+    return defaultEngine() === vendor
+  }
+  function setEngineDefault(vendor: VendorId): void {
+    setPersistedString("lastSelectedVendor", vendor)
+    props.kv.set("lastSelectedVendor", vendor) // keep the in-process kv consistent
+    setDefaultEngineSig(vendor)
   }
   async function editEngine(vendor: VendorId): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, engineCommandText(vendor), {
-      dialogTitle: `${VENDOR_LABEL[vendor]} launch command`,
+      dialogTitle: `${engineName(vendor)} launch command`,
+      fieldLabel: "command",
+      submitLabel: "save",
+      allowEmpty: true, // blank clears the override → built-in default
     })
     if (next === undefined) return
     props.kv.set(engineCommandKey(vendor), next.trim())
+  }
+  async function renameEngine(vendor: VendorId): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, engineName(vendor), {
+      dialogTitle: `${engineName(vendor)} display name (blank = default)`,
+      fieldLabel: "name",
+      submitLabel: "save",
+      allowEmpty: true, // blank clears the name override → default label
+    })
+    if (next === undefined) return
+    props.kv.set(engineNameKey(vendor), next.trim())
+  }
+  // `x` on an engine row. Built-in → reset its command + name overrides to the
+  // default (clearing the keys; empty = default, no sentinel). Custom → REMOVE
+  // it entirely (drop from the registry + clear its keys). Apply sites pick the
+  // change up automatically (cross-process via the cleared/removed keys).
+  function resetEngine(vendor: VendorId): void {
+    props.kv.set(engineCommandKey(vendor), "")
+    props.kv.set(engineNameKey(vendor), "")
+    if (!isBuiltinVendor(vendor)) {
+      props.kv.set(
+        "customEngineIds",
+        customEngines().filter((id) => id !== vendor),
+      )
+      // Keep the cursor in range after the list shrinks.
+      setBodyRow((r) => Math.max(0, Math.min(r, engineList().length)))
+    }
+  }
+  // The "+ Add engine" row: collect id + launch command + display name and
+  // register a new custom engine. Reuses RenameTaskDialog for each field.
+  async function addEngineFlow(): Promise<void> {
+    const idRaw = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: "Add engine",
+      fieldLabel: "id",
+      submitLabel: "next",
+      placeholder: "lowercase slug, e.g. aider",
+    })
+    if (idRaw === undefined) return
+    const id = idRaw.trim().toLowerCase()
+    if (!id || isBuiltinVendor(id) || customEngines().includes(id)) return // no blank / shadow / dup
+    const command = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: `Add engine · ${id}`,
+      fieldLabel: "command",
+      submitLabel: "next",
+      placeholder: "e.g. aider --model sonnet",
+    })
+    if (command === undefined) return
+    const name = await RenameTaskDialog.show(dialog, id, {
+      dialogTitle: `Add engine · ${id}`,
+      fieldLabel: "name",
+      submitLabel: "add",
+      allowEmpty: true, // blank = humanized id (e.g. my-local-agent → My Local Agent)
+    })
+    props.kv.set("customEngineIds", [...customEngines(), id])
+    if (command.trim()) props.kv.set(engineCommandKey(id), command.trim())
+    // A typed name wins; otherwise (blank or left as the raw id) seed a
+    // humanized form so the chip reads "My Local Agent", not "my-local-agent".
+    const typedName = name?.trim() ?? ""
+    props.kv.set(engineNameKey(id), typedName && typedName !== id ? typedName : humanizeSlug(id))
+  }
+  /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
+  function currentEngineRow(): VendorId | null {
+    if (section() !== "engines" || level() !== "body") return null
+    const row = rowAt(bodyRows(), bodyRow())
+    return row?.kind === "engine" ? row.vendor : null
   }
 
   // Editor preference: which editor the file tree's `e` key launches.
@@ -255,6 +359,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
   async function editEditorCustom(): Promise<void> {
     const next = await RenameTaskDialog.show(dialog, editorCustomCommand(), {
       dialogTitle: "Custom editor command (use {file} for the path)",
+      fieldLabel: "command",
+      submitLabel: "save",
+      allowEmpty: true,
     })
     if (next === undefined) return
     const cmd = next.trim()
@@ -264,6 +371,41 @@ export function SettingsDialog(props: SettingsDialogProps) {
     // a command typed while kind is still `vim` is silently ignored (you'd
     // set `code -w` / `nano` and still get vim), which reads as a bug.
     if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
+  }
+
+  async function editFeedbackTitle(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, feedbackTitle(), {
+      dialogTitle: "Feedback title",
+      fieldLabel: "title",
+      submitLabel: "save",
+    })
+    if (next === undefined) return
+    setFeedbackTitle(next)
+    setFeedbackStatus("")
+  }
+
+  async function editFeedbackBody(): Promise<void> {
+    const next = await RenameTaskDialog.show(dialog, feedbackBody(), {
+      dialogTitle: "Feedback body",
+      fieldLabel: "body",
+      submitLabel: "save",
+      allowEmpty: true,
+    })
+    if (next === undefined) return
+    setFeedbackBody(next)
+    setFeedbackStatus("")
+  }
+
+  async function sendFeedback(): Promise<void> {
+    setFeedbackStatus("submitting...")
+    try {
+      const result = submitFeedback({ title: feedbackTitle(), body: feedbackBody() })
+      setFeedbackStatus(`sent: ${result.url}`)
+      setFeedbackTitle("")
+      setFeedbackBody("")
+    } catch (err) {
+      setFeedbackStatus(`error: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   function enterBody(): void {
@@ -288,7 +430,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (len === 0) return
     const next = (bodyRow() + delta + len) % len
     setBodyRow(next)
-    if (section() === "general" && next < themeNames().length) setThemeCursor(next)
+    if (rowAt(bodyRows(), next)?.kind === "theme") setThemeCursor(next)
   }
 
   function switchSection(id: SectionId): void {
@@ -298,55 +440,34 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setLevel("sidebar")
   }
 
+  /**
+   * Activation lookup, keyed by row kind. Payload-bearing rows (theme,
+   * accent slot, engine vendor, surface) carry their payload in the
+   * descriptor, so enter never reverse-engineers it from an index.
+   */
+  const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
+    theme: (row) => selectTheme(row.name),
+    transparent: () => toggleTransparent(),
+    focusAccent: (row) => selectFocusAccent(row.slot),
+    toast: () => toggleToast(),
+    sound: () => toggleSound(),
+    surface: (row) => selectSurface(row.surface),
+    editorKind: () => cycleEditorKind(),
+    editorCustom: () => void editEditorCustom(),
+    engine: (row) => void editEngine(row.vendor),
+    engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
+    feedbackTitle: () => void editFeedbackTitle(),
+    feedbackBody: () => void editFeedbackBody(),
+    feedbackSend: () => void sendFeedback(),
+    devReset: () => void confirmResetState(dialog, props.kv, renderer),
+    devRestartDaemon: () => void confirmRestartDaemon(dialog, props.orchestrator, renderer),
+    devRemoteProjects: () => toggleRemoteProjects(),
+  }
+
   function activateBodyRow(): void {
-    if (section() === "general") {
-      if (isTransparentRow()) {
-        toggleTransparent()
-        return
-      }
-      const focusIdx = currentFocusAccentRow()
-      if (focusIdx !== null) {
-        const slot = FOCUS_ACCENT_SLOTS[focusIdx]
-        if (slot) selectFocusAccent(slot)
-        return
-      }
-      if (isToastRow()) {
-        toggleToast()
-        return
-      }
-      if (isSoundRow()) {
-        toggleSound()
-        return
-      }
-      if (isSurfaceChattabRow()) {
-        selectSurface("chattab")
-        return
-      }
-      if (isSurfaceTaskpanelRow()) {
-        selectSurface("taskpanel")
-        return
-      }
-      if (isEditorKindRow()) {
-        cycleEditorKind()
-        return
-      }
-      if (isEditorCustomRow()) {
-        void editEditorCustom()
-        return
-      }
-      const name = themeNames()[bodyRow()]
-      if (name) selectTheme(name)
-      return
-    }
-    if (section() === "engines") {
-      const vendor = ALL_VENDORS[bodyRow()]
-      if (vendor) void editEngine(vendor)
-      return
-    }
-    if (section() === "dev") {
-      if (bodyRow() === 0) void confirmResetState(dialog, props.kv, renderer)
-      else if (hasDaemon && bodyRow() === 1) void confirmRestartDaemon(dialog, props.orchestrator, renderer)
-    }
+    const row = rowAt(bodyRows(), bodyRow())
+    if (!row) return
+    ;(rowActivators[row.kind] as (row: SettingsRow) => void)(row)
   }
 
   useBindings(() => ({
@@ -379,6 +500,32 @@ export function SettingsDialog(props: SettingsDialogProps) {
       {
         key: "t",
         cmd: toggleTransparent,
+      },
+      {
+        // Engines section only: `r` renames the focused engine's display
+        // label, `x` resets a built-in (or removes a custom) engine. Gated to a
+        // focused engine row (currentEngineRow null on the +Add row / elsewhere).
+        key: "r",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) void renameEngine(v)
+        },
+      },
+      {
+        key: "x",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) resetEngine(v)
+        },
+      },
+      {
+        // Engines section: `d` sets the focused engine as the DEFAULT for new
+        // tasks (the ● marker) — the same `lastSelectedVendor` Ctrl+Shift+T sets.
+        key: "d",
+        cmd: () => {
+          const v = currentEngineRow()
+          if (v) setEngineDefault(v)
+        },
       },
     ],
   }))
@@ -425,10 +572,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
               bodyRow={bodyRow}
               setLevel={setLevel}
               setBodyRow={setBodyRow}
-              vendors={ALL_VENDORS}
+              vendors={engineList()}
+              isCustom={(v) => !isBuiltinVendor(v)}
+              displayName={engineName}
               commandText={engineCommandText}
               isDefault={engineIsDefault}
+              isDefaultEngine={isDefaultEngine}
               editEngine={(v) => void editEngine(v)}
+              renameEngine={(v) => void renameEngine(v)}
+              resetEngine={resetEngine}
+              onAddEngine={() => void addEngineFlow()}
             />
           </Show>
           <Show when={section() === "accounts"}>
@@ -436,6 +589,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
               claudeStatus={claudeStatus}
               codexStatus={codexStatus}
               copilotStatus={copilotStatus}
+            />
+          </Show>
+          <Show when={section() === "keys"}>
+            <KeybindingsSettingsSection />
+          </Show>
+          <Show when={section() === "feedback"}>
+            <FeedbackSettingsSection
+              level={level}
+              bodyRow={bodyRow}
+              setLevel={setLevel}
+              setBodyRow={setBodyRow}
+              title={feedbackTitle}
+              body={feedbackBody}
+              status={feedbackStatus}
+              editTitle={() => void editFeedbackTitle()}
+              editBody={() => void editFeedbackBody()}
+              submit={() => void sendFeedback()}
             />
           </Show>
           <Show when={section() === "dev"}>
@@ -447,6 +617,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               hasDaemon={hasDaemon}
               confirmReset={() => void confirmResetState(dialog, props.kv, renderer)}
               confirmRestartDaemon={() => void confirmRestartDaemon(dialog, props.orchestrator, renderer)}
+              remoteProjectsEnabled={remoteProjectsEnabled}
+              toggleRemoteProjects={toggleRemoteProjects}
             />
           </Show>
         </box>

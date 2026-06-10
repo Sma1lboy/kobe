@@ -6,6 +6,11 @@
  *   - `done`        → success (green) — a background tab finished its turn.
  *   - `needs_input` → warning (yellow) — a background tab is paused on
  *                     `AskUserQuestion` / `ExitPlanMode`.
+ *   - `error`       → error (red) — a user action failed (e.g. no editor
+ *                     found, a worktree/RPC call rejected). Under tmux's
+ *                     alternate screen a bare `console.error` is invisible,
+ *                     so a failed action surfaces here instead of vanishing
+ *                     into the daemon log.
  *
  * Click anywhere on a chip to dismiss it early (its own auto-dismiss
  * timer is owned by the notifications context).
@@ -49,13 +54,14 @@ export function ToastOverlay() {
       >
         <For each={visibleToasts()}>
           {(toast) => {
-            const bg = () => (toast.kind === "needs_input" ? theme.warning : theme.success)
+            const bg = () =>
+              toast.kind === "needs_input" ? theme.warning : toast.kind === "error" ? theme.error : theme.success
             // selectedListItemText is the readable foreground over a
             // saturated chip background — same slot the active tab
             // chip uses, so the toast feels native to the tab strip
             // colour vocabulary.
             const fg = () => theme.selectedListItemText
-            const prefix = () => (toast.kind === "needs_input" ? "?" : "✓")
+            const prefix = () => (toast.kind === "needs_input" ? "?" : toast.kind === "error" ? "✕" : "✓")
             return (
               <box
                 flexDirection="row"

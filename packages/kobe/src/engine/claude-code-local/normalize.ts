@@ -10,8 +10,8 @@
  *   - `redacted_thinking` (no usable text)
  *   - any unknown block type
  *
- * These match the historical drop list in `tui/panes/chat/store.ts`
- * before this refactor — so on-screen output is unchanged.
+ * These match the historical pre-v0.6 chat renderer drop list, so transcript
+ * preview output stays conservative even though kobe no longer owns chat UI.
  */
 
 import type { ContentBlock } from "@/types/content"

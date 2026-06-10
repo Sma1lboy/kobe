@@ -117,6 +117,7 @@ describe("API surface (full CRUD)", () => {
       "add",
       "fan-out",
       "send",
+      "feedback",
       "collect",
       "rename",
       "set-branch",
@@ -158,6 +159,14 @@ describe("API surface (full CRUD)", () => {
     const full = fullSchema() as { verbs: { name: string; flags: unknown[] }[] }
     expect(full.verbs.map((v) => v.name)).toEqual([...API_VERBS])
     expect(full.verbs.every((v) => Array.isArray(v.flags))).toBe(true)
+  })
+
+  it("documents the feedback discussion verb with its default category", () => {
+    const feedback = findVerb("feedback")!
+    expect(feedback.offline).toBe(true)
+    const detail = verbSchema(feedback) as { group: string; flags: { name: string; default?: string }[] }
+    expect(detail.group).toBe("feedback")
+    expect(detail.flags.find((f) => f.name === "category")).toMatchObject({ default: "feedback" })
   })
 
   it("verbHelp renders a signature + flags for every verb", () => {

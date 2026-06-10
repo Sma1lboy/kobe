@@ -3,13 +3,15 @@
  * session (v0.6 / KOB-233).
  *
  * Reuses the v0.5 `FileTree` to browse the worktree. Activating a file
- * (enter / click) opens a **full-width preview window** — a fresh tmux
- * window running `kobe ops --preview <file>`, which renders opentui's
- * `<diff>` / `<code>` (tree-sitter syntax highlighting + line numbers,
- * zero external deps). Reviewing a diff wants the whole terminal width,
- * which the narrow Ops pane can't give; a new window does, and `q`
- * closes it back to the three-pane layout. If that launch fails the
- * window falls back to the user's own pager (`delta`/`bat`/`less`).
+ * (enter / click) is a one-key "just open it": it opens the file in the
+ * user's nvim/vim in a fresh tmux window — side-by-side `nvim -d` diff vs
+ * HEAD when the file has changes, a plain editable open when it doesn't.
+ * Only when no nvim/vim is installed does it fall back to our own built-in
+ * **full-width preview window** — a fresh tmux window running
+ * `kobe ops --preview <file>`, which renders opentui's `<diff>` / `<code>`
+ * (tree-sitter syntax highlighting + line numbers, zero external deps),
+ * closed with `q` back to the three-pane layout. So nvim is the primary
+ * surface and the opentui preview is the last-resort fallback.
  *
  * Runs in its own OS process inside the tmux pane (separate opentui
  * render loop from the outer kobe TUI). It can't share the outer TUI's
@@ -19,7 +21,6 @@
 
 import { createHash } from "node:crypto"
 import { kobeCliInvocation } from "@/cli/invocation"
-import { setClientLogContext } from "@/client/client-log"
 import { type ChatTabTurnState, createEngineTurnDetector } from "@/engine/turn-detector"
 import { latestTranscriptMtime } from "@/monitor/activity"
 import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmuxSessionName } from "@/tmux/client"
@@ -27,17 +28,13 @@ import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
-import { render } from "@opentui/solid"
 import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
-import { DialogProvider } from "../ui/dialog"
 import { buildPRPrompt } from "./pr-prompt"
-
-const FALLBACK_THEME = "claude"
 
 export interface OpsHostArgs {
   readonly taskId: string
@@ -203,14 +200,14 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
     })
   }
 
-  // `e` on a file → open it in the user's editor (vim / nano / custom) in
-  // a fresh tmux window. Read-only preview (enter) and editor (e) are
-  // separate, deliberate actions — no preview→edit bridge. If the editor
-  // can't launch (binary missing / nothing configured), fall back to the
-  // read-only preview so `e` is never a dead key. Same phantom-session
-  // guard as `openPreview`: a standalone `kobe ops` (no task id) has no
-  // session to open a window in, so just preview.
-  function openEditor(rel: string): void {
+  // enter on a file → one-key "just open it". Open it in the user's
+  // nvim/vim in a fresh tmux window (side-by-side `nvim -d` diff vs HEAD
+  // when changed, plain editable open otherwise). Only when no editor can
+  // launch (no nvim/vim installed / nothing configured) do we fall back to
+  // our own read-only opentui preview — so enter is never a dead key.
+  // Phantom-session guard: a standalone `kobe ops` (no task id) has no
+  // session to open an editor window in, so it just previews.
+  function openFile(rel: string): void {
     if (!props.taskId) {
       openPreview(rel)
       return
@@ -245,8 +242,7 @@ function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
       <FileTree
         worktreePath={() => props.worktree}
         focused={() => true}
-        onOpenFile={openPreview}
-        onEditFile={openEditor}
+        onOpenFile={openFile}
         onMention={injectMention}
         onCreatePR={() => void createPR()}
         cornerBadge={cornerBadge}
@@ -265,28 +261,13 @@ function fingerprint(text: string): string {
   return createHash("sha1").update(text).digest("hex")
 }
 
-function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
-  return (
-    <ThemeProvider mode="dark" theme={props.prefs.theme}>
-      <DialogProvider>
-        <OpsShell {...props} />
-      </DialogProvider>
-    </ThemeProvider>
-  )
-}
-
 export async function startOpsHost(args: OpsHostArgs): Promise<void> {
-  setClientLogContext("ops")
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-  await render(() => <OpsApp {...args} prefs={prefs} />, {
-    backgroundColor: "transparent",
-    externalOutputMode: "passthrough",
-    exitOnCtrlC: false,
-    screenMode: "alternate-screen",
-    useKittyKeyboard: {},
+  // No KV / Focus providers — the FileTree never touches persisted UI
+  // state or pane focus; this pane has always been Theme > Dialog only.
+  await bootPaneHost({
+    logContext: "ops",
+    providers: { kv: false, focus: false },
+    setup: (prefs) => ({ root: () => <OpsShell {...args} prefs={prefs} /> }),
   })
 }
 
@@ -456,24 +437,10 @@ function PreviewScreen(props: OpsPreviewArgs) {
 }
 
 export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <DialogProvider>
-          <PreviewScreen {...args} />
-        </DialogProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-    },
-  )
+  // Same minimal provider set as the Ops pane. Note: unlike startOpsHost
+  // this entrypoint never set a client-log context — preserved as-is.
+  await bootPaneHost({
+    providers: { kv: false, focus: false },
+    setup: () => ({ root: () => <PreviewScreen {...args} /> }),
+  })
 }

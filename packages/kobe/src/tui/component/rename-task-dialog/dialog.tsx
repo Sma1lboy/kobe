@@ -26,17 +26,27 @@ import { stripNewlines } from "../new-task-dialog"
 export function RenameTaskDialogView(props: {
   currentTitle: string
   dialogTitle?: string
-  onSubmit: (title: string) => void
+  /** Inner field label. Defaults to `"title"` — OVERRIDE this when the dialog
+   *  is reused for something other than a task title (a branch, a launch
+   *  command, an engine name, a feedback body, …) so it doesn't read "title". */
+  fieldLabel?: string
+  /** Footer verb shown after `enter`. Defaults to `"rename"`. */
+  submitLabel?: string
+  /** Input placeholder. Defaults to {@link currentTitle}. */
+  placeholder?: string
+  /** Allow submitting an empty value (e.g. "blank = default"). Default false. */
+  allowEmpty?: boolean
+  onSubmit: (value: string) => void
   onCancel: () => void
 }) {
   const dialog = useDialog()
   const { theme } = useTheme()
-  const [title, setTitle] = createSignal(props.currentTitle)
+  const [value, setValue] = createSignal(props.currentTitle)
 
   function commit() {
-    const t = title().trim()
-    if (!t) return
-    props.onSubmit(t)
+    const v = value().trim()
+    if (!v && !props.allowEmpty) return
+    props.onSubmit(v)
     dialog.clear()
   }
 
@@ -51,17 +61,17 @@ export function RenameTaskDialogView(props: {
         </text>
       </box>
       <box gap={0}>
-        <text fg={theme.accent}>title</text>
+        <text fg={theme.accent}>{props.fieldLabel ?? "title"}</text>
         <input
-          value={title()}
-          placeholder={props.currentTitle}
+          value={value()}
+          placeholder={props.placeholder ?? props.currentTitle}
           focused={true}
-          onInput={(v: string) => setTitle(stripNewlines(v))}
+          onInput={(v: string) => setValue(stripNewlines(v))}
           onSubmit={() => commit()}
         />
       </box>
       <box paddingBottom={1}>
-        <text fg={theme.textMuted}>enter rename · esc cancel</text>
+        <text fg={theme.textMuted}>{`enter ${props.submitLabel ?? "rename"} · esc cancel`}</text>
       </box>
     </box>
   )

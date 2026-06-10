@@ -30,10 +30,11 @@
  */
 
 import { resolve } from "node:path"
-import { connectOrStartDaemon } from "../client/daemon-process.ts"
-import type { KobeDaemonClient } from "../client/index.ts"
-import type { SerializedTask } from "../daemon/protocol.ts"
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
+import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../lib/feedback.ts"
 import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
 import type { TaskStatus } from "../types/task.ts"
@@ -141,6 +142,7 @@ const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   lifecycle: ["archive", "pin", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
+  feedback: ["feedback"],
 }
 
 function groupOf(verbName: string): string {
@@ -251,6 +253,23 @@ const VERBS: readonly VerbSpec[] = [
     summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
     flags: [F.taskId(false), F.prompt(true, "Text pasted + submitted into the engine pane.")],
     handler: send,
+  },
+  {
+    name: "feedback",
+    summary: "Create a GitHub Discussion in the kobe repo's Feedback category through `gh`.",
+    flags: [
+      { name: "title", type: "string", required: true, placeholder: "T", description: "Discussion title." },
+      { name: "body", type: "string", required: true, placeholder: "TEXT", description: "Discussion body." },
+      {
+        name: "category",
+        type: "string",
+        default: DEFAULT_FEEDBACK_CATEGORY_SLUG,
+        placeholder: "SLUG",
+        description: "Discussion category slug.",
+      },
+    ],
+    offline: true,
+    handler: feedback,
   },
   {
     name: "collect",
@@ -704,6 +723,7 @@ async function deliverPrompt(
       command: interactiveEngineCommand(target.vendor),
       taskId: target.id,
       vendor: target.vendor,
+      repo: target.repo,
       initScript: init.initScript,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
@@ -930,6 +950,15 @@ async function collect(client: KobeDaemonClient | null, parsed: ParsedArgs): Pro
     })
   }
   return { tasks: out }
+}
+
+async function feedback(_client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+  const result = submitFeedback({
+    title: required(parsed.flags, "title"),
+    body: required(parsed.flags, "body"),
+    categorySlug: optional(parsed.flags, "category"),
+  })
+  return { ok: true, discussion: result }
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────

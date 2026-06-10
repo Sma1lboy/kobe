@@ -100,14 +100,11 @@ export function FocusProvider(props: { children: JSXElement; initial?: PaneId })
    */
   function setFocused(pane: PaneId): void {
     // Always tick — even when the pane signal won't change. Same-pane
-    // setFocused calls happen when the user clicks the chat tab strip,
-    // re-clicks inside the workspace pane, or switches between chat
-    // tabs while workspace was already focused. The chat composer's
-    // textarea may have lost native focus to a child renderable in the
-    // meantime (a MessageList box click, a tab chip), and the tick is
-    // the signal it tracks to re-grab focus. Without this, the focus
-    // mirror only fired on cross-pane transitions and the textarea
-    // would silently stop receiving keystrokes inside workspace.
+    // setFocused calls happen when the user re-clicks inside the workspace
+    // pane or an input-bearing child renderable has temporarily taken native
+    // focus. The tick is the signal those surfaces track to re-grab focus.
+    // Without this, the focus mirror only fired on cross-pane transitions and
+    // inputs could silently stop receiving keystrokes inside workspace.
     setRefocusTick((t) => t + 1)
     if (focused() === pane) return
     const current = renderer?.currentFocusedRenderable

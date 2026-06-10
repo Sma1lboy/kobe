@@ -9,6 +9,7 @@
  *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
+ *   - `kobe feedback`           Send feedback to GitHub Discussions.
  *   - `kobe update [target]`    Self-update (when packaged).
  *   - `kobe doctor`             Diagnose daemon / tmux / state (read-only).
  *   - `kobe reset [--hard]`     Recover a wedged install: stop daemon +
@@ -23,9 +24,10 @@
  * NOT fall through to launching the TUI).
  *
  * Internal subcommands fired by tmux key bindings inside a task session
- * (not meant for direct use): `new-chattab`, `quick-create`, `tasks`,
- * `ops` — each takes the session/worktree as flags. `hook` is fired by an
- * engine's own hooks inside a worktree to report activity events.
+ * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
+ * `focus-tasks`, `tasks`, `ops` — each takes the session/worktree as flags.
+ * `hook` is fired by an engine's own hooks inside a worktree to report
+ * activity events.
  *
  * `kobe api` returned in v0.6, re-architected for tmux: `send` delivers
  * a prompt via `tmux send-keys` into the task's engine pane, not the
@@ -38,15 +40,25 @@ import { ALL_VENDORS, type VendorId, coerceVendorId } from "../types/vendor.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { topLevelUsage } from "./usage.ts"
 
-async function runAddSubcommand(arg: string | undefined): Promise<void> {
+const ADD_USAGE =
+  "Usage: kobe add [path]\n" +
+  "       kobe add --remote --host <host> --user <user> --path <basePath> [--port N] [--key <path> | --password]\n\n" +
+  "Save a repo for the new-task picker. With --remote, register an SSH-backed\n" +
+  "project whose worktrees + engine run on <host> under <basePath>.\n"
+
+async function runAddSubcommand(rest: readonly string[]): Promise<void> {
+  const arg = rest[0]
   if (arg === "--help" || arg === "-h" || arg === "help") {
-    process.stdout.write(
-      "Usage: kobe add [path]\n\nSave a repo path (default: the current directory) for the new-task picker.\n",
-    )
+    process.stdout.write(ADD_USAGE)
+    return
+  }
+  if (arg === "--remote") {
+    const { runAddRemote } = await import("./add-remote.ts")
+    await runAddRemote(rest.slice(1))
     return
   }
   if (arg?.startsWith("-")) {
-    process.stderr.write(`kobe add: unknown flag "${arg}"\n\nUsage: kobe add [path]\n`)
+    process.stderr.write(`kobe add: unknown flag "${arg}"\n\n${ADD_USAGE}`)
     process.exit(2)
   }
   const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
@@ -115,7 +127,7 @@ async function adoptWorktreesInto(
   list: readonly AdoptableWorktree[],
   vendor: VendorId,
 ): Promise<void> {
-  const { connectIfRunning } = await import("../client/daemon-process.ts")
+  const { connectIfRunning } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
   const client = await connectIfRunning()
   try {
     for (const w of list) {
@@ -302,7 +314,7 @@ async function main(): Promise<void> {
   }
 
   if (subcommand === "add") {
-    await runAddSubcommand(rest[0])
+    await runAddSubcommand(rest)
     return
   }
   if (subcommand === "adopt") {
@@ -329,6 +341,11 @@ async function main(): Promise<void> {
     await runThemeSubcommand(rest)
     return
   }
+  if (subcommand === "feedback") {
+    const { runFeedbackSubcommand } = await import("./feedback-cmd.ts")
+    await runFeedbackSubcommand(rest)
+    return
+  }
   if (subcommand === "daemon") {
     const { runDaemonSubcommand } = await import("./daemon-cmd.ts")
     await runDaemonSubcommand(rest)
@@ -337,6 +354,11 @@ async function main(): Promise<void> {
   if (subcommand === "doctor") {
     const { runDoctorSubcommand } = await import("./maintenance.ts")
     await runDoctorSubcommand(rest)
+    return
+  }
+  if (subcommand === "web") {
+    const { runWebSubcommand } = await import("./web-cmd.ts")
+    await runWebSubcommand(rest)
     return
   }
   if (subcommand === "reset") {
@@ -378,11 +400,33 @@ async function main(): Promise<void> {
     }
     let vendor: VendorId | undefined
     if (flags.vendor !== undefined) {
-      if (!ALL_VENDORS.includes(flags.vendor as VendorId)) {
-        console.error(`kobe new-chattab: --vendor must be one of ${ALL_VENDORS.join(", ")}`)
+      // Accept any built-in (claude/codex/copilot) OR a registered custom
+      // engine id (Settings → Engines). A genuine typo is rejected — but
+      // VISIBLY: this runs under tmux `run-shell`, so a bare `process.exit(2)`
+      // produces no new tab and no feedback. Surface the error via tmux
+      // `display-message` so the user sees "unknown engine '…'" instead of
+      // silence (the engine-choice prompt now ends with `…`, implying the list
+      // is open, so a custom id is a legitimate entry).
+      const typed = flags.vendor.trim()
+      const { getCustomEngineIds } = await import("../state/repos.ts")
+      const { isBuiltinVendor } = await import("../types/vendor.ts")
+      const accepted = isBuiltinVendor(typed) || getCustomEngineIds().includes(typed)
+      if (!accepted) {
+        const knownList = [...ALL_VENDORS, ...getCustomEngineIds()].join(", ")
+        const msg = `kobe: unknown engine '${typed}' (known: ${knownList})`
+        const { runTmux } = await import("../tmux/client.ts")
+        await runTmux(["display-message", "-t", session, msg])
+        console.error(msg)
         process.exit(2)
       }
-      vendor = flags.vendor as VendorId
+      vendor = typed as VendorId
+      // An explicit engine pick (Ctrl+Shift+T / prefix T → engine prompt) sets
+      // the DEFAULT engine for new tasks too — `lastSelectedVendor` is the one
+      // reference the new-task dialog, quick-task, and Settings → Engines all
+      // read/show. Without this, picking an engine for a chat tab silently left
+      // the default untouched.
+      const { setPersistedString } = await import("../state/repos.ts")
+      setPersistedString("lastSelectedVendor", vendor)
     }
     const { newChatTab } = await import("../tui/panes/terminal/tmux.ts")
     await newChatTab(session, vendor)
@@ -415,6 +459,32 @@ async function main(): Promise<void> {
     }
     const { quickCreate } = await import("../tui/panes/terminal/tmux.ts")
     await quickCreate(session)
+    return
+  }
+  if (subcommand === "focus-tasks") {
+    // First stage of two-stage Ctrl+Q from inside a task's tmux session:
+    // focus the current window's Tasks pane. The if-shell binding only
+    // invokes this when the active pane is NOT already the Tasks pane (it
+    // detaches there instead), so this is an unconditional select. Reads
+    // `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe focus-tasks: --session <name> is required")
+      process.exit(2)
+    }
+    const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
+    await selectTasksPane(session)
+    return
+  }
+  if (subcommand === "quick-task") {
+    // The prompt-only quick-create page, opened in its own window by
+    // `quickCreate` (the `<prefix> f` / `kobe quick-create` handler). Asks
+    // for only a prompt and fills the rest from the firing task's defaults.
+    // Reads `--session` to resolve those defaults.
+    const flags = parseOpsFlags(rest)
+    const { startQuickTaskHost } = await import("../tui/quick-task/host.tsx")
+    await startQuickTaskHost({ session: flags.session })
     return
   }
   if (subcommand === "tasks") {

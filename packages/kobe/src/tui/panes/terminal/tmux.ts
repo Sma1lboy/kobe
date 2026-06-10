@@ -20,7 +20,9 @@
  * Everything is rendered by tmux, so claude repaints at native speed
  * without kobe's outer renderer fighting for the TTY.
  *
- * `Ctrl+Q` detaches back to the launching shell; `Ctrl+h/j/k/l` move
+ * `Ctrl+Q` is two-stage: it first focuses the current window's Tasks
+ * pane, and only detaches back to the launching shell on a second press
+ * from the Tasks pane. `Ctrl+h/j/k/l` move
  * between panes. All bindings are server-scoped on `-L kobe`, so the
  * user's own tmux is untouched. Sessions persist across detach AND a
  * kobe restart.
@@ -34,6 +36,7 @@
 import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
+import { execHostForRepo, localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
@@ -46,13 +49,20 @@ import {
   runTmuxCapturing,
   runTmuxSequence,
   runTmuxSequenceCapturing,
-  sendKeys,
   sessionExists,
   setSessionOption,
   setWindowOption,
   windowCount,
 } from "@/tmux/client"
+import {
+  TMUX_FOCUS_DEFAULTS,
+  TMUX_FOCUS_ID,
+  TMUX_SINGLE_BINDING_DEFAULTS,
+  chordToTmuxKey,
+  resolveUserTmuxKeys,
+} from "@/tmux/keybindings"
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
+import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
 import {
   CLAUDE_PANE_PERCENT,
   OPS_HEIGHT_OPTION,
@@ -85,38 +95,98 @@ export {
   tmuxSessionName,
 } from "@/tmux/client"
 
-export const CHAT_TAB_SWITCH_BINDINGS = [
-  ["bind-key", "-n", "C-[", "previous-window"],
-  ["bind-key", "-n", "C-]", "next-window"],
-] as const
+// ChatTab binding builders. The KEY argument comes from the user-
+// resolvable tmux key set (`resolveUserTmuxKeys` — defaults C-[ / C-] /
+// C-w / F2); the COMMAND halves are fixed. Builders instead of consts so
+// `~/.kobe/settings/keybindings.yaml` overrides flow through one place.
+export function chatTabSwitchBindings(prevKey: string, nextKey: string) {
+  return [
+    ["bind-key", "-n", prevKey, "previous-window"],
+    ["bind-key", "-n", nextKey, "next-window"],
+  ] as const
+}
 
-export const CHAT_TAB_CLOSE_BINDING = [
-  "bind-key",
-  "-n",
-  "C-w",
-  "if-shell",
-  "-F",
-  "#{>:#{session_windows},1}",
-  "kill-window",
-  "display-message 'Cannot close the only ChatTab'",
-] as const
+export function chatTabCloseBinding(key: string) {
+  return [
+    "bind-key",
+    "-n",
+    key,
+    "if-shell",
+    "-F",
+    "#{>:#{session_windows},1}",
+    "kill-window",
+    "display-message 'Cannot close the only ChatTab'",
+  ] as const
+}
 
-export const CHAT_TAB_RENAME_BINDING = [
-  "bind-key",
-  "-n",
-  "F2",
-  "command-prompt",
-  "-I",
-  "#{window_name}",
-  "rename-window -- '%%'",
-] as const
+export function chatTabRenameBinding(key: string) {
+  return ["bind-key", "-n", key, "command-prompt", "-I", "#{window_name}", "rename-window -- '%%'"] as const
+}
 
-export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")})`
+// The prompt names the built-ins as examples but ends with `…` so it doesn't
+// imply a CLOSED list — users can register custom engines (Settings → Engines),
+// and typing a registered custom id here is accepted (validated against
+// `availableEngineIds()` in the `new-chattab` handler).
+export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")}/…)`
 
-export const CHAT_TAB_CHOOSE_ENGINE_BINDINGS = [
-  ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
-  ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
-] as const
+/** Session tag carrying a remote project's key (`ssh://…`) so chat tabs + the
+ * vendor-switch respawn re-wrap the engine over SSH. Absent for local tasks. */
+const REMOTE_KEY_OPTION = "@kobe_remote"
+
+/**
+ * Wrap a built engine command for the host the task's project resolves to:
+ * a remote project's host wraps it over the multiplexed SSH connection
+ * (`ssh -tt … 'cd <remoteWt> && <engine>'`); the local host's `wrapCommand`
+ * is the identity (no `remoteKey`, or an `ssh://` key with no stored config,
+ * which resolves local). `ensureReady` opens the ControlMaster once so the
+ * pane's ssh reuses it with no re-auth (no secret in the pane command). See
+ * `docs/design/remote-projects.md`.
+ */
+function wrapEngineLaunch(engineCmd: string, remoteKey: string | undefined, remoteCwd: string): string {
+  if (!remoteKey) return engineCmd
+  const host = execHostForRepo(remoteKey)
+  host.ensureReady()
+  return host.wrapCommand(engineCmd, { tty: true, cwd: remoteCwd })
+}
+
+// Engine-choice ChatTab bindings: the no-prefix chord is user-resolvable
+// (default C-S-T); the `prefix T` fallback row stays fixed — it exists
+// precisely for terminals that can't forward the shifted control chord.
+export function chatTabChooseEngineBindings(key: string) {
+  return [
+    ["bind-key", "-n", key, "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+    ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
+  ] as const
+}
+
+/** Compact display form of a tmux key for the status-right hint (`C-h` → `^h`). */
+function tmuxKeyCap(key: string): string {
+  return key.startsWith("C-") && key.length === 3 ? `^${key.slice(2)}` : key
+}
+
+/**
+ * Minimal, muted `status-right` shown on the `-L kobe` socket. From inside the
+ * engine/shell pane the user has no other on-screen hint for kobe's
+ * escape-hatch chords, so we surface the three most useful ones. `^h` (the
+ * focus-left key) returns to the Tasks pane (the two-stage Ctrl+Q first stage
+ * is reachable from there), `^q` is the two-stage detach, `^t` opens a new
+ * chat tab. Built from the RESOLVED key set so user overrides show their own
+ * chords; an unbound key drops its segment. Dimmed with `fg=brightblack` so it
+ * reads as a muted hint rather than fighting the user's theme; the trailing
+ * space keeps it off the terminal's right edge.
+ */
+export function kobeStatusRight(keys: {
+  focusLeft: string | null
+  detach: string | null
+  newTab: string | null
+}): string {
+  const segments = [
+    keys.focusLeft ? `${tmuxKeyCap(keys.focusLeft)} tasks` : null,
+    keys.detach ? `${tmuxKeyCap(keys.detach)} detach` : null,
+    keys.newTab ? `${tmuxKeyCap(keys.newTab)} tab` : null,
+  ].filter((s): s is string => s !== null)
+  return `#[fg=brightblack]${segments.join("  ")} `
+}
 
 export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 export const PANE_VERSION_OPTION = "@kobe_pane_version"
@@ -162,6 +232,15 @@ export interface EnsureSessionOpts {
    * hard-coded `claude`.
    */
   readonly vendor?: string
+  /**
+   * The task's repo/project key — a local repo root path, or a remote
+   * project's `ssh://user@host[:port]` key. Callers pass `task.repo` AS-IS;
+   * remoteness is derived in here (via `remoteKeyForRepo`), never at the
+   * call site. A remote task launches its engine over SSH on the remote
+   * host and spawns every pane in a local dir (the worktree is remote);
+   * absent/local keeps today's behavior verbatim.
+   */
+  readonly repo?: string
   /**
    * Per-repo init script woven before the engine on a FRESH session (runs
    * in the same shell so `export`s reach the engine; once-per-worktree via
@@ -210,78 +289,76 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
   }
 }
 
+/**
+ * Snapshot the facts about an existing session that the reuse/respawn/
+ * rebuild decision needs (`null` when no session exists). All read-only
+ * tmux queries live here; the policy that consumes them is the pure
+ * `decideSessionAction` in `tmux/session-decision.ts`. `windowCount` is
+ * now queried up front (pre-extraction it was lazy, only fetched on the
+ * degraded-reuse branch) — one extra read-only `list-windows` per
+ * ensureSession, same decision either way.
+ */
+async function observeSession(name: string): Promise<ObservedSession | null> {
+  if (!(await sessionExists(name))) return null
+  const sessionOptions = await getSessionOptions(name, ["@kobe_worktree", "@kobe_vendor"])
+  return {
+    worktree: sessionOptions["@kobe_worktree"] ?? "",
+    vendor: sessionOptions["@kobe_vendor"] ?? "",
+    claudePaneAlive: (await claudePaneIdStrict(name)) !== "",
+    windowCount: await windowCount(name),
+  }
+}
+
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // (Engine activity hooks are NOT installed here — they live in the user's
   // global ~/.claude/settings.json, installed once on launch by
   // `ensureGlobalKobeHooks`, and report their cwd so the daemon maps each event
   // to a task. No per-worktree write, so reuse/rebuild/fresh all behave the
   // same and a project's real repo root is never touched.)
-  if (await sessionExists(opts.name)) {
-    const sessionOptions = await getSessionOptions(opts.name, ["@kobe_worktree", "@kobe_vendor"])
-    const taggedWorktree = sessionOptions["@kobe_worktree"] ?? ""
-    const taggedVendor = sessionOptions["@kobe_vendor"] ?? ""
-    // Reuse ONLY a healthy session that matches this task. We key health
-    // off the LOAD-BEARING claude pane (its `@kobe_role=claude` tag in the
-    // active window), NOT a raw pane COUNT. Rationale + failure modes:
-    //   - Pane present? `claudePaneIdStrict` returns "" when the active
-    //     window has no tagged claude pane: a legacy/pre-tag (v0.5/KOB-225)
-    //     one-pane session, or a window whose claude pane was destroyed →
-    //     rebuild. Critically, this does NOT fire just because a DISPOSABLE
-    //     pane (the shell, or ops) was closed — typing `exit` in the shell
-    //     pane used to drop the count below 4 and nuke the whole session,
-    //     destroying the live engine conversation (KOB-244). The claude
-    //     pane survives that, so we reuse. The check is active-window
-    //     scoped, so each Ctrl+T chat-tab window is judged on its own.
-    //   - Wrong PLACE: a different/empty `@kobe_worktree` (a stale session
-    //     from before env+socket isolation, panes in the wrong dir / wrong
-    //     KOBE_HOME) → rebuild so the user isn't dropped into the wrong env.
-    //   - Wrong ENGINE: the task's vendor changed (`setVendor`) since the
-    //     session was built, so `@kobe_vendor` no longer matches the OLD
-    //     engine pane → rebuild so the new pane launches the wanted engine.
-    const worktreeOk = taggedWorktree === opts.cwd
-    const vendorOk = !opts.vendor || taggedVendor === opts.vendor
-    const claudeAlive = (await claudePaneIdStrict(opts.name)) !== ""
+  //
+  // Observe → decide → apply. The WHY of each branch (KOB-244 pane-count
+  // trap, KOB-232 sibling-tab preservation, legacy/pre-tag rebuilds) is
+  // documented on `decideSessionAction`; this function only applies the
+  // chosen action against the real tmux server.
+  const observed = await observeSession(opts.name)
+  const action = decideSessionAction(observed, {
+    cwd: opts.cwd,
+    vendor: opts.vendor,
+    hasEngineCommand: opts.command.length > 0,
+  })
+  // The ONE remoteness derivation for this session build: a remote project's
+  // key (`ssh://…`) or undefined for a local task. Everything below asks the
+  // resolved host, never re-derives.
+  const remoteKey = remoteKeyForRepo(opts.repo)
 
-    // Happy path: healthy + right place + right engine → reuse as-is.
-    if (claudeAlive && worktreeOk && vendorOk) {
+  // Reuse (healthy, or degraded multi-window — see the decision's reason):
+  // leave the session running, just heal pane widths + stale kobe-owned
+  // pane versions.
+  if (action.kind === "reuse") {
+    await healTaskPaneWidths(opts.name)
+    await healRightColumn(opts.name)
+    await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
+    return true
+  }
+
+  // Vendor switch: relaunch the engine pane IN PLACE in every window via
+  // respawn-pane (keeps pane ids + @kobe_role tags, so the Ops pane's
+  // --target-pane stays valid — KOB-232). Falls through to a full rebuild
+  // when no engine pane is found to respawn — that fact is only knowable
+  // here at apply time, so it's the applier's fallback, not the decision's.
+  if (action.kind === "respawn-engine") {
+    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey)) {
+      if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
       await healTaskPaneWidths(opts.name)
       await healRightColumn(opts.name)
       await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
       return true
     }
+  }
 
-    // Vendor-only drift (right worktree, the task switched engines via `v`):
-    // relaunch the engine pane IN PLACE in EVERY window via respawn-pane
-    // instead of kill-session, so the switch takes effect WITHOUT destroying
-    // the session's other Ctrl+T chat-tab windows (each its own conversation).
-    // respawn-pane keeps each pane's id + @kobe_role tag, so the Ops pane's
-    // --target-pane stays valid (KOB-232). Falls through to a full rebuild if
-    // no engine pane is found to respawn.
-    if (worktreeOk && !vendorOk && opts.command.length > 0) {
-      if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command)) {
-        if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-        await healTaskPaneWidths(opts.name)
-        await healRightColumn(opts.name)
-        await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
-        return true
-      }
-    }
-
-    // Right place + right engine but the active window's engine pane is gone,
-    // and sibling windows exist: don't `kill-session` (that would drop those
-    // sibling chat tabs). Reuse — per-window recreate of a destroyed pane is a
-    // future follow-up; the common shell-exit case never gets here because the
-    // engine pane survives (KOB-244).
-    if (worktreeOk && vendorOk && (await windowCount(opts.name)) > 1) {
-      await healTaskPaneWidths(opts.name)
-      await healRightColumn(opts.name)
-      await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
-      return true
-    }
-
-    // Otherwise rebuild from scratch: a legacy/pre-tag (v0.5/KOB-225) session,
-    // a wrong-PLACE session (different @kobe_worktree), or a single-window
-    // session whose engine pane was destroyed.
+  // Rebuild (or a respawn that found no engine pane): kill, then fall
+  // through to the shared create path below.
+  if (action.kind === "rebuild" || action.kind === "respawn-engine") {
     await runTmux(["kill-session", "-t", `=${opts.name}`])
   }
 
@@ -297,22 +374,27 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // to its transcript and auto-named from its first prompt (KOB). No-op for
   // codex/copilot or a command that already pins its session.
   const launch = withClaudeSessionId(opts.command, opts.vendor)
+  // Remote task: the engine runs over SSH on the remote host (`ssh … 'cd <wt>
+  // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
+  // remote. The repo's init script is deferred for remote (it runs locally
+  // today — see docs/design/remote-projects.md phase 8), so it's skipped here.
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, opts.cwd)
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
     "-s",
     opts.name,
     "-c",
-    opts.cwd,
+    localSpawnCwd(opts.cwd),
     ...tmuxInitialSizeArgs(),
     "-P",
     "-F",
     "#{pane_id}",
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
-    engineLaunchLine(shellQuoteArgv(launch.argv), {
-      initScript: opts.initScript,
-      markerPath: opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+    engineLaunchLine(engineCmd, {
+      initScript: remoteKey ? undefined : opts.initScript,
+      markerPath: !remoteKey && opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
     }),
   ])
   const pane0 = r0.stdout.trim()
@@ -328,6 +410,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(opts.taskId ? ([["set-option", "-t", opts.name, "@kobe_task", opts.taskId]] as const) : []),
     ["set-option", "-t", opts.name, "@kobe_worktree", opts.cwd],
     ...(opts.vendor ? ([["set-option", "-t", opts.name, "@kobe_vendor", opts.vendor]] as const) : []),
+    ...(remoteKey ? ([["set-option", "-t", opts.name, REMOTE_KEY_OPTION, remoteKey]] as const) : []),
   ])
 
   await buildPanesAround(pane0, {
@@ -349,12 +432,20 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // set `on` (not just "leave default") so a server that an older
   // kobe turned OFF flips back.
   //
-  // We deliberately do NOT set status-style / status-left /
-  // status-right: the `-L kobe` socket still loads the user's
-  // `~/.tmux.conf` (the `-L` flag only changes the socket path, not
-  // the config file), so the user's own status-bar theme applies.
-  // The session name (`kobe-<task-id>`, shown via the user's
-  // default `#S` in status-left) is the only identity we impose.
+  // We deliberately do NOT set status-style / status-left: the `-L
+  // kobe` socket still loads the user's `~/.tmux.conf` (the `-L` flag
+  // only changes the socket path, not the config file), so the user's
+  // own status-bar theme applies. The session name (`kobe-<task-id>`,
+  // shown via the user's default `#S` in status-left) is the only
+  // identity we impose on the left.
+  //
+  // status-right IS set — but minimally: from inside the engine/shell
+  // pane the user otherwise has zero on-screen hint for kobe's
+  // escape-hatch chords (get back to Tasks, detach, new tab). We show
+  // the three most useful ones, dimmed (`fg=brightblack`) so they read
+  // as a muted hint and don't fight the user's theme. Server-scoped on
+  // the isolated `-L kobe` socket, so the user's real tmux status-right
+  // is never touched.
   // Window-status format: a compact activity icon in each ChatTab label.
   // `monitor-activity` is tmux-native and means "this window produced
   // output since you last viewed it", which is the reliable signal we have
@@ -363,7 +454,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
   // kobe` socket so the feature doesn't depend on the user's config.
-  // No-prefix Ctrl+Q detaches back to the launching shell.
+  // No-prefix Ctrl+Q is two-stage: focus the current window's Tasks pane,
+  // then detach back to the launching shell on a second press from there.
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
   // vim-tmux-navigator convention. (Ctrl+1/2/3 was tried first but
   // terminals can't encode Ctrl+<digit> without the kitty protocol, so
@@ -395,11 +487,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const newChatTabCommand = `${envStr}${invStr} new-chattab --session '#{session_name}'`
   const chooseEngineCommand = `${newChatTabCommand} --vendor '%%'`
   const chooseEngineTmuxCommand = `run-shell ${shellQuote(chooseEngineCommand)}`
-  // `<prefix> f` = quick-create: focus the Tasks pane and open the
-  // new-task dialog there (the v0.5 quick-fork chord, KOB-74, reborn in
-  // the tmux world). `kobe quick-create` selects the tasks pane and
-  // injects `n`, so the dialog + its logic are exactly the Tasks pane's
-  // createTask — no separate code path. PREFIX-scoped (not no-prefix
+  // Two-stage Ctrl+Q: `kobe focus-tasks` selects the current window's Tasks
+  // pane (the else branch of the if-shell below). The "are we already on the
+  // Tasks pane?" test is the native `@kobe_role` pane tag, so only the
+  // detach branch is reached once focus is on Tasks.
+  const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
+  const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
+  // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
+  // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
+  // quick-create` opens `kobe quick-task` in its own window, which asks for
+  // ONLY a prompt and fills repo / engine / base branch from this task's
+  // defaults, then creates + delivers and exits. PREFIX-scoped (not no-prefix
   // C-f): a no-prefix Ctrl+F was unusable — it shadows readline
   // forward-char in the claude/shell panes and several apps grab it, so
   // the chord never reliably reached tmux. `<prefix> f` ("fork") is a
@@ -416,6 +514,34 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // hard tmux limit remains: two clients on the SAME window share one grid, so
   // the larger one is letterboxed — that case can't be fixed without per-client
   // sessions (a larger refactor, deferred).
+  // Session keys come from the user-resolvable tmux key set (defaults
+  // C-q / C-hjkl / C-t / C-S-T / C-[ / C-] / C-w / F2; overridable via
+  // `~/.kobe/settings/keybindings.yaml`, `tmux.*` ids). For every
+  // OVERRIDDEN id we first unbind its DEFAULT key: the tmux server is
+  // long-lived, so a previous run (or an older kobe) may have bound it —
+  // without the unbind both the old and new chord would fire. Unbinding
+  // a never-bound root key exits 0 silently, so this is safe on a fresh
+  // server too. An id resolved to null installs nothing (user unbind).
+  const userKeys = resolveUserTmuxKeys()
+  const unbinds: (readonly string[])[] = []
+  if (userKeys.overridden.has(TMUX_FOCUS_ID)) {
+    for (const chord of TMUX_FOCUS_DEFAULTS) {
+      const t = chordToTmuxKey(chord)
+      if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
+    }
+  }
+  for (const id of userKeys.overridden) {
+    if (id === TMUX_FOCUS_ID) continue
+    const def = TMUX_SINGLE_BINDING_DEFAULTS[id as keyof typeof TMUX_SINGLE_BINDING_DEFAULTS]
+    const t = chordToTmuxKey(def)
+    if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
+  }
+  const focusDirections = ["-L", "-D", "-U", "-R"] as const
+  const focusBinds = userKeys.focus.flatMap((bind, i) => {
+    const dir = focusDirections[i]
+    return bind && dir ? [["bind-key", "-n", bind.key, "select-pane", dir] as const] : []
+  })
+  const b = userKeys.binds
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
     ["set-window-option", "-g", "aggressive-resize", "on"],
@@ -423,17 +549,51 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["set-option", "-g", "visual-activity", "off"],
     ["set-option", "-g", "window-status-format", CHAT_TAB_STATUS_FORMAT],
     ["set-option", "-g", "window-status-current-format", CHAT_TAB_STATUS_CURRENT_FORMAT],
+    [
+      "set-option",
+      "-g",
+      "status-right",
+      kobeStatusRight({
+        focusLeft: userKeys.focus[0]?.key ?? null,
+        detach: b["tmux.detach"]?.key ?? null,
+        newTab: b["tmux.tab.new"]?.key ?? null,
+      }),
+    ],
     ["set-option", "-g", "mouse", "on"],
-    ["bind-key", "-n", "C-q", "detach-client"],
-    ["bind-key", "-n", "C-h", "select-pane", "-L"],
-    ["bind-key", "-n", "C-j", "select-pane", "-D"],
-    ["bind-key", "-n", "C-k", "select-pane", "-U"],
-    ["bind-key", "-n", "C-l", "select-pane", "-R"],
-    ["bind-key", "-n", "C-t", "run-shell", newChatTabCommand],
-    ...CHAT_TAB_CHOOSE_ENGINE_BINDINGS.map((binding) => [...binding, chooseEngineTmuxCommand] as const),
-    ...CHAT_TAB_SWITCH_BINDINGS,
-    CHAT_TAB_CLOSE_BINDING,
-    CHAT_TAB_RENAME_BINDING,
+    ...unbinds,
+    // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
+    // focus the current window's Tasks pane first. `#{@kobe_role}` is the
+    // active pane's role tag.
+    ...(b["tmux.detach"]
+      ? [
+          [
+            "bind-key",
+            "-n",
+            b["tmux.detach"].key,
+            "if-shell",
+            "-F",
+            "#{==:#{@kobe_role},tasks}",
+            "detach-client",
+            focusTasksTmuxCommand,
+          ] as const,
+        ]
+      : []),
+    ...focusBinds,
+    ...(b["tmux.tab.new"] ? [["bind-key", "-n", b["tmux.tab.new"].key, "run-shell", newChatTabCommand] as const] : []),
+    ...(b["tmux.tab.chooseEngine"]
+      ? chatTabChooseEngineBindings(b["tmux.tab.chooseEngine"].key).map(
+          (binding) => [...binding, chooseEngineTmuxCommand] as const,
+        )
+      : []),
+    ...(b["tmux.tab.prev"] && b["tmux.tab.next"]
+      ? chatTabSwitchBindings(b["tmux.tab.prev"].key, b["tmux.tab.next"].key)
+      : b["tmux.tab.prev"]
+        ? [["bind-key", "-n", b["tmux.tab.prev"].key, "previous-window"] as const]
+        : b["tmux.tab.next"]
+          ? [["bind-key", "-n", b["tmux.tab.next"].key, "next-window"] as const]
+          : []),
+    ...(b["tmux.tab.close"] ? [chatTabCloseBinding(b["tmux.tab.close"].key)] : []),
+    ...(b["tmux.tab.rename"] ? [chatTabRenameBinding(b["tmux.tab.rename"].key)] : []),
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
   ])
 
@@ -465,7 +625,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
  * multi-window session without `kill-session` dropping sibling chat tabs
  * (KOB-232).
  */
-async function relaunchEngineInAllWindows(session: string, cwd: string, command: readonly string[]): Promise<boolean> {
+async function relaunchEngineInAllWindows(
+  session: string,
+  cwd: string,
+  command: readonly string[],
+  remoteKey?: string,
+): Promise<boolean> {
   const { code, stdout } = await runTmuxCapturing([
     "list-panes",
     "-s",
@@ -482,10 +647,11 @@ async function relaunchEngineInAllWindows(session: string, cwd: string, command:
     .map(([id]) => id?.trim())
     .filter((id): id is string => !!id)
   if (enginePanes.length === 0) return false
-  const cmd = keepAlive(shellQuoteArgv(command))
+  const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(command), remoteKey, cwd))
   for (const pane of enginePanes) {
-    // `-k` kills the old engine process; `-c` keeps the worktree cwd.
-    await runTmux(["respawn-pane", "-k", "-c", cwd, "-t", pane, cmd])
+    // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
+    // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
+    await runTmux(["respawn-pane", "-k", "-c", localSpawnCwd(cwd), "-t", pane, cmd])
   }
   return true
 }
@@ -695,7 +861,7 @@ async function healKobePaneVersions(
           "-t",
           tasksPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
         ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
@@ -711,7 +877,7 @@ async function healKobePaneVersions(
           "-t",
           opsPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(
             envPrefix +
               opsPaneCommand({
@@ -777,7 +943,7 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
           "-t",
           tasksPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(envPrefix + tasksPaneCommand(inv, { initialTaskId: taskId })),
         ],
         ["set-option", "-p", "-t", tasksPane.paneId, "@kobe_role", "tasks"],
@@ -800,7 +966,7 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
           "-t",
           opsPane.paneId,
           "-c",
-          cwd,
+          localSpawnCwd(cwd),
           keepAlive(
             envPrefix +
               opsPaneCommand({
@@ -891,7 +1057,7 @@ async function buildPanesAround(
       // global preference, applied uniformly so every task shows one size.
       `${tasksWidth}`,
       "-c",
-      args.cwd,
+      localSpawnCwd(args.cwd),
       "-P",
       "-F",
       "tasks=#{pane_id}",
@@ -905,13 +1071,13 @@ async function buildPanesAround(
       "-l",
       `${100 - CLAUDE_PANE_PERCENT}%`,
       "-c",
-      args.cwd,
+      localSpawnCwd(args.cwd),
       "-P",
       "-F",
       "ops=#{pane_id}",
       opsCmd,
     ],
-    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", args.cwd],
+    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", localSpawnCwd(args.cwd)],
     ["select-pane", "-t", claudePane],
   ])
   const ids = Object.fromEntries(
@@ -948,9 +1114,15 @@ async function buildPanesAround(
  */
 export async function newChatTab(session: string, vendorOverride?: VendorId): Promise<void> {
   if (!(await sessionExists(session))) return
-  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
+  const sessionOptions = await getSessionOptions(session, [
+    "@kobe_worktree",
+    "@kobe_task",
+    "@kobe_vendor",
+    REMOTE_KEY_OPTION,
+  ])
   const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
   const taskId = sessionOptions["@kobe_task"] || undefined
+  const remoteKey = sessionOptions[REMOTE_KEY_OPTION] || undefined
   const vendor = vendorOverride ?? (sessionOptions["@kobe_vendor"] as VendorId | undefined)
   if (vendorOverride) await rememberSessionVendor(session, taskId, vendorOverride)
   const command = interactiveEngineCommand(vendor)
@@ -963,11 +1135,13 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
     "-t",
     `=${session}`,
     "-c",
-    cwd,
+    localSpawnCwd(cwd),
     "-P",
     "-F",
     "#{pane_id}",
-    keepAlive(shellQuoteArgv(launch.argv)),
+    // Re-wrap the engine over SSH for a remote task's chat tab (same engine the
+    // task launched with), reusing the project's ControlMaster connection.
+    keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd)),
   ])
   const claudePane = r.stdout.trim()
   if (!claudePane) return
@@ -992,7 +1166,7 @@ export async function openSettingsTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} settings`
-  await newWindow(session, { cwd, command, name: "settings" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "settings" })
 }
 
 /**
@@ -1012,7 +1186,7 @@ export async function openNewTaskTab(session: string, defaultRepo?: string): Pro
   const envPrefix = inheritedEnvPrefix()
   const repoArg = defaultRepo ? ` --repo ${shellQuote(defaultRepo)}` : ""
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} new-task${repoArg}`
-  await newWindow(session, { cwd, command, name: "new task" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "new task" })
 }
 
 /**
@@ -1027,7 +1201,7 @@ export async function openUpdateTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${updatePageCommand({ cliInvocation: inv })}`
-  await newWindow(session, { cwd, command, name: "update" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "update" })
 }
 
 /**
@@ -1041,7 +1215,7 @@ async function rememberSessionVendor(session: string, taskId: string | undefined
   await setSessionOption(session, "@kobe_vendor", vendor)
   if (!taskId) return
   try {
-    const { connectOrStartDaemon } = await import("@/client/daemon-process")
+    const { connectOrStartDaemon } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
     const client = await connectOrStartDaemon()
     try {
       await client.request("task.setVendor", { taskId, vendor })
@@ -1054,17 +1228,35 @@ async function rememberSessionVendor(session: string, taskId: string | undefined
 }
 
 /**
- * Quick-create (Ctrl+F): focus the active window's Tasks pane and open
- * its new-task dialog. Implemented by selecting the tasks pane and
- * injecting an `n` keystroke — the Tasks pane's own `n` binding then
- * runs `createTask`, so the dialog and its logic are identical to
- * pressing `n` in the pane directly. Invoked by `kobe quick-create`
- * (the Ctrl+F handler), which passes only the session name.
+ * Focus the active window's Tasks pane. The first stage of two-stage
+ * Ctrl+Q (`kobe focus-tasks`): the if-shell binding only reaches this when
+ * the active pane is NOT already the Tasks pane, so this is an
+ * unconditional select. No-op when the session is gone or the active window
+ * has no tagged Tasks pane (legacy session). Returns the pane id it
+ * selected, or `""`.
+ */
+export async function selectTasksPane(session: string): Promise<string> {
+  if (!(await sessionExists(session))) return ""
+  const tasksPane = await paneIdByRole(session, "tasks")
+  if (!tasksPane) return ""
+  await runTmux(["select-pane", "-t", tasksPane])
+  return tasksPane
+}
+
+/**
+ * Quick-create (`<prefix> f`): open the prompt-only quick-task page as a
+ * dedicated chat-tab window (mirroring {@link openNewTaskTab}). The page
+ * (`kobe quick-task`) asks for ONLY a prompt and fills repo / engine / base
+ * branch from defaults derived from this session's task, then creates the
+ * task + delivers the prompt and exits. Invoked by `kobe quick-create`,
+ * which passes only the session name.
  */
 export async function quickCreate(session: string): Promise<void> {
   if (!(await sessionExists(session))) return
-  const tasksPane = await paneIdByRole(session, "tasks")
-  if (!tasksPane) return
-  await runTmux(["select-pane", "-t", tasksPane])
-  await sendKeys(tasksPane, "n")
+  const sessionOptions = await getSessionOptions(session, ["@kobe_worktree"])
+  const cwd = sessionOptions["@kobe_worktree"] || process.cwd()
+  const inv = kobeCliInvocation()
+  const envPrefix = inheritedEnvPrefix()
+  const command = `${envPrefix}${inv.map(shellQuote).join(" ")} quick-task --session ${shellQuote(session)}`
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "quick task" })
 }

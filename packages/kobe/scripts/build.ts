@@ -20,10 +20,34 @@
  * doesn't bundle or copy the file, so there's nothing to emit here.
  */
 
-import { chmod } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { chmod, cp, mkdir } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
+const WEB_PACKAGE_DIR = "../kobe-web"
+const WEB_DIST_DIR = `${WEB_PACKAGE_DIR}/dist`
+const WEB_OUT_DIR = "./dist/web-ui"
+
+async function buildWebUi(): Promise<void> {
+  if (!existsSync(`${WEB_PACKAGE_DIR}/package.json`)) return
+  const proc = Bun.spawn(["bun", "run", "build"], {
+    cwd: WEB_PACKAGE_DIR,
+    stdout: "inherit",
+    stderr: "inherit",
+  })
+  const code = await proc.exited
+  if (code !== 0) process.exit(code)
+}
+
+async function copyWebUi(): Promise<void> {
+  if (!existsSync(`${WEB_DIST_DIR}/index.html`)) return
+  await mkdir(WEB_OUT_DIR, { recursive: true })
+  await cp(WEB_DIST_DIR, WEB_OUT_DIR, { recursive: true, force: true })
+  await cp(`${WEB_PACKAGE_DIR}/pty-server.mjs`, `${WEB_OUT_DIR}/pty-server.mjs`, { force: true })
+}
+
+await buildWebUi()
 
 const result = await Bun.build({
   entrypoints: ["./src/cli/index.ts"],
@@ -49,5 +73,6 @@ if (!result.success) {
 }
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
+await copyWebUi()
 
 console.log(`built ${OUT_FILES.join(", ")}`)

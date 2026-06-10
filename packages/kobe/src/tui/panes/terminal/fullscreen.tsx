@@ -118,6 +118,7 @@ export async function launchTaskTmux(opts: LaunchTaskTmuxOpts): Promise<LaunchTa
     command: opts.command,
     taskId: opts.taskId,
     vendor: opts.vendor,
+    repo: opts.repo,
     initScript: init.initScript,
     initPrompt: init.initPrompt,
   })

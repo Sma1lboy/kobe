@@ -27,8 +27,9 @@ scripts/release.sh
 This consumes every pending `.changeset/*.md`:
 
 1. `changeset version` — computes the next version from the pending bump types, rewrites `packages/kobe/package.json`, and prepends the collected notes to `CHANGELOG.md` (then deletes the consumed changesets).
-2. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array).
-3. Commits `chore: release — X.Y.Z`, tags `vX.Y.Z`, and (after confirming) pushes `main` + the tag.
+2. Runs `bun install`, then `bun install --frozen-lockfile`, so `bun.lock` matches the workspace package versions before the release commit is made.
+3. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array).
+4. Commits `chore: release — X.Y.Z`, tags `vX.Y.Z`, and (after confirming) pushes `main` + the tag.
 
 The push triggers `.github/workflows/release.yml`, which gates on **typecheck + test + build**, then `npm publish`es, extracts the new `CHANGELOG.md` section as the GitHub release body, and builds the standalone binaries.
 

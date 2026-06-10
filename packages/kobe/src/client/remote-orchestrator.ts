@@ -9,7 +9,9 @@
  * longer brokers any of that.
  */
 
-import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
+import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import {
   DAEMON_PROTOCOL_VERSION,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
@@ -17,16 +19,14 @@ import {
   type SubscribeRole,
   isDaemonVersionStale,
   isProtocolCompatible,
-} from "../daemon/protocol.ts"
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
-import { logClient, logClientError } from "./client-log.ts"
-import { ensureDaemonReachable } from "./daemon-process.ts"
-import type { KobeDaemonClient } from "./index.ts"
 
 /** Per-task engine activity, accumulated from the daemon's `engine-state` channel. */
 export interface TaskEngineState {

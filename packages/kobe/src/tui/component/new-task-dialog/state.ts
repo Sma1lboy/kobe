@@ -16,8 +16,15 @@ import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
+import type { Readable } from "node:stream"
 import { matchPathGlob } from "@/lib/path-glob"
 import type { VendorId } from "@/types/vendor"
+
+type EventedCloneProcess = {
+  readonly stderr: Readable | null
+  on(event: "error", listener: (err: Error) => void): void
+  on(event: "close", listener: (code: number | null) => void): void
+}
 
 /* --------------------------------------------------------------------- */
 /*  Public types                                                          */
@@ -624,7 +631,7 @@ export function cloneRepo(url: string, target: string, onProgress?: CloneProgres
     try {
       const child = spawn("git", ["clone", "--progress", url, target], {
         stdio: ["ignore", "ignore", "pipe"],
-      })
+      }) as unknown as EventedCloneProcess
       child.stderr?.setEncoding("utf-8")
       child.stderr?.on("data", (chunk: string) => {
         stderrBuf += chunk

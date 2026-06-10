@@ -5,26 +5,32 @@
  * engine modules v0.6 deleted, so it's gone. Accounts came back in
  * KOB-249 (read-only claude/codex/copilot login detection) alongside
  * the Engines launch-command section.
+ *
+ * Row registry: each section declares an ORDERED list of row descriptors
+ * built from the same reactive inputs the dialog already holds (theme
+ * names, focus-accent slots, the engine list, hasDaemon). A row's body
+ * index IS its position in that list — no offset arithmetic — so adding
+ * or reordering a row is a one-line change here, and activation in
+ * settings-dialog.tsx becomes a lookup on `row.kind` instead of an
+ * index if-chain. This module stays pure (types + data only) so vitest
+ * can import it without @opentui.
  */
 
-import { ALL_VENDORS } from "../../../types/vendor"
+import type { VendorId } from "../../../types/vendor"
 import type { FocusAccentSlot } from "../../context/theme"
 
 export type NavLevel = "sidebar" | "body"
 
-export type SectionId = "general" | "engines" | "accounts" | "dev"
+export type SectionId = "general" | "engines" | "accounts" | "keys" | "feedback" | "dev"
 
 export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "engines", label: "Engines" },
   { id: "accounts", label: "Accounts" },
+  { id: "keys", label: "Keybindings" },
+  { id: "feedback", label: "Feedback" },
   { id: "dev", label: "Dev" },
 ]
-
-/** One row per vendor — each edits that engine's launch command. */
-export function engineRowCount(): number {
-  return ALL_VENDORS.length
-}
 
 export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
   primary: "Primary (brand accent)",
@@ -32,71 +38,141 @@ export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
   info: "Info (cool blue)",
 }
 
-export function devRowCount(hasDaemon: boolean): number {
-  return hasDaemon ? 2 : 1
+/**
+ * One navigable body row. `id` is unique within its section and stable
+ * across renders (used by the section views to find a row's index);
+ * `kind` is what the dialog's activation lookup dispatches on. Rows
+ * with a payload (theme name, accent slot, engine vendor) carry it so
+ * activation never has to reverse-engineer it from an index.
+ */
+export type SettingsRow =
+  | { id: string; kind: "theme"; name: string }
+  | { id: "transparent"; kind: "transparent" }
+  | { id: string; kind: "focusAccent"; slot: FocusAccentSlot }
+  | { id: "toast"; kind: "toast" }
+  | { id: "sound"; kind: "sound" }
+  | { id: string; kind: "surface"; surface: "chattab" | "taskpanel" }
+  | { id: "editor-kind"; kind: "editorKind" }
+  | { id: "editor-custom"; kind: "editorCustom" }
+  | { id: string; kind: "engine"; vendor: VendorId }
+  | { id: "add-engine"; kind: "engineAdd" }
+  | { id: "feedback-title"; kind: "feedbackTitle" }
+  | { id: "feedback-body"; kind: "feedbackBody" }
+  | { id: "feedback-send"; kind: "feedbackSend" }
+  | { id: "dev-reset"; kind: "devReset" }
+  | { id: "dev-restart"; kind: "devRestartDaemon" }
+  | { id: "remote-projects"; kind: "devRemoteProjects" }
+
+export type SettingsRowKind = SettingsRow["kind"]
+
+/** Stable row ids for payload-bearing rows (shared by builders + views). */
+export function themeRowId(name: string): string {
+  return `theme:${name}`
 }
 
-export function generalRowCount(themeCount: number, focusAccentCount: number): number {
-  // themes + transparent(1) + focus accents + toast(1) + sound(1)
-  //   + settings surface: ChatTab(1) + Task panel(1)
-  //   + editor: kind select(1) + custom command(1)
-  return themeCount + 1 + focusAccentCount + 6
+export function focusAccentRowId(slot: FocusAccentSlot): string {
+  return `accent:${slot}`
 }
 
-export function bodyRowCount(
-  section: SectionId,
-  themeCount: number,
-  focusAccentCount: number,
-  hasDaemon: boolean,
-): number {
-  if (section === "general") return generalRowCount(themeCount, focusAccentCount)
-  if (section === "engines") return engineRowCount()
-  // Accounts is a read-only display — no navigable rows.
-  if (section === "accounts") return 0
-  if (section === "dev") return devRowCount(hasDaemon)
-  return 0
+export function engineRowId(vendor: VendorId): string {
+  return `engine:${vendor}`
 }
 
-export function transparentRowIndex(themeCount: number): number {
-  return themeCount
+export function surfaceRowId(surface: "chattab" | "taskpanel"): string {
+  return `surface:${surface}`
 }
 
-export function focusAccentRowIndex(bodyRow: number, themeCount: number, focusAccentCount: number): number | null {
-  const offset = themeCount + 1
-  const i = bodyRow - offset
-  if (i < 0 || i >= focusAccentCount) return null
-  return i
-}
-
-export function toastRowIndex(themeCount: number, focusAccentCount: number): number {
-  return themeCount + 1 + focusAccentCount
-}
-
-export function soundRowIndex(themeCount: number, focusAccentCount: number): number {
-  return toastRowIndex(themeCount, focusAccentCount) + 1
+/** Everything the registry needs to lay out every section's rows. */
+export type SettingsRowsInput = {
+  themeNames: readonly string[]
+  focusAccentSlots: readonly FocusAccentSlot[]
+  /** Built-ins + user-registered custom engines, in display order. */
+  engineList: readonly VendorId[]
+  hasDaemon: boolean
 }
 
 /**
- * The "Settings page" surface picker — two explicit, mutually-exclusive
- * checkbox rows at the end of the General section: ChatTab then Task panel.
+ * General section: themes, transparent toggle, focus accents, toast,
+ * sound, the two settings-surface pickers, then the editor pair. Order
+ * here IS the on-screen order — sections.tsx renders the same sequence.
  */
-export function surfaceChattabRowIndex(themeCount: number, focusAccentCount: number): number {
-  return soundRowIndex(themeCount, focusAccentCount) + 1
-}
-
-export function surfaceTaskpanelRowIndex(themeCount: number, focusAccentCount: number): number {
-  return surfaceChattabRowIndex(themeCount, focusAccentCount) + 1
+export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focusAccentSlots">): SettingsRow[] {
+  return [
+    ...input.themeNames.map((name): SettingsRow => ({ id: themeRowId(name), kind: "theme", name })),
+    { id: "transparent", kind: "transparent" },
+    ...input.focusAccentSlots.map((slot): SettingsRow => ({ id: focusAccentRowId(slot), kind: "focusAccent", slot })),
+    { id: "toast", kind: "toast" },
+    { id: "sound", kind: "sound" },
+    { id: surfaceRowId("chattab"), kind: "surface", surface: "chattab" },
+    { id: surfaceRowId("taskpanel"), kind: "surface", surface: "taskpanel" },
+    { id: "editor-kind", kind: "editorKind" },
+    { id: "editor-custom", kind: "editorCustom" },
+  ]
 }
 
 /**
- * Editor preference rows at the very end of the General section: the
- * kind select (vim / nano / custom), then the custom-command field. Kept
- * last so adding them doesn't shift any existing row index.
+ * Engines section: one row per engine (built-ins + custom), plus the
+ * trailing "+ Add engine" row. Engine row index === position in
+ * `engineList`, matching the section view's <For> order.
  */
-export function editorKindRowIndex(themeCount: number, focusAccentCount: number): number {
-  return surfaceTaskpanelRowIndex(themeCount, focusAccentCount) + 1
+export function engineRows(engineList: readonly VendorId[]): SettingsRow[] {
+  return [
+    ...engineList.map((vendor): SettingsRow => ({ id: engineRowId(vendor), kind: "engine", vendor })),
+    { id: "add-engine", kind: "engineAdd" },
+  ]
 }
 
-export function editorCustomRowIndex(themeCount: number, focusAccentCount: number): number {
-  return editorKindRowIndex(themeCount, focusAccentCount) + 1
+export function feedbackRows(): SettingsRow[] {
+  return [
+    { id: "feedback-title", kind: "feedbackTitle" },
+    { id: "feedback-body", kind: "feedbackBody" },
+    { id: "feedback-send", kind: "feedbackSend" },
+  ]
+}
+
+/**
+ * Dev section: Reset (always), Restart (daemon only), then the
+ * Experimental remote-projects toggle — kept last so its presence never
+ * shifts the rows above it.
+ */
+export function devRows(hasDaemon: boolean): SettingsRow[] {
+  return [
+    { id: "dev-reset", kind: "devReset" },
+    ...(hasDaemon ? [{ id: "dev-restart", kind: "devRestartDaemon" } as const] : []),
+    { id: "remote-projects", kind: "devRemoteProjects" },
+  ]
+}
+
+/**
+ * The full registry: a section's ordered navigable rows. Accounts and
+ * Keybindings are read-only displays — zero navigable rows.
+ */
+export function sectionRows(section: SectionId, input: SettingsRowsInput): SettingsRow[] {
+  switch (section) {
+    case "general":
+      return generalRows(input)
+    case "engines":
+      return engineRows(input.engineList)
+    case "accounts":
+    case "keys":
+      return []
+    case "feedback":
+      return feedbackRows()
+    case "dev":
+      return devRows(input.hasDaemon)
+  }
+}
+
+export function bodyRowCount(section: SectionId, input: SettingsRowsInput): number {
+  return sectionRows(section, input).length
+}
+
+/** Index of a row id within a row list, or -1 when absent. */
+export function rowIndex(rows: readonly SettingsRow[], id: string): number {
+  return rows.findIndex((row) => row.id === id)
+}
+
+/** The row at a body index, or undefined when out of range. */
+export function rowAt(rows: readonly SettingsRow[], index: number): SettingsRow | undefined {
+  return rows[index]
 }

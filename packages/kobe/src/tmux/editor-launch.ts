@@ -20,6 +20,17 @@
  * editor's exit code — a `:cq` / non-zero quit is a real edit session,
  * not a launch failure, and must not bounce to preview.
  *
+ * nvim/vim diff mode: when the resolved editor is a PLAIN nvim/vim open
+ * (`<bin> <file>`, no custom flags) AND the file differs from HEAD, `e`
+ * upgrades to side-by-side diff mode — the committed HEAD blob read-only
+ * on the left, the live editable file on the right. This is the sh-`-c`
+ * safe form of `nvim -d <file> <(git show HEAD:<file>)`: tmux runs the
+ * window via `sh -c`, which has no `<(…)` process substitution, so the
+ * HEAD blob is dumped to a tmp file (the explicit stand-in for the
+ * process-substitution fd) and `rm`-ed when the editor exits. Nothing
+ * touches the user's nvim config or the repo — zero-install, zero-config.
+ * A custom command with its own flags is never rewritten.
+ *
  * Settings (shared `state.json`, read cross-process via getPersistedString
  * since the Ops host is its own process):
  *   - `editor.kind`          "vim" | "nano" | "custom"   (default "vim")
@@ -84,6 +95,45 @@ export function buildEditorCommand(
 }
 
 /**
+ * Pure: the sh command that opens `absPath` in nvim/vim's built-in diff
+ * mode (`-d`) against its committed HEAD version.
+ *
+ * tmux runs the window via `sh -c`, which has no `<(…)` process
+ * substitution, so we materialise bash's `<(git show HEAD:<file>)` as a
+ * mktemp file: dump the HEAD blob into it, `nvim -d "$tmp" <file>` (HEAD
+ * read-only on the LEFT, live editable file on the RIGHT, cursor parked on
+ * the right), then `rm` it on exit. A single sh layer — every path is
+ * `shellQuote`d here, with no second shell-in-nvim parse to re-escape.
+ *
+ * `relPath` is worktree-relative; `HEAD:./<rel>` pins the blob lookup to
+ * the worktree cwd. If the HEAD blob can't be read (e.g. a race removed
+ * the diff between the check and the launch), it falls back to a plain
+ * `<bin> <file>` open so `e` still lands in an editor.
+ */
+export function buildNvimDiffCommand(bin: string, absPath: string, relPath: string): string {
+  const file = shellQuote(absPath)
+  const head = shellQuote(`HEAD:./${relPath}`)
+  return [
+    "f=$(mktemp 2>/dev/null)",
+    `if [ -n "$f" ] && git show ${head} > "$f" 2>/dev/null; then`,
+    `  ${bin} -d "$f" ${file} -c 'setlocal nomodifiable' -c 'wincmd l'; r=$?`,
+    "else",
+    `  ${bin} ${file}; r=$?`,
+    "fi",
+    'rm -f "$f" 2>/dev/null; exit $r',
+  ].join("\n")
+}
+
+/**
+ * Worktree-relative form of `absPath`, or `null` when it isn't under
+ * `worktree` (then the diff upgrade is skipped and we just open the file).
+ */
+export function relativeToWorktree(worktree: string, absPath: string): string | null {
+  const prefix = worktree.endsWith("/") ? worktree : `${worktree}/`
+  return absPath.startsWith(prefix) ? absPath.slice(prefix.length) : null
+}
+
+/**
  * Resolve the editor command from persisted settings + env (the IO wrapper
  * around {@link buildEditorCommand}). Read cross-process via
  * getPersistedString since the Ops host is its own process.
@@ -123,6 +173,31 @@ export async function binaryAvailable(bin: string): Promise<boolean> {
 }
 
 /**
+ * Does `relPath` differ from its HEAD version? Gate for the nvim/vim diff
+ * upgrade. `git diff --quiet` exits 1 on differences, 0 on none; we treat
+ * ONLY exit 1 as "has diff" so an untracked/new file (exit 0 — no HEAD
+ * blob to diff) or a git error (other codes) opens plain, not in diff mode.
+ *
+ * `GIT_OPTIONAL_LOCKS=0` keeps it lock-free, matching the read-only preview
+ * (`tui/ops/host.tsx` gitDiff) — it must not take `.git/index.lock` and
+ * race the worktree's engine commits.
+ */
+export async function fileHasDiff(worktree: string, relPath: string): Promise<boolean> {
+  try {
+    const proc = Bun.spawn(["git", "diff", "--quiet", "HEAD", "--", relPath], {
+      cwd: worktree,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+    })
+    return (await proc.exited) === 1
+  } catch {
+    return false
+  }
+}
+
+/**
  * Open `absPath` in the configured editor in a new tmux window of
  * `session`. Returns `true` if the editor was launched, `false` if it
  * couldn't be resolved / isn't installed (caller should fall back to the
@@ -133,12 +208,38 @@ export async function openInEditor(session: string, worktree: string, absPath: s
   const resolved = await resolveEditorCommand(absPath)
   if (!resolved) return false
   if (!(await binaryAvailable(resolved.bin))) return false
+  const command = await maybeDiffCommand(resolved, worktree, absPath)
   // Name the window after the FILE being edited (its basename), matching
   // the read-only preview window's labelling. With several files open this
   // is what tells the tmux window list apart; which editor it is, is
   // obvious from the editor's own UI.
-  await newWindow(session, { cwd: worktree, command: resolved.command, name: editorWindowLabel(absPath) })
+  await newWindow(session, { cwd: worktree, command, name: editorWindowLabel(absPath) })
   return true
+}
+
+/**
+ * Upgrade a resolved editor command to nvim/vim side-by-side diff mode when
+ * it's a PLAIN nvim/vim open of a file that differs from HEAD; otherwise
+ * return it unchanged.
+ *
+ * Gated on the command being EXACTLY the simple `<bin> <file>` form: an
+ * explicit `vim`/`nvim` kind, an auto-detected one, or `$EDITOR=nvim` all
+ * resolve to that, while a custom command carrying its own flags
+ * (`nvim -u … {file}`) does not match and is left untouched — we never
+ * rewrite a user's deliberate invocation.
+ */
+async function maybeDiffCommand(
+  resolved: { bin: string; command: string },
+  worktree: string,
+  absPath: string,
+): Promise<string> {
+  const { bin, command } = resolved
+  if (bin !== "nvim" && bin !== "vim") return command
+  if (command !== `${bin} ${shellQuote(absPath)}`) return command
+  const rel = relativeToWorktree(worktree, absPath)
+  if (!rel) return command
+  if (!(await fileHasDiff(worktree, rel))) return command
+  return buildNvimDiffCommand(bin, absPath, rel)
 }
 
 /** Basename of the file path, for the tmux window label (the edited file). */

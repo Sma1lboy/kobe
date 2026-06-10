@@ -2,14 +2,16 @@
 
 > Codename. Read alongside [`../HANDOFF.md`](../HANDOFF.md) and [`../CLAUDE.md`](../CLAUDE.md).
 > This document is the design philosophy + architecture sketch. It is opinionated. Things marked **OPEN** are decisions the user (Jackson) needs to make before we code.
+>
+> **Current-shape note (v0.6+, 2026-06).** kobe is now tmux-native: it launches interactive engine CLIs inside per-Task tmux Sessions and enters them by Handover. Older sections that discuss a live `AIEngine.spawn/stream` chat renderer describe the v0.5 design lineage, not the current implementation. For current vocabulary and file ownership, read [`../CONTEXT.md`](../CONTEXT.md) and [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
 ---
 
 ## 1. Mission
 
-A **TUI** that gives one developer the ergonomics of running **many parallel AI coding tasks** at once, with **Claude Code** as the engine.
+A **TUI** that gives one developer the ergonomics of running **many parallel AI coding tasks** at once, with local interactive engine CLIs such as Claude Code and Codex running inside tmux.
 
-Conductor (conductor.build) is the visual reference. We want its layout — five panes, status-grouped task sidebar, file tree, diff preview, terminal, chat composer — but in a terminal, opinionated about the engine, and pluggable about almost everything else.
+Conductor (conductor.build) is the visual reference. We want its layout grammar — task rail, workspace context, file/diff tooling, terminal-native execution — but in a terminal, opinionated about local-first workflows, and conservative about pluggability.
 
 This is not a Conductor clone. It is a TUI that takes Conductor's *layout grammar* as a starting point and re-derives every other choice from "what does a Claude-Code-native, terminal-first orchestrator actually want to be?"
 
@@ -27,13 +29,13 @@ If a module already exists in `refs/` and works, we copy it. We don't reimplemen
 
 The corollary: we accept the constraints those modules impose. If opencode's dialog stack works a certain way, we live with that way. We don't fork to "improve" it on day one.
 
-### 2.2 Claude Code is the engine, not a vendor
+### 2.2 Engine CLIs are products, not vendors
 
-We don't build a vendor abstraction. We don't ship `@ai-sdk/*` adapters. We don't have a "model picker" that supports OpenAI.
+We don't build a vendor-neutral LLM abstraction. We don't ship `@ai-sdk/*` adapters. kobe runs local interactive engine CLIs and lets those tools own auth, prompts, approvals, and model execution.
 
-But: we *do* keep one seam — an **AI engine port** — so that if Anthropic ships a new SDK shape or someone forks Claude Code, we have one place to swap. (An earlier "Phase 2 backend swap" was dropped; see §6.2.)
+But: we keep engine-owned Adapter seams for product identity, command launch, hook normalization, history, telemetry, and model/catalog capability. Neutral layers ask those Adapters instead of hard-coding Claude/Codex strings.
 
-Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and `the thing actually running the task`. Everything else (theme, panes, persistence) is hardcoded for now.
+Pluggability is **at one layer, not every layer**. Specifically: the boundary between `Task` and the local interactive engine running inside that task's tmux Session. Everything else (theme, panes, persistence) is hardcoded for now.
 
 ### 2.3 The terminal is a feature, not a constraint
 
@@ -52,16 +54,16 @@ What we give up: visual richness, drag-drop, instant rendering of large diffs, n
 The unit of work is a **Task**. A Task is a triple:
 
 ```
-Task = (git worktree, Claude Code session, branch)
+Task = (git worktree, tmux Session, branch)
 ```
 
-All three are 1:1 with the Task. Killing a task removes the worktree (after confirmation), archives the session jsonl reference, and leaves the branch in place (or deletes if user opts in). This invariant simplifies a lot of UI.
+All three are 1:1 with the Task. The tmux Session may contain multiple ChatTabs (tmux windows), but it is still owned by one Task. Killing a task removes the worktree (after confirmation), kills the task's tmux Session, and leaves the branch in place. This invariant simplifies a lot of UI.
 
 ### 2.5 State lives where it already lives
 
-We don't build a session DB. Claude Code already has `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`. We read those.
+We don't build a session DB. Engine CLIs already persist transcripts (`~/.claude/projects/...`, `~/.codex/sessions/...`). kobe reads those through engine-owned history/usage Adapters.
 
-We *do* keep a small **task index** — title, repo, branch, worktree path, mapped session-id, status, created-at — because Claude Code doesn't know about "tasks". But this index is a manifest, not a database. Single JSON file at first, SQLite if we hit pain.
+We *do* keep a small **task index** — title, repo, branch, worktree path, status, vendor/model/settings, ordering, timestamps — because the engine CLIs don't know about "tasks". But this index is a manifest, not a database. Single JSON file at first, SQLite if we hit pain.
 
 When in doubt, the source of truth is on disk in a place that already exists.
 
@@ -192,6 +194,15 @@ The events are normalized — we don't leak Claude Code's stream-json shape into
 
 The orchestrator stays **TUI-free**: no imports from `@opentui/*` or anything that renders. Solid signals are allowed as an in-process reactive primitive (the TUI subscribes to the same signals), but the daemon must be runnable headless. This is the seam Wave D0 of the daemon split formalises — see [`design/daemon.md`](./design/daemon.md) §9.
 
+### 5.4 Render-path rule: never block the event loop on a subprocess
+
+Everything under `src/tui/**` runs inside a render process — the TUI itself or a tmux pane host. A synchronous subprocess there (`spawnSync` & friends) blocks the whole event loop for the child's lifetime, and git commands are O(repo size): a `spawnSync git status` on the sidebar's ~2s tick hard-froze the Tasks pane the moment a 30GB repo's row rendered. So the rule is absolute, not advisory:
+
+- **Recurring data** (branch hints, dirty counts — anything read from a memo on a tick) goes through `src/tui/lib/background-poll.ts`: `read(key)` is a cheap reactive signal read, `poll(key)` is fire-and-forget with in-flight dedupe, adaptive cadence, and timeout + hard backoff. Failures keep the last value — panes go stale, never freeze or error.
+- **One-shot actions** (e.g. building the Create-PR prompt) use async spawn (`spawnCapture`) with plain `await` at the call site — no poller needed, but still never `spawnSync`.
+
+The rule is enforced by `packages/kobe/test/tui/render-path-sync-guard.test.ts`, which scans `src/tui/**` for sync-subprocess imports/calls and fails on anything outside its short, reason-annotated whitelist (post-`renderer.destroy()` updater paths and the one-shot CLI helper). Extend the whitelist only with a reason — and prefer not to.
+
 ---
 
 ## 6. Pluggability — and the engine port
@@ -212,7 +223,7 @@ Subprocess wrapper around the `claude` CLI. Algorithm ported from opcode (`refs/
 
 ### 6.2 No Phase 2 backend swap (dropped 2026-05-09)
 
-Earlier drafts of this doc carved out a `ConductorBackend implements AIEngine` for "kanban mode on top of Conductor." We've **dropped** it: kobe's value is the UI; the local subprocess works; Anthropic's own API already covers shared/cloud session needs. Re-litigate only if a concrete swap need surfaces (a forked engine with a stable HTTP API, etc.) — at which point the `AIEngine` interface is still the seam to use.
+Earlier drafts of this doc carved out a Conductor-backed v0.5 engine implementation for "kanban mode on top of Conductor." We've **dropped** it: kobe's value is the UI and local engine CLIs work. Re-litigate only if a concrete swap need surfaces; at that point extend the current Adapter-owned command/history/hook seams instead of reviving the v0.5 stream interface.
 
 ---
 
@@ -362,7 +373,7 @@ Messages are **not** in this index. Messages live in Claude Code's JSONL files; 
 - Team collaboration / shared task lists.
 - Non-Claude-Code engines (we keep the seam, but only ship one impl).
 - Conductor-as-backend (Phase 2).
-- Web UI / mobile.
+- Production web/mobile UI. `kobe web` exists as an early experimental local dashboard as of 2026-06-09; it is not the product center.
 - CI integration beyond "shell out to `gh`".
 - Plugin system for panes (every pane is hardcoded; pluggability is at the engine layer only).
 

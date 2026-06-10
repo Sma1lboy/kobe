@@ -1,6 +1,6 @@
 import path from "node:path"
+import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "@sma1lboy/kobe-daemon/daemon/cwd-task"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "../../src/daemon/cwd-task.ts"
 import { REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH, worktreeRootFor } from "../../src/orchestrator/worktree/paths.ts"
 
 let prevHome: string | undefined

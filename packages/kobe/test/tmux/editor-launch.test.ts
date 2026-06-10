@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { buildEditorCommand, editorWindowLabel } from "../../src/tmux/editor-launch.ts"
+import {
+  buildEditorCommand,
+  buildNvimDiffCommand,
+  editorWindowLabel,
+  relativeToWorktree,
+} from "../../src/tmux/editor-launch.ts"
 import { DEFAULT_EDITOR_KIND, normalizeEditorKind } from "../../src/tui/lib/editor-prefs.ts"
 
 describe("buildEditorCommand", () => {
@@ -42,6 +47,48 @@ describe("buildEditorCommand", () => {
 
   it("shell-escapes a path with spaces and quotes", () => {
     expect(buildEditorCommand("vim", "", "/wt/a b/it's.ts")?.command).toBe("vim '/wt/a b/it'\\''s.ts'")
+  })
+})
+
+describe("relativeToWorktree", () => {
+  it("strips the worktree prefix (with or without a trailing slash)", () => {
+    expect(relativeToWorktree("/wt", "/wt/src/a.ts")).toBe("src/a.ts")
+    expect(relativeToWorktree("/wt/", "/wt/src/a.ts")).toBe("src/a.ts")
+  })
+
+  it("returns null when the path isn't under the worktree (skips diff upgrade)", () => {
+    expect(relativeToWorktree("/wt", "/other/a.ts")).toBeNull()
+    // a sibling dir sharing a name prefix must not match
+    expect(relativeToWorktree("/wt", "/wt-2/a.ts")).toBeNull()
+  })
+})
+
+describe("buildNvimDiffCommand", () => {
+  it("dumps HEAD to a tmp file and diffs it read-only against the live file", () => {
+    const cmd = buildNvimDiffCommand("nvim", "/wt/src/a.ts", "src/a.ts")
+    // process-substitution stand-in: mktemp + git show into it
+    expect(cmd).toContain("f=$(mktemp 2>/dev/null)")
+    expect(cmd).toContain("git show 'HEAD:./src/a.ts' > \"$f\"")
+    // HEAD blob on the LEFT (first -d arg), live editable file on the RIGHT
+    expect(cmd).toContain("nvim -d \"$f\" '/wt/src/a.ts' -c 'setlocal nomodifiable' -c 'wincmd l'")
+    // tmp file is always cleaned up, exit code preserved
+    expect(cmd).toContain('rm -f "$f" 2>/dev/null; exit $r')
+  })
+
+  it("falls back to a plain open when the HEAD blob can't be read", () => {
+    const cmd = buildNvimDiffCommand("nvim", "/wt/a.ts", "a.ts")
+    expect(cmd).toContain("else\n  nvim '/wt/a.ts'; r=$?")
+  })
+
+  it("honours vim as the diff binary too", () => {
+    const cmd = buildNvimDiffCommand("vim", "/wt/a.ts", "a.ts")
+    expect(cmd).toContain("vim -d \"$f\" '/wt/a.ts'")
+  })
+
+  it("shell-escapes paths with spaces and quotes on both sh layers", () => {
+    const cmd = buildNvimDiffCommand("nvim", "/wt/a b/it's.ts", "a b/it's.ts")
+    expect(cmd).toContain("git show 'HEAD:./a b/it'\\''s.ts'")
+    expect(cmd).toContain("nvim -d \"$f\" '/wt/a b/it'\\''s.ts'")
   })
 })
 

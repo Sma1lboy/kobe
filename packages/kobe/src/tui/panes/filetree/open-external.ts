@@ -17,6 +17,14 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { platform } from "node:os"
+import type { Readable } from "node:stream"
+
+type EventedChild = {
+  readonly stdout?: Readable | null
+  on(event: "error", listener: (err: Error) => void): void
+  on(event: "close", listener: (code: number | null) => void): void
+  unref(): void
+}
 
 export function openExternally(absPath: string): void {
   if (!absPath) return
@@ -27,12 +35,14 @@ export function openExternally(absPath: string): void {
       // Prefer wslview when installed (wslu package); falls back to
       // explorer.exe with the Windows-mapped path otherwise.
       spawnDetached("wslview", [absPath], () => {
-        const child = spawn("wslpath", ["-w", absPath], { stdio: ["ignore", "pipe", "ignore"] })
+        const child = spawn("wslpath", ["-w", absPath], {
+          stdio: ["ignore", "pipe", "ignore"],
+        }) as unknown as EventedChild
         let out = ""
-        child.stdout.on("data", (b: Buffer) => {
+        child.stdout?.on("data", (b: Buffer) => {
           out += b.toString()
         })
-        child.on("close", (code) => {
+        child.on("close", (code: number | null) => {
           if (code === 0) spawnDetached("explorer.exe", [out.trim()])
         })
       })
@@ -53,7 +63,7 @@ export function openExternally(absPath: string): void {
 
 function spawnDetached(cmd: string, args: readonly string[], onError?: () => void): void {
   try {
-    const child = spawn(cmd, args, { stdio: "ignore", detached: true })
+    const child = spawn(cmd, args, { stdio: "ignore", detached: true }) as unknown as EventedChild
     child.on("error", () => onError?.())
     child.unref()
   } catch {

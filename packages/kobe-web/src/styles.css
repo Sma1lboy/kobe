@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Kobe Nerd Font";
+  src: url("/fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+/*
+ * kobe web — claude theme (dark).
+ * Palette mirrors packages/kobe/src/tui/context/theme/claude.json so the
+ * web UI is visually the same product as the TUI. Do not invent colors here.
+ */
+@theme {
+  --color-bg: #141413;
+  --color-surface: #1a1917;
+  --color-inset: #2b2a27;
+  --color-menu: #33312e;
+  --color-line: #3a3835;
+  --color-line-subtle: #2b2a27;
+  --color-line-active: #5c5853;
+  --color-fg: #eae7df;
+  --color-muted: #a9a39a;
+  --color-subtle: #6b665f;
+  --color-primary: #cc785c;
+  --color-primary-hover: #e0ab96;
+  --color-kobe-orange: #d97757;
+  --color-kobe-green: #9aca86;
+  --color-kobe-blue: #61aaf2;
+  --color-kobe-red: #d47563;
+  --color-kobe-yellow: #e8c96b;
+  --color-kobe-violet: #9b87f5;
+
+  --font-mono: "Kobe Nerd Font", "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Monaco, "Cascadia Code",
+    monospace;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep panes scrollable without visible browser chrome. */
+* {
+  scrollbar-width: none;
+}
+
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

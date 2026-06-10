@@ -30,9 +30,11 @@
  */
 
 import { TextAttributes } from "@opentui/core"
-import { For } from "solid-js"
+import { For, createSignal, onMount } from "solid-js"
+import { runTmuxCapturing } from "../../tmux/client"
 import { type KobeBinding, KobeKeymap } from "../context/keybindings"
 import { useTheme } from "../context/theme"
+import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
 import { useBindings } from "../lib/keymap"
 import { type DialogContext, useDialog } from "../ui/dialog"
 
@@ -64,6 +66,18 @@ export function HelpDialog() {
   const dialog = useDialog()
   const { theme } = useTheme()
   const grouped = () => groupBindings(KobeKeymap)
+
+  // Resolve the user's real tmux prefix so `prefix f` shows as e.g. `⌃B F`
+  // (their actual prefix, not a guess). Falls back to the `⌃B` default when
+  // there's no kobe tmux server (e.g. the dev outer monitor).
+  const [prefixGlyph, setPrefixGlyph] = createSignal("⌃B")
+  onMount(() => {
+    void runTmuxCapturing(["show-options", "-g", "prefix"]).then(({ code, stdout }) => {
+      if (code !== 0) return
+      const glyph = tmuxPrefixGlyph(stdout)
+      if (glyph) setPrefixGlyph(glyph)
+    })
+  })
 
   // Press `?` again to dismiss (ergonomic mirror of vim/tmux help). esc
   // is handled by the DialogProvider's own binding stack — don't re-bind.
@@ -112,19 +126,23 @@ export function HelpDialog() {
                     // "j/k" or "enter") when present; fall back to the
                     // first registered chord. Bindings with no chord and
                     // no hint (shouldn't happen in practice) show "—".
-                    const primary = row.hint?.keys ?? row.keys[0] ?? "—"
-                    const aliases = row.hint ? row.keys : row.keys.slice(1)
+                    // Rendered as macOS key glyphs (⌃Q, ⇧⇥, ⌃B F) via
+                    // formatChord so the help matches the footer.
+                    const rawPrimary = row.hint?.keys ?? row.keys[0] ?? "—"
+                    const primary = () => (rawPrimary === "—" ? "—" : formatChord(rawPrimary, prefixGlyph()))
+                    const aliases = () =>
+                      (row.hint ? row.keys : row.keys.slice(1)).map((k) => formatChord(k, prefixGlyph()))
                     return (
                       <box flexDirection="row" gap={2} paddingLeft={1}>
                         <box width={14}>
-                          <text fg={theme.primary}>{primary}</text>
+                          <text fg={theme.primary}>{primary()}</text>
                         </box>
                         <box flexGrow={1}>
                           <text fg={theme.text}>{row.description}</text>
                         </box>
-                        {aliases.length > 0 ? (
+                        {aliases().length > 0 ? (
                           <box>
-                            <text fg={theme.textMuted}>{`(${aliases.join(", ")})`}</text>
+                            <text fg={theme.textMuted}>{`(${aliases().join(", ")})`}</text>
                           </box>
                         ) : null}
                       </box>

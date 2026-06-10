@@ -12,14 +12,33 @@
  * Per-task vendor is still recorded on Task so the monitor knows
  * which history-reader to call.
  */
-export type VendorId = "claude" | "codex" | "copilot"
+/**
+ * Engine vendor id. The three built-ins (claude/codex/copilot) are
+ * literals — they back the exhaustive maps + history-reader dispatch — but
+ * the type is OPEN (`string & {}`) because users can register their own
+ * engines (a slug id + launch command, see `state/repos.ts`
+ * customEngineIds). A custom id is just a string that isn't one of the
+ * three; it flows the same way (Task.vendor, tmux `@kobe_vendor`, the
+ * selector) and resolves its launch command from `engineCommand.<id>`.
+ */
+export type VendorId = "claude" | "codex" | "copilot" | (string & {})
+
+/** The three first-party engines that ship with kobe (cycle order). */
+export const BUILTIN_VENDORS = ["claude", "codex", "copilot"] as const
+export type BuiltinVendorId = (typeof BUILTIN_VENDORS)[number]
 
 /**
- * Selectable vendors, in cycle order (the new-task dialog's `ctrl+e`
- * walks this). Extend here when a new engine is wired — keep it in sync
- * with `engine/interactive-command.ts` and the history-reader dispatch.
+ * Built-in vendors, in cycle order. NB: this is the BUILT-IN set only;
+ * surfaces that should also offer user-added engines (the new-task selector,
+ * Settings → Engines) compose this with the customEngineIds registry rather
+ * than reading this array directly.
  */
-export const ALL_VENDORS: readonly VendorId[] = ["claude", "codex", "copilot"]
+export const ALL_VENDORS: readonly VendorId[] = [...BUILTIN_VENDORS]
+
+/** True when `id` is one of the three first-party engines (not a custom one). */
+export function isBuiltinVendor(id: string | undefined): id is BuiltinVendorId {
+  return id === "claude" || id === "codex" || id === "copilot"
+}
 
 /** Next vendor in {@link ALL_VENDORS} order, wrapping around. */
 export function nextVendor(current: VendorId): VendorId {
@@ -28,11 +47,26 @@ export function nextVendor(current: VendorId): VendorId {
 }
 
 /**
+ * Next vendor within an arbitrary subset (e.g. the detected-only list the
+ * new-task dialog renders), wrapping around. `current` need not be in the
+ * list — cycling starts from the first entry. Empty list returns `current`
+ * unchanged so a caller with nothing detected never crashes.
+ */
+export function nextVendorWithin(list: readonly VendorId[], current: VendorId): VendorId {
+  if (list.length === 0) return current
+  const i = list.indexOf(current)
+  return list[(i + 1) % list.length] ?? list[0] ?? current
+}
+
+/**
  * Coerce an untrusted string (a CLI flag, a persisted record) to a
- * {@link VendorId}, falling back to `"claude"` for anything unrecognised
- * or absent — the same default the rest of v0.6 assumes when a task has
- * no recorded vendor.
+ * {@link VendorId}. Engines are now OPEN (users register their own), so a
+ * non-empty value passes through as-is — a built-in OR a custom id; the
+ * launch path resolves it from `engineCommand.<id>` and a truly bogus id
+ * just fails to launch its (missing) binary. Only an empty/absent value
+ * falls back to `"claude"`, the default for a task with no recorded vendor.
  */
 export function coerceVendorId(value: string | undefined): VendorId {
-  return ALL_VENDORS.includes(value as VendorId) ? (value as VendorId) : "claude"
+  const v = value?.trim()
+  return v && v.length > 0 ? v : "claude"
 }

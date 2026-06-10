@@ -7,10 +7,11 @@
 > [`HARNESS.md`](./HARNESS.md). This document is a tour of the source tree as it
 > currently stands.
 
-> **Path convention.** kobe is the main package in a Bun-workspaces
-> monorepo; its source lives at `packages/kobe/`. **Every `src/...`,
-> `test/...`, and `scripts/...` path in this doc is relative to that
-> package root.** The other workspace, `packages/branding/`, is the
+> **Path convention.** kobe is a Bun-workspaces monorepo. The TUI/CLI
+> package lives at `packages/kobe/`; daemon-owned code lives at
+> `packages/kobe-daemon/`. Unless a path is package-qualified, `src/...`,
+> `test/...`, and `scripts/...` paths in this doc are relative to
+> `packages/kobe/`. The branding workspace, `packages/branding/`, is the
 > Remotion render pipeline for the brand artwork in `docs/assets/brand/`
 > and isn't covered here.
 
@@ -18,9 +19,9 @@
 
 1. [The layer cake](#1-the-layer-cake)
 2. [Reference projects under `refs/`](#2-reference-projects-under-refs)
-3. [The 5-pane layout](#3-the-5-pane-layout)
-4. [Engine ↔ orchestrator seam](#4-engine--orchestrator-seam)
-5. [The behavior-test harness](#5-the-behavior-test-harness)
+3. [Outer monitor and tmux workspace](#3-outer-monitor-and-tmux-workspace)
+4. [Daemon ↔ task-session seam](#4-daemon--task-session-seam)
+5. [Test harness](#5-test-harness)
 6. [Persistence: where state lives on disk](#6-persistence-where-state-lives-on-disk)
 7. [What's deliberately NOT in kobe](#7-whats-deliberately-not-in-kobe)
 8. [Recipes — how to add X](#8-recipes--how-to-add-x)
@@ -34,31 +35,43 @@ nothing about higher.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│  TUI shell + panes  (Solid + @opentui/solid + @opentui/core)   │
-│   src/tui/{app.tsx, index.tsx, panes/, context/, ui/, lib/}    │
+│  TUI clients + panes  (Solid + @opentui/solid + @opentui/core) │
+│   src/tui/{direct.ts, app.tsx, tasks-pane/, panes/, context/}  │
 ├────────────────────────────────────────────────────────────────┤
-│  Orchestrator  (the only thing that touches engine + git +     │
-│   index together)                                              │
-│   src/orchestrator/{core.ts, worktree/, index/, pr/}           │
+│  RemoteOrchestrator  (client facade over daemon RPC + channels)│
+│   src/client/remote-orchestrator.ts                            │
 ├────────────────────────────────────────────────────────────────┤
-│  AI engine port  (single seam)                                 │
-│   src/types/engine.ts  (interface only)                        │
-│   src/engine/claude-code-local/  (Phase-1 impl)                │
+│  Daemon  (single writer for task index + web transport)        │
+│   packages/kobe-daemon/src/daemon/{server.ts,web.ts,...}       │
+│   packages/kobe-daemon/src/client/                             │
 ├────────────────────────────────────────────────────────────────┤
-│  Types  (shared contracts)                                     │
-│   src/types/{engine.ts, task.ts, worktree.ts, index.ts}        │
+│  Orchestrator + tmux handover                                  │
+│   src/orchestrator/{core.ts,worktree/,index/}                  │
+│   src/tmux/{client.ts,session-layout.ts}                       │
+├────────────────────────────────────────────────────────────────┤
+│  Types + engine-adapter helpers                                │
+│   src/types/{task.ts,worktree.ts,index.ts,vendor.ts}           │
+│   src/engine/*/{history,normalize,hook-adapter}.ts             │
 └────────────────────────────────────────────────────────────────┘
 ```
 
 The seams matter:
 
-- **Orchestrator never reaches past the engine port.** No PIDs, no
-  subprocess refs, no raw stream-json shapes leak upward. See
-  `src/types/engine.ts:8` for the rationale comment. If you find a
-  `process.kill()` or a `spawn()` outside `src/engine/`, that's a leak.
-- **Panes never reach past the orchestrator.** Chat, sidebar, etc. consume
-  `Orchestrator` (`src/tui/app.tsx:32`) and ask it for tasks, history,
-  events. They don't import `engine` or `worktree` directly.
+- **The Daemon is the task-index writer.** TUI clients and in-tmux panes
+  mutate tasks through daemon RPC and hydrate from daemon channels. Direct
+  writes to `TaskIndexStore` from UI code are a leak.
+- **The Orchestrator is task lifecycle only.** It owns task metadata,
+  worktree allocation, ordering, active-task touch timestamps, and the
+  reactive task-list signal. It does not spawn or stream an engine process.
+- **tmux owns interactive engine processes.** Entering a task is a
+  Handover: kobe ensures the Worktree and tmux Session, suspends the outer
+  renderer, and attaches the user's real TTY. Engine-specific code in
+  `src/engine/` is now Adapter support for commands, hook normalization,
+  history/usage readers, and account/model discovery.
+- **Panes never reach past the daemon facade for task writes.** Outer TUI
+  panes use `RemoteOrchestrator`; in-tmux helper panes subscribe as daemon
+  `role: "pane"` so they receive task snapshots without pinning daemon
+  lifetime.
 - **opentui is infrastructure, not architecture; Solid signals are a
   shared reactive primitive.** The orchestrator must not depend on
   opentui or anything that renders — that's the seam the daemon split
@@ -74,16 +87,18 @@ The seams matter:
 
 | Concern | Owner |
 |---|---|
-| AI engine interface | `src/types/engine.ts` (one file, source of truth) |
-| Spawning the `claude` CLI | `src/engine/claude-code-local/spawn.ts` |
-| Parsing stream-json | `src/engine/claude-code-local/stream.ts` |
+| Daemon server, protocol, event bus, lifecycle, paths | `packages/kobe-daemon/src/daemon/` |
+| Low-level daemon socket client + autostart helper | `packages/kobe-daemon/src/client/` |
+| Remote task facade used by TUI clients | `src/client/remote-orchestrator.ts` |
+| Interactive engine command selection | `src/engine/interactive-command.ts` |
+| Engine hook normalization | `src/engine/*/hook-adapter.ts` + `src/engine/hook-events.ts` |
 | Reading historical JSONL | `src/engine/claude-code-local/history.ts` |
 | Finding the `claude` binary | `src/engine/claude-code-local/binary.ts` |
 | Task lifecycle | `src/orchestrator/core.ts` |
-| Per-task chat tabs (multi-session) | `src/orchestrator/core.ts:913` (`createTab`) + `src/types/task.ts:63` (`ChatTab`) |
-| Pending user-input detection + response prompts | `src/orchestrator/user-input.ts` |
+| Per-task tmux Session layout | `src/tmux/session-layout.ts` + `src/tui/panes/terminal/tmux.ts` |
+| Handover attach/detach | `src/tui/direct.ts` + `src/tui/panes/terminal/fullscreen.tsx` |
 | `git worktree` wrapper | `src/orchestrator/worktree/manager.ts` |
-| Worktree path convention | `src/orchestrator/worktree/paths.ts:30` |
+| Worktree path convention | `src/orchestrator/worktree/paths.ts` |
 | Task index on disk | `src/orchestrator/index/store.ts` |
 | ULID generator | `src/orchestrator/index/ulid.ts` |
 | PR prompt rendering | `src/orchestrator/pr/build.ts` |
@@ -93,9 +108,31 @@ The seams matter:
 | Global keybindings | `src/tui/context/keybindings.ts` |
 | KV (per-user UI state) | `src/tui/context/kv.tsx` |
 | Theme (palettes + active theme) | `src/tui/context/theme.tsx` + `src/tui/context/theme/*.json` |
-| Behavior-test driver | `test/behavior/driver.ts` |
-| Fake engine for tests | `test/behavior/fake-engine.ts` |
+| Daemon socket/integration tests | `test/daemon/*.test.ts` |
 | Unit-test type assertions | `test/types/*.test-d.ts` |
+
+### Daemon web transport
+
+The browser dashboard is a daemon transport, not a separate generic
+webserver package. `kobe web` (`src/cli/web-cmd.ts`) connects to the daemon
+and asks it to bind local HTTP/SSE routes via `daemon.web.start`; the daemon
+owns the actual server in `packages/kobe-daemon/src/daemon/web.ts`.
+
+That boundary is deliberate:
+
+- Browser state hydrates from the daemon's own task snapshot, active-task
+  channel, update channel, and in-memory engine activity map.
+- Browser mutations go through the same daemon RPC dispatcher as TUI panes;
+  the web route only exposes the safe task/worktree RPC surface, not daemon
+  lifecycle calls like `daemon.stop` or `subscribe`.
+- Web-specific route helpers (`packages/kobe/src/web/notes.ts`,
+  `packages/kobe/src/web/diff.ts`) are feature modules consumed by the
+  daemon web transport. They are not a second daemon, and they must not
+  keep their own task/event cache.
+- Starting daemon web counts as a GUI lifetime holder while the web command
+  process is alive, so the daemon does not idle-stop underneath an open
+  browser dashboard. Stopping `kobe web` releases that hold and the normal
+  lazy-shutdown rules apply.
 
 ---
 
@@ -118,75 +155,73 @@ is a symlink). The slots and what each one teaches kobe:
 
 Concrete provenance examples in the kobe source:
 
-- `src/engine/claude-code-local/index.ts:1-37` describes the full
-  spawn → stream → JSONL pipeline lifted from opcode.
 - `src/engine/claude-code-local/binary.ts` mirrors opcode's
   `claude_binary.rs` discovery order (PATH → NVM → Homebrew →
   `~/.claude/local`).
-- `src/engine/claude-code-local/history.ts:10-22` documents the
+- `src/engine/claude-code-local/history.ts` documents the
   `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` path scheme,
   cross-referenced with opcode.
-- `src/orchestrator/core.ts:1177` (`detectUserInputFromEngineEvent`)
-  cross-references upstream `refs/claude-code/src/tools/...`.
-- `src/types/engine.ts:135` (`ApprovePlanPayload`) cites
-  `refs/claude-code/src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts`.
-- The chat composer's noise-tag stripper at
-  `src/tui/panes/chat/store.ts:55-78` uses Claude Code's wrapper-tag
-  taxonomy verbatim.
-- Session usage metrics in `src/session/usage-metrics.ts` mirror
-  `refs/ccstatusline/src/utils/jsonl-metrics.ts` by deriving total speed
-  from conversation timestamps rather than trusting a precomputed speed field.
+- `src/engine/*/normalize.ts` and `src/engine/*/usage.ts` are the
+  engine-owned transcript/history Adapters; read the relevant upstream ref
+  before changing an event or usage interpretation.
+- `src/tmux/session-layout.ts` and `src/tui/panes/terminal/tmux.ts` are the
+  tmux-native replacement for the removed v0.5 stream pump. Layout/attach
+  bugs should be fixed there, not by reintroducing a headless engine loop.
+- Usage metrics mirror `refs/ccstatusline/src/utils/jsonl-metrics.ts` by
+  deriving token totals and speed from transcript timestamps rather than
+  trusting a precomputed speed field.
 
 When two refs disagree with kobe, **kobe wins** (we already chose). But
 read the ref before deciding to deviate further.
 
 ---
 
-## 3. The 5-pane layout
+## 3. Outer monitor and tmux workspace
 
-The Conductor screenshot grammar lives in `src/tui/app.tsx`. Layout is
-flex-first per the CLAUDE.md hard rule — only the sidebar's width and the
-horizontal splitter heights are stateful, and even those use `flexGrow={1}`
-on the right rail to absorb the remainder.
+The outer monitor lives in `src/tui/app.tsx`. It is a transitional shell:
+Sidebar on the left, Workspace on the right, TopBar/StatusBar around them.
+The product center is the tmux-native workspace reached by Handover.
 
-### Top-level structure
+### Outer monitor
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│ TopBar — version, repo/branch, Create PR button, update chip       │
-├──────────┬──────────────────────────────┬──────────────────────────┤
-│ Sidebar  │ WORKSPACE                    │ FILES                    │
-│  (1)     │  CenterTabStrip [chat][file] │  (3)                     │
-│          │  ┌─────────────────────────┐ │                          │
-│          │  │  Chat | Preview         │ ├──────────────────────────┤
-│          │  │  (chat owns the slot    │ │ TERMINAL                 │
-│          │  │   when chat tab active) │ │  (4)                     │
-│          │  └─────────────────────────┘ │                          │
-├──────────┴──────────────────────────────┴──────────────────────────┤
+│ TopBar — version, repo/branch, update chip                        │
+├──────────┬─────────────────────────────────────────────────────────┤
+│ Sidebar  │ Workspace                                               │
+│          │  Live Preview / Cost Dashboard / Handover launcher      │
+├──────────┴─────────────────────────────────────────────────────────┤
 │ StatusBar — keybinding hints + active task                         │
 └────────────────────────────────────────────────────────────────────┘
-   ^pane 1               ^pane 2 (workspace)             ^panes 3+4
 ```
 
-Wire-up (in `src/tui/app.tsx`, function `Shell`):
+Outer sources:
 
-- Sidebar render: `src/tui/app.tsx:1561`
-- Workspace tabs: `src/tui/app.tsx:1616`
-- Chat ↔ Preview switch (chat tab vs file tab): `src/tui/app.tsx:1628`
-- File tree render: `src/tui/app.tsx:1675`
-- Terminal render: `src/tui/app.tsx:1699`
-- Resizable splitters: `<ResizableEdge>` between each pair, see
-  `src/tui/component/resizable-edge.tsx`.
-
-### Pane sources
-
-| Pane | Source dir | Notes |
+| Surface | Source | Notes |
 |---|---|---|
-| Sidebar | `src/tui/panes/sidebar/` | Working / Archives split, repo-grouped, `[d]` delete + `[a]` archive + `[r]` rename + `[n]` new (sidebar focus) |
-| Chat | `src/tui/panes/chat/` | Multi-tab per task; `Composer.tsx` + `MessageList.tsx`; pure-data store at `store.ts` |
-| File tree | `src/tui/panes/filetree/` | `git ls-files`-driven, three top tabs (All / Changes / Checks) |
-| Preview | `src/tui/panes/preview/` | Multi-tab (one per opened file); File / Diff modes |
-| Terminal | `src/tui/panes/terminal/` | Bun native PTY per task, rendered through `@xterm/headless`; pipe backend is fallback only |
+| Sidebar | `src/tui/panes/sidebar/` | Working / Archives split, PROJECTS + TASKS sections, default/recent sort, row-view logic in `row-view.ts` |
+| Workspace monitor | `src/tui/panes/monitor/` | Live Preview from tmux capture + Cost Dashboard from engine transcript readers |
+| Handover launcher | `src/tui/panes/terminal/fullscreen.tsx` | Ensures Worktree + tmux Session, suspends renderer, attaches real TTY |
+| Top/status bars | `src/tui/component/` | Version/update state, active task, keybinding hints |
+
+### tmux ChatTab layout
+
+Each Task owns one tmux Session (`kobe-<task-id>`). Each ChatTab is a tmux
+window with kobe-owned helper panes plus the engine pane:
+
+```
+┌────────────┬───────────────────────────────────────────────────────┐
+│ Tasks pane │ engine CLI (claude / codex / copilot)                 │
+│            ├───────────────────────────────────────────────────────┤
+│            │ Ops pane / shell                                      │
+└────────────┴───────────────────────────────────────────────────────┘
+```
+
+The pure layout policy is `src/tmux/session-layout.ts`; the tmux Adapter and
+session lifecycle helpers are `src/tmux/client.ts` and
+`src/tui/panes/terminal/tmux.ts`. The in-session task list host is
+`src/tui/tasks-pane/host.tsx`; Ops/file browsing lives under
+`src/tui/ops-pane/` and related tmux helpers.
 
 ### Focus + keymap routing
 
@@ -198,13 +233,13 @@ Three rules govern key handling:
 
 1. **Modifier-prefixed keys (`ctrl+1`..`ctrl+4`, `ctrl+n`, `ctrl+k`,
    `ctrl+q`) are always-on** — they never collide with composer typing.
-   See `src/tui/context/keybindings.ts:170-201`.
+   See `src/tui/context/keybindings.ts`.
 2. **Single-letter global shortcuts (`?`, `q`, `tab`) are gated on
    "no input is focused"** — `useKobeKeybindings({ inputFocused })`
    reads the focus signal and omits these registrations whenever the
-   workspace pane (which contains the chat composer) is focused.
-3. **Pane-local bindings (`j/k` in sidebar, `enter`/`shift+enter` in
-   composer) register inside the pane component** via
+   workspace pane has an active input/modal surface.
+3. **Pane-local bindings (`j/k` in sidebar, `enter` in launchers/lists)
+   register inside the pane component** via
    `useBindings()` from `src/tui/lib/keymap.tsx`, scoped to that
    component's lifetime. The pane gates them on `useFocus().is(...)`.
 
@@ -214,167 +249,97 @@ underlying pane. See `src/tui/ui/dialog.tsx` for the dialog stack.
 
 ---
 
-## 4. Engine ↔ orchestrator seam
+## 4. Daemon ↔ task-session seam
 
-The single most-load-bearing contract in kobe. Read `src/types/engine.ts`
-top to bottom — the comments are the spec.
+The current load-bearing contract is the daemon-backed task model plus the
+tmux Handover, not a live engine stream. `CONTEXT.md` is the vocabulary
+source of truth; this section maps that vocabulary to files.
 
-### The interface (`AIEngine`)
+### Task writes
 
-```ts
-interface AIEngine {
-  spawn(cwd, prompt, opts?): Promise<SessionHandle>
-  resume(sessionId, prompt, opts?): Promise<SessionHandle>
-  stream(handle): AsyncIterable<EngineEvent>
-  readHistory(sessionId): Promise<Message[]>
-  deleteHistory(sessionId): Promise<void>
-  stop(handle): Promise<void>
-}
-```
-
-`SessionHandle` is opaque to the orchestrator except for `sessionId` (the
-Claude Code session UUID). `EngineEvent` is a discriminated union — six
-cases: `assistant.delta`, `tool.start`, `tool.result`, `usage`, `done`,
-`error`. Defined at `src/types/engine.ts:91`.
-
-### How `claude --output-format stream-json` becomes `ChatRow`s
-
-Path the bytes take, end to end:
+All task mutations flow through one writer:
 
 ```
-claude (subprocess)                        emits stream-json on stdout
-  └─> spawn.ts (child_process.spawn)       exposes the stdout stream
-        └─> stream.ts:readLines+parseStreamJson
-                                           normalises JSONL → EngineEvent
-              └─> ClaudeCodeLocal.start    pumps eagerly into a queue
-                    └─> stream(handle)     yields lazily to consumers
-                          └─> Orchestrator.pumpEvents
-                                           dispatches to per-(task,tab) bus
-                                └─> Chat (chat/store.ts:applyEvent)
-                                           grows messages[] in place
-                                      └─> MessageList.tsx
-                                           renders ChatRows as JSX
+TUI Client / Tasks pane / kobe web
+  └─> RemoteOrchestrator or daemon web RPC
+        └─> packages/kobe-daemon/src/daemon/server.ts dispatch()
+              └─> Orchestrator
+                    └─> TaskIndexStore (~/.kobe/tasks.json)
 ```
 
-Key points:
+`RemoteOrchestrator` keeps a client-side mirror of task state, hydrated by
+the daemon's `task.snapshot` channel. UI code should mutate through that
+facade or through daemon RPC; importing `TaskIndexStore` from a pane would
+bypass the single-writer Module.
 
-- The eager-pump pattern in `ClaudeCodeLocal.start` (see comment block
-  at `src/engine/claude-code-local/index.ts:31-37`) is intentional: the
-  spawn promise must resolve when `system.init` arrives, but the consumer
-  hasn't called `stream()` yet, so we drive the parser ourselves and queue.
-- `SessionRegistry` (`src/engine/claude-code-local/registry.ts`) is
-  in-memory only. On a `done` or `error` it `unregister()`s the session
-  so the next `resume(sid,...)` doesn't blow up with `duplicate sessionId`
-  — this was a real bug, see `src/engine/claude-code-local/index.ts:223-229`.
-- Resume needs the original `cwd`. The orchestrator passes it via
-  `opts.env.KOBE_RESUME_CWD` — load-bearing back-channel documented at
-  `src/orchestrator/core.ts:24-29` and consumed at
-  `src/engine/claude-code-local/index.ts:93`.
+### Handover
 
-### `pumpEvents` — orchestrator-side stream consumer
+Entering a task is a tmux attach:
 
-`Orchestrator.pumpEvents` lives at `src/orchestrator/core.ts:1083`. One
-pump per (task, tab) pair. Responsibilities:
+```
+Sidebar / Tasks pane select task
+  └─> task.setActive (touches updatedAt for recent sorting)
+        └─> ensureWorktree(taskId)
+              └─> ensureSession(...)
+                    └─> Session Layout builds the tmux command graph
+                          └─> tmux attach / switch-client
+```
 
-1. `for await (const ev of engine.stream(handle))` — drain events.
-2. On every event, `dispatchEvent(taskId, tabId, ev)` — fan out to chat
-   subscribers (`src/orchestrator/core.ts:1068`).
-3. **Detect user-input pause tools** via
-   `detectUserInputFromEngineEvent` (`src/orchestrator/core.ts:1177`):
-   when `ExitPlanMode` or `AskUserQuestion` arrives as a `tool.start`,
-   the pump emits a synthetic `user_input.request` event AND kills
-   the subprocess (because `claude -p` doesn't actually wait for user
-   input — it returns a default and keeps yapping). The user's response
-   flows back through `respondToInput()` which `--resume`s the session
-   with a synthesized prompt.
-4. On terminal `done` / `error`, flip the task's status — but only when
-   *all* sibling tabs have stopped (multi-tab caveat at
-   `src/orchestrator/core.ts:1132-1148`).
-5. `finally` always cleans the handle map and the pump map so leaks
-   don't accumulate.
+`src/tmux/session-layout.ts` is the pure layout policy. The imperative
+tmux Adapter is `src/tmux/client.ts` plus `src/tui/panes/terminal/tmux.ts`.
+The Handover path must keep tmux teardown out of daemon shutdown: task tmux
+Sessions survive daemon restarts and only `kobe reset` / `kobe kill-sessions`
+tear down the dedicated tmux server.
 
-### Orchestrator-only event types
+### Engine adapters
 
-Engines never emit these — the orchestrator synthesizes them onto the
-same per-(task, tab) bus the chat consumes:
+The engine-specific Modules now support tmux-native sessions instead of
+owning them:
 
-| Event | Source | Purpose |
-|---|---|---|
-| `user.inject` | `requestPR`, `respondToInput` | Show an orchestrator-injected prompt as a normal user row |
-| `user_input.request` | `pumpEvents` after detecting `ExitPlanMode` / `AskUserQuestion` | Render an Approve/Reject or multi-choice picker |
-| `user_input.resolved` | `respondToInput` | Flip the picker row to its final state |
-| `system.info` | `runTask` lazy worktree alloc, `maybeRenameTempBranch` | Dim system rows for lifecycle moments |
+| Concern | Path |
+|---|---|
+| Which command starts the interactive engine | `src/engine/interactive-command.ts` |
+| Hook event normalization | `src/engine/*/hook-adapter.ts` + `src/engine/hook-events.ts` |
+| Transcript/history reading | `src/engine/*/history.ts` |
+| Usage/cost derivation | `src/engine/*/usage.ts` where available |
+| Binary/account discovery | `src/engine/*/binary.ts`, `src/engine/account-detect.ts` |
 
-Type union: `OrchestratorEvent` at `src/types/engine.ts:263`.
+Engine hooks report normalized activity with `engine.reportEvent`; the
+daemon folds those into the transient `engine-state` channel. The state is
+in-memory UI data, not task lifecycle and not persisted.
+
+### Web transport
+
+`kobe web` is an early experimental transport over the same daemon. The web
+UI owns browser-local workspace tabs; daemon web routes provide task
+snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs.
+Do not reintroduce a separate web task cache or a second daemon.
 
 ---
 
-## 5. The behavior-test harness
+## 5. Test harness
 
-> Tests aren't just typecheck + unit. The agent runs the actual product
-> and asserts visible behavior. See [`HARNESS.md`](./HARNESS.md).
+Tests aren't just typecheck + unit. The current fast path is pure/unit +
+daemon socket coverage; full PTY behavior checks are local opt-in when a
+change affects visible terminal flow. See [`HARNESS.md`](./HARNESS.md).
 
-Three test tiers, three locations:
+Three test tiers:
 
 | Tier | Lives in | What it proves | Cost |
 |---|---|---|---|
 | Type-level | `test/types/*.test-d.ts` | The interface shape compiles correctly | ms (tsc) |
 | Unit | `test/{engine,orchestrator,tui}/*.test.ts(x)` | Pure logic correct (parsers, stores, reducers) | ~10ms each |
-| Behavior | `test/behavior/*.test.ts` | The product, run end-to-end under PTY, behaves correctly | ~30s each |
-
-### How a behavior test runs
-
-`test/behavior/driver.ts:137` (`spawnKobe`) launches `bun --preload @opentui/solid/preload src/cli/index.ts` inside a `node-pty` shell with `TERM=xterm-256color`, returns a handle:
-
-```ts
-sendKeys(seq) / typeText(s)   // write bytes to stdin
-capture()                      // ANSI-stripped plain-text snapshot
-captureRaw()                   // raw bytes, ANSI intact
-waitFor(predicate, timeoutMs)  // poll capture until pred or timeout
-exit()                         // SIGTERM → 750ms grace → SIGKILL
-```
-
-ANSI normalization is in `test/behavior/screen.ts`. Read it before
-asserting on screen text — it strips cursor codes, normalizes whitespace,
-collapses repeated blanks.
-
-### The fake engine — why it exists
-
-Real `claude` calls cost tokens, hit the network, are non-deterministic.
-For behavior tests we substitute `FakeAIEngine` (`test/behavior/fake-engine.ts`):
-
-- Pure in-memory `AIEngine` impl.
-- `script(sessionId, events[])` queues engine events.
-- `finish(sessionId)` closes the stream cleanly.
-- Sessions are deterministic: `fake-1`, `fake-2`, ...
-
-### The HTTP side-channel
-
-The behavior test runs in vitest under Node; kobe runs in a child Bun
-process under PTY. They can't share a `FakeAIEngine` instance via memory
-— so `src/tui/app.tsx:85` (`mountFakeEngineServer`) opens a tiny `http`
-server on `127.0.0.1:KOBE_TEST_FAKE_PORT` exposing four endpoints:
-
-| Endpoint | Purpose |
-|---|---|
-| `POST /script` | Push scripted events to a session |
-| `POST /finish` | Close a session's stream |
-| `POST /pr` | Trigger `requestPR` on the active task |
-| `POST /respond` | Resolve a pending `user_input.request` |
-
-`/pr` and `/respond` reach into the running app via two globals
-(`__kobeTestRequestPR`, `__kobeTestRespondToInput`) that the Shell
-mounts after the orchestrator is alive. The `/respond` path uses
-`Orchestrator.peekPendingInput()` (`src/orchestrator/core.ts:306`) to
-discover the latest requestId without faking SGR mouse events. This is
-the test seam called out in CHANGELOG `[0.1.1]`.
+| Daemon/socket | `test/daemon/*.test.ts`, `test/client/*.test.ts` | Wire protocol, lazy shutdown, channel replay, reconnect, web lifecycle | socket-bound |
+| PTY behavior | local-only harness per `HARNESS.md` | The product, run end-to-end under a terminal, behaves correctly | slow |
 
 ### When to use which tier
 
 - Pure logic? Unit test in `test/{engine,orchestrator,tui}/`. Fast, easy
   to diagnose.
-- "Does the chat render this event correctly?" Unit test against
-  `chat/store.ts` + `MessageList.tsx`.
+- "Does this daemon channel replay or RPC mutation work?" Socket test under
+  `test/daemon/` or `test/client/`.
+- "Does this sidebar row state render the right badge?" Unit test the pure
+  row-view Module under `test/tui/`.
 - "Does the user-visible product respond when I press `n`?" Behavior
   test. There's no substitute.
 - Type contract changes? `test/types/*.test-d.ts` with
@@ -389,28 +354,27 @@ state lives in dedicated dirs we own.
 
 | Location | Owned by | Contents |
 |---|---|---|
-| `~/.kobe/tasks.json` | `TaskIndexStore` (`src/orchestrator/index/store.ts`) | The task manifest — id, title, repo, branch, worktreePath, tabs, activeTabId, status, archived flag, permissionMode, model |
+| `~/.kobe/tasks.json` | `TaskIndexStore` (`src/orchestrator/index/store.ts`) | The task manifest — id, title, repo, branch, worktreePath, status, archived flag, vendor/model/settings, ordering, timestamps |
 | `~/.kobe/tasks.json.tmp` | `TaskIndexStore` (atomic write) | Transient — written then renamed over `tasks.json` |
 | `~/.kobe/<lockfile>` | `src/orchestrator/index/lockfile.ts` | Multi-process safety for the manifest |
 | `~/.config/kobe/state.json` | `src/tui/context/kv.tsx` (`KVProvider`) | Per-user UI state — selected theme, transparent-bg toggle, pane sizes, last-open task, expanded sidebar groups |
-| `~/.claude/projects/<encoded-cwd>/<sessionUUID>.jsonl` | Claude Code itself; we *read* via `engine.readHistory()` and *delete* via `engine.deleteHistory()` | Full message history per session. kobe never writes here. |
-| `~/.kobe/worktrees/<repo-key>/<slug>/` | `GitWorktreeManager` (`src/orchestrator/worktree/manager.ts`) | Per-task git worktree for new kobe-created tasks. Convention defined at `src/orchestrator/worktree/paths.ts:30`; repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` paths remain recognized for existing tasks. |
+| `~/.claude/projects/<encoded-cwd>/<sessionUUID>.jsonl` | Claude Code itself; kobe reads via engine history/usage Adapters | Full message history per Session. kobe never writes here. |
+| `~/.codex/sessions/**/rollout-*.jsonl` | Codex itself; kobe reads via engine history/usage Adapters | Codex Session history. kobe never writes here. |
+| `~/.kobe/worktrees/<repo-key>/<slug>/` | `GitWorktreeManager` (`src/orchestrator/worktree/manager.ts`) | Per-task git worktree for new kobe-created tasks. Convention defined in `src/orchestrator/worktree/paths.ts`; repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` paths remain recognized for existing tasks. |
 | `<worktreePath>/.kobe/pr-instructions.md` | Read by `src/orchestrator/pr/instructions.ts` | Optional per-repo override for the PR-creation prompt |
 
 What's deliberately NOT persisted:
 
-- Chat messages (Claude Code's JSONL is the source of truth).
-- Engine handles / PIDs (in-memory only — see
-  `src/engine/claude-code-local/registry.ts`).
-- Pending user-input requests (in-memory map at
-  `src/orchestrator/core.ts:230`; lost on restart, by design).
-- Pending worktree opts after `createTask` but before first `runTask`
-  (`src/orchestrator/core.ts:240` — process-scoped, fine because the
-  new-task flow always submits immediately).
+- Chat messages (engine transcript files are the source of truth).
+- tmux Session process state (tmux owns it; kobe re-adopts by task id /
+  session options).
+- Engine activity badges (`engine-state`) — transient in-memory daemon UI
+  state, replayed to subscribers but never persisted.
+- Daemon subscribers, sockets, and web server runtime state.
 
-Backwards compat: `Task.sessionId` (deprecated) is a read-only alias for
-`tabs[0].sessionId` so v1 manifests still load.
-`TaskIndex.version: 2` is the current shape — see `src/types/task.ts:138`.
+Backwards compat: older manifests with `sessionId`, `tabs`, or
+`activeTabId` are migrated by `TaskIndexStore`.
+`TaskIndex.version: 3` is the current shape — see `src/types/task.ts`.
 
 ---
 
@@ -420,12 +384,12 @@ DESIGN.md §12 is the authoritative list. Highlights:
 
 | Not in kobe | Where it'd live if we did it | Why we don't |
 |---|---|---|
-| Conductor-as-backend (was "Phase 2") | A `ConductorBackend implements AIEngine` next to `ClaudeCodeLocal/` | Dropped 2026-05-09 — no real product driver. The `AIEngine` seam stays in place if a concrete swap need ever surfaces. |
-| Vendor-neutral model abstraction (`@ai-sdk/*` etc) | n/a | Engine port is at the *Claude Code session* level, not the *LLM call* level. We are opinionated about the engine. |
+| Conductor-as-backend (was "Phase 2") | A separate daemon/orchestrator Adapter | Dropped 2026-05-09 — no real product driver. |
+| Vendor-neutral model abstraction (`@ai-sdk/*` etc) | n/a | kobe runs local interactive engine CLIs. Engine Adapters normalize command launch, hooks, history, usage, and identity; they do not abstract LLM API calls. |
 | Cloud sync, multi-machine state | n/a | Local-first. Single developer per machine. |
 | Team collaboration | n/a | Single-developer-focused. |
 | Plugin system for panes | n/a | Every pane is hardcoded. Pluggability is at the engine layer only. |
-| Web/mobile UI | n/a | Terminal is a feature (DESIGN.md §2.3), not a constraint we want to escape. |
+| Production web/mobile UI | n/a | The terminal TUI is the product. `kobe web` is early experimental as of 2026-06-09, for local dashboard experiments only. |
 | Auto-update mechanism | TopBar shows a chip when a newer version is on npm — see `src/version.ts` — but kobe does not self-install. The chip links to the install command. | Auto-install was deferred from Wave 4. |
 | Status state machine in the sidebar UI | The state machine still exists on disk (`Task.status: backlog | in_progress | in_review | done | canceled | error`) — it drives the concurrency cap and is wired through. The sidebar groups by Working / Archives instead of by status. | Conductor-style status grouping was simplified. The 5 status states are kept on disk so the experimental flag can re-introduce the UI later. |
 
@@ -440,7 +404,7 @@ If you find yourself reaching for any of the above, stop and ask first.
 1. Create `src/tui/panes/<name>/` with at least an `index.ts` and a
    component file. Mirror the shape of an existing pane (`filetree/`
    is small and self-contained).
-2. Add the pane id to `PaneId` in `src/tui/context/focus.tsx:37` and
+2. Add the pane id to `PaneId` in `src/tui/context/focus.tsx` and
    to `PANE_ORDER` if you want it in the tab cycle.
 3. Mount the component inside `Shell` in `src/tui/app.tsx`. Wrap it in
    a `<box onMouseUp={() => setFocusedPane(...)}>` so click-to-focus
@@ -448,38 +412,28 @@ If you find yourself reaching for any of the above, stop and ask first.
    convention.
 4. Pane-local keybindings register inside the pane component via
    `useBindings()`, gated on `useFocus().is("<name>")()`.
-5. Write at least one behavior test under `test/behavior/<name>.test.ts`.
-   If the pane needs scope isolation (file tree, preview, terminal
-   already do this), add a host-mode env var branch in
-   `src/cli/index.ts:33` and a fixture under
-   `test/behavior/fixtures/<name>-host.tsx`.
+5. Write focused unit tests for pure row/state/keymap logic. If the pane
+   needs visible terminal validation, use the local PTY harness described in
+   `docs/HARNESS.md`.
 
-### A new tool-result renderer
+### A new engine activity hook
 
-1. The `ChatRow` union is in `src/tui/panes/chat/store.ts:81`. Tool rows
-   are already supported — most new tools just need a render branch.
-2. Render branches live in `src/tui/panes/chat/MessageList.tsx`. Find
-   the tool-row switch and add a case keyed on `name`.
-3. If the tool *pauses for user input* (like `ExitPlanMode` and
-   `AskUserQuestion`), the path is bigger:
-   - Extend `UserInputPayload` in `src/types/engine.ts:185`.
-   - Add a detector branch in `detectUserInputFromEngineEvent`
-     (`src/orchestrator/core.ts:1177`).
-   - Add a synthetic-prompt builder in `renderUserInputResponsePrompt`
-     (`src/orchestrator/core.ts:1243`).
-   - Render the picker in `MessageList.tsx`; wire its callback to
-     `orchestrator.respondToInput(taskId, requestId, response)`.
-4. Mirror the upstream tool's schema from `refs/claude-code/src/tools/`
-   so kobe stays render-compatible.
+1. Add vendor-specific parsing in `src/engine/<vendor>-local/hook-adapter.ts`.
+   The Adapter translates raw hook input into the shared
+   `EngineActivityKind` / detail shape from `src/engine/hook-events.ts`.
+2. Extend `reduceActivity` only when the shared task-activity state machine
+   needs a new state. Keep vendor-only fields out of the daemon protocol.
+3. Report the normalized event through `engine.reportEvent`; the daemon
+   maps `cwd` to a Task, folds the event into `engine-state`, and replays
+   current non-idle states to late subscribers.
+4. Add a focused daemon socket test under `test/daemon/` and, if a visible
+   badge changes, a sidebar row-view-model unit test under `test/tui/`.
 
-### A new behavior test
+### A new visible-flow check
 
-Already covered by `test/behavior/README.md` — read it. The 30-second
-version: copy `test/behavior/example.test.ts`, replace the assertions,
-remember to `await kobe.exit()` in `afterEach`, set `KOBE_TEST_ENGINE=fake`
-and a unique `KOBE_TEST_FAKE_PORT` if you need to script engine output.
-The MEMORY entry "Don't spin in test loops while debugging" applies —
-each behavior test costs ~30s; cap at ~2 runs per debug cycle.
+Use `docs/HARNESS.md` for local PTY checks when a change affects what the
+user sees or how keys route through the terminal. Keep the loop bounded:
+capture a failing screen, fix the narrow cause, then rerun once or twice.
 
 ### A new orchestrator method
 
@@ -487,17 +441,15 @@ each behavior test costs ~30s; cap at ~2 runs per debug cycle.
    the existing shape: `requireTask(id)` to fetch + throw,
    `IllegalTransitionError` for state-machine violations, `await`
    `store.update(...)` so the listener bus refreshes the Solid signal
-   automatically (don't call any explicit `refreshSignal()` — see the
-   class-level comment at `src/orchestrator/core.ts:42-49`).
-2. Add a unit test in `test/orchestrator/core.test.ts` against
-   `FakeAIEngine` (`test/behavior/fake-engine.ts` is reusable — but
-   import the test-only `_engine-types.ts` mirror).
-3. If the method is user-facing, surface it through the chat or
-   sidebar handlers in `src/tui/app.tsx` and add a behavior test.
-4. Engines never know about new orchestrator methods — keep the engine
-   port minimal. If a new method needs new engine capability, that's an
-   `AIEngine` interface change too, and `ClaudeCodeLocal` plus
-   `FakeAIEngine` must both update.
+   automatically; don't call any explicit refresh hook from UI code.
+2. Add a unit test under `test/orchestrator/` or a daemon RPC/socket test if
+   the method is exposed over the daemon.
+3. If the method is user-facing, surface it through `RemoteOrchestrator` /
+   daemon RPC and the relevant pane handler, then run a visible-flow check
+   when key routing or terminal output changes.
+4. Engine Adapters do not know about new orchestrator methods. If a method
+   needs engine-specific data, extend the Adapter-owned history/hook/usage
+   surface instead of threading vendor checks through the UI.
 
 ---
 

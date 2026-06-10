@@ -18,7 +18,7 @@ import {
   installDaemonCrashHandlers,
   logDaemonError,
   resetDaemonCrashHandlersForTest,
-} from "@/daemon/crash-log"
+} from "@sma1lboy/kobe-daemon/daemon/crash-log"
 import { afterEach, describe, expect, test, vi } from "vitest"
 
 afterEach(() => {

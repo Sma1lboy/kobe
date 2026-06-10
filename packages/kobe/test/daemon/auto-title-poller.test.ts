@@ -8,8 +8,8 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { runAutoTitlePass } from "@sma1lboy/kobe-daemon/daemon/auto-title-poller"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { runAutoTitlePass } from "../../src/daemon/auto-title-poller.ts"
 import { Orchestrator, PLACEHOLDER_TASK_TITLE } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
@@ -53,6 +53,17 @@ describe("runAutoTitlePass", () => {
     expect(orch.getTask(placeholderWithWorktree)?.title).toBe("title-for-/wt/a")
     expect(orch.getTask(alreadyNamed)?.title).toBe("Fix login 500")
     expect(orch.getTask(placeholderNoWorktree)?.title).toBe(PLACEHOLDER_TASK_TITLE)
+  })
+
+  test("skips archived tasks even when still placeholder", async () => {
+    const archived = await makeTask({ worktree: "/wt/arch" })
+    await store.update(archived, { archived: true })
+    const active = await makeTask({ worktree: "/wt/active" })
+
+    const renamed = await runAutoTitlePass(orch, async (worktree) => `title-for-${worktree}`)
+
+    expect(renamed.map((r) => r.id)).toEqual([active])
+    expect(orch.getTask(archived)?.title).toBe(PLACEHOLDER_TASK_TITLE)
   })
 
   test("leaves the placeholder when the deriver yields no title", async () => {

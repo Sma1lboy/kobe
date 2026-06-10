@@ -102,7 +102,11 @@ const realDeps: ChatTabNamingDeps = {
 export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNamingDeps = realDeps): Promise<number> {
   let renamed = 0
   for (const task of orch.listTasks()) {
-    if (task.kind === "main" || !task.worktreePath) continue
+    // Archived tasks are settled — skip before the per-task `tmux list-windows`
+    // shell-out + transcript reads, which otherwise ran every tick for every
+    // archived task and scaled with the archive size. Un-archiving re-includes
+    // the task on the next tick. Matches the sidebar's `t.archived` predicate.
+    if (task.archived || task.kind === "main" || !task.worktreePath) continue
     const session = tmuxSessionName(task.id)
     const windows = await listChatTabWindows(session, deps.runner)
     if (windows.length === 0) continue

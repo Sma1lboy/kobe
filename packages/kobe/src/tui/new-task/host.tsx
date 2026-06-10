@@ -18,28 +18,23 @@
  * lockstep.
  */
 
-import { render } from "@opentui/solid"
+import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
-import { connectOrStartDaemon } from "../../client/daemon-process.ts"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
+import { availableEngineIds } from "../../engine/account-detect.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
-import { FocusProvider } from "../context/focus"
-import { KVProvider } from "../context/kv"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
-import { DialogProvider, useDialog } from "../ui/dialog"
-
-const FALLBACK_THEME = "claude"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
+import { useDialog } from "../ui/dialog"
 
 export interface NewTaskHostArgs {
   /** Default repo to pre-select (the Tasks pane's cursor-task repo). */
   readonly defaultRepo?: string
 }
 
-function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator | null }) {
+export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator | null }) {
   const { theme } = useTheme()
   const dialog = useDialog()
 
@@ -53,10 +48,12 @@ function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator
     const repos = getSavedRepos()
     const defaultRepo = props.defaultRepo || repos[0] || process.cwd()
     const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const availableVendors = await availableEngineIds()
     const orch = props.orchestrator
 
     const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
       defaultVendor,
+      availableVendors,
       discoverAdoptable: orch ? (repo) => orch.discoverAdoptableWorktrees(repo) : undefined,
     })
     if (!result) {
@@ -103,42 +100,23 @@ function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrchestrator
 }
 
 export async function startNewTaskHost(args: NewTaskHostArgs): Promise<void> {
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-
-  let orch: RemoteOrchestrator | null = null
-  try {
-    const client = await connectOrStartDaemon()
-    const remote = new RemoteOrchestrator(client)
-    await remote.init()
-    orch = remote
-  } catch (err) {
-    console.error("[kobe new-task] daemon unavailable; cannot create task:", err)
-  }
-
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              <NewTaskPage defaultRepo={args.defaultRepo} orchestrator={orch} />
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-      onDestroy: () => {
-        orch?.dispose()
-      },
+  await bootPaneHost({
+    setup: async () => {
+      let orch: RemoteOrchestrator | null = null
+      try {
+        const client = await connectOrStartDaemon()
+        const remote = new RemoteOrchestrator(client)
+        await remote.init()
+        orch = remote
+      } catch (err) {
+        console.error("[kobe new-task] daemon unavailable; cannot create task:", err)
+      }
+      return {
+        root: () => <NewTaskPage defaultRepo={args.defaultRepo} orchestrator={orch} />,
+        onDestroy: () => {
+          orch?.dispose()
+        },
+      }
     },
-  )
+  })
 }

@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import type { KobeDaemonClient } from "../../src/client/index.ts"
 import { RemoteOrchestrator } from "../../src/client/remote-orchestrator.ts"
 
 /**

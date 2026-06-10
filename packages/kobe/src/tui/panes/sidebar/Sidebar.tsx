@@ -12,8 +12,10 @@
  *   │ Working session   Archives             │
  *   │                                        │
  *   │ PROJECTS ──────────────────────────    │
- *   │ ★ kobe                      ~/i/kobe    │
- *   │ ★ pochi                     ~/i/pochi   │
+ *   │ ★ kobe                                 │
+ *   │   main                       +3 −1     │
+ *   │ ★ pochi                                │
+ *   │   feat/login-fix                       │
  *   │                                        │
  *   │ TASKS ─────────────────────────────    │
  *   │ ▌⠹ fix login redirect bug    working   │
@@ -21,20 +23,19 @@
  *   │                                        │
  *   │   ○ add password reset                 │
  *   │     backlog                            │
- *   │                                        │
- *   │ + New task                              │
  *   └───────────────────────────────────────┘
  *
  * Each section gets a small BOLD CAPS header + trailing rule. A PROJECT
- * row is a compact single line: ★ + repo name, with the repo
- * dir (home-abbreviated) on the right — or an animated `working` chip
- * while that repo-root session is live. A TASK row is a small two-line
- * card: line 1 = status badge + title + a `working` chip while the
- * engine streams; line 2 = the branch (or a status word when the task
- * has no branch yet) + the `+N −M` uncommitted-change chip. Tasks carry
- * a trailing blank line so each reads as its own card; projects sit
- * tight. The cursor row gets a left accent ▌ and a subtle background
- * tint; the active row keeps a dimmer ▌ when the cursor moves off it.
+ * row is a two-line card like a task: line 1 = ★ (an animated spinner
+ * while its repo-root session is live) + repo name; line 2 = the repo
+ * root's current branch + the `+N −M` uncommitted-change chip. (The repo
+ * dir moved to the hover tooltip.) A TASK row is the same two-line card:
+ * line 1 = status badge + title + a `working` chip while the engine
+ * streams; line 2 = the branch (or a status word when the task has no
+ * branch yet) + the `+N −M` change chip. Tasks carry a trailing blank
+ * line so each reads as its own card; projects sit tight. The cursor row
+ * gets a left accent ▌ and a subtle background tint; the active row keeps
+ * a dimmer ▌ when the cursor moves off it.
  *
  * Loading is driven by `task.status === "in_progress"` (the Tasks pane's
  * only liveness signal — chatRunState is unwired there) or a live engine
@@ -72,7 +73,7 @@
  */
 
 import type { TaskEngineState } from "@/client/remote-orchestrator"
-import type { Task, TaskStatus } from "@/types/task"
+import type { Task } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
@@ -90,10 +91,12 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
-import { type SidebarView, buildRows, flattenIds, repoBasename } from "./groups"
+import { currentBranch, pollCurrentBranch } from "./git-head"
+import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
-import { readWorktreeChanges } from "./worktree-changes"
+import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
+import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
 
 export type SidebarProps = {
   tasks: Accessor<readonly Task[]>
@@ -145,12 +148,10 @@ export type SidebarProps = {
    * stateless of the toggle.
    */
   onPinRequest?: (taskId: string) => void
-  /**
-   * Optional callback for the `+ New task` footer affordance. Left
-   * undefined this stream; the global `n`/`ctrl+n` bindings remain the
-   * canonical entry point.
-   */
-  onAddTask?: () => void
+  /** Display ordering for task rows. Defaults to the persisted/manual order. */
+  sortMode?: Accessor<TaskSortMode>
+  /** Cycle the display ordering (`t`). */
+  onSortModeToggle?: () => void
   /**
    * Fires when the `/`-search filter opens or closes. Lifted out of
    * the sidebar so the app-level Shell can gate its sidebar-scoped
@@ -167,14 +168,22 @@ export type SidebarProps = {
    */
   width?: Accessor<number>
   /**
-   * Optional right-aligned status in the `kobe` brand header — the Tasks pane
-   * wires the version / "update available" chip here (it moved up from the
-   * footer's old `── system ──` block). `emphasize: true` paints it in the
-   * warning colour (an update is waiting); omit / return `null` to hide it.
+   * Optional status chip in the `kobe` brand header — the Tasks pane wires
+   * the version / "update available" chip here (it moved up from the footer's
+   * old `── system ──` block). It sits in the left cluster right after the
+   * KOBE name. `emphasize: true` paints it in the warning colour (an update is
+   * waiting); omit / return `null` to hide it.
    */
   headerStatus?: Accessor<{ label: string; emphasize: boolean } | null>
   /** Click handler for {@link headerStatus} — e.g. open the update page. */
   onHeaderStatusClick?: () => void
+  /**
+   * Optional new-task affordance: when wired, a clickable `+` renders at the
+   * end of the brand-header cluster (after the version) and fires this — the
+   * SAME create flow as the `n` chord. Omitted (e.g. the deprecated outer
+   * monitor) renders no `+`.
+   */
+  onAddTask?: () => void
   /**
    * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
    * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
@@ -197,59 +206,6 @@ export type SidebarProps = {
    */
   engineState?: Accessor<ReadonlyMap<string, TaskEngineState>>
 }
-
-/**
- * Glyph + theme-token name for each status's badge. We render the glyph
- * with the theme colour resolved at render time; storing the *tone* (not
- * the resolved RGBA) keeps badges reactive to theme switches.
- *
- * Each status now uses a *distinct* glyph so the row is readable without
- * relying on colour alone — teammate feedback was that the old
- * dot-on-dot-on-half-dot set wasn't legible. `in_progress` is special:
- * its glyph is the empty string here and the renderer substitutes the
- * current frame of {@link IN_PROGRESS_SPINNER} (rotating braille) so an
- * active task visibly *moves*.
- *
- * Per-task hint only — no grouping reads from this map.
- */
-const STATUS_BADGE: Record<
-  TaskStatus,
-  { glyph: string; tone: "success" | "warning" | "primary" | "textMuted" | "error" }
-> = {
-  done: { glyph: "✓", tone: "success" },
-  in_review: { glyph: "◐", tone: "warning" },
-  in_progress: { glyph: "", tone: "primary" },
-  backlog: { glyph: "○", tone: "textMuted" },
-  canceled: { glyph: "⊘", tone: "textMuted" },
-  error: { glyph: "✕", tone: "error" },
-}
-
-/**
- * Human-readable status words for a card's second (metadata) line, shown
- * only when the task has no branch yet to put there — so a backlog task
- * reads `backlog` rather than a blank subtitle, keeping every card a
- * consistent two lines tall.
- */
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  done: "done",
-  in_review: "in review",
-  in_progress: "working",
-  backlog: "backlog",
-  canceled: "canceled",
-  error: "error",
-}
-
-/**
- * Braille spinner frames for the `in_progress` row badge. Standard
- * dots-rotating cycle (the same one npm / yarn / most CLI loaders use),
- * picked because it reads as motion in a *single cell* — drop-in for the
- * one-cell badge slot. Sub-pixel-style rotation makes "active" obvious
- * without enlarging the row.
- */
-const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-
-/** Spinner tick (ms). 100ms matches the standard CLI loader cadence. */
-const SPINNER_FRAME_MS = 100
 
 /**
  * Tab labels for the view switcher. Order matches the `SidebarView`
@@ -458,7 +414,8 @@ export function Sidebar(props: SidebarProps) {
   // the upstream tasks accessor, the view, or the search query
   // changes. Search query is only applied when `searchMode` is on so
   // we don't keep filtering against stale query text after esc-cancel.
-  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : ""))
+  const sortMode = (): TaskSortMode => props.sortMode?.() ?? "default"
+  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode()))
   const flatIds = createMemo(() => flattenIds(rows()))
   // The list is two sections: PROJECTS (the `main` repo-root rows, which
   // `buildRows` always emits first) then all TASKS (worktrees) flat — NOT
@@ -472,7 +429,7 @@ export function Sidebar(props: SidebarProps) {
     return idx < 0 ? -1 : r[idx]!.flatIndex
   })
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
-  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "")).length)
+  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "", sortMode())).length)
 
   // Two-line card budgets. The width accessor is the Shell-driven splitter
   // width in the outer monitor and the live tmux pane width in the Tasks pane
@@ -595,6 +552,7 @@ export function Sidebar(props: SidebarProps) {
     onRenameRequest: (id) => props.onRenameRequest?.(id),
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
+    onSortModeToggle: () => props.onSortModeToggle?.(),
     searchMode,
     onSearchEnter: () => enterSearch(),
     onSearchExit: (select) => exitSearch(select),
@@ -605,14 +563,19 @@ export function Sidebar(props: SidebarProps) {
   // section from the TASKS section. `topPad` adds a blank line above so the
   // TASKS header lifts off the tight project list; the PROJECTS header sits
   // flush under the view tabs.
-  const SectionHeader = (p: { label: string; topPad?: boolean }) => (
+  const SectionHeader = (p: { label: string; suffix?: string; topPad?: boolean }) => (
     <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} paddingTop={p.topPad ? 1 : 0}>
       <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
         {p.label}
       </text>
       <text fg={theme.border} wrapMode="none">
-        {"─".repeat(Math.max(2, effectiveWidth() - 9 - p.label.length))}
+        {"─".repeat(Math.max(2, effectiveWidth() - 10 - p.label.length - (p.suffix?.length ?? 0)))}
       </text>
+      <Show when={p.suffix}>
+        <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none">
+          {p.suffix}
+        </text>
+      </Show>
     </box>
   )
 
@@ -634,6 +597,9 @@ export function Sidebar(props: SidebarProps) {
           column. The root box has no horizontal padding — the pane sits
           flush to its tmux edges; this 1 cell is the kobe selection gutter,
           not padding. */}
+      {/* Brand header: a left cluster (KOBE + the version/update chip hugging
+          the name) and a clickable `[+]` new-task button pushed to the far
+          right (justify space-between). */}
       <box
         flexDirection="row"
         justifyContent="space-between"
@@ -642,24 +608,36 @@ export function Sidebar(props: SidebarProps) {
         paddingLeft={1}
         paddingRight={1}
       >
-        <text
-          fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
-          attributes={TextAttributes.BOLD}
-          wrapMode="none"
-        >
-          KOBE
-        </text>
-        <Show when={props.headerStatus?.()}>
-          {(status) => (
-            <text
-              fg={status().emphasize ? theme.warning : theme.textMuted}
-              attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
-              wrapMode="none"
-              onMouseUp={() => props.onHeaderStatusClick?.()}
-            >
-              {status().label}
-            </text>
-          )}
+        <box flexDirection="row" gap={1}>
+          <text
+            fg={focusedAccessor() ? theme.focusAccent : theme.textMuted}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            KOBE
+          </text>
+          <Show when={props.headerStatus?.()}>
+            {(status) => (
+              <text
+                fg={status().emphasize ? theme.warning : theme.textMuted}
+                attributes={status().emphasize ? TextAttributes.BOLD : TextAttributes.DIM}
+                wrapMode="none"
+                onMouseUp={() => props.onHeaderStatusClick?.()}
+              >
+                {status().label}
+              </text>
+            )}
+          </Show>
+        </box>
+        <Show when={props.onAddTask}>
+          <text
+            fg={theme.primary}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+            onMouseUp={() => props.onAddTask?.()}
+          >
+            [+]
+          </text>
         </Show>
       </box>
 
@@ -701,24 +679,50 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* View switcher: tab strip with the active view emphasized by
-          colour + bold, no brackets. `[` / `]` toggles. */}
-      <box flexDirection="row" gap={2} paddingBottom={1} paddingLeft={1}>
-        <For each={VIEW_TABS}>
-          {(tab) => {
-            const active = () => view() === tab.view
-            return (
-              <text
-                fg={active() ? theme.primary : theme.textMuted}
-                attributes={active() ? TextAttributes.BOLD : undefined}
-                wrapMode="none"
-                onMouseUp={() => setView(tab.view)}
-              >
-                {tab.label}
-              </text>
-            )
-          }}
-        </For>
+      {/* View switcher + sort toggle. `[` / `]` toggles the view; `t`
+          cycles default/manual order vs recent-use order. Non-default
+          sort state is shown on the TASKS section header. */}
+      <box
+        flexDirection="row"
+        justifyContent="space-between"
+        gap={1}
+        paddingBottom={1}
+        paddingLeft={1}
+        paddingRight={1}
+      >
+        <box flexDirection="row" gap={2}>
+          <For each={VIEW_TABS}>
+            {(tab) => {
+              const active = () => view() === tab.view
+              return (
+                <text
+                  fg={active() ? theme.primary : theme.textMuted}
+                  attributes={active() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                  onMouseUp={() => setView(tab.view)}
+                >
+                  {tab.label}
+                </text>
+              )
+            }}
+          </For>
+          {/* Subtle chord hint so new users discover `[`/`]` switches the
+              view without hunting the footer legend. Quiet (muted + DIM),
+              non-interactive — it doesn't alter tab layout or clicks. */}
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+            [/]
+          </text>
+        </box>
+        <Show when={props.sortMode}>
+          <text
+            fg={theme.textMuted}
+            attributes={TextAttributes.DIM}
+            wrapMode="none"
+            onMouseUp={() => props.onSortModeToggle?.()}
+          >
+            sort
+          </text>
+        </Show>
       </box>
 
       {/* Body: scrollable flat task list. Stretches with flexGrow so
@@ -742,7 +746,6 @@ export function Sidebar(props: SidebarProps) {
               const isCursor = () => flatIndex === cursorIndex()
               const isSelected = () => task.id === props.selectedId()
               const isMain = task.kind === "main"
-              const badge = STATUS_BADGE[task.status]
               // "Is this task actually streaming a turn right now?"
               // True when the orchestrator holds a live engine handle for
               // ANY of this task's tabs — covers multi-tab tasks where the
@@ -758,11 +761,8 @@ export function Sidebar(props: SidebarProps) {
                 }
                 return false
               })
-              const badgeColor = () => {
-                if (isMain) return theme.primary
-                // Any live tab → use primary (spinner) colour.
-                if (isLive()) return theme.primary
-                switch (badge.tone) {
+              const toneColor = (tone: SidebarTone) => {
+                switch (tone) {
                   case "success":
                     return theme.success
                   case "warning":
@@ -776,74 +776,45 @@ export function Sidebar(props: SidebarProps) {
                 }
               }
               // Per-row "uncommitted changes" file counts, rendered on
-              // the right edge as `+N −M`. Keyed on the same `branchTick`
-              // so we only shell out at the established 2s cadence.
-              // Empty when the worktree is clean — the renderer skips
-              // the chip entirely. Returned as a struct (not a joined
-              // string) so the renderer can colour `+N` with
-              // `theme.success` and `−N` with `theme.error`, matching
-              // the FileTree pane's per-file `+/−` badges.
+              // the right edge as `+N −M`. The `branchTick` read keeps
+              // the ~2s cadence, but the git status itself runs through
+              // the ASYNC poller — a huge worktree costs a background
+              // child process, never a frozen event loop (a 30GB repo's
+              // sync `git status` used to hard-freeze the pane the
+              // moment its row rendered). Archived rows don't poll at
+              // all: the Archives view must not pay git-status for
+              // shelved worktrees — that listing was the reported
+              // trigger. Empty when the worktree is clean — the
+              // renderer skips the chip entirely. Returned as a struct
+              // (not a joined string) so the renderer can colour `+N`
+              // with `theme.success` and `−N` with `theme.error`,
+              // matching the FileTree pane's per-file `+/−` badges.
               const changes = createMemo(() => {
                 branchTick()
-                return readWorktreeChanges(task.worktreePath)
+                if (!task.archived) pollWorktreeChanges(task.worktreePath)
+                return worktreeChanges(task.worktreePath)
               })
-              const titleText = isMain ? repoBasename(task.repo) : task.title
-              // Engine activity (event-driven, from hooks) — the PRIMARY
-              // signal when present. Falls through to the older heuristics
-              // below when a task has no hook event yet (poll fallback).
-              const activity = () => props.engineState?.().get(task.id)?.state
-              const hasActivity = () => activity() !== undefined
-              // Loading = the engine is actively working this task. Priority:
-              //   1. event-driven `running` (hooks) → working
-              //   2. a live engine handle (chatRunState, outer monitor)
-              //   3. persisted `in_progress` (Tasks-pane fallback; NEVER for a
-              //      `main` row — its status isn't lifecycle-maintained, so a
-              //      stale in_progress would pin "working" on forever).
-              // A non-idle engine state that ISN'T `running` (rate_limited /
-              // permission_needed / error / turn_complete) is NOT "working" —
-              // it gets its own chip below instead of the spinner.
-              const loading = () =>
-                activity() === "running" || isLive() || (!hasActivity() && !isMain && task.status === "in_progress")
-              // Single-cell activity badge for non-running engine states.
-              // The row's first glyph slot is the only live-status surface:
-              // spinner while running, icon while waiting/limited/done/error.
-              const activityBadge = (): { glyph: string; tone: "primary" | "warning" | "error" } | null => {
-                switch (activity()) {
-                  case "rate_limited":
-                    return { glyph: "◷", tone: "warning" }
-                  case "permission_needed":
-                    return { glyph: "?", tone: "warning" }
-                  case "error":
-                    return { glyph: "✕", tone: "error" }
-                  case "turn_complete":
-                    return { glyph: "✓", tone: "primary" }
-                  default:
-                    return null
-                }
-              }
-              const stateGlyph = () => {
-                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
-                return activityBadge()?.glyph ?? badge.glyph
-              }
-              const projectGlyph = () => {
-                if (loading()) return IN_PROGRESS_SPINNER[spinnerFrame()] ?? IN_PROGRESS_SPINNER[0]
-                return activityBadge()?.glyph ?? "★"
-              }
-              const stateColor = () => {
-                const active = activityBadge()
-                if (!loading() && active) {
-                  if (active.tone === "error") return theme.error
-                  if (active.tone === "warning") return theme.warning
-                  return theme.primary
-                }
-                return badgeColor()
-              }
-              // Task-card subtitle (line 2): the branch, or a human status word
-              // when there's no branch yet, so every card stays two lines tall.
-              const subtitleText = createMemo(() => {
-                if (task.branch.length > 0) return truncateBranchLabel(task.branch, subtitleBudget())
-                return STATUS_LABEL[task.status]
+              // A `main` (project) row's branch isn't stored on the task — it's
+              // the repo root's live checkout. Resolve it on the same 2s tick as
+              // the change chip, through the same ASYNC poller pattern — even an
+              // O(1) ref read must not spawnSync on the render thread.
+              const projectBranch = createMemo(() => {
+                branchTick()
+                if (isMain) pollCurrentBranch(task.repo)
+                return isMain ? currentBranch(task.repo) : ""
               })
+              const rowView = createMemo(() =>
+                buildSidebarRowView({
+                  task,
+                  activity: props.engineState?.().get(task.id),
+                  live: isLive(),
+                  spinnerFrame: spinnerFrame(),
+                  subtitleBudget: subtitleBudget(),
+                  truncateBranch: truncateBranchLabel,
+                  mainBranch: projectBranch(),
+                }),
+              )
+              const stateColor = () => (isMain && !rowView().loading ? theme.primary : toneColor(rowView().tone))
               // Accent edge: focus-accent ▌ on the cursor row, a quieter
               // (dimmed primary) ▌ on the active row when the two differ after
               // j/k nav, a bare space otherwise to hold the gutter.
@@ -861,7 +832,11 @@ export function Sidebar(props: SidebarProps) {
                     <SectionHeader label="PROJECTS" />
                   </Show>
                   <Show when={showTasksHeader()}>
-                    <SectionHeader label="TASKS" topPad={firstTaskFlatIndex() > 0} />
+                    <SectionHeader
+                      label="TASKS"
+                      suffix={sortMode() === "default" ? undefined : sortMode()}
+                      topPad={firstTaskFlatIndex() > 0}
+                    />
                   </Show>
                   {/* Interactive row body. The cursor row carries a SUBTLE
                       `backgroundElement` tint (a quiet block, not the old
@@ -884,24 +859,45 @@ export function Sidebar(props: SidebarProps) {
                     onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
                     onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
                   >
-                    {/* PROJECT row (a `main` repo-root) — a compact single line:
-                        ★ + repo name, with the repo dir (or a "working" chip
-                        while its session is live) on the right. */}
+                    {/* PROJECT row (a `main` repo-root) — a two-line card like a
+                        task: line 1 = ★ (or spinner while its session is live) +
+                        repo name; line 2 = the repo root's current branch + the
+                        `+N −M` change chip. The repo path lives in the hover. */}
                     <Show when={isMain}>
+                      {/* Line 1: accent edge + ★/spinner + repo name. */}
                       <box flexDirection="row" gap={0}>
                         <text fg={barColor()} wrapMode="none">
                           {barGlyph()}
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {projectGlyph()}
+                            {rowView().projectGlyph}
                           </text>
                           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-                            {spacedTitle(titleText, titleBudget())}
+                            {spacedTitle(rowView().titleText, titleBudget())}
                           </text>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                            {` ${truncatePathTail(abbrevHome(task.repo), subtitleBudget())}`}
+                        </box>
+                      </box>
+                      {/* Line 2: accent edge + repo-root branch + change chip,
+                          indented under the name (mirrors the task card's line 2). */}
+                      <box flexDirection="row" gap={0}>
+                        <text fg={barColor()} wrapMode="none">
+                          {barGlyph()}
+                        </text>
+                        <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+                            {rowView().subtitleText}
                           </text>
+                          <Show when={changes().added > 0}>
+                            <text fg={theme.success} wrapMode="none">
+                              +{changes().added}
+                            </text>
+                          </Show>
+                          <Show when={changes().deleted > 0}>
+                            <text fg={theme.error} wrapMode="none">
+                              −{changes().deleted}
+                            </text>
+                          </Show>
                         </box>
                       </box>
                     </Show>
@@ -915,7 +911,7 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
                           <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {stateGlyph()}
+                            {rowView().stateGlyph}
                           </text>
                           <text
                             fg={theme.text}
@@ -923,7 +919,7 @@ export function Sidebar(props: SidebarProps) {
                             wrapMode="none"
                             flexGrow={1}
                           >
-                            {spacedTitle(titleText, titleBudget())}
+                            {spacedTitle(rowView().titleText, titleBudget())}
                           </text>
                           <Show when={props.moveMode?.() && isCursor()}>
                             <text fg={theme.warning} wrapMode="none">
@@ -941,7 +937,7 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
                           <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                            {subtitleText()}
+                            {rowView().subtitleText}
                           </text>
                           <Show when={task.pinned === true}>
                             <text fg={theme.warning} wrapMode="none">
@@ -972,20 +968,22 @@ export function Sidebar(props: SidebarProps) {
                 {searchMode() && searchQuery().trim().length > 0
                   ? "No matching tasks — esc to clear."
                   : view() === "active"
-                    ? "No active tasks."
+                    ? "No active tasks — press n or [+] to create one."
                     : "No archived tasks."}
+              </text>
+            </box>
+          </Show>
+          {/* Non-empty Archives: remind the user `a` returns a row to Working.
+              Only shown when there's actually a row to act on. */}
+          <Show when={view() === "archived" && flatIds().length > 0}>
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                a to unarchive
               </text>
             </box>
           </Show>
         </box>
       </scrollbox>
-
-      {/* Footer: "+ New task" affordance. */}
-      <box flexShrink={0} paddingTop={1} paddingLeft={1}>
-        <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => props.onAddTask?.()}>
-          + New task
-        </text>
-      </box>
 
       {/* Hover tooltip overlay. Absolute + high zIndex so it floats above the
           rows; anchored just below-right of the cursor and clamped inside the

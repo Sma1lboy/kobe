@@ -2,9 +2,10 @@
 
 > Design doc. Historical. Tracks the original decision shape when the
 > daemon was its own `kobed` binary. As of KOB-136 the daemon was
-> merged into the single `kobe` binary as `kobe daemon ...`; this doc
-> retains the original wording (e.g. `kobed start`) since it documents
-> the design at the time it was made. For current usage see
+> merged into the single `kobe` binary as `kobe daemon ...`, and the daemon
+> code now lives in `packages/kobe-daemon/`; this doc retains the original
+> wording (e.g. `kobed start`) since it documents the design at the time it
+> was made. For current usage see
 > [`cli-api.md`](./cli-api.md) §6.
 >
 > Original Linear epic:
@@ -229,7 +230,7 @@ resume per task via `r` is fine for the first cut.
 | Wave | Title | Scope |
 |---|---|---|
 | **D0** | Core extract | Move `Orchestrator`, `TaskIndexStore`, worktree manager, bridge server out of TUI imports. Define a `KobeCore` boundary that is TUI-free — no dependency on opentui or anything that renders. Solid signals stay as an in-process reactive primitive (the TUI happens to consume the same primitive, but the core doesn't depend on rendering). No behavioural change — kobe still runs as one process, but `KobeCore` is now a self-contained module. |
-| **D1** | Wire protocol + transport | Implement the JSON-line socket server (server-side push + request/response). Reuse [`orchestrator/bridge/server.ts`](../../packages/kobe/src/orchestrator/bridge/server.ts) shape. Build a typed client (`packages/kobe/src/client/`). Both still in-process for now — TUI talks to a "loopback" client that calls the server via the socket inside the same process. Validates the protocol end-to-end. |
+| **D1** | Wire protocol + transport | Implement the JSON-line socket server (server-side push + request/response). Reuse [`orchestrator/bridge/server.ts`](../../packages/kobe/src/orchestrator/bridge/server.ts) shape. Build a typed client (now `packages/kobe-daemon/src/client/`). Both still in-process for now — TUI talks to a "loopback" client that calls the server via the socket inside the same process. Validates the protocol end-to-end. |
 | **D2** | `kobed` binary | Add `kobed` entry point (`packages/kobe/src/bin/kobed.ts`). Pidfile, signal handling, `kobed start/stop/status/restart`. Default socket: `$XDG_RUNTIME_DIR/kobe.sock` → fallback `~/.kobe/daemon.sock`. TUI now mandatorily talks over the socket; the in-process loopback from D1 is removed. Hard-cut error if no daemon. |
 | **D3** | Multi-attach broadcast | Track all attached clients in the daemon. Broadcast events to all of them. Add the `engine_offline` status + reconnect banner to the TUI. Verify: open two terminals, send a message in one, see it stream in both. |
 | **D4** (deferred) | Resilience polish | Event seq + replay-since-seq, daemon-side per-client backpressure, socket auth token in path, `kobed status --json`, structured logging to `~/.kobe/logs/`. Punt until D3 ships and shows what actually flakes. |

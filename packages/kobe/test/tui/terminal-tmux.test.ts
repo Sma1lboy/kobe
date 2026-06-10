@@ -7,14 +7,15 @@
 
 import { describe, expect, test } from "vitest"
 import {
-  CHAT_TAB_CHOOSE_ENGINE_BINDINGS,
-  CHAT_TAB_CLOSE_BINDING,
   CHAT_TAB_ENGINE_PROMPT,
-  CHAT_TAB_RENAME_BINDING,
   CHAT_TAB_STATUS_CURRENT_FORMAT,
   CHAT_TAB_STATUS_FORMAT,
-  CHAT_TAB_SWITCH_BINDINGS,
   attachArgv,
+  chatTabChooseEngineBindings,
+  chatTabCloseBinding,
+  chatTabRenameBinding,
+  chatTabSwitchBindings,
+  kobeStatusRight,
   tmuxInitialSizeArgs,
   tmuxSessionName,
 } from "../../src/tui/panes/terminal/tmux"
@@ -35,18 +36,18 @@ describe("attachArgv", () => {
   })
 })
 
-describe("CHAT_TAB_SWITCH_BINDINGS", () => {
-  test("maps bracket chords to tmux window navigation", () => {
-    expect(CHAT_TAB_SWITCH_BINDINGS).toEqual([
+describe("chatTabSwitchBindings", () => {
+  test("maps the resolved prev/next keys to tmux window navigation", () => {
+    expect(chatTabSwitchBindings("C-[", "C-]")).toEqual([
       ["bind-key", "-n", "C-[", "previous-window"],
       ["bind-key", "-n", "C-]", "next-window"],
     ])
   })
 })
 
-describe("CHAT_TAB_CLOSE_BINDING", () => {
-  test("maps Ctrl+W to closing the current tmux window while protecting the last window", () => {
-    expect(CHAT_TAB_CLOSE_BINDING).toEqual([
+describe("chatTabCloseBinding", () => {
+  test("maps the resolved key to closing the current tmux window while protecting the last window", () => {
+    expect(chatTabCloseBinding("C-w")).toEqual([
       "bind-key",
       "-n",
       "C-w",
@@ -59,9 +60,9 @@ describe("CHAT_TAB_CLOSE_BINDING", () => {
   })
 })
 
-describe("CHAT_TAB_RENAME_BINDING", () => {
-  test("maps F2 to tmux window rename prompt", () => {
-    expect(CHAT_TAB_RENAME_BINDING).toEqual([
+describe("chatTabRenameBinding", () => {
+  test("maps the resolved key to the tmux window rename prompt", () => {
+    expect(chatTabRenameBinding("F2")).toEqual([
       "bind-key",
       "-n",
       "F2",
@@ -73,10 +74,10 @@ describe("CHAT_TAB_RENAME_BINDING", () => {
   })
 })
 
-describe("CHAT_TAB_CHOOSE_ENGINE_BINDINGS", () => {
-  test("maps Ctrl+Shift+T and prefix T to the engine-choice prompt", () => {
-    expect(CHAT_TAB_ENGINE_PROMPT).toBe("engine (claude/codex/copilot)")
-    expect(CHAT_TAB_CHOOSE_ENGINE_BINDINGS).toEqual([
+describe("chatTabChooseEngineBindings", () => {
+  test("maps the resolved no-prefix key and the fixed prefix T to the engine-choice prompt", () => {
+    expect(CHAT_TAB_ENGINE_PROMPT).toBe("engine (claude/codex/copilot/…)")
+    expect(chatTabChooseEngineBindings("C-S-T")).toEqual([
       ["bind-key", "-n", "C-S-T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
       ["bind-key", "T", "command-prompt", "-p", CHAT_TAB_ENGINE_PROMPT],
     ])
@@ -104,5 +105,19 @@ describe("tmuxInitialSizeArgs", () => {
       "-y",
       "40",
     ])
+  })
+})
+
+describe("kobeStatusRight", () => {
+  test("renders the three escape-hatch hints from the resolved keys", () => {
+    expect(kobeStatusRight({ focusLeft: "C-h", detach: "C-q", newTab: "C-t" })).toBe(
+      "#[fg=brightblack]^h tasks  ^q detach  ^t tab ",
+    )
+  })
+
+  test("shows overridden chords and drops unbound segments", () => {
+    expect(kobeStatusRight({ focusLeft: null, detach: "M-d", newTab: "C-y" })).toBe(
+      "#[fg=brightblack]M-d detach  ^y tab ",
+    )
   })
 })

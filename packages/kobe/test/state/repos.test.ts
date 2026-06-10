@@ -23,7 +23,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { addSavedRepo, getSavedRepos, removeSavedRepo, statePath } from "../../src/state/repos.ts"
+import { addSavedRepo, getCustomEngineIds, getSavedRepos, removeSavedRepo, statePath } from "../../src/state/repos.ts"
 
 let tmpHome: string
 let originalHome: string | undefined
@@ -44,6 +44,27 @@ afterEach(() => {
 describe("statePath", () => {
   test("resolves under KOBE_HOME_DIR", () => {
     expect(statePath()).toBe(path.join(tmpHome, ".config", "kobe", "state.json"))
+  })
+})
+
+describe("getCustomEngineIds", () => {
+  function writeState(blob: Record<string, unknown>): void {
+    fs.mkdirSync(path.dirname(statePath()), { recursive: true })
+    fs.writeFileSync(statePath(), JSON.stringify(blob))
+  }
+
+  test("returns [] when the file does not exist", () => {
+    expect(getCustomEngineIds()).toEqual([])
+  })
+
+  test("reads the customEngineIds array, dropping non-strings and blanks", () => {
+    writeState({ customEngineIds: ["aider", "", 3, "  ", "my-engine"], savedRepos: ["/x"] })
+    expect(getCustomEngineIds()).toEqual(["aider", "my-engine"])
+  })
+
+  test("returns [] when customEngineIds is absent or not an array", () => {
+    writeState({ customEngineIds: "nope" })
+    expect(getCustomEngineIds()).toEqual([])
   })
 })
 

@@ -61,16 +61,52 @@ export function kobeStateDir(): string {
 /**
  * Path to the small flat-JSON KV blob shared between the TUI's
  * `KVProvider` (src/tui/context/kv.tsx) and CLI-side modules like
- * `src/state/repos.ts`. Both must agree on this path or the picker
- * stops seeing what `kobe add` wrote. Defaults to
- * `~/.config/kobe/state.json`; honours `KOBE_HOME_DIR` so tests can
- * isolate via tmpdir.
+ * `src/state/repos.ts`. Defaults to `~/.config/kobe/state.json`;
+ * honours `KOBE_HOME_DIR` so tests can isolate via tmpdir.
  *
- * The TUI's `kv.tsx` predates this helper and still hardcodes the
- * same expression — keep them in sync if either moves.
+ * All reads/writes of this file go through `src/state/store.ts` (the
+ * single owner of state.json I/O — read-merge-write, atomic rename);
+ * this accessor is the one place the path is spelled.
  */
 export function kvStatePath(): string {
   return join(homeDir(), ".config", "kobe", "state.json")
+}
+
+/**
+ * Directory for user-editable kobe settings files — `~/.kobe/settings/`.
+ * Unlike the KV blob (`kvStatePath()`, machine-written JSON), files in
+ * here are hand-authored YAML the user owns (keybindings today; future
+ * settings files land alongside). Not created eagerly — readers treat a
+ * missing dir as "no overrides", writers mkdir at the write site.
+ */
+export function kobeSettingsDir(): string {
+  return join(kobeStateDir(), "settings")
+}
+
+/**
+ * User keybinding overrides — `~/.kobe/settings/keybindings.yaml`.
+ * Loaded once per process at TUI boot (see
+ * `src/tui/context/keybindings-user.ts`) and applied onto `KobeKeymap`.
+ * `.yml` is accepted as a fallback spelling when the `.yaml` file is
+ * absent.
+ */
+export function keybindingsConfigPath(): string {
+  return join(kobeSettingsDir(), "keybindings.yaml")
+}
+
+/**
+ * SSH ControlMaster socket for a remote project — one multiplexed connection
+ * per host/user/port, reused by every `ssh` kobe runs against that remote (see
+ * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket
+ * so `kobe reset` cleans it. Keyed by a short hash so a long `user@host:port`
+ * never blows past the ~104-char unix-socket path limit.
+ */
+export function remoteControlSocketPath(host: string, user: string, port?: number): string {
+  const hash = createHash("sha1")
+    .update(`${user}@${host}:${port ?? 22}`)
+    .digest("hex")
+    .slice(0, 16)
+  return join(kobeStateDir(), "ssh", `${hash}.sock`)
 }
 
 /**

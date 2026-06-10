@@ -101,7 +101,7 @@ export class SlugAllocator {
     })
     await previous
     try {
-      return this.pickLocked(repo)
+      return await this.pickLocked(repo)
     } finally {
       release()
     }
@@ -123,8 +123,8 @@ export class SlugAllocator {
 
   // --- internals ---
 
-  private pickLocked(repo: string): string {
-    const occupied = this.occupiedSlugs(repo)
+  private async pickLocked(repo: string): Promise<string> {
+    const occupied = await this.occupiedSlugs(repo)
     const candidates = this.pool.filter((n) => !occupied.has(n))
     if (candidates.length > 0) {
       const pick = candidates[Math.floor(this.random() * candidates.length)]!
@@ -144,12 +144,15 @@ export class SlugAllocator {
     }
   }
 
-  private occupiedSlugs(repo: string): Set<string> {
+  private async occupiedSlugs(repo: string): Promise<Set<string>> {
     const set = new Set<string>(this.pendingByRepo.get(repo) ?? [])
     for (const slug of this.activeSlugs(repo)) {
       if (slug) set.add(slug)
     }
-    for (const dir of listWorktreeDirNames(repo)) {
+    // Async: a remote repo's dir listing is an ssh round-trip — awaited so
+    // the daemon's event loop stays free during slug allocation. Safe inside
+    // pickLocked because allocate() serializes via the chain promise.
+    for (const dir of await listWorktreeDirNames(repo)) {
       set.add(dir)
     }
     return set

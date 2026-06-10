@@ -10,7 +10,7 @@
 
 import { spawn, spawnSync } from "node:child_process"
 import { TextAttributes } from "@opentui/core"
-import { render, useRenderer } from "@opentui/solid"
+import { useRenderer } from "@opentui/solid"
 import { For, Show, createMemo, createSignal, onMount } from "solid-js"
 import {
   CURRENT_VERSION,
@@ -21,15 +21,9 @@ import {
   fetchReleaseNotes,
   releasePageUrl,
 } from "../../version.ts"
-import { FocusProvider } from "../context/focus"
-import { KVProvider } from "../context/kv"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
-import { DialogProvider } from "../ui/dialog"
-
-const FALLBACK_THEME = "claude"
 
 type ActionId = "update" | "release" | "close"
 
@@ -265,29 +259,9 @@ function UpdatePage() {
 }
 
 export async function startUpdateHost(): Promise<void> {
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              <UpdatePage />
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-    },
-  )
+  // No teardown and no daemon connection — this page only talks to npm /
+  // GitHub and hands off to the shell updater.
+  await bootPaneHost({
+    setup: () => ({ root: () => <UpdatePage /> }),
+  })
 }

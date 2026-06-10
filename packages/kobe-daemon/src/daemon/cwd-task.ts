@@ -16,7 +16,45 @@
  * return undefined → the event is dropped.
  */
 
-import { managedWorktreeRootsFor } from "../orchestrator/worktree/paths.ts"
+import { createHash } from "node:crypto"
+import { homedir } from "node:os"
+import path from "node:path"
+
+const KOBE_WORKTREE_ROOT_DIR = "worktrees"
+const REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
+const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
+const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
+  REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
+  LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
+] as const
+
+function kobeStateDir(): string {
+  return path.join(process.env.KOBE_HOME_DIR ?? homedir(), ".kobe")
+}
+
+function repoWorktreeDirName(repo: string): string {
+  const base = path.basename(repo) || "repo"
+  const safeBase = base.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "repo"
+  const hash = createHash("sha1").update(path.resolve(repo)).digest("hex").slice(0, 12)
+  return `${safeBase}-${hash}`
+}
+
+function worktreeRootFor(repo: string): string {
+  if (!path.isAbsolute(repo)) {
+    throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
+  }
+  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo))
+}
+
+function managedWorktreeRootsFor(repo: string): readonly string[] {
+  if (!path.isAbsolute(repo)) {
+    throw new Error(`managedWorktreeRootsFor: repo must be an absolute path, got: ${repo}`)
+  }
+  return [
+    worktreeRootFor(repo),
+    ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath)),
+  ]
+}
 
 export interface CwdMatchTask {
   readonly id: string

@@ -2,14 +2,15 @@ import { unlinkSync } from "node:fs"
 import { type Server, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { testDaemonResponds } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { afterEach, describe, expect, it } from "vitest"
-import { testDaemonResponds } from "../../src/client/daemon-process.ts"
 
 // Short paths: macOS caps unix-socket paths at ~104 chars, and tmpdir() can
 // be long, so anchor under /tmp where available.
 const SOCK_DIR = process.platform === "darwin" ? "/tmp" : tmpdir()
 const servers: Server[] = []
 const openSockets = new Set<import("node:net").Socket>()
+type EventedServer = Server & { once(event: "error", listener: (err: Error) => void): void }
 
 function listen(handler?: (sock: import("node:net").Socket) => void): Promise<string> {
   const path = join(SOCK_DIR, `kobe-dpr-${process.pid}-${servers.length}.sock`)
@@ -27,7 +28,7 @@ function listen(handler?: (sock: import("node:net").Socket) => void): Promise<st
   })
   servers.push(server)
   return new Promise((resolve, reject) => {
-    server.once("error", reject)
+    ;(server as EventedServer).once("error", reject)
     server.listen(path, () => resolve(path))
   })
 }

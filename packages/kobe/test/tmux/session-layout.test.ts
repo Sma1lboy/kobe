@@ -86,7 +86,16 @@ describe("shellQuoteArgv", () => {
 
 describe("keepAlive", () => {
   test("appends an exec-shell tail so the pane survives the command", () => {
-    expect(keepAlive("claude")).toBe('claude; exec "${SHELL:-/bin/sh}"')
+    const out = keepAlive("claude")
+    // command runs first, then the pane drops to an interactive shell
+    expect(out.startsWith("claude; ")).toBe(true)
+    expect(out).toContain('exec "${SHELL:-/bin/sh}"')
+  })
+
+  test("prints a banner before the shell when the command exits non-zero", () => {
+    const out = keepAlive("claude")
+    expect(out).toContain('__rc=$?; [ "$__rc" -ne 0 ]')
+    expect(out).toContain("Engine exited (code %s)")
   })
 })
 

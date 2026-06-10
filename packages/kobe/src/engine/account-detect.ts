@@ -42,6 +42,8 @@
 import { readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
+import { getCustomEngineIds } from "@/state/repos"
+import type { VendorId } from "@/types/vendor"
 import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local/binary"
 import { CodexBinaryNotFoundError, findCodexBinary } from "./codex-local/binary"
 import { CopilotBinaryNotFoundError, findCopilotBinary } from "./copilot-local/binary"
@@ -168,6 +170,42 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
     }
     return { found: false, error: err instanceof Error ? err.message : String(err) }
   }
+}
+
+/**
+ * The vendors whose engine CLI binary is detected on this machine, in
+ * {@link VendorId} cycle order (claude → codex → copilot). Pure binary
+ * discovery — the same probe the Accounts section uses — with account
+ * state deliberately NOT consulted: having the CLI installed is the only
+ * gate. The new-task dialog uses this to hide vendors you can't run.
+ *
+ * Probes run concurrently (each is a `which` + a few `statSync`s); a miss
+ * excludes that vendor rather than throwing. Returns `[]` only when none of
+ * the three CLIs are found — callers fall back to showing all vendors so an
+ * empty selector never blocks task creation.
+ */
+export async function detectAvailableVendors(deps: DetectDeps = defaultDeps): Promise<readonly VendorId[]> {
+  const probes: ReadonlyArray<readonly [VendorId, () => Promise<string>]> = [
+    ["claude", () => deps.findClaudeBinary()],
+    ["codex", () => deps.findCodexBinary()],
+    ["copilot", () => deps.findCopilotBinary()],
+  ]
+  const detected = await Promise.all(
+    probes.map(async ([vendor, probe]) => ((await probeBinary(probe)).found ? vendor : null)),
+  )
+  return detected.filter((v): v is VendorId => v !== null)
+}
+
+/**
+ * The full engine list to OFFER in the new-task selector: the detected
+ * built-ins (above) PLUS every user-registered custom engine. Custom
+ * engines are always shown — "the user added it" counts as available, no
+ * binary probe (a missing binary just fails to launch with a shell error).
+ * Reads the customEngineIds registry from the shared state.json.
+ */
+export async function availableEngineIds(deps: DetectDeps = defaultDeps): Promise<readonly VendorId[]> {
+  const builtins = await detectAvailableVendors(deps)
+  return [...builtins, ...getCustomEngineIds()]
 }
 
 export async function detectClaudeAccount(deps: DetectDeps = defaultDeps): Promise<EngineAccountStatus<ClaudeAccount>> {

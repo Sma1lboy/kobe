@@ -1,8 +1,13 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import {
+  flushClientLog,
+  formatClientEntry,
+  logClient,
+  setClientLogContext,
+} from "@sma1lboy/kobe-daemon/client/client-log"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { flushClientLog, formatClientEntry, logClient, setClientLogContext } from "../../src/client/client-log.ts"
 
 /**
  * The client log is the observability that was MISSING when the Tasks-pane

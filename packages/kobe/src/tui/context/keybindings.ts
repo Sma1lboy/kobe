@@ -32,10 +32,12 @@
  *     four real chords or "1/2/3") — that's `hint.keys`. The actually
  *     registered chords stay in `keys` and remain individually testable.
  *
- * Re-binding a chord = mutate `keys` for the relevant id (today: edit
- * this file; later: a settings dialog writing into a runtime overlay).
- * No pane code has to change because pane registration goes through
- * `bindByIds`.
+ * Re-binding a chord = mutate `keys` for the relevant id. Users do this
+ * via `~/.kobe/settings/keybindings.yaml`, applied once at TUI boot by
+ * `applyUserKeybindings()` (context/keybindings-user.ts), which mutates
+ * this table in place. No pane code has to change because pane
+ * registration goes through `bindByIds` and the help dialog / status bar
+ * render from the (already-overridden) rows.
  *
  * Cmd / Option / Ctrl on macOS — three different modifiers, three different
  * chord prefixes:
@@ -393,6 +395,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "[/]", label: "view", status: false },
   },
   {
+    id: "sidebar.sort",
+    scope: "sidebar",
+    keys: ["t"],
+    category: "Sidebar",
+    description: "Switch task sort (default ↔ recent)",
+    hint: { keys: "t", label: "sort", status: false },
+  },
+  {
     id: "sidebar.delete",
     scope: "sidebar",
     keys: ["d"],
@@ -441,6 +451,72 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: ["escape"],
     category: "Sidebar",
     description: "Cancel search (restore prior selection)",
+  },
+
+  // ─── Tasks pane ───────────────────────────────────────────────────────
+  // The standalone Tasks pane (`kobe tasks`, src/tui/tasks-pane/host.tsx)
+  // consumes these ids via `bindByIds` (since the keybindings-customization
+  // pass; they were raw `{ key: "…" }` literals before), so the rows are
+  // LIVE bindings there and follow user overrides from
+  // `~/.kobe/settings/keybindings.yaml`. New-task (n), settings (s),
+  // rename (r), archive (a), delete (d), merge (M), views ([/]), sort (t)
+  // are already covered by the Sidebar / Global rows above and aren't
+  // duplicated here.
+  {
+    id: "tasks.openWorktree",
+    scope: "sidebar",
+    keys: ["o"],
+    category: "Tasks pane",
+    description: "Open selected task's worktree in your editor",
+    hint: { keys: "o", label: "open wt", status: false },
+  },
+  {
+    id: "tasks.renameBranch",
+    scope: "sidebar",
+    keys: ["b"],
+    category: "Tasks pane",
+    description: "Rename the selected task's git branch",
+    hint: { keys: "b", label: "branch", status: false },
+  },
+  {
+    id: "tasks.cycleEngine",
+    scope: "sidebar",
+    keys: ["v"],
+    category: "Tasks pane",
+    description: "Cycle engine vendor (claude ↔ codex ↔ …) — applies on reopen",
+    hint: { keys: "v", label: "engine", status: false },
+  },
+  {
+    id: "tasks.update",
+    scope: "sidebar",
+    keys: ["u"],
+    category: "Tasks pane",
+    description: "Open the update page (when a new version is available)",
+    hint: { keys: "u", label: "update", status: false },
+  },
+
+  // ─── Workspace (tmux) ─────────────────────────────────────────────────
+  // tmux-handover chords that drive the task SESSION (windows/tabs/detach),
+  // not opentui bindings. Listed here so the HelpDialog advertises them; the
+  // bracket / ctrl rows below in "Workspace (chat)" register the real opentui
+  // handlers, while the `prefix f` quick-task is a tmux key-table binding the
+  // session installs (not registered through this keymap at all) — DISPLAY
+  // ONLY, with `keys: []` so nothing tries to bind a literal "prefix f" chord.
+  {
+    id: "tmux.quickTask",
+    scope: "global",
+    keys: [],
+    category: "Workspace (tmux)",
+    description: "Quick new task (tmux prefix, then f)",
+    hint: { keys: "prefix f", label: "new task", status: false },
+  },
+  {
+    id: "tmux.engineTab",
+    scope: "global",
+    keys: [],
+    category: "Workspace (tmux)",
+    description: "Open the engine in a new tab (tmux prefix, then t)",
+    hint: { keys: "prefix t", label: "engine tab", status: false },
   },
 
   // ─── Workspace (chat) ─────────────────────────────────────────────────
@@ -644,25 +720,16 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "h/l", label: "level" },
   },
   {
+    // enter → one-key "just open it": opens the file in the user's
+    // nvim/vim (side-by-side `nvim -d` diff vs HEAD when changed, a plain
+    // editable open otherwise), falling back to our own opentui read-only
+    // preview only when no nvim/vim is installed.
     id: "files.open",
     scope: "files",
     keys: ["return"],
     category: "Files",
-    description: "Open file read-only preview",
-    hint: { keys: "enter", label: "preview" },
-  },
-  {
-    // `e` → open the current file in the configured editor (vim / nano /
-    // custom) in a new tmux window. Separate, deliberate action from the
-    // `enter` read-only preview — no preview→edit bridge. Plain letter,
-    // files-scoped per the keybinding-boundaries rule (docs/KEYBINDINGS.md)
-    // so it can't collide with composer typing.
-    id: "files.edit",
-    scope: "files",
-    keys: ["e"],
-    category: "Files",
-    description: "Open file in the configured editor (vim / nano / custom)",
-    hint: { keys: "e", label: "edit" },
+    description: "Open file in nvim (diff vs HEAD when changed)",
+    hint: { keys: "enter", label: "open" },
   },
   {
     // `[` / `]` cycle the All / Changes tabs. Bracket pair matches

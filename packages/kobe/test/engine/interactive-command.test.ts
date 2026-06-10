@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { defaultEngineCommand, engineCommandKey, parseEngineCommand } from "../../src/engine/interactive-command.ts"
+import {
+  defaultEngineCommand,
+  engineCommandKey,
+  engineNameKey,
+  parseEngineCommand,
+} from "../../src/engine/interactive-command.ts"
 
 describe("parseEngineCommand", () => {
   it("splits a bare binary name", () => {
@@ -38,11 +43,24 @@ describe("defaultEngineCommand", () => {
   it("falls back to claude for an undefined vendor", () => {
     expect(defaultEngineCommand(undefined)).toEqual(["claude"])
   })
+
+  it("runs a custom engine id as a bare binary (not claude)", () => {
+    // A custom engine's real command lives in its engineCommand.<id> override;
+    // this fallback only fires if that's empty, and must NOT launch claude.
+    expect(defaultEngineCommand("aider")).toEqual(["aider"])
+  })
 })
 
 describe("engineCommandKey", () => {
   it("namespaces the override key per vendor", () => {
     expect(engineCommandKey("claude")).toBe("engineCommand.claude")
     expect(engineCommandKey("codex")).toBe("engineCommand.codex")
+  })
+})
+
+describe("engineNameKey", () => {
+  it("namespaces the display-name key per vendor, parallel to the command key", () => {
+    expect(engineNameKey("claude")).toBe("engineName.claude")
+    expect(engineNameKey("copilot")).toBe("engineName.copilot")
   })
 })
