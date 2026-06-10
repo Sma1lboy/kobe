@@ -143,6 +143,27 @@ function positiveInt(value: unknown): number | undefined {
   return Number.isInteger(n) && n > 0 ? n : undefined
 }
 
+/**
+ * Fit a session's active window to THIS terminal and heal the layout BEFORE
+ * attaching, so the very first painted frame is already correct.
+ *
+ * Without this the attach itself is the resize: the session's window is at a
+ * stale size (built detached, or persisted from a different terminal), tmux
+ * reflows every pane PROPORTIONALLY when the client lands — the rail blows up —
+ * and the `window-resized` hook only snaps it back ~300ms later. That snap is
+ * the visible "flash". Resizing the window to the client's size up front (while
+ * nothing is on screen yet, pre-attach) means the attach causes NO reflow, and
+ * healing at that final size leaves the layout right from frame one. The
+ * `window-resized` hook still covers later live terminal resizes. No-op size
+ * when the terminal dimensions are unknown (degrades to today's behaviour).
+ */
+export async function prepareWindowForAttach(session: string): Promise<void> {
+  const sizeArgs = tmuxInitialSizeArgs()
+  if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
+  await healTaskPaneWidths(session)
+  await healRightColumn(session)
+}
+
 export interface EnsureSessionOpts {
   readonly name: string
   /** Working directory for every pane in the new session. */
