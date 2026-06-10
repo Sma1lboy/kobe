@@ -43,8 +43,8 @@ import {
   tmuxSessionName,
 } from "@/tmux/client"
 import { TextAttributes } from "@opentui/core"
-import { render, useTerminalDimensions } from "@opentui/solid"
-import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
+import { useTerminalDimensions } from "@opentui/solid"
+import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -72,16 +72,14 @@ import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
-import { FocusProvider } from "../context/focus"
 import { bindByIds } from "../context/keybindings"
-import { applyUserKeybindings } from "../context/keybindings-user"
-import { KVProvider, useKV } from "../context/kv"
-import { NotificationsProvider, useNotifications } from "../context/notifications"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { useKV } from "../context/kv"
+import { useNotifications } from "../context/notifications"
+import { useTheme } from "../context/theme"
 import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
+import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import { finishDeletedTaskFlow, toggleTaskArchivedFlow } from "../lib/task-actions"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
@@ -94,10 +92,9 @@ import {
   openUpdateTab,
   refreshKobeWorkspacePanes,
 } from "../panes/terminal/tmux.ts"
-import { DialogProvider, useDialog } from "../ui/dialog"
+import { useDialog } from "../ui/dialog"
 import { DialogConfirm } from "../ui/dialog-confirm"
 
-const FALLBACK_THEME = "claude"
 const RELOAD_MS = 1500
 
 /**
@@ -115,7 +112,7 @@ function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   initialTaskId?: string
   transparent: boolean
-  focusAccent: ReturnType<typeof readPersistedUiPrefs>["focusAccent"]
+  focusAccent: PersistedUiPrefs["focusAccent"]
   /**
    * The shared task-state framework: one daemon-backed RemoteOrchestrator
    * used for BOTH the live subscribe (reads) and every mutation (writes),
@@ -882,13 +879,20 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
 }
 
 export async function startTasksPane(opts: { initialTaskId?: string } = {}): Promise<void> {
-  setClientLogContext("tasks")
-  applyUserKeybindings()
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
+  await bootPaneHost({
+    logContext: "tasks",
+    // Notifications power the bottom-right error toasts: under tmux's
+    // alternate screen a failed action's `console.error` is invisible
+    // (daemon log only), so a rejected key press surfaces as a red
+    // chip here instead of looking like a silent no-op. The pane
+    // only consumes the error toasts; per-ChatTab completion
+    // notifications belong to the outer chat surface.
+    providers: { notifications: true },
+    setup: (prefs) => setupTasksPane(opts, prefs),
+  })
+}
 
+async function setupTasksPane(opts: { initialTaskId?: string }, prefs: PersistedUiPrefs): Promise<HostScreen> {
   // Task source. PRIMARY = a live daemon SUBSCRIBE (via RemoteOrchestrator):
   // a task created / renamed / deleted in ANY session's Tasks pane or in
   // the outer monitor is pushed to THIS pane in real time, so every
@@ -951,50 +955,29 @@ export async function startTasksPane(opts: { initialTaskId?: string } = {}): Pro
     void reload()
   }, RELOAD_MS)
 
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              {/* Notifications power the bottom-right error toasts: under tmux's
-                  alternate screen a failed action's `console.error` is invisible
-                  (daemon log only), so a rejected key press surfaces as a red
-                  chip here instead of looking like a silent no-op. The pane
-                  only consumes the error toasts; per-ChatTab completion
-                  notifications belong to the outer chat surface. */}
-              <NotificationsProvider>
-                <TasksShell
-                  tasks={tasks}
-                  initialTaskId={opts.initialTaskId}
-                  orch={orch}
-                  transparent={prefs.transparent}
-                  focusAccent={prefs.focusAccent}
-                  reload={reload}
-                />
-                <ToastOverlay />
-              </NotificationsProvider>
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
+  return {
+    root: () => (
+      <>
+        <TasksShell
+          tasks={tasks}
+          initialTaskId={opts.initialTaskId}
+          orch={orch}
+          transparent={prefs.transparent}
+          focusAccent={prefs.focusAccent}
+          reload={reload}
+        />
+        <ToastOverlay />
+      </>
     ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-      // Tear down on ACTUAL exit, not after render() resolves: `render`
-      // resolves at mount (cf. startApp, which also cleans up via
-      // onDestroy), so disposing here is the only correct place. Disposing
-      // after `await render(...)` killed the daemon client + poll the moment
-      // the pane mounted → "daemon client disposed" on the next switch and
-      // a dead subscribe (KOB-247).
-      onDestroy: () => {
-        if (timer) clearInterval(timer)
-        orch?.dispose()
-      },
+    // Tear down on ACTUAL exit, not after render() resolves: `render`
+    // resolves at mount (cf. startApp, which also cleans up via
+    // onDestroy), so disposing here is the only correct place. Disposing
+    // after `await render(...)` killed the daemon client + poll the moment
+    // the pane mounted → "daemon client disposed" on the next switch and
+    // a dead subscribe (KOB-247).
+    onDestroy: () => {
+      if (timer) clearInterval(timer)
+      orch?.dispose()
     },
-  )
+  }
 }

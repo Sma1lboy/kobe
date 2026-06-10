@@ -28,19 +28,13 @@ import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { SyntaxStyle } from "@opentui/core"
-import { render } from "@opentui/solid"
-import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
 import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
-import { applyUserKeybindings } from "../context/keybindings-user"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import { type PersistedUiPrefs, readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
-import { DialogProvider } from "../ui/dialog"
 import { buildPRPrompt } from "./pr-prompt"
-
-const FALLBACK_THEME = "claude"
 
 export interface OpsHostArgs {
   readonly taskId: string
@@ -267,29 +261,13 @@ function fingerprint(text: string): string {
   return createHash("sha1").update(text).digest("hex")
 }
 
-function OpsApp(props: OpsHostArgs & { prefs: ThemePrefs }) {
-  return (
-    <ThemeProvider mode="dark" theme={props.prefs.theme}>
-      <DialogProvider>
-        <OpsShell {...props} />
-      </DialogProvider>
-    </ThemeProvider>
-  )
-}
-
 export async function startOpsHost(args: OpsHostArgs): Promise<void> {
-  setClientLogContext("ops")
-  applyUserKeybindings()
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-  await render(() => <OpsApp {...args} prefs={prefs} />, {
-    backgroundColor: "transparent",
-    externalOutputMode: "passthrough",
-    exitOnCtrlC: false,
-    screenMode: "alternate-screen",
-    useKittyKeyboard: {},
+  // No KV / Focus providers — the FileTree never touches persisted UI
+  // state or pane focus; this pane has always been Theme > Dialog only.
+  await bootPaneHost({
+    logContext: "ops",
+    providers: { kv: false, focus: false },
+    setup: (prefs) => ({ root: () => <OpsShell {...args} prefs={prefs} /> }),
   })
 }
 
@@ -459,25 +437,10 @@ function PreviewScreen(props: OpsPreviewArgs) {
 }
 
 export async function startOpsPreview(args: OpsPreviewArgs): Promise<void> {
-  applyUserKeybindings()
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <DialogProvider>
-          <PreviewScreen {...args} />
-        </DialogProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-    },
-  )
+  // Same minimal provider set as the Ops pane. Note: unlike startOpsHost
+  // this entrypoint never set a client-log context — preserved as-is.
+  await bootPaneHost({
+    providers: { kv: false, focus: false },
+    setup: () => ({ root: () => <PreviewScreen {...args} /> }),
+  })
 }

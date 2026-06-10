@@ -25,7 +25,6 @@
  * is never a dead end.
  */
 
-import { render } from "@opentui/solid"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -37,17 +36,11 @@ import { pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { DEFAULT_BASE_REF, expandHome, getCurrentBranch } from "../component/new-task-dialog/state.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
-import { FocusProvider } from "../context/focus"
-import { applyUserKeybindings } from "../context/keybindings-user"
-import { KVProvider } from "../context/kv"
-import { ThemeProvider, addTheme, useTheme } from "../context/theme"
-import { loadUserThemes } from "../context/theme/loader"
-import { readPersistedUiPrefs } from "../lib/persisted-ui-prefs"
+import { useTheme } from "../context/theme"
+import { bootPaneHost } from "../lib/host-boot"
 import { NewTaskPage } from "../new-task/host.tsx"
 import { repoBasename } from "../panes/sidebar/groups"
-import { DialogProvider, useDialog } from "../ui/dialog"
-
-const FALLBACK_THEME = "claude"
+import { useDialog } from "../ui/dialog"
 
 export interface QuickTaskHostArgs {
   /** The task session the chord fired in — its `@kobe_task` repo is the default. */
@@ -204,49 +197,31 @@ function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrche
 }
 
 export async function startQuickTaskHost(args: QuickTaskHostArgs): Promise<void> {
-  applyUserKeybindings()
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
-  const prefs = readPersistedUiPrefs(FALLBACK_THEME)
+  await bootPaneHost({
+    setup: async () => {
+      let orch: RemoteOrchestrator | null = null
+      try {
+        const client = await connectOrStartDaemon()
+        const remote = new RemoteOrchestrator(client)
+        await remote.init()
+        orch = remote
+      } catch (err) {
+        console.error("[kobe quick-task] daemon unavailable; cannot create task:", err)
+      }
 
-  let orch: RemoteOrchestrator | null = null
-  try {
-    const client = await connectOrStartDaemon()
-    const remote = new RemoteOrchestrator(client)
-    await remote.init()
-    orch = remote
-  } catch (err) {
-    console.error("[kobe quick-task] daemon unavailable; cannot create task:", err)
-  }
+      const { ctx, fallbackRepo } = await resolveQuickTaskContext(orch, args.session)
 
-  const { ctx, fallbackRepo } = await resolveQuickTaskContext(orch, args.session)
-
-  await render(
-    () => (
-      <ThemeProvider mode="dark" theme={prefs.theme}>
-        <KVProvider>
-          <FocusProvider initial="sidebar">
-            <DialogProvider>
-              {ctx ? (
-                <QuickTaskPage ctx={ctx} orchestrator={orch} />
-              ) : (
-                <NewTaskPage defaultRepo={fallbackRepo} orchestrator={orch} />
-              )}
-            </DialogProvider>
-          </FocusProvider>
-        </KVProvider>
-      </ThemeProvider>
-    ),
-    {
-      backgroundColor: "transparent",
-      externalOutputMode: "passthrough",
-      exitOnCtrlC: false,
-      screenMode: "alternate-screen",
-      useKittyKeyboard: {},
-      onDestroy: () => {
-        orch?.dispose()
-      },
+      return {
+        root: () =>
+          ctx ? (
+            <QuickTaskPage ctx={ctx} orchestrator={orch} />
+          ) : (
+            <NewTaskPage defaultRepo={fallbackRepo} orchestrator={orch} />
+          ),
+        onDestroy: () => {
+          orch?.dispose()
+        },
+      }
     },
-  )
+  })
 }

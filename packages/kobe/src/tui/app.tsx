@@ -47,12 +47,11 @@ import { ToastOverlay } from "./component/toast-overlay"
 import { TopBar } from "./component/top-bar"
 import { CommandPaletteProvider } from "./context/command-palette"
 import { FocusProvider, type PaneId, useFocus } from "./context/focus"
-import { applyUserKeybindings } from "./context/keybindings-user"
 import { KVProvider, useKV } from "./context/kv"
 import { NotificationsProvider } from "./context/notifications"
 import { SyncProvider } from "./context/sync"
-import { ThemeProvider, addTheme, useTheme } from "./context/theme"
-import { loadUserThemes } from "./context/theme/loader"
+import { ThemeProvider, useTheme } from "./context/theme"
+import { applyHostBootSteps, hostRenderOptions } from "./lib/host-boot"
 import { useBindings } from "./lib/keymap"
 import { finishDeletedTaskFlow, toggleTaskArchivedFlow, toggleTaskPinnedFlow } from "./lib/task-actions"
 import { usePaneSizes } from "./lib/use-pane-sizes"
@@ -605,10 +604,13 @@ function App(props: AppDeps) {
 }
 
 export async function startApp(): Promise<void> {
-  applyUserKeybindings()
-  for (const { name, theme } of loadUserThemes()) {
-    addTheme(name, theme)
-  }
+  // Partial adoption of `lib/host-boot`: the outer monitor shares the boot
+  // steps + render options but NOT `bootPaneHost` — its theme is KV-persisted
+  // via `useThemePersistence` (not `readPersistedUiPrefs`), and its provider
+  // tree is different in kind (SyncProvider + CommandPaletteProvider, Dialog
+  // OUTSIDE Focus). Molding the deprecated shell into the pane-host shape
+  // would distort the shared module for everyone else.
+  applyHostBootSteps()
   const homeDir = process.env.KOBE_HOME_DIR ?? homedir()
   let orchestrator: KobeOrchestrator
   if (process.env.KOBE_NO_DAEMON === "1") {
@@ -637,11 +639,5 @@ export async function startApp(): Promise<void> {
       console.error(`[kobe] ensureMainTask failed for ${repo}:`, err)
     }
   }
-  await render(() => <App orchestrator={orchestrator} />, {
-    backgroundColor: "transparent",
-    externalOutputMode: "passthrough",
-    exitOnCtrlC: false,
-    screenMode: "alternate-screen",
-    useKittyKeyboard: {},
-  })
+  await render(() => <App orchestrator={orchestrator} />, hostRenderOptions())
 }
