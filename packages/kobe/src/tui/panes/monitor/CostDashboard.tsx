@@ -34,9 +34,30 @@ export function CostDashboard(props: CostDashboardProps): JSXElement {
     setSummaries(out)
   }
 
+  // In-flight dedupe: summarizing every task's transcript JSONL can outlast
+  // the 5s cadence on long histories — drop ticks that land mid-run instead
+  // of stacking `Promise.all` sweeps. A rejected sweep keeps the last table
+  // instead of surfacing as an unhandled rejection.
+  //
+  // `lib/background-poll.ts` doesn't fit this view: the poller is keyed per
+  // path, while this table is one whole-task-list aggregate (the "key"
+  // would have to be the concatenation of all task ids). See
+  // docs/design/app-retirement.md — this pane retires with the outer
+  // monitor, so the lighter fix wins.
+  let inFlight = false
+  const tick = (): void => {
+    if (inFlight) return
+    inFlight = true
+    refresh()
+      .catch(() => {})
+      .finally(() => {
+        inFlight = false
+      })
+  }
+
   onMount(() => {
-    void refresh()
-    const timer = setInterval(() => void refresh(), REFRESH_MS)
+    tick()
+    const timer = setInterval(tick, REFRESH_MS)
     onCleanup(() => clearInterval(timer))
   })
 

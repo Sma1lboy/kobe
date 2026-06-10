@@ -54,9 +54,33 @@ export function LivePreview(props: LivePreviewProps): JSXElement {
     setLines(tail)
   }
 
+  // In-flight dedupe: `capturePane` is a tmux subprocess, so a capture can
+  // outlive the 1s cadence under load — and two overlapping refreshes for
+  // different tasks can resolve out of order (the OLD task's late frame
+  // overwriting the new task's). One run at a time; a tick landing mid-run
+  // is dropped and the next tick (≤1s later) catches up. A rejected refresh
+  // keeps the last frame instead of surfacing as an unhandled rejection.
+  //
+  // `lib/background-poll.ts` was considered and rejected here: its keyed,
+  // stateless-run contract can't carry this view's keep-last-frame-on-blank
+  // merge (the rendered value depends on the previous frame), and its
+  // per-key cached signals would change what's shown at the instant of a
+  // task switch. See docs/design/app-retirement.md — this pane retires with
+  // the outer monitor, so the lighter fix wins.
+  let inFlight = false
+  const tick = (): void => {
+    if (inFlight) return
+    inFlight = true
+    refresh()
+      .catch(() => {})
+      .finally(() => {
+        inFlight = false
+      })
+  }
+
   onMount(() => {
-    void refresh()
-    const timer = setInterval(() => void refresh(), REFRESH_MS)
+    tick()
+    const timer = setInterval(tick, REFRESH_MS)
     onCleanup(() => clearInterval(timer))
   })
 

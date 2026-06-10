@@ -87,20 +87,33 @@ function Shell(props: AppDeps) {
 
   const tasksAcc: Accessor<ReturnType<typeof props.orchestrator.listTasks>> = props.orchestrator.tasksSignal()
 
+  // Selection source of truth (retirement slice 1 — see
+  // docs/design/app-retirement.md). The daemon-backed active task (KOB-247)
+  // is PRIMARY: it seeds the boot selection when known and the createEffect
+  // below follows it live. The kv key `lastSelectedTaskId` survives only as
+  // the documented boot-time fallback — it cannot be removed because the
+  // daemon's `active-task` channel is in-memory (the refcounted lazy
+  // shutdown idle-stops the daemon ~3s after the last GUI quits, so a cold
+  // relaunch replays nothing) and the KOBE_NO_DAEMON local Orchestrator has
+  // no active-task persistence at all. The key is SHARED with direct.ts
+  // (`chooseInitialTask` reads it; entry writes it), so its semantics are
+  // "last ENTERED task": only `enterTask` writes it here. Highlight moves
+  // (`selectTask`) are ephemeral UI state and no longer persist.
   const persistedSelectedId = kv.get("lastSelectedTaskId") as string | null | undefined
-  const [selectedId, setSelectedId] = createSignal<string | null>(persistedSelectedId ?? null)
+  const [selectedId, setSelectedId] = createSignal<string | null>(
+    props.orchestrator.activeTaskSignal()() ?? persistedSelectedId ?? null,
+  )
 
-  // Validate the persisted selection against the live list. If the task
-  // was deleted, fall back to the first non-archived task.
+  // Validate the boot selection against the live list. If the task was
+  // deleted, fall back to the first non-archived task. No kv write here:
+  // the fallback isn't an entry, and a stale persisted id is re-validated
+  // the same way on every boot.
   onMount(() => {
     const all = tasksAcc()
     const persisted = selectedId()
     if (persisted && all.some((t) => t.id === persisted)) return
     const first = all.find((t) => !t.archived) ?? all[0]
-    if (first) {
-      setSelectedId(first.id)
-      kv.set("lastSelectedTaskId", first.id)
-    }
+    if (first) setSelectedId(first.id)
   })
 
   const activeTask = createMemo(() => {
@@ -136,7 +149,6 @@ function Shell(props: AppDeps) {
 
   function selectTask(id: string): void {
     setSelectedId(id)
-    kv.set("lastSelectedTaskId", id)
   }
 
   /**
@@ -155,6 +167,10 @@ function Shell(props: AppDeps) {
     // fires the chord — a no-op instead of racing a second launch (KOB-244).
     if (launchRunning()) return { kind: "ok", exitCode: null }
     setSelectedId(id)
+    // The one kv write: persist the boot-fallback on ENTRY (mirrors
+    // direct.ts's `setPersistedString` on attach) — see the selection
+    // comment above. The daemon publish (`setActiveTask` below) is the
+    // primary signal; this is the disk copy that survives daemon idle-stop.
     kv.set("lastSelectedTaskId", id)
     // Don't grab workspace focus on enter: the renderer suspends for the
     // attach (so outer focus is invisible meanwhile), and we land back on
