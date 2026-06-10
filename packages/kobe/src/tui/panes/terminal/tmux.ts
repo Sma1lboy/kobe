@@ -428,16 +428,23 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // detach branch is reached once focus is on Tasks.
   const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
   const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
-  // Re-pin the layout whenever a client attaches. The FIRST task session is
-  // built before any client is attached, so tmux sizes its window to a stale
-  // default and reflows every pane PROPORTIONALLY once `attach` lands the real
-  // terminal size — blowing up the absolute-width Tasks rail. The reuse path
-  // heals later switches, but the first attach had none, so the very first view
-  // was off until the user switched once. A global `client-attached` hook heals
-  // the just-attached session (and re-pins on any later re-attach from a
-  // different-size terminal). `heal-layout` is a no-op for role-less sessions.
+  // Re-pin the layout whenever a window settles to a new size. The FIRST task
+  // session is built before any client is attached, so tmux sizes its window to
+  // a stale default and reflows every pane PROPORTIONALLY once `attach` lands
+  // the real terminal size — blowing up the absolute-width Tasks rail. The reuse
+  // path heals later switches, but the first attach had none, so the very first
+  // view was off until the user switched once.
+  //
+  // The hook is `window-resized`, NOT `client-attached`: on attach with a size
+  // change tmux fires `client-attached` BEFORE it resizes the window (so a heal
+  // there runs against the OLD size and is immediately undone by the resize),
+  // then `window-resized` AFTER the new size lands. Healing on `window-resized`
+  // re-pins against the SETTLED size — and also covers a live terminal resize,
+  // which reflows the rail the same way. `-b` runs it in the background so tmux
+  // isn't blocked; `resize-pane` never changes the window size, so the heal
+  // can't re-trigger the hook. `heal-layout` is a no-op for role-less sessions.
   const healLayoutCommand = `${envStr}${invStr} heal-layout --session '#{session_name}'`
-  const healLayoutTmuxCommand = `run-shell ${shellQuote(healLayoutCommand)}`
+  const healLayoutTmuxCommand = `run-shell -b ${shellQuote(healLayoutCommand)}`
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
   // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
@@ -505,7 +512,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
-    ["set-hook", "-g", "client-attached", healLayoutTmuxCommand],
+    ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
     // focus the current window's Tasks pane first. `#{@kobe_role}` is the

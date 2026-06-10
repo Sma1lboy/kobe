@@ -479,11 +479,11 @@ async function main(): Promise<void> {
     return
   }
   if (subcommand === "heal-layout") {
-    // `client-attached` tmux hook handler: re-pin the just-attached session's
-    // Tasks-rail width + right-column geometry to the shared globals. Fixes the
-    // first-attach reflow (the first session is built before any client is
-    // attached, so tmux reflows its panes when `attach` lands the real terminal
-    // size). No-op for the home/role-less session. Reads `--session`.
+    // `window-resized` tmux hook handler: re-pin the resized session's Tasks-rail
+    // width + right-column geometry to the shared globals. Fixes the first-attach
+    // reflow (the first session is built before any client is attached, so tmux
+    // reflows its panes when `attach` lands the real terminal size) and any live
+    // terminal resize. No-op for the home/role-less session. Reads `--session`.
     const flags = parseOpsFlags(rest)
     const session = flags.session
     if (!session) {

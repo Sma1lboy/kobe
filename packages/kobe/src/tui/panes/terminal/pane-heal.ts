@@ -301,16 +301,18 @@ export async function healRightColumn(session: string): Promise<void> {
 /**
  * Re-pin a session's whole layout (Tasks rail width + right-column geometry) to
  * the shared globals. This is the {@link healTaskPaneWidths} + {@link healRightColumn}
- * pair the reuse path runs, exposed for the `client-attached` tmux hook.
+ * pair the reuse path runs, exposed for the `window-resized` tmux hook.
  *
  * Why a hook: the FIRST task session is built detached (no client attached yet),
  * so tmux sizes its window to a default/stale size; the real terminal size only
  * lands when `tmux attach` connects, at which point tmux reflows every pane
  * PROPORTIONALLY — blowing up the absolute-width Tasks rail and shifting the
  * right column. Reuse heals later switches, but the first attach had no heal, so
- * the very first view was off until the user switched once. Healing on
- * `client-attached` closes that gap (and re-pins on any later re-attach from a
- * differently sized terminal). No-op for the home session (no role-tagged panes).
+ * the very first view was off until the user switched once. The hook fires on
+ * `window-resized` (after the window settles to the new size — `client-attached`
+ * fires BEFORE the attach resize and would heal against the stale size), so it
+ * also re-pins on any live terminal resize. No-op for the home session (no
+ * role-tagged panes).
  */
 export async function healSessionLayout(session: string): Promise<void> {
   if (!(await sessionExists(session))) return
