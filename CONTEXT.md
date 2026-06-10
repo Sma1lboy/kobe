@@ -56,6 +56,18 @@ _Avoid_: tmux wrapper, tmux utils.
 The pure command/layout builders for a **tmux Session** (`src/tmux/session-layout.ts`): pane percentages, shell-quoting, the keep-alive wrapper, the **Ops pane** command + its fallback. Pure (same inputs → same strings, no IO) so it's unit-tested — the regression net for the quoting/targeting bugs that used to only surface against a real server (KOB-233). `ensureSession` is the imperative applier of this policy.
 _Avoid_: pane plan, blueprint.
 
+**Session Decision**:
+The pure reuse/respawn policy for `ensureSession` (`src/tmux/session-decision.ts`): given the observed facts of an existing **tmux Session** (tags, claude-pane health, window count) and the target **Worktree**/vendor, returns `create | reuse | respawn-engine | rebuild` with a reason. Sibling policy module to **Session Layout** — same seam, same unit-test net; `ensureSession` observes, decides, applies.
+_Avoid_: session check, health check (those are inputs, not the policy).
+
+**Engine Registry**:
+The per-vendor wiring table (`src/engine/registry.ts`): history reader, cost summarizer, account detector, hook adapter factory, and default command, keyed by `VendorId`. Neutral layers (**Live Preview**, **Cost Dashboard**, auto-title, settings) ask the registry instead of switching on vendor literals or parsing a vendor's transcript format directly. Custom engines resolve to a documented empty entry.
+_Avoid_: engine switch, vendor table.
+
+**State Store**:
+The single owner of `~/.config/kobe/state.json` I/O (`src/state/store.ts`): atomic read-merge-write transactions so concurrent kobe processes (TUI, **Tasks pane**, CLI) can't clobber each other's keys. The TUI's `KVProvider` and the CLI-side `setPersistedString` family are adapters over it.
+_Avoid_: kv file, config file (it's UI/process state, not user config — user config lives in `~/.kobe/settings/`).
+
 ### Daemon split
 
 **Daemon**:
