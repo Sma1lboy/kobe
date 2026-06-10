@@ -493,6 +493,16 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // detach branch is reached once focus is on Tasks.
   const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
   const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
+  // Re-pin the layout whenever a client attaches. The FIRST task session is
+  // built before any client is attached, so tmux sizes its window to a stale
+  // default and reflows every pane PROPORTIONALLY once `attach` lands the real
+  // terminal size — blowing up the absolute-width Tasks rail. The reuse path
+  // heals later switches, but the first attach had none, so the very first view
+  // was off until the user switched once. A global `client-attached` hook heals
+  // the just-attached session (and re-pins on any later re-attach from a
+  // different-size terminal). `heal-layout` is a no-op for role-less sessions.
+  const healLayoutCommand = `${envStr}${invStr} heal-layout --session '#{session_name}'`
+  const healLayoutTmuxCommand = `run-shell ${shellQuote(healLayoutCommand)}`
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
   // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
@@ -560,6 +570,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
+    ["set-hook", "-g", "client-attached", healLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
     // focus the current window's Tasks pane first. `#{@kobe_role}` is the
@@ -662,7 +673,7 @@ async function relaunchEngineInAllWindows(
  * Runs on each session build/reuse (every task switch / re-attach). The point
  * is cross-task CONSISTENCY: the rail is one shared size, so switching never
  * changes its width. The size itself is user-adjustable — a manual drag is
- * captured into the global option on switch-away ({@link captureTasksPaneWidth})
+ * captured into the global option on switch-away ({@link captureGlobalLayout})
  * and applied here on the next reuse — so this is what makes a resize "stick"
  * everywhere rather than reset. Idempotent: panes already at the target width
  * are skipped, so a healthy switch issues no resize.
@@ -740,6 +751,26 @@ async function healRightColumn(session: string): Promise<void> {
     .filter((id): id is string => !!id)
   if (opsPanes.length === 0) return
   await runTmuxSequence(opsPanes.map((pane) => ["resize-pane", "-t", pane, ...args]))
+}
+
+/**
+ * Re-pin a session's whole layout (Tasks rail width + right-column geometry) to
+ * the shared globals. This is the {@link healTaskPaneWidths} + {@link healRightColumn}
+ * pair the reuse path runs, exposed for the `client-attached` tmux hook.
+ *
+ * Why a hook: the FIRST task session is built detached (no client attached yet),
+ * so tmux sizes its window to a default/stale size; the real terminal size only
+ * lands when `tmux attach` connects, at which point tmux reflows every pane
+ * PROPORTIONALLY — blowing up the absolute-width Tasks rail and shifting the
+ * right column. Reuse heals later switches, but the first attach had no heal, so
+ * the very first view was off until the user switched once. Healing on
+ * `client-attached` closes that gap (and re-pins on any later re-attach from a
+ * differently sized terminal). No-op for the home session (no role-tagged panes).
+ */
+export async function healSessionLayout(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  await healTaskPaneWidths(session)
+  await healRightColumn(session)
 }
 
 /**
