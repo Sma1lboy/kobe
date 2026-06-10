@@ -6,51 +6,56 @@
  * synchronous: the file is small (a few keys) and we want hydration done
  * before the first render so consumers can `kv.signal(name, default)` and
  * see the persisted value immediately rather than the default flashing
- * for one frame.
+ * for one frame. Reads are also deliberately snapshot-only — a key another
+ * process writes after this provider booted is not picked up until
+ * restart. No file watching; that's longstanding, accepted behavior.
  *
- * Writes are debounced and atomic (write to `state.json.tmp`, then rename)
- * so a crash mid-write can't leave a half-written file. No flock yet — we
- * assume a single kobe instance per user; multi-instance is a Wave-2
- * concern when it arrives.
+ * Writes are debounced (250ms) and routed through `src/state/store.ts`,
+ * which owns all state.json I/O (atomic tmp+rename — a crash mid-write
+ * can't leave a half-written file). History: this provider used to write
+ * its ENTIRE in-memory snapshot back on every flush. With several kobe
+ * processes alive at once (outer monitor + Tasks pane + Ops pane +
+ * settings window, each with its own KVProvider or `setPersisted*`
+ * caller), a whole-snapshot flush silently reverted any key another
+ * process had written since this one loaded — the classic lost update.
+ * The fix is dirty-key tracking: we remember which keys THIS process
+ * changed since its last successful flush and merge only those into a
+ * fresh read of the file (`patchStateFile`). Keys we never touched pass
+ * through whatever the other processes wrote.
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
-import { dirname } from "node:path"
 import type { Setter } from "solid-js"
 import { createStore } from "solid-js/store"
-import { kvStatePath } from "../../env.ts"
+import { loadStateFile, patchStateFile, replaceStateFile } from "../../state/store.ts"
 import { createSimpleContext } from "./helper"
 
 const WRITE_DEBOUNCE_MS = 250
 
-function loadInitial(): Record<string, unknown> {
-  const statePath = kvStatePath()
-  try {
-    const text = readFileSync(statePath, "utf8")
-    const parsed = JSON.parse(text) as unknown
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-  } catch {
-    // Missing file or malformed JSON: start fresh. We don't surface the
-    // error — a corrupt state file shouldn't block the UI.
-  }
-  return {}
-}
-
 export const { use: useKV, provider: KVProvider } = createSimpleContext({
   name: "KV",
   init: () => {
-    const [store, setStore] = createStore<Record<string, unknown>>(loadInitial())
+    const [store, setStore] = createStore<Record<string, unknown>>(loadStateFile())
+
+    /**
+     * Keys this process has `set()` since the last successful flush. Only
+     * these are written back — the rest of the in-memory snapshot is for
+     * reads only and must never reach disk (that's the lost-update bug).
+     * Kept across a failed flush so the change retries on the next one.
+     */
+    const dirtyKeys = new Set<string>()
 
     let writeTimer: ReturnType<typeof setTimeout> | null = null
     function writeNow(label: string): boolean {
-      const statePath = kvStatePath()
+      if (dirtyKeys.size === 0) return true // nothing of ours to merge
       try {
-        mkdirSync(dirname(statePath), { recursive: true })
-        const tmp = `${statePath}.tmp`
-        writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8")
-        renameSync(tmp, statePath)
+        // Read-merge-write: only OUR dirty keys are applied onto a fresh
+        // read of the file. A key set to `undefined` locally serializes
+        // as a deletion, matching the old stringify-drops-undefined
+        // behavior.
+        const patch: Record<string, unknown> = {}
+        for (const key of dirtyKeys) patch[key] = store[key]
+        patchStateFile(patch)
+        dirtyKeys.clear()
         return true
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -83,6 +88,7 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
       },
       set(key: string, value: unknown) {
         setStore(key, value)
+        dirtyKeys.add(key)
         scheduleWrite()
       },
       /**
@@ -110,6 +116,11 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
        * rely on the in-memory Solid signals being reset, since `clear`
        * only knows about KV keys; the post-reset relaunch is what
        * brings the rest of the UI back to defaults.
+       *
+       * This is the one legitimate whole-file write (`replaceStateFile`):
+       * "reset UI state" means wipe EVERYTHING, including keys other
+       * processes wrote after we loaded — a dirty-key merge would
+       * preserve exactly the state the user asked to destroy.
        */
       clear() {
         for (const k of Object.keys(store)) setStore(k, undefined as unknown)
@@ -117,12 +128,9 @@ export const { use: useKV, provider: KVProvider } = createSimpleContext({
           clearTimeout(writeTimer)
           writeTimer = null
         }
-        const statePath = kvStatePath()
+        dirtyKeys.clear() // nothing pending survives a full wipe
         try {
-          mkdirSync(dirname(statePath), { recursive: true })
-          const tmp = `${statePath}.tmp`
-          writeFileSync(tmp, JSON.stringify(store, null, 2), "utf8")
-          renameSync(tmp, statePath)
+          replaceStateFile({})
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error("[kobe] kv clear write failed:", err)

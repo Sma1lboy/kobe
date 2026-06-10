@@ -61,13 +61,12 @@ export function kobeStateDir(): string {
 /**
  * Path to the small flat-JSON KV blob shared between the TUI's
  * `KVProvider` (src/tui/context/kv.tsx) and CLI-side modules like
- * `src/state/repos.ts`. Both must agree on this path or the picker
- * stops seeing what `kobe add` wrote. Defaults to
- * `~/.config/kobe/state.json`; honours `KOBE_HOME_DIR` so tests can
- * isolate via tmpdir.
+ * `src/state/repos.ts`. Defaults to `~/.config/kobe/state.json`;
+ * honours `KOBE_HOME_DIR` so tests can isolate via tmpdir.
  *
- * The TUI's `kv.tsx` predates this helper and still hardcodes the
- * same expression — keep them in sync if either moves.
+ * All reads/writes of this file go through `src/state/store.ts` (the
+ * single owner of state.json I/O — read-merge-write, atomic rename);
+ * this accessor is the one place the path is spelled.
  */
 export function kvStatePath(): string {
   return join(homeDir(), ".config", "kobe", "state.json")
