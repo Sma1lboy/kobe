@@ -1,5 +1,0 @@
----
-"@sma1lboy/kobe": patch
----
-
-The web dashboard's server moved out of the daemon into a standalone bridge (`kobe-web/server`). `kobe web` now runs the HTTP/SSE server in its own process and talks to the daemon purely over the socket protocol as a `role: "gui"` subscriber — so a web bug can't take the daemon down, and the bridge survives `kobe daemon restart` by auto-reconnecting (the dashboard shows a brief "daemon down" instead of dying). Web dev gets the same isolation: `kobe-web`'s `bun run dev` runs the bridge under `bun --watch`, so editing bridge code hot-restarts it without touching the daemon or your tasks. The daemon-side `daemon.web.start` / `daemon.web.stop` RPCs are gone (protocol v3; an old `kobe web` against a new daemon gets a clear "unknown daemon request" error — rerun the new `kobe web` instead). On first launch the new `kobe web` SIGTERMs a previous daemon-hosted kobe-web holding the port; that old daemon shuts down cleanly and is respawned on the next kobe launch.
