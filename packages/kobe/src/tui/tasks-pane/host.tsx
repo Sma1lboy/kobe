@@ -48,23 +48,14 @@ import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-l
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { availableEngineIds } from "../../engine/account-detect.ts"
-import { engineDisplayName, interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { execHostForWorktreePath } from "../../exec/resolve.ts"
-import { DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { resolveRepoInit } from "../../state/repo-init.ts"
-import {
-  addSavedRepo,
-  getPersistedString,
-  getSavedRepos,
-  isRemoteRepoKey,
-  setPersistedString,
-} from "../../state/repos.ts"
+import { getPersistedString, isRemoteRepoKey, setPersistedString } from "../../state/repos.ts"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
-import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
-import { nextVendorWithin } from "../../types/vendor.ts"
+import type { Task, VendorId } from "../../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { HelpDialog } from "../component/help-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
@@ -81,7 +72,15 @@ import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
-import { finishDeletedTaskFlow, toggleTaskArchivedFlow } from "../lib/task-actions"
+import {
+  type CreateTaskContext,
+  archiveTaskFlow,
+  createTaskFlow,
+  cycleVendorFlow,
+  deleteTaskFlow,
+  renameBranchFlow,
+  renameTaskFlow,
+} from "../lib/task-actions"
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
@@ -203,105 +202,74 @@ function TasksShell(props: {
     if (info) setUpdateInfo(info)
   })
 
-  // `n` creates a new task using the
-  // SAME NewTaskDialog the outer app uses (repo picker + base-branch +
-  // clone tab) — parity matters; this pane is meant to replace the outer
-  // "page 1". The standalone pane has no Orchestrator, so it fires the
-  // daemon's `task.create` RPC instead of calling it in-process. Default
-  // repo is the cursor task's repo (fallback: first saved repo), matching
-  // the outer app's "spawn a sibling" default. Backlog task (worktree
-  // lazy on first enter); list reloads immediately after.
-  async function createTask(): Promise<void> {
-    const repos = getSavedRepos()
-    const list = props.tasks()
-    const cursorRepo = (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
-    // First run (no saved repos): default the dialog to the cwd so the
-    // user picks a path in-TUI instead of being sent to a shell for
-    // `kobe add` (saved mode preselects it; typing `/` flips to the
-    // directory browser). Otherwise default to the cursor task's repo
-    // (the "spawn a sibling" default).
-    const defaultRepo = cursorRepo ?? repos[0] ?? process.cwd()
-
-    // Same surface preference as Settings (default chattab): open the
-    // new-task flow as a dedicated full-window page in a new tmux tab.
-    // The page performs the create/adopt itself and the subscribe pushes
-    // the new task back into this list. Fall back to the in-pane overlay
-    // if we can't resolve our tmux session.
-    const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
-    if (surface === "chattab") {
-      const session = await currentSessionName()
-      if (session) {
-        await openNewTaskTab(session, defaultRepo)
-        return
-      }
-    }
-
-    // Show the dialog IN the Tasks pane without zooming it full-window
+  // Shared task-action context (lib/task-actions). The flow bodies —
+  // confirm copy, DIRTY_WORKTREE force-delete branch, error handling —
+  // live in the shared module so this pane and the deprecated outer
+  // monitor can't drift apart. What stays here is only what's genuinely
+  // this host's: dialog wiring, toast surfacing, disk-only persistence,
+  // the chattab create surface, and selection.
+  const taskActions: CreateTaskContext = {
+    orch: props.orch,
+    tasks: () => props.tasks(),
+    confirm: async (p) => (await DialogConfirm.show(dialog, p.title, p.body, p.cancelLabel, p.confirmLabel)) === true,
+    // Dialogs show IN the Tasks pane without zooming it full-window
     // (KOB-244): the old `resize-pane -Z` hid the claude / ops / shell
     // panes for the dialog's lifetime, which felt like the whole layout
     // "popped out". The dialog overlay already caps to the pane width
     // (`maxWidth = dimensions().width - 2`), so it renders fine in the
     // ~22%-wide pane — just narrower — and the other panes stay visible.
-    const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
-    const availableVendors = await availableEngineIds()
-    // First-run guard (#24): no built-in engine detected AND no custom engine
-    // configured. The dialog would still let the user pick a vendor, then the
-    // missing binary surfaces only as a raw shell error inside the pane. Warn
-    // up front but still allow proceeding (they may install it after picking).
-    if (availableVendors.length === 0) {
-      notifyInfo("No engine CLI detected — install claude or codex, or add one in Settings → Engines")
-    }
-    const result = await NewTaskDialog.show(dialog, defaultRepo, repos, {
-      defaultVendor,
-      availableVendors,
-      discoverAdoptable: props.orch ? (repo) => props.orch!.discoverAdoptableWorktrees(repo) : undefined,
-    })
-    if (!result) return
-    // Remember the choice (shared kv state.json) so the next new-task
-    // dialog — here or in the outer monitor — defaults to it.
-    setPersistedString("lastSelectedVendor", result.vendor)
-    // Auto-save the chosen repo so the saved list self-populates and
-    // `kobe add` stays optional. This pane uses disk-only persistence
-    // (no in-process kv store), so the atomic disk write is sufficient.
-    addSavedRepo(result.repo)
-    if (!props.orch) {
-      console.error("[kobe tasks] no daemon; cannot create task")
-      return
-    }
-    // The create/adopt awaits a real git-worktree operation with no other
-    // feedback — the dialog just vanishes. Surface a transient "working" toast
-    // so the wait reads as progress; failure replaces it with the error toast
-    // raised in the catch below.
-    notifyInfo("Creating task…")
-    let createdId: string | undefined
-    try {
-      if (result.mode === "adopt") {
-        for (const w of result.adopt) {
-          const t = await props.orch.adoptWorktree({
-            repo: result.repo,
-            worktreePath: w.worktreePath,
-            branch: w.branch,
-            vendor: result.vendor,
-          })
-          createdId = t.id
-        }
-      } else {
-        const task = await props.orch.createTask({
-          repo: result.repo,
-          baseRef: result.baseRef,
-          vendor: result.vendor,
-        })
-        createdId = task.id
-      }
-    } catch (err) {
-      console.error("[kobe tasks] task.create/adopt failed:", err)
-      notifyError(`Couldn't create task: ${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    await props.reload()
+    promptText: (initial, opts) => RenameTaskDialog.show(dialog, initial, opts),
+    logger: console,
+    logPrefix: "[kobe tasks]",
+    notifyError,
+    notifyInfo,
+    reload: () => props.reload(),
+    // This pane runs INSIDE the tmux client whose session a delete kills —
+    // switch away first so the kill doesn't yank the user's terminal.
+    switchBeforeKill: true,
+    // Publish the shared active-task focus so every surface follows (KOB-247).
+    updateActiveTask: true,
+    onTaskDeleted: (taskId, nextTask) => {
+      if (selectedId() !== taskId) return
+      const remaining = props.tasks()
+      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
+    },
+    promptNewTask: (defaultRepo, repos, opts) => NewTaskDialog.show(dialog, defaultRepo, repos, opts),
+    // "Spawn a sibling" default: the cursor task's repo (fallback: the
+    // first listed task's).
+    cursorRepo: () => {
+      const list = props.tasks()
+      return (list.find((t) => t.id === selectedId()) ?? list[0])?.repo
+    },
+    // This pane uses disk-only persistence (no in-process kv store), so the
+    // atomic disk write is sufficient — no onRepoSaved kv mirror needed.
+    lastVendor: () => getPersistedString("lastSelectedVendor") as VendorId | undefined,
+    rememberVendor: (vendor) => setPersistedString("lastSelectedVendor", vendor),
+    // Same surface preference as Settings (default chattab): open the
+    // new-task flow as a dedicated full-window page in a new tmux tab.
+    // The page performs the create/adopt itself and the subscribe pushes
+    // the new task back into this list. Fall back to the in-pane overlay
+    // if we can't resolve our tmux session.
+    openCreateSurface: async (defaultRepo) => {
+      const surface = normalizeSettingsSurface(kv.get(SETTINGS_SURFACE_KEY, DEFAULT_SETTINGS_SURFACE))
+      if (surface !== "chattab") return false
+      const session = await currentSessionName()
+      if (!session) return false
+      await openNewTaskTab(session, defaultRepo)
+      return true
+    },
     // Land the cursor on the new task so Enter / click enters it next.
     // (The daemon subscribe pushes the new task into the list momentarily.)
-    if (createdId) setSelectedId(createdId)
+    selectTask: (id) => setSelectedId(id),
+  }
+
+  // `n` creates a new task using the SAME NewTaskDialog (and now the same
+  // createTaskFlow) as the outer app — parity matters; this pane is meant
+  // to replace the outer "page 1". The standalone pane has no Orchestrator,
+  // so the flow fires the daemon's `task.create` RPC instead of calling it
+  // in-process. Backlog task (worktree lazy on first enter).
+  async function createTask(): Promise<void> {
+    await createTaskFlow(taskActions)
   }
 
   // Settings opens on the user's chosen surface (default chattab): a
@@ -342,158 +310,28 @@ function TasksShell(props: {
   }
 
   async function archiveTask(id: string): Promise<void> {
-    if (!props.orch) return
-    const task = props.tasks().find((t) => t.id === id)
-    if (!task) return
-    // Unarchive is harmless (brings the task back) — no confirm. Archiving
-    // STOPS the task's running engine session, so confirm first.
-    if (!task.archived) {
-      const ok = await DialogConfirm.show(
-        dialog,
-        `Archive "${task.title}"?`,
-        "Moves it to Archives and stops its running session. The worktree, branch, and chat history stay — unarchive to bring it back.",
-        "cancel",
-        "archive",
-      )
-      if (ok !== true) return
-    }
-    const result = await toggleTaskArchivedFlow({
-      orch: props.orch,
-      tasks: props.tasks(),
-      taskId: id,
-      logger: console,
-      logPrefix: "[kobe tasks]",
-      updateActiveTask: true,
-    })
-    if (!result) return
-    await props.reload()
+    await archiveTaskFlow(taskActions, id)
   }
 
   async function deleteTask(id: string): Promise<void> {
-    const task = props.tasks().find((t) => t.id === id)
-    if (!task || !props.orch) return
-    const ok = await DialogConfirm.show(
-      dialog,
-      `Delete "${task.title}"?`,
-      "Removes the task entry and its worktree. The tmux session (if any) is killed.",
-      "cancel",
-      "delete",
-    )
-    if (ok !== true) return
-    let deleted = false
-    try {
-      await props.orch.deleteTask(id)
-      deleted = true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (message.includes(DIRTY_WORKTREE_CODE)) {
-        const forceOk = await DialogConfirm.show(
-          dialog,
-          `"${task.title}" has uncommitted changes`,
-          "Its worktree has uncommitted or untracked work that will be permanently deleted. Force delete anyway?",
-          "cancel",
-          "force delete",
-        )
-        if (forceOk === true) {
-          try {
-            await props.orch.deleteTask(id, { force: true })
-            deleted = true
-          } catch (forceErr) {
-            console.error("[kobe tasks] force delete failed:", forceErr)
-            notifyError(`Couldn't delete: ${forceErr instanceof Error ? forceErr.message : String(forceErr)}`)
-          }
-        }
-      } else {
-        console.error("[kobe tasks] delete failed:", err)
-        notifyError(`Couldn't delete: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    }
-    if (!deleted) return
-    const { nextTask } = await finishDeletedTaskFlow({
-      orch: props.orch,
-      tasks: props.tasks(),
-      taskId: id,
-      logger: console,
-      logPrefix: "[kobe tasks]",
-      switchBeforeKill: true,
-      updateActiveTask: true,
-    })
-    await props.reload()
-    if (selectedId() === id) {
-      const remaining = props.tasks()
-      setSelectedId(nextTask?.id ?? (remaining.find((t) => !t.archived) ?? remaining[0])?.id ?? null)
-    }
+    await deleteTaskFlow(taskActions, id)
   }
 
-  // Rename a task's title via the daemon's `task.rename` RPC (same path
+  // Rename a task's title via the daemon's `task.rename` RPC (same flow
   // the outer app's `r` uses). No pane zoom (KOB-244) — the dialog shows
-  // in place; the other panes stay visible. The branch follows the title
-  // for not-yet-materialised tasks (autoBranch derives from it); a
-  // worktree that already exists keeps its git branch.
+  // in place; the other panes stay visible.
   async function renameTask(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current) return
-    const next = await RenameTaskDialog.show(dialog, current.title)
-    if (!next || !props.orch) return
-    try {
-      await props.orch.setTitle(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.rename failed:", err)
-      notifyError(`Couldn't rename task: ${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    await props.reload()
+    await renameTaskFlow(taskActions, id)
   }
 
-  // Rename a task's branch via `task.setBranch` RPC. For a materialised
-  // worktree the daemon runs `git branch -m` (HEAD moves on the
-  // checked-out worktree, a running session keeps streaming); otherwise
-  // it just records the name for the eventual `ensureWorktree`.
+  // Rename a task's branch via the `task.setBranch` RPC (`b`).
   async function renameBranch(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current || current.kind === "main") return
-    const next = await RenameTaskDialog.show(dialog, current.branch, {
-      dialogTitle: "Rename branch",
-      fieldLabel: "branch",
-    })
-    if (!next || !props.orch) return
-    try {
-      await props.orch.setBranch(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.setBranch failed:", err)
-      notifyError(`Couldn't rename branch: ${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    await props.reload()
+    await renameBranchFlow(taskActions, id)
   }
 
-  // Cycle the cursor task's engine vendor (claude ↔ codex ↔ …) via the
-  // `task.setVendor` RPC. Takes effect on the task's next enter:
-  // `ensureSession` rebuilds a session whose `@kobe_vendor` tag no longer
-  // matches, so the new tmux pane launches the new engine.
-  //
-  // Cycle over the SAME detected-built-ins + custom set the new-task dialog
-  // offers (`availableEngineIds()` + `nextVendorWithin`), not the 3 built-ins
-  // alone: a task on a user-added custom engine must be able to cycle back to
-  // it instead of jumping to a built-in and getting stranded (`nextVendor`
-  // only walked `ALL_VENDORS`).
+  // Cycle the cursor task's engine vendor (`v`) via `task.setVendor`.
   async function cycleVendor(id: string): Promise<void> {
-    const current = props.tasks().find((t) => t.id === id)
-    if (!current || !props.orch) return
-    const engines = await availableEngineIds()
-    const next = nextVendorWithin(engines, current.vendor ?? DEFAULT_TASK_VENDOR)
-    try {
-      await props.orch.setVendor(id, next)
-    } catch (err) {
-      console.error("[kobe tasks] task.setVendor failed:", err)
-      notifyError(`Couldn't switch engine: ${err instanceof Error ? err.message : String(err)}`)
-      return
-    }
-    // The new vendor only takes effect on the task's NEXT enter (ensureSession
-    // rebuilds the pane when its `@kobe_vendor` tag no longer matches), so a
-    // bare `v` press looks like a no-op. Surface the deferred-rebuild contract.
-    notifyInfo(`Engine → ${engineDisplayName(next)} (applies on reopen)`)
-    await props.reload()
+    await cycleVendorFlow(taskActions, id)
   }
 
   async function openSelectedWorktree(id: string): Promise<void> {
