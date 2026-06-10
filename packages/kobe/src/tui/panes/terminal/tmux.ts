@@ -35,9 +35,8 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
-import { homeDir, worktreeInitMarkerPath } from "@/env"
-import { execHostForRepo, execHostForWorktreePath } from "@/exec/resolve"
-import { isRemoteRepoKey } from "@/state/repos"
+import { worktreeInitMarkerPath } from "@/env"
+import { execHostForRepo, localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   claudePaneIdStrict,
@@ -129,28 +128,17 @@ export const CHAT_TAB_ENGINE_PROMPT = `engine (${ALL_VENDORS.join("/")}/…)`
 const REMOTE_KEY_OPTION = "@kobe_remote"
 
 /**
- * The LOCAL directory a tmux pane is spawned in (`-c`). For a LOCAL task this
- * is the worktree itself. For a REMOTE task the worktree path lives on another
- * host and can't be `cd`'d locally — tmux would refuse to spawn — so panes
- * spawn in the local home dir while the engine pane's wrapped `ssh … 'cd <wt>'`
- * carries the real remote dir. Pure for local paths → zero regression.
- */
-function localSpawnCwd(cwd: string): string {
-  return execHostForWorktreePath(cwd).isRemote ? homeDir() : cwd
-}
-
-/**
- * Wrap a built engine command so it runs on the remote host over the project's
- * multiplexed SSH connection (`ssh -tt … 'cd <remoteWt> && <engine>'`). Returns
- * the command unchanged for a local task (no `remoteKey`, or the key resolves
- * local). Opens the ControlMaster once via `ensureReady` so the pane's ssh
- * reuses it with no re-auth (no secret in the pane command). See
+ * Wrap a built engine command for the host the task's project resolves to:
+ * a remote project's host wraps it over the multiplexed SSH connection
+ * (`ssh -tt … 'cd <remoteWt> && <engine>'`); the local host's `wrapCommand`
+ * is the identity (no `remoteKey`, or an `ssh://` key with no stored config,
+ * which resolves local). `ensureReady` opens the ControlMaster once so the
+ * pane's ssh reuses it with no re-auth (no secret in the pane command). See
  * `docs/design/remote-projects.md`.
  */
 function wrapEngineLaunch(engineCmd: string, remoteKey: string | undefined, remoteCwd: string): string {
-  if (!remoteKey || !isRemoteRepoKey(remoteKey)) return engineCmd
+  if (!remoteKey) return engineCmd
   const host = execHostForRepo(remoteKey)
-  if (!host.isRemote) return engineCmd
   host.ensureReady()
   return host.wrapCommand(engineCmd, { tty: true, cwd: remoteCwd })
 }
@@ -239,13 +227,14 @@ export interface EnsureSessionOpts {
    */
   readonly vendor?: string
   /**
-   * Remote project key (`ssh://user@host[:port]`) when this task belongs to a
-   * remote project — the engine then launches over SSH on the remote host and
-   * every pane spawns in a local dir (the worktree is remote). Absent/undefined
-   * for a local task (the common case; behavior unchanged). Resolve via
-   * `isRemoteRepoKey(task.repo) ? task.repo : undefined` at the call site.
+   * The task's repo/project key — a local repo root path, or a remote
+   * project's `ssh://user@host[:port]` key. Callers pass `task.repo` AS-IS;
+   * remoteness is derived in here (via `remoteKeyForRepo`), never at the
+   * call site. A remote task launches its engine over SSH on the remote
+   * host and spawns every pane in a local dir (the worktree is remote);
+   * absent/local keeps today's behavior verbatim.
    */
-  readonly remoteKey?: string
+  readonly repo?: string
   /**
    * Per-repo init script woven before the engine on a FRESH session (runs
    * in the same shell so `export`s reach the engine; once-per-worktree via
@@ -331,6 +320,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     vendor: opts.vendor,
     hasEngineCommand: opts.command.length > 0,
   })
+  // The ONE remoteness derivation for this session build: a remote project's
+  // key (`ssh://…`) or undefined for a local task. Everything below asks the
+  // resolved host, never re-derives.
+  const remoteKey = remoteKeyForRepo(opts.repo)
 
   // Reuse (healthy, or degraded multi-window — see the decision's reason):
   // leave the session running, just heal pane widths + stale kobe-owned
@@ -347,7 +340,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // when no engine pane is found to respawn — that fact is only knowable
   // here at apply time, so it's the applier's fallback, not the decision's.
   if (action.kind === "respawn-engine") {
-    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, opts.remoteKey)) {
+    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey)) {
       if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
       await healTaskPaneWidths(opts.name)
       await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
@@ -377,8 +370,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
   // remote. The repo's init script is deferred for remote (it runs locally
   // today — see docs/design/remote-projects.md phase 8), so it's skipped here.
-  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launch.argv), opts.remoteKey, opts.cwd)
-  const remote = Boolean(opts.remoteKey && isRemoteRepoKey(opts.remoteKey))
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, opts.cwd)
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",
@@ -393,8 +385,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
     engineLaunchLine(engineCmd, {
-      initScript: remote ? undefined : opts.initScript,
-      markerPath: !remote && opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+      initScript: remoteKey ? undefined : opts.initScript,
+      markerPath: !remoteKey && opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
     }),
   ])
   const pane0 = r0.stdout.trim()
@@ -410,7 +402,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(opts.taskId ? ([["set-option", "-t", opts.name, "@kobe_task", opts.taskId]] as const) : []),
     ["set-option", "-t", opts.name, "@kobe_worktree", opts.cwd],
     ...(opts.vendor ? ([["set-option", "-t", opts.name, "@kobe_vendor", opts.vendor]] as const) : []),
-    ...(remote ? ([["set-option", "-t", opts.name, REMOTE_KEY_OPTION, opts.remoteKey as string]] as const) : []),
+    ...(remoteKey ? ([["set-option", "-t", opts.name, REMOTE_KEY_OPTION, remoteKey]] as const) : []),
   ])
 
   await buildPanesAround(pane0, {

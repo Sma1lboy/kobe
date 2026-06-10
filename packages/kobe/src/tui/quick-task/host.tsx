@@ -108,7 +108,6 @@ async function ensureTaskSession(
   if (!worktree) throw new Error(`task ${task.id} has no worktree`)
   const { ensureSession } = await import("../panes/terminal/tmux.ts")
   const { resolveRepoInit } = await import("../../state/repo-init.ts")
-  const { isRemoteRepoKey } = await import("../../state/repos.ts")
   const init = resolveRepoInit(repo, worktree)
   const ok = await ensureSession({
     name: session,
@@ -116,7 +115,7 @@ async function ensureTaskSession(
     command: interactiveEngineCommand(vendor),
     taskId: task.id,
     vendor,
-    remoteKey: isRemoteRepoKey(repo) ? repo : undefined,
+    repo,
     initScript: init.initScript,
   })
   if (!ok) throw new Error(`failed to start tmux session for ${task.id}`)

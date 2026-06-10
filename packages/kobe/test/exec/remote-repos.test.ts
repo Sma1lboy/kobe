@@ -3,7 +3,13 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { kvStatePath } from "../../src/env.ts"
-import { execHostForRepo, remoteSpecFromConfig } from "../../src/exec/resolve.ts"
+import {
+  execHostForRepo,
+  localSpawnCwd,
+  remoteKeyForRepo,
+  remoteSpecFromConfig,
+  worktreeUsable,
+} from "../../src/exec/resolve.ts"
 import {
   addRemoteRepo,
   getRemoteRepoConfig,
@@ -95,6 +101,44 @@ describe("execHostForRepo", () => {
 
   it("falls back to local for an ssh:// key with no stored config", () => {
     expect(execHostForRepo("ssh://ghost@nowhere").isRemote).toBe(false)
+  })
+})
+
+// The intent-named seam queries: callers around ensureSession/spawning ask
+// these instead of deriving remoteness per call site (`isRemoteRepoKey(...)
+// ? repo : undefined`, `.isRemote || existsSync`, `.isRemote ? homeDir() :
+// cwd`). A third adapter must only change `exec/`, never the call sites.
+describe("remoteKeyForRepo", () => {
+  it("passes a remote ssh:// key through and drops local/absent repos", () => {
+    expect(remoteKeyForRepo("ssh://dev@box:2222")).toBe("ssh://dev@box:2222")
+    expect(remoteKeyForRepo("/Users/dev/proj")).toBeUndefined()
+    expect(remoteKeyForRepo(undefined)).toBeUndefined()
+    expect(remoteKeyForRepo("")).toBeUndefined()
+  })
+})
+
+describe("worktreeUsable", () => {
+  it("local paths keep the real on-disk check", () => {
+    expect(worktreeUsable(home)).toBe(true) // the temp home exists
+    expect(worktreeUsable(join(home, "definitely-missing"))).toBe(false)
+  })
+
+  it("a path under a remote project's basePath is trusted without a local stat", () => {
+    addRemoteRepo({ host: "box", user: "dev", basePath: "/srv/work", auth: { kind: "key" } })
+    // Doesn't exist locally — must still be usable (it lives on the remote).
+    expect(worktreeUsable("/srv/work/kobe-task-1")).toBe(true)
+  })
+})
+
+describe("localSpawnCwd", () => {
+  it("is the identity for a local worktree", () => {
+    expect(localSpawnCwd(home)).toBe(home)
+  })
+
+  it("falls back to the local home dir for a remote worktree path", () => {
+    addRemoteRepo({ host: "box", user: "dev", basePath: "/srv/work", auth: { kind: "key" } })
+    // KOBE_HOME_DIR (= the temp home) overrides os.homedir() in env.homeDir().
+    expect(localSpawnCwd("/srv/work/kobe-task-1")).toBe(home)
   })
 })
 

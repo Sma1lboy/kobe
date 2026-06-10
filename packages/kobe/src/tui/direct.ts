@@ -18,7 +18,6 @@ import {
   addSavedRepo,
   getPersistedString,
   getSavedRepos,
-  isRemoteRepoKey,
   normalizeSavedRepos,
   setPersistedString,
 } from "../state/repos.ts"
@@ -135,7 +134,7 @@ export async function startDirectTmux(): Promise<void> {
       command: interactiveEngineCommand(task.vendor),
       taskId: task.id,
       vendor: task.vendor,
-      remoteKey: isRemoteRepoKey(task.repo) ? task.repo : undefined,
+      repo: task.repo,
       initScript: init.initScript,
       initPrompt: init.initPrompt,
     })

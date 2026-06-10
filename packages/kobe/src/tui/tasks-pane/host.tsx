@@ -50,10 +50,10 @@ import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMou
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
-import { execHostForWorktreePath } from "../../exec/resolve.ts"
+import { worktreeUsable } from "../../exec/resolve.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { resolveRepoInit } from "../../state/repo-init.ts"
-import { getPersistedString, isRemoteRepoKey, setPersistedString } from "../../state/repos.ts"
+import { getPersistedString, setPersistedString } from "../../state/repos.ts"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
 import type { Task, VendorId } from "../../types/task.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
@@ -97,14 +97,12 @@ import { DialogConfirm } from "../ui/dialog-confirm"
 const RELOAD_MS = 1500
 
 /**
- * Whether a worktree path is usable as a session cwd. A REMOTE worktree lives
- * on another host, so a local `existsSync` would (wrongly) say "missing" and
- * block opening the task — for a remote path we trust it exists remotely (the
- * orchestrator created it over SSH). Local paths keep the real on-disk check.
+ * Type-guard wrapper over the exec seam's {@link worktreeUsable}: whether a
+ * worktree path is usable as a session cwd (a remote worktree is trusted; a
+ * local one keeps the real on-disk check — the remoteness lives in `exec/`).
  */
 function worktreeCwdUsable(cwd: string | undefined): cwd is string {
-  if (!cwd) return false
-  return execHostForWorktreePath(cwd).isRemote || existsSync(cwd)
+  return !!cwd && worktreeUsable(cwd)
 }
 
 function TasksShell(props: {
@@ -443,7 +441,7 @@ function TasksShell(props: {
           command: interactiveEngineCommand(task?.vendor),
           taskId: id,
           vendor: task?.vendor,
-          remoteKey: task?.repo && isRemoteRepoKey(task.repo) ? task.repo : undefined,
+          repo: task?.repo,
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
@@ -479,7 +477,7 @@ function TasksShell(props: {
       command: interactiveEngineCommand(task?.vendor),
       taskId: id,
       vendor: task?.vendor,
-      remoteKey: task?.repo && isRemoteRepoKey(task.repo) ? task.repo : undefined,
+      repo: task?.repo,
       initScript: init.initScript,
       initPrompt: init.initPrompt,
     })
