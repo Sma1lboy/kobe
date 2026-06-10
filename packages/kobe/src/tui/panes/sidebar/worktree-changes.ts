@@ -18,10 +18,12 @@
  * rather than showing a confusing error state. Never throws — the
  * sidebar must always render.
  *
- * Caching: the caller (Sidebar.tsx) wraps this in a `createMemo` keyed
- * on the existing `branchTick` + the worktree path so we don't shell
- * out on every redraw frame. Tick advances every ~2s — same cadence
- * as the main-row branch refresh.
+ * ⚠️ SYNC — one-shot CLI use ONLY (`kobe api` task queries). `git
+ * status` is O(repo size); calling this from a render path froze the
+ * Tasks pane for the lifetime of a 30GB repo's status walk, every
+ * tick. The sidebar reads through `worktree-changes-poller.ts` (async
+ * spawn + in-flight dedupe + timeout/backoff) instead — new render-
+ * path consumers must too. Only `parsePorcelain` is shared.
  *
  * Why a separate file rather than reaching into
  * `src/orchestrator/worktree/manager.ts#isDirty`: that one is `async`,

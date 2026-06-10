@@ -96,7 +96,7 @@ import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasenam
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
 import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
-import { readWorktreeChanges } from "./worktree-changes"
+import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
 
 export type SidebarProps = {
   tasks: Accessor<readonly Task[]>
@@ -776,16 +776,23 @@ export function Sidebar(props: SidebarProps) {
                 }
               }
               // Per-row "uncommitted changes" file counts, rendered on
-              // the right edge as `+N −M`. Keyed on the same `branchTick`
-              // so we only shell out at the established 2s cadence.
-              // Empty when the worktree is clean — the renderer skips
-              // the chip entirely. Returned as a struct (not a joined
-              // string) so the renderer can colour `+N` with
-              // `theme.success` and `−N` with `theme.error`, matching
-              // the FileTree pane's per-file `+/−` badges.
+              // the right edge as `+N −M`. The `branchTick` read keeps
+              // the ~2s cadence, but the git status itself runs through
+              // the ASYNC poller — a huge worktree costs a background
+              // child process, never a frozen event loop (a 30GB repo's
+              // sync `git status` used to hard-freeze the pane the
+              // moment its row rendered). Archived rows don't poll at
+              // all: the Archives view must not pay git-status for
+              // shelved worktrees — that listing was the reported
+              // trigger. Empty when the worktree is clean — the
+              // renderer skips the chip entirely. Returned as a struct
+              // (not a joined string) so the renderer can colour `+N`
+              // with `theme.success` and `−N` with `theme.error`,
+              // matching the FileTree pane's per-file `+/−` badges.
               const changes = createMemo(() => {
                 branchTick()
-                return readWorktreeChanges(task.worktreePath)
+                if (!task.archived) pollWorktreeChanges(task.worktreePath)
+                return worktreeChanges(task.worktreePath)
               })
               // A `main` (project) row's branch isn't stored on the task — it's
               // the repo root's live checkout. Resolve it on the same 2s tick as
