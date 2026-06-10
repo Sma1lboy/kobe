@@ -46,14 +46,6 @@ async function readStdinPayload(): Promise<Record<string, unknown>> {
   }
 }
 
-/** Map a Claude StopFailure `error_type` to the neutral failure class. */
-function failureFromErrorType(errorType: unknown): EngineActivityDetail["failure"] {
-  if (typeof errorType !== "string") return "other"
-  if (errorType === "rate_limit" || errorType === "overloaded") return "rate_limit"
-  if (errorType === "billing_error") return "billing"
-  return "other"
-}
-
 function flagValue(argv: readonly string[], name: string): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === name) return argv[i + 1]
@@ -164,12 +156,14 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     // for back-compat / direct invocation.
     const taskId = flagValue(rest, "--task-id")
     const cwd = typeof payload.cwd === "string" && payload.cwd ? payload.cwd : process.cwd()
+    // Payload → neutral detail is the engine adapter's job (it owns the
+    // vendor's payload vocabulary, e.g. Claude's `error_type` classes). The
+    // installed hook command carries no vendor id, so ask each adapter with
+    // wired hooks (only Claude today) and take the first answer.
     let detail: EngineActivityDetail | undefined
-    if (verb === "turn-failed") {
-      detail = { failure: failureFromErrorType(payload.error_type) }
-    } else if (verb === "awaiting-input") {
-      // The only awaiting-input hook kobe installs is the permission matcher.
-      detail = { waiting: "permission" }
+    for (const adapter of activityHookAdapters()) {
+      detail = adapter.activityDetailFromPayload(verb, payload)
+      if (detail) break
     }
 
     const client = await connectIfRunning() // NON-spawning by contract

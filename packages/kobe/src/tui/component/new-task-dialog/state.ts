@@ -2,29 +2,27 @@
  * Pure state-machine helpers for the new-task dialog.
  *
  * Lifted out of `src/tui/app.tsx` so the dialog's logic — field
- * cycling, repo-list assembly, substring filtering, picker windowing,
- * repo-path validation, branch enumeration — can be unit-tested
- * without standing up the dialog stack or opentui. None of these
- * functions touch Solid, opentui, or the dialog context; they are
- * effectively reducers + pure helpers.
+ * cycling, repo-list assembly, substring filtering, picker windowing —
+ * can be unit-tested without standing up the dialog stack or opentui.
+ * None of these functions touch Solid, opentui, the filesystem, or a
+ * subprocess; they are effectively reducers + pure helpers. **Keep this
+ * file Solid-free AND side-effect-free** — anything that shells out or
+ * reads the fs lives elsewhere:
  *
- * The JSX shell (`./dialog.tsx`) imports these and wires them to
- * signals. Keep this file Solid-free.
+ *   - sync git snapshots (current branch, branch list, repo
+ *     validation) → `src/tui/lib/git-snapshot.ts` (the sync-guard
+ *     whitelist entry lives there, not here).
+ *   - path/dir suggestion plumbing (`expandHome`, drill-down listing)
+ *     → `src/tui/lib/path-helpers.ts`.
+ *   - clone-tab fs/spawn helpers → `./clone.ts`.
+ *
+ * The JSX shell (`./dialog.tsx`) imports all four and wires them to
+ * signals.
  */
 
-import { spawn } from "node:child_process"
-import * as fs from "node:fs"
-import * as os from "node:os"
-import * as path from "node:path"
-import type { Readable } from "node:stream"
 import { matchPathGlob } from "@/lib/path-glob"
 import type { VendorId } from "@/types/vendor"
-
-type EventedCloneProcess = {
-  readonly stderr: Readable | null
-  on(event: "error", listener: (err: Error) => void): void
-  on(event: "close", listener: (code: number | null) => void): void
-}
+import { DEFAULT_BASE_REF } from "../../lib/git-snapshot"
 
 /* --------------------------------------------------------------------- */
 /*  Public types                                                          */
@@ -121,9 +119,6 @@ export function pickerModeFor(value: string, repoOptions: readonly string[]): Pi
   if (trimmed.includes("/")) return "browse"
   return "saved"
 }
-
-/** Default base ref when the user leaves the field blank. */
-export const DEFAULT_BASE_REF = "main"
 
 /** Picker windowing cap. Matches the slash dropdown's `slashWindow`. */
 export const PICKER_MAX_VISIBLE = 8
@@ -266,216 +261,6 @@ export function clampCursor(cursor: number, listLength: number): number {
 }
 
 /**
- * Validate a repo path entered in the new-task dialog. Returns null
- * when the path looks like a usable git repo, or a human-readable
- * reason string otherwise. The dialog renders the reason inline and
- * blocks submission so a typo'd path doesn't get persisted as
- * `lastNewTaskRepo` and can't drag every subsequent `runTask` into
- * `git worktree add` failures.
- *
- * Two checks (in order):
- *   1. The path exists and is a directory. We do NOT recursively
- *      create — a non-existent path is almost always a typo, not a
- *      "please mkdir for me" request.
- *   2. `git -C <path> rev-parse --git-dir` succeeds. This catches
- *      both "exists but not a repo" and "exists but git is unhappy"
- *      with a single check.
- */
-export function validateRepoPath(repo: string): string | null {
-  const trimmed = repo.trim()
-  if (!trimmed) return "repo path is required"
-  // existsSync + statSync.isDirectory in one shot.
-  let stat: import("node:fs").Stats
-  try {
-    stat = fs.statSync(trimmed)
-  } catch {
-    return `path does not exist: ${trimmed}`
-  }
-  if (!stat.isDirectory()) return `not a directory: ${trimmed}`
-  try {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
-    const out = spawnSync("git", ["rev-parse", "--git-dir"], {
-      cwd: trimmed,
-      encoding: "utf-8",
-      timeout: 2000,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-    if (out.status !== 0) return `not a git repository: ${trimmed}`
-  } catch {
-    return `not a git repository: ${trimmed}`
-  }
-  return null
-}
-
-/**
- * Read the current branch of the given repo (whatever HEAD points at).
- * Returns null when the path isn't a repo, HEAD is detached, or git
- * errors out. The dialog uses this to prefill the baseRef field with
- * the repo's actual current branch instead of a hardcoded "main", so
- * a worktree forked from a feature branch defaults to that feature
- * branch rather than silently jumping to main.
- */
-export function getCurrentBranch(repo: string): string | null {
-  if (!repo) return null
-  try {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
-    const out = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd: repo,
-      encoding: "utf-8",
-      timeout: 2000,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-    if (out.status !== 0) return null
-    const name = (out.stdout as string).trim()
-    if (!name || name === "HEAD") return null
-    return name
-  } catch {
-    return null
-  }
-}
-
-/**
- * List local branches in the given repo, sorted with the default
- * branch first when present. Synchronous — repo enumeration is a
- * one-shot call driven by the dialog's repo-field changes, so paying
- * for an async boundary buys nothing. Returns [] on any error so the
- * picker just silently degrades to the free-text input.
- */
-export function listLocalBranches(repo: string): string[] {
-  if (!repo) return []
-  try {
-    const { spawnSync } = require("node:child_process") as typeof import("node:child_process")
-    const out = spawnSync("git", ["for-each-ref", "--format=%(refname:short)", "refs/heads/"], {
-      cwd: repo,
-      encoding: "utf-8",
-      timeout: 2000,
-    })
-    if (out.status !== 0) return []
-    return (out.stdout as string)
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .sort((a, b) => {
-        // Default branches first.
-        const score = (n: string) => (n === "main" ? 0 : n === "master" ? 1 : n === "develop" ? 2 : 3)
-        const sa = score(a)
-        const sb = score(b)
-        if (sa !== sb) return sa - sb
-        return a.localeCompare(b)
-      })
-  } catch {
-    return []
-  }
-}
-
-/* --------------------------------------------------------------------- */
-/*  Directory drill-down for the custom-path input                        */
-/* --------------------------------------------------------------------- */
-
-/**
- * Expand a leading `~` to the user's home directory. Supports `~` alone
- * and `~/...`-prefixed paths only (no `~user/` lookups — rare; not
- * worth the parsing complexity here). The fs / git helpers don't expand
- * `~` themselves, so callers must resolve before validating or
- * spawning git.
- */
-export function expandHome(p: string): string {
-  if (p === "~") return os.homedir()
-  if (p.startsWith("~/")) return os.homedir() + p.slice(1)
-  return p
-}
-
-export type PathSplit = { base: string; filter: string }
-
-/**
- * Split a partially-typed path into:
- *   - `base`: the directory we should readdir for suggestions (always
- *     ends with `/`, or is empty if the input has no directory portion
- *     yet).
- *   - `filter`: the partial leaf the user is currently typing (used as
- *     a case-insensitive prefix match against the directory listing).
- *
- *   `/Users/`           → { base: "/Users/", filter: "" }
- *   `/Users/me/proj`    → { base: "/Users/me/", filter: "proj" }
- *   `~/p`               → { base: "<home>/", filter: "p" }
- *   `~`                 → { base: "<home>/", filter: "" }
- *   `relative/path`     → { base: "relative/", filter: "path" }
- *   `foo`               → { base: "", filter: "foo" }
- *
- * `~`-relative inputs are expanded so the base is a real filesystem
- * path that readdir can use; preserving the `~/` prefix in the
- * rendered input is the caller's job — see `joinDrill`.
- */
-export function splitPathForDirSuggest(value: string): PathSplit {
-  if (!value) return { base: "", filter: "" }
-  // Treat bare `~` as `~/` so we list the home directory.
-  const normalized = value === "~" ? "~/" : value
-  const expanded = expandHome(normalized)
-  if (expanded.endsWith("/")) return { base: expanded, filter: "" }
-  const lastSlash = expanded.lastIndexOf("/")
-  if (lastSlash === -1) return { base: "", filter: expanded }
-  return { base: expanded.slice(0, lastSlash + 1), filter: expanded.slice(lastSlash + 1) }
-}
-
-/**
- * Synchronously list direct subdirectories of `base`. Returns [] on any
- * fs error (path doesn't exist, permission denied, etc.) so the picker
- * silently degrades to free-text typing. Sorted alphabetically — the
- * filter (`filterSubdirs`) decides what survives.
- *
- * Hidden entries (leading `.`) are kept; `filterSubdirs` is responsible
- * for hiding them unless the user explicitly types a `.`.
- */
-export function listSubdirs(base: string): readonly string[] {
-  if (!base) return []
-  try {
-    const entries = fs.readdirSync(base, { withFileTypes: true })
-    const out: string[] = []
-    for (const e of entries) {
-      if (e.isDirectory()) out.push(e.name)
-    }
-    return out.sort((a, b) => a.localeCompare(b))
-  } catch {
-    return []
-  }
-}
-
-/**
- * Filter the subdirectory list for the picker. Two rules:
- *
- *   1. Case-insensitive **prefix** match (not substring) — typing
- *      `proj` finds `projects/` but not `my-projects/`. Prefix matches
- *      what users expect from shell tab-completion and keeps the list
- *      tight as the user types deeper.
- *   2. Entries starting with `.` are hidden unless the filter itself
- *      starts with `.` — same convention as `ls`.
- */
-export function filterSubdirs(all: readonly string[], filter: string): readonly string[] {
-  const f = filter.toLowerCase()
-  const showHidden = f.startsWith(".")
-  const visible = showHidden ? all : all.filter((n) => !n.startsWith("."))
-  if (!f) return visible
-  return visible.filter((n) => n.toLowerCase().startsWith(f))
-}
-
-/**
- * Compose the new input value when the user drills into a highlighted
- * subdirectory suggestion. The `~/` prefix is preserved if the user
- * typed one (so the display stays readable) — `baseExpanded` is the
- * fs-real path readdir used, and we rewrap it in `~/` form when
- * applicable.
- */
-export function joinDrill(typedValue: string, baseExpanded: string, name: string): string {
-  const out = `${baseExpanded + name}/`
-  if (typedValue.startsWith("~")) {
-    const home = os.homedir()
-    if (out === `${home}/`) return "~/"
-    if (out.startsWith(`${home}/`)) return `~${out.slice(home.length)}`
-  }
-  return out
-}
-
-/**
  * Resolve the baseRef the dialog should submit. Prefers the currently
  * highlighted branch in the picker over the typed text — free-text
  * only kicks in when nothing matches (e.g. typed a tag / commit SHA
@@ -487,179 +272,4 @@ export function resolveBaseRef(typed: string, filteredBranches: readonly string[
   if (picked) return picked
   const t = typed.trim()
   return t || DEFAULT_BASE_REF
-}
-
-/* --------------------------------------------------------------------- */
-/*  Clone tab — URL parsing, folder naming, target validation, spawn      */
-/* --------------------------------------------------------------------- */
-
-/**
- * Derive a sensible default folder name from a git URL. Strips trailing
- * `/`, takes the part after the last `/` or `:` (SCP-form support), and
- * strips a trailing `.git`. Returns "" for inputs we can't make sense of.
- *
- *   https://github.com/foo/bar.git    → "bar"
- *   git@github.com:foo/bar.git        → "bar"
- *   ssh://git@host:22/foo/bar         → "bar"
- *   https://example.com/path/repo/    → "repo"
- *   not-a-url                         → "not-a-url"
- */
-export function deriveFolderName(url: string): string {
-  const trimmed = url.trim().replace(/\/+$/, "")
-  if (!trimmed) return ""
-  const lastSlash = trimmed.lastIndexOf("/")
-  const lastColon = trimmed.lastIndexOf(":")
-  const cutAt = Math.max(lastSlash, lastColon)
-  const tail = cutAt >= 0 ? trimmed.slice(cutAt + 1) : trimmed
-  return tail.replace(/\.git$/i, "")
-}
-
-/**
- * Soft-validate a git URL. We don't want to over-restrict here — the
- * dialog defers real validation to `git clone` itself (whose error
- * message we surface inline). The pre-check only rejects obviously
- * empty / whitespace input so the Create button can stay disabled.
- *
- * Returns null when the URL looks plausibly clone-able, or a reason
- * string otherwise.
- */
-export function validateGitUrl(url: string): string | null {
-  const trimmed = url.trim()
-  if (!trimmed) return "git URL is required"
-  // Must contain either `://` (https / ssh / git) or `:` (SCP-form), or
-  // be a local path. Refuse only completely formless single-token input.
-  const hasProtocol = trimmed.includes("://")
-  const hasScpSep = trimmed.includes("@") && trimmed.includes(":")
-  const hasPathSep = trimmed.includes("/")
-  if (!hasProtocol && !hasScpSep && !hasPathSep) {
-    return `does not look like a git URL: ${trimmed}`
-  }
-  return null
-}
-
-/**
- * Validate the target clone directory before spawning `git`. Catches
- * the common foot-guns — empty folder name, path separators inside the
- * folder name, parent doesn't exist, target already exists — before we
- * spend a network round-trip just to have git complain.
- *
- * Returns null when the target is usable, or a reason string otherwise.
- * `parentDir` may use `~/...`; it's expanded here before fs checks.
- */
-export function validateCloneTarget(parentDir: string, folder: string): string | null {
-  const folderTrimmed = folder.trim()
-  if (!folderTrimmed) return "folder name is required"
-  if (folderTrimmed.includes("/") || folderTrimmed.includes("\\")) {
-    return "folder name cannot contain path separators"
-  }
-  const parentTrimmed = parentDir.trim()
-  if (!parentTrimmed) return "parent directory is required"
-  const parentExpanded = expandHome(parentTrimmed)
-  let parentStat: import("node:fs").Stats
-  try {
-    parentStat = fs.statSync(parentExpanded)
-  } catch {
-    return `parent directory does not exist: ${parentExpanded}`
-  }
-  if (!parentStat.isDirectory()) return `not a directory: ${parentExpanded}`
-  const target = path.join(parentExpanded, folderTrimmed)
-  if (fs.existsSync(target)) return `target already exists: ${target}`
-  return null
-}
-
-/**
- * Compose the absolute target path the clone will land at. Caller is
- * expected to have already passed `validateCloneTarget`.
- */
-export function resolveCloneTarget(parentDir: string, folder: string): string {
-  return path.join(expandHome(parentDir.trim()), folder.trim())
-}
-
-/**
- * Pick a folder name that doesn't collide with an existing entry inside
- * `parentDir`. Returns `base` when nothing collides; otherwise tries
- * `${base}-2`, `${base}-3`, … until a free slot is found.
- *
- * Bails out early (returns `base` verbatim) when the parent path is
- * missing or not a directory — we don't want this helper to mask a
- * real validation error by handing back a fake-available name.
- *
- * Used by the New Repo tab's auto-derive-folder-from-URL effect so the
- * default folder name doesn't immediately fail `validateCloneTarget`
- * just because the user has already cloned the same repo before. The
- * user can still type a different name manually; the suffix only fills
- * the gap left by the URL-derived default.
- */
-export function findAvailableFolderName(parentDir: string, base: string): string {
-  const trimmed = base.trim()
-  if (!trimmed) return base
-  const parentExpanded = expandHome(parentDir.trim())
-  if (!parentExpanded) return base
-  try {
-    const stat = fs.statSync(parentExpanded)
-    if (!stat.isDirectory()) return base
-  } catch {
-    return base
-  }
-  if (!fs.existsSync(path.join(parentExpanded, trimmed))) return trimmed
-  for (let n = 2; n < 1000; n++) {
-    const candidate = `${trimmed}-${n}`
-    if (!fs.existsSync(path.join(parentExpanded, candidate))) return candidate
-  }
-  return trimmed
-}
-
-/** Result of {@link cloneRepo}. */
-export type CloneResult = { ok: true; path: string } | { ok: false; error: string }
-
-/** Optional progress callback. Receives whatever line git wrote to stderr last. */
-export type CloneProgress = (line: string) => void
-
-/**
- * Async `git clone <url> <target>` wrapper. Streams stderr lines to
- * `onProgress` so the dialog can render a live "Cloning…" hint. Resolves
- * with `{ ok: true }` on exit code 0; otherwise returns the trimmed
- * stderr so the dialog can render it inline.
- *
- * Synchronous fallback was rejected — `spawnSync` would block the
- * opentui renderer for the duration of the clone, so esc / mouse / any
- * other dialog interaction freezes until git exits.
- */
-export function cloneRepo(url: string, target: string, onProgress?: CloneProgress): Promise<CloneResult> {
-  return new Promise<CloneResult>((resolve) => {
-    let stderrBuf = ""
-    try {
-      const child = spawn("git", ["clone", "--progress", url, target], {
-        stdio: ["ignore", "ignore", "pipe"],
-      }) as unknown as EventedCloneProcess
-      child.stderr?.setEncoding("utf-8")
-      child.stderr?.on("data", (chunk: string) => {
-        stderrBuf += chunk
-        if (onProgress) {
-          // git emits CR-separated progress updates on the same line.
-          // Split on either CR or LF so the latest fragment surfaces.
-          const lines = chunk.split(/[\r\n]+/).filter((s) => s.trim().length > 0)
-          const last = lines[lines.length - 1]
-          if (last) onProgress(last)
-        }
-      })
-      child.on("error", (err: Error) => {
-        resolve({ ok: false, error: err.message })
-      })
-      child.on("close", (code: number | null) => {
-        if (code === 0) {
-          resolve({ ok: true, path: target })
-          return
-        }
-        const tail =
-          stderrBuf
-            .split(/[\r\n]+/)
-            .filter((s) => s.trim().length > 0)
-            .pop() ?? `git clone exited with ${code}`
-        resolve({ ok: false, error: tail })
-      })
-    } catch (err) {
-      resolve({ ok: false, error: err instanceof Error ? err.message : String(err) })
-    }
-  })
 }

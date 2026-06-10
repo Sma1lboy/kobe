@@ -19,12 +19,26 @@
  */
 
 import type { VendorId } from "../types/vendor.ts"
+import type { EngineActivityDetail, EngineActivityKind } from "./hook-events.ts"
 import { engineEntry } from "./registry.ts"
 
 export interface EngineHookAdapter {
   readonly vendor: VendorId
   /** Whether this engine has a wired hook mechanism (false → install is a no-op). */
   supportsHooks(): boolean
+  /**
+   * FIRE-time half of the adapter's translation (install time maps vendor
+   * hook events to neutral verbs; this maps the vendor's stdin payload to
+   * the neutral {@link EngineActivityDetail}). Returns undefined when the
+   * payload carries nothing this verb needs — or when the payload isn't
+   * this engine's (the installed hook command carries no vendor id, so
+   * `kobe hook` asks each hook-supporting adapter in turn and uses the
+   * first non-undefined answer). Pure; must never throw.
+   */
+  activityDetailFromPayload(
+    kind: EngineActivityKind,
+    payload: Record<string, unknown>,
+  ): EngineActivityDetail | undefined
   /**
    * Install kobe's activity hooks into a SHARED settings file (the user's
    * global `~/.claude/settings.json`) so the engine, in ANY session, reports
@@ -83,6 +97,9 @@ export class NoopHookAdapter implements EngineHookAdapter {
   constructor(readonly vendor: VendorId) {}
   supportsHooks(): boolean {
     return false
+  }
+  activityDetailFromPayload(): EngineActivityDetail | undefined {
+    return undefined // no wired hooks → no payload this adapter understands
   }
   async installActivityHooks(): Promise<void> {
     /* no-op until this engine's hook format is implemented */

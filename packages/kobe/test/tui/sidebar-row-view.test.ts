@@ -57,6 +57,31 @@ describe("buildSidebarRowView", () => {
     })
   })
 
+  it("spins (loading) while the engine reports a running turn", () => {
+    expect(view({ status: "backlog" }, { state: "running", at: 1 })).toMatchObject({
+      loading: true,
+      tone: "primary",
+    })
+  })
+
+  it("spells out rate-limited in the subtitle with the clock badge", () => {
+    expect(view({ status: "backlog" }, { state: "rate_limited", at: 1 })).toMatchObject({
+      loading: false,
+      stateGlyph: "◷",
+      tone: "warning",
+      subtitleText: "rate limited",
+    })
+  })
+
+  it("spells out an engine error in the subtitle with the error badge", () => {
+    expect(view({ status: "backlog" }, { state: "error", at: 1 })).toMatchObject({
+      loading: false,
+      stateGlyph: "✕",
+      tone: "error",
+      subtitleText: "error",
+    })
+  })
+
   it("shows the repo-root branch (mainBranch) as a project row's subtitle", () => {
     const v = buildSidebarRowView({
       task: task({ kind: "main", branch: "", status: "backlog" }),

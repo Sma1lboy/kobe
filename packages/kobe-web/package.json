@@ -1,9 +1,13 @@
 {
   "name": "kobe-web",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "imports": {
     "#/*": "./src/*"
+  },
+  "exports": {
+    "./server": "./server/index.ts"
   },
   "scripts": {
     "dev": "bun run dev.ts",
@@ -16,6 +20,7 @@
     "check": "biome check"
   },
   "dependencies": {
+    "@sma1lboy/kobe-daemon": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-devtools": "latest",
     "@tanstack/react-router": "latest",

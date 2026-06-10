@@ -21,13 +21,6 @@
  *   - `onDestroy` teardown (daemon client dispose, poll timers);
  *   - `setClientLogContext` tag, for the panes that log via the daemon.
  *
- * app.tsx (the DEPRECATED outer monitor) adopts only `applyHostBootSteps` +
- * `hostRenderOptions`: its theme comes from the KV store via
- * `useThemePersistence` (not `readPersistedUiPrefs`), and its provider tree
- * is different in kind (SyncProvider + CommandPaletteProvider, Dialog OUTSIDE
- * Focus) — forcing it through `bootPaneHost` would mean flags no other host
- * uses on a surface that's on its way out.
- *
  * NOTE for tests: this module (transitively) imports @opentui, which is not
  * importable under node/vitest (its package ships raw `.scm` tree-sitter
  * assets). Don't import it from unit tests; pure logic that needs coverage
@@ -110,10 +103,10 @@ export interface BootPaneHostOpts {
 /**
  * The pre-render steps every host runs, in the order they always ran:
  * log-context tag (when given) → keybindings.yaml overlay → user themes.
- * Both `bootPaneHost` and the partially-adopting app.tsx go through here,
- * so a future boot step is a one-line addition instead of an 8-host patch.
+ * Every host goes through here via `bootPaneHost`, so a future boot step
+ * is a one-line addition instead of an 8-host patch.
  */
-export function applyHostBootSteps(logContext?: string): void {
+function applyHostBootSteps(logContext?: string): void {
   if (logContext) setClientLogContext(logContext)
   applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
@@ -129,7 +122,7 @@ export function applyHostBootSteps(logContext?: string): void {
  * is the only delta any host ever had; it's spread in only when present so
  * a host without teardown passes the exact same shape as before.
  */
-export function hostRenderOptions(onDestroy?: () => void): Record<string, unknown> {
+function hostRenderOptions(onDestroy?: () => void): Record<string, unknown> {
   const base = {
     backgroundColor: "transparent",
     externalOutputMode: "passthrough",

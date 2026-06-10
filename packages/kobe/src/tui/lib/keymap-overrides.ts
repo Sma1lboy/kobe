@@ -169,7 +169,7 @@ export function normalizeChord(raw: string, opts?: NormalizeChordOpts): ChordRes
   if (!trimmed) return { error: "empty chord" }
 
   // Split on "+" but let a trailing "+" mean the literal plus key
-  // ("ctrl++" = ctrl plus "+", like the pane.resize-grow default).
+  // ("ctrl++" = ctrl plus "+").
   const parts = trimmed.split("+")
   let key = parts.pop() ?? ""
   if (key === "" && parts.length > 0) {

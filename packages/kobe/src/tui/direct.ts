@@ -23,6 +23,7 @@ import {
 } from "../state/repos.ts"
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
+import { applyTmuxPaneBorderTheme } from "./lib/tmux-border-theme.ts"
 import { attachArgv, ensureSession, sessionExists, tmuxAvailable, tmuxSessionName } from "./panes/terminal/tmux.ts"
 
 export interface InitialTaskChoice {
@@ -116,6 +117,9 @@ export async function startDirectTmux(): Promise<void> {
       // lands back here too (switchClientBeforeKill). No task → no
       // auto-title pass, so we attach and return directly.
       const home = await ensureFallbackSession()
+      // Fallback sessions skip ensureSession's server-nicety block, so
+      // apply the theme-matched borders here before attaching.
+      await applyTmuxPaneBorderTheme()
       if ((await attachTmux(attachArgv(home))) === null) {
         console.error("kobe: failed to attach to the kobe-home session")
         process.exitCode = 1
@@ -143,6 +147,11 @@ export async function startDirectTmux(): Promise<void> {
       process.exitCode = 1
       return
     }
+
+    // ensureSession's reuse path skips the server-nicety block where the
+    // create path applies border styling, and the user may have switched
+    // themes since the server last saw an apply — refresh before attach.
+    await applyTmuxPaneBorderTheme()
 
     const exitCode = await attachTmux(attachArgv(name))
     if (exitCode === null) {

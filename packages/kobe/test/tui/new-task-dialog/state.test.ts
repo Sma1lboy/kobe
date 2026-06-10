@@ -2,27 +2,37 @@
  * Unit tests for new-task-dialog pure helpers (`src/tui/component/
  * new-task-dialog/state.ts`).
  *
- * Focus: the picker mode logic the first-run flow leans on (KOB-250).
- * With no saved repos the dialog defaults to the cwd — saved mode
- * preselects it, and typing a `/` flips the picker into browse mode so
- * the user drills into directories in-TUI instead of running `kobe add`
- * from a shell. We pin:
- *   - `pickerModeFor` returns "saved" for an exact saved-repo match
- *     (the cwd-preselected state) and "browse" once the input looks
- *     like a path.
- *   - `splitPathForDirSuggest` splits a typed path into the directory to
- *     readdir + the partial leaf to filter — including the trailing-slash
- *     case that lists a directory's own children.
+ * Why these matter: state.ts is the dialog's reducer layer — it must
+ * stay pure (no Solid, no fs, no subprocess; the render-path sync guard
+ * counts on that) so every behavior here is pinnable without standing
+ * up opentui. Focus areas:
+ *   - the picker mode logic the first-run flow leans on (KOB-250):
+ *     with no saved repos the dialog defaults to the cwd — saved mode
+ *     preselects it, and typing a `/` flips the picker into browse mode.
  *   - `computeRepoOptions` always surfaces the cwd even with no saved
  *     repos, so the first-run picker is never empty.
+ *   - field cycling (`nextField` / `firstFieldFor`) per sub-tab — a
+ *     wrong cycle strands keyboard users with no path to the Create
+ *     button.
+ *   - picker windowing/clamping (`windowAround` / `clampCursor`) — the
+ *     80-branch-repo case must scroll, not push the dialog off-screen.
+ *   - `resolveBaseRef` — highlighted branch wins over typed text;
+ *     free text only kicks in when the filter matched nothing.
  */
 
 import {
+  clampCursor,
   computeRepoOptions,
   filterAdoptableByGlob,
+  filterBranches,
+  filterRepos,
+  firstFieldFor,
   nextDialogTab,
+  nextField,
   pickerModeFor,
-  splitPathForDirSuggest,
+  resolveBaseRef,
+  stripNewlines,
+  windowAround,
 } from "@/tui/component/new-task-dialog/state"
 import { describe, expect, it } from "vitest"
 
@@ -76,20 +86,6 @@ describe("pickerModeFor", () => {
   })
 })
 
-describe("splitPathForDirSuggest", () => {
-  it("lists a directory's own children when the input ends in a slash", () => {
-    const split = splitPathForDirSuggest("/home/me/proj/")
-    expect(split.base).toBe("/home/me/proj/")
-    expect(split.filter).toBe("")
-  })
-
-  it("splits a partially-typed leaf off the base directory", () => {
-    const split = splitPathForDirSuggest("/home/me/pr")
-    expect(split.base).toBe("/home/me/")
-    expect(split.filter).toBe("pr")
-  })
-})
-
 describe("computeRepoOptions", () => {
   it("surfaces the cwd even with no saved repos (first-run picker is never empty)", () => {
     const cwd = "/home/me/proj"
@@ -99,5 +95,102 @@ describe("computeRepoOptions", () => {
   it("dedupes the cwd against the saved list and keeps it first", () => {
     const cwd = "/home/me/proj"
     expect(computeRepoOptions(cwd, [cwd, "/home/me/other"])).toEqual([cwd, "/home/me/other"])
+  })
+})
+
+describe("nextField / firstFieldFor (per-tab field cycling)", () => {
+  it("cycles the existing tab: repo → baseRef → confirm → repo", () => {
+    expect(nextField("repo", "existing")).toBe("baseRef")
+    expect(nextField("baseRef", "existing")).toBe("confirm")
+    expect(nextField("confirm", "existing")).toBe("repo")
+  })
+
+  it("cycles the clone tab through all four inputs to confirm and back", () => {
+    expect(nextField("cloneUrl", "clone")).toBe("cloneParent")
+    expect(nextField("cloneParent", "clone")).toBe("cloneFolder")
+    expect(nextField("cloneFolder", "clone")).toBe("cloneBaseRef")
+    expect(nextField("cloneBaseRef", "clone")).toBe("confirm")
+    expect(nextField("confirm", "clone")).toBe("cloneUrl")
+  })
+
+  it("toggles the adopt tab between filter and confirm (list nav is up/down)", () => {
+    expect(nextField("adoptFilter", "adopt")).toBe("confirm")
+    expect(nextField("confirm", "adopt")).toBe("adoptFilter")
+  })
+
+  it("recovers a stale cross-tab field by restarting the cycle", () => {
+    // e.g. field left on a clone field while existing tab is active.
+    expect(nextField("cloneUrl", "existing")).toBe("repo")
+    expect(nextField("repo", "clone")).toBe("cloneUrl")
+  })
+
+  it("knows each tab's first field for tab switches", () => {
+    expect(firstFieldFor("existing")).toBe("repo")
+    expect(firstFieldFor("clone")).toBe("cloneUrl")
+    expect(firstFieldFor("adopt")).toBe("adoptFilter")
+  })
+})
+
+describe("windowAround / clampCursor (picker windowing)", () => {
+  const list = Array.from({ length: 20 }, (_, i) => `branch-${i}`)
+
+  it("returns the whole list when it fits the cap", () => {
+    const w = windowAround(list.slice(0, 5), 2, 8)
+    expect(w).toEqual({ items: list.slice(0, 5), start: 0, total: 5 })
+  })
+
+  it("keeps the cursor in view by scrolling the window", () => {
+    const w = windowAround(list, 10, 8)
+    expect(w.start).toBe(6) // cursor - floor(cap/2)
+    expect(w.items).toHaveLength(8)
+    expect(w.items[10 - w.start]).toBe("branch-10")
+    expect(w.total).toBe(20)
+  })
+
+  it("pins the window to the end when the cursor is near the tail", () => {
+    const w = windowAround(list, 19, 8)
+    expect(w.start).toBe(12)
+    expect(w.items[w.items.length - 1]).toBe("branch-19")
+  })
+
+  it("clamps the cursor into [0, len-1] and returns 0 for empty lists", () => {
+    expect(clampCursor(-3, 5)).toBe(0)
+    expect(clampCursor(99, 5)).toBe(4)
+    expect(clampCursor(2, 5)).toBe(2)
+    expect(clampCursor(2, 0)).toBe(0)
+  })
+})
+
+describe("filterRepos / filterBranches (substring filters)", () => {
+  it("returns everything for an empty/whitespace query", () => {
+    expect(filterRepos(["/a", "/b"], "  ")).toEqual(["/a", "/b"])
+    expect(filterBranches(["main", "dev"], "")).toEqual(["main", "dev"])
+  })
+
+  it("matches case-insensitive substrings", () => {
+    expect(filterRepos(["/Users/me/Kobe", "/tmp/other"], "kobe")).toEqual(["/Users/me/Kobe"])
+    expect(filterBranches(["main", "feature/Login", "fix"], "login")).toEqual(["feature/Login"])
+  })
+})
+
+describe("resolveBaseRef (picker highlight vs typed text)", () => {
+  it("prefers the highlighted branch over the typed text", () => {
+    expect(resolveBaseRef("ma", ["main", "master"], 1)).toBe("master")
+  })
+
+  it("falls back to the trimmed typed text when nothing is highlighted", () => {
+    expect(resolveBaseRef("  v1.2.3  ", [], 0)).toBe("v1.2.3")
+  })
+
+  it("falls back to the default base ref when typed text is empty too", () => {
+    expect(resolveBaseRef("   ", [], 0)).toBe("main")
+  })
+})
+
+describe("stripNewlines (opentui input sanitizer)", () => {
+  it("strips CR and LF anywhere in the value", () => {
+    expect(stripNewlines("foo\n")).toBe("foo")
+    expect(stripNewlines("foo\r\nbar\n")).toBe("foobar")
+    expect(stripNewlines("clean")).toBe("clean")
   })
 })

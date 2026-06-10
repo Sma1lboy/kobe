@@ -31,10 +31,8 @@ const TUI_ROOT = fileURLToPath(new URL("../../src/tui", import.meta.url))
 const WHITELIST: Record<string, string> = {
   // Updater runs AFTER renderer.destroy() — intentional stdio-inherit block, no UI left to freeze.
   "update/host.tsx": "self-update runs after renderer.destroy(); intentional stdio-inherit block",
-  // Same updater path surfaced from the top bar; also post-destroy.
-  "component/top-bar.tsx": "self-update runs after renderer.destroy(); intentional stdio-inherit block",
-  // One-shot O(refs) git on explicit dialog actions — migration candidate, not a freeze.
-  "component/new-task-dialog/state.ts": "one-shot O(refs) git on dialog actions; migration candidate, not a freeze",
+  // One-shot O(refs) git (rev-parse / for-each-ref) on explicit dialog actions — never on a render tick; header documents the rationale.
+  "lib/git-snapshot.ts": "one-shot O(refs) git on explicit dialog actions; header documents the rationale",
   // Sync helper kept ONLY for one-shot CLI use (`kobe api`); its header documents the render-path ban.
   "panes/sidebar/worktree-changes.ts": "sync helper for one-shot CLI use only; header documents the ban",
 }

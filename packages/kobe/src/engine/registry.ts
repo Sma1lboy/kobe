@@ -11,6 +11,7 @@
  *                        `null` for engines without a wired cost reader.
  *   - `detectAccount`  — read-only login/binary probe (Settings → Accounts).
  *   - `createHookAdapter` — activity-hook installer (claude only today).
+ *   - `createTurnDetector` — ChatTab turn-completion detection.
  *   - `defaultCommand` / `displayName` — launch + label defaults.
  *
  * Adding an engine = one new entry here (plus its vendor-local modules);
@@ -45,6 +46,7 @@ import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
+import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
  * Reader over an engine's on-disk transcript store, in the neutral shape
@@ -61,6 +63,13 @@ export interface EngineHistoryReader {
   listSessionIdsForWorktree(worktree: string): Promise<readonly string[]>
   /** Neutral messages for one session id; `[]` when not found. */
   readHistory(sessionId: string): Promise<Message[]>
+  /**
+   * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
+   * has no transcript yet. The Ops pane's activity poll watches this to
+   * light its "new activity" badge (KOB-254). Never throws — readers are
+   * best-effort and the poller treats 0 as "no activity seen".
+   */
+  latestTranscriptMtimeForWorktree(worktree: string): Promise<number>
 }
 
 /** Any built-in engine's account shape (each union already has a `none` arm). */
@@ -107,6 +116,13 @@ export interface EngineRegistryEntry {
   readonly detectAccount: (deps?: DetectDeps) => Promise<EngineAccountStatus<EngineAccount>>
   /** Activity-hook adapter — a no-op adapter for engines without wired hooks. */
   readonly createHookAdapter: () => EngineHookAdapter
+  /**
+   * Turn-completion detector for ChatTab status (transcript markers +
+   * pane quiescence; see `turn-detector.ts`). Engines without persisted
+   * completion markers (copilot, custom) get an {@link UnknownTurnDetector}
+   * whose `supportsCompletionMarkers()` is false.
+   */
+  readonly createTurnDetector: () => EngineTurnDetector
 }
 
 /**
@@ -122,6 +138,11 @@ export const EMPTY_HISTORY: EngineHistoryReader = {
   async readHistory() {
     return []
   },
+  // No transcript store → no activity signal (the Ops badge stays dark
+  // rather than mis-watching another vendor's files).
+  async latestTranscriptMtimeForWorktree() {
+    return 0
+  },
 }
 
 /**
@@ -135,17 +156,20 @@ const claudeHistoryReader: EngineHistoryReader = {
     return [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
   },
   readHistory: (sessionId) => claudeHistory.readHistory(sessionId),
+  latestTranscriptMtimeForWorktree: (worktree) => claudeHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
 /** Codex's reader — `listSessionIdsForWorktree` is already oldest-first. */
 const codexHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => codexHistory.readHistory(sessionId),
+  latestTranscriptMtimeForWorktree: (worktree) => codexHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
 const copilotHistoryReader: EngineHistoryReader = {
   listSessionIdsForWorktree: (worktree) => copilotHistory.listSessionIdsForWorktree(worktree),
   readHistory: (sessionId) => copilotHistory.readHistory(sessionId),
+  latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
 }
 
 /** The three first-party entries — registered here and nowhere else. */
@@ -159,6 +183,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     summarizeCost: (worktree) => summarizeClaudeWorktreeCost(worktree),
     detectAccount: (deps) => detectClaudeAccount(deps),
     createHookAdapter: () => new ClaudeHookAdapter(),
+    createTurnDetector: () => new ClaudeTurnDetector(),
   },
   codex: {
     vendor: "codex",
@@ -170,6 +195,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     summarizeCost: null,
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("codex"),
+    createTurnDetector: () => new CodexTurnDetector(),
   },
   copilot: {
     vendor: "copilot",
@@ -180,6 +206,8 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     summarizeCost: null,
     detectAccount: (deps) => detectCopilotAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("copilot"),
+    // Copilot persists no turn-completion marker kobe can read yet.
+    createTurnDetector: () => new UnknownTurnDetector("copilot"),
   },
 }
 
@@ -197,6 +225,7 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
       account: { kind: "none" },
     }),
     createHookAdapter: () => new NoopHookAdapter(vendor),
+    createTurnDetector: () => new UnknownTurnDetector(vendor),
   }
 }
 

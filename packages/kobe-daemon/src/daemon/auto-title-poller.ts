@@ -3,7 +3,7 @@
  *
  * In the v0.6 tmux model a freshly-created task keeps its placeholder
  * title `(new task)` until the user DETACHES and the outer monitor's
- * return path (`tui/app.tsx` / `tui/direct.ts`) reads the transcript and
+ * return path (`tui/direct.ts`) reads the transcript and
  * renames. While attached, kobe's renderer is suspended and never sees
  * the interactive prompt — so the title used to stay `(new task)` for the
  * whole session.
@@ -21,7 +21,7 @@
  * tick. Best-effort: a per-task failure is logged, never fatal, and never
  * blocks the other tasks in the same tick.
  *
- * The detach-time rename in `tui/app.tsx` / `tui/direct.ts` stays as a
+ * The detach-time rename in `tui/direct.ts` stays as a
  * belt-and-suspenders path for the case where the daemon isn't running
  * (e.g. a `kobe` started without a live daemon).
  */

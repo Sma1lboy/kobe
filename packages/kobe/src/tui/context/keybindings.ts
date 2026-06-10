@@ -68,12 +68,7 @@
  * actual byte path is ctrl+q.
  */
 
-import { CliRenderEvents } from "@opentui/core"
-import { useRenderer } from "@opentui/solid"
-import { type Accessor, createMemo, createSignal, onCleanup } from "solid-js"
-import { type Binding, useBindings } from "../lib/keymap"
-import { DialogConfirm } from "../ui/dialog-confirm"
-import { type CommandPaletteContext, useCommandPalette } from "./command-palette"
+import type { Binding } from "../lib/keymap"
 
 /** Pane scopes used to gate where a binding is active. */
 export type KobeBindingScope = "global" | "sidebar" | "workspace" | "files" | "terminal"
@@ -97,34 +92,6 @@ export type KobeBindingHint = {
    * focused.
    */
   pin?: "right"
-}
-
-/**
- * Ctrl+C double-tap quit machinery (lifted from origin/main during the
- * keybinding-registry merge). The first Ctrl+C arms the quit; a second
- * within `CTRL_C_QUIT_WINDOW_MS` exits. Module-level state because the
- * binding is global and the StatusBar reads `useCtrlCArmed()` to render
- * the transient "Press Ctrl+C again to exit" warning chip.
- *
- * The chord itself is registered through `KobeKeymap.app.ctrl-c` →
- * `bindByIds(...)` like every other binding; only the handler body
- * (selection-aware copy / arm-then-quit state machine) lives here.
- */
-const CTRL_C_QUIT_WINDOW_MS = 1500
-const [ctrlCArmed, setCtrlCArmed] = createSignal(false)
-let ctrlCArmTimer: ReturnType<typeof setTimeout> | null = null
-
-/** Read the "Ctrl+C is armed for quit" flag. Reactive accessor. */
-export function useCtrlCArmed(): Accessor<boolean> {
-  return ctrlCArmed
-}
-
-function disarmCtrlC(): void {
-  if (ctrlCArmTimer !== null) {
-    clearTimeout(ctrlCArmTimer)
-    ctrlCArmTimer = null
-  }
-  setCtrlCArmed(false)
 }
 
 /** A single binding row. */
@@ -159,17 +126,6 @@ export type KobeBinding = {
  */
 export const KobeKeymap: readonly KobeBinding[] = [
   // ─── Global ───────────────────────────────────────────────────────────
-  {
-    // Palette uses cmd+p / ctrl+p (vscode/Cursor convention). ctrl+k
-    // is reserved for `focus.hjkl` (pane focus, k = files) — vim
-    // navigation feel for the four-pane layout. cmd+k still works
-    // on supporting terminals.
-    id: "palette.open",
-    scope: "global",
-    keys: ["cmd+p", "ctrl+p", "cmd+k"],
-    category: "Global",
-    description: "Open command palette",
-  },
   {
     id: "help.open",
     scope: "global",
@@ -242,21 +198,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Navigation ───────────────────────────────────────────────────────
   {
-    id: "focus.next",
-    scope: "global",
-    keys: ["tab"],
-    category: "Navigation",
-    description: "Focus next pane (Wave 3)",
-    hint: { keys: "tab", label: "cycle", pin: "right", status: false },
-  },
-  {
-    id: "focus.prev",
-    scope: "global",
-    keys: ["shift+tab"],
-    category: "Navigation",
-    description: "Focus previous pane",
-  },
-  {
     // `ctrl+hjkl` — vim-style direct pane focus. Reliable across
     // every terminal (ctrl+letter maps to stable C0 control bytes,
     // no CSI-u / kitty keyboard / iTerm quirks). The four chords
@@ -281,21 +222,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "ctrl+hjkl", label: "focus", pin: "right", status: false },
   },
   {
-    id: "app.copy_or_quit",
-    scope: "global",
-    // `cmd+c` is registered alongside `ctrl+c` so terminals that forward
-    // Cmd+C to the application (Kitty / Ghostty / iTerm2 with "Send
-    // Modifier Keys" on) get the same OSC52 copy + arm-quit behavior
-    // instead of being silently swallowed. Default-config macOS terminals
-    // never deliver Cmd+C to the TTY (the terminal app handles it), so
-    // this is a no-op there — the chord exists for the forwarding case.
-    keys: ["ctrl+c", "cmd+c"],
-    category: "Global",
-    description: "Copy selection / press twice within 1.5s to quit",
-    // No hint — when ctrl+c is armed, the StatusBar swaps in a warning
-    // chip in place of the regular `app.quit` hint via `useCtrlCArmed()`.
-  },
-  {
     // Doc-only: the chord is registered inline in Chat.tsx (gated on
     // focused + streaming + no dialog). ESC no longer "detaches" focus
     // back to the sidebar — that pulled focus out from under the user
@@ -307,23 +233,6 @@ export const KobeKeymap: readonly KobeBinding[] = [
     category: "Workspace",
     description: "Interrupt current turn (esc while streaming)",
   },
-  {
-    id: "pane.resize-grow",
-    scope: "global",
-    // ctrl+= / ctrl++ both register because shift+= produces `+` on most
-    // layouts and the keymap normalizer drops shift on single-char names.
-    keys: ["ctrl+=", "ctrl++"],
-    category: "Navigation",
-    description: "Grow the focused pane",
-  },
-  {
-    id: "pane.resize-shrink",
-    scope: "global",
-    keys: ["ctrl+-", "ctrl+_"],
-    category: "Navigation",
-    description: "Shrink the focused pane",
-  },
-
   // ─── Sidebar ──────────────────────────────────────────────────────────
   {
     id: "sidebar.nav",
@@ -882,163 +791,4 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
     for (const c of chords) out.push({ key: c, cmd })
   }
   return out
-}
-
-// ─── Global hook ──────────────────────────────────────────────────────────
-
-/**
- * Hook arguments for `useKobeKeybindings`. The opts inject pane-level
- * actions the global hook can trigger (e.g. opening the help dialog,
- * detaching focus back to the sidebar). All callbacks are optional so
- * tests can pass a partial set.
- */
-export type KobeKeybindingsOpts = {
-  /** Open the help dialog. Required — this hook owns the F1 binding. */
-  onShowHelp: () => void
-  /**
-   * Called when the user presses focus-next / focus-prev. Wave 3 wires
-   * real focus management; for v1 we accept no-ops so the keys are
-   * reserved and not stolen by deeper handlers.
-   */
-  onFocusNext?: () => void
-  onFocusPrev?: () => void
-  /** Whether tab / shift+tab pane cycling should be registered. */
-  focusCycleEnabled?: () => boolean
-  /**
-   * Called after the user confirms quit. Defaults to `process.exit(0)`
-   * which is correct in the production binary. Tests can pass a spy.
-   */
-  onQuit?: () => void
-}
-
-/**
- * Solid hook that registers kobe's global keybindings for the lifetime
- * of the calling component. Must be called inside a descendant of
- * `DialogProvider` and `CommandPaletteProvider`.
- *
- * All chord strings come from `KobeKeymap` via `bindByIds` — no chord
- * is hardcoded here. ESC is intentionally NOT registered globally:
- * DialogProvider owns it while a dialog is open, and Chat.tsx owns it
- * while a turn is streaming. Idle ESC is a no-op so the chat composer
- * doesn't lose focus mid-edit.
- */
-export function useKobeKeybindings(opts: KobeKeybindingsOpts): void {
-  const palette: CommandPaletteContext = useCommandPalette()
-  const renderer = useRenderer()
-
-  // process.exit() bypasses every opentui exit hook (`beforeExit`, signal
-  // listeners), so without first calling renderer.destroy() the terminal
-  // is left in TUI state on the way out: mouse tracking stays on (the
-  // shell sees a stream of \x1b[<...M sequences from every mouse move),
-  // alt-screen isn't restored, raw mode lingers. Tearing down the
-  // renderer first writes the disable sequences synchronously to stdout
-  // before exit() blocks Node.
-  const onQuit =
-    opts.onQuit ??
-    (() => {
-      // Defense in depth: if destroy() throws (FFI to native renderer
-      // can fail in odd states), the user who pressed Ctrl+C×2 must
-      // still get out — surface to stderr for the next shell prompt to
-      // see, then force-exit unconditionally.
-      try {
-        renderer?.destroy()
-      } catch (err) {
-        console.error("kobe: renderer.destroy() failed during quit:", err)
-      }
-      process.exit(0)
-    })
-  const onFocusNext = opts.onFocusNext ?? (() => {})
-  const onFocusPrev = opts.onFocusPrev ?? (() => {})
-  const focusCycleEnabled = opts.focusCycleEnabled ?? (() => true)
-
-  // Auto-copy on selection finish.
-  //
-  // Why this exists at all: a TUI's mouse selection is opentui's, not the
-  // terminal emulator's. When the user drags to highlight text in kobe,
-  // the terminal emulator never sees a "selection" — it sees a stream of
-  // mouse events that opentui consumes. So the OS-level Cmd+C (which on
-  // macOS Terminal.app / iTerm2 is handled at the AppKit layer and never
-  // reaches the TTY) has nothing to copy: the system clipboard stays
-  // whatever-it-was, the terminal emulator's "copy selected text" finds
-  // no native selection, and the user sees Cmd+C silently fail.
-  //
-  // The fix is to write opentui's selection text to the system clipboard
-  // *as soon as the drag ends*, via OSC52. After that, both Cmd+C
-  // (AppKit) and Ctrl+C (`app.copy_or_quit` handler below) become
-  // redundant — the clipboard already holds the text. Cmd+V / Ctrl+V
-  // anywhere just works.
-  //
-  // We use the `selection` event (CliRenderEvents.SELECTION) which opentui
-  // fires exactly once per drag, in `finishSelection()` on mouseup —
-  // never during the drag itself, so no per-frame OSC52 spam. Empty
-  // selections are skipped so a stray click doesn't blank the clipboard.
-  if (renderer) {
-    const onSelection = () => {
-      const text = renderer.getSelection()?.getSelectedText()
-      if (text && text.length > 0) renderer.copyToClipboardOSC52(text)
-    }
-    renderer.on(CliRenderEvents.SELECTION, onSelection)
-    onCleanup(() => {
-      renderer.off(CliRenderEvents.SELECTION, onSelection)
-    })
-  }
-
-  // Ctrl+C: three modes, in order of precedence.
-  //   1. Renderer has a text selection → copy via OSC52, clear selection,
-  //      and disarm any pending quit. Treats the press as "user wanted to
-  //      copy, not quit", same as a terminal would.
-  //   2. Already armed (previous Ctrl+C within CTRL_C_QUIT_WINDOW_MS) →
-  //      quit. Always quits even if a dialog is open — Ctrl+C twice is
-  //      the user explicitly demanding out, and the `q` confirm flow is
-  //      a different ergonomic contract.
-  //   3. Not armed → arm, schedule auto-disarm. UI surfaces (StatusBar)
-  //      read `useCtrlCArmed()` to show a transient hint chip.
-  function handleCtrlC(): void {
-    const sel = renderer?.getSelection()
-    const text = sel?.getSelectedText()
-    if (text && text.length > 0) {
-      renderer?.copyToClipboardOSC52(text)
-      renderer?.clearSelection()
-      disarmCtrlC()
-      return
-    }
-    if (ctrlCArmed()) {
-      disarmCtrlC()
-      onQuit()
-      return
-    }
-    setCtrlCArmed(true)
-    if (ctrlCArmTimer !== null) clearTimeout(ctrlCArmTimer)
-    ctrlCArmTimer = setTimeout(() => {
-      ctrlCArmTimer = null
-      setCtrlCArmed(false)
-    }, CTRL_C_QUIT_WINDOW_MS)
-  }
-
-  // Memoize so the closure passed to useBindings is stable across renders.
-  // The hook re-evaluates on every keypress, so closing over reactive
-  // signals would still work; we memoize purely to avoid garbage on hot
-  // paths.
-  const bindings = createMemo<Binding[]>(() => {
-    return [
-      ...bindByIds({
-        "palette.open": () => palette.show(),
-        "help.open": () => opts.onShowHelp(),
-        // Ctrl+C is modifier-prefixed so it never collides with composer
-        // typing. DialogProvider's own ctrl+c binding sits higher on the
-        // stack and still wins while a dialog is open — that's the
-        // existing "ctrl+c closes dialog" behavior, unchanged.
-        "app.copy_or_quit": () => handleCtrlC(),
-      }),
-    ]
-  })
-  const focusCycleBindings = createMemo<Binding[]>(() =>
-    bindByIds({
-      "focus.next": () => onFocusNext(),
-      "focus.prev": () => onFocusPrev(),
-    }),
-  )
-
-  useBindings(() => ({ bindings: bindings() }))
-  useBindings(() => ({ enabled: focusCycleEnabled(), bindings: focusCycleBindings() }))
 }

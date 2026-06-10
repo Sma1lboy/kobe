@@ -15,9 +15,9 @@
  *   - Create-PR / merge / refresh-PR-status. KOB-232 will re-introduce
  *     create-PR as a `tmux send-keys` injection from the Ops pane.
  *
- * What it gained: `ensureWorktree(id)` — the path the ClaudeLauncher
- * calls before `tmux new-session` to make sure the task's worktree
- * exists on disk. (Worktree allocation is still lazy: `createTask`
+ * What it gained: `ensureWorktree(id)` — the path task-entry surfaces
+ * (`direct.ts`, the Tasks pane, `kobe api`) call before
+ * `tmux new-session` to make sure the task's worktree exists on disk. (Worktree allocation is still lazy: `createTask`
  * records the intent; the directory only materialises when the user
  * actually enters the task.)
  */
@@ -189,8 +189,8 @@ export class Orchestrator {
   /**
    * Create a new task entry. Worktree allocation is lazy — the
    * `worktreePath` field stays empty until {@link ensureWorktree} is
-   * called (typically by the ClaudeLauncher when the user enters the
-   * task for the first time).
+   * called (typically when the user enters the task for the first
+   * time).
    */
   async createTask(input: CreateTaskInput): Promise<Task> {
     if (!input.repo) throw new Error("createTask: repo is required")
@@ -253,7 +253,7 @@ export class Orchestrator {
   /**
    * Materialise the worktree on disk for `task`. Idempotent: if the
    * worktree already exists, this is a fast path that just verifies
-   * the recorded path. The ClaudeLauncher calls this before
+   * the recorded path. Task-entry surfaces call this before
    * `tmux new-session` so the engine's `cwd` is real.
    *
    * Returns the worktree path (same as `task.worktreePath` on success).

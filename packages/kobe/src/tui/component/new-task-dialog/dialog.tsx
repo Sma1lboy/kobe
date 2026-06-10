@@ -25,10 +25,12 @@
  * Working/Archives view-switcher. With only two tabs the chord pair
  * behaves as a toggle.
  *
- * Pure logic (field cycling, repo dedup, filtering, windowing,
- * validation, branch enumeration, URL parsing, clone spawn) lives in
+ * Pure logic (field cycling, repo dedup, filtering, windowing) lives in
  * `./state.ts` so it can be unit-tested without standing up the dialog
- * stack or opentui.
+ * stack or opentui; clone-tab fs/spawn helpers in `./clone.ts`; sync
+ * git snapshots (branch enumeration, repo validation) in
+ * `../../lib/git-snapshot.ts`; path drill-down plumbing in
+ * `../../lib/path-helpers.ts`.
  */
 
 import { ALL_VENDORS, type VendorId, nextVendorWithin } from "@/types/vendor"
@@ -36,39 +38,34 @@ import type { AdoptableWorktree } from "@/types/worktree"
 import { TextAttributes } from "@opentui/core"
 import { For, Show, createEffect, createMemo, createResource, createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
+import { DEFAULT_BASE_REF, getCurrentBranch, listLocalBranches, validateRepoPath } from "../../lib/git-snapshot"
 import { useBindings } from "../../lib/keymap"
+import { expandHome, filterSubdirs, joinDrill, listSubdirs, splitPathForDirSuggest } from "../../lib/path-helpers"
 import { useDialog } from "../../ui/dialog"
 import {
-  DEFAULT_BASE_REF,
+  cloneRepo,
+  deriveFolderName,
+  findAvailableFolderName,
+  resolveCloneTarget,
+  validateCloneTarget,
+  validateGitUrl,
+} from "./clone"
+import {
   type DialogTab,
   type Field,
   type NewTaskInput,
   type PickerWindow,
   clampCursor,
-  cloneRepo,
   computeRepoOptions,
-  deriveFolderName,
-  expandHome,
   filterAdoptableByGlob,
   filterBranches,
   filterRepos,
-  filterSubdirs,
-  findAvailableFolderName,
   firstFieldFor,
-  getCurrentBranch,
-  joinDrill,
-  listLocalBranches,
-  listSubdirs,
   nextDialogTab,
   nextField,
   pickerModeFor,
   resolveBaseRef,
-  resolveCloneTarget,
-  splitPathForDirSuggest,
   stripNewlines,
-  validateCloneTarget,
-  validateGitUrl,
-  validateRepoPath,
   windowAround,
 } from "./state"
 

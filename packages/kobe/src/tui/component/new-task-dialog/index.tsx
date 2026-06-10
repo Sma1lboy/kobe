@@ -9,8 +9,12 @@
  *
  * Implementation is split for testability:
  *   - `./state.ts` — pure helpers (field cycling, repo dedup, filter,
- *     window, validate, branches). Unit-tested in
- *     `test/tui/new-task-dialog/state.test.ts`.
+ *     window). Unit-tested in `test/tui/new-task-dialog/state.test.ts`.
+ *   - `./clone.ts` — clone-tab fs/spawn helpers (URL parsing, target
+ *     validation, async `git clone`).
+ *   - `../../lib/git-snapshot.ts` / `../../lib/path-helpers.ts` —
+ *     sync git snapshots and path drill-down plumbing, shared with
+ *     `kobe quick-task`.
  *   - `./dialog.tsx` — the Solid JSX shell that wires the state
  *     helpers to signals.
  */

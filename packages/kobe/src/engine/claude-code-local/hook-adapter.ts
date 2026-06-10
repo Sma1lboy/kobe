@@ -27,7 +27,7 @@ import { dirname } from "node:path"
 import { kobeCliInvocation } from "../../cli/invocation.ts"
 import { shellQuoteArgv } from "../../tmux/session-layout.ts"
 import type { EngineHookAdapter } from "../hook-adapter.ts"
-import type { EngineActivityKind } from "../hook-events.ts"
+import type { EngineActivityDetail, EngineActivityKind } from "../hook-events.ts"
 
 /** Claude Code hook event → normalized kobe verb. The ONE place Claude event
  *  names live. `matcher` narrows which Notification types fire (permission only). */
@@ -42,6 +42,24 @@ const EVENT_MAP: ReadonlyArray<{ event: string; matcher?: string; verb: EngineAc
 
 /** The events kobe owns — used to replace only these in a merge. */
 export const KOBE_HOOK_EVENTS: readonly string[] = EVENT_MAP.map((e) => e.event)
+
+/** Normalized kobe verb for a Claude Code hook event name, or undefined for an
+ *  event kobe doesn't install — the query side of {@link EVENT_MAP}, so tests
+ *  (and future callers) can exercise the adapter's install-time translation
+ *  without parsing generated hook commands. */
+export function claudeVerbForHookEvent(event: string): EngineActivityKind | undefined {
+  return EVENT_MAP.find((e) => e.event === event)?.verb
+}
+
+/** Map a Claude StopFailure `error_type` to the neutral failure class. Claude
+ *  vocabulary (`rate_limit` / `overloaded` / `billing_error` / …) lives here
+ *  with the rest of the hook translation, never in `kobe hook`. */
+function failureFromErrorType(errorType: unknown): EngineActivityDetail["failure"] {
+  if (typeof errorType !== "string") return "other"
+  if (errorType === "rate_limit" || errorType === "overloaded") return "rate_limit"
+  if (errorType === "billing_error") return "billing"
+  return "other"
+}
 
 /** Substrings that identify a kobe activity hook in a shared settings file —
  *  the shell-quoted `hook <verb>` fragment of each command, so the marker
@@ -191,6 +209,22 @@ export class ClaudeHookAdapter implements EngineHookAdapter {
 
   supportsHooks(): boolean {
     return true
+  }
+
+  /**
+   * Fire-time translation: neutral verb + Claude's stdin payload → neutral
+   * detail. Only two verbs carry detail today: `turn-failed` (classify the
+   * StopFailure `error_type`) and `awaiting-input` (the only Notification
+   * matcher kobe installs is `permission_prompt`, so waiting is always
+   * "permission").
+   */
+  activityDetailFromPayload(
+    kind: EngineActivityKind,
+    payload: Record<string, unknown>,
+  ): EngineActivityDetail | undefined {
+    if (kind === "turn-failed") return { failure: failureFromErrorType(payload.error_type) }
+    if (kind === "awaiting-input") return { waiting: "permission" }
+    return undefined
   }
 
   supportsWorktreeSync(): boolean {

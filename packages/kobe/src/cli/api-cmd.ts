@@ -10,13 +10,23 @@
  *
  * ## Self-describing (so an agent can EXPLORE the surface)
  *
- * The verb table {@link VERBS} is the single source of truth: it drives the
- * `schema` verb (machine-readable JSON of every verb + flag), per-verb
- * `--help`, and flag validation (required / enum / unknown-flag rejection).
- * An agent runs `kobe api schema` once and knows the whole API — names,
- * types, which flags are required, allowed enum values — without parsing
- * prose. Add a verb to {@link VERBS} and its help, schema entry, and
- * validation all come for free.
+ * The verb table {@link VERBS} is the single source of truth: each entry
+ * binds one verb's spec (name, summary, flags) to its handler, and the spec
+ * half drives the `schema` verb (machine-readable JSON of every verb +
+ * flag), per-verb `--help`, and flag validation (required / enum /
+ * unknown-flag rejection). An agent runs `kobe api schema` once and knows
+ * the whole API — names, types, which flags are required, allowed enum
+ * values — without parsing prose. Add a verb to {@link VERBS} and its help,
+ * schema entry, and validation all come for free.
+ *
+ * ## Handler seam (so verbs are unit-testable)
+ *
+ * Handlers receive a {@link VerbContext}: spec-typed flag access
+ * ({@link VerbArgs}, derived from the verb's own FlagSpecs — no ad hoc
+ * re-validation inside handlers), the narrow daemon RPC surface
+ * ({@link DaemonRpc} — a fake that records requests stands in for the
+ * socket in tests), and the side-effect seam ({@link ApiRuntime} — tmux /
+ * git / repo-init). Daemon connect/close lives in `./daemon-session.ts`.
  *
  * ## Output contract
  *   - success → one JSON object to stdout, `\n` terminated, exit 0
@@ -30,16 +40,17 @@
  */
 
 import { resolve } from "node:path"
-import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../lib/feedback.ts"
+import type { ResolvedRepoInit } from "../state/repo-init.ts"
 import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
+import type { EnsureSessionOpts } from "../tui/panes/terminal/tmux.ts"
 import type { TaskStatus } from "../types/task.ts"
 import { ALL_VENDORS, type VendorId } from "../types/vendor.ts"
 import { CURRENT_VERSION } from "../version.ts"
+import { type DaemonRpc, type DaemonSession, openDaemonSession } from "./daemon-session.ts"
 
 /** Bumped when the verb/flag shape changes incompatibly. Agents can gate on it. */
 export const API_SCHEMA_VERSION = 2
@@ -84,13 +95,31 @@ interface FlagSpec {
   readonly placeholder?: string
 }
 
+/**
+ * What a verb handler runs against. Everything here is injectable so a
+ * handler's LOGIC is unit-testable without a daemon socket or a tmux
+ * server: `client` accepts any {@link DaemonRpc} (tests pass a fake that
+ * records requests), `runtime` carries the side-effecting operations
+ * (tmux liveness, prompt delivery, git worktree reads).
+ */
+interface VerbContext {
+  /** Spec-typed flag access — coercion + requiredness derived from the verb's own {@link FlagSpec}s. */
+  readonly args: VerbArgs
+  /** Daemon RPC surface; `null` only for `offline` verbs (guard with {@link daemonOf}). */
+  readonly client: DaemonRpc | null
+  /** Side-effect seam (tmux / git / repo-init) — swapped for a fake in unit tests. */
+  readonly runtime: ApiRuntime
+}
+
+type VerbHandler = (ctx: VerbContext) => Promise<unknown>
+
 interface VerbSpec {
   readonly name: string
   readonly summary: string
   readonly flags: readonly FlagSpec[]
   /** Verbs that don't need the daemon (e.g. `schema`). */
   readonly offline?: boolean
-  readonly handler: (client: KobeDaemonClient | null, parsed: ParsedArgs) => Promise<unknown>
+  readonly handler: VerbHandler
 }
 
 // Reusable flag fragments.
@@ -159,22 +188,23 @@ function groupOf(verbName: string): string {
  *   - --group G → the verbs in one group (compact)
  *   - --all     → the complete spec (every verb AND every flag)
  */
-async function handleSchema(_client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  const { flags } = parsed
-  const verbName = optional(flags, "verb")
+async function handleSchema(ctx: VerbContext): Promise<unknown> {
+  const verbName = ctx.args.str("verb")
   if (verbName) {
     const v = findVerb(verbName)
     if (!v) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB")
     return verbSchema(v)
   }
-  const group = optional(flags, "group")
+  const group = ctx.args.str("group")
   if (group) return groupSchema(group)
-  if (optionalBool(flags, "all")) return fullSchema()
+  if (ctx.args.bool("all")) return fullSchema()
   return schemaIndex()
 }
 
 // VERBS — ordered for help readability: discovery, reads, create, drive, edit,
-// lifecycle, worktree. Every entry's flags feed schema + --help + validation.
+// lifecycle, worktree. Every entry binds ONE verb's spec to its handler; the
+// spec half feeds schema + --help + validation, the handler half runs against
+// the injected VerbContext.
 const VERBS: readonly VerbSpec[] = [
   {
     name: "schema",
@@ -284,8 +314,8 @@ const VERBS: readonly VerbSpec[] = [
     name: "rename",
     summary: "Set a task's title.",
     flags: [F.taskId(), { name: "title", type: "string", required: true, placeholder: "T", description: "New title." }],
-    handler: (c, p) =>
-      simpleRpc(c, "task.rename", { taskId: required(p.flags, "task-id"), title: required(p.flags, "title") }),
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.rename", { taskId: ctx.args.require("task-id"), title: ctx.args.require("title") }),
   },
   {
     name: "set-branch",
@@ -294,17 +324,17 @@ const VERBS: readonly VerbSpec[] = [
       F.taskId(),
       { name: "branch", type: "string", required: true, placeholder: "B", description: "New branch name." },
     ],
-    handler: (c, p) =>
-      simpleRpc(c, "task.setBranch", { taskId: required(p.flags, "task-id"), branch: required(p.flags, "branch") }),
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.setBranch", { taskId: ctx.args.require("task-id"), branch: ctx.args.require("branch") }),
   },
   {
     name: "set-vendor",
     summary: "Change a task's engine vendor (takes effect on next session rebuild).",
     flags: [F.taskId(), { ...F.vendor(), required: true }],
-    handler: (c, p) =>
-      simpleRpc(c, "task.setVendor", {
-        taskId: required(p.flags, "task-id"),
-        vendor: requireEnum(p.flags, "vendor", ALL_VENDORS),
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.setVendor", {
+        taskId: ctx.args.require("task-id"),
+        vendor: ctx.args.requireEnum<VendorId>("vendor"),
       }),
   },
   {
@@ -314,10 +344,10 @@ const VERBS: readonly VerbSpec[] = [
       F.taskId(),
       { name: "status", type: "enum", required: true, values: TASK_STATUSES, description: "New status." },
     ],
-    handler: (c, p) =>
-      simpleRpc(c, "task.status", {
-        taskId: required(p.flags, "task-id"),
-        status: requireEnum(p.flags, "status", TASK_STATUSES),
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.status", {
+        taskId: ctx.args.require("task-id"),
+        status: ctx.args.requireEnum<TaskStatus>("status"),
       }),
   },
   {
@@ -327,20 +357,20 @@ const VERBS: readonly VerbSpec[] = [
       F.taskId(),
       { name: "archived", type: "bool", default: "true", description: "true to archive, false to unarchive." },
     ],
-    handler: (c, p) =>
-      simpleRpc(c, "task.archive", {
-        taskId: required(p.flags, "task-id"),
-        archived: optionalBool(p.flags, "archived") ?? true,
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.archive", {
+        taskId: ctx.args.require("task-id"),
+        archived: ctx.args.bool("archived") ?? true,
       }),
   },
   {
     name: "pin",
     summary: "Pin (or with --pinned=false, unpin) a task to the top of the sidebar.",
     flags: [F.taskId(), { name: "pinned", type: "bool", default: "true", description: "true to pin, false to unpin." }],
-    handler: (c, p) =>
-      simpleRpc(c, "task.pin", {
-        taskId: required(p.flags, "task-id"),
-        pinned: optionalBool(p.flags, "pinned") ?? true,
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.pin", {
+        taskId: ctx.args.require("task-id"),
+        pinned: ctx.args.bool("pinned") ?? true,
       }),
   },
   {
@@ -356,24 +386,24 @@ const VERBS: readonly VerbSpec[] = [
     name: "ensure-worktree",
     summary: "Materialize a task's git worktree on disk now (without starting an engine). Returns { worktreePath }.",
     flags: [F.taskId()],
-    handler: (c, p) => simpleRpc(c, "task.ensureWorktree", { taskId: required(p.flags, "task-id") }),
+    handler: (ctx) => simpleRpc(ctx, "task.ensureWorktree", { taskId: ctx.args.require("task-id") }),
   },
   {
     name: "delete",
     summary:
       "Permanently remove a task (and its worktree). DESTRUCTIVE — prefer `archive`. Needs --force on a dirty worktree.",
     flags: [F.taskId(), { name: "force", type: "bool", description: "Delete even with uncommitted changes." }],
-    handler: (c, p) =>
-      simpleRpc(c, "task.delete", {
-        taskId: required(p.flags, "task-id"),
-        force: optionalBool(p.flags, "force") ?? false,
+    handler: (ctx) =>
+      simpleRpc(ctx, "task.delete", {
+        taskId: ctx.args.require("task-id"),
+        force: ctx.args.bool("force") ?? false,
       }),
   },
   {
     name: "discover-adoptable",
     summary: "List existing git worktrees in a repo not yet tracked as kobe tasks. Returns { worktrees }.",
     flags: [F.repo()],
-    handler: (c, p) => simpleRpc(c, "worktree.discoverAdoptable", { repo: resolveRepoFlag(required(p.flags, "repo")) }),
+    handler: (ctx) => simpleRpc(ctx, "worktree.discoverAdoptable", { repo: ctx.args.requirePath("repo") }),
   },
   {
     name: "adopt",
@@ -485,50 +515,91 @@ function validateAgainstSpec(verb: VerbSpec, flags: Flags): void {
   }
 }
 
-function required(flags: Flags, key: string): string {
-  const v = flags.get(key)
-  if (v === undefined || v.length === 0) throw new ApiError(`--${key} is required`, "MISSING_FLAG")
-  return v
-}
+/**
+ * Spec-typed flag access, built ONCE per invocation after
+ * {@link validateAgainstSpec}. Each accessor derives its coercion from the
+ * verb's own {@link FlagSpec} (enum values, bool/int shapes), so handlers
+ * never re-declare what the spec already knows — and a handler reading a
+ * flag its spec never declared is a programming error, caught loudly.
+ */
+class VerbArgs {
+  constructor(
+    private readonly verb: VerbSpec,
+    private readonly flags: Flags,
+  ) {}
 
-function optional(flags: Flags, key: string): string | undefined {
-  const v = flags.get(key)
-  return v && v.length > 0 ? v : undefined
-}
-
-function requireEnum<T extends string>(flags: Flags, key: string, values: readonly T[]): T {
-  const v = required(flags, key)
-  if (!values.includes(v as T)) throw new ApiError(`--${key} must be one of ${values.join(", ")}`, "BAD_FLAG")
-  return v as T
-}
-
-function optionalVendor(flags: Flags): VendorId | undefined {
-  const raw = optional(flags, "vendor")
-  if (raw === undefined) return undefined
-  if (!ALL_VENDORS.includes(raw as VendorId)) {
-    throw new ApiError(`--vendor must be one of ${ALL_VENDORS.join(", ")}`, "BAD_FLAG")
+  private spec(name: string): FlagSpec {
+    const f = this.verb.flags.find((s) => s.name === name)
+    if (!f) throw new Error(`internal: --${name} is not declared on verb "${this.verb.name}"`)
+    return f
   }
-  return raw as VendorId
-}
 
-function optionalBool(flags: Flags, key: string): boolean | undefined {
-  const raw = optional(flags, key)
-  if (raw === undefined) return undefined
-  if (["true", "1", "yes"].includes(raw)) return true
-  if (["false", "0", "no"].includes(raw)) return false
-  throw new ApiError(`--${key} must be a boolean (true/false)`, "BAD_FLAG")
-}
+  /** Optional string value; an empty string counts as absent. */
+  str(name: string): string | undefined {
+    this.spec(name)
+    const v = this.flags.get(name)
+    return v && v.length > 0 ? v : undefined
+  }
 
-function optionalPositiveInt(flags: Flags, key: string): number | undefined {
-  const raw = optional(flags, key)
-  if (raw === undefined) return undefined
-  const n = Number.parseInt(raw, 10)
-  if (!Number.isInteger(n) || n <= 0) throw new ApiError(`--${key} must be a positive integer`, "BAD_FLAG")
-  return n
-}
+  /** Required string value (MISSING_FLAG when absent). */
+  require(name: string): string {
+    const v = this.str(name)
+    if (v === undefined) throw new ApiError(`--${name} is required`, "MISSING_FLAG")
+    return v
+  }
 
-function resolveRepoFlag(repo: string): string {
-  return resolve(process.cwd(), repo)
+  /** Enum value, validated against the SPEC's declared `values`. */
+  enumOf<T extends string>(name: string): T | undefined {
+    const f = this.spec(name)
+    const v = this.str(name)
+    if (v === undefined) return undefined
+    if (f.values && !f.values.includes(v)) {
+      throw new ApiError(`--${name} must be one of ${f.values.join(", ")}`, "BAD_FLAG")
+    }
+    return v as T
+  }
+
+  /** Required enum value. */
+  requireEnum<T extends string>(name: string): T {
+    this.require(name)
+    return this.enumOf<T>(name) as T
+  }
+
+  /** The shared `--vendor` flag, typed. */
+  vendor(): VendorId | undefined {
+    return this.enumOf<VendorId>("vendor")
+  }
+
+  /** Boolean flag (`true/1/yes` / `false/0/no`); undefined when absent. */
+  bool(name: string): boolean | undefined {
+    this.spec(name)
+    const raw = this.str(name)
+    if (raw === undefined) return undefined
+    if (["true", "1", "yes"].includes(raw)) return true
+    if (["false", "0", "no"].includes(raw)) return false
+    throw new ApiError(`--${name} must be a boolean (true/false)`, "BAD_FLAG")
+  }
+
+  /** Positive-integer flag; undefined when absent. */
+  int(name: string): number | undefined {
+    this.spec(name)
+    const raw = this.str(name)
+    if (raw === undefined) return undefined
+    const n = Number.parseInt(raw, 10)
+    if (!Number.isInteger(n) || n <= 0) throw new ApiError(`--${name} must be a positive integer`, "BAD_FLAG")
+    return n
+  }
+
+  /** Optional PATH flag resolved against $PWD. */
+  path(name: string): string | undefined {
+    const v = this.str(name)
+    return v === undefined ? undefined : resolve(process.cwd(), v)
+  }
+
+  /** Required PATH flag resolved against $PWD. */
+  requirePath(name: string): string {
+    return resolve(process.cwd(), this.require(name))
+  }
 }
 
 /**
@@ -699,11 +770,45 @@ interface PromptTarget {
   readonly repo?: string
 }
 
+interface DeliveredPrompt {
+  readonly session: string
+  readonly pane: string
+  readonly started: boolean
+  readonly engineReady: boolean
+}
+
+/**
+ * The tmux/engine operations {@link deliverPrompt} performs, injectable so
+ * its decision logic (ensure-worktree fallback, fresh-session build,
+ * explicit-prompt-wins-over-repo-init-prompt) is unit-testable without a
+ * tmux server. The default lazily imports the heavy session builder so a
+ * plain `kobe api list` never loads the TUI pane stack.
+ */
+interface PromptDeliveryOps {
+  sessionExists(session: string): Promise<boolean>
+  ensureSession(opts: EnsureSessionOpts): Promise<boolean>
+  waitForEnginePane(session: string, fresh: boolean): Promise<{ pane: string; ready: boolean }>
+  pasteAndSubmit(pane: string, text: string): Promise<void>
+  resolveRepoInit(repoRoot: string, worktreePath: string): Promise<ResolvedRepoInit>
+  engineCommand(vendor: VendorId | undefined): readonly string[]
+}
+
+const realPromptDeliveryOps: PromptDeliveryOps = {
+  sessionExists,
+  ensureSession: async (opts) => (await import("../tui/panes/terminal/tmux.ts")).ensureSession(opts),
+  waitForEnginePane,
+  pasteAndSubmit,
+  resolveRepoInit: async (repoRoot, worktreePath) =>
+    (await import("../state/repo-init.ts")).resolveRepoInit(repoRoot, worktreePath),
+  engineCommand: interactiveEngineCommand,
+}
+
 async function deliverPrompt(
-  client: KobeDaemonClient,
+  client: DaemonRpc,
   target: PromptTarget,
   prompt: string,
-): Promise<{ session: string; pane: string; started: boolean; engineReady: boolean }> {
+  ops: PromptDeliveryOps = realPromptDeliveryOps,
+): Promise<DeliveredPrompt> {
   let worktree = target.worktreePath
   if (!worktree) {
     const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: target.id })
@@ -712,31 +817,31 @@ async function deliverPrompt(
   if (!worktree) throw new ApiError(`task ${target.id} has no worktree`, "NO_WORKTREE")
 
   const session = tmuxSessionName(target.id)
-  const existed = await sessionExists(session)
+  const existed = await ops.sessionExists(session)
   if (!existed) {
-    const { ensureSession } = await import("../tui/panes/terminal/tmux.ts")
-    const { resolveRepoInit } = await import("../state/repo-init.ts")
-    const init = resolveRepoInit(target.repo ?? "", worktree)
-    const ok = await ensureSession({
+    const init = await ops.resolveRepoInit(target.repo ?? "", worktree)
+    const ok = await ops.ensureSession({
       name: session,
       cwd: worktree,
-      command: interactiveEngineCommand(target.vendor),
+      command: ops.engineCommand(target.vendor),
       taskId: target.id,
       vendor: target.vendor,
       repo: target.repo,
+      // The EXPLICIT prompt is what gets delivered below — never pass the
+      // repo's initPrompt here, or a fresh session would get both pastes.
       initScript: init.initScript,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
   }
 
-  const { pane, ready } = await waitForEnginePane(session, !existed)
+  const { pane, ready } = await ops.waitForEnginePane(session, !existed)
   if (!pane) throw new ApiError(`no engine pane in session ${session}`, "NO_ENGINE_PANE")
 
-  await pasteAndSubmit(pane, prompt)
+  await ops.pasteAndSubmit(pane, prompt)
   return { session, pane, started: !existed, engineReady: ready }
 }
 
-async function resolveActiveTaskId(client: KobeDaemonClient): Promise<string | null> {
+async function resolveActiveTaskId(client: DaemonRpc): Promise<string | null> {
   let activeId: string | null = null
   const off = client.onChannel("active-task", (payload) => {
     activeId = payload.taskId
@@ -749,64 +854,91 @@ async function resolveActiveTaskId(client: KobeDaemonClient): Promise<string | n
   return activeId
 }
 
-// ── Handlers ─────────────────────────────────────────────────────────────────
+// ── Runtime (the side-effect seam handlers run against) ─────────────────────
 
-/** Fire one daemon RPC and return its raw payload (the generic CRUD shape). */
-async function simpleRpc(
-  client: KobeDaemonClient | null,
-  name: string,
-  payload: Record<string, unknown>,
-): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
-  return client.request(name as any, payload)
+/**
+ * Everything a verb handler touches BESIDES the daemon RPC: tmux session
+ * liveness, prompt delivery, git worktree reads. The default implementation
+ * is the real thing (lazy-importing the heavier modules); unit tests swap
+ * in fakes so handler logic runs without a daemon, tmux, or git.
+ */
+interface ApiRuntime {
+  /** True iff the task's tmux session is live. */
+  isTaskRunning(taskId: string): Promise<boolean>
+  /** Deliver a prompt into a task's engine pane (building the session if needed). */
+  deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
+  /** Canonical repo-root key for grouping tasks by repo. */
+  resolveRepoRoot(absPath: string): Promise<string>
+  /** Uncommitted +/− counts for a worktree. */
+  readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
 }
 
-async function add(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const { flags } = parsed
-  const payload: Record<string, string> = { repo: resolveRepoFlag(required(flags, "repo")) }
-  const title = optional(flags, "title")
+const defaultApiRuntime: ApiRuntime = {
+  isTaskRunning: (taskId) => sessionExists(tmuxSessionName(taskId)),
+  deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
+  resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveRepoRoot(absPath),
+  readWorktreeChanges: async (worktreePath) =>
+    (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
+}
+
+// ── Handlers ─────────────────────────────────────────────────────────────────
+
+/** The daemon RPC surface, or the canonical "daemon required" error for an offline call. */
+function daemonOf(ctx: VerbContext): DaemonRpc {
+  if (!ctx.client) throw new ApiError("daemon required", "BAD_DAEMON")
+  return ctx.client
+}
+
+/** Fire one daemon RPC and return its raw payload (the generic CRUD shape). */
+async function simpleRpc(ctx: VerbContext, name: string, payload: Record<string, unknown>): Promise<unknown> {
+  // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
+  return daemonOf(ctx).request(name as any, payload)
+}
+
+async function add(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const { args } = ctx
+  const payload: Record<string, string> = { repo: args.requirePath("repo") }
+  const title = args.str("title")
   if (title) payload.title = title
-  const branch = optional(flags, "branch")
+  const branch = args.str("branch")
   if (branch) payload.branch = branch
-  const baseRef = optional(flags, "base-branch")
+  const baseRef = args.str("base-branch")
   if (baseRef) payload.baseRef = baseRef
-  const vendor = optionalVendor(flags)
+  const vendor = args.vendor()
   if (vendor) payload.vendor = vendor
 
-  const res = await client.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
+  const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
   const taskId = res.taskId
 
   // status / pin aren't create-time fields on the RPC — apply them as
   // follow-ups so `add` is the one-stop "make me a task exactly like this".
-  const status = optional(flags, "status")
-  if (status) await client.request("task.status", { taskId, status: requireEnum(flags, "status", TASK_STATUSES) })
-  const pin = optionalBool(flags, "pin")
-  if (pin !== undefined) await client.request("task.pin", { taskId, pinned: pin })
+  const status = args.enumOf<TaskStatus>("status")
+  if (status) await daemon.request("task.status", { taskId, status })
+  const pin = args.bool("pin")
+  if (pin !== undefined) await daemon.request("task.pin", { taskId, pinned: pin })
 
   let task = res.task
   if (status || pin !== undefined) {
-    task = (await client.request<{ task: SerializedTask }>("task.get", { taskId })).task
+    task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
   }
 
-  const prompt = optional(flags, "prompt")
+  const prompt = args.str("prompt")
   if (!prompt) return { taskId, task, started: false }
-  const delivered = await deliverPrompt(
-    client,
+  const delivered = await ctx.runtime.deliverPrompt(
+    daemon,
     { id: taskId, worktreePath: task.worktreePath, vendor: task.vendor as VendorId | undefined, repo: task.repo },
     prompt,
   )
   return { taskId, task, started: delivered.started, engineReady: delivered.engineReady, session: delivered.session }
 }
 
-async function send(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const { flags } = parsed
-  const prompt = required(flags, "prompt")
-  let taskId = optional(flags, "task-id")
+async function send(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const prompt = ctx.args.require("prompt")
+  let taskId = ctx.args.str("task-id")
   if (!taskId) {
-    const active = await resolveActiveTaskId(client)
+    const active = await resolveActiveTaskId(daemon)
     if (!active) {
       throw new ApiError(
         "no --task-id given and no active task — open a task first or pass --task-id",
@@ -815,9 +947,9 @@ async function send(client: KobeDaemonClient | null, parsed: ParsedArgs): Promis
     }
     taskId = active
   }
-  const res = await client.request<{ task: SerializedTask }>("task.get", { taskId })
-  const delivered = await deliverPrompt(
-    client,
+  const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
+  const delivered = await ctx.runtime.deliverPrompt(
+    daemon,
     {
       id: taskId,
       worktreePath: res.task.worktreePath,
@@ -835,55 +967,54 @@ async function send(client: KobeDaemonClient | null, parsed: ParsedArgs): Promis
   }
 }
 
-async function getTask(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const taskId = required(parsed.flags, "task-id")
-  const res = await client.request<{ task: SerializedTask }>("task.get", { taskId })
-  const running = await sessionExists(tmuxSessionName(taskId))
+async function getTask(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
+  const running = await ctx.runtime.isTaskRunning(taskId)
   return { task: res.task, running }
 }
 
-async function list(client: KobeDaemonClient | null): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  return client.request<{ tasks: SerializedTask[] }>("task.list")
+async function list(ctx: VerbContext): Promise<unknown> {
+  return daemonOf(ctx).request<{ tasks: SerializedTask[] }>("task.list")
 }
 
-async function setActive(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const none = optionalBool(parsed.flags, "none")
-  const taskId = none ? null : required(parsed.flags, "task-id")
-  await client.request("task.setActive", { taskId })
+async function setActive(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const none = ctx.args.bool("none")
+  const taskId = none ? null : ctx.args.require("task-id")
+  await daemon.request("task.setActive", { taskId })
   return { ok: true, activeTaskId: taskId }
 }
 
-async function adopt(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const { flags } = parsed
+async function adopt(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const { args } = ctx
   const input: Record<string, string> = {
-    repo: resolveRepoFlag(required(flags, "repo")),
-    worktreePath: resolveRepoFlag(required(flags, "worktree")),
+    repo: args.requirePath("repo"),
+    worktreePath: args.requirePath("worktree"),
   }
-  const branch = optional(flags, "branch")
+  const branch = args.str("branch")
   if (branch) input.branch = branch
-  const vendor = optionalVendor(flags)
+  const vendor = args.vendor()
   if (vendor) input.vendor = vendor
-  const title = optional(flags, "title")
+  const title = args.str("title")
   if (title) input.title = title
-  return client.request<{ task: SerializedTask }>("worktree.adopt", input)
+  return daemon.request<{ task: SerializedTask }>("worktree.adopt", input)
 }
 
-async function fanOut(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const { flags } = parsed
-  const repo = resolveRepoFlag(required(flags, "repo"))
-  const prompt = required(flags, "prompt")
-  const title = optional(flags, "title")
-  const baseRef = optional(flags, "base-branch")
+async function fanOut(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const { args } = ctx
+  const repo = args.requirePath("repo")
+  const prompt = args.require("prompt")
+  const title = args.str("title")
+  const baseRef = args.str("base-branch")
 
-  const agentsSpec = optional(flags, "agents")
+  const agentsSpec = args.str("agents")
   const plan: VendorId[] = agentsSpec
     ? parseAgentsSpec(agentsSpec)
-    : new Array<VendorId>(optionalPositiveInt(flags, "count") ?? 1).fill(optionalVendor(flags) ?? "claude")
+    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? "claude")
 
   if (plan.length > FANOUT_CAP) {
     throw new ApiError(`fan-out of ${plan.length} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
@@ -894,9 +1025,9 @@ async function fanOut(client: KobeDaemonClient | null, parsed: ParsedArgs): Prom
     const payload: Record<string, string> = { repo, vendor }
     if (title) payload.title = title
     if (baseRef) payload.baseRef = baseRef
-    const res = await client.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
-    const delivered = await deliverPrompt(
-      client,
+    const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
+    const delivered = await ctx.runtime.deliverPrompt(
+      daemon,
       { id: res.taskId, worktreePath: res.task.worktreePath, vendor, repo: res.task.repo },
       prompt,
     )
@@ -911,11 +1042,11 @@ async function fanOut(client: KobeDaemonClient | null, parsed: ParsedArgs): Prom
   return { count: tasks.length, tasks }
 }
 
-async function collect(client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
-  if (!client) throw new ApiError("daemon required", "BAD_DAEMON")
-  const { flags } = parsed
-  const idsFlag = optional(flags, "task-ids")
-  const repoFlag = optional(flags, "repo")
+async function collect(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const { args, runtime } = ctx
+  const idsFlag = args.str("task-ids")
+  const repoFlag = args.path("repo")
 
   let taskIds: string[]
   if (idsFlag) {
@@ -924,20 +1055,22 @@ async function collect(client: KobeDaemonClient | null, parsed: ParsedArgs): Pro
       .map((s) => s.trim())
       .filter(Boolean)
   } else if (repoFlag) {
-    const { resolveRepoRoot } = await import("../state/repos.ts")
-    const target = resolveRepoRoot(resolveRepoFlag(repoFlag))
-    const { tasks } = await client.request<{ tasks: SerializedTask[] }>("task.list")
-    taskIds = tasks.filter((t) => !t.archived && resolveRepoRoot(t.repo) === target).map((t) => t.id)
+    const target = await runtime.resolveRepoRoot(repoFlag)
+    const { tasks } = await daemon.request<{ tasks: SerializedTask[] }>("task.list")
+    taskIds = []
+    for (const t of tasks) {
+      if (t.archived) continue
+      if ((await runtime.resolveRepoRoot(t.repo)) === target) taskIds.push(t.id)
+    }
   } else {
     throw new ApiError("collect needs --task-ids id1,id2 or --repo PATH", "MISSING_TARGET")
   }
 
-  const { readWorktreeChanges } = await import("../tui/panes/sidebar/worktree-changes.ts")
   const out: unknown[] = []
   for (const taskId of taskIds) {
-    const { task } = await client.request<{ task: SerializedTask }>("task.get", { taskId })
-    const running = await sessionExists(tmuxSessionName(taskId))
-    const changes = task.worktreePath ? readWorktreeChanges(task.worktreePath) : { added: 0, deleted: 0 }
+    const { task } = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
+    const running = await runtime.isTaskRunning(taskId)
+    const changes = task.worktreePath ? await runtime.readWorktreeChanges(task.worktreePath) : { added: 0, deleted: 0 }
     out.push({
       taskId: task.id,
       title: task.title,
@@ -952,16 +1085,38 @@ async function collect(client: KobeDaemonClient | null, parsed: ParsedArgs): Pro
   return { tasks: out }
 }
 
-async function feedback(_client: KobeDaemonClient | null, parsed: ParsedArgs): Promise<unknown> {
+async function feedback(ctx: VerbContext): Promise<unknown> {
   const result = submitFeedback({
-    title: required(parsed.flags, "title"),
-    body: required(parsed.flags, "body"),
-    categorySlug: optional(parsed.flags, "category"),
+    title: ctx.args.require("title"),
+    body: ctx.args.require("body"),
+    categorySlug: ctx.args.str("category"),
   })
   return { ok: true, discussion: result }
 }
 
 // ── Dispatch ─────────────────────────────────────────────────────────────────
+
+function makeContext(verb: VerbSpec, flags: Flags, client: DaemonRpc | null, runtime: ApiRuntime): VerbContext {
+  return { args: new VerbArgs(verb, flags), client, runtime }
+}
+
+/**
+ * Parse + validate + run ONE verb against an injected client/runtime —
+ * the unit-test (and embedding) entry. Throws {@link ApiError} instead of
+ * exiting; `runApiSubcommand` keeps the process-exit/JSON-emit wrapper.
+ */
+export async function invokeVerb(
+  verbName: string,
+  argv: readonly string[],
+  deps: { client: DaemonRpc | null; runtime?: ApiRuntime },
+): Promise<unknown> {
+  const verb = findVerb(verbName)
+  if (!verb) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB")
+  const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
+  const parsed = parseFlags(argv, booleanFlags)
+  validateAgainstSpec(verb, parsed.flags)
+  return verb.handler(makeContext(verb, parsed.flags, deps.client, deps.runtime ?? defaultApiRuntime))
+}
 
 export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
   const [verbName, ...rest] = argv
@@ -994,10 +1149,10 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     fail(err instanceof Error ? err.message : String(err), "BAD_FLAG", 2)
   }
 
-  let client: KobeDaemonClient | null = null
+  let session: DaemonSession | null = null
   if (!verb.offline) {
     try {
-      client = await connectOrStartDaemon()
+      session = await openDaemonSession()
     } catch (err) {
       fail(
         `could not reach or start the kobe daemon: ${err instanceof Error ? err.message : String(err)}`,
@@ -1008,16 +1163,28 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
   }
 
   try {
-    const result = await verb.handler(client, parsed)
+    const result = await verb.handler(makeContext(verb, parsed.flags, session?.client ?? null, defaultApiRuntime))
     emit(result, parsed.pretty)
   } catch (err) {
     if (err instanceof ApiError) fail(err.message, err.code, 1)
     fail(err instanceof Error ? err.message : String(err), "RPC_ERROR", 1)
   } finally {
-    client?.close()
+    session?.close()
   }
 }
 
 // Exported for tests.
-export { ApiError, VERBS, VERB_GROUPS, findVerb, validateAgainstSpec, schemaIndex, verbSchema, fullSchema }
-export type { VerbSpec, FlagSpec }
+export {
+  ApiError,
+  VERBS,
+  VERB_GROUPS,
+  VerbArgs,
+  deliverPrompt,
+  defaultApiRuntime,
+  findVerb,
+  validateAgainstSpec,
+  schemaIndex,
+  verbSchema,
+  fullSchema,
+}
+export type { VerbSpec, FlagSpec, VerbContext, ApiRuntime, PromptDeliveryOps, PromptTarget, DeliveredPrompt }
