@@ -372,11 +372,25 @@ function TasksShell(props: {
     await props.reload()
   }
 
+  // Collapsed state of the `── keys ──` legend (toggled by `?` / clicking
+  // the header). KV-persisted so the preference survives pane respawns
+  // and upgrades. kv.get reads the reactive store, so the footer re-renders
+  // on toggle.
+  const keysCollapsed = () => kv.get("tasksPane.keysCollapsed", false) === true
+  const setKeysCollapsed = (next: boolean) => kv.set("tasksPane.keysCollapsed", next)
+
+  // The sidebar's `/`-search lifts its active state here so the host-level
+  // plain-letter chords below go quiet while the user is TYPING a query —
+  // without this gate, typing `n` into the search box would open the
+  // new-task dialog (same class of leak as the dialog gate; the sidebar
+  // de-registers its OWN letter chords during search but can't reach ours).
+  const [searchActive, setSearchActive] = createSignal(false)
+
   // Gate on an empty dialog stack so a letter typed INTO a dialog field
   // doesn't re-fire the binding (the keymap sees inline-input keystrokes;
   // the dialog stack is the focus signal here).
   useBindings(() => ({
-    enabled: dialog.stack.length === 0,
+    enabled: dialog.stack.length === 0 && !searchActive(),
     // Chords come from KobeKeymap via bindByIds (f1=help.open, n=task.new,
     // s=settings.open.sidebar, u=tasks.update, o/b/v=tasks.*) so user
     // overrides from ~/.kobe/settings/keybindings.yaml apply here too.
@@ -402,6 +416,7 @@ function TasksShell(props: {
         const id = selectedId()
         if (id) void cycleVendor(id)
       },
+      "tasks.toggleKeys": () => setKeysCollapsed(!keysCollapsed()),
     }),
   }))
 
@@ -559,9 +574,15 @@ function TasksShell(props: {
           // the input's onSubmit, so the keymap falls through to it). Mirrors
           // the n/b/v gate above (KOB-244).
           focused={() => dialog.stack.length === 0}
+          onSearchActiveChange={setSearchActive}
         />
       </box>
-      <ShortcutHints moveMode={moveMode} selectedIsMain={selectedIsMain} />
+      <ShortcutHints
+        moveMode={moveMode}
+        selectedIsMain={selectedIsMain}
+        collapsed={keysCollapsed}
+        onToggleCollapsed={() => setKeysCollapsed(!keysCollapsed())}
+      />
     </box>
   )
 }
@@ -571,8 +592,18 @@ function TasksShell(props: {
  * shows the in-pane task actions plus the session-level tmux chords so the
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
  * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
+ *
+ * Collapsible: the legend is ~20 rows with the tmux chords included, which
+ * crowds the task list on short terminals. `?` (or clicking the header)
+ * folds it down to the header line; move-mode hints ignore the fold — a
+ * user inside reorder mode must always see how to leave it.
  */
-function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: Accessor<boolean> }) {
+function ShortcutHints(props: {
+  moveMode?: Accessor<boolean>
+  selectedIsMain?: Accessor<boolean>
+  collapsed?: Accessor<boolean>
+  onToggleCollapsed?: () => void
+}) {
   const { theme } = useTheme()
   // Resolve the user's REAL tmux prefix at runtime (#12). kobe loads the
   // user's own prefix, so a literal `Prefix F` is un-actionable — the user may
@@ -667,44 +698,56 @@ function ShortcutHints(props: { moveMode?: Accessor<boolean>; selectedIsMain?: A
     s.length <= labelColWidth() ? s : `${s.slice(0, Math.max(0, labelColWidth() - 1))}…`
   // Version + update moved UP to the Sidebar's `kobe` brand header (the old
   // `── system ──` block lived here); the footer is now just the key legend.
+  // Move-mode overrides the fold: its two hints are the only exit
+  // instructions for reorder mode, so they always render.
+  const folded = () => (props.collapsed?.() ?? false) && !(props.moveMode?.() ?? false)
   return (
     <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
-      <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-        ── keys ──
+      {/* Header doubles as the toggle: `?` chord or a click folds/unfolds.
+          The `?▸ / ?▾` tail advertises both the chord and the state. */}
+      <text
+        fg={theme.textMuted}
+        attributes={TextAttributes.DIM}
+        wrapMode="none"
+        onMouseUp={() => props.onToggleCollapsed?.()}
+      >
+        {folded() ? "── keys ?▸ ──" : "── keys ?▾ ──"}
       </text>
-      <For each={hints()}>
-        {(h) => {
-          // Dim a cap whose action early-returns on a `main` row (`B`/`M`):
-          // muted + DIM instead of bold accent, so the user sees it doesn't
-          // apply to the project row rather than pressing it into silence.
-          const dim = () => h.dimWhenMain === true && (props.selectedIsMain?.() ?? false)
-          return (
-            <box flexDirection="row" gap={1} justifyContent="space-between">
-              {/* `[key]` keycap chip — agent-deck style, mirrors the outer
+      <Show when={!folded()}>
+        <For each={hints()}>
+          {(h) => {
+            // Dim a cap whose action early-returns on a `main` row (`B`/`M`):
+            // muted + DIM instead of bold accent, so the user sees it doesn't
+            // apply to the project row rather than pressing it into silence.
+            const dim = () => h.dimWhenMain === true && (props.selectedIsMain?.() ?? false)
+            return (
+              <box flexDirection="row" gap={1} justifyContent="space-between">
+                {/* `[key]` keycap chip — agent-deck style, mirrors the outer
                 monitor's StatusBar Hotkey: bold accent key in brackets,
                 muted label. No fill, so it stays clean in transparent mode. */}
-              <box width={10} flexShrink={0}>
-                <text
-                  fg={dim() ? theme.textMuted : theme.accent}
-                  attributes={dim() ? TextAttributes.DIM : TextAttributes.BOLD}
-                  wrapMode="none"
-                >
-                  [{formatChord(h.k, prefixCap())}]
-                </text>
-              </box>
-              {/* Description column — fixed width = longest label, pushed to the
+                <box width={10} flexShrink={0}>
+                  <text
+                    fg={dim() ? theme.textMuted : theme.accent}
+                    attributes={dim() ? TextAttributes.DIM : TextAttributes.BOLD}
+                    wrapMode="none"
+                  >
+                    [{formatChord(h.k, prefixCap())}]
+                  </text>
+                </box>
+                {/* Description column — fixed width = longest label, pushed to the
                 right edge by space-between. Text is left-aligned inside, so
                 every description shares one left edge while the whole column
                 hugs the right side and rides the pane width. */}
-              <box width={labelColWidth()} flexShrink={0}>
-                <text fg={theme.textMuted} attributes={dim() ? TextAttributes.DIM : undefined} wrapMode="none">
-                  {clipLabel(h.label)}
-                </text>
+                <box width={labelColWidth()} flexShrink={0}>
+                  <text fg={theme.textMuted} attributes={dim() ? TextAttributes.DIM : undefined} wrapMode="none">
+                    {clipLabel(h.label)}
+                  </text>
+                </box>
               </box>
-            </box>
-          )
-        }}
-      </For>
+            )
+          }}
+        </For>
+      </Show>
     </box>
   )
 }

@@ -403,6 +403,19 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open the update page (when a new version is available)",
     hint: { keys: "u", label: "update", status: false },
   },
+  {
+    // `?` (shift+/ — terminals deliver the literal character) folds the
+    // Tasks pane's `── keys ──` legend down to its header line and back.
+    // The legend is ~20 rows tall with the tmux session chords included;
+    // on short terminals it crowds out the task list. The collapsed state
+    // persists via KV so the preference survives pane respawns.
+    id: "tasks.toggleKeys",
+    scope: "sidebar",
+    keys: ["?"],
+    category: "Tasks pane",
+    description: "Collapse / expand the keys legend",
+    hint: { keys: "?", label: "fold keys", status: false },
+  },
 
   // ─── Workspace (tmux) ─────────────────────────────────────────────────
   // tmux-handover chords that drive the task SESSION (windows/tabs/detach),
