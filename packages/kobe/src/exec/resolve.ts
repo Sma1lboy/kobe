@@ -86,7 +86,10 @@ export function remoteKeyForRepo(repo: string | undefined): string | undefined {
  */
 export function worktreeUsable(worktreePath: string): boolean {
   const host = execHostForWorktreePath(worktreePath)
-  return host.isRemote || host.exists(worktreePath)
+  // `isRemote` short-circuits BEFORE `existsSync` — the sync probe is only
+  // ever evaluated for a LOCAL host (cheap fs.existsSync); a remote host's
+  // existsSync would be a blocking ssh round-trip and must not run here.
+  return host.isRemote || host.existsSync(worktreePath)
 }
 
 /**

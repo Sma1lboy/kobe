@@ -10,17 +10,15 @@ function fakeRemote(script: (argv: readonly string[]) => ExecResult) {
   const runs: Array<{ argv: readonly string[]; cwd?: string }> = []
   const exec: ExecHost = {
     isRemote: true,
-    run(argv, opts) {
+    async run(argv, opts) {
       runs.push({ argv, cwd: opts?.cwd })
       return script(argv)
     },
-    async runAsync(argv, opts) {
-      return this.run(argv, opts)
-    },
-    exists: () => false,
-    mkdirp: () => {},
-    readFile: () => null,
-    readdir: () => [],
+    exists: async () => false,
+    existsSync: () => false,
+    mkdirp: async () => {},
+    readFile: async () => null,
+    readdir: async () => [],
     wrapCommand: (c) => c,
     ensureReady: () => {},
   }

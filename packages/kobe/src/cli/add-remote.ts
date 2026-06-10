@@ -154,7 +154,7 @@ async function probe(f: ParsedFlags, auth: Parameters<typeof addRemoteRepo>[0]["
   process.stdout.write("checking connection… ")
   try {
     const host = new RemoteExecHost(spec)
-    const r = host.run(["test", "-d", f.path!])
+    const r = await host.run(["test", "-d", f.path!])
     if (r.exitCode === 0) console.log("ok")
     else console.log(`reachable, but base path "${f.path}" is not a directory (you can create it later)`)
   } catch (err) {

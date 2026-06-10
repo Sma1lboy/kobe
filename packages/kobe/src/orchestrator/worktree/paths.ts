@@ -102,8 +102,12 @@ export function worktreePathFor(repo: string, slug: string): string {
  * to discover on-disk-occupied slugs (so a stale dir from an aborted
  * task still counts as taken) and by `diagnose` to reconcile the task
  * index against disk state. Symlinks are not followed.
+ *
+ * ASYNC: the remote branch is an ssh round-trip (`ExecHost.readdir`) and
+ * runs inside the daemon (slug allocation) — it must not block the event
+ * loop. The local branch stays a cheap sync scan under the hood.
  */
-export function listWorktreeDirNames(repo: string): string[] {
+export async function listWorktreeDirNames(repo: string): Promise<string[]> {
   // A remote project lists its worktree dirs over SSH (its key isn't a local
   // path, so the local-root scan below would throw on the non-absolute key).
   if (isRemoteRepoKey(repo)) {

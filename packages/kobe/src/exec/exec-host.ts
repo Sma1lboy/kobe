@@ -5,12 +5,36 @@
  * launch) goes through an ExecHost so a REMOTE project runs the exact same
  * logic over SSH while a LOCAL project keeps today's behavior verbatim:
  *
- *   - LocalExecHost  — `spawnSync` + node `fs` (the default; zero regression).
+ *   - LocalExecHost  — async `spawn` + node `fs` (the default; zero regression).
  *   - RemoteExecHost — wraps every command in `ssh … 'cd <cwd> && <cmd>'`,
  *     reusing ONE multiplexed connection per remote project (ControlMaster).
  *
  * A task resolves its ExecHost once from its project's remote config (see
  * `state/repos.ts` remoteRepos). See `docs/design/remote-projects.md`.
+ *
+ * Blocking discipline (KOB — daemon event-loop freeze):
+ *   The DAEMON runs worktree git operations through this seam. A
+ *   `git worktree add` on a big repo is a minutes-long checkout, and a remote
+ *   call is an ssh round-trip — neither may freeze the daemon's event loop
+ *   (every TUI client's RPCs and pushes stall while it's blocked). So the
+ *   members that do real work are ASYNC:
+ *
+ *     - `run` / `exists` / `mkdirp` / `readFile` / `readdir` → Promise-based,
+ *       backed by async `spawn` locally and an async ssh spawn remotely.
+ *
+ *   The cheap/metadata members stay sync:
+ *
+ *     - `isRemote`, `wrapCommand` (pure string building), `ensureReady`
+ *       (ControlMaster bring-up; sync ssh, see caveat below), and
+ *     - `existsSync` — kept for sync TUI fast-paths (`worktreeUsable`) that
+ *       already guard with `isRemote`. Locally it's `fs.existsSync` (cheap);
+ *       REMOTELY it is a BLOCKING ssh round-trip — callers must short-circuit
+ *       on `isRemote` first and only use it for local paths.
+ *
+ *   `ensureReady()` remains sync: it's called from TUI processes
+ *   (tmux engine launch) and from `RemoteExecHost.run`'s first call per host
+ *   instance. That first ControlMaster bring-up is the one remaining sync ssh
+ *   on the daemon path (experimental remote-projects; tracked, not fixed here).
  *
  * Security (non-negotiable, see the design doc):
  *   - The password is NEVER in the command string, in `state.json`, or in
@@ -23,8 +47,9 @@
  *     unknown, reject a CHANGED key), never `no`.
  */
 
-import { type SpawnSyncReturns, spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs"
+import { spawn, spawnSync } from "node:child_process"
+import { existsSync } from "node:fs"
+import { mkdir, readFile as readFileAsync, readdir as readdirAsync } from "node:fs/promises"
 
 /** SSH auth: a key (or the agent) vs a password held in the OS keychain. */
 export type RemoteAuth =
@@ -56,25 +81,46 @@ export interface ExecOpts {
 
 /**
  * The local/remote execution seam. `run` matches `orchestrator/worktree/git.ts`'s
- * shape so the worktree manager routes through it unchanged; fs helpers cover
- * the direct `fs` reads the manager / ops pane / history readers also do.
+ * result shape so the worktree manager routes through it unchanged; fs helpers
+ * cover the direct `fs` reads the manager / slug allocator also do.
+ *
+ * ASYNC members (`run`, `exists`, `mkdirp`, `readFile`, `readdir`) are the
+ * ones that do real subprocess / ssh / disk work — awaiting them keeps the
+ * daemon's event loop free. SYNC members are metadata (`isRemote`), pure
+ * string building (`wrapCommand`), the documented `existsSync` local
+ * fast-path, and `ensureReady` (see file header).
  */
 export interface ExecHost {
   readonly isRemote: boolean
-  run(argv: readonly string[], opts?: ExecOpts): ExecResult
-  runAsync(argv: readonly string[], opts?: ExecOpts): Promise<ExecResult>
-  exists(path: string): boolean
-  mkdirp(path: string): void
-  readFile(path: string): string | null
-  readdir(path: string): string[]
+  /** Run argv on the host. ASYNC — never blocks the caller's event loop. */
+  run(argv: readonly string[], opts?: ExecOpts): Promise<ExecResult>
+  /** Whether `path` exists on the host. ASYNC (remote = ssh round-trip). */
+  exists(path: string): Promise<boolean>
+  /**
+   * SYNC existence probe for local-path fast-paths (e.g. `worktreeUsable`).
+   * Local: `fs.existsSync` (cheap). Remote: a BLOCKING ssh round-trip —
+   * callers MUST short-circuit on `isRemote` before reaching this.
+   */
+  existsSync(path: string): boolean
+  /** `mkdir -p`. ASYNC (remote = ssh round-trip). */
+  mkdirp(path: string): Promise<void>
+  /** Read a file as utf8, or null when unreadable. ASYNC. */
+  readFile(path: string): Promise<string | null>
+  /** List directory entries (empty on failure). ASYNC. */
+  readdir(path: string): Promise<string[]>
   /**
    * Wrap a command STRING so it runs on the host — used by the tmux engine
    * launch (the result lands in the pane command). Local → returned as-is;
    * remote → `ssh -tt … '<cd cwd && cmd>'` reusing the control socket (no
    * secret in the string). The caller must `ensureReady()` first for remote.
+   * SYNC — pure string building.
    */
   wrapCommand(command: string, opts?: { readonly tty?: boolean; readonly cwd?: string }): string
-  /** Bring up the connection (no-op locally; opens the ControlMaster remotely). */
+  /**
+   * Bring up the connection (no-op locally; opens the ControlMaster remotely).
+   * SYNC — the one remaining sync-ssh site; called from TUI engine launch and
+   * once per RemoteExecHost instance before the first async `run`.
+   */
   ensureReady(): void
 }
 
@@ -116,43 +162,80 @@ export function sshConnectArgs(spec: RemoteSpec, opts: { tty?: boolean; batch?: 
   return argv
 }
 
+/**
+ * Async spawn that collects stdout/stderr and resolves with the same result
+ * contract `spawnSync` produced (`status ?? -1`, `stdout/stderr ?? ""`):
+ *   - non-zero exit → resolved result with that exitCode (never rejects);
+ *   - spawn failure (ENOENT, bad cwd, …) → `{ stdout: "", stderr: "", exitCode: -1 }`,
+ *     matching the old `SpawnSyncReturns`-derived shape exactly.
+ */
+function spawnCollect(
+  argv: readonly string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    const [cmd, ...rest] = argv
+    let stdout = ""
+    let stderr = ""
+    let settled = false
+    const finish = (exitCode: number) => {
+      if (settled) return
+      settled = true
+      resolve({ stdout, stderr, exitCode })
+    }
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(cmd ?? "", rest, { cwd: opts.cwd, env: opts.env, shell: false })
+    } catch {
+      finish(-1)
+      return
+    }
+    child.stdout?.setEncoding("utf8")
+    child.stdout?.on("data", (d: string) => {
+      stdout += d
+    })
+    child.stderr?.setEncoding("utf8")
+    child.stderr?.on("data", (d: string) => {
+      stderr += d
+    })
+    // ENOENT and friends: spawnSync reported status null → -1; mirror that.
+    child.on("error", () => finish(-1))
+    child.on("close", (code) => finish(code ?? -1))
+  })
+}
+
 // ── Local ────────────────────────────────────────────────────────────────────
 
-/** Run things on the local machine — today's behavior, verbatim. */
+/** Run things on the local machine — today's behavior, made non-blocking. */
 export class LocalExecHost implements ExecHost {
   readonly isRemote = false
 
-  run(argv: readonly string[], opts: ExecOpts = {}): ExecResult {
-    const [cmd, ...rest] = argv
-    const proc = spawnSync(cmd ?? "", rest, {
+  run(argv: readonly string[], opts: ExecOpts = {}): Promise<ExecResult> {
+    return spawnCollect(argv, {
       cwd: opts.cwd,
       env: opts.env ? { ...process.env, ...opts.env } : process.env,
-      encoding: "utf8",
-      shell: false,
     })
-    return toResult(proc)
   }
 
-  async runAsync(argv: readonly string[], opts: ExecOpts = {}): Promise<ExecResult> {
-    return this.run(argv, opts)
-  }
-
-  exists(path: string): boolean {
+  async exists(path: string): Promise<boolean> {
     return existsSync(path)
   }
-  mkdirp(path: string): void {
-    mkdirSync(path, { recursive: true })
+  existsSync(path: string): boolean {
+    return existsSync(path)
   }
-  readFile(path: string): string | null {
+  async mkdirp(path: string): Promise<void> {
+    await mkdir(path, { recursive: true })
+  }
+  async readFile(path: string): Promise<string | null> {
     try {
-      return readFileSync(path, "utf8")
+      return await readFileAsync(path, "utf8")
     } catch {
       return null
     }
   }
-  readdir(path: string): string[] {
+  async readdir(path: string): Promise<string[]> {
     try {
-      return readdirSync(path)
+      return await readdirAsync(path)
     } catch {
       return []
     }
@@ -165,34 +248,52 @@ export class LocalExecHost implements ExecHost {
 
 // ── Remote ─────────────────────────────────────────────────────────────────
 
-/** Spawn seam so tests can assert the ssh argv without a real connection. */
+/**
+ * Spawn seam so tests can assert the ssh argv without a real connection.
+ * SYNC — used by `ensureReady` (ControlMaster bring-up) and `existsSync`.
+ */
 export type Spawner = (argv: readonly string[], env?: Record<string, string>) => ExecResult
+
+/** ASYNC spawn seam — used by `run` (and everything built on it). */
+export type AsyncSpawner = (argv: readonly string[], env?: Record<string, string>) => Promise<ExecResult>
 
 const defaultSpawner: Spawner = (argv, env) => {
   const [cmd, ...rest] = argv
-  return toResult(
-    spawnSync(cmd ?? "", rest, {
-      env: env ? { ...process.env, ...env } : process.env,
-      encoding: "utf8",
-      shell: false,
-    }),
-  )
+  const proc = spawnSync(cmd ?? "", rest, {
+    env: env ? { ...process.env, ...env } : process.env,
+    encoding: "utf8",
+    shell: false,
+  })
+  return { stdout: proc.stdout ?? "", stderr: proc.stderr ?? "", exitCode: proc.status ?? -1 }
 }
+
+const defaultAsyncSpawner: AsyncSpawner = (argv, env) =>
+  spawnCollect(argv, { env: env ? { ...process.env, ...env } : process.env })
 
 /**
  * Run things on a remote host over SSH. Every `run`/fs call becomes
  * `ssh … 'cd <cwd> && <cmd>'` over a multiplexed control socket; `ensureReady`
  * opens that socket once (with sshpass for the password path, which is read
  * from the keychain and used exactly once — never in a later command).
+ *
+ * `run` and the fs helpers are ASYNC (the per-call ssh spawn never blocks the
+ * event loop). `ensureReady` stays sync — see the file header.
  */
 export class RemoteExecHost implements ExecHost {
   readonly isRemote = true
   private masterUp = false
+  private readonly spawnAsync: AsyncSpawner
 
   constructor(
     private readonly spec: RemoteSpec,
     private readonly spawn: Spawner = defaultSpawner,
-  ) {}
+    spawnAsync?: AsyncSpawner,
+  ) {
+    // A test that injects only a sync fake spawner gets it for async calls
+    // too (wrapped), so argv-recording fakes keep observing every call.
+    this.spawnAsync =
+      spawnAsync ?? (this.spawn === defaultSpawner ? defaultAsyncSpawner : async (argv, env) => this.spawn(argv, env))
+  }
 
   /** Open the ControlMaster master once. Idempotent: a live socket is reused. */
   ensureReady(): void {
@@ -218,29 +319,33 @@ export class RemoteExecHost implements ExecHost {
     this.masterUp = true
   }
 
-  run(argv: readonly string[], opts: ExecOpts = {}): ExecResult {
+  async run(argv: readonly string[], opts: ExecOpts = {}): Promise<ExecResult> {
+    // Sync ControlMaster bring-up on the FIRST call per host instance (see
+    // file header — the remaining sync-ssh site); later calls are a no-op.
     this.ensureReady()
     // No sshpass here — the multiplexed master carries the channel with no
     // re-auth, so no secret ever reaches a per-call command.
-    return this.spawn([...sshConnectArgs(this.spec, { batch: true }), remoteShellCommand(argv, opts.cwd)])
+    return this.spawnAsync([...sshConnectArgs(this.spec, { batch: true }), remoteShellCommand(argv, opts.cwd)])
   }
 
-  async runAsync(argv: readonly string[], opts: ExecOpts = {}): Promise<ExecResult> {
-    return this.run(argv, opts)
+  async exists(path: string): Promise<boolean> {
+    return (await this.run(["test", "-e", path])).exitCode === 0
   }
-
-  exists(path: string): boolean {
-    return this.run(["test", "-e", path]).exitCode === 0
+  /** BLOCKING ssh round-trip — see the interface doc; guard with `isRemote`. */
+  existsSync(path: string): boolean {
+    this.ensureReady()
+    const r = this.spawn([...sshConnectArgs(this.spec, { batch: true }), remoteShellCommand(["test", "-e", path])])
+    return r.exitCode === 0
   }
-  mkdirp(path: string): void {
-    this.run(["mkdir", "-p", path])
+  async mkdirp(path: string): Promise<void> {
+    await this.run(["mkdir", "-p", path])
   }
-  readFile(path: string): string | null {
-    const r = this.run(["cat", path])
+  async readFile(path: string): Promise<string | null> {
+    const r = await this.run(["cat", path])
     return r.exitCode === 0 ? r.stdout : null
   }
-  readdir(path: string): string[] {
-    const r = this.run(["ls", "-1A", path])
+  async readdir(path: string): Promise<string[]> {
+    const r = await this.run(["ls", "-1A", path])
     if (r.exitCode !== 0) return []
     return r.stdout.split("\n").filter((s) => s.length > 0)
   }
@@ -252,8 +357,4 @@ export class RemoteExecHost implements ExecHost {
     const remote = opts.cwd ? `cd ${shQuote(opts.cwd)} && ${command}` : command
     return `${sshConnectArgs(this.spec, { tty: opts.tty }).join(" ")} ${shQuote(remote)}`
   }
-}
-
-function toResult(proc: SpawnSyncReturns<string>): ExecResult {
-  return { stdout: proc.stdout ?? "", stderr: proc.stderr ?? "", exitCode: proc.status ?? -1 }
 }

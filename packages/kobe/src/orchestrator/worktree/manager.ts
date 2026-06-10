@@ -78,12 +78,17 @@ export class GitWorktreeManager implements WorktreeManager {
   /**
    * Run `git <args>` through `exec`, preserving git.ts's throw-on-nonzero /
    * `allowFail` contract so callers behave identically local or remote.
+   *
+   * ASYNC: this is the daemon's worktree hot path — a `git worktree add` on
+   * a big repo is a minutes-long checkout, and a remote call is an ssh
+   * round-trip. Awaiting the host's async `run` keeps the daemon's event
+   * loop serving RPCs/pushes while git works.
    */
-  private runGit(exec: ExecHost, args: readonly string[], opts: GitRunOpts): GitRunResult {
+  private async runGit(exec: ExecHost, args: readonly string[], opts: GitRunOpts): Promise<GitRunResult> {
     if (!opts.cwd) {
       throw new Error("runGit(): cwd is required; refusing to inherit from process.cwd()")
     }
-    const r = exec.run(["git", ...args], { cwd: opts.cwd, env: opts.env })
+    const r = await exec.run(["git", ...args], { cwd: opts.cwd, env: opts.env })
     const result: GitRunResult = { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode }
     if (result.exitCode !== 0 && !opts.allowFail) {
       throw new GitCommandError(args, opts.cwd, result)
@@ -118,7 +123,7 @@ export class GitWorktreeManager implements WorktreeManager {
     if (!branch) throw new Error("create(): branch must be a non-empty string")
 
     // Idempotent fast-path: already a worktree here, on the right branch.
-    if (ctx.exec.exists(worktreePath)) {
+    if (await ctx.exec.exists(worktreePath)) {
       const existing = await this.tryDescribe(ctx, worktreePath)
       if (existing) {
         if (existing.branch !== branch) {
@@ -136,7 +141,7 @@ export class GitWorktreeManager implements WorktreeManager {
 
     // Make sure the parent dir exists (`~/.kobe/worktrees/...` may be the
     // first time we write into the repo).
-    ctx.exec.mkdirp(path.dirname(worktreePath))
+    await ctx.exec.mkdirp(path.dirname(worktreePath))
 
     // Decide whether to create the branch. `git worktree add -b <new>`
     // creates a fresh branch from HEAD (or `baseRef` when given);
@@ -148,14 +153,14 @@ export class GitWorktreeManager implements WorktreeManager {
     // sensible meaning here (we'd either be lying or silently rebasing
     // their branch); the orchestrator surfaces the resulting state via
     // the existing branch, not via the now-ignored baseRef.
-    const branchExists = this.branchExists(ctx, branch)
+    const branchExists = await this.branchExists(ctx, branch)
     const args = branchExists
       ? ["worktree", "add", worktreePath, branch]
       : baseRef
         ? ["worktree", "add", "-b", branch, worktreePath, baseRef]
         : ["worktree", "add", "-b", branch, worktreePath]
 
-    this.runGit(ctx.exec, args, { cwd: ctx.dir })
+    await this.runGit(ctx.exec, args, { cwd: ctx.dir })
 
     // Sanity-check the result so any failure surfaces here, not at the
     // first downstream `currentBranch()` call.
@@ -213,19 +218,19 @@ export class GitWorktreeManager implements WorktreeManager {
     const exec = this.execDeps.execForPath(worktreePath)
     const force = opts?.force === true
 
-    if (!exec.exists(worktreePath)) {
+    if (!(await exec.exists(worktreePath))) {
       // Best-effort metadata prune — the directory may be gone but a
       // stale entry can survive in `.git/worktrees/`. `git worktree
       // remove` will refuse, so we use prune.
-      const repo = this.findRepoFor(exec, worktreePath)
-      if (repo) this.runGit(exec, ["worktree", "prune"], { cwd: repo, allowFail: true })
+      const repo = await this.findRepoFor(exec, worktreePath)
+      if (repo) await this.runGit(exec, ["worktree", "prune"], { cwd: repo, allowFail: true })
       return
     }
 
     // Resolve the owning repo via `rev-parse --git-common-dir` from
     // inside the worktree itself. This is the only reliable way to get
     // back to the main repo when the caller hands us only the path.
-    const repo = this.findRepoFor(exec, worktreePath)
+    const repo = await this.findRepoFor(exec, worktreePath)
     if (!repo) {
       throw new Error(`remove(): ${worktreePath} is not a git worktree`)
     }
@@ -245,11 +250,11 @@ export class GitWorktreeManager implements WorktreeManager {
     // — we already checked dirty) doesn't bounce. Dirty refusal lives
     // in our layer, not git's.
     const args = force ? ["worktree", "remove", "--force", worktreePath] : ["worktree", "remove", worktreePath]
-    this.runGit(exec, args, { cwd: repo })
+    await this.runGit(exec, args, { cwd: repo })
 
     // Defensive prune — cleans up `.git/worktrees/<name>/` if the
     // remove left it behind (rare, but documented in vibe-kanban).
-    this.runGit(exec, ["worktree", "prune"], { cwd: repo, allowFail: true })
+    await this.runGit(exec, ["worktree", "prune"], { cwd: repo, allowFail: true })
   }
 
   /**
@@ -263,7 +268,7 @@ export class GitWorktreeManager implements WorktreeManager {
   async list(repo: string): Promise<readonly WorktreeInfo[]> {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
-    const out = this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
+    const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
     const all = parsePorcelain(out.stdout)
 
     const infos: WorktreeInfo[] = []
@@ -312,7 +317,7 @@ export class GitWorktreeManager implements WorktreeManager {
   async listAll(repo: string): Promise<readonly AdoptableWorktree[]> {
     const ctx = this.ctxFor(repo)
     requireAbsolute("repo", ctx.dir)
-    const out = this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
+    const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
     const all = parsePorcelain(out.stdout)
     const canonRepo = ctx.remote ? ctx.dir : canonicalize(ctx.dir)
 
@@ -333,7 +338,7 @@ export class GitWorktreeManager implements WorktreeManager {
         kobeManaged: ctx.remote
           ? remoteManagedRootForPath(ctx.dir, entry.path) !== null
           : isKobeManagedPath(repo, entry.path),
-        lastActivityMs: this.lastActivityMs(ctx.exec, entry.path),
+        lastActivityMs: await this.lastActivityMs(ctx.exec, entry.path),
       })
     }
     // Most recently active first (KOB-256).
@@ -347,9 +352,9 @@ export class GitWorktreeManager implements WorktreeManager {
    * read fails (e.g. an unborn branch). Best-effort: returns 0 on total
    * failure so sorting still works. Used to order the adopt list.
    */
-  private lastActivityMs(exec: ExecHost, worktreePath: string): number {
+  private async lastActivityMs(exec: ExecHost, worktreePath: string): Promise<number> {
     try {
-      const out = this.runGit(exec, ["log", "-1", "--format=%ct"], { cwd: worktreePath })
+      const out = await this.runGit(exec, ["log", "-1", "--format=%ct"], { cwd: worktreePath })
       const secs = Number.parseInt(out.stdout.trim(), 10)
       if (Number.isFinite(secs) && secs > 0) return secs * 1000
     } catch {
@@ -377,7 +382,7 @@ export class GitWorktreeManager implements WorktreeManager {
   async isDirty(worktreePath: string): Promise<boolean> {
     requireAbsolute("path", worktreePath)
     const exec = this.execDeps.execForPath(worktreePath)
-    const out = this.runGit(exec, ["status", "--porcelain"], { cwd: worktreePath })
+    const out = await this.runGit(exec, ["status", "--porcelain"], { cwd: worktreePath })
     return out.stdout.length > 0
   }
 
@@ -392,7 +397,7 @@ export class GitWorktreeManager implements WorktreeManager {
   async currentBranch(worktreePath: string): Promise<string> {
     requireAbsolute("path", worktreePath)
     const exec = this.execDeps.execForPath(worktreePath)
-    const out = this.runGit(exec, ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: worktreePath })
+    const out = await this.runGit(exec, ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: worktreePath })
     const name = out.stdout.trim()
     if (!name || name === "HEAD") {
       throw new Error(`currentBranch(): ${worktreePath} is in detached-HEAD state`)
@@ -417,9 +422,9 @@ export class GitWorktreeManager implements WorktreeManager {
     requireAbsolute("path", worktreePath)
     if (from === to) return
     const exec = this.execDeps.execForPath(worktreePath)
-    const repo = this.findRepoFor(exec, worktreePath)
+    const repo = await this.findRepoFor(exec, worktreePath)
     if (!repo) throw new Error(`renameBranch(): ${worktreePath} is not a git worktree`)
-    this.runGit(exec, ["branch", "-m", from, to], { cwd: repo })
+    await this.runGit(exec, ["branch", "-m", from, to], { cwd: repo })
   }
 
   // ---------- internals ----------
@@ -431,7 +436,7 @@ export class GitWorktreeManager implements WorktreeManager {
    * distinguishes "already done" from "stale debris".
    */
   private async tryDescribe(ctx: ExecCtx, worktreePath: string): Promise<WorktreeInfo | null> {
-    const out = this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
+    const out = await this.runGit(ctx.exec, ["worktree", "list", "--porcelain"], { cwd: ctx.dir })
     const entries = parsePorcelain(out.stdout)
     // Remote paths can't be realpath'd locally; compare them verbatim.
     const norm = (p: string) => (ctx.remote ? p : canonicalize(p))
@@ -454,9 +459,12 @@ export class GitWorktreeManager implements WorktreeManager {
    * Whether `branch` exists in `repo`. Uses `show-ref --verify --quiet`
    * which exits 0/1 cleanly without touching working tree state.
    */
-  private branchExists(ctx: ExecCtx, branch: string): boolean {
+  private async branchExists(ctx: ExecCtx, branch: string): Promise<boolean> {
     const ref = `refs/heads/${branch}`
-    const out = this.runGit(ctx.exec, ["show-ref", "--verify", "--quiet", ref], { cwd: ctx.dir, allowFail: true })
+    const out = await this.runGit(ctx.exec, ["show-ref", "--verify", "--quiet", ref], {
+      cwd: ctx.dir,
+      allowFail: true,
+    })
     return out.exitCode === 0
   }
 
@@ -469,9 +477,9 @@ export class GitWorktreeManager implements WorktreeManager {
    * git dir (i.e. the main repo's `.git`); its parent is the repo
    * working tree.
    */
-  private findRepoFor(exec: ExecHost, worktreePath: string): string | null {
+  private async findRepoFor(exec: ExecHost, worktreePath: string): Promise<string | null> {
     try {
-      const out = this.runGit(exec, ["rev-parse", "--git-common-dir"], { cwd: worktreePath, allowFail: true })
+      const out = await this.runGit(exec, ["rev-parse", "--git-common-dir"], { cwd: worktreePath, allowFail: true })
       if (out.exitCode !== 0) return null
       const gitDir = out.stdout.trim()
       if (!gitDir) return null

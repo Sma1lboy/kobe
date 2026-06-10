@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   type ExecResult,
+  LocalExecHost,
   RemoteExecHost,
   type RemoteSpec,
   type Spawner,
@@ -99,11 +100,11 @@ describe("sshConnectArgs", () => {
 })
 
 describe("RemoteExecHost.run", () => {
-  it("opens the master once then reuses it, wrapping argv as ssh + remote command", () => {
+  it("opens the master once then reuses it, wrapping argv as ssh + remote command", async () => {
     const { spawn, calls } = recordingSpawner()
     const host = new RemoteExecHost(KEY_SPEC, spawn)
 
-    host.run(["git", "status"], { cwd: "/srv/wt" })
+    await host.run(["git", "status"], { cwd: "/srv/wt" })
 
     // First call: `-O check` (master probe). It returns exit 0 here, so the
     // master is considered up and no -fN bring-up happens.
@@ -119,7 +120,7 @@ describe("RemoteExecHost.run", () => {
     expect(runCall?.argv).not.toContain("sshpass")
 
     // A second run reuses the master: no further `-O check`.
-    host.run(["git", "log"])
+    await host.run(["git", "log"])
     const checks = calls.filter((c) => c.argv.includes("check"))
     expect(checks).toHaveLength(1)
   })
@@ -171,7 +172,7 @@ describe("RemoteExecHost.wrapCommand", () => {
 })
 
 describe("RemoteExecHost fs helpers", () => {
-  it("maps exists/readFile/readdir to remote shell commands", () => {
+  it("maps exists/readFile/readdir to remote shell commands", async () => {
     const responses: Record<string, ExecResult> = {
       test: { stdout: "", stderr: "", exitCode: 0 },
       cat: { stdout: "file body", stderr: "", exitCode: 0 },
@@ -186,8 +187,56 @@ describe("RemoteExecHost fs helpers", () => {
     }
     const host = new RemoteExecHost(KEY_SPEC, spawn)
 
-    expect(host.exists("/srv/wt/.git")).toBe(true)
-    expect(host.readFile("/srv/wt/README.md")).toBe("file body")
-    expect(host.readdir("/srv/wt")).toEqual(["a", "b", ".git"])
+    await expect(host.exists("/srv/wt/.git")).resolves.toBe(true)
+    await expect(host.readFile("/srv/wt/README.md")).resolves.toBe("file body")
+    await expect(host.readdir("/srv/wt")).resolves.toEqual(["a", "b", ".git"])
+    // The documented-blocking sync probe goes through the same ssh wrapping.
+    expect(host.existsSync("/srv/wt/.git")).toBe(true)
+  })
+})
+
+describe("LocalExecHost.run (async, non-blocking)", () => {
+  it("resolves with stdout and exit code 0 on success", async () => {
+    const host = new LocalExecHost()
+    const r = await host.run(["printf", "out"])
+    expect(r.exitCode).toBe(0)
+    expect(r.stdout).toBe("out")
+    expect(r.stderr).toBe("")
+  })
+
+  it("resolves (never rejects) with the non-zero exit code and stderr", async () => {
+    const host = new LocalExecHost()
+    const r = await host.run(["sh", "-c", "echo oops >&2; exit 3"])
+    expect(r.exitCode).toBe(3)
+    expect(r.stderr).toContain("oops")
+  })
+
+  it("maps a missing binary (ENOENT) to the old spawnSync-derived shape: exitCode -1, empty output", async () => {
+    const host = new LocalExecHost()
+    const r = await host.run(["kobe-definitely-not-a-real-binary-xyz"])
+    expect(r.exitCode).toBe(-1)
+    expect(r.stdout).toBe("")
+    expect(r.stderr).toBe("")
+  })
+
+  it("does not block the event loop while the subprocess runs", async () => {
+    // The daemon-freeze regression pin: with the old spawnSync impl a timer
+    // could never fire while a command ran. Start a 300ms subprocess, then
+    // prove a 50ms timer resolves FIRST — i.e. the event loop kept turning.
+    const host = new LocalExecHost()
+    const order: string[] = []
+    const runP = host.run(["sleep", "0.3"]).then((r) => {
+      order.push("run")
+      return r
+    })
+    await new Promise<void>((resolve) =>
+      setTimeout(() => {
+        order.push("timer")
+        resolve()
+      }, 50),
+    )
+    const r = await runP
+    expect(order).toEqual(["timer", "run"])
+    expect(r.exitCode).toBe(0)
   })
 })
