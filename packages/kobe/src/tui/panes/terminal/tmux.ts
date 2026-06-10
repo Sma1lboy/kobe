@@ -73,6 +73,7 @@ import {
   tasksPaneCommand,
   updatePageCommand,
 } from "@/tmux/session-layout"
+import { applyTmuxPaneBorderTheme } from "@/tui/lib/tmux-border-theme"
 import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION } from "@/version"
@@ -589,6 +590,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
   ])
 
+  // Theme-matched pane borders. The border tmux would otherwise use
+  // (stock default, or a user tmux.conf gray) disappears against dark
+  // kobe themes; derive both border styles from the active theme
+  // instead. Precedence + the off-switch live in tmux-border-theme.ts.
+  await applyTmuxPaneBorderTheme()
+
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops
   // lands back in Ops.
@@ -862,6 +869,11 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
   }
 
   if (commands.length > 0) await runTmuxSequence(commands)
+
+  // The Appearance prefs the respawned panes just re-read also drive the
+  // tmux border colors — re-derive those in the same pass so a theme
+  // switch restyles the pane separators without a new session build.
+  await applyTmuxPaneBorderTheme()
 }
 
 /**
