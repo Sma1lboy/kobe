@@ -1,6 +1,6 @@
-import { spawnSync } from "node:child_process"
 import { promises as fs } from "node:fs"
 import path from "node:path"
+import { spawnCapture } from "../lib/background-poll"
 
 export interface PRPromptState {
   readonly branch: string
@@ -30,53 +30,64 @@ Follow these steps to create a PR:
 
 If any of these steps fail, ask the user for help.`
 
-function git(cwd: string, args: readonly string[]): string | null {
+// Async spawn — `git status` is O(repo size), and this runs on the Ops
+// pane's render process. On a huge repo the old spawnSync blocked the
+// pane until the timeout; the async child costs nothing on the event
+// loop. Same timeout, SIGKILLed via AbortSignal.
+async function git(cwd: string, args: readonly string[]): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), GIT_TIMEOUT_MS)
   try {
-    const out = spawnSync("git", args.slice(), {
+    const out = await spawnCapture("git", args, {
       cwd,
-      encoding: "utf8",
-      timeout: GIT_TIMEOUT_MS,
       // Read-only inspection (`status`, `rev-parse`, `symbolic-ref`).
       // `git status` would otherwise rewrite `.git/index`'s stat cache
       // and take `.git/index.lock`, racing the worktree's engine commits
       // for the lock. `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
       env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      signal: controller.signal,
     })
-    if (out.error) return null
+    if (controller.signal.aborted) return null
     if (out.status !== 0) return null
-    return (out.stdout ?? "").trim()
-  } catch {
-    return null
+    return out.stdout.trim()
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-function currentBranch(cwd: string): string {
-  return git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]) || "HEAD"
+async function currentBranch(cwd: string): Promise<string> {
+  return (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"])) || "HEAD"
 }
 
-function targetBranch(cwd: string): string {
-  const out = git(cwd, ["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
+async function targetBranch(cwd: string): Promise<string> {
+  const out = await git(cwd, ["symbolic-ref", "refs/remotes/origin/HEAD", "--short"])
   if (!out) return "main"
   return out.startsWith("origin/") ? out.slice("origin/".length) : out
 }
 
-function hasUpstream(cwd: string): boolean {
-  const out = git(cwd, ["rev-parse", "--abbrev-ref", "@{u}"])
+async function hasUpstream(cwd: string): Promise<boolean> {
+  const out = await git(cwd, ["rev-parse", "--abbrev-ref", "@{u}"])
   return out !== null && out.length > 0
 }
 
-function dirtyCount(cwd: string): number {
-  const out = git(cwd, ["status", "--porcelain"])
+async function dirtyCount(cwd: string): Promise<number> {
+  const out = await git(cwd, ["status", "--porcelain"])
   if (!out) return 0
   return out.split("\n").filter((line) => line.length > 0).length
 }
 
-export function gatherPRPromptState(worktree: string): PRPromptState {
+export async function gatherPRPromptState(worktree: string): Promise<PRPromptState> {
+  const [branch, target, upstream, dirty] = await Promise.all([
+    currentBranch(worktree),
+    targetBranch(worktree),
+    hasUpstream(worktree),
+    dirtyCount(worktree),
+  ])
   return {
-    branch: currentBranch(worktree),
-    targetBranch: targetBranch(worktree),
-    hasUpstream: hasUpstream(worktree),
-    dirtyCount: dirtyCount(worktree),
+    branch,
+    targetBranch: target,
+    hasUpstream: upstream,
+    dirtyCount: dirty,
   }
 }
 
@@ -113,5 +124,6 @@ async function loadTemplate(worktree: string): Promise<string> {
 }
 
 export async function buildPRPrompt(worktree: string): Promise<string> {
-  return renderPRPrompt(await loadTemplate(worktree), gatherPRPromptState(worktree))
+  const [template, state] = await Promise.all([loadTemplate(worktree), gatherPRPromptState(worktree)])
+  return renderPRPrompt(template, state)
 }

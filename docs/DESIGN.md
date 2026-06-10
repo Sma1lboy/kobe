@@ -194,6 +194,15 @@ The events are normalized — we don't leak Claude Code's stream-json shape into
 
 The orchestrator stays **TUI-free**: no imports from `@opentui/*` or anything that renders. Solid signals are allowed as an in-process reactive primitive (the TUI subscribes to the same signals), but the daemon must be runnable headless. This is the seam Wave D0 of the daemon split formalises — see [`design/daemon.md`](./design/daemon.md) §9.
 
+### 5.4 Render-path rule: never block the event loop on a subprocess
+
+Everything under `src/tui/**` runs inside a render process — the TUI itself or a tmux pane host. A synchronous subprocess there (`spawnSync` & friends) blocks the whole event loop for the child's lifetime, and git commands are O(repo size): a `spawnSync git status` on the sidebar's ~2s tick hard-froze the Tasks pane the moment a 30GB repo's row rendered. So the rule is absolute, not advisory:
+
+- **Recurring data** (branch hints, dirty counts — anything read from a memo on a tick) goes through `src/tui/lib/background-poll.ts`: `read(key)` is a cheap reactive signal read, `poll(key)` is fire-and-forget with in-flight dedupe, adaptive cadence, and timeout + hard backoff. Failures keep the last value — panes go stale, never freeze or error.
+- **One-shot actions** (e.g. building the Create-PR prompt) use async spawn (`spawnCapture`) with plain `await` at the call site — no poller needed, but still never `spawnSync`.
+
+The rule is enforced by `packages/kobe/test/tui/render-path-sync-guard.test.ts`, which scans `src/tui/**` for sync-subprocess imports/calls and fails on anything outside its short, reason-annotated whitelist (post-`renderer.destroy()` updater paths and the one-shot CLI helper). Extend the whitelist only with a reason — and prefer not to.
+
 ---
 
 ## 6. Pluggability — and the engine port

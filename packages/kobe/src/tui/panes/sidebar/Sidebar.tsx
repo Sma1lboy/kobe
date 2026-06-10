@@ -91,7 +91,7 @@ export type ChatRunState = "running" | "awaiting_input" | "idle"
 const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
-import { readCurrentBranch } from "./git-head"
+import { currentBranch, pollCurrentBranch } from "./git-head"
 import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
@@ -796,11 +796,12 @@ export function Sidebar(props: SidebarProps) {
               })
               // A `main` (project) row's branch isn't stored on the task — it's
               // the repo root's live checkout. Resolve it on the same 2s tick as
-              // the change chip so the two-line project card shows `main` /
-              // `feat/x` on line 2 like a task.
+              // the change chip, through the same ASYNC poller pattern — even an
+              // O(1) ref read must not spawnSync on the render thread.
               const projectBranch = createMemo(() => {
                 branchTick()
-                return isMain ? readCurrentBranch(task.repo) : ""
+                if (isMain) pollCurrentBranch(task.repo)
+                return isMain ? currentBranch(task.repo) : ""
               })
               const rowView = createMemo(() =>
                 buildSidebarRowView({

@@ -11,31 +11,23 @@
  * trigger). The sync helper survives ONLY for one-shot CLI use
  * (`kobe api`); render paths must go through this poller.
  *
- * Shape: one module-level entry per worktree path holding a Solid
- * signal (read by the row's memo) plus scheduling state. `poll()` is
- * fire-and-forget — it spawns git ASYNCHRONOUSLY, so a slow repo costs
- * a background child process, never a frozen UI. Three guards keep the
- * child-process budget sane:
- *
- *   - **in-flight dedupe** — one spawn per worktree at a time; ticks
- *     that land while git is still running are dropped.
- *   - **adaptive cadence** — next poll is allowed only after
- *     `max(MIN_POLL_INTERVAL_MS, 5 × last duration)`: fast repos keep
- *     the 2s tick cadence, slow-but-finishing repos thin out on their
- *     own (a 3s status re-runs at most every 15s).
- *   - **timeout + backoff** — a run exceeding `POLL_TIMEOUT_MS` is
- *     SIGKILLed and the worktree backs off for `SLOW_REPO_RETRY_MS`;
- *     the chip simply keeps its last value (or stays hidden) — same
- *     "never error, just hide" contract as the sync helper.
+ * The scheduling core (per-key Solid signal, in-flight dedupe, adaptive
+ * cadence, timeout + hard backoff) is the generic
+ * `src/tui/lib/background-poll.ts` — this module is the worktree-changes
+ * binding: one async `git status --porcelain=v1` per worktree, parsed
+ * into `+N −M` counts. Failure / timeout keeps the last value — the chip
+ * goes stale or stays hidden rather than flashing a bogus zero, the same
+ * "never error, just hide" contract as the sync helper.
  *
  * Archived rows never call `poll()` at all (Sidebar gates on
  * `task.archived`): an Archives listing must not pay git-status for
  * worktrees the user has shelved — that's the exact original bug.
  */
 
-import { spawn } from "node:child_process"
-import { createSignal } from "solid-js"
+import { computeNextAllowedAt, createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 import { type WorktreeChanges, parsePorcelain } from "./worktree-changes"
+
+export { shouldPoll } from "../../lib/background-poll"
 
 /** Kill a git status that runs longer than this; the repo is too big to poll. */
 export const POLL_TIMEOUT_MS = 4_000
@@ -46,36 +38,34 @@ export const MIN_POLL_INTERVAL_MS = 1_500
 
 const ZERO: WorktreeChanges = { added: 0, deleted: 0 }
 
-type PollEntry = {
-  read: () => WorktreeChanges
-  write: (next: WorktreeChanges) => void
-  inFlight: boolean
-  nextAllowedAt: number
-}
-
-const entries = new Map<string, PollEntry>()
-
-function entryFor(worktreePath: string): PollEntry {
-  let entry = entries.get(worktreePath)
-  if (!entry) {
-    // Value-equality so a poll returning the same counts doesn't
-    // re-render every visible row each tick.
-    const [read, set] = createSignal<WorktreeChanges>(ZERO, {
-      equals: (a, b) => a.added === b.added && a.deleted === b.deleted,
+const poller = createBackgroundPoller<WorktreeChanges>({
+  initial: ZERO,
+  // Value-equality so a poll returning the same counts doesn't
+  // re-render every visible row each tick.
+  equals: (a, b) => a.added === b.added && a.deleted === b.deleted,
+  timeoutMs: POLL_TIMEOUT_MS,
+  slowRetryMs: SLOW_REPO_RETRY_MS,
+  minIntervalMs: MIN_POLL_INTERVAL_MS,
+  run: async (worktreePath, signal) => {
+    // Same flags + lock policy as the sync helper: porcelain v1, and
+    // GIT_OPTIONAL_LOCKS=0 so the read never takes .git/index.lock from
+    // under the engine's own commits.
+    const res = await spawnCapture("git", ["status", "--porcelain=v1"], {
+      cwd: worktreePath,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      signal,
     })
-    entry = { read, write: (next) => set(next), inFlight: false, nextAllowedAt: 0 }
-    entries.set(worktreePath, entry)
-  }
-  return entry
-}
+    if (res.status !== 0) throw new Error("git status failed")
+    return parsePorcelain(res.stdout)
+  },
+})
 
 /**
  * Reactive read of the last known change counts for `worktreePath`.
  * Returns zeros (chip hidden) until a poll has completed.
  */
 export function worktreeChanges(worktreePath: string): WorktreeChanges {
-  if (!worktreePath) return ZERO
-  return entryFor(worktreePath).read()
+  return poller.read(worktreePath)
 }
 
 /**
@@ -84,13 +74,10 @@ export function worktreeChanges(worktreePath: string): WorktreeChanges {
  * duration so slow repos self-thin without a special case.
  */
 export function nextAllowedAt(startedAt: number, finishedAt: number, timedOut: boolean): number {
-  if (timedOut) return startedAt + SLOW_REPO_RETRY_MS
-  return finishedAt + Math.max(MIN_POLL_INTERVAL_MS, (finishedAt - startedAt) * 5)
-}
-
-/** Whether a poll may start now. Pure — exported for unit tests. */
-export function shouldPoll(state: { inFlight: boolean; nextAllowedAt: number }, now: number): boolean {
-  return !state.inFlight && now >= state.nextAllowedAt
+  return computeNextAllowedAt(startedAt, finishedAt, timedOut, {
+    slowRetryMs: SLOW_REPO_RETRY_MS,
+    minIntervalMs: MIN_POLL_INTERVAL_MS,
+  })
 }
 
 /**
@@ -100,46 +87,10 @@ export function shouldPoll(state: { inFlight: boolean; nextAllowedAt: number }, 
  * cannot re-trigger an immediate spawn (MIN_POLL_INTERVAL_MS floor).
  */
 export function pollWorktreeChanges(worktreePath: string): void {
-  if (!worktreePath) return
-  const entry = entryFor(worktreePath)
-  const startedAt = Date.now()
-  if (!shouldPoll(entry, startedAt)) return
-  entry.inFlight = true
-
-  let out = ""
-  let timedOut = false
-  let settled = false
-  // Same flags + lock policy as the sync helper: porcelain v1, and
-  // GIT_OPTIONAL_LOCKS=0 so the read never takes .git/index.lock from
-  // under the engine's own commits.
-  const child = spawn("git", ["status", "--porcelain=v1"], {
-    cwd: worktreePath,
-    stdio: ["ignore", "pipe", "ignore"],
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-  })
-  const timer = setTimeout(() => {
-    timedOut = true
-    child.kill("SIGKILL")
-  }, POLL_TIMEOUT_MS)
-
-  const finish = (code: number | null): void => {
-    if (settled) return
-    settled = true
-    clearTimeout(timer)
-    entry.nextAllowedAt = nextAllowedAt(startedAt, Date.now(), timedOut)
-    entry.inFlight = false
-    // Failure / timeout keeps the last value — the chip goes stale or
-    // stays hidden rather than flashing a bogus zero.
-    if (!timedOut && code === 0) entry.write(parsePorcelain(out))
-  }
-  child.stdout?.on("data", (chunk: Buffer | string) => {
-    out += String(chunk)
-  })
-  child.on("error", () => finish(1))
-  child.on("close", (code) => finish(code))
+  poller.poll(worktreePath)
 }
 
 /** Test hook: drop all cached entries/backoff state. */
 export function resetWorktreeChangesPoller(): void {
-  entries.clear()
+  poller.reset()
 }
