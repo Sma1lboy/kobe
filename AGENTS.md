@@ -29,7 +29,8 @@ The architecture decisions are not always obvious from the code. The docs above 
 
 - **Monorepo layout (Bun workspaces).** Source lives under `packages/`:
   - [`packages/kobe/`](./packages/kobe) — the TUI itself, published as `@sma1lboy/kobe`. All `src/...`, `test/...`, `scripts/...` paths in docs are relative to here.
-  - [`packages/kobe-daemon/`](./packages/kobe-daemon) — daemon server, daemon protocol, lifecycle/reset helpers, daemon-owned web transport, and the low-level socket client. Private workspace, consumed by `packages/kobe`.
+  - [`packages/kobe-daemon/`](./packages/kobe-daemon) — daemon server, daemon protocol, lifecycle/reset helpers, and the low-level socket client. Private workspace, consumed by `packages/kobe`.
+  - [`packages/kobe-web/`](./packages/kobe-web) — the browser dashboard: the React SPA plus its bridge server (`server/`, exported as `kobe-web/server`). The bridge is a standalone process that speaks the daemon socket protocol as a `role: "gui"` subscriber — web code never runs inside the daemon. Private workspace, consumed by `packages/kobe` for the `kobe web` command.
   - [`packages/branding/`](./packages/branding) — Remotion render pipeline for `docs/assets/brand/`. Private workspace.
   - Run package scripts via `bun --filter @sma1lboy/kobe <script>` or `cd packages/kobe && bun <script>`.
   - Repo-wide tools at root: `biome.json`, `bun.lock`, `.github/workflows/`, `docs/`, `AGENTS.md`, `CLAUDE.md` (symlink), `HANDOFF.md`.

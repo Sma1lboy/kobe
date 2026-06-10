@@ -1,22 +1,23 @@
 /**
- * `kobe web` — launch the local web UI (Wave A).
+ * `kobe web` — launch the local web UI.
  *
- * Serves the kobe web dashboard on http://localhost:<port> (default 5173),
- * by asking the kobe daemon to expose its web transport. If a prior kobe-web
- * already holds the port it is replaced; a foreign service on the port is
- * reported, not killed.
+ * Serves the kobe web dashboard on http://localhost:<port> (default 5173).
+ * The HTTP/SSE server (the "bridge", kobe-web/server) runs IN THIS process
+ * and talks to the daemon purely over the socket protocol — the daemon no
+ * longer hosts web routes, so a web bug can't hurt the daemon and the bridge
+ * restarts without touching it. If a prior kobe-web already holds the port
+ * it is replaced; a foreign service on the port is reported, not killed.
  *
- *   kobe web                 serve the built SPA via daemon web on :5173
+ *   kobe web                 serve the built SPA on :5173
  *   kobe web --port 5180     bind a different port
- *   kobe web --bridge-only   daemon web routes only (Vite serves the SPA in dev)
+ *   kobe web --bridge-only   bridge routes only (Vite serves the SPA in dev)
  *   kobe web --no-takeover   fail instead of replacing a prior kobe-web
  */
 
 import { existsSync } from "node:fs"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { WEB_HEALTH_MARKER, WEB_HEALTH_PATH } from "@sma1lboy/kobe-daemon/daemon/web"
+import { WEB_HEALTH_MARKER, WEB_HEALTH_PATH, createBridgeServer } from "kobe-web/server"
 
 type PtyProcess = ReturnType<typeof Bun.spawn>
 
@@ -26,7 +27,7 @@ Launch the kobe web UI on http://localhost:<port>.
 
 Options:
   --port <n>        Port to bind (default 5173).
-  --bridge-only     Serve only daemon web routes (/events, /api/rpc);
+  --bridge-only     Serve only bridge routes (/events, /api/rpc);
                     Vite serves the SPA separately in dev.
   --no-takeover     Fail if the port is busy instead of replacing a prior
                     kobe-web instance.
@@ -147,48 +148,45 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
   try {
     const bridgeOnly = args.includes("--bridge-only")
     const takeover = !args.includes("--no-takeover")
-    const client = await connectOrStartDaemon()
-    let pty: PtyProcess | null = null
-    let stopped = false
-
-    const stop = async (): Promise<void> => {
-      if (stopped) return
-      stopped = true
-      pty?.kill()
-      pty = null
-      try {
-        await client.request("daemon.web.stop")
-      } catch {
-        /* daemon may already be gone */
-      }
-      client.close()
-    }
-
-    const { port: bound } = await client.request<{ port: number }>("daemon.web.start", {
+    const bridge = await createBridgeServer({
       port,
       takeover,
       staticDir: bridgeOnly ? undefined : resolveStaticDir(),
     })
+    let pty: PtyProcess | null = null
+    let stopped = false
+
+    const stop = (): void => {
+      if (stopped) return
+      stopped = true
+      pty?.kill()
+      pty = null
+      bridge.close()
+    }
+
     if (bridgeOnly) {
-      process.stdout.write(`kobe daemon web listening on http://localhost:${bound} (routes only)\n`)
+      process.stdout.write(`kobe web bridge listening on http://localhost:${bridge.port} (routes only)\n`)
     } else {
-      pty = await startPtyServer({ webPort: bound, takeover })
-      process.stdout.write(`kobe web → http://localhost:${bound}\n`)
+      pty = await startPtyServer({ webPort: bridge.port, takeover })
+      process.stdout.write(`kobe web → http://localhost:${bridge.port}\n`)
       if (!pty) {
         process.stderr.write("kobe web: PTY server not found; terminal tabs will be unavailable\n")
       }
     }
 
     process.on("SIGINT", () => {
-      void stop().finally(() => process.exit(0))
+      stop()
+      process.exit(0)
     })
     process.on("SIGTERM", () => {
-      void stop().finally(() => process.exit(0))
+      stop()
+      process.exit(0)
     })
     void pty?.exited.then(() => {
       if (!stopped) {
         process.stderr.write("kobe web: PTY server exited\n")
-        void stop().finally(() => process.exit(1))
+        stop()
+        process.exit(1)
       }
     })
     await new Promise<void>(() => {})
