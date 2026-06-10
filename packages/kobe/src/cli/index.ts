@@ -25,7 +25,8 @@
  *
  * Internal subcommands fired by tmux key bindings inside a task session
  * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
- * `focus-tasks`, `tasks`, `ops` — each takes the session/worktree as flags.
+ * `focus-tasks`, `heal-layout`, `tasks`, `ops` — each takes the session/worktree
+ * as flags.
  * `hook` is fired by an engine's own hooks inside a worktree to report
  * activity events.
  *
@@ -475,6 +476,22 @@ async function main(): Promise<void> {
     }
     const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
     await selectTasksPane(session)
+    return
+  }
+  if (subcommand === "heal-layout") {
+    // `window-resized` tmux hook handler: re-pin the resized session's Tasks-rail
+    // width + right-column geometry to the shared globals. Fixes the first-attach
+    // reflow (the first session is built before any client is attached, so tmux
+    // reflows its panes when `attach` lands the real terminal size) and any live
+    // terminal resize. No-op for the home/role-less session. Reads `--session`.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe heal-layout: --session <name> is required")
+      process.exit(2)
+    }
+    const { healSessionLayout } = await import("../tui/panes/terminal/tmux.ts")
+    await healSessionLayout(session)
     return
   }
   if (subcommand === "quick-task") {

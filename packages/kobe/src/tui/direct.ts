@@ -24,7 +24,14 @@ import {
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
 import { applyTmuxPaneBorderTheme } from "./lib/tmux-border-theme.ts"
-import { attachArgv, ensureSession, sessionExists, tmuxAvailable, tmuxSessionName } from "./panes/terminal/tmux.ts"
+import {
+  attachArgv,
+  ensureSession,
+  prepareWindowForAttach,
+  sessionExists,
+  tmuxAvailable,
+  tmuxSessionName,
+} from "./panes/terminal/tmux.ts"
 
 export interface InitialTaskChoice {
   readonly activeTaskId?: string | null
@@ -120,6 +127,9 @@ export async function startDirectTmux(): Promise<void> {
       // Fallback sessions skip ensureSession's server-nicety block, so
       // apply the theme-matched borders here before attaching.
       await applyTmuxPaneBorderTheme()
+      // Fit + heal the window before attaching so the first frame is correct
+      // (no reflow flash on attach — see prepareWindowForAttach).
+      await prepareWindowForAttach(home)
       if ((await attachTmux(attachArgv(home))) === null) {
         console.error("kobe: failed to attach to the kobe-home session")
         process.exitCode = 1
@@ -153,6 +163,11 @@ export async function startDirectTmux(): Promise<void> {
     // themes since the server last saw an apply — refresh before attach.
     await applyTmuxPaneBorderTheme()
 
+    // Fit the window to this terminal and heal the layout BEFORE attaching, so
+    // the first painted frame is already correct — no reflow "flash" where the
+    // rail blows up on attach and the window-resized hook snaps it back a beat
+    // later (see prepareWindowForAttach).
+    await prepareWindowForAttach(name)
     const exitCode = await attachTmux(attachArgv(name))
     if (exitCode === null) {
       console.error(`kobe: failed to attach to tmux session ${name}`)

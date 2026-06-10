@@ -30,7 +30,9 @@ import { localSpawnCwd } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   getSessionOptions,
+  globalTasksPaneWidth,
   newWindow,
+  runTmux,
   runTmuxCapturing,
   runTmuxSequence,
   runTmuxSequenceCapturing,
@@ -41,7 +43,6 @@ import {
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
-  TASKS_PANE_WIDTH,
   keepAlive,
   opsPaneCommand,
   shellQuote,
@@ -53,7 +54,7 @@ import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION } from "@/version"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
-import { PANE_VERSION_OPTION } from "./pane-heal"
+import { PANE_VERSION_OPTION, globalRightColumnResizeArgs } from "./pane-heal"
 
 // ChatTab binding builders. The KEY argument comes from the user-
 // resolvable tmux key set (`resolveUserTmuxKeys` — defaults C-[ / C-] /
@@ -147,6 +148,10 @@ export async function buildPanesAround(
   // position when the Tasks pane is inserted on the left, so the
   // monitor can't rely on "first pane" to find claude (KOB-233).
   const envPrefix = inheritedEnvPrefix()
+  // Build the rail at the user's global width so a brand-new task/chat tab
+  // matches the size every existing task already shows (consistency across
+  // switches).
+  const tasksWidth = await globalTasksPaneWidth()
 
   // Tasks pane to the LEFT (`-hb` inserts before). Task list that
   // switch-clients between task sessions + creates tasks. Tagged
@@ -177,8 +182,9 @@ export async function buildPanesAround(
       claudePane,
       "-l",
       // Fixed cell width (no `%`) so the Tasks rail is the same size in every
-      // window + across engine rebuilds (KOB-248).
-      `${TASKS_PANE_WIDTH}`,
+      // window + across engine rebuilds (KOB-248). The width is the user's
+      // global preference, applied uniformly so every task shows one size.
+      `${tasksWidth}`,
       "-c",
       localSpawnCwd(args.cwd),
       "-P",
@@ -216,6 +222,14 @@ export async function buildPanesAround(
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", "ops"]] as const) : []),
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
   ])
+
+  // Override the default %-split with the user's global right-column geometry
+  // (if any) so a freshly built window — first window or a new Ctrl+T chat tab
+  // — matches the column shape every existing task already shows.
+  if (ids.ops) {
+    const rcArgs = await globalRightColumnResizeArgs()
+    if (rcArgs.length > 0) await runTmux(["resize-pane", "-t", ids.ops, ...rcArgs])
+  }
 }
 
 /**

@@ -84,6 +84,7 @@ import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
 import {
+  captureGlobalLayout,
   ensureSession,
   openNewTaskTab,
   openSettingsTab,
@@ -433,6 +434,12 @@ function TasksShell(props: {
   async function switchTo(id: string): Promise<void> {
     const name = tmuxSessionName(id)
     const task = props.tasks().find((t) => t.id === id)
+    // Before jumping away, snapshot the layout the user is currently looking at
+    // (Tasks-rail width + right-column geometry) into the global options, so any
+    // manual resize they just made becomes the shared shape every task —
+    // including the one we're switching to — renders at.
+    const from = await currentSessionName()
+    if (from && from !== name) await captureGlobalLayout(from)
     const exists = await sessionExists(name)
 
     // A LIVE session ALWAYS gets switched into — clicking a running task
