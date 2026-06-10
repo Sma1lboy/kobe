@@ -41,8 +41,8 @@ nothing about higher.
 │  RemoteOrchestrator  (client facade over daemon RPC + channels)│
 │   src/client/remote-orchestrator.ts                            │
 ├────────────────────────────────────────────────────────────────┤
-│  Daemon  (single writer for task index + web transport)        │
-│   packages/kobe-daemon/src/daemon/{server.ts,web.ts,...}       │
+│  Daemon  (single writer for task index)                        │
+│   packages/kobe-daemon/src/daemon/{server.ts,...}              │
 │   packages/kobe-daemon/src/client/                             │
 ├────────────────────────────────────────────────────────────────┤
 │  Orchestrator + tmux handover                                  │
@@ -111,28 +111,38 @@ The seams matter:
 | Daemon socket/integration tests | `test/daemon/*.test.ts` |
 | Unit-test type assertions | `test/types/*.test-d.ts` |
 
-### Daemon web transport
+### Web bridge (kobe-web/server)
 
-The browser dashboard is a daemon transport, not a separate generic
-webserver package. `kobe web` (`src/cli/web-cmd.ts`) connects to the daemon
-and asks it to bind local HTTP/SSE routes via `daemon.web.start`; the daemon
-owns the actual server in `packages/kobe-daemon/src/daemon/web.ts`.
+The browser dashboard's backend is a STANDALONE bridge server in
+`packages/kobe-web/server/`, exported as `kobe-web/server`. `kobe web`
+(`src/cli/web-cmd.ts`) runs it in-process; web dev (`kobe-web/dev.ts`) runs
+it under `bun --watch`. The daemon hosts NO web code — the bridge talks to
+it purely over the socket protocol (`server/daemon-link.ts`).
 
-That boundary is deliberate:
+That boundary is deliberate (it replaced the daemon-hosted web transport):
 
-- Browser state hydrates from the daemon's own task snapshot, active-task
-  channel, update channel, and in-memory engine activity map.
-- Browser mutations go through the same daemon RPC dispatcher as TUI panes;
-  the web route only exposes the safe task/worktree RPC surface, not daemon
-  lifecycle calls like `daemon.stop` or `subscribe`.
+- The dashboard is experimental and iterates fast; the bridge restarts
+  without touching the daemon that holds every task, and a web bug can
+  never take the daemon down.
+- Browser state hydrates over the wire: `hello` + `subscribe` channel
+  replay feed a bridge-local mirror that becomes the SSE `snapshot`;
+  channel pushes are forwarded as SSE `channel` events. The link
+  auto-reconnects across daemon restarts (spawn-free retries first, so it
+  never races a `kobe daemon restart` with a second spawn).
+- Browser mutations go through the daemon RPC dispatcher via `/api/rpc`
+  forwarding; the bridge blocks daemon lifecycle calls (`daemon.stop`,
+  `hello`, `subscribe`).
+- Session/launch-spec routes (`/api/session`, `/api/engine-spec`) are
+  built bridge-side with the SAME client-side modules every other host
+  uses (`ensureSession`, `resolveRepoInit`, `interactiveEngineCommand`);
+  task data comes from `task.get` / `task.ensureWorktree` RPCs.
 - Web-specific route helpers (`packages/kobe/src/web/notes.ts`,
   `packages/kobe/src/web/diff.ts`) are feature modules consumed by the
-  daemon web transport. They are not a second daemon, and they must not
-  keep their own task/event cache.
-- Starting daemon web counts as a GUI lifetime holder while the web command
-  process is alive, so the daemon does not idle-stop underneath an open
-  browser dashboard. Stopping `kobe web` releases that hold and the normal
-  lazy-shutdown rules apply.
+  bridge. They are not a second daemon, and they must not keep their own
+  task/event cache.
+- The bridge subscribes with `role: "gui"`, so an open dashboard holds the
+  daemon alive through the normal refcount; stopping `kobe web` releases
+  that hold and the normal lazy-shutdown rules apply.
 
 ---
 
@@ -261,7 +271,7 @@ All task mutations flow through one writer:
 
 ```
 TUI Client / Tasks pane / kobe web
-  └─> RemoteOrchestrator or daemon web RPC
+  └─> RemoteOrchestrator or web bridge RPC forward
         └─> packages/kobe-daemon/src/daemon/server.ts dispatch()
               └─> Orchestrator
                     └─> TaskIndexStore (~/.kobe/tasks.json)
@@ -310,10 +320,11 @@ in-memory UI data, not task lifecycle and not persisted.
 
 ### Web transport
 
-`kobe web` is an early experimental transport over the same daemon. The web
-UI owns browser-local workspace tabs; daemon web routes provide task
-snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs.
-Do not reintroduce a separate web task cache or a second daemon.
+`kobe web` is an early experimental front-end over the same daemon. The web
+UI owns browser-local workspace tabs; the kobe-web bridge provides task
+snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs —
+all sourced from the daemon protocol. Do not reintroduce daemon-hosted web
+routes, a separate web task cache, or a second daemon.
 
 ---
 

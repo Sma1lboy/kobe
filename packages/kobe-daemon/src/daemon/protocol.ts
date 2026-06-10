@@ -23,8 +23,14 @@ import type { UpdateInfo } from "@/version"
  * put, so a newer daemon keeps serving a slightly-older TUI through a
  * rolling upgrade instead of hard-rejecting it. Bump the MIN only on a
  * breaking change.
+ *
+ * v3: `daemon.web.start` / `daemon.web.stop` removed — the web UI's server
+ * moved out of the daemon into a standalone bridge (kobe-web/server) that
+ * speaks this protocol as a regular `role: "gui"` subscriber. A v2 client's
+ * `kobe web` gets a clear "unknown daemon request" error; everything else
+ * still interoperates, so MIN stays 2.
  */
-export const DAEMON_PROTOCOL_VERSION = 2
+export const DAEMON_PROTOCOL_VERSION = 3
 
 /** Oldest protocol version this build can still interoperate with. */
 export const MIN_COMPATIBLE_PROTOCOL_VERSION = 2
@@ -82,8 +88,6 @@ export type DaemonRequestName =
   | "hello"
   | "daemon.status"
   | "daemon.stop"
-  | "daemon.web.start"
-  | "daemon.web.stop"
   | "subscribe"
   | "task.list"
   | "task.get"

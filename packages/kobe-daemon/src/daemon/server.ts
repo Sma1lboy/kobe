@@ -27,7 +27,6 @@ import { DaemonEventBus } from "./event-bus.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import {
   CHANNEL_NAMES,
-  type ChannelPayloads,
   DAEMON_PROTOCOL_VERSION,
   type DaemonFrame,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
@@ -35,7 +34,6 @@ import {
   isProtocolCompatible,
   serializeTask,
 } from "./protocol.ts"
-import { createDaemonWebServer } from "./web.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -127,14 +125,15 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const idleGraceMs = resolveIdleGraceMs()
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let stopping = false
-  let webHoldsLifetime = false
 
   // Attached GUIs — the refcount that gates lazy shutdown. Counts only
   // `holdsLifetime` (role "gui") clients, not every `subscribed` pane.
+  // The kobe-web bridge subscribes as a regular `gui`, so an open web
+  // dashboard holds the daemon alive through this same count.
   function guiCount(): number {
     let n = 0
     for (const c of clients) if (c.holdsLifetime) n++
-    return n + (webHoldsLifetime ? 1 : 0)
+    return n
   }
 
   function cancelIdleTimer(): void {
@@ -168,54 +167,6 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   })
 
   const activity = new DaemonActivityRegistry(bus)
-
-  const webClient = {
-    id: 0,
-    connectedAt: startedAt,
-    socket: undefined as unknown as Socket,
-    buffer: "",
-    subscribed: false,
-    holdsLifetime: false,
-  } satisfies ClientState
-  const web = createDaemonWebServer({
-    orch,
-    bus,
-    snapshot: () => {
-      let activeTaskId: string | null = null
-      let update: UpdateInfo | null = null
-      for (const event of bus.snapshot()) {
-        switch (event.channel) {
-          case "active-task":
-            activeTaskId = (event.payload as ChannelPayloads["active-task"]).taskId
-            break
-          case "update":
-            update = (event.payload as ChannelPayloads["update"]).info
-            break
-        }
-      }
-      return {
-        tasks: orch.listTasks().map(serializeTask),
-        activeTaskId,
-        engineStates: activity.snapshotByTask(),
-        update,
-        connected: true,
-      }
-    },
-    rpc: (name, payload) => {
-      if (name === "hello" || name === "subscribe" || name === "daemon.stop" || name.startsWith("daemon.web.")) {
-        throw new Error(`rpc ${name} is not exposed to the web UI`)
-      }
-      return dispatch({ type: "request", id: "web", name, payload }, webClient)
-    },
-    onStarted: () => {
-      webHoldsLifetime = true
-      cancelIdleTimer()
-    },
-    onStopped: () => {
-      webHoldsLifetime = false
-      maybeArmIdleShutdown()
-    },
-  })
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -302,7 +253,6 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
       activity.close()
-      web.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /
       // `kobe kill-sessions` (`tmux -L kobe kill-server`). Keep it that way.
@@ -391,15 +341,6 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
         }
       case "daemon.stop":
         await stopSoon()
-        return {}
-      case "daemon.web.start": {
-        const port = optionalNumber(payload, "port")
-        const staticDir = optionalString(payload, "staticDir")
-        const takeover = optionalBoolean(payload, "takeover")
-        return web.start({ port, staticDir, takeover })
-      }
-      case "daemon.web.stop":
-        web.close()
         return {}
       case "task.list":
         return { tasks: orch.listTasks().map(serializeTask) }
@@ -698,13 +639,6 @@ function optionalBoolean(payload: Record<string, unknown>, key: string): boolean
   const value = payload[key]
   if (value === undefined || value === null) return undefined
   if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`)
-  return value
-}
-
-function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a number`)
   return value
 }
 

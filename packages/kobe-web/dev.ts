@@ -1,20 +1,22 @@
 /**
  * Dev launcher — one `bun run dev` brings up the whole web UI:
- *   - the daemon web transport (bun, kobe package) on KOBE_BRIDGE_PORT (5174)
+ *   - the bridge server (bun, ./server) on KOBE_BRIDGE_PORT (5174)
  *   - the Vite dev server (node) on 5173, proxying /api + /events to it
  *
- * The transport is owned by the daemon. This sibling process only asks the
- * daemon to bind HTTP/SSE routes for browser dev. Ctrl-C tears everything down.
+ * The bridge is a standalone process that talks to the daemon over the
+ * socket protocol — it runs under `bun --watch`, so editing server/ code
+ * hot-restarts the bridge WITHOUT touching the daemon (or your tasks).
+ * Ctrl-C tears everything down.
  */
 
 const BRIDGE_PORT = process.env.KOBE_BRIDGE_PORT ?? "5174"
 const WEB_PORT = process.env.KOBE_WEB_PORT ?? "5173"
 const PTY_PORT = process.env.KOBE_PTY_PORT ?? "5175"
 
-// bun: daemon web transport (SSE/RPC/notes/diff/session) — owned by kobe daemon.
-const bridge = Bun.spawn(["bun", "run", "../kobe/src/cli/index.ts", "web", "--bridge-only", "--port", BRIDGE_PORT], {
+// bun: bridge server (SSE/RPC/notes/diff/session) — daemon client, not daemon-hosted.
+const bridge = Bun.spawn(["bun", "--watch", "server/main.ts"], {
   stdio: ["inherit", "inherit", "inherit"],
-  env: { ...process.env },
+  env: { ...process.env, KOBE_BRIDGE_PORT: BRIDGE_PORT },
 })
 
 // node: PTY terminal server — node-pty only works under node, not bun.
