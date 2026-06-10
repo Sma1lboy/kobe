@@ -396,7 +396,8 @@ export function Sidebar(props: SidebarProps) {
   // fresh when it comes back. The interval lives for the process lifetime
   // (kobe's app shell never unmounts the sidebar in normal use).
   const [branchTick, setBranchTick] = createSignal(0)
-  void setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
+  const branchInterval = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
+  onCleanup(() => clearInterval(branchInterval))
 
   // Spinner frame tick for `in_progress` row badges. Single shared
   // counter so every running task animates in lockstep (reads as one
