@@ -253,12 +253,16 @@ export async function getSessionOptions(
 
 /**
  * Read a server-scoped (global to the whole tmux server) user option. `""`
- * when unset (tmux errors on unset). Server scope is the natural home for a
- * cross-task UI preference: one value shared by every task session on the
- * socket, outliving any single session. Set it with `set-option -s`.
+ * when unset. The `-q` flag is load-bearing: without it, tmux *errors* on an
+ * unset user option (`invalid option: @kobe_…`, exit 1), which the capturing
+ * wrapper logs as noise on every cold start before any preference is set. `-q`
+ * makes an unset option resolve to an empty string with exit 0 instead. Server
+ * scope is the natural home for a cross-task UI preference: one value shared by
+ * every task session on the socket, outliving any single session. Set it with
+ * `set-option -s`.
  */
 export async function getServerOption(option: string): Promise<string> {
-  const { code, stdout } = await runTmuxCapturing(["show-options", "-sv", option])
+  const { code, stdout } = await runTmuxCapturing(["show-options", "-sqv", option])
   return code === 0 ? stdout.trim() : ""
 }
 
