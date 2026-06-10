@@ -13,13 +13,15 @@ import { readFile } from "node:fs/promises"
 import * as claudeHistory from "@/engine/claude-code-local/history"
 import * as codexHistory from "@/engine/codex-local/history"
 import type { VendorId } from "@/types/vendor"
+import { engineEntry } from "./registry.ts"
 
 export type ChatTabTurnState = "idle" | "running" | "done" | "error" | "unknown"
 
 export interface TurnCompletionMarker {
   readonly id: string
   readonly timestampMs: number
-  readonly source: "claude" | "codex"
+  /** Which engine's transcript produced the marker (built-ins only today). */
+  readonly source: VendorId
 }
 
 export abstract class EngineTurnDetector {
@@ -34,13 +36,21 @@ export abstract class EngineTurnDetector {
   abstract latestCompletion(worktree: string): Promise<TurnCompletionMarker | null>
 }
 
+/**
+ * Resolve the turn detector for a vendor — a thin delegate to the engine
+ * registry, which owns the per-vendor choice (one entry per engine; see
+ * `registry.ts`). Kept exported here so call sites (`tui/ops/host.tsx`)
+ * keep their import. NB: registry.ts imports the detector classes below,
+ * so this pair is an intentional import cycle (same pattern as
+ * `hook-adapter.ts`) — both sides only dereference the other's bindings
+ * inside function bodies, never at module top-level, which keeps the cycle
+ * safe under ESM evaluation order.
+ */
 export function createEngineTurnDetector(vendor: VendorId): EngineTurnDetector {
-  if (vendor === "codex") return new CodexTurnDetector()
-  if (vendor === "claude") return new ClaudeTurnDetector()
-  return new UnknownTurnDetector(vendor)
+  return engineEntry(vendor).createTurnDetector()
 }
 
-class ClaudeTurnDetector extends EngineTurnDetector {
+export class ClaudeTurnDetector extends EngineTurnDetector {
   readonly vendor = "claude" as const
 
   async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
@@ -55,7 +65,7 @@ class ClaudeTurnDetector extends EngineTurnDetector {
   }
 }
 
-class CodexTurnDetector extends EngineTurnDetector {
+export class CodexTurnDetector extends EngineTurnDetector {
   readonly vendor = "codex" as const
 
   async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
@@ -73,7 +83,8 @@ class CodexTurnDetector extends EngineTurnDetector {
   }
 }
 
-class UnknownTurnDetector extends EngineTurnDetector {
+/** Detector for vendors without transcript completion markers (copilot, custom). */
+export class UnknownTurnDetector extends EngineTurnDetector {
   constructor(readonly vendor: VendorId) {
     super()
   }

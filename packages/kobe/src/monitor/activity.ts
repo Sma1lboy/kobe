@@ -11,33 +11,23 @@
  * lights a corner badge.
  *
  * Each engine owns "where its transcripts live + which one is newest"
- * (`latestTranscriptMtimeForWorktree`); this module is only the
- * vendor→reader dispatch, mirroring `monitor/auto-title.ts`.
+ * (`EngineHistoryReader.latestTranscriptMtimeForWorktree`); this module
+ * is only a thin convenience over the engine registry, kept so the Ops
+ * pane's import stays put.
  */
 
-import * as claudeHistory from "@/engine/claude-code-local/history"
-import * as codexHistory from "@/engine/codex-local/history"
-import * as copilotHistory from "@/engine/copilot-local/history"
+import { engineEntry } from "@/engine/registry"
 import type { VendorId } from "@/types/task"
 
 /**
  * Newest engine-transcript mtime (epoch ms) for `worktree` under
  * `vendor`, or 0 when the task has no transcript yet. Never throws — the
  * per-engine readers are best-effort and the poller treats 0 as "no
- * activity seen".
+ * activity seen". A custom (user-added) engine resolves to the registry's
+ * EMPTY history reader, which always answers 0 — no transcript store →
+ * no activity badge (and never mis-reading another engine's store).
  */
 export async function latestTranscriptMtime(vendor: VendorId, worktree: string): Promise<number> {
   if (!worktree) return 0
-  switch (vendor) {
-    case "codex":
-      return codexHistory.latestTranscriptMtimeForWorktree(worktree)
-    case "copilot":
-      return copilotHistory.latestTranscriptMtimeForWorktree(worktree)
-    case "claude":
-      return claudeHistory.latestTranscriptMtimeForWorktree(worktree)
-    default:
-      // Custom (user-added) engine: no transcript store → no activity badge.
-      // Must NOT fall through to claude, which would read another engine's store.
-      return 0
-  }
+  return engineEntry(vendor).history.latestTranscriptMtimeForWorktree(worktree)
 }

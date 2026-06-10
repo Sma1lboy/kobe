@@ -41,6 +41,10 @@ describe("engineEntry — built-in vendors", () => {
     // Claude is the only engine with wired activity hooks.
     expect(entry.createHookAdapter().supportsHooks()).toBe(true)
     expect(entry.history).not.toBe(EMPTY_HISTORY)
+    // Claude persists turn-completion markers the ChatTab detector can read.
+    const detector = entry.createTurnDetector()
+    expect(detector.vendor).toBe("claude")
+    expect(detector.supportsCompletionMarkers()).toBe(true)
   })
 
   it("resolves codex/copilot with their identity, no cost reader, noop hooks", () => {
@@ -59,6 +63,10 @@ describe("engineEntry — built-in vendors", () => {
       expect(hooks.vendor).toBe(vendor)
       // Real history readers — not the custom-engine empty one.
       expect(entry.history).not.toBe(EMPTY_HISTORY)
+      // Codex reads `turn.completed` rollout markers; copilot has none yet.
+      const detector = entry.createTurnDetector()
+      expect(detector.vendor).toBe(vendor)
+      expect(detector.supportsCompletionMarkers()).toBe(vendor === "codex")
     }
   })
 
@@ -96,6 +104,15 @@ describe("engineEntry — custom (user-registered) vendors", () => {
     // mis-reading another vendor's files.
     expect(await entry.history.listSessionIdsForWorktree("/some/worktree")).toEqual([])
     expect(await entry.history.readHistory("some-session")).toEqual([])
+    // No transcript store → the Ops activity poll always sees 0 ("no
+    // activity seen") instead of watching another vendor's files.
+    expect(await entry.history.latestTranscriptMtimeForWorktree("/some/worktree")).toBe(0)
+    // No persisted completion markers either — the ChatTab detector reports
+    // "unknown" support rather than borrowing claude's transcripts.
+    const detector = entry.createTurnDetector()
+    expect(detector.vendor).toBe("aider")
+    expect(detector.supportsCompletionMarkers()).toBe(false)
+    expect(await detector.latestCompletion("/some/worktree")).toBeNull()
     // No cost reader, no account detection, no hooks.
     expect(entry.summarizeCost).toBeNull()
     const status = await entry.detectAccount()

@@ -151,7 +151,7 @@ export function buildSidebarRowView(opts: {
 }
 
 function activityBadgeFor(
-  state: TaskEngineState["state"] | undefined,
+  state: TaskActivityState | undefined,
 ): { glyph: string; tone: "primary" | "warning" | "error" } | null {
   switch (state) {
     case "rate_limited":
