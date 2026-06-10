@@ -1,19 +1,12 @@
 /**
- * Shared task-action flows — the ONE implementation behind both hosts
- * that expose task mutations:
- *
- *   - the deprecated outer monitor (`tui/app.tsx`), and
- *   - the in-session Tasks pane (`tui/tasks-pane/host.tsx`).
- *
- * Why one module: the two hosts grew near line-for-line copies of
- * create / rename / archive / delete (same DialogConfirm copy, same
- * DIRTY_WORKTREE force-delete branch, same error-handling shape). The
- * outer monitor is TRANSITIONAL — the product direction is inner-first —
- * so consolidating here makes retiring app.tsx a pure deletion later,
- * not a port. Where the hosts genuinely differ (the Tasks pane lives
- * INSIDE the tmux client it may kill; the outer monitor has no toast
- * surface; selection is host-owned state), the difference is an explicit
- * option or hook on {@link TaskActionContext}, never a second copy.
+ * Shared task-action flows — the ONE implementation behind the hosts
+ * that expose task mutations. Today that's the in-session Tasks pane
+ * (`tui/tasks-pane/host.tsx`); the deprecated outer monitor (`app.tsx`)
+ * was the second host until its retirement (docs/design/app-retirement.md)
+ * — consolidating here is what made that a pure deletion, not a port.
+ * Host differences (e.g. the Tasks pane lives INSIDE the tmux client it
+ * may kill) are an explicit option or hook on {@link TaskActionContext},
+ * never a second copy.
  *
  * Testability rule: NO `@opentui` imports here. Modal UI (DialogConfirm /
  * RenameTaskDialog / NewTaskDialog) reaches this module only as
@@ -223,17 +216,6 @@ export async function finishDeletedTaskFlow(opts: {
     opts.logger.error(`${opts.logPrefix} kill tmux session failed:`, err)
   })
   return { nextTask }
-}
-
-export async function toggleTaskPinnedFlow(opts: {
-  readonly orch: KobeOrchestrator
-  readonly taskId: string
-  readonly logger: TaskActionLogger
-  readonly logPrefix: string
-}): Promise<void> {
-  await opts.orch.setPinned(opts.taskId).catch((err: unknown) => {
-    opts.logger.error(`${opts.logPrefix} pin failed:`, err)
-  })
 }
 
 /**

@@ -236,7 +236,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
 
   // Live auto-title (KOB): rename still-placeholder tasks from their
   // engine transcript on an interval, so a name appears WHILE attached —
-  // the detach-time path in tui/app.tsx / tui/direct.ts only fires on
+  // the detach-time path in tui/direct.ts only fires on
   // return. The rename broadcasts via the `task.snapshot` channel above,
   // so every attached Tasks pane updates without a detach.
   const autoTitlePollMs = options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS

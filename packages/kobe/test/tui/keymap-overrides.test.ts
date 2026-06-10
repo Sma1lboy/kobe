@@ -46,7 +46,7 @@ describe("normalizeChord", () => {
     expect(chordOf("ctrl+pgup")).toBe("ctrl+pageup")
   })
 
-  test("trailing + means the literal plus key (pane.resize-grow default)", () => {
+  test("trailing + means the literal plus key", () => {
     expect(chordOf("ctrl++")).toBe("ctrl++")
   })
 

@@ -1,12 +1,26 @@
 # Retiring `app.tsx` — the deprecated outer monitor
 
-`packages/kobe/src/tui/app.tsx` is the v0.6 outer monitor: an opentui shell
-(sidebar + live preview + cost dashboard) that predates the inner-first
-direction. The product path is `direct.ts` — straight into the tmux
-workspace — and the monitor is reachable only via `KOBE_OUTER_MONITOR=1` or
-`KOBE_NO_DAEMON=1` (`src/tui/index.tsx`). This doc is the map for the
-deletion PRs: what the monitor still owns, what already has a tmux-native
-home, what would genuinely be lost, and the ordered slices to deletion.
+> **RETIRED 2026-06-09.** All slices landed; the monitor is gone.
+> Jackson's calls (slices 2–4, decided explicitly): **Cost Dashboard —
+> dropped, no port** (no `kobe cost` page); **Live Preview — dropped**
+> (session switching + Tasks-pane badges replace it); **`KOBE_NO_DAEMON`
+> — retired** (the daemon is the product; `kobe doctor` / `kobe reset`
+> cover its failure modes; the local in-TUI `Orchestrator` hosting path
+> is gone — the `Orchestrator` class itself survives, hosted by the
+> daemon). With those decided, slice 5 deleted the shell: `app.tsx`,
+> `panes/monitor/`, the `KOBE_OUTER_MONITOR`/`KOBE_NO_DAEMON` branch in
+> `index.tsx`, and the chrome modules whose only consumer was the shell.
+> `kobe` now launches straight into the task session flow (`direct.ts`).
+> This doc is kept as the record of the inventory + decisions.
+
+`packages/kobe/src/tui/app.tsx` *was* the v0.6 outer monitor: an opentui
+shell (sidebar + live preview + cost dashboard) that predates the
+inner-first direction. The product path is `direct.ts` — straight into the
+tmux workspace — and the monitor was reachable only via
+`KOBE_OUTER_MONITOR=1` or `KOBE_NO_DAEMON=1` (`src/tui/index.tsx`). This
+doc was the map for the deletion PRs: what the monitor still owned, what
+already had a tmux-native home, what would genuinely be lost, and the
+ordered slices to deletion.
 
 Honesty rule: a slice may decide to *drop* a capability, but the drop must be
 recorded here as a drop — not waved away as "already covered".
@@ -41,30 +55,40 @@ Ordered; each is one commit/PR, behavior-reviewed on its own.
    got in-flight dedupe (the keyed `background-poll` util doesn't fit their
    stateful / whole-list refreshes — rationale inline in each file).
    Scope: S.
-2. **Cost dashboard exit.** Decide: port the token table to a tmux-native
-   full-window page (`kobe cost`, same host pattern as `kobe settings` /
-   `kobe new-task`, opened from the Tasks pane) or drop it and record the
-   drop here. `monitor/cost.ts` (the summarizer) is engine-data plumbing and
-   survives either way. Scope: S to drop, M to port.
-3. **Live preview exit.** Default: drop — session switching inside tmux
-   replaces "preview the selected task", and the Tasks pane already carries
-   status badges. If at-a-glance multi-task screens prove missed, the port
-   target is a Tasks-pane peek or a tmux window, not a revived monitor.
-   Record the decision here. Scope: S to drop.
-4. **`KOBE_NO_DAEMON` decision.** Either retire the flag (the daemon is the
-   product; `kobe doctor`/`reset` cover its failure modes) or rehost the
-   local Orchestrator somewhere that isn't app.tsx. Retiring also deletes
-   the `Orchestrator`-vs-`RemoteOrchestrator` union handling in `startApp`.
-   Needs Jackson's call — it's a supported escape hatch today. Scope: S if
-   retired.
-5. **Delete the shell.** Remove `app.tsx`, `panes/monitor/`, the
-   `KOBE_OUTER_MONITOR` branch in `index.tsx`, and any chrome module whose
-   only consumer was the shell (audit: `ClaudeLauncher`/`launchTaskTmux` in
-   `fullscreen.tsx`, `SyncProvider`, `CommandPaletteProvider`,
-   `usePaneSizes`, `useThemePersistence`). `Sidebar`, `lib/task-actions`,
-   and the sidebar lib modules stay — the Tasks pane owns them now. Scope: M
-   (mostly deletions + consumer audit).
+2. **DONE (2026-06-09) — Cost dashboard exit: DROPPED, no port.** Jackson's
+   call. No `kobe cost` page; cross-task token totals have no TUI surface —
+   recorded here as a drop, per the honesty rule. `monitor/cost.ts` (the
+   summarizer) survives as engine-data plumbing: the Engine Registry's
+   `summarizeCost` field and `engine/claude-code-local/cost.ts` consume it,
+   and their tests stay. `monitor/capture-pane.ts` (LivePreview-only) died
+   with slice 3.
+3. **DONE (2026-06-09) — Live preview exit: DROPPED.** Jackson's call, per
+   the default: session switching inside tmux replaces "preview the
+   selected task", and the Tasks pane carries status badges. If at-a-glance
+   multi-task screens prove missed, the port target is a Tasks-pane peek or
+   a tmux window, not a revived monitor.
+4. **DONE (2026-06-09) — `KOBE_NO_DAEMON`: RETIRED.** Jackson's call. The
+   daemon is the product; `kobe doctor`/`kobe reset` cover its failure
+   modes. The flag, the local-Orchestrator-in-TUI hosting path, and the
+   `Orchestrator`-vs-`RemoteOrchestrator` union handling in `startApp` are
+   gone. The `Orchestrator` class itself stays — the daemon hosts it.
+5. **DONE (2026-06-09) — shell deleted.** Removed `app.tsx`,
+   `panes/monitor/`, and the env-flag branch in `index.tsx` (`kobe` now
+   goes straight to `direct.ts`). Chrome modules whose only consumer was
+   the shell went with it: `fullscreen.tsx` (`ClaudeLauncher` +
+   `launchTaskTmux` + `runFullscreen` — `direct.ts` has its own
+   `attachTmux`), `SyncProvider`, `CommandPaletteProvider` (and the
+   `palette.open` keymap row), `usePaneSizes`, `useThemePersistence`,
+   `status-bar.tsx` (+ the `useCtrlCArmed` Ctrl+C arm-to-quit machinery and
+   the `app.copy_or_quit` row it displayed), `top-bar.tsx` +
+   `top-bar-helpers.ts`, `pane-header.tsx`, `resizable-edge.tsx` (+ its
+   `border.tsx` glyphs, and the never-registered `pane.resize-*` rows),
+   `monitor/capture-pane.ts`, the unused `useKobeKeybindings` hook (the
+   `KobeKeymap` table, `bindByIds`, and the help dialog stay), and the
+   `focus.next`/`focus.prev` rows the hook registered. `Sidebar`,
+   `lib/task-actions`, and the sidebar lib modules stay — the Tasks pane
+   owns them now. Kept despite looking dead: `context/focus.tsx`
+   (FocusProvider is part of `bootPaneHost`'s shared provider nest).
 
-Slices 2–4 are unordered relative to each other; all three must land before
-slice 5. Per the repo's deletion rule, every removal in slices 2–5 requires
-explicit user sign-off in that PR's conversation.
+All slices landed; per the repo's deletion rule, every removal in slices
+2–5 carried explicit user sign-off in that slice's conversation.

@@ -3,8 +3,7 @@
  *
  * kobe drives a dedicated tmux server on the `-L kobe` socket
  * (isolated from the user's own tmux). The session-lifecycle code
- * (`tui/panes/terminal/tmux.ts`) and the monitor's read-side capture
- * (`monitor/capture-pane.ts`) + the Ops pane's `send-keys` mention
+ * (`tui/panes/terminal/tmux.ts`) and the Ops pane's `send-keys` mention
  * (`tui/ops/host.tsx`) all spoke to that socket with their own copies
  * of the socket name, the spawn helpers, and — critically — the
  * "resolve a pane by id, not `:0.0`" workaround.
@@ -326,9 +325,9 @@ export async function claudePaneIdStrict(sessionName: string): Promise<string> {
  * capture `lines` rows up into scrollback. Returns `""` on any error.
  *
  * We do NOT pass `-e`, so tmux strips ANSI escapes and the output is
- * plain text — kobe deliberately renders the preview plain (opentui owns
- * the colours; see `monitor/capture-pane.ts`). A future caller that
- * wants raw colour would have to add `-e`.
+ * plain text — kobe deliberately renders captures plain (opentui owns
+ * the colours). A future caller that wants raw colour would have to
+ * add `-e`.
  */
 export async function capturePaneById(paneId: string, lines?: number): Promise<string> {
   if (!paneId) return ""

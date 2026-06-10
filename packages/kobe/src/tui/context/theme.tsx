@@ -319,5 +319,3 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     }
   },
 })
-
-export type ThemeContext = ReturnType<typeof useTheme>

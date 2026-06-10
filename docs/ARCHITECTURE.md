@@ -36,7 +36,7 @@ nothing about higher.
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │  TUI clients + panes  (Solid + @opentui/solid + @opentui/core) │
-│   src/tui/{direct.ts, app.tsx, tasks-pane/, panes/, context/}  │
+│   src/tui/{direct.ts, tasks-pane/, ops/, panes/, context/}    │
 ├────────────────────────────────────────────────────────────────┤
 │  RemoteOrchestrator  (client facade over daemon RPC + channels)│
 │   src/client/remote-orchestrator.ts                            │
@@ -96,14 +96,13 @@ The seams matter:
 | Finding the `claude` binary | `src/engine/claude-code-local/binary.ts` |
 | Task lifecycle | `src/orchestrator/core.ts` |
 | Per-task tmux Session layout | `src/tmux/session-layout.ts` + `src/tui/panes/terminal/tmux.ts` |
-| Handover attach/detach | `src/tui/direct.ts` + `src/tui/panes/terminal/fullscreen.tsx` |
+| Handover attach/detach | `src/tui/direct.ts` |
 | `git worktree` wrapper | `src/orchestrator/worktree/manager.ts` |
 | Worktree path convention | `src/orchestrator/worktree/paths.ts` |
 | Task index on disk | `src/orchestrator/index/store.ts` |
 | ULID generator | `src/orchestrator/index/ulid.ts` |
 | PR prompt rendering | `src/orchestrator/pr/build.ts` |
-| Application shell + layout | `src/tui/app.tsx` |
-| TUI bootstrap (banner / fallback) | `src/tui/index.tsx` |
+| TUI bootstrap | `src/tui/index.tsx` (straight to `direct.ts`) |
 | Pane focus | `src/tui/context/focus.tsx` |
 | Global keybindings | `src/tui/context/keybindings.ts` |
 | KV (per-user UI state) | `src/tui/context/kv.tsx` |
@@ -186,33 +185,16 @@ read the ref before deciding to deviate further.
 
 ---
 
-## 3. Outer monitor and tmux workspace
+## 3. tmux workspace
 
-The outer monitor lives in `src/tui/app.tsx`. It is a transitional shell:
-Sidebar on the left, Workspace on the right, TopBar/StatusBar around them.
-The product center is the tmux-native workspace reached by Handover.
-
-### Outer monitor
-
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ TopBar — version, repo/branch, update chip                        │
-├──────────┬─────────────────────────────────────────────────────────┤
-│ Sidebar  │ Workspace                                               │
-│          │  Live Preview / Cost Dashboard / Handover launcher      │
-├──────────┴─────────────────────────────────────────────────────────┤
-│ StatusBar — keybinding hints + active task                         │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-Outer sources:
-
-| Surface | Source | Notes |
-|---|---|---|
-| Sidebar | `src/tui/panes/sidebar/` | Working / Archives split, PROJECTS + TASKS sections, default/recent sort, row-view logic in `row-view.ts` |
-| Workspace monitor | `src/tui/panes/monitor/` | Live Preview from tmux capture + Cost Dashboard from engine transcript readers |
-| Handover launcher | `src/tui/panes/terminal/fullscreen.tsx` | Ensures Worktree + tmux Session, suspends renderer, attaches real TTY |
-| Top/status bars | `src/tui/component/` | Version/update state, active task, keybinding hints |
+The product center is the tmux-native workspace reached by Handover:
+`kobe` attaches straight into the active Task's tmux Session
+(`src/tui/direct.ts`). The opentui outer monitor (`app.tsx`, with its
+Live Preview / Cost Dashboard Workspace) was retired in 2026-06 — see
+`docs/design/app-retirement.md` for the inventory and decisions. The
+Sidebar component (`src/tui/panes/sidebar/` — Working / Archives split,
+PROJECTS + TASKS sections, default/recent sort, row-view logic in
+`row-view.ts`) lives on inside the Tasks pane.
 
 ### tmux ChatTab layout
 
@@ -415,15 +397,14 @@ If you find yourself reaching for any of the above, stop and ask first.
 1. Create `src/tui/panes/<name>/` with at least an `index.ts` and a
    component file. Mirror the shape of an existing pane (`filetree/`
    is small and self-contained).
-2. Add the pane id to `PaneId` in `src/tui/context/focus.tsx` and
-   to `PANE_ORDER` if you want it in the tab cycle.
-3. Mount the component inside `Shell` in `src/tui/app.tsx`. Wrap it in
-   a `<box onMouseUp={() => setFocusedPane(...)}>` so click-to-focus
-   works. Add a `<PaneHeader>` so it gets the BOLD CAPS label
-   convention.
-4. Pane-local keybindings register inside the pane component via
-   `useBindings()`, gated on `useFocus().is("<name>")()`.
-5. Write focused unit tests for pure row/state/keymap logic. If the pane
+2. Host it as a `kobe <name>` pane host (see `src/tui/ops/host.tsx` /
+   `src/tui/tasks-pane/host.tsx`) booted via `bootPaneHost`
+   (`src/tui/lib/host-boot.tsx`), and wire it into the Session Layout
+   if it belongs in every ChatTab. Subscribe to the daemon as
+   `role: "pane"` (the default).
+3. Pane-local keybindings register inside the pane component via
+   `useBindings()` / `bindByIds()` with chords from `KobeKeymap`.
+4. Write focused unit tests for pure row/state/keymap logic. If the pane
    needs visible terminal validation, use the local PTY harness described in
    `docs/HARNESS.md`.
 

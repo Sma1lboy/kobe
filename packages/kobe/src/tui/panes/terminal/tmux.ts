@@ -92,7 +92,7 @@ import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launc
 import { healKobePaneVersions, healTaskPaneWidths, relaunchEngineInAllWindows } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
-// (`app.tsx`, `LivePreview`, `fullscreen.tsx`) keep their `./tmux` path.
+// (`direct.ts`, pane hosts) keep their `./tmux` path.
 export {
   attachArgv,
   currentSessionName,
