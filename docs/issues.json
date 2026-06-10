@@ -1,6 +1,20 @@
 {
-  "nextId": 5,
+  "nextId": 7,
   "issues": [
+    {
+      "id": 5,
+      "title": "Job-ify ensureWorktree: long daemon operations return a job id + push progress",
+      "status": "open",
+      "created": "2026-06-09",
+      "body": "Follow-up to the async-ExecHost fix (commit 'fix: exec — async ExecHost run/fs ops'). The daemon's event loop no longer freezes during git worktree add, but the CALLING client still awaits the full RPC (minutes on a 30GB repo) with no feedback. Make minute-class operations (ensureWorktree, future clone) jobs: RPC returns immediately with a job id, progress/completion pushed over the existing subscribe channel, UI shows a materializing state on the task row. Job table + existing push channel — no external MQ; that was the 'daemon 要不要 MQ' answer (2026-06-09 audit)."
+    },
+    {
+      "id": 6,
+      "title": "Sink worktree-changes collection into the daemon (single collector, push to panes)",
+      "status": "open",
+      "created": "2026-06-09",
+      "body": "Today every pane process polls git status itself through tui/lib/background-poll.ts (N panes x M tasks background processes, work duplicated per pane). Move collection into the daemon as the single collector and broadcast results over a new subscribe channel (worktree.changes), following the task.snapshot precedent; panes drop their git subprocesses entirely and just read pushes. Depends on nothing; pairs well with the job-ification issue. From the 2026-06-09 render-path/daemon audit."
+    },
     {
       "id": 4,
       "title": "Per-client tmux sessions so two clients on the same window aren't letterboxed",
