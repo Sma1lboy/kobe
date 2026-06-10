@@ -15,25 +15,26 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
-import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
 import type { Orchestrator } from "@/orchestrator/core"
-import type { Task, VendorId } from "@/types/task"
-import { CURRENT_VERSION, type UpdateInfo, checkLatestVersion } from "@/version"
+import { type UpdateInfo, checkLatestVersion } from "@/version"
 import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
-import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
 import { DaemonEventBus } from "./event-bus.ts"
+import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import {
-  CHANNEL_NAMES,
-  DAEMON_PROTOCOL_VERSION,
-  type DaemonFrame,
-  MIN_COMPATIBLE_PROTOCOL_VERSION,
-  frameToLine,
-  isProtocolCompatible,
-  serializeTask,
-} from "./protocol.ts"
+import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
+
+// RPC handler registry + per-request dispatch seam — re-exported so consumers
+// (tests, the kobe-web bridge) can reach it via the existing
+// `@sma1lboy/kobe-daemon/daemon/server` export without a package.json change.
+export {
+  createDaemonHandlerRegistry,
+  dispatchDaemonRequest,
+  shapeDaemonError,
+  type DaemonHandlerContext,
+  type DaemonRequestHandler,
+} from "./handlers.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -286,272 +287,60 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     }, 0).unref()
   }
 
+  // RPC dispatch seam: every plain request is a registry entry
+  // (handlers.ts) — look up → validate → handle — with all daemon state
+  // arriving via the per-request context built below. ONE request stays
+  // outside the registry: `subscribe` is connection lifecycle, not RPC. It
+  // mutates per-socket state (`subscribed`, `holdsLifetime`), drives the
+  // gui-refcount idle-grace timer, and writes event frames directly to the
+  // socket (channel replay) — none of which the registry's payload→result
+  // shape can express — so it lives here next to the machinery it touches.
+  const handlers = createDaemonHandlerRegistry()
+
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
-    const payload = objectPayload(req.payload)
-    switch (req.name) {
-      case "hello": {
-        // Negotiate a compatibility RANGE (see protocol.ts isProtocolCompatible).
-        // A client that omits a field is tolerated: a missing version means
-        // "current", a missing min means "same as its version". Only a true
-        // range mismatch is rejected, with a clear upgrade message.
-        const clientVersion =
-          typeof payload.protocolVersion === "number" ? payload.protocolVersion : DAEMON_PROTOCOL_VERSION
-        const clientMin = typeof payload.minProtocolVersion === "number" ? payload.minProtocolVersion : clientVersion
-        if (
-          !isProtocolCompatible({
-            localVersion: DAEMON_PROTOCOL_VERSION,
-            localMin: MIN_COMPATIBLE_PROTOCOL_VERSION,
-            remoteVersion: clientVersion,
-            remoteMin: clientMin,
-          })
-        ) {
-          throw new Error(
-            `daemon is protocol v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}); this client is v${clientVersion} (min v${clientMin}). Upgrade your kobe.`,
-          )
-        }
-        return {
-          protocolVersion: DAEMON_PROTOCOL_VERSION,
-          minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
-          // The daemon's BUILD version (package.json). The protocol range above
-          // only catches a breaking wire change; this lets the client detect a
-          // stale-build daemon after a patch upgrade (same protocol, old code in
-          // memory) and surface a non-fatal "restart the daemon" banner (KOB).
-          kobeVersion: CURRENT_VERSION,
-          capabilities: [...CHANNEL_NAMES],
-          daemonPid: process.pid,
-          clientId: client.id,
-          tasks: orch.listTasks().map(serializeTask),
-        }
+    if (req.name === "subscribe") {
+      const payload = objectPayload(req.payload)
+      client.subscribed = true
+      // role defaults to "pane": a subscriber that omits it is the safe
+      // non-lifetime kind, so a future client can't accidentally pin the
+      // daemon open. Only a "gui" attach holds the daemon alive.
+      const role = payload.role === "gui" ? "gui" : "pane"
+      client.holdsLifetime = role === "gui"
+      // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
+      // pane subscribing must NOT cancel it: panes alone never keep the
+      // daemon up, so a pane connecting during the grace window leaves the
+      // countdown running.
+      if (client.holdsLifetime) cancelIdleTimer()
+      logDaemonInfo("conn", `client #${client.id} subscribed as ${role} — ${clients.size} client(s), ${guiCount()} gui`)
+      // Replay the current value of every populated channel so a late
+      // subscriber hydrates without a separate round trip — generalized
+      // from the old single task.snapshot send (KOB-246). `payload.channels`
+      // is accepted for forward-compat (a future per-channel filter) but
+      // currently ignored: every subscriber gets every channel, exactly
+      // as before. The bus cache is warm (subscribeTasks' eager fire).
+      for (const event of bus.snapshot()) {
+        writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
       }
-      case "daemon.status":
-        return {
-          daemonPid: process.pid,
-          // Build version of the running daemon (package.json) — surfaced in
-          // `daemon status` / `kobe doctor` so a stale-build daemon is visible
-          // even without a TUI attached (KOB).
-          kobeVersion: CURRENT_VERSION,
-          uptimeMs: Date.now() - startedAt.getTime(),
-          startedAt: startedAt.toISOString(),
-          // Attached GUIs (role "gui" front-ends) — the refcount that keeps
-          // the daemon alive. Excludes in-tmux helper panes (role "pane") and
-          // transient CLI pokes, so this reflects "humans looking at kobe".
-          attachedClients: guiCount(),
-          taskCount: orch.listTasks().length,
-          socketPath,
-        }
-      case "daemon.stop":
-        await stopSoon()
-        return {}
-      case "task.list":
-        return { tasks: orch.listTasks().map(serializeTask) }
-      case "task.get": {
-        const taskId = requireString(payload, "taskId")
-        const task = orch.getTask(taskId)
-        if (!task) throw new Error(`task not found: ${taskId}`)
-        return { task: serializeTask(task) }
-      }
-      case "task.create": {
-        const repo = requireString(payload, "repo")
-        const task = await orch.createTask({
-          repo,
-          title: optionalString(payload, "title"),
-          branch: optionalString(payload, "branch"),
-          baseRef: optionalString(payload, "baseRef"),
-          vendor: optionalVendor(payload, "vendor"),
+      // The bus only caches ONE last-value per channel, but `engine-state`
+      // is per-task — so additionally replay EVERY task's current non-idle
+      // activity to this late subscriber (otherwise it'd only learn the most
+      // recently changed task's state).
+      for (const payload of activity.currentNonIdle()) {
+        writeFrame(client, {
+          type: "event",
+          name: "engine-state",
+          payload,
         })
-        return { taskId: task.id, task: serializeTask(task) }
       }
-      case "task.archive": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setArchived(taskId, optionalBoolean(payload, "archived"))
-        return {}
-      }
-      case "task.rename": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setTitle(taskId, requireString(payload, "title"))
-        return {}
-      }
-      case "task.setBranch": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setBranch(taskId, requireString(payload, "branch"))
-        return {}
-      }
-      case "task.setVendor": {
-        const taskId = requireString(payload, "taskId")
-        const vendor = optionalVendor(payload, "vendor")
-        if (!vendor) throw new Error("task.setVendor: vendor is required")
-        await orch.setVendor(taskId, vendor)
-        return {}
-      }
-      case "task.delete": {
-        const taskId = requireString(payload, "taskId")
-        await orch.deleteTask(taskId, { force: optionalBoolean(payload, "force") })
-        activity.clearTask(taskId)
-        return {}
-      }
-      case "task.pin": {
-        const taskId = requireString(payload, "taskId")
-        await orch.setPinned(taskId, optionalBoolean(payload, "pinned"))
-        return {}
-      }
-      case "task.move": {
-        const taskId = requireString(payload, "taskId")
-        const direction = requireString(payload, "direction")
-        if (direction !== "up" && direction !== "down") throw new Error("direction must be up or down")
-        await orch.moveTask(taskId, direction === "up" ? -1 : 1)
-        return {}
-      }
-      case "task.status": {
-        const taskId = requireString(payload, "taskId")
-        const status = requireString(payload, "status")
-        if (
-          status !== "backlog" &&
-          status !== "in_progress" &&
-          status !== "in_review" &&
-          status !== "done" &&
-          status !== "canceled" &&
-          status !== "error"
-        ) {
-          throw new Error("status must be a TaskStatus")
-        }
-        await orch.setStatus(taskId, status)
-        return {}
-      }
-      case "task.ensureMain": {
-        const repo = requireString(payload, "repo")
-        const task = await orch.ensureMainTask(repo)
-        return { task: serializeTask(task) }
-      }
-      case "task.ensureWorktree": {
-        const taskId = requireString(payload, "taskId")
-        const path = await orch.ensureWorktree(taskId)
-        return { worktreePath: path }
-      }
-      case "worktree.discoverAdoptable": {
-        const repo = requireString(payload, "repo")
-        const worktrees = await orch.discoverAdoptableWorktrees(repo)
-        return { worktrees }
-      }
-      case "worktree.adopt": {
-        const task = await orch.adoptWorktree({
-          repo: requireString(payload, "repo"),
-          worktreePath: requireString(payload, "worktreePath"),
-          branch: optionalString(payload, "branch"),
-          vendor: optionalVendor(payload, "vendor"),
-          title: optionalString(payload, "title"),
-          ifExists: optionalString(payload, "ifExists") === "return" ? "return" : "error",
-        })
-        return { task: serializeTask(task) }
-      }
-      case "worktree.reconcile": {
-        // A `kobe hook worktree-created` (global PostToolUse) reporting that a
-        // `git worktree add` just ran in `cwd`, creating `worktreePath`. Adopt
-        // it the MOMENT it's created — no engine session needed (the
-        // creation-time complement to the `session-start` auto-adopt in
-        // `engine.reportEvent` below). Bounded to repos kobe already tracks
-        // (so a stray worktree in an untracked repo is ignored); `adoptWorktree`
-        // is idempotent + git-validated, so a re-fired hook or a bogus path is a
-        // harmless no-op (the path just fails validation → caught → dropped).
-        const cwd = requireString(payload, "cwd")
-        const worktreePath = requireString(payload, "worktreePath")
-        const repo = matchRepoByCwd(orch.listTasks(), cwd) ?? matchRepoByCwd(orch.listTasks(), worktreePath)
-        if (!repo) return { adopted: false }
-        try {
-          const task = await orch.adoptWorktree({ repo, worktreePath, ifExists: "return" })
-          return { adopted: true, taskId: task.id }
-        } catch (err) {
-          logDaemonError("worktree-created", err)
-          return { adopted: false }
-        }
-      }
-      case "task.setActive": {
-        // UI/session focus lives on the bus, but setting it also touches the
-        // task's updatedAt so "recent" task sorting reflects actual use.
-        // Publishing caches the last value so a late-subscribing Tasks pane
-        // gets the current focus on connect and every pane highlights the
-        // same active task (KOB-247).
-        const taskId = optionalString(payload, "taskId") ?? null
-        await orch.setActiveTask(taskId)
-        bus.publish("active-task", { taskId })
-        return {}
-      }
-      case "engine.reportEvent": {
-        // A `kobe hook <verb>` process reporting a NORMALIZED engine activity
-        // event (the vendor-specific hook was already translated by the
-        // engine's hook adapter). The global hooks carry no task id — they
-        // report their `cwd`, which we map to a task by worktree path. Fold it
-        // into the task's transient activity state + broadcast on
-        // `engine-state`. Unknown kinds are ignored (forward-compat: a newer
-        // adapter, older daemon); an unmatched cwd (an unrelated repo, a
-        // project with no kobe task) is silently dropped.
-        const kind = requireString(payload, "kind")
-        if (!isEngineActivityKind(kind)) throw new Error(`unknown engine event kind: ${kind}`)
-        // `taskId` (legacy/direct) wins; otherwise resolve from `cwd`.
-        const explicitId = optionalString(payload, "taskId")
-        const cwd = optionalString(payload, "cwd")
-        // External-worktree sync (replaces the removed WorktreeCreate hook): a
-        // session starting in an unadopted worktree under a tracked repo's
-        // a managed worktree root is auto-adopted as a task, so the cwd then maps
-        // to it below. Gated to `session-start` to bound the work; the path
-        // check is git-free and `adoptWorktree` is idempotent + git-validated
-        // (a bogus dir just throws → caught → dropped).
-        if (!explicitId && cwd && kind === "session-start") {
-          const cand = findAdoptableWorktree(orch.listTasks(), cwd)
-          if (cand) {
-            try {
-              await orch.adoptWorktree({ repo: cand.repo, worktreePath: cand.worktreePath, ifExists: "return" })
-            } catch (err) {
-              logDaemonError("worktree-autosync", err)
-            }
-          }
-        }
-        const taskId = explicitId ?? (cwd ? matchTaskByCwd(orch.listTasks(), cwd) : undefined)
-        if (!taskId) return {} // unmatched cwd → drop
-        const detail = optionalActivityDetail(payload)
-        activity.report(taskId, kind, detail)
-        return {}
-      }
-      case "subscribe": {
-        client.subscribed = true
-        // role defaults to "pane": a subscriber that omits it is the safe
-        // non-lifetime kind, so a future client can't accidentally pin the
-        // daemon open. Only a "gui" attach holds the daemon alive.
-        const role = payload.role === "gui" ? "gui" : "pane"
-        client.holdsLifetime = role === "gui"
-        // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
-        // pane subscribing must NOT cancel it: panes alone never keep the
-        // daemon up, so a pane connecting during the grace window leaves the
-        // countdown running.
-        if (client.holdsLifetime) cancelIdleTimer()
-        logDaemonInfo(
-          "conn",
-          `client #${client.id} subscribed as ${role} — ${clients.size} client(s), ${guiCount()} gui`,
-        )
-        // Replay the current value of every populated channel so a late
-        // subscriber hydrates without a separate round trip — generalized
-        // from the old single task.snapshot send (KOB-246). `payload.channels`
-        // is accepted for forward-compat (a future per-channel filter) but
-        // currently ignored: every subscriber gets every channel, exactly
-        // as before. The bus cache is warm (subscribeTasks' eager fire).
-        for (const event of bus.snapshot()) {
-          writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
-        }
-        // The bus only caches ONE last-value per channel, but `engine-state`
-        // is per-task — so additionally replay EVERY task's current non-idle
-        // activity to this late subscriber (otherwise it'd only learn the most
-        // recently changed task's state).
-        for (const payload of activity.currentNonIdle()) {
-          writeFrame(client, {
-            type: "event",
-            name: "engine-state",
-            payload,
-          })
-        }
-        return {}
-      }
-      default:
-        throw new Error(`unknown daemon request: ${(req as { name: string }).name}`)
+      return {}
     }
+    return dispatchDaemonRequest(handlers, req.name, req.payload, {
+      orch,
+      bus,
+      activity,
+      daemon: { startedAt, socketPath, pid: process.pid, guiCount, stopSoon },
+      clientId: client.id,
+    })
   }
 
   async function handleRequest(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<void> {
@@ -559,15 +348,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       const payload = await dispatch(req, client)
       writeFrame(client, { type: "response", id: req.id, name: req.name, payload })
     } catch (err) {
-      writeFrame(client, {
-        type: "response",
-        id: req.id,
-        name: req.name,
-        error: {
-          message: err instanceof Error ? err.message : String(err),
-          name: err instanceof Error ? err.name : undefined,
-        },
-      })
+      // shapeDaemonError (handlers.ts) is the ONE place a thrown error
+      // becomes a wire DaemonError — message + Error name, same bytes as
+      // the old inline shaping. The parse-error path below deliberately
+      // stays bare `{ message }` (it never carried a `name` on the wire).
+      writeFrame(client, { type: "response", id: req.id, name: req.name, error: shapeDaemonError(err) })
     }
   }
 
@@ -615,52 +400,4 @@ function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void 
     if (!client.subscribed && frame.type === "event") continue
     writeFrame(client, frame)
   }
-}
-
-function objectPayload(payload: unknown): Record<string, unknown> {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return {}
-  return payload as Record<string, unknown>
-}
-
-function requireString(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key]
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${key} is required`)
-  return value
-}
-
-function optionalString(payload: Record<string, unknown>, key: string): string | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null || value === "") return undefined
-  if (typeof value !== "string") throw new Error(`${key} must be a string`)
-  return value
-}
-
-function optionalBoolean(payload: Record<string, unknown>, key: string): boolean | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`)
-  return value
-}
-
-function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
-  // Engines are open: a vendor id may be a built-in OR a user-registered
-  // custom engine (its launch command lives in the kobe-side customEngineIds
-  // registry, which the daemon can't see). So accept any non-empty string and
-  // let the launch path resolve it — a bogus id just fails to launch its
-  // (missing) binary in the pane. Empty/absent stays undefined (→ claude).
-  const value = optionalString(payload, key)
-  return value && value.trim().length > 0 ? (value as VendorId) : undefined
-}
-
-/** Coerce the optional `detail` of an `engine.reportEvent` payload, dropping
- *  anything malformed (the field is best-effort UI hint, never load-bearing). */
-function optionalActivityDetail(payload: Record<string, unknown>): EngineActivityDetail | undefined {
-  const raw = payload.detail
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
-  const d = raw as Record<string, unknown>
-  const out: { failure?: "rate_limit" | "billing" | "other"; waiting?: "permission" | "input"; note?: string } = {}
-  if (d.failure === "rate_limit" || d.failure === "billing" || d.failure === "other") out.failure = d.failure
-  if (d.waiting === "permission" || d.waiting === "input") out.waiting = d.waiting
-  if (typeof d.note === "string") out.note = d.note
-  return Object.keys(out).length > 0 ? out : undefined
 }
