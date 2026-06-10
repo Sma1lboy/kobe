@@ -86,6 +86,7 @@ import type { TaskSortMode } from "../panes/sidebar/groups"
 import {
   captureGlobalLayout,
   ensureSession,
+  openHelpTab,
   openNewTaskTab,
   openSettingsTab,
   openUpdateTab,
@@ -290,6 +291,20 @@ function TasksShell(props: {
     }
   }
 
+  // F1 help opens as a dedicated full-window tab (like Settings) — the
+  // in-pane HelpDialog overlay only had the narrow Tasks rail to render
+  // in, which truncated every keybinding row. Fall back to the overlay
+  // when we can't resolve our tmux session (e.g. running outside a kobe
+  // pane).
+  async function openHelp(): Promise<void> {
+    const session = await currentSessionName()
+    if (session) {
+      await openHelpTab(session)
+      return
+    }
+    HelpDialog.show(dialog)
+  }
+
   async function openUpdate(): Promise<void> {
     const info = updateInfo()
     if (!info?.hasUpdate) {
@@ -395,13 +410,11 @@ function TasksShell(props: {
     // Chords come from KobeKeymap via bindByIds (f1=help.open, n=task.new,
     // s=settings.open.sidebar, u=tasks.update, o/b/v=tasks.*) so user
     // overrides from ~/.kobe/settings/keybindings.yaml apply here too.
-    // F1 → the shared HelpDialog (#8). In the real direct-tmux flow the
-    // global `help.open` (app.tsx outer monitor) never runs, so F1 was dead
-    // in the Tasks pane. The pane has its own DialogProvider (mounted in
-    // startTasksPane), so we open it the same way app.tsx does. Gated on an
-    // empty dialog stack so it doesn't `replace` an open dialog.
+    // F1 → the full-window help tab (openHelp), with the shared HelpDialog
+    // as the no-session fallback. Gated on an empty dialog stack so it
+    // doesn't `replace` an open dialog.
     bindings: bindByIds({
-      "help.open": () => HelpDialog.show(dialog),
+      "help.open": () => void openHelp(),
       "task.new": () => void createTask(),
       "settings.open.sidebar": () => void openSettings(),
       "tasks.update": () => void openUpdate(),

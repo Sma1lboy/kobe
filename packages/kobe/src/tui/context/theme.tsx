@@ -218,11 +218,6 @@ export function resolveTheme(theme: ThemeJson, mode: "dark" | "light" = "dark"):
   return { ...fallback, ...out } as Theme
 }
 
-function withAlpha(color: RGBA, alpha: number): RGBA {
-  const [r, g, b] = color.toInts()
-  return RGBA.fromInts(r ?? 0, g ?? 0, b ?? 0, alpha)
-}
-
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: (props: { mode?: "dark" | "light"; theme?: string }) => {
@@ -260,11 +255,14 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       const v: Theme = { ...base, focusAccent }
       if (!store.transparentBackground) return v
       const transparent = RGBA.fromInts(0, 0, 0, 0)
+      // `backgroundDialog` deliberately stays OPAQUE: a translucent modal
+      // card lets the pane content bleed through the dialog text, which
+      // makes settings/help/confirm dialogs unreadable. Transparency is
+      // for the chrome around content, never for an overlay you must read.
       return {
         ...v,
         background: transparent,
         backgroundPanel: transparent,
-        backgroundDialog: withAlpha(v.backgroundDialog, 128),
       }
     })
 

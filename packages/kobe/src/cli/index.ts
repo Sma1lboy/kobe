@@ -521,6 +521,15 @@ async function main(): Promise<void> {
     await startSettingsHost()
     return
   }
+  if (subcommand === "help-page") {
+    // The F1 keybindings help as a standalone full-window surface
+    // (distinct from `kobe help`, which prints CLI usage). Opened by
+    // `openHelpTab` as a new tmux window; reuses the same HelpDialog
+    // the in-pane overlay uses.
+    const { startHelpHost } = await import("../tui/help/host.tsx")
+    await startHelpHost()
+    return
+  }
   if (subcommand === "new-task") {
     // The new-task flow as a standalone full-window page (the default
     // `chattab` settings surface). Opened by `openNewTaskTab`; reuses the
