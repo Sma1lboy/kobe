@@ -15,8 +15,10 @@
  *
  * Runs in its own OS process inside the tmux pane (separate opentui
  * render loop from the outer kobe TUI). It can't share the outer TUI's
- * Solid runtime, but it DOES inherit the user's theme via
- * `readPersistedUiPrefs` (read-only — the outer app owns `state.json`).
+ * Solid runtime, but it DOES inherit the user's theme: host-boot reads
+ * the persisted prefs at boot (read-only — the outer app owns
+ * `state.json`) and re-applies them live from the daemon's `ui-prefs`
+ * channel (UiPrefsSync).
  */
 
 import { createHash } from "node:crypto"
@@ -32,7 +34,6 @@ import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { FileTree } from "../panes/filetree"
 import { buildPRPrompt } from "./pr-prompt"
 
@@ -51,19 +52,12 @@ const TURN_STATUS_POLL_MS = 1500
 const STABLE_POLLS_FOR_DONE = 2
 const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
 
-type ThemePrefs = PersistedUiPrefs
+function OpsShell(props: OpsHostArgs) {
+  const { theme } = useTheme()
 
-function OpsShell(props: OpsHostArgs & { prefs: ThemePrefs }) {
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
-
-  // Apply the inherited transparent-bg + focus-accent prefs once the
-  // theme context is live (active theme name comes from the
-  // ThemeProvider's initial prop, so no flash).
-  onMount(() => {
-    themeCtx.setTransparentBackground(props.prefs.transparent)
-    if (props.prefs.focusAccent) themeCtx.setFocusAccent(props.prefs.focusAccent)
-  })
+  // Visual prefs (theme / transparent / focus accent) are applied
+  // centrally — boot + live `ui-prefs` pushes — by host-boot's
+  // UiPrefsSync; this shell no longer re-applies them itself.
 
   // New-activity badge (KOB-254). v0.6 has no chat-stream "done" signal
   // and we explicitly don't parse the tmux pane, so we poll the engine's
@@ -267,7 +261,7 @@ export async function startOpsHost(args: OpsHostArgs): Promise<void> {
   await bootPaneHost({
     logContext: "ops",
     providers: { kv: false, focus: false },
-    setup: (prefs) => ({ root: () => <OpsShell {...args} prefs={prefs} /> }),
+    setup: () => ({ root: () => <OpsShell {...args} /> }),
   })
 }
 

@@ -1,0 +1,166 @@
+/**
+ * Daemon-side watcher for the persisted visual UI prefs (KOB — live theme
+ * propagation).
+ *
+ * The theme / transparent-background / focus-accent prefs persist in the
+ * shared KV blob (`~/.config/kobe/state.json`, written by the State Store
+ * in `packages/kobe/src/state/store.ts`). Every pane host used to read
+ * them ONCE at boot (`readPersistedUiPrefs`), so switching the theme in
+ * one session's Settings left the Tasks/Ops panes of every OTHER task
+ * session on the old theme forever. This module makes the daemon the
+ * cross-session fan-out point: watch the state file, read the visual-pref
+ * keys, and publish a `ui-prefs` channel payload that every subscribed
+ * pane applies live.
+ *
+ * Watch mechanics — the parts that are load-bearing:
+ *   - **Watch the DIRECTORY, not the file.** The State Store writes via
+ *     tmp + rename, which swaps the file's inode — an `fs.watch` on the
+ *     file itself goes dead after the first atomic write. Watching the
+ *     parent dir and filtering on the filename survives every rename.
+ *   - **Debounce.** A write burst (KVProvider flush + a `setPersisted*`
+ *     call) collapses into one read ~{@link DEFAULT_UI_PREFS_DEBOUNCE_MS}
+ *     later.
+ *   - **Changed-only publish.** The state file carries many non-visual
+ *     keys (saved repos, engine commands, notification toggles…); a write
+ *     that didn't move the three visual prefs publishes nothing, so panes
+ *     never re-apply on unrelated churn.
+ *   - **Initial publish at start** warms the bus's last-value cache, so a
+ *     late subscriber replays the current prefs on connect like any other
+ *     state channel.
+ *
+ * Best-effort throughout: a missing/corrupt state file reads as defaults
+ * (same policy as the State Store), and every failure is logged via
+ * `logDaemonError("ui-prefs-watcher", …)` — never fatal to the daemon.
+ */
+
+import { type FSWatcher, mkdirSync, readFileSync, watch } from "node:fs"
+import { homedir } from "node:os"
+import { basename, dirname, join } from "node:path"
+import { logDaemonError } from "./crash-log.ts"
+import type { DaemonEventBus } from "./event-bus.ts"
+import type { UiPrefsPayload } from "./protocol.ts"
+
+/** Default debounce between a state-file event and the read+publish. */
+export const DEFAULT_UI_PREFS_DEBOUNCE_MS = 200
+
+/**
+ * Focus-accent slots the TUI understands — mirror of `FOCUS_ACCENT_SLOTS`
+ * in `packages/kobe/src/tui/context/theme.tsx`, not imported because that
+ * module builds a Solid store on a renderer at load time and the daemon
+ * must stay UI-free (same stance as `tui/lib/tmux-border-theme.ts`).
+ */
+const FOCUS_ACCENT_SLOT_NAMES = ["primary", "success", "info"] as const
+
+/**
+ * Path of the shared KV blob for a kobe home. Mirrors `kvStatePath()` in
+ * `packages/kobe/src/env.ts` (keep in sync — same `defaultDaemonPidPath`
+ * pattern as `daemon/paths.ts`): the daemon resolves it from the homeDir
+ * the server was started with so sandbox/test homes stay isolated.
+ */
+export function defaultUiPrefsStatePath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".config", "kobe", "state.json")
+}
+
+/**
+ * Read the three visual-pref keys out of the state file. Never throws —
+ * a missing / corrupt file yields the documented defaults (`claude`
+ * theme, opaque, unset accent), the same corrupt-file policy as the
+ * State Store and `readPersistedUiPrefs`. The theme NAME is passed
+ * through unvalidated (the daemon has no theme registry); the TUI-side
+ * apply validates it against its own registry.
+ */
+export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
+  let parsed: Record<string, unknown> = {}
+  try {
+    const raw = JSON.parse(readFileSync(statePath, "utf8")) as unknown
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) parsed = raw as Record<string, unknown>
+  } catch {
+    // Missing or malformed state.json → defaults. Never surface — the
+    // prefs channel must always have a sane value to replay.
+  }
+  const theme = typeof parsed.activeTheme === "string" && parsed.activeTheme.length > 0 ? parsed.activeTheme : "claude"
+  const transparentBackground = parsed.transparentBackground === true
+  const focusAccent =
+    typeof parsed.focusAccent === "string" &&
+    (FOCUS_ACCENT_SLOT_NAMES as readonly string[]).includes(parsed.focusAccent)
+      ? parsed.focusAccent
+      : null
+  return { theme, transparentBackground, focusAccent }
+}
+
+function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
+  return a.theme === b.theme && a.transparentBackground === b.transparentBackground && a.focusAccent === b.focusAccent
+}
+
+export interface UiPrefsWatcherOptions {
+  /** State-file path to watch. Defaults to {@link defaultUiPrefsStatePath}. */
+  readonly statePath?: string
+  /**
+   * Debounce between a file event and the read+publish. `<= 0` disables
+   * the watcher entirely (returns a no-op stop, publishes nothing) — the
+   * same disable convention as the server's other pollers.
+   */
+  readonly debounceMs?: number
+}
+
+/**
+ * Start the watcher: publish the current prefs immediately (replay seed),
+ * then re-read + publish-on-change after every debounced state-file
+ * event. Returns a `stop()` that closes the fs watcher and clears any
+ * pending debounce.
+ */
+export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcherOptions = {}): () => void {
+  const debounceMs = options.debounceMs ?? DEFAULT_UI_PREFS_DEBOUNCE_MS
+  if (debounceMs <= 0) return () => {}
+  const statePath = options.statePath ?? defaultUiPrefsStatePath()
+  const stateDir = dirname(statePath)
+  const stateFile = basename(statePath)
+
+  let last = readUiPrefsFromStateFile(statePath)
+  bus.publish("ui-prefs", last)
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const readAndPublish = (): void => {
+    timer = null
+    try {
+      const next = readUiPrefsFromStateFile(statePath)
+      if (samePrefs(last, next)) return
+      last = next
+      bus.publish("ui-prefs", next)
+    } catch (err) {
+      logDaemonError("ui-prefs-watcher", err)
+    }
+  }
+
+  let watcher: FSWatcher | null = null
+  try {
+    // The dir may not exist yet on a fresh home (the State Store mkdirs at
+    // its first write); create it so `watch` has something to attach to.
+    mkdirSync(stateDir, { recursive: true })
+    watcher = watch(stateDir, (_event, filename) => {
+      // Only the state file's own events matter (the tmp file's create is
+      // always followed by the rename event on the real name). A `null`
+      // filename (platforms that omit it) conservatively counts as a match
+      // — the debounce + changed-only publish make the extra read cheap.
+      if (filename !== null && filename !== stateFile) return
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(readAndPublish, debounceMs)
+      timer.unref?.()
+    })
+    watcher.on("error", (err) => logDaemonError("ui-prefs-watcher", err))
+  } catch (err) {
+    // No watcher → panes keep the boot-time prefs they read themselves
+    // (the documented degraded mode). The initial publish above still
+    // serves the at-start value to subscribers.
+    logDaemonError("ui-prefs-watcher", err)
+  }
+
+  return () => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    watcher?.close()
+    watcher = null
+  }
+}

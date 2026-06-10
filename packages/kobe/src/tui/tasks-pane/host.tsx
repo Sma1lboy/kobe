@@ -70,7 +70,6 @@ import { useTheme } from "../context/theme"
 import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
 import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
 import {
   type CreateTaskContext,
@@ -108,8 +107,6 @@ function worktreeCwdUsable(cwd: string | undefined): cwd is string {
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   initialTaskId?: string
-  transparent: boolean
-  focusAccent: PersistedUiPrefs["focusAccent"]
   /**
    * The shared task-state framework: one daemon-backed RemoteOrchestrator
    * used for BOTH the live subscribe (reads) and every mutation (writes),
@@ -121,8 +118,7 @@ function TasksShell(props: {
   /** Force an immediate tasks.json re-read after a mutation (poll fallback). */
   reload: () => Promise<void>
 }) {
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
+  const { theme } = useTheme()
   const dialog = useDialog()
   const kv = useKV()
   const notif = useNotifications()
@@ -187,10 +183,9 @@ function TasksShell(props: {
     setSelectedId(active)
   })
 
-  onMount(() => {
-    themeCtx.setTransparentBackground(props.transparent)
-    if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
-  })
+  // Visual prefs (theme / transparent / focus accent) are applied
+  // centrally — boot + live `ui-prefs` pushes — by host-boot's
+  // UiPrefsSync; this shell no longer re-applies them itself.
 
   // Update info comes from the daemon-owned `update` channel (the daemon polls
   // npm once and fans it out) rather than each pane hitting the registry. Keep
@@ -724,11 +719,11 @@ export async function startTasksPane(opts: { initialTaskId?: string } = {}): Pro
     // only consumes the error toasts; per-ChatTab completion
     // notifications belong to the outer chat surface.
     providers: { notifications: true },
-    setup: (prefs) => setupTasksPane(opts, prefs),
+    setup: () => setupTasksPane(opts),
   })
 }
 
-async function setupTasksPane(opts: { initialTaskId?: string }, prefs: PersistedUiPrefs): Promise<HostScreen> {
+async function setupTasksPane(opts: { initialTaskId?: string }): Promise<HostScreen> {
   // Task source. PRIMARY = a live daemon SUBSCRIBE (via RemoteOrchestrator):
   // a task created / renamed / deleted in ANY session's Tasks pane or in
   // the outer monitor is pushed to THIS pane in real time, so every
@@ -794,14 +789,7 @@ async function setupTasksPane(opts: { initialTaskId?: string }, prefs: Persisted
   return {
     root: () => (
       <>
-        <TasksShell
-          tasks={tasks}
-          initialTaskId={opts.initialTaskId}
-          orch={orch}
-          transparent={prefs.transparent}
-          focusAccent={prefs.focusAccent}
-          reload={reload}
-        />
+        <TasksShell tasks={tasks} initialTaskId={opts.initialTaskId} orch={orch} reload={reload} />
         <ToastOverlay />
       </>
     ),

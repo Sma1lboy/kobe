@@ -24,6 +24,7 @@ import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
+import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
 // (tests, the kobe-web bridge) can reach it via the existing
@@ -66,6 +67,8 @@ export interface DaemonServerOptions {
   readonly updatePollMs?: number
   /** Auto-title re-scan interval in ms; `0` disables. Defaults to {@link DEFAULT_AUTO_TITLE_POLL_MS}. */
   readonly autoTitlePollMs?: number
+  /** UI-prefs watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_UI_PREFS_DEBOUNCE_MS}. */
+  readonly uiPrefsDebounceMs?: number
 }
 
 export interface DaemonServer {
@@ -242,6 +245,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const autoTitlePollMs = options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS
   const stopAutoTitlePoller = startAutoTitlePoller(orch, autoTitlePollMs)
 
+  // Live visual prefs (KOB — cross-session theme propagation): watch
+  // `state.json` for the theme / transparent / focus-accent keys and
+  // publish them on the `ui-prefs` channel, so every pane in EVERY task
+  // session re-applies a Settings appearance change live instead of
+  // keeping its boot-time read forever. The state path follows the same
+  // homeDir the server was started with, so sandbox/test homes isolate.
+  const stopUiPrefsWatcher = startUiPrefsWatcher(bus, {
+    statePath: defaultUiPrefsStatePath(options.homeDir),
+    debounceMs: options.uiPrefsDebounceMs ?? DEFAULT_UI_PREFS_DEBOUNCE_MS,
+  })
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -253,6 +267,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       unsubscribeStore()
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
+      stopUiPrefsWatcher()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

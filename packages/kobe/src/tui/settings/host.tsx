@@ -17,33 +17,25 @@
  */
 
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SettingsDialog } from "../component/settings-dialog"
 import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
-import type { PersistedUiPrefs } from "../lib/persisted-ui-prefs"
 import { currentSessionName, refreshKobeWorkspacePanes } from "../panes/terminal/tmux"
 import { useDialog } from "../ui/dialog"
 
-function SettingsPage(props: {
-  orchestrator: RemoteOrchestrator | null
-  transparent: boolean
-  focusAccent: PersistedUiPrefs["focusAccent"]
-}) {
+function SettingsPage(props: { orchestrator: RemoteOrchestrator | null }) {
   const kv = useKV()
   const dialog = useDialog()
-  const themeCtx = useTheme()
-  const { theme } = themeCtx
+  const { theme } = useTheme()
   let visualPrefsChanged = false
   let exiting = false
 
-  onMount(() => {
-    themeCtx.setTransparentBackground(props.transparent)
-    if (props.focusAccent) themeCtx.setFocusAccent(props.focusAccent)
-  })
+  // Visual prefs (theme / transparent / focus accent) are applied
+  // centrally — boot + live `ui-prefs` pushes — by host-boot's
+  // UiPrefsSync; this page no longer re-applies them itself.
 
   async function exit(): Promise<void> {
     if (exiting) return
@@ -102,7 +94,7 @@ function SettingsPage(props: {
 
 export async function startSettingsHost(): Promise<void> {
   await bootPaneHost({
-    setup: async (prefs) => {
+    setup: async () => {
       let orch: RemoteOrchestrator | null = null
       try {
         const client = await connectOrStartDaemon()
@@ -113,9 +105,7 @@ export async function startSettingsHost(): Promise<void> {
         console.error("[kobe settings] daemon unavailable; Restart backend disabled:", err)
       }
       return {
-        root: () => (
-          <SettingsPage orchestrator={orch} transparent={prefs.transparent} focusAccent={prefs.focusAccent} />
-        ),
+        root: () => <SettingsPage orchestrator={orch} />,
         onDestroy: () => {
           orch?.dispose()
         },

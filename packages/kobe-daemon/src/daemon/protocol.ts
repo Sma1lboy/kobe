@@ -173,17 +173,38 @@ export interface ChannelPayloads {
    * recent task's state; the daemon also lets a state lapse back to idle.
    */
   "engine-state": { taskId: string; state: TaskActivityState; detail?: EngineActivityDetail; at: number }
+  /**
+   * The user's persisted VISUAL prefs (`state.json`'s `activeTheme` /
+   * `transparentBackground` / `focusAccent`), pushed whenever the daemon's
+   * file watcher sees them change. Every pane host applies the payload live
+   * so a theme switch in one session's Settings restyles the Tasks/Ops
+   * panes of EVERY task session — without this, each pane read the prefs
+   * once at boot and kept the old look forever. Last-value replay hydrates
+   * a late/reconnecting subscriber. `focusAccent` is the raw slot string
+   * (`null` = unset → the default slot); the TUI side validates it — the
+   * daemon stays vendor/UI-neutral and just mirrors the file.
+   */
+  "ui-prefs": { theme: string; transparentBackground: boolean; focusAccent: string | null }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
   // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
 }
 
+/** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
+export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
+
 /** A push-channel name (a key of {@link ChannelPayloads}). */
 export type ChannelName = keyof ChannelPayloads
 
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
-export const CHANNEL_NAMES: readonly ChannelName[] = ["task.snapshot", "active-task", "update", "engine-state"]
+export const CHANNEL_NAMES: readonly ChannelName[] = [
+  "task.snapshot",
+  "active-task",
+  "update",
+  "engine-state",
+  "ui-prefs",
+]
 
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a

@@ -17,6 +17,7 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
   type SubscribeRole,
+  type UiPrefsPayload,
   isDaemonVersionStale,
   isProtocolCompatible,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
@@ -72,6 +73,8 @@ export class RemoteOrchestrator {
   private readonly setDaemonVersionSig: (next: string | null) => void
   private readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
   private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
+  private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
+  private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -89,6 +92,7 @@ export class RemoteOrchestrator {
     const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
     const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
+    const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
@@ -100,6 +104,8 @@ export class RemoteOrchestrator {
     this.setDaemonVersionSig = (next) => setDaemonVersion(() => next)
     this.engineStateAcc = engineState
     this.setEngineStateSig = (next) => setEngineState(() => next)
+    this.uiPrefsAcc = uiPrefs
+    this.setUiPrefsSig = (next) => setUiPrefs(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -298,6 +304,18 @@ export class RemoteOrchestrator {
     return this.engineStateAcc
   }
 
+  /**
+   * The persisted visual prefs (theme / transparent / focus accent),
+   * pushed live on the daemon's `ui-prefs` channel from its state-file
+   * watcher. `null` until the first payload arrives (e.g. before the
+   * subscribe replay, or talking to an older daemon without the channel).
+   * Consumed by every pane host's boot sequence (`tui/lib/host-boot.tsx`)
+   * to re-apply appearance changes live across all task sessions.
+   */
+  uiPrefsSignal(): Accessor<UiPrefsPayload | null> {
+    return this.uiPrefsAcc
+  }
+
   listTasks(): Task[] {
     return this.tasksAcc()
   }
@@ -441,6 +459,16 @@ export class RemoteOrchestrator {
       if (p.state === "idle") next.delete(p.taskId)
       else next.set(p.taskId, { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 })
       this.setEngineStateSig(next)
+      return
+    }
+    if (name === "ui-prefs") {
+      const p = payload as Partial<UiPrefsPayload> | undefined
+      if (typeof p?.theme !== "string") return
+      this.setUiPrefsSig({
+        theme: p.theme,
+        transparentBackground: p.transparentBackground === true,
+        focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
+      })
       return
     }
   }

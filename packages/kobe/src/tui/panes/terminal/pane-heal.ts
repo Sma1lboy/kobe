@@ -221,11 +221,23 @@ export async function healKobePaneVersions(
 }
 
 /**
- * Settings changes like transparent background are read by each kobe-owned
- * pane process at startup. After the full-window Settings page exits, the
- * existing Tasks/Ops panes in sibling ChatTabs are still alive, so respawn
- * only those helper panes in place to make the new UI prefs visible without
- * touching the user's engine or shell panes.
+ * Settings changes are read by each kobe-owned pane process at startup.
+ * After the full-window Settings page exits, the existing Tasks/Ops panes
+ * in sibling ChatTabs are still alive, so respawn only those helper panes
+ * in place to make the new prefs visible without touching the user's
+ * engine or shell panes.
+ *
+ * Scope note (KOB — live theme propagation): the VISUAL prefs (theme /
+ * transparent / focus accent) no longer depend on this respawn — every
+ * pane re-applies them live from the daemon's `ui-prefs` channel
+ * (host-boot's UiPrefsSync), across ALL sessions. This refresh stays
+ * because it still serves everything else: NON-visual prefs each pane's
+ * KVProvider snapshotted at boot (notification toggles, settings surface,
+ * editor kind, …) and the no-daemon degraded mode. It also remains the
+ * single owner of the tmux border re-style below — the two border options
+ * are server-global, so this one call after a Settings exit covers every
+ * session; applying them from each pane's live-prefs hook would just race
+ * the same `set-option`s.
  */
 export async function refreshKobeWorkspacePanes(session: string): Promise<void> {
   const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])

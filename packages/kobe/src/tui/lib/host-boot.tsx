@@ -28,15 +28,18 @@
  */
 
 import { render } from "@opentui/solid"
-import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
-import type { JSX } from "solid-js"
+import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
+import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { type JSX, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { FocusProvider } from "../context/focus"
 import { applyUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
-import { ThemeProvider, addTheme } from "../context/theme"
+import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
 import { DialogProvider } from "../ui/dialog"
+import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
 
 /**
@@ -92,10 +95,11 @@ export interface BootPaneHostOpts {
   /**
    * Per-host pre-render work (daemon connect, store load, context
    * resolution). Runs AFTER the boot steps and the prefs read — same order
-   * every host already used — and receives the persisted prefs so the host
-   * can thread `transparent` / `focusAccent` into its shell. Hosts that
-   * ignore those prefs today (new-task, quick-task, update, preview) keep
-   * ignoring them; applying them centrally would be a behavior change.
+   * every host already used — and receives the persisted prefs for hosts
+   * that key non-visual decisions off them. The VISUAL prefs themselves
+   * (theme + transparent + focus accent) are applied centrally by
+   * {@link UiPrefsSync} for every host — at boot and live on the daemon's
+   * `ui-prefs` channel — so a host never re-applies them itself.
    */
   readonly setup: (prefs: PersistedUiPrefs) => HostScreen | Promise<HostScreen>
 }
@@ -161,6 +165,98 @@ function HostProviders(props: {
 }
 
 /**
+ * Visual-prefs application, ONCE for every host (KOB — live theme
+ * propagation). Mounted by `bootPaneHost` inside the provider nest, ahead
+ * of the host's own root:
+ *
+ *   1. **Boot**: applies the persisted theme + transparent + focus accent
+ *      uniformly. This also fixed a drift — new-task / quick-task / update
+ *      / ops-preview used to apply only `prefs.theme` while tasks /
+ *      settings / ops each hand-applied the other two in their own
+ *      `onMount`; all hosts now take all three through one
+ *      {@link applyUiPrefs} path.
+ *   2. **Live**: opens its OWN non-spawning daemon subscription (a
+ *      `role: "pane"` RemoteOrchestrator via `connectIfRunning`) and
+ *      re-applies every `ui-prefs` push, so a Settings appearance change
+ *      in ANY session restyles this pane immediately. A dedicated
+ *      connection — rather than threading each host's optional
+ *      orchestrator through here — keeps this a zero-wiring boot step for
+ *      every current and future host; the duplicate pane socket in hosts
+ *      that already have one is cheap and never holds the daemon alive.
+ *
+ * Degraded mode (accepted): with no daemon running at mount,
+ * `connectIfRunning` yields null and the pane keeps its boot-time prefs —
+ * same fallback stance as the Tasks pane's file-poll. A pane that HAD a
+ * connection auto-reconnects (RemoteOrchestrator's pane reconnect loop)
+ * and the subscribe-time channel replay catches it up.
+ *
+ * Echo guard: the process that caused a prefs write receives its own push
+ * back; `applyUiPrefs` compares before every set, so identical values are
+ * a no-op.
+ *
+ * tmux borders are deliberately NOT re-applied here — the two border
+ * options are server-global, so the settings-exit flow's single
+ * `refreshKobeWorkspacePanes` → `applyTmuxPaneBorderTheme` call already
+ * covers every session; doing it from N panes would just race the same
+ * `set-option`s.
+ */
+function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
+  const themeCtx = useTheme()
+  const target: UiPrefsTarget = {
+    selectedTheme: () => themeCtx.selected,
+    hasTheme: (name) => themeCtx.has(name),
+    setTheme: (name) => themeCtx.set(name),
+    reloadUserThemes: () => {
+      for (const { name, theme } of loadUserThemes()) addTheme(name, theme)
+    },
+    transparentBackground: () => themeCtx.transparentBackground,
+    setTransparentBackground: (v) => themeCtx.setTransparentBackground(v),
+    focusAccent: () => themeCtx.focusAccent,
+    setFocusAccent: (slot) => themeCtx.setFocusAccent(slot),
+  }
+
+  // Boot application, during this component's render — the sibling host
+  // root renders after it, so it already sees the applied values (no
+  // transparent/accent flash; the theme name itself was also seeded via
+  // the ThemeProvider prop, making that branch a no-op here).
+  applyUiPrefs(target, {
+    theme: props.boot.theme,
+    transparentBackground: props.boot.transparent,
+    focusAccent: props.boot.focusAccent,
+  })
+
+  // Live subscription. The orchestrator lands in a signal so the effect
+  // below — created synchronously under THIS component's owner — starts
+  // tracking `uiPrefsSignal()` once the async connect resolves.
+  const [prefsOrch, setPrefsOrch] = createSignal<RemoteOrchestrator | null>(null)
+  onMount(() => {
+    void (async () => {
+      try {
+        // NON-spawning connect (same rule as the Tasks pane): a helper
+        // subscription must never resurrect an idle-stopped daemon.
+        const client = await connectIfRunning()
+        if (!client) {
+          logClient("ui-prefs", "no daemon — keeping boot-time visual prefs")
+          return
+        }
+        const remote = new RemoteOrchestrator(client)
+        await remote.init()
+        setPrefsOrch(remote)
+      } catch (err) {
+        logClientError("ui-prefs", err)
+      }
+    })()
+  })
+  createEffect(() => {
+    const payload = prefsOrch()?.uiPrefsSignal()()
+    if (payload) applyUiPrefs(target, payload)
+  })
+  onCleanup(() => prefsOrch()?.dispose())
+
+  return null
+}
+
+/**
  * Boot a standalone pane host: shared steps → prefs read → per-host `setup`
  * → provider-wrapped `render`. Resolves when `render` resolves (at mount),
  * exactly like the inline blocks it replaced.
@@ -175,6 +271,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
   await render(
     () => (
       <HostProviders theme={prefs.theme} kv={kv} focus={focus} notifications={notifications}>
+        <UiPrefsSync boot={prefs} />
         {screen.root()}
       </HostProviders>
     ),
