@@ -47,21 +47,7 @@ import {
 import { type DialogContext, useDialog } from "../ui/dialog"
 import { RenameTaskDialog } from "./rename-task-dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./settings-dialog/actions"
-import {
-  type NavLevel,
-  SECTIONS,
-  type SectionId,
-  bodyRowCount as countBodyRows,
-  editorCustomRowIndex,
-  editorKindRowIndex,
-  experimentalRemoteRowIndex,
-  focusAccentRowIndex,
-  soundRowIndex,
-  surfaceChattabRowIndex,
-  surfaceTaskpanelRowIndex,
-  toastRowIndex,
-  transparentRowIndex,
-} from "./settings-dialog/model"
+import { type NavLevel, SECTIONS, type SectionId, type SettingsRow, rowAt, sectionRows } from "./settings-dialog/model"
 import {
   AccountsSettingsSection,
   DevSettingsSection,
@@ -146,45 +132,23 @@ export function SettingsDialog(props: SettingsDialogProps) {
     void detectCopilotAccount().then(setCopilotStatus)
   })
 
+  /**
+   * The active section's ordered navigable rows (the row registry). A
+   * row's body index is its position here — recomputed per call, like
+   * the old count helpers, so kv-driven changes (custom engines) are
+   * always fresh in key handlers.
+   */
+  function bodyRows(): SettingsRow[] {
+    return sectionRows(section(), {
+      themeNames: themeNames(),
+      focusAccentSlots: FOCUS_ACCENT_SLOTS,
+      engineList: engineList(),
+      hasDaemon,
+    })
+  }
+
   function bodyRowCount(): number {
-    return countBodyRows(section(), themeNames().length, FOCUS_ACCENT_SLOTS.length, hasDaemon, customEngines().length)
-  }
-
-  function isTransparentRow(): boolean {
-    return section() === "general" && bodyRow() === transparentRowIndex(themeNames().length)
-  }
-
-  function currentFocusAccentRow(): number | null {
-    if (section() !== "general") return null
-    return focusAccentRowIndex(bodyRow(), themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isToastRow(): boolean {
-    return section() === "general" && bodyRow() === toastRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isSoundRow(): boolean {
-    return section() === "general" && bodyRow() === soundRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isSurfaceChattabRow(): boolean {
-    return (
-      section() === "general" && bodyRow() === surfaceChattabRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-    )
-  }
-
-  function isSurfaceTaskpanelRow(): boolean {
-    return (
-      section() === "general" && bodyRow() === surfaceTaskpanelRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-    )
-  }
-
-  function isEditorKindRow(): boolean {
-    return section() === "general" && bodyRow() === editorKindRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  }
-
-  function isEditorCustomRow(): boolean {
-    return section() === "general" && bodyRow() === editorCustomRowIndex(themeNames().length, FOCUS_ACCENT_SLOTS.length)
+    return bodyRows().length
   }
 
   function settingsSurface(): SettingsSurface {
@@ -371,7 +335,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
   /** The engine row under the body cursor, or null on the "+ Add engine" row / off-section. */
   function currentEngineRow(): VendorId | null {
     if (section() !== "engines" || level() !== "body") return null
-    return engineList()[bodyRow()] ?? null
+    const row = rowAt(bodyRows(), bodyRow())
+    return row?.kind === "engine" ? row.vendor : null
   }
 
   // Editor preference: which editor the file tree's `e` key launches.
@@ -465,7 +430,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (len === 0) return
     const next = (bodyRow() + delta + len) % len
     setBodyRow(next)
-    if (section() === "general" && next < themeNames().length) setThemeCursor(next)
+    if (rowAt(bodyRows(), next)?.kind === "theme") setThemeCursor(next)
   }
 
   function switchSection(id: SectionId): void {
@@ -475,67 +440,34 @@ export function SettingsDialog(props: SettingsDialogProps) {
     setLevel("sidebar")
   }
 
+  /**
+   * Activation lookup, keyed by row kind. Payload-bearing rows (theme,
+   * accent slot, engine vendor, surface) carry their payload in the
+   * descriptor, so enter never reverse-engineers it from an index.
+   */
+  const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
+    theme: (row) => selectTheme(row.name),
+    transparent: () => toggleTransparent(),
+    focusAccent: (row) => selectFocusAccent(row.slot),
+    toast: () => toggleToast(),
+    sound: () => toggleSound(),
+    surface: (row) => selectSurface(row.surface),
+    editorKind: () => cycleEditorKind(),
+    editorCustom: () => void editEditorCustom(),
+    engine: (row) => void editEngine(row.vendor),
+    engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
+    feedbackTitle: () => void editFeedbackTitle(),
+    feedbackBody: () => void editFeedbackBody(),
+    feedbackSend: () => void sendFeedback(),
+    devReset: () => void confirmResetState(dialog, props.kv, renderer),
+    devRestartDaemon: () => void confirmRestartDaemon(dialog, props.orchestrator, renderer),
+    devRemoteProjects: () => toggleRemoteProjects(),
+  }
+
   function activateBodyRow(): void {
-    if (section() === "general") {
-      if (isTransparentRow()) {
-        toggleTransparent()
-        return
-      }
-      const focusIdx = currentFocusAccentRow()
-      if (focusIdx !== null) {
-        const slot = FOCUS_ACCENT_SLOTS[focusIdx]
-        if (slot) selectFocusAccent(slot)
-        return
-      }
-      if (isToastRow()) {
-        toggleToast()
-        return
-      }
-      if (isSoundRow()) {
-        toggleSound()
-        return
-      }
-      if (isSurfaceChattabRow()) {
-        selectSurface("chattab")
-        return
-      }
-      if (isSurfaceTaskpanelRow()) {
-        selectSurface("taskpanel")
-        return
-      }
-      if (isEditorKindRow()) {
-        cycleEditorKind()
-        return
-      }
-      if (isEditorCustomRow()) {
-        void editEditorCustom()
-        return
-      }
-      const name = themeNames()[bodyRow()]
-      if (name) selectTheme(name)
-      return
-    }
-    if (section() === "engines") {
-      const list = engineList()
-      if (bodyRow() < list.length) {
-        const vendor = list[bodyRow()]
-        if (vendor) void editEngine(vendor)
-      } else {
-        void addEngineFlow() // the trailing "+ Add engine" row
-      }
-      return
-    }
-    if (section() === "feedback") {
-      if (bodyRow() === 0) void editFeedbackTitle()
-      else if (bodyRow() === 1) void editFeedbackBody()
-      else if (bodyRow() === 2) void sendFeedback()
-      return
-    }
-    if (section() === "dev") {
-      if (bodyRow() === 0) void confirmResetState(dialog, props.kv, renderer)
-      else if (hasDaemon && bodyRow() === 1) void confirmRestartDaemon(dialog, props.orchestrator, renderer)
-      else if (bodyRow() === experimentalRemoteRowIndex(hasDaemon)) toggleRemoteProjects()
-    }
+    const row = rowAt(bodyRows(), bodyRow())
+    if (!row) return
+    ;(rowActivators[row.kind] as (row: SettingsRow) => void)(row)
   }
 
   useBindings(() => ({

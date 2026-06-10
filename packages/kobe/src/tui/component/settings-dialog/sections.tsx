@@ -12,14 +12,11 @@ import {
   type NavLevel,
   SECTIONS,
   type SectionId,
-  editorCustomRowIndex,
-  editorKindRowIndex,
-  experimentalRemoteRowIndex,
-  soundRowIndex,
-  surfaceChattabRowIndex,
-  surfaceTaskpanelRowIndex,
-  toastRowIndex,
-  transparentRowIndex,
+  devRows,
+  focusAccentRowId,
+  generalRows,
+  rowIndex,
+  surfaceRowId,
 } from "./model"
 
 type CursorSetters = {
@@ -84,13 +81,18 @@ export function GeneralSettingsSection(
 ) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
-  const toastRow = () => toastRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const soundRow = () => soundRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const surfaceChattabRow = () => surfaceChattabRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const surfaceTaskpanelRow = () => surfaceTaskpanelRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const editorKindRow = () => editorKindRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const editorCustomRow = () => editorCustomRowIndex(props.themeNames().length, FOCUS_ACCENT_SLOTS.length)
-  const isTransparentRow = () => props.bodyRow() === transparentRowIndex(props.themeNames().length)
+  // Row registry for this section — a row's body index is its position
+  // in the list, so every index below is an id lookup, not arithmetic.
+  const rows = () => generalRows({ themeNames: props.themeNames(), focusAccentSlots: FOCUS_ACCENT_SLOTS })
+  const rowIdx = (id: string) => rowIndex(rows(), id)
+  const transparentRow = () => rowIdx("transparent")
+  const toastRow = () => rowIdx("toast")
+  const soundRow = () => rowIdx("sound")
+  const surfaceChattabRow = () => rowIdx(surfaceRowId("chattab"))
+  const surfaceTaskpanelRow = () => rowIdx(surfaceRowId("taskpanel"))
+  const editorKindRow = () => rowIdx("editor-kind")
+  const editorCustomRow = () => rowIdx("editor-custom")
+  const isTransparentRow = () => props.bodyRow() === transparentRow()
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
   const isSurfaceChattabRow = () => props.bodyRow() === surfaceChattabRow()
@@ -150,7 +152,7 @@ export function GeneralSettingsSection(
           backgroundColor={isTransparentRow() ? theme.primary : undefined}
           onMouseUp={() => {
             props.setLevel("body")
-            props.setBodyRow(transparentRowIndex(props.themeNames().length))
+            props.setBodyRow(transparentRow())
             props.toggleTransparent()
           }}
         >
@@ -177,9 +179,9 @@ export function GeneralSettingsSection(
           Color of focused pane title, ▌ marker, and split borders.
         </text>
         <For each={FOCUS_ACCENT_SLOTS}>
-          {(slot, i) => {
-            const rowIndex = () => props.themeNames().length + 1 + i()
-            const isCursor = () => props.level() === "body" && props.bodyRow() === rowIndex()
+          {(slot) => {
+            const accentRow = () => rowIdx(focusAccentRowId(slot))
+            const isCursor = () => props.level() === "body" && props.bodyRow() === accentRow()
             const isSelected = () => themeCtx.focusAccent === slot
             return (
               <box
@@ -190,7 +192,7 @@ export function GeneralSettingsSection(
                 backgroundColor={isCursor() ? theme.primary : undefined}
                 onMouseUp={() => {
                   props.setLevel("body")
-                  props.setBodyRow(rowIndex())
+                  props.setBodyRow(accentRow())
                   props.selectFocusAccent(slot)
                 }}
               >
@@ -714,7 +716,7 @@ export function DevSettingsSection(
   const { theme } = useTheme()
   const resetIsCursor = () => props.level() === "body" && props.bodyRow() === 0
   const restartIsCursor = () => props.level() === "body" && props.bodyRow() === 1
-  const experimentalRow = () => experimentalRemoteRowIndex(props.hasDaemon)
+  const experimentalRow = () => rowIndex(devRows(props.hasDaemon), "remote-projects")
   const remoteIsCursor = () => props.level() === "body" && props.bodyRow() === experimentalRow()
   return (
     <box flexDirection="column" gap={1}>
