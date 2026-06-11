@@ -15,9 +15,18 @@
  */
 
 import { existsSync } from "node:fs"
+import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { WEB_HEALTH_MARKER, WEB_HEALTH_PATH, createBridgeServer } from "kobe-web/server"
+
+/** Which daemon home this `kobe web` is wired to — production `~/.kobe` unless
+ *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
+ *  so it's never a mystery which task index the dashboard is showing. */
+function homeLabel(): string {
+  const explicit = process.env.KOBE_HOME_DIR?.trim()
+  return explicit ? `sandbox: ${explicit}` : `${homedir()}/.kobe (production)`
+}
 
 type PtyProcess = ReturnType<typeof Bun.spawn>
 
@@ -166,9 +175,11 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
 
     if (bridgeOnly) {
       process.stdout.write(`kobe web bridge listening on http://localhost:${bridge.port} (routes only)\n`)
+      process.stdout.write(`  home: ${homeLabel()}\n`)
     } else {
       pty = await startPtyServer({ webPort: bridge.port, takeover })
       process.stdout.write(`kobe web → http://localhost:${bridge.port}\n`)
+      process.stdout.write(`  home: ${homeLabel()}\n`)
       if (!pty) {
         process.stderr.write("kobe web: PTY server not found; terminal tabs will be unavailable\n")
       }
