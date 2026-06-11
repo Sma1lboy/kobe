@@ -107,15 +107,47 @@ engine inside it. Without this a web delete leaves an orphaned engine running,
 the same bug `kobe api delete` had. Un-archive (`archived: false`) deliberately
 does NOT tear down.
 
+## SPA routes
+
+TanStack Router, file-based ([`src/routes/`](../../packages/kobe-web/src/routes)):
+
+| Route | Surface |
+|---|---|
+| `/` | The workspace shell (rail + tabs + tools). |
+| `/task/$taskId` | Deep link — selects the task; back/forward walks task-switch history. |
+| `/overview` | Mission-control triage of every task (needs you / working / dirty / quiet). |
+
 ## Workspace tabs
 
 Tab + split state is purely client-owned and persisted in localStorage
 ([`src/lib/tabs.ts`](../../packages/kobe-web/src/lib/tabs.ts)). Tab kinds:
 
-- **vendor** — engine PTY (with a prompt composer + reattach affordance).
+- **vendor** — engine PTY (with a prompt composer + reattach affordance). xterm
+  is lazy-loaded so it only weighs on first terminal open.
 - **terminal** — shell PTY in the worktree.
 - **transcript** — structured read-only chat render over `/api/history`.
-- **file** — read-only diff preview opened from the Changes rail.
+- **file** — read-only diff preview (with a line-number gutter + `+/−` stats).
+
+## SPA surfaces & client modules
+
+Beyond the rail/tabs/tools grammar, the dashboard carries:
+
+- **Command palette** (Cmd/Ctrl+K) — fuzzy task jump + actions; `?` opens a
+  keyboard-help overlay. ([`CommandPalette.tsx`](../../packages/kobe-web/src/components/CommandPalette.tsx), [`KeyboardHelp.tsx`](../../packages/kobe-web/src/components/KeyboardHelp.tsx))
+- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer.
+- **Settings** — live theme picker (precedence: web-local override > TUI `ui-prefs` > claude, [`lib/theme.ts`](../../packages/kobe-web/src/lib/theme.ts)), engines, notifications, connection/version.
+- **Desktop notifications** ([`lib/notify.ts`](../../packages/kobe-web/src/lib/notify.ts)) — fire on the rising edge into `waiting_permission`/`error` while the tab is hidden.
+- **Resilience** — a root error boundary (no white-screen) and a daemon-offline banner; failed mutations surface in a toast stack ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)).
+
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (relative time), the extracted `shouldNotify` / `resolveEffectiveTheme`, plus the bridge route + channel + allowlist contracts.
+
+## Dev: production vs sandbox
+
+`bun --filter kobe-web dev` connects to the **production** `~/.kobe` daemon and
+prints a banner saying so. `bun --filter kobe-web dev:sandbox` points
+`KOBE_HOME_DIR` at the TUI's shared `.dev-sandbox/home` (+ the `kobe-sandbox`
+tmux socket) so the bridge, PTY engines, and tmux stay isolated. `bun run test`
+touches no daemon at all — its isolation is unconditional.
 
 ## Security posture (current + gaps)
 
