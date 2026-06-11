@@ -59,4 +59,12 @@ describe("formatTokens", () => {
     expect(formatTokens(42_000)).toBe("42.0k")
     expect(formatTokens(2_300_000)).toBe("2.3m")
   })
+
+  it("switches suffix at the EXACT threshold (>=, not >)", () => {
+    // The boundary is the bit a `>` refactor would silently break: 999 stays
+    // raw, 1000 is already "1.0k", and 1_000_000 is already "1.0m".
+    expect(formatTokens(1_000)).toBe("1.0k")
+    expect(formatTokens(999_999)).toBe("1000.0k") // just under 1m → still k
+    expect(formatTokens(1_000_000)).toBe("1.0m")
+  })
 })
