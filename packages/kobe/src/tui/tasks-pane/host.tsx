@@ -63,7 +63,7 @@ import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
-import { bindByIds } from "../context/keybindings"
+import { bindByIds, keymapVersion } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
@@ -676,6 +676,10 @@ function ShortcutHints(props: {
   // ("ctrl+hjkl", "ctrl+[/]") are kept only while the relevant keys are
   // still at their defaults — overridden keys render as plain chords.
   const tmuxHints = (): ReadonlyArray<Hint> => {
+    // Re-derive after a live keybindings reload: the bump invalidates this
+    // accessor so the footer re-renders with the freshly-resolved tmux
+    // chords (the resolver's cache is cleared in the same reload).
+    keymapVersion()
     const res = resolveUserTmuxKeys()
     const b = res.binds
     const out: Hint[] = []

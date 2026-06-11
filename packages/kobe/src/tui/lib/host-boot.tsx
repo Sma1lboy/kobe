@@ -33,7 +33,7 @@ import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { type JSX, createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { FocusProvider } from "../context/focus"
-import { applyUserKeybindings } from "../context/keybindings-user"
+import { applyUserKeybindings, reloadUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
@@ -250,6 +250,25 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   createEffect(() => {
     const payload = prefsOrch()?.uiPrefsSignal()()
     if (payload) applyUiPrefs(target, payload)
+  })
+
+  // Live keybindings (KOB — cross-session keybinding propagation): the
+  // daemon's keybindings watcher bumps a `rev` on the `keybindings` channel
+  // whenever keybindings.yaml changes. Re-read + re-apply onto KobeKeymap so
+  // this pane's chords (and their legend) update without a session rebuild.
+  // Skip the FIRST observed rev — it's the replay of the boot value, already
+  // applied by `applyUserKeybindings()` in bootPaneHost; only later bumps are
+  // real edits. Same degraded/reconnect stance as the prefs effect above.
+  let lastKeybindingsRev: number | null = null
+  createEffect(() => {
+    const rev = prefsOrch()?.keybindingsRevSignal()()
+    if (rev == null) return
+    if (lastKeybindingsRev === null || rev === lastKeybindingsRev) {
+      lastKeybindingsRev = rev
+      return
+    }
+    lastKeybindingsRev = rev
+    reloadUserKeybindings()
   })
   onCleanup(() => prefsOrch()?.dispose())
 

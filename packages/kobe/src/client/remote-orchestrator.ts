@@ -75,6 +75,8 @@ export class RemoteOrchestrator {
   private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
   private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
+  private readonly keybindingsRevAcc: Accessor<number | null>
+  private readonly setKeybindingsRevSig: (next: number | null) => void
   private readonly connectionStateAcc: Accessor<DaemonConnectionState>
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
@@ -93,6 +95,7 @@ export class RemoteOrchestrator {
     const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
     const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
+    const [keybindingsRev, setKeybindingsRev] = createSignal<number | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
     this.tasksAcc = tasks
     this.setTasks = (next) => setTasks(() => next)
@@ -106,6 +109,8 @@ export class RemoteOrchestrator {
     this.setEngineStateSig = (next) => setEngineState(() => next)
     this.uiPrefsAcc = uiPrefs
     this.setUiPrefsSig = (next) => setUiPrefs(() => next)
+    this.keybindingsRevAcc = keybindingsRev
+    this.setKeybindingsRevSig = (next) => setKeybindingsRev(() => next)
     this.connectionStateAcc = connectionState
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
@@ -316,6 +321,19 @@ export class RemoteOrchestrator {
     return this.uiPrefsAcc
   }
 
+  /**
+   * The keybindings-file revision, bumped on the daemon's `keybindings`
+   * channel whenever `~/.kobe/settings/keybindings.yaml` changes. An opaque
+   * change token — only its transitions matter; a consumer re-reads +
+   * re-applies the file on each change. `null` until the first payload
+   * (before subscribe replay, or talking to an older daemon without the
+   * channel). Consumed by host-boot's `UiPrefsSync` to live-reload keys
+   * across every pane.
+   */
+  keybindingsRevSignal(): Accessor<number | null> {
+    return this.keybindingsRevAcc
+  }
+
   listTasks(): Task[] {
     return this.tasksAcc()
   }
@@ -473,6 +491,12 @@ export class RemoteOrchestrator {
         // Older daemons omit `keysCollapsed` → legend expanded.
         keysCollapsed: p.keysCollapsed === true,
       })
+      return
+    }
+    if (name === "keybindings") {
+      const p = payload as { rev?: number } | undefined
+      if (typeof p?.rev !== "number") return
+      this.setKeybindingsRevSig(p.rev)
       return
     }
   }

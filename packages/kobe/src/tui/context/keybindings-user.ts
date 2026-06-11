@@ -27,16 +27,17 @@
  * developer's own `~/.kobe/settings/keybindings.yaml` says.
  */
 
-import { readKeybindingsFile } from "../../state/keybindings-file"
+import { readKeybindingsFile, resetKeybindingsFileCache } from "../../state/keybindings-file"
 import {
   TMUX_FOCUS_DEFAULTS,
   TMUX_FOCUS_ID,
   TMUX_SINGLE_BINDING_DEFAULTS,
+  resetTmuxKeysCache,
   resolveTmuxKeyEntries,
   tmuxChordOptsFor,
 } from "../../tmux/keybindings"
 import { type AppliedOverride, applyKeymapOverrides, extractKeybindingOverrides } from "../lib/keymap-overrides"
-import { KobeKeymap } from "./keybindings"
+import { KobeKeymap, bumpKeymapVersion, resetKeymapToDefaults } from "./keybindings"
 
 export type UserKeybindingsReport = {
   /** Canonical config path (the `.yaml` spelling, even when `.yml` was read). */
@@ -111,4 +112,32 @@ export function applyUserKeybindings(): UserKeybindingsReport {
 /** Report from the boot-time load (loading first if needed). */
 export function userKeybindingsReport(): UserKeybindingsReport {
   return cached ?? applyUserKeybindings()
+}
+
+/**
+ * Re-read `keybindings.yaml` and re-apply it from a clean slate — the
+ * live-reload counterpart to {@link applyUserKeybindings} (KOB —
+ * cross-session keybinding propagation). Invoked when the daemon's
+ * keybindings watcher pings the `keybindings` channel.
+ *
+ * The order matters: the three per-process caches (file read, applied
+ * report, tmux resolution) are dropped, then `KobeKeymap` is reset to its
+ * boot-time defaults BEFORE re-applying — so removing an override actually
+ * restores the default instead of leaving the stale chord behind. A
+ * `keymapVersion` bump then re-renders the chord legends; binding BEHAVIOUR
+ * needs no nudge, since the dispatcher re-reads chords on every keypress.
+ *
+ * Scope note: this refreshes the in-process keymap (every `kobe` pane's
+ * chords + their legend display) and the tmux-hint DISPLAY. It does NOT
+ * re-bind the tmux SERVER keys (`tmux.*`) — those are installed at session
+ * build and still need a rebuild to change behaviour.
+ */
+export function reloadUserKeybindings(): UserKeybindingsReport {
+  cached = null
+  resetKeybindingsFileCache()
+  resetTmuxKeysCache()
+  resetKeymapToDefaults()
+  const report = applyUserKeybindings()
+  bumpKeymapVersion()
+  return report
 }

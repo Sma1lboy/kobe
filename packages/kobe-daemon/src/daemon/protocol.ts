@@ -196,6 +196,18 @@ export interface ChannelPayloads {
     sortMode: "default" | "recent"
     keysCollapsed: boolean
   }
+  /**
+   * "Re-read your keybindings" ping (KOB — live keybinding propagation).
+   * The daemon's keybindings-file watcher bumps `rev` whenever
+   * `~/.kobe/settings/keybindings.yaml` changes; every pane re-reads +
+   * re-applies the file onto its in-memory `KobeKeymap` (and re-renders the
+   * chord legends), so an edit takes effect across EVERY session without a
+   * rebuild. The daemon carries no keymap data — `rev` is an opaque change
+   * token; only its TRANSITIONS matter. Last-value replay lets a late
+   * subscriber learn the channel's current rev (it skips the first value so
+   * a fresh pane doesn't re-apply what it already read at boot).
+   */
+  keybindings: { rev: number }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -215,6 +227,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "update",
   "engine-state",
   "ui-prefs",
+  "keybindings",
 ]
 
 /**

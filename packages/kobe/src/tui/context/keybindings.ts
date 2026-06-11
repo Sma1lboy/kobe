@@ -68,6 +68,7 @@
  * actual byte path is ctrl+q.
  */
 
+import { createSignal } from "solid-js"
 import type { Binding } from "../lib/keymap"
 
 /** Pane scopes used to gate where a binding is active. */
@@ -761,6 +762,51 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "ctrl+[/]", label: "tab" },
   },
 ] as const
+
+/**
+ * Pristine snapshot of every row's overridable fields (`keys` + `hint`),
+ * captured at module load BEFORE any `applyKeymapOverrides` mutation. The
+ * live-reload path ({@link resetKeymapToDefaults}) restores from this so a
+ * removed override returns to its default — additive in-place mutation
+ * alone can't "un-override" a row.
+ */
+const KEYMAP_DEFAULTS: ReadonlyMap<string, { keys: readonly string[]; hint?: KobeBindingHint }> = new Map(
+  KobeKeymap.map((b) => [b.id, { keys: [...b.keys], hint: b.hint ? { ...b.hint } : undefined }]),
+)
+
+/**
+ * Restore every `KobeKeymap` row to its boot-time default chords + hint.
+ * Called before re-applying the (re-read) keybindings file on a live
+ * reload, so the net effect is "defaults + current overrides", never a
+ * pile-up of stale overrides. Mutates in place — the same cast
+ * `applyKeymapOverrides` uses, since the rows are runtime-mutable despite
+ * the `readonly` types.
+ */
+export function resetKeymapToDefaults(): void {
+  for (const row of KobeKeymap) {
+    const def = KEYMAP_DEFAULTS.get(row.id)
+    if (!def) continue
+    const mutable = row as { keys: readonly string[]; hint?: KobeBindingHint }
+    mutable.keys = [...def.keys]
+    mutable.hint = def.hint ? { ...def.hint } : undefined
+  }
+}
+
+/**
+ * A bump-only reactive token: every live keymap reload increments it. The
+ * chord LEGENDS (Tasks-pane footer, status bar) read it so they re-render
+ * after a reload — the keymap array itself isn't a Solid store, so a
+ * mutation is otherwise invisible to the renderer. Behaviour doesn't need
+ * it (the dispatcher re-reads chords on every keypress); this is purely the
+ * display nudge.
+ */
+const [keymapVersion, setKeymapVersion] = createSignal(0)
+export { keymapVersion }
+
+/** Increment {@link keymapVersion}, forcing chord legends to re-render. */
+export function bumpKeymapVersion(): void {
+  setKeymapVersion((v) => v + 1)
+}
 
 /** Lookup helper used by tests and pane registration. */
 export function findBinding(id: string): KobeBinding | undefined {
