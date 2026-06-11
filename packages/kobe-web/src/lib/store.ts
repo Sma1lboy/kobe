@@ -60,8 +60,10 @@ function set(next: Partial<AppState>): void {
   for (const l of listeners) l()
 }
 
-/** Drop per-task entries whose task no longer exists in the snapshot. */
-function pruneByTask<T>(
+/** Drop per-task entries whose task no longer exists in the snapshot. Returns
+ *  the SAME reference when nothing changed (so React skips a needless update).
+ *  Exported for tests. */
+export function pruneByTask<T>(
   map: Record<string, T>,
   live: ReadonlySet<string>,
 ): Record<string, T> {
