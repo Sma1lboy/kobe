@@ -32,6 +32,12 @@
   padding-right: 0.75rem;
 }
 
+/* `wrap` toggle: soft-wrap long lines instead of horizontal scrolling. */
+.kobe-diff-wrap .kobe-diff-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .kobe-diff-add {
   color: #9aca86;
   background: #1f2a1f;

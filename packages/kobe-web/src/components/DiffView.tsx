@@ -41,8 +41,9 @@ function useChangesKey(worktreePath: string | null): string {
   return counts ? `${counts.added}:${counts.deleted}` : "none"
 }
 
-/** Render a parsed unified diff into the gutter+text row grid. */
-export function DiffBody({ patch }: { patch: string }) {
+/** Render a parsed unified diff into the gutter+text row grid. `wrap` soft-wraps
+ *  long lines instead of the default horizontal scroll. */
+export function DiffBody({ patch, wrap }: { patch: string; wrap?: boolean }) {
   const rows = useMemo(() => parseDiffRows(patch), [patch])
   if (!patch.trim()) {
     return (
@@ -52,7 +53,9 @@ export function DiffBody({ patch }: { patch: string }) {
     )
   }
   return (
-    <div className="kobe-diff min-h-0 flex-1 overflow-auto py-2 font-mono text-[12px] leading-[1.15rem]">
+    <div
+      className={`kobe-diff min-h-0 flex-1 overflow-auto py-2 font-mono text-[12px] leading-[1.15rem] ${wrap ? "kobe-diff-wrap" : ""}`}
+    >
       {rows.map((row, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: diff rows are positional and re-rendered wholesale per file
         <div key={i} className={`kobe-diff-row ${rowClass(row.kind)}`}>
@@ -391,6 +394,7 @@ export function FilePreview({
   path: string
 }) {
   const [file, setFile] = useState<DiffFile | null>(null)
+  const [wrap, setWrap] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const changesKey = useChangesKey(worktreePath)
@@ -441,6 +445,20 @@ export function FilePreview({
             {file.status}
           </span>
         )}
+        {file && (
+          <button
+            type="button"
+            onClick={() => setWrap((v) => !v)}
+            title={wrap ? "Disable line wrap" : "Wrap long lines"}
+            className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+              wrap
+                ? "border-primary bg-inset text-fg"
+                : "border-line bg-bg text-subtle hover:border-primary hover:text-fg"
+            }`}
+          >
+            wrap
+          </button>
+        )}
       </div>
       {error ? (
         <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
@@ -449,7 +467,7 @@ export function FilePreview({
       ) : file ? (
         // Keep the previous patch on screen during a live refetch — a count
         // tick must not flash the view back to a loading state.
-        <DiffBody patch={file.patch} />
+        <DiffBody patch={file.patch} wrap={wrap} />
       ) : loading ? (
         <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
           Loading preview…
