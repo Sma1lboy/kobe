@@ -21,7 +21,7 @@
  */
 
 import { existsSync } from "node:fs"
-import { chmod, cp, mkdir } from "node:fs/promises"
+import { chmod, cp, mkdir, rm } from "node:fs/promises"
 import { createSolidTransformPlugin } from "@opentui/solid/bun-plugin"
 
 const OUT_FILES = ["./dist/cli/index.js"]
@@ -42,6 +42,11 @@ async function buildWebUi(): Promise<void> {
 
 async function copyWebUi(): Promise<void> {
   if (!existsSync(`${WEB_DIST_DIR}/index.html`)) return
+  // Empty dist/web-ui before copying. Vite hashes filenames per build
+  // (index-<hash>.js/.css), so without this old generations pile up here
+  // forever on a long-lived checkout and ship in the npm tarball. Mirror
+  // vite's own emptyOutDir: wipe + recreate, then copy the fresh bundle.
+  await rm(WEB_OUT_DIR, { recursive: true, force: true })
   await mkdir(WEB_OUT_DIR, { recursive: true })
   await cp(WEB_DIST_DIR, WEB_OUT_DIR, { recursive: true, force: true })
   await cp(`${WEB_PACKAGE_DIR}/pty-server.mjs`, `${WEB_OUT_DIR}/pty-server.mjs`, { force: true })

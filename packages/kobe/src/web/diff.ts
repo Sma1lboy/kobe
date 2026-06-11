@@ -34,6 +34,13 @@
 
 const GIT_TIMEOUT_MS = 15_000
 
+/**
+ * Max concurrent `git diff --no-index` spawns for untracked files. Bounded so a
+ * worktree with hundreds of untracked files doesn't fork-bomb git, while still
+ * collapsing the previous one-spawn-at-a-time wall.
+ */
+const UNTRACKED_DIFF_CONCURRENCY = 8
+
 interface SpawnResult {
   ok: boolean
   stdout: string
@@ -80,7 +87,7 @@ export interface DiffResult {
 }
 
 /** Map a one-char porcelain XY status code to a human label. */
-function statusLabel(code: string): string {
+export function statusLabel(code: string): string {
   switch (code) {
     case "M":
       return "modified"
@@ -109,7 +116,7 @@ function statusLabel(code: string): string {
  * read the destination path from the `+++ b/<path>` marker when present (it
  * handles renames and quoted/space paths better than parsing the header).
  */
-function splitDiffByFile(diff: string): Map<string, string> {
+export function splitDiffByFile(diff: string): Map<string, string> {
   const byFile = new Map<string, string>()
   if (!diff) return byFile
   // Each chunk begins with "diff --git". Keep the delimiter on each chunk.
@@ -136,6 +143,31 @@ function unquoteGitPath(p: string): string {
   if (!(p.startsWith('"') && p.endsWith('"'))) return p
   const inner = p.slice(1, -1)
   return inner.replace(/\\([\\"nt])/g, (_m, c: string) => (c === "n" ? "\n" : c === "t" ? "\t" : c))
+}
+
+/**
+ * Map `items` through `fn` with at most `limit` concurrent invocations,
+ * preserving input→output order. A worker pool, not `Promise.all`: a worktree
+ * with hundreds of untracked files would fork-bomb git under unbounded
+ * parallelism, so we cap the in-flight count. Results land at the same index
+ * as their input regardless of completion order.
+ */
+export async function mapPool<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  const width = Math.max(1, Math.min(limit, items.length))
+  let next = 0
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await fn(items[index], index)
+    }
+  }
+  await Promise.all(Array.from({ length: width }, () => worker()))
+  return results
 }
 
 /** Build a synthetic all-added unified patch for an untracked file. */
@@ -202,6 +234,11 @@ export async function handleDiffRequest(req: Request, url: URL): Promise<Respons
   // (R/C) is followed by a second NUL-terminated field (the origin path).
   const records = statusRes.stdout.split("\0")
   const files: DiffFile[] = []
+  // Untracked files need a `git diff --no-index` spawn each; collect them and
+  // resolve their patches through a bounded pool after the parse pass instead
+  // of awaiting one-at-a-time in the loop. The tracked-file patches are sliced
+  // out of the already-fetched diff blobs, so they cost nothing here.
+  const untrackedJobs: Array<{ fileIndex: number; path: string }> = []
   for (let i = 0; i < records.length; i++) {
     const rec = records[i]
     if (!rec) continue
@@ -219,7 +256,8 @@ export async function handleDiffRequest(req: Request, url: URL): Promise<Respons
 
     let patch = ""
     if (untracked) {
-      patch = await untrackedPatch(worktreePath, path)
+      // Filled in below by the bounded pool; record the slot to populate.
+      untrackedJobs.push({ fileIndex: files.length, path })
     } else {
       patch = stagedByFile.get(path) ?? unstagedByFile.get(path) ?? ""
       // A file changed in both index and worktree: show both hunks.
@@ -234,6 +272,16 @@ export async function handleDiffRequest(req: Request, url: URL): Promise<Respons
       staged,
       patch,
     })
+  }
+
+  // Spawn `git diff --no-index` for untracked files at most ~8 at a time.
+  if (untrackedJobs.length > 0) {
+    const patches = await mapPool(untrackedJobs, UNTRACKED_DIFF_CONCURRENCY, (job) =>
+      untrackedPatch(worktreePath, job.path),
+    )
+    for (let j = 0; j < untrackedJobs.length; j++) {
+      files[untrackedJobs[j].fileIndex].patch = patches[j]
+    }
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path))
