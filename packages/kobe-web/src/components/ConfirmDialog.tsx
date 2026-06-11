@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef } from "react"
+import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
 export function ConfirmDialog({
   title,
@@ -23,6 +24,8 @@ export function ConfirmDialog({
   onCancel: () => void
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
 
   useEffect(() => {
     confirmRef.current?.focus()
@@ -42,6 +45,7 @@ export function ConfirmDialog({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
         aria-label={title}

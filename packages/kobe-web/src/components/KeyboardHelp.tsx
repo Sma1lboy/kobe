@@ -4,7 +4,8 @@
  * shortcuts and the main affordances so they're discoverable. Esc closes.
  */
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
+import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
 interface Shortcut {
   keys: string[]
@@ -70,6 +71,8 @@ function Row({ keys, label }: Shortcut) {
 }
 
 export function KeyboardHelp({ onClose }: { onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === "Escape") onClose()
@@ -87,6 +90,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"

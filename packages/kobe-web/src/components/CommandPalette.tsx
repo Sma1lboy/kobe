@@ -22,6 +22,7 @@ import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
+import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
 interface Command {
   id: string
@@ -74,6 +75,8 @@ export function CommandPalette({
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
 
   useEffect(() => {
     if (open) {
@@ -181,6 +184,7 @@ export function CommandPalette({
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"

@@ -7,11 +7,12 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
+import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
 interface AdoptableWorktree {
   path: string
@@ -36,6 +37,8 @@ function relTime(ms: number): string {
 export function AdoptDialog({ onClose }: { onClose: () => void }) {
   const { tasks } = useAppState()
   const navigate = useNavigate()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
   const repos = useMemo(() => {
     const seen = new Set<string>()
     const list: string[] = []
@@ -109,6 +112,7 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Adopt worktree"

@@ -8,12 +8,13 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { engineLabel, useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { addTab, selectTask, setPendingPrompt } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
+import { useFocusTrap } from "../lib/use-focus-trap.ts"
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -30,6 +31,8 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
   const { tasks } = useAppState()
   const engines = useEngines()
   const navigate = useNavigate()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
   const repos = useMemo(() => {
     const seen = new Set<string>()
     const list: string[] = []
@@ -100,6 +103,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
       role="presentation"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="New task"
