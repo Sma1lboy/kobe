@@ -228,9 +228,19 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   // Live subscription. The orchestrator lands in a signal so the effect
   // below — created synchronously under THIS component's owner — starts
   // tracking `uiPrefsSignal()` once the async connect resolves.
+  //
+  // Leak guards on the async window: (a) a failed `init()` (protocol
+  // mismatch, daemon dying mid-handshake) must DISPOSE the half-built
+  // orchestrator — abandoning it leaked the open socket plus its pane
+  // reconnect loop, which would retry forever with no consumer; (b) if
+  // this component was cleaned up while the connect was still in flight,
+  // the late-resolving orchestrator must be disposed on the spot —
+  // `onCleanup` already ran and can never see it.
   const [prefsOrch, setPrefsOrch] = createSignal<RemoteOrchestrator | null>(null)
+  let disposed = false
   onMount(() => {
     void (async () => {
+      let remote: RemoteOrchestrator | null = null
       try {
         // NON-spawning connect (same rule as the Tasks pane): a helper
         // subscription must never resurrect an idle-stopped daemon.
@@ -239,12 +249,18 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
           logClient("ui-prefs", "no daemon — keeping boot-time visual prefs")
           return
         }
-        const remote = new RemoteOrchestrator(client)
+        remote = new RemoteOrchestrator(client)
         await remote.init()
-        setPrefsOrch(remote)
       } catch (err) {
         logClientError("ui-prefs", err)
+        remote?.dispose()
+        return
       }
+      if (disposed) {
+        remote.dispose()
+        return
+      }
+      setPrefsOrch(remote)
     })()
   })
   createEffect(() => {
@@ -270,7 +286,10 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
     lastKeybindingsRev = rev
     reloadUserKeybindings()
   })
-  onCleanup(() => prefsOrch()?.dispose())
+  onCleanup(() => {
+    disposed = true
+    prefsOrch()?.dispose()
+  })
 
   return null
 }

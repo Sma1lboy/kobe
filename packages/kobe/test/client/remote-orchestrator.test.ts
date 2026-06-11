@@ -54,4 +54,45 @@ describe("RemoteOrchestrator channel handling", () => {
     emit("update", undefined)
     expect(orch.updateSignal()()).toBeNull()
   })
+
+  // Leak guard: `engine-state` only deletes an entry on an explicit `idle`
+  // event, but a task deleted while non-idle (running / error — the common
+  // delete case) never emits one. Without snapshot reconciliation a
+  // long-lived pane accumulated one stale entry per deleted task, forever.
+  it("prunes engine-state entries for tasks absent from a task.snapshot", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+
+    const task = (id: string) => ({
+      id,
+      title: id,
+      repo: "/repo",
+      branch: id,
+      worktreePath: `/wt/${id}`,
+      kind: "worktree",
+      status: "idle",
+      archived: false,
+      pinned: false,
+      vendor: "claude",
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    emit("task.snapshot", { tasks: [task("t1"), task("t2")] })
+    emit("engine-state", { taskId: "t1", state: "running", at: 10 })
+    emit("engine-state", { taskId: "t2", state: "error", at: 11 })
+    expect([...orch.engineStateSignal()().keys()].sort()).toEqual(["t1", "t2"])
+
+    // t2 deleted while in `error` — no idle event will ever arrive for it.
+    emit("task.snapshot", { tasks: [task("t1")] })
+    const after = orch.engineStateSignal()()
+    expect([...after.keys()]).toEqual(["t1"])
+    // The surviving entry is untouched (same state, no spurious churn).
+    expect(after.get("t1")?.state).toBe("running")
+
+    // A snapshot that changes nothing must not rebuild the map (no
+    // re-render storm on every push) — same reference back.
+    emit("task.snapshot", { tasks: [task("t1")] })
+    expect(orch.engineStateSignal()()).toBe(after)
+  })
 })

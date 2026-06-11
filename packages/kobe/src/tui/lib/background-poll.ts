@@ -96,6 +96,19 @@ interface PollEntry<T> {
 }
 
 export function createBackgroundPoller<T>(cfg: BackgroundPollerConfig<T>): BackgroundPoller<T> {
+  // DELIBERATELY no eviction (memory-audit decision, 2026-06): the map
+  // gains one entry (~a Solid signal + key string + a small T) per distinct
+  // key ever read/polled and never drops it, so a long-lived pane process
+  // retains entries for deleted tasks' worktrees. That growth is bounded by
+  // "distinct worktree paths this process ever rendered" — hundreds of
+  // entries ≈ tens of KB — while eviction has a real correctness hazard:
+  // `read(key)` hands a memo the entry's SIGNAL, so evicting an entry a
+  // live memo still tracks splits reader from writer (the memo keeps the
+  // dead signal; later polls write a fresh one and the reader never updates
+  // again). Archived sidebar rows read() without ever poll()ing, so even a
+  // "not polled recently" heuristic would evict live-tracked entries. If a
+  // caller ever keys this by something higher-churn than worktree paths,
+  // revisit; until then `reset()` (tests) is the only teardown.
   const entries = new Map<string, PollEntry<T>>()
 
   function entryFor(key: string): PollEntry<T> {

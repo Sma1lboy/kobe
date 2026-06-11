@@ -456,7 +456,10 @@ export class RemoteOrchestrator {
   private handleEvent(name: string, payload: unknown): void {
     if (name === "task.snapshot") {
       const value = (payload as { tasks?: SerializedTask[] } | undefined)?.tasks
-      if (Array.isArray(value)) this.setTasks(value.map(deserializeTask))
+      if (Array.isArray(value)) {
+        this.setTasks(value.map(deserializeTask))
+        this.pruneEngineState(value)
+      }
       return
     }
     if (name === "active-task") {
@@ -499,6 +502,32 @@ export class RemoteOrchestrator {
       this.setKeybindingsRevSig(p.rev)
       return
     }
+  }
+
+  /**
+   * Drop engine-state entries for tasks that no longer exist (leak guard).
+   * The `engine-state` channel only removes an entry on an explicit `idle`
+   * event for that taskId — a task deleted/pruned while non-idle (running /
+   * permission-needed / error, the common delete case) never gets one, so
+   * in a long-lived pane process the map grew one stale entry per deleted
+   * task, forever. Reconcile against each `task.snapshot` instead: any key
+   * absent from the authoritative task list is dead. Benign race: an
+   * `engine-state` event arriving before the snapshot that introduces its
+   * task would be dropped here — the next engine-state event re-adds it
+   * (and in practice the daemon publishes the create snapshot before the
+   * engine ever starts). No-op (no signal write) when nothing is stale.
+   */
+  private pruneEngineState(tasks: readonly SerializedTask[]): void {
+    const current = this.engineStateAcc()
+    if (current.size === 0) return
+    const live = new Set(tasks.map((t) => t.id))
+    let next: Map<string, TaskEngineState> | null = null
+    for (const key of current.keys()) {
+      if (live.has(key)) continue
+      if (!next) next = new Map(current)
+      next.delete(key)
+    }
+    if (next) this.setEngineStateSig(next)
   }
 }
 
