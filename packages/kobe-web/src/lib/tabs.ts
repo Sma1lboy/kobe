@@ -103,6 +103,24 @@ function withTaskTab(next: TabsState, taskId: string): TabsState {
   }
 }
 
+/**
+ * Migrate one stored tab object to a current {@link WorkspaceTab}. Stale
+ * localStorage can carry retired kinds — `notes` (the old right-rail tab,
+ * now an empty chooser) and `chat` (renamed to `vendor`); anything without a
+ * recognized kind defaults to `vendor`. Pure (a `notes` migration mints a
+ * fresh empty tab id); exported for tests.
+ */
+export function migrateStoredTab(tab: unknown): WorkspaceTab {
+  const stored = tab as Partial<WorkspaceTab>
+  const storedKind =
+    typeof (tab as { kind?: unknown })?.kind === "string"
+      ? (tab as { kind: string }).kind
+      : undefined
+  if (storedKind === "notes") return emptyTab()
+  const kind = storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
+  return { ...stored, kind } as WorkspaceTab
+}
+
 function load(): TabsState {
   try {
     const raw = localStorage.getItem(KEY)
@@ -111,16 +129,7 @@ function load(): TabsState {
       const tabsByTask = Object.fromEntries(
         Object.entries(p.tabsByTask ?? {}).map(([taskId, tabs]) => [
           taskId,
-          tabs.map((tab) => {
-            const stored = tab as Partial<WorkspaceTab>
-            const raw = tab as { kind?: unknown }
-            const storedKind =
-              typeof raw.kind === "string" ? raw.kind : undefined
-            if (storedKind === "notes") return emptyTab()
-            const kind =
-              storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
-            return { ...stored, kind } as WorkspaceTab
-          }),
+          tabs.map(migrateStoredTab),
         ]),
       ) as Record<string, WorkspaceTab[]>
       const loaded = {
