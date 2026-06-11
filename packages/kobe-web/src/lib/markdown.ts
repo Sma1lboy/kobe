@@ -39,17 +39,21 @@ function renderInline(escaped: string): string {
   // `code` first so its contents aren't re-processed for bold/italic.
   out = out.replace(/`([^`]+)`/g, '<code class="kobe-md-code">$1</code>')
   // [text](url) — url is from escaped text; validate scheme, drop unsafe.
-  out = out.replace(
-    /\[([^\]]+)\]\(([^)]+)\)/g,
-    (_m, text: string, url: string) => {
-      // The URL was HTML-escaped (e.g. &amp;); unescape &amp; for the scheme
-      // check and the href, but it's still HTML-safe inside an attribute.
-      const href = safeHref(url.replace(/&amp;/g, "&"))
-      if (!href) return `${text}(${url})`
-      const safe = escapeHtml(href)
-      return `<a href="${safe}" target="_blank" rel="noopener noreferrer" class="kobe-md-link">${text}</a>`
-    },
-  )
+  // Skip the link regex entirely when there's no `]`/`(` to match: its
+  // `[^\]]+`/`[^)]+` classes backtrack quadratically on a long run of
+  // unmatched `[`, so a bracket-heavy line could otherwise stall the render.
+  if (out.includes("]") && out.includes(")"))
+    out = out.replace(
+      /\[([^\]]+)\]\(([^)]+)\)/g,
+      (_m, text: string, url: string) => {
+        // The URL was HTML-escaped (e.g. &amp;); unescape &amp; for the scheme
+        // check and the href, but it's still HTML-safe inside an attribute.
+        const href = safeHref(url.replace(/&amp;/g, "&"))
+        if (!href) return `${text}(${url})`
+        const safe = escapeHtml(href)
+        return `<a href="${safe}" target="_blank" rel="noopener noreferrer" class="kobe-md-link">${text}</a>`
+      },
+    )
   out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
   return out
