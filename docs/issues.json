@@ -1,6 +1,13 @@
 {
-  "nextId": 7,
+  "nextId": 8,
   "issues": [
+    {
+      "id": 7,
+      "title": "Web rail filter/status-chip/sort state resets on the first / → /task/$taskId navigation",
+      "status": "open",
+      "created": "2026-06-11",
+      "body": "Pre-existing structural issue surfaced by the 2026-06-11 multi-agent review of the morning web waves. The `/` route renders <AppShell/> directly while /task/$taskId renders <TaskRoute> which wraps <AppShell/> one level deeper (routes/index.tsx vs routes/task.$taskId.tsx). At the Outlet these are different component types, so opening a task from the home route unmounts+remounts AppShell, resetting TaskRail's local useState — including the new statusFilter chip, the text query, and showArchived (sortMode is partially re-applied by the prefSort effect). Task→task hops stay within /task/$taskId so they persist; only the initial open from `/` clears it. Low severity (transient, recoverable by re-clicking), but it silently defeats the new triage-filter UI on its most common trigger. Fix: lift statusFilter/query/sortMode/showArchived into a persistent store (lib/tabs.ts-style module store) or URL search params so they survive the AppShell unmount — DECIDE the persistence semantics first (a text query persisting across full reloads may be surprising; status/sort persisting is fine). Deferred from the review-fix batch (commit f3bd89c) which fixed the 6 contained bugs; this one needs a focused store/URL design, not a rushed patch."
+    },
     {
       "id": 5,
       "title": "Job-ify ensureWorktree: long daemon operations return a job id + push progress",
