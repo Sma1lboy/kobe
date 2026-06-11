@@ -15,7 +15,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
-import { type DiffRow, diffStat, parseDiffRows } from "../lib/diff-rows.ts"
+import { rowClass, statusBadge } from "../lib/diff-display.ts"
+import { diffStat, parseDiffRows } from "../lib/diff-rows.ts"
 import { useAppState } from "../lib/store.ts"
 import "./diff-view.css"
 
@@ -44,43 +45,6 @@ function tail(path: string, max = 36): string {
 }
 
 /** Status → a short uppercase badge + a theme color class. */
-function statusBadge(status: string): { label: string; cls: string } {
-  switch (status) {
-    case "added":
-      return { label: "A", cls: "text-kobe-green" }
-    case "untracked":
-      return { label: "U", cls: "text-kobe-green" }
-    case "modified":
-      return { label: "M", cls: "text-kobe-yellow" }
-    case "deleted":
-      return { label: "D", cls: "text-kobe-red" }
-    case "renamed":
-      return { label: "R", cls: "text-kobe-blue" }
-    case "copied":
-      return { label: "C", cls: "text-kobe-blue" }
-    default:
-      return {
-        label: status.slice(0, 1).toUpperCase() || "?",
-        cls: "text-muted",
-      }
-  }
-}
-
-function rowClass(kind: DiffRow["kind"]): string {
-  switch (kind) {
-    case "hunk":
-      return "kobe-diff-hunk"
-    case "meta":
-      return "kobe-diff-meta"
-    case "add":
-      return "kobe-diff-add"
-    case "del":
-      return "kobe-diff-del"
-    default:
-      return "kobe-diff-ctx"
-  }
-}
-
 export function DiffBody({ patch }: { patch: string }) {
   const rows = useMemo(() => parseDiffRows(patch), [patch])
   if (!patch.trim()) {
