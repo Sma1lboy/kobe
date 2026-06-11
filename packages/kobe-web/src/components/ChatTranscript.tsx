@@ -366,6 +366,12 @@ export function ChatTranscript({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && search) {
+                event.preventDefault()
+                setSearch("")
+              }
+            }}
             placeholder="Search transcript…"
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-fg placeholder:text-subtle focus:outline-none"

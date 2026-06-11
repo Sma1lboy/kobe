@@ -341,6 +341,12 @@ export function ChangesList({
             <input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && filter) {
+                  e.preventDefault()
+                  setFilter("")
+                }
+              }}
               placeholder={`Filter ${files.length} files…`}
               spellCheck={false}
               className="mx-3 mb-1 shrink-0 border border-line bg-bg px-2 py-1 font-mono text-[11px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
