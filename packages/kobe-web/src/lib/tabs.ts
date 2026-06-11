@@ -79,7 +79,14 @@ function emptyTab(): EmptyTab {
   return { id: newId(), kind: "empty", title: "New tab" }
 }
 
-function withTaskTab(next: TabsState, taskId: string): TabsState {
+/**
+ * Normalize one task's slice of the tab state: drop a split that's gone stale
+ * (its tab closed) or redundant (equal to the active tab), pick a valid active
+ * tab when the current one is missing, and mint a fresh empty tab when the task
+ * has none. Returns the SAME reference when nothing needed fixing so React
+ * skips a render. Pure (a fresh empty tab mints a new id); exported for tests.
+ */
+export function withTaskTab(next: TabsState, taskId: string): TabsState {
   const list = next.tabsByTask[taskId] ?? []
   const active = next.activeByTask[taskId]
   const split = next.splitByTask[taskId]
