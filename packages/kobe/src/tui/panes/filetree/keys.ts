@@ -79,20 +79,27 @@ export function useFileTreeBindings(opts: FileTreeBindingsOpts): void {
   useBindings(() => ({
     enabled: opts.focused(),
     bindings: bindByIds({
-      "files.nav": (evt) => {
-        if (evt.name === "j" || evt.name === "down") opts.moveDown()
-        else if (evt.name === "k" || evt.name === "up") opts.moveUp()
+      // Direction-multiplexed ids dispatch on the matched chord's SLOT
+      // (its index in the id's keys array, threaded through by
+      // bindByIds → dispatchKeyEvent), never on evt.name — that's what
+      // makes them user-rebindable. Layouts live in SLOT_CONTRACTS
+      // (lib/keymap-overrides.ts):
+      //   files.nav        [down, up] pairs       (default j, k, down, up)
+      //   files.hierarchy  [collapse, expand] pairs (default h, l, left, right)
+      //   files.tab        [previous, next] pairs  (default [, ])
+      "files.nav": (_evt, slot) => {
+        if ((slot ?? 0) % 2 === 0) opts.moveDown()
+        else opts.moveUp()
       },
-      "files.hierarchy": (evt) => {
-        if (evt.name === "l" || evt.name === "right") opts.expandOrDescend()
-        else if (evt.name === "h" || evt.name === "left") opts.collapseOrParent()
+      "files.hierarchy": (_evt, slot) => {
+        if ((slot ?? 0) % 2 === 0) opts.collapseOrParent()
+        else opts.expandOrDescend()
       },
-      "files.tab": (evt) => {
+      "files.tab": (_evt, slot) => {
         const cur = opts.currentTab()
         const idx = TAB_ORDER.indexOf(cur)
         if (idx < 0) return
-        const delta = evt.name === "[" ? -1 : evt.name === "]" ? 1 : 0
-        if (delta === 0) return
+        const delta = (slot ?? 0) % 2 === 0 ? -1 : 1
         const next = TAB_ORDER[(idx + delta + TAB_ORDER.length) % TAB_ORDER.length]
         if (next) opts.setTab(next)
       },

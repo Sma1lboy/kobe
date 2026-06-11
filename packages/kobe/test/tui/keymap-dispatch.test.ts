@@ -187,4 +187,81 @@ describe("dispatchKeyEvent", () => {
     expect(fired).toBe(false)
     expect(evt.defaultPrevented).toBe(false)
   })
+
+  // ─── Slot threading (direction-multiplexed bindings) ─────────────────
+  // `bindByIds` registers one Binding per chord with `slot` = the chord's
+  // index in the id's keys array; the dispatcher must hand that slot to
+  // the handler so it can map slot → direction without reading evt.name.
+
+  test("passes the matched binding's slot to the handler", () => {
+    const seen: Array<number | undefined> = []
+    const cmd = (_evt: unknown, slot?: number) => {
+      seen.push(slot)
+    }
+    const stack: RegisteredBinding[] = [
+      {
+        id: 1,
+        config: () => ({
+          // bindByIds shape for sidebar.nav defaults [j, k, down, up].
+          bindings: [
+            { key: "j", cmd, slot: 0 },
+            { key: "k", cmd, slot: 1 },
+            { key: "down", cmd, slot: 2 },
+            { key: "up", cmd, slot: 3 },
+          ],
+        }),
+      },
+    ]
+
+    for (const name of ["j", "k", "down", "up"]) {
+      dispatchKeyEvent(stack, makeEvt(name))
+    }
+
+    expect(seen).toEqual([0, 1, 2, 3])
+  })
+
+  test("a binding registered without a slot delivers undefined (hand-rolled literals)", () => {
+    let seen: number | undefined = 99
+    const stack: RegisteredBinding[] = [
+      {
+        id: 1,
+        config: () => ({
+          bindings: [
+            {
+              key: "escape",
+              cmd: (_evt, slot) => {
+                seen = slot
+              },
+            },
+          ],
+        }),
+      },
+    ]
+
+    dispatchKeyEvent(stack, makeEvt("escape"))
+
+    expect(seen).toBeUndefined()
+  })
+
+  test("duplicate chords across slots: the first registered slot wins", () => {
+    const seen: number[] = []
+    const cmd = (_evt: unknown, slot?: number) => {
+      seen.push(slot ?? -1)
+    }
+    const stack: RegisteredBinding[] = [
+      {
+        id: 1,
+        config: () => ({
+          bindings: [
+            { key: "w", cmd, slot: 0 },
+            { key: "w", cmd, slot: 1 }, // user wrote the same chord twice
+          ],
+        }),
+      },
+    ]
+
+    dispatchKeyEvent(stack, makeEvt("w"))
+
+    expect(seen).toEqual([0])
+  })
 })

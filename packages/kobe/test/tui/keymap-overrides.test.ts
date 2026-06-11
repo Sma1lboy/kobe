@@ -134,7 +134,9 @@ describe("applyKeymapOverrides", () => {
       },
       { id: "app.quit", scope: "sidebar", keys: ["q"], hint: { keys: "q", label: "quit", status: false } },
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
-      { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"] },
+      { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k", label: "nav" } },
+      { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
+      { id: "sidebar.goto", scope: "sidebar", keys: ["g"] }, // FIXED (evt.shift gate)
       { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
       { id: "files.createPR", scope: "files", keys: ["p"], hint: { keys: "p", label: "create PR" } },
     ]
@@ -162,7 +164,7 @@ describe("applyKeymapOverrides", () => {
     const keymap = makeKeymap()
     const { applied, warnings } = applyKeymapOverrides(keymap, [
       { id: "nope.nothing", keys: ["ctrl+x"] },
-      { id: "sidebar.nav", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS
+      { id: "sidebar.goto", keys: ["ctrl+n"] }, // FIXED_BINDING_IDS (evt.shift gate)
       { id: "chat.send", keys: ["ctrl+m"] }, // doc-only
     ])
     expect(applied).toEqual([])
@@ -170,7 +172,7 @@ describe("applyKeymapOverrides", () => {
     expect(warnings[0]).toMatch(/unknown binding id/)
     expect(warnings[1]).toMatch(/not customizable/)
     expect(warnings[2]).toMatch(/doc-only/)
-    expect(keymap.find((b) => b.id === "sidebar.nav")?.keys).toEqual(["j", "k", "down", "up"])
+    expect(keymap.find((b) => b.id === "sidebar.goto")?.keys).toEqual(["g"])
   })
 
   test("boundary rule: bare characters are dropped on workspace/global scope, kept on sidebar/files", () => {
@@ -192,5 +194,69 @@ describe("applyKeymapOverrides", () => {
     ])
     expect(applied).toHaveLength(1)
     expect(warnings.some((w) => w.includes("also fires chat.tab.new"))).toBe(true)
+  })
+
+  // ─── Slot contracts (direction-multiplexed ids) ──────────────────────
+  // sidebar.nav / files.nav / sidebar.search.nav / files.hierarchy /
+  // sidebar.view / files.tab dispatch on the matched chord's SLOT
+  // (index in the keys array), layout = alternating pairs. Overrides
+  // must keep the count even so the slot%2 direction mapping holds —
+  // the tmux.focus exact-count validation is the precedent.
+
+  test("slot ids: an even-count override applies (2-chord nav)", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.nav", keys: ["w", "s"] }])
+    expect(warnings).toEqual([])
+    expect(applied).toEqual([{ id: "sidebar.nav", keys: ["w", "s"], defaultKeys: ["j", "k", "down", "up"] }])
+    const row = keymap.find((b) => b.id === "sidebar.nav")
+    expect(row?.keys).toEqual(["w", "s"])
+    expect(row?.hint?.keys).toBe("w/s")
+  })
+
+  test("slot ids: a 4-chord override applies too (same pair layout, longer)", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.nav", keys: ["w", "s", "down", "up"] }])
+    expect(warnings).toEqual([])
+    expect(applied).toHaveLength(1)
+    expect(keymap.find((b) => b.id === "sidebar.nav")?.keys).toEqual(["w", "s", "down", "up"])
+  })
+
+  test("slot ids: an odd-count override warns and keeps the default", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.nav", keys: ["w", "s", "x"] }])
+    expect(applied).toEqual([])
+    expect(warnings.some((w) => w.includes("[down, up]") && w.includes("keeping the default"))).toBe(true)
+    expect(keymap.find((b) => b.id === "sidebar.nav")?.keys).toEqual(["j", "k", "down", "up"])
+  })
+
+  test("slot ids: a single-chord override of a [prev, next] pair warns and keeps the default", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.view", keys: ["ctrl+v"] }])
+    expect(applied).toEqual([])
+    expect(warnings.some((w) => w.includes("previous view, next view") && w.includes("keeping the default"))).toBe(true)
+    expect(keymap.find((b) => b.id === "sidebar.view")?.keys).toEqual(["[", "]"])
+  })
+
+  test("slot ids: unbind ([]) is still allowed — no slots involved", () => {
+    const keymap = makeKeymap()
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.nav", keys: [] }])
+    expect(warnings).toEqual([])
+    expect(applied).toEqual([{ id: "sidebar.nav", keys: [], defaultKeys: ["j", "k", "down", "up"] }])
+    const row = keymap.find((b) => b.id === "sidebar.nav")
+    expect(row?.keys).toEqual([])
+    expect(row?.hint).toBeUndefined()
+  })
+
+  test("slot ids: a partial chord drop (boundary rule) keeps the default instead of shifting slots", () => {
+    // Synthetic: a slot-contract id on a workspace scope so the bare-letter
+    // rule drops one chord. The production slot ids live on sidebar/files
+    // scopes (bare letters fine); this pins the all-or-nothing guard for
+    // any future workspace-scope slot id.
+    const keymap: OverridableBinding[] = [{ id: "files.nav", scope: "workspace", keys: ["j", "k", "down", "up"] }]
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "files.nav", keys: ["w", "s", "down", "up"] }])
+    expect(applied).toEqual([])
+    expect(warnings.some((w) => w.includes("steal typed input"))).toBe(true)
+    expect(warnings.some((w) => w.includes("shift the slot layout"))).toBe(true)
+    expect(keymap[0]?.keys).toEqual(["j", "k", "down", "up"])
   })
 })

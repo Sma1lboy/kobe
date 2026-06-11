@@ -173,18 +173,22 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   useBindings(() => ({
     enabled: opts.focused() && !searchModeAccessor(),
     bindings: bindByIds({
-      // sidebar.nav covers j/k/down/up — handler discriminates direction
-      // via evt.name. The matcher delivers e.g. {name: "j"} or {name: "down"}.
-      "sidebar.nav": (evt) => {
+      // sidebar.nav is direction-multiplexed: which REGISTERED chord
+      // matched arrives as `slot` (its index in the id's keys array), and
+      // the layout is alternating [down, up] pairs (SLOT_CONTRACTS) — so
+      // the default [j, k, down, up] and a user override like [w, s] both
+      // map even slots → down, odd slots → up. Never read evt.name here:
+      // that's what kept this id un-rebindable.
+      "sidebar.nav": (_evt, slot) => {
+        const down = (slot ?? 0) % 2 === 0
         if (moveModeAccessor()) {
           const id = cursorTaskId()
           if (id === undefined) return
-          if (evt.name === "j" || evt.name === "down") opts.onMoveRequest?.(id, 1)
-          else if (evt.name === "k" || evt.name === "up") opts.onMoveRequest?.(id, -1)
+          opts.onMoveRequest?.(id, down ? 1 : -1)
           return
         }
-        if (evt.name === "j" || evt.name === "down") ctrl.moveDown()
-        else if (evt.name === "k" || evt.name === "up") ctrl.moveUp()
+        if (down) ctrl.moveDown()
+        else ctrl.moveUp()
       },
       "sidebar.select": () => {
         if (moveModeAccessor()) {
@@ -255,9 +259,9 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
   useBindings(() => ({
     enabled: opts.focused(),
     bindings: bindByIds({
-      "sidebar.view": (evt) => {
-        if (evt.name === "]") opts.onViewSwitch?.(1)
-        else opts.onViewSwitch?.(-1)
+      // Slot layout: [previous view, next view] pairs (default ["[", "]"]).
+      "sidebar.view": (_evt, slot) => {
+        opts.onViewSwitch?.((slot ?? 0) % 2 === 0 ? -1 : 1)
       },
     }),
   }))
@@ -270,10 +274,10 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
     bindings: bindByIds({
       // Up/down nav over the filtered rows. j/k are intentionally
       // excluded here — they need to fall through to the input as
-      // literal text.
-      "sidebar.search.nav": (evt) => {
-        if (evt.name === "down") ctrl.moveDown()
-        else if (evt.name === "up") ctrl.moveUp()
+      // literal text. Slot layout: [down, up] pairs.
+      "sidebar.search.nav": (_evt, slot) => {
+        if ((slot ?? 0) % 2 === 0) ctrl.moveDown()
+        else ctrl.moveUp()
       },
       // Enter commits: select the highlighted task AND exit search.
       "sidebar.search.submit": () => {

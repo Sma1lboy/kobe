@@ -13,7 +13,24 @@ import type { KeyEvent } from "@opentui/core"
 
 export type Binding = {
   key: string
-  cmd: (event: KeyEvent) => void
+  /**
+   * Handler. The second argument is the binding's {@link Binding.slot} —
+   * present when the registration site assigned one (`bindByIds` does).
+   * Single-chord handlers can ignore it; multiplexed handlers (one id,
+   * several chords, direction decided by WHICH chord fired) read it
+   * instead of `event.name`, so user-rebound chords keep working.
+   */
+  cmd: (event: KeyEvent, slot?: number) => void
+  /**
+   * Positional index of `key` within the owning binding id's `keys` array
+   * at registration time (slot-based dispatch). `bindByIds` fills this in;
+   * hand-rolled `{ key, cmd }` literals may omit it. The slot is what lets
+   * a handler like `sidebar.nav` map "which chord fired" → "which
+   * direction" without inspecting `event.name` — the contract that makes
+   * direction-multiplexed ids user-rebindable (see SLOT_CONTRACTS in
+   * keymap-overrides.ts for the per-id slot layouts).
+   */
+  slot?: number
 }
 
 export type BindingsConfig = {
@@ -100,7 +117,7 @@ export function dispatchKeyEvent(
     if (cfg.enabled === false) continue
     const hit = cfg.bindings.find((b) => candidates.includes(b.key))
     if (hit) {
-      hit.cmd(evt as KeyEvent)
+      hit.cmd(evt as KeyEvent, hit.slot)
       // Consume the event so native widgets (e.g. opentui's textarea
       // onSubmit) don't also receive it in the same tick. Without this,
       // an Enter that fires `sidebar.select` — whose handler pulls

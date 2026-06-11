@@ -236,6 +236,9 @@ export const KobeKeymap: readonly KobeBinding[] = [
   },
   // ─── Sidebar ──────────────────────────────────────────────────────────
   {
+    // POSITIONAL: alternating [down, up] pairs — slot dispatch
+    // (SLOT_CONTRACTS in lib/keymap-overrides.ts). Overrides may supply
+    // any even chord count, e.g. `sidebar.nav: [w, s]`.
     id: "sidebar.nav",
     scope: "sidebar",
     keys: ["j", "k", "down", "up"],
@@ -297,6 +300,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "P", label: "pin", status: false },
   },
   {
+    // POSITIONAL: [previous view, next view] pairs (slot dispatch).
     id: "sidebar.view",
     scope: "sidebar",
     keys: ["[", "]"],
@@ -339,6 +343,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
   {
     // Search-mode nav. Only fires while the search input is focused —
     // j/k are intentionally NOT bound here so they reach the input.
+    // POSITIONAL: [down, up] pairs (slot dispatch).
     id: "sidebar.search.nav",
     scope: "sidebar",
     keys: ["down", "up"],
@@ -586,6 +591,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
   // these never compete with composer typing. Workspace scope means the
   // chat pane must own focus — the user can still navigate the file tree
   // with j/k while a question is queued.
+  //
+  // NOTE: with the tmux-native model the legacy Chat pane (and its
+  // QuestionRow) is gone, so these rows currently have NO live
+  // registration site — they're display-only. `chat.question.nav` /
+  // `chat.question.pick-number` stay in FIXED_BINDING_IDS for that
+  // reason: an override would change Help copy without changing
+  // behavior. If the picker returns, implement its nav with slot
+  // dispatch (see sidebar.nav) before unlocking them.
   {
     id: "chat.question.nav",
     scope: "workspace",
@@ -621,6 +634,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
 
   // ─── Files ────────────────────────────────────────────────────────────
   {
+    // POSITIONAL: alternating [down, up] pairs (slot dispatch).
     id: "files.nav",
     scope: "files",
     keys: ["j", "k", "down", "up"],
@@ -635,6 +649,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // Plain letters are pane-scoped per the keybinding-boundaries
     // rule (docs/KEYBINDINGS.md): files-focused only, so they don't
     // collide with composer typing.
+    // POSITIONAL: alternating [collapse, expand] pairs (slot dispatch).
     id: "files.hierarchy",
     scope: "files",
     keys: ["h", "l", "left", "right"],
@@ -658,6 +673,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     // `[` / `]` cycle the All / Changes tabs. Bracket pair matches
     // the sidebar's Working/Archives view-switcher so the muscle
     // memory is consistent across panes.
+    // POSITIONAL: [previous tab, next tab] pairs (slot dispatch).
     id: "files.tab",
     scope: "files",
     keys: ["[", "]"],
@@ -833,6 +849,17 @@ export function bindingsForScope(scope: KobeBindingScope): KobeBinding[] {
  * registered against the same handler. Pane code uses this so it doesn't
  * have to know the chord strings — those live in `KobeKeymap`.
  *
+ * Each entry carries `slot` = the chord's index within the id's (possibly
+ * user-overridden) `keys` array, and the dispatcher passes it to the
+ * handler as a second argument. Multiplexed handlers (`sidebar.nav`,
+ * `files.hierarchy`, …) decide direction from the slot instead of
+ * `evt.name`, which is what lets users rebind those ids: the slot LAYOUT
+ * is the per-id positional contract (`SLOT_CONTRACTS` in
+ * keymap-overrides.ts validates override counts against it). Because the
+ * `useBindings` config closure re-runs `bindByIds` on every keypress,
+ * slots are always derived from the CURRENT keymap — a live keybindings
+ * reload re-slots automatically.
+ *
  * Unknown ids log a warning and are skipped (typos shouldn't crash the
  * UI, but they should be loud in dev).
  */
@@ -847,7 +874,7 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
       console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
       continue
     }
-    for (const c of chords) out.push({ key: c, cmd })
+    chords.forEach((c, slot) => out.push({ key: c, cmd, slot }))
   }
   return out
 }

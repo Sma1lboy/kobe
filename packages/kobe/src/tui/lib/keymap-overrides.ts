@@ -72,25 +72,79 @@ export type AppliedOverride = {
 }
 
 /**
- * Ids whose handlers discriminate BETWEEN their chords by `evt.name` /
- * `evt.shift` (e.g. `sidebar.nav` runs moveDown for `j`/`down` and moveUp
- * for `k`/`up`). Rebinding the chord list would silently break the
- * direction mapping, so these are fixed until the handlers learn
- * slot-based dispatch. Value = the reason shown in warnings / settings.
+ * Ids that genuinely cannot be rebound. Two families:
+ *
+ *   - `evt.shift`-gated handlers: the chord registered is a bare letter
+ *     and the handler fires only on the SHIFTED press (`Shift+G/P/M`).
+ *     The chord grammar can't express `shift+<letter>` (terminals deliver
+ *     it as a plain uppercase character — see `normalizeChord`), so a
+ *     rebind could never carry the shift half. Fixed until/unless the
+ *     handlers drop the shift gate.
+ *   - positional sets mirrored OUTSIDE this keymap, or rows with no live
+ *     registration site (rebinding would change the F1/help display
+ *     without changing behavior — worse than refusing).
+ *
+ * Direction-multiplexed ids (`sidebar.nav`, `files.hierarchy`, …) are NOT
+ * fixed anymore — their handlers dispatch on the matched chord's SLOT
+ * (see {@link SLOT_CONTRACTS}), not on `evt.name`.
+ *
+ * Value = the reason shown in warnings / settings.
  */
 export const FIXED_BINDING_IDS: Readonly<Record<string, string>> = {
-  "focus.numeric": "pane focus is positional (h/j/k/l → pane) and mirrors the tmux-layer ctrl+hjkl bindings",
-  "sidebar.nav": "handler maps j/down vs k/up by key name",
-  "sidebar.goto": "gg vs Shift+G is discriminated inside the handler",
-  "sidebar.pin": "Shift+P is discriminated inside the handler",
-  "sidebar.localMerge": "Shift+M is discriminated inside the handler",
-  "sidebar.view": "[ vs ] direction is read from the key name",
-  "sidebar.search.nav": "handler maps down vs up by key name",
-  "files.nav": "handler maps j/down vs k/up by key name",
-  "files.hierarchy": "handler maps h/left vs l/right by key name",
-  "files.tab": "[ vs ] direction is read from the key name",
-  "chat.question.nav": "handler maps j/down vs k/up by key name",
-  "chat.question.pick-number": "digits map to options by key name",
+  "focus.numeric":
+    "pane focus is positional (h/j/k/l → pane) and mirrors the tmux-layer ctrl+hjkl bindings — rebind tmux.focus instead",
+  "sidebar.goto":
+    "gg vs Shift+G is discriminated via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't carry both halves",
+  "sidebar.pin": "fires on Shift+P via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't work",
+  "sidebar.localMerge":
+    "fires on Shift+M via evt.shift; shift+<letter> chords are inexpressible, so a rebind can't work",
+  "chat.question.nav":
+    "the question picker has no live registration site (display-only row) — rebinding would change Help without changing behavior",
+  "chat.question.pick-number":
+    "digits map to options positionally and the question picker has no live registration site (display-only row)",
+}
+
+/**
+ * Positional slot contract for a direction-multiplexed binding id. The
+ * keymap layer threads the matched chord's index within the id's `keys`
+ * array to the handler (`Binding.slot`, assigned by `bindByIds`), so the
+ * MEANING of each position — the slot layout — is a documented contract
+ * an override must respect. `tmux.focus` (exactly 4 chords, order
+ * left/down/up/right, validated in `src/tmux/keybindings.ts`) is the
+ * precedent.
+ */
+export type SlotContract = {
+  /** Human-readable layout, used in warnings and the docs. */
+  layout: string
+  /** Null when `count` chords satisfy the layout; otherwise the problem. */
+  validateCount: (count: number) => string | null
+}
+
+/** Alternating pairs: even slots → `first`, odd slots → `second`. */
+function pairContract(first: string, second: string): SlotContract {
+  const layout = `alternating [${first}, ${second}] pairs`
+  return {
+    layout,
+    validateCount: (count) =>
+      count >= 2 && count % 2 === 0 ? null : `needs ${layout} (an even number of chords — got ${count})`,
+  }
+}
+
+/**
+ * Slot layouts for the user-rebindable multiplexed ids. Handlers map
+ * `slot % 2` (pairs), so any even chord count works: the 4-chord default
+ * `sidebar.nav: [j, k, down, up]` and a 2-chord override
+ * `sidebar.nav: [w, s]` follow the same contract. Validation runs in
+ * {@link applyKeymapOverrides} (and re-runs on a live keybindings
+ * reload, since the reload path resets and re-applies from scratch).
+ */
+export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
+  "sidebar.nav": pairContract("down", "up"),
+  "files.nav": pairContract("down", "up"),
+  "sidebar.search.nav": pairContract("down", "up"),
+  "files.hierarchy": pairContract("collapse", "expand"),
+  "sidebar.view": pairContract("previous view", "next view"),
+  "files.tab": pairContract("previous tab", "next tab"),
 }
 
 /** Scopes where a bare single-character chord would steal typed input. */
@@ -343,6 +397,19 @@ export function applyKeymapOverrides(
       continue
     }
 
+    // Slot-contract count check (direction-multiplexed ids): the handler
+    // maps slot position → action, so an override must supply a chord
+    // count matching the documented layout. Unbind ([]) is exempt — an
+    // empty list disables the id wholesale, no slots involved.
+    const contract = SLOT_CONTRACTS[entry.id]
+    if (contract && entry.keys.length > 0) {
+      const problem = contract.validateCount(entry.keys.length)
+      if (problem) {
+        warnings.push(`${entry.id}: ${problem} — keeping the default`)
+        continue
+      }
+    }
+
     // Boundary rule (docs/KEYBINDINGS.md): a bare single character on a
     // scope whose focused surface accepts typed text would steal input.
     const keys = entry.keys.filter((chord) => {
@@ -356,6 +423,14 @@ export function applyKeymapOverrides(
     })
     if (keys.length === 0 && entry.keys.length > 0) {
       warnings.push(`${entry.id}: no chords survived validation — keeping the default`)
+      continue
+    }
+    // A slot id can't survive a partial drop: removing one chord shifts
+    // every later slot, silently remapping directions. All-or-nothing.
+    if (contract && keys.length !== entry.keys.length) {
+      warnings.push(
+        `${entry.id}: a dropped chord would shift the slot layout (${contract.layout}) — keeping the default`,
+      )
       continue
     }
 

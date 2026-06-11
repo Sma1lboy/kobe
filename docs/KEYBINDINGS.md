@@ -176,12 +176,45 @@ Semantics and guard rails:
   tmux `status-right` hint render from the resolved set, so overrides show
   their own chords. Overrides apply when a session is (re)built, not to a
   session that's already running. The `prefix T` / `prefix f` rows stay fixed.
-- **Fixed (not rebindable) in v1**: ids whose handlers discriminate BETWEEN
-  their chords by key name (`sidebar.nav`, `files.nav`, `files.hierarchy`,
-  `sidebar.view`, `files.tab`, `sidebar.goto`/`pin`/`localMerge` shift-gates,
-  `chat.question.nav`/`pick-number`, `focus.numeric`) — listed in
-  `FIXED_BINDING_IDS` with reasons; and doc-only rows (`keys: []`, e.g.
-  composer enter/shift+enter).
+- **Positional (slot-layout) ids are rebindable via slot dispatch**: the
+  direction-multiplexed ids — one id, several chords, the action depends on
+  WHICH chord fired — used to be fixed because their handlers read
+  `evt.name`. They now dispatch on the matched chord's **slot** (its index in
+  the id's `keys` array: `bindByIds` assigns it, `dispatchKeyEvent` passes it
+  to the handler as a second argument), so an override just has to respect the
+  id's positional layout, validated in `SLOT_CONTRACTS`
+  ([`src/tui/lib/keymap-overrides.ts`](../packages/kobe/src/tui/lib/keymap-overrides.ts)) —
+  same idea as `tmux.focus`'s exactly-4-chords rule. All current layouts are
+  **alternating pairs**, so any even chord count works (a wrong count warns
+  and keeps the default; `null`/`[]` still unbinds):
+
+  | id | slot layout (even slots, odd slots) | default keys |
+  |---|---|---|
+  | `sidebar.nav` | down, up | `j, k, down, up` |
+  | `files.nav` | down, up | `j, k, down, up` |
+  | `sidebar.search.nav` | down, up | `down, up` |
+  | `files.hierarchy` | collapse, expand | `h, l, left, right` |
+  | `sidebar.view` | previous view, next view | `[, ]` |
+  | `files.tab` | previous tab, next tab | `[, ]` |
+
+  ```yaml
+  bindings:
+    sidebar.nav: [w, s]                  # 2-chord nav: w=down, s=up
+    files.hierarchy: [left, right]       # arrows only
+    files.tab: [ctrl+left, ctrl+right]   # pairs can be modifier chords
+  ```
+
+- **Fixed (not rebindable)**: listed in `FIXED_BINDING_IDS` with reasons —
+  `focus.numeric` (positional h/j/k/l → pane set mirroring the tmux-layer
+  `ctrl+hjkl` bindings; rebind `tmux.focus` instead),
+  `sidebar.goto`/`sidebar.pin`/`sidebar.localMerge` (the handler fires on
+  `evt.shift` — `shift+<letter>` chords are inexpressible in the chord
+  grammar, so a rebind could never carry the shifted half), and
+  `chat.question.nav`/`chat.question.pick-number` (no live registration site
+  since the legacy Chat pane's question picker was removed — display-only
+  rows; if the picker returns, implement it with slot dispatch before
+  unlocking). Doc-only rows (`keys: []`, e.g. composer enter/shift+enter)
+  also can't be overridden.
 
 ## Adding a new binding — checklist
 
