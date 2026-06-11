@@ -370,6 +370,18 @@ function TaskRail({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Keyboard-first: Enter jumps to the top match (visible is
+              // already sorted + filtered), Escape clears the query.
+              if (event.key === "Enter" && visible.length > 0) {
+                event.preventDefault()
+                open(visible[0].id)
+                event.currentTarget.blur()
+              } else if (event.key === "Escape" && query) {
+                event.preventDefault()
+                setQuery("")
+              }
+            }}
             placeholder="Filter tasks"
             className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-subtle focus:outline-none"
           />

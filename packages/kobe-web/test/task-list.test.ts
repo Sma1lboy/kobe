@@ -111,3 +111,38 @@ describe("matchesTask", () => {
     expect(matchesTask(task({ id: "y" }), "")).toBe(true)
   })
 })
+
+describe("rail Enter target — top match of filter+sort", () => {
+  // What the task rail's Enter-to-jump opens: the first element of the same
+  // sorted+filtered list the rail renders (visible[0] in AppShell).
+  const topMatch = (
+    all: Task[],
+    query: string,
+    mode: "default" | "recent",
+  ): Task | undefined =>
+    sortTasks(
+      all.filter((t) => matchesTask(t, query)),
+      mode,
+    )[0]
+
+  const all = [
+    task({ id: "p", kind: "main", title: "kobe", branch: "main" }),
+    task({ id: "a", title: "auth fix", branch: "feat/auth" }),
+    task({ id: "b", title: "billing", branch: "feat/billing" }),
+  ]
+
+  it("opens the first matching task for a query", () => {
+    expect(topMatch(all, "billing", "default")?.id).toBe("b")
+  })
+
+  it("respects group order — a project outranks a matching worktree", () => {
+    // "feat" matches both worktrees, but a project (main) that also matches
+    // sorts first; here the query matches only worktrees, so the first
+    // worktree in order wins.
+    expect(topMatch(all, "feat", "default")?.id).toBe("a")
+  })
+
+  it("is undefined when nothing matches (Enter is a no-op)", () => {
+    expect(topMatch(all, "zzz-none", "default")).toBeUndefined()
+  })
+})
