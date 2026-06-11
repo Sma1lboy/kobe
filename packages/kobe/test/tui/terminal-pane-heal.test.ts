@@ -117,6 +117,65 @@ describe("planPaneHeals — stale-only (the upgrade heal)", () => {
   })
 })
 
+describe("planPaneHeals — vendorChanged (the in-place engine switch, KOB-232)", () => {
+  // After an in-place vendor switch the Ops pane keeps its spawn-time
+  // `--vendor` flag, so a same-version Ops pane would poll the OLD vendor's
+  // transcript store (dead `● new` badge, wrong tab-bar turn state) unless we
+  // force its respawn. The Tasks rail is vendor-agnostic, so it stays
+  // version-gated.
+  const opts = { currentVersion: "0.8.0", force: false, vendorChanged: true }
+
+  test("respawns the Ops pane even when its version matches (force the new --vendor)", () => {
+    const rows = [
+      row("@1", "%0", "claude", "0.8.0"),
+      row("@1", "%1", "tasks", "0.8.0"),
+      row("@1", "%2", "ops", "0.8.0"),
+    ]
+    // Tasks pane is up-to-date → skipped; Ops pane is up-to-date but forced.
+    expect(planPaneHeals(rows, opts)).toEqual([{ role: "ops", paneId: "%2", claudePaneId: "%0" }])
+  })
+
+  test("respawns the Ops pane in EVERY window (sibling chat tabs all switch)", () => {
+    const rows = [
+      row("@1", "%0", "claude", "0.8.0"),
+      row("@1", "%2", "ops", "0.8.0"),
+      row("@2", "%4", "claude", "0.8.0"),
+      row("@2", "%6", "ops", "0.8.0"),
+    ]
+    expect(planPaneHeals(rows, opts)).toEqual([
+      { role: "ops", paneId: "%2", claudePaneId: "%0" },
+      { role: "ops", paneId: "%6", claudePaneId: "%4" },
+    ])
+  })
+
+  test("still skips an Ops pane in a window with no live claude pane (nothing to target)", () => {
+    // Unlike `force`, vendorChanged respects the claude-pane gate — after a
+    // successful engine respawn the claude pane is always alive, so this is the
+    // degraded edge case only.
+    const rows = [row("@1", "%2", "ops", "0.8.0"), row("@1", "%1", "tasks", "0.8.0")]
+    expect(planPaneHeals(rows, opts)).toEqual([])
+  })
+
+  test("does NOT force the Tasks rail (vendor-agnostic) — only stale Tasks panes respawn", () => {
+    const rows = [
+      row("@1", "%0", "claude", "0.8.0"),
+      row("@1", "%1", "tasks", "0.7.0"),
+      row("@1", "%2", "ops", "0.8.0"),
+    ]
+    expect(planPaneHeals(rows, opts)).toEqual([
+      { role: "tasks", paneId: "%1" },
+      { role: "ops", paneId: "%2", claudePaneId: "%0" },
+    ])
+  })
+
+  test("absent vendorChanged behaves exactly like the stale-only heal", () => {
+    // Regression guard: the new knob is opt-in; omitting it preserves the
+    // version-gated upgrade-heal behavior verbatim.
+    const rows = [row("@1", "%0", "claude", "0.8.0"), row("@1", "%2", "ops", "0.8.0")]
+    expect(planPaneHeals(rows, { currentVersion: "0.8.0", force: false })).toEqual([])
+  })
+})
+
 describe("planPaneHeals — force (the settings refresh)", () => {
   const opts = { currentVersion: "0.8.0", force: true }
 

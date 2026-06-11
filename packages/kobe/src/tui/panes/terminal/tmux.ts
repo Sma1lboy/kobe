@@ -373,9 +373,18 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // when no engine pane is found to respawn — that fact is only knowable
   // here at apply time, so it's the applier's fallback, not the decision's.
   if (action.kind === "respawn-engine") {
-    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey)) {
+    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey, opts.vendor)) {
       if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-      await healWorkspaceLayout(opts.name, { cwd: opts.cwd, taskId: opts.taskId, vendor: opts.vendor })
+      // `vendorChanged` forces every window's Ops pane to respawn so its baked
+      // `--vendor` flag (and the transcript store its activity badge + turn
+      // detector poll) tracks the NEW engine — a same-version Ops pane would
+      // otherwise keep polling the OLD vendor's store (KOB-232).
+      await healWorkspaceLayout(opts.name, {
+        cwd: opts.cwd,
+        taskId: opts.taskId,
+        vendor: opts.vendor,
+        vendorChanged: true,
+      })
       return true
     }
   }

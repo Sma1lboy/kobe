@@ -30,8 +30,16 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
+import { withClaudeSessionId } from "@/engine/interactive-command"
 import { localSpawnCwd } from "@/exec/resolve"
-import { getServerOptions, getSessionOptions, runTmuxCapturing, runTmuxSequence, sessionExists } from "@/tmux/client"
+import {
+  CHAT_TAB_SESSION_ID_OPTION,
+  getServerOptions,
+  getSessionOptions,
+  runTmuxCapturing,
+  runTmuxSequence,
+  sessionExists,
+} from "@/tmux/client"
 import {
   OPS_HEIGHT_OPTION,
   RIGHT_COLUMN_WIDTH_OPTION,
@@ -120,10 +128,17 @@ export type PaneHealTarget =
  *     window with NO claude pane (`claudePaneId: null`) — `opsPaneCommand`
  *     already degrades to its git-status fallback, and skipping it
  *     silently left the pane on stale code after a `kobe reload`.
+ *   - `vendorChanged: true` (the vendor-switch heal, KOB-232): respawn
+ *     every OPS pane that still has a live claude pane regardless of
+ *     version — the Ops pane bakes its `--vendor` flag at spawn time
+ *     (`opsPaneCommand`), so on an in-place engine switch a same-version
+ *     Ops pane would otherwise keep polling the OLD vendor's transcript
+ *     store (dead `● new` badge + wrong tab-bar turn state). Tasks panes
+ *     are version-gated as usual (the Tasks rail is vendor-agnostic).
  */
 export function planPaneHeals(
   rows: readonly KobePaneRow[],
-  opts: { readonly currentVersion: string; readonly force: boolean },
+  opts: { readonly currentVersion: string; readonly force: boolean; readonly vendorChanged?: boolean },
 ): PaneHealTarget[] {
   const byWindow = new Map<string, KobePaneRow[]>()
   for (const row of rows) {
@@ -141,7 +156,14 @@ export function planPaneHeals(
     if (tasksPane && (opts.force || tasksPane.version !== opts.currentVersion)) {
       targets.push({ role: "tasks", paneId: tasksPane.paneId })
     }
-    if (opsPane && (opts.force ? true : claudePane && opsPane.version !== opts.currentVersion)) {
+    // Force-respawn this window's Ops pane on a vendor change too — but only
+    // when its window still has a live claude pane (it always does right after
+    // a successful engine respawn). The unconditional `force` path keeps its
+    // degraded-window behavior (respawn even with no claude pane).
+    const opsNeedsRespawn = opts.force
+      ? true
+      : claudePane && (opts.vendorChanged || opsPane?.version !== opts.currentVersion)
+    if (opsPane && opsNeedsRespawn) {
       targets.push({ role: "ops", paneId: opsPane.paneId, claudePaneId: claudePane ?? null })
     }
   }
@@ -203,23 +225,56 @@ function respawnCommandsFor(
  * then falls back to a full rebuild). Used to apply a vendor switch to a
  * multi-window session without `kill-session` dropping sibling chat tabs
  * (KOB-232).
+ *
+ * Engine identity is re-woven PER WINDOW, exactly like the two fresh launch
+ * paths (`ensureSession`'s create branch + `newChatTab`). The pre-fix code
+ * respawned with the raw `command`, which left the new engine running with no
+ * `--session-id` while each window's stale `@kobe_session_id` still held the
+ * PRE-switch UUID — so the chat-tab auto-namer resolved the OLD vendor's
+ * transcript (wrong or empty names). Now each window gets its OWN fresh
+ * `withClaudeSessionId(command, vendor)` weave (a distinct UUID per window for
+ * claude; identity for codex/copilot), and its `@kobe_session_id` window option
+ * is re-pinned to that id — or CLEARED when the new vendor can't take a
+ * caller-set id, so no stale claude UUID lingers to mis-name the tab.
  */
 export async function relaunchEngineInAllWindows(
   session: string,
   cwd: string,
   command: readonly string[],
   remoteKey?: string,
+  vendor?: string,
 ): Promise<boolean> {
   const rows = await listKobePanes(session)
   if (!rows) return false
-  const enginePanes = paneIdsByRole(rows, "claude")
+  // Each engine pane carries its window id, so we can re-pin that window's
+  // `@kobe_session_id` to the freshly woven UUID. `paneIdsByRole` would drop
+  // the window id, so filter the rows directly (first claude pane per row order
+  // — there is one engine pane per window).
+  const enginePanes = rows.filter((r) => r.role === "claude")
   if (enginePanes.length === 0) return false
-  const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(command), remoteKey, cwd))
-  // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
-  // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
+  const localCwd = localSpawnCwd(cwd)
+  const commands: (readonly string[])[] = []
+  for (const pane of enginePanes) {
+    // Fresh identity per window — a distinct `--session-id` UUID for claude so
+    // each tab maps to its own transcript; `null` for codex/copilot.
+    const launch = withClaudeSessionId(command, vendor)
+    const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, cwd))
+    // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
+    // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
+    commands.push(["respawn-pane", "-k", "-c", localCwd, "-t", pane.paneId, cmd])
+    // Re-pin (claude) or clear (codex/copilot) this window's recorded session id
+    // so the auto-namer reads the RIGHT transcript store with the RIGHT id.
+    // `set-window-option` targets the window via any pane inside it; the pane id
+    // survives `respawn-pane`.
+    commands.push(
+      launch.sessionId
+        ? ["set-window-option", "-t", pane.paneId, CHAT_TAB_SESSION_ID_OPTION, launch.sessionId]
+        : ["set-window-option", "-u", "-t", pane.paneId, CHAT_TAB_SESSION_ID_OPTION],
+    )
+  }
   // One tmux invocation for all windows (per-pane exit codes were never
   // consulted here, so batching loses no error detection).
-  await runTmuxSequence(enginePanes.map((pane) => ["respawn-pane", "-k", "-c", localSpawnCwd(cwd), "-t", pane, cmd]))
+  await runTmuxSequence(commands)
   return true
 }
 
@@ -280,7 +335,7 @@ export async function globalRightColumnResizeArgs(): Promise<string[]> {
  */
 export async function healWorkspaceLayout(
   session: string,
-  versions?: { cwd: string; taskId: string | undefined; vendor: string | undefined },
+  versions?: { cwd: string; taskId: string | undefined; vendor: string | undefined; vendorChanged?: boolean },
 ): Promise<void> {
   const { tasksWidth, rcArgs } = await globalLayoutPrefs()
   const rows = await listKobePanes(session)
@@ -298,7 +353,17 @@ export async function healWorkspaceLayout(
   }
   if (versions) {
     commands.push(
-      ...respawnCommandsFor(planPaneHeals(rows, { currentVersion: CURRENT_VERSION, force: false }), versions),
+      ...respawnCommandsFor(
+        planPaneHeals(rows, {
+          currentVersion: CURRENT_VERSION,
+          force: false,
+          // After an in-place vendor switch, force the Ops panes to respawn so
+          // their baked `--vendor` flag (and the transcript store the activity
+          // badge / turn detector poll) match the new engine (KOB-232).
+          vendorChanged: versions.vendorChanged,
+        }),
+        versions,
+      ),
     )
   }
   if (commands.length > 0) await runTmuxSequence(commands)

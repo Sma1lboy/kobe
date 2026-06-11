@@ -13,10 +13,17 @@
  *
  * Like the Tasks pane, this runs as its own process inside a tmux
  * window, so it connects to the daemon itself (RemoteOrchestrator) to
- * light up the Dev section's "Restart backend" action.
+ * light up the Dev section's "Restart backend" action. The connect is
+ * NON-spawning (`connectIfRunning`, same contract as the Tasks pane): a
+ * settings window opened from a detached tmux session (the user quit kobe,
+ * the daemon idle-stopped, the session persists) must NEVER boot a daemon —
+ * doing so would leave a gui-less daemon that never idle-stops, breaking
+ * the refcounted lazy-shutdown. With no daemon up, "Restart backend" is
+ * simply disabled (it has nothing to restart); the page degrades the same
+ * way it already does when the daemon is unreachable.
  */
 
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SettingsDialog } from "../component/settings-dialog"
 import { useKV } from "../context/kv"
@@ -97,10 +104,18 @@ export async function startSettingsHost(): Promise<void> {
     setup: async () => {
       let orch: RemoteOrchestrator | null = null
       try {
-        const client = await connectOrStartDaemon()
-        const remote = new RemoteOrchestrator(client)
-        await remote.init()
-        orch = remote
+        // NON-spawning: connect ONLY to a daemon that's already running. A
+        // gui owns daemon lifetime; a settings window must not resurrect an
+        // idle-stopped daemon (it would never idle-stop again — no gui holds
+        // it). `null` → no daemon up → Restart backend disabled.
+        const client = await connectIfRunning()
+        if (client) {
+          const remote = new RemoteOrchestrator(client)
+          await remote.init()
+          orch = remote
+        } else {
+          console.error("[kobe settings] no daemon running; Restart backend disabled")
+        }
       } catch (err) {
         console.error("[kobe settings] daemon unavailable; Restart backend disabled:", err)
       }

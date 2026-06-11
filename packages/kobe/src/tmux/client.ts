@@ -17,6 +17,13 @@
 
 import { homedir } from "node:os"
 import { kobeCliInvocation } from "@/cli/invocation"
+// `inheritedEnvPrefix` lives in the `panes/terminal/launch` helper module. That
+// module's only deps are `@/exec/resolve` + `@/tmux/session-layout`, neither of
+// which imports this file, so the reference is acyclic at runtime even though it
+// reaches "up" into the tui layer — the import is for the kobe-home Tasks pane's
+// env pinning below (KOB-244). Keeping the prefix in one place avoids re-deriving
+// the same KOBE_*-pinning logic the workspace panes already use.
+import { inheritedEnvPrefix } from "@/tui/panes/terminal/launch"
 import {
   TASKS_PANE_WIDTH,
   TASKS_WIDTH_OPTION,
@@ -516,7 +523,14 @@ export async function ensureFallbackSession(): Promise<string> {
       "-P",
       "-F",
       "#{pane_id}",
-      keepAlive(tasksPaneCommand(kobeCliInvocation())),
+      // Pin kobe's env (KOBE_HOME_DIR / KOBE_DAEMON_SOCKET_PATH / KOBE_TMUX_SOCKET)
+      // onto the home rail's command, exactly like buildPanesAround / the heal
+      // respawns do. Without it the home rail inherits whatever env the tmux
+      // SERVER was born with — which goes stale when the server persists across
+      // kobe relaunches (KOBE_* aren't in tmux's update-environment list), so a
+      // non-default-home run that lands on home could read/mutate the PRODUCTION
+      // tasks.json / a dead daemon — the KOB-244 desync class.
+      keepAlive(inheritedEnvPrefix() + tasksPaneCommand(kobeCliInvocation())),
     ])
     const tasksPane = r1.stdout.trim()
     if (tasksPane) {
