@@ -257,7 +257,8 @@ export function ChangesList({
     setLoading(true)
     setError(null)
     try {
-      setResult(await fetchDiff(worktreePath))
+      // The list renders only names + badges, so skip per-file patch assembly.
+      setResult(await fetchDiff(worktreePath, { namesOnly: true }))
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
       setResult(null)
@@ -362,7 +363,8 @@ export function FilePreview({
     let cancelled = false
     setLoading(true)
     setError(null)
-    void fetchDiff(worktreePath)
+    // Ask for just this file's patch instead of the whole worktree's diff set.
+    void fetchDiff(worktreePath, { path })
       .then((result) => {
         if (cancelled) return
         setFile(result.files.find((item) => item.path === path) ?? null)

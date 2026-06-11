@@ -15,6 +15,7 @@
 import { createServer } from "node:http"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
+import { createScrollback } from "./pty-scrollback.mjs"
 
 const PORT = Number.parseInt(process.env.KOBE_PTY_PORT ?? "5175", 10)
 const BRIDGE_PORT = Number.parseInt(process.env.KOBE_BRIDGE_PORT ?? "5174", 10)
@@ -52,9 +53,13 @@ function spawnTab(tabId, spec, cols, rows) {
     cwd: spec.cwd,
     env: ptyEnv(),
   })
-  const entry = { pty, buffer: "", sockets: new Set() }
+  // Scrollback is a bounded ring of chunks, not a single growing string: the
+  // old `(buffer + data).slice(-CAP)` re-flattened ~256KB on EVERY chunk once
+  // the cap was reached (quadratic during heavy streaming). `push` is O(chunk);
+  // the string is materialized only on (re)attach replay.
+  const entry = { pty, scrollback: createScrollback(SCROLLBACK_CAP), sockets: new Set() }
   pty.onData((data) => {
-    entry.buffer = (entry.buffer + data).slice(-SCROLLBACK_CAP)
+    entry.scrollback.push(data)
     for (const ws of entry.sockets) if (ws.readyState === ws.OPEN) ws.send(data)
   })
   pty.onExit(() => {
@@ -150,7 +155,7 @@ wss.on("connection", (ws, req) => {
 
     entry.sockets.add(ws)
     // Replay recent output so a (re)attach shows current screen state.
-    if (entry.buffer && ws.readyState === ws.OPEN) ws.send(entry.buffer)
+    if (entry.scrollback.length() > 0 && ws.readyState === ws.OPEN) ws.send(entry.scrollback.replay())
     entry.pty.resize(cols, rows)
 
     ws.on("message", (raw) => {

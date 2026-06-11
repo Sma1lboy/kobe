@@ -11,6 +11,12 @@ import "@xterm/xterm/css/xterm.css"
 import { useEffect, useRef } from "react"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 
+// One decoder reused across every WebSocket message — a fresh `new
+// TextDecoder()` per frame (hundreds/sec during engine streaming) was needless
+// allocation churn. Stateless here: each binary frame is a self-contained UTF-8
+// chunk, decoded in one `decode()` call with no streaming state carried over.
+const PTY_DECODER = new TextDecoder()
+
 // xterm palette mirrored from the claude TUI theme (claude.json).
 const CLAUDE_XTERM_THEME = {
   background: "#141413",
@@ -95,7 +101,7 @@ export function ChatTerminal({
         const data =
           typeof e.data === "string"
             ? e.data
-            : new TextDecoder().decode(e.data as ArrayBuffer)
+            : PTY_DECODER.decode(e.data as ArrayBuffer)
         term?.write(data)
       }
       ws.onclose = (event) => {

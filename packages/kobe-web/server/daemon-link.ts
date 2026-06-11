@@ -27,6 +27,7 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { SPA_CHANNEL_SET, SPA_CHANNELS } from "./spa-channels.ts"
 
 const RECONNECT_INTERVAL_MS = 500
 /** Spawn-free retries after a drop (~10s) before escalating to a spawn. */
@@ -142,7 +143,12 @@ export class DaemonLink {
       // Wire handlers BEFORE subscribing so the replay frames are captured.
       client.on("*", (frame) => this.onFrame(frame.name, frame.payload))
       client.onLifecycle("close", () => this.onDrop(client))
-      await client.subscribe({ role: "gui" })
+      // Ask the daemon for only the channels the SPA consumes. The daemon
+      // ignores this filter today (it replays/forwards every channel either
+      // way), so the bridge-side filter in `onFrame` is what actually saves
+      // the wire+parse cost; this is forward-compat for when the daemon honors
+      // the filter and the bytes stop crossing the socket too.
+      await client.subscribe({ role: "gui", channels: SPA_CHANNELS })
     } catch (err) {
       client.close()
       throw err
@@ -195,6 +201,10 @@ export class DaemonLink {
       default:
         break
     }
+    // Forward only the channels the SPA renders. Unconsumed daemon channels
+    // (worktree.changes, ui-prefs, keybindings, task.jobs) are dropped here so
+    // they never hit the SSE fan-out → per-client stringify → browser parse.
+    if (!SPA_CHANNEL_SET.has(name)) return
     const event: ChannelEventOut = { channel: name, payload }
     for (const sink of this.eventSinks) sink(event)
   }
