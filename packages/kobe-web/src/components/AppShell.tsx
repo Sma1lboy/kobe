@@ -26,7 +26,7 @@ import {
   useNotifyState,
 } from "../lib/notify.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { selectTask, useTabsState } from "../lib/tabs.ts"
+import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import type {
@@ -667,6 +667,41 @@ function NotificationsCard() {
   )
 }
 
+function ResetLayoutCard() {
+  const [armed, setArmed] = useState(false)
+  return (
+    <div className="border border-line bg-surface p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+        Workspace
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
+        Reset the per-task tab layout (open tabs, splits, selection) if it ever
+        gets wedged or cluttered. Pure browser state — your tasks, worktrees,
+        and notes are untouched.
+      </p>
+      <button
+        type="button"
+        onClick={() => {
+          if (!armed) {
+            setArmed(true)
+            return
+          }
+          resetLayout()
+          setArmed(false)
+        }}
+        onBlur={() => setArmed(false)}
+        className={`mt-3 border px-3 py-1.5 text-[11px] transition-colors ${
+          armed
+            ? "border-kobe-red/50 bg-kobe-red/10 text-kobe-red"
+            : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
+        }`}
+      >
+        {armed ? "Click again to reset layout" : "Reset layout"}
+      </button>
+    </div>
+  )
+}
+
 function SettingsPage({ onClose }: { onClose: () => void }) {
   const { daemonConnected, streamConnected, update } = useAppState()
 
@@ -740,6 +775,7 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
             <ThemePicker />
           </div>
           <NotificationsCard />
+          <ResetLayoutCard />
           <div className="md:col-span-2">
             <EnginesCard />
           </div>

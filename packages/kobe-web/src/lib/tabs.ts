@@ -196,6 +196,22 @@ export function consumePendingPrompt(taskId: string): string | null {
 }
 
 /**
+ * Reset all client-owned workspace layout (tab lists, splits, selection) back
+ * to empty — a recovery hatch from a wedged/cluttered tab state. Pure client
+ * state: clears localStorage, doesn't touch tasks/worktrees/the daemon. PTYs
+ * for currently-open tabs are killed so they don't linger server-side.
+ */
+export function resetLayout(): void {
+  for (const tabs of Object.values(state.tabsByTask)) {
+    for (const tab of tabs) {
+      if (tab.kind === "vendor" || tab.kind === "terminal")
+        void closePtyTab(tab.id)
+    }
+  }
+  set({ ...EMPTY })
+}
+
+/**
  * Sweep tab state for tasks that no longer exist (deleted in the TUI, via
  * `kobe api`, or by another browser). Kills the dead tasks' PTYs server-side
  * — without this, a deleted task's engine kept running in the pty sidecar,
