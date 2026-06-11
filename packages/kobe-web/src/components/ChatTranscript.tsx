@@ -12,7 +12,7 @@
  *  - thinking and tool output bodies are collapsed by default.
  */
 
-import { ChevronDown, ChevronRight, RotateCw } from "lucide-react"
+import { ChevronDown, ChevronRight, RotateCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   type ContentBlock,
@@ -23,6 +23,7 @@ import {
   summarizeUsage,
 } from "../lib/history.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
+import { messageMatchesQuery } from "../lib/transcript-search.ts"
 
 const POLL_MS = 2_500
 const OUTPUT_PREVIEW_CHARS = 600
@@ -185,6 +186,7 @@ export function ChatTranscript({
   const [selected, setSelected] = useState<string | null>(null)
   const [followLatest, setFollowLatest] = useState(true)
   const [messages, setMessages] = useState<HistoryMessage[]>([])
+  const [search, setSearch] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const mtimeRef = useRef(-1)
@@ -238,6 +240,7 @@ export function ChatTranscript({
     setLoaded(false)
     setFollowLatest(true)
     setSelected(null)
+    setSearch("")
     void refreshRef.current(true)
     const timer = window.setInterval(() => {
       if (!document.hidden) void refreshRef.current()
@@ -281,6 +284,13 @@ export function ChatTranscript({
   }, [messages])
 
   const usage = useMemo(() => summarizeUsage(messages), [messages])
+  const shown = useMemo(
+    () =>
+      search.trim()
+        ? messages.filter((m) => messageMatchesQuery(m, search))
+        : messages,
+    [messages, search],
+  )
 
   if (!worktreePath) {
     return (
@@ -334,6 +344,34 @@ export function ChatTranscript({
           </button>
         </div>
       </div>
+      {messages.length > 0 && (
+        <div className="flex h-7 shrink-0 items-center gap-2 border-b border-line px-2">
+          <Search size={11} strokeWidth={2} className="shrink-0 text-subtle" />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search transcript…"
+            spellCheck={false}
+            className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-fg placeholder:text-subtle focus:outline-none"
+          />
+          {search.trim() && (
+            <>
+              <span className="shrink-0 font-mono text-[10px] text-subtle">
+                {shown.length}/{messages.length}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="shrink-0 text-subtle transition-colors hover:text-fg"
+                aria-label="clear transcript search"
+                title="Clear search"
+              >
+                <X size={12} strokeWidth={2} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -350,8 +388,12 @@ export function ChatTranscript({
             No engine session recorded for this worktree yet. Open a Vendor tab
             and start a conversation — the transcript appears here.
           </div>
+        ) : shown.length === 0 ? (
+          <div className="py-4 text-[12px] leading-relaxed text-subtle">
+            No messages match “{search.trim()}”.
+          </div>
         ) : (
-          messages.map((message, index) => (
+          shown.map((message, index) => (
             <MessageRow
               // biome-ignore lint/suspicious/noArrayIndexKey: transcript is positional + re-rendered wholesale per session; messages carry no stable id, so sessionId+index is the stable-enough key.
               key={`${message.sessionId}-${index}`}
