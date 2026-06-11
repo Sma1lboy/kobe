@@ -31,6 +31,10 @@ describe("fuzzyScore — match / no-match", () => {
     expect(fuzzyScore("", "")).toBe(0)
   })
 
+  it("returns null for a non-empty query against empty text", () => {
+    expect(fuzzyScore("a", "")).toBeNull()
+  })
+
   it("is case-insensitive both ways", () => {
     expect(fuzzyScore("AB", "ab")).toBe(fuzzyScore("ab", "ab"))
     expect(fuzzyScore("ab", "AB")).toBe(fuzzyScore("ab", "ab"))
