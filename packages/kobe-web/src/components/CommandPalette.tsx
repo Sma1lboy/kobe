@@ -23,7 +23,11 @@ import { fuzzyScore } from "../lib/fuzzy.ts"
 import { themeCommandEntries } from "../lib/palette-commands.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
-import { setPreferredTheme, useThemeState } from "../lib/theme.ts"
+import {
+  clearPreferredTheme,
+  setPreferredTheme,
+  useThemeState,
+} from "../lib/theme.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -56,7 +60,11 @@ export function CommandPalette({
   onOpenSettings: () => void
 }) {
   const { tasks } = useAppState()
-  const { names: themeNames, active: activeTheme } = useThemeState()
+  const {
+    names: themeNames,
+    active: activeTheme,
+    overridden: themeOverridden,
+  } = useThemeState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
@@ -138,11 +146,26 @@ export function CommandPalette({
         onClose()
       },
     }))
+    // Only offer "Follow TUI" when a web-local override is active — it's the
+    // way back from a palette/Settings theme pick to tracking the TUI.
+    if (themeOverridden) {
+      themeCmds.unshift({
+        id: "theme:follow-tui",
+        label: "Theme: Follow TUI",
+        hint: "clear override",
+        icon: "theme",
+        run: () => {
+          clearPreferredTheme()
+          onClose()
+        },
+      })
+    }
     return [...actions, ...themeCmds, ...taskCmds]
   }, [
     tasks,
     themeNames,
     activeTheme,
+    themeOverridden,
     navigate,
     onClose,
     onNewTask,
