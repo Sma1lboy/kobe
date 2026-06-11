@@ -3,6 +3,7 @@ import type { ContentBlock, HistoryMessage } from "../src/lib/history.ts"
 import {
   blockVisible,
   messageMatchesQuery,
+  messageRendersAnything,
   messageSearchText,
 } from "../src/lib/transcript-search.ts"
 
@@ -86,5 +87,40 @@ describe("blockVisible (hide tool calls)", () => {
     expect(blockVisible(toolCall, true)).toBe(false)
     expect(blockVisible(text, true)).toBe(true)
     expect(blockVisible(thinking, true)).toBe(true)
+  })
+})
+
+describe("messageRendersAnything (mirrors MessageRow's render decision)", () => {
+  const msgOf = (blocks: ContentBlock[]): HistoryMessage =>
+    ({ role: "assistant", blocks, timestamp: "", sessionId: "s" }) as HistoryMessage
+
+  it("is true for a non-blank text or thinking block", () => {
+    expect(messageRendersAnything(msgOf([{ type: "text", text: "hi" }]), false)).toBe(true)
+    expect(messageRendersAnything(msgOf([{ type: "thinking", text: "hmm" }]), true)).toBe(true)
+  })
+
+  it("is FALSE for a tool_result-only message (never rendered standalone) — the Codex over-count bug", () => {
+    const m = msgOf([{ type: "tool_result", callId: "c1", output: "out", isError: false }])
+    expect(messageRendersAnything(m, false)).toBe(false)
+    expect(messageRendersAnything(m, true)).toBe(false)
+  })
+
+  it("is FALSE for empty/whitespace text or thinking (MessageRow skips them)", () => {
+    expect(messageRendersAnything(msgOf([{ type: "text", text: "   \n" }]), false)).toBe(false)
+    expect(messageRendersAnything(msgOf([{ type: "thinking", text: "" }]), false)).toBe(false)
+  })
+
+  it("counts a tool_call only when tools aren't hidden", () => {
+    const m = msgOf([{ type: "tool_call", callId: "c1", name: "Bash", input: {} }])
+    expect(messageRendersAnything(m, false)).toBe(true)
+    expect(messageRendersAnything(m, true)).toBe(false)
+  })
+
+  it("a prose+tool message still renders under hide-tools (the prose shows)", () => {
+    const m = msgOf([
+      { type: "text", text: "running it" },
+      { type: "tool_call", callId: "c1", name: "Bash", input: {} },
+    ])
+    expect(messageRendersAnything(m, true)).toBe(true)
   })
 })

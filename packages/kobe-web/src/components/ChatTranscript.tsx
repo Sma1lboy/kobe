@@ -24,7 +24,11 @@ import {
 } from "../lib/history.ts"
 import { isNearBottom } from "../lib/scroll.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
-import { blockVisible, messageMatchesQuery } from "../lib/transcript-search.ts"
+import {
+  blockVisible,
+  messageRendersAnything,
+  messageSearchText,
+} from "../lib/transcript-search.ts"
 
 const POLL_MS = 2_500
 const OUTPUT_PREVIEW_CHARS = 600
@@ -202,6 +206,16 @@ export function ChatTranscript({
   // overlap means a late response for a no-longer-selected session could
   // clobber the displayed messages. Only the most recent request may write.
   const seqRef = useRef(0)
+  // Live mirrors of followLatest/selected so an in-flight refresh (whose
+  // closure captured the OLD values) recomputes its target against the CURRENT
+  // selection after its await — otherwise a poll that overlaps a session pick
+  // would write `latest` and snap the user off the session they just picked.
+  const followLatestRef = useRef(true)
+  const selectedRef = useRef<string | null>(null)
+  useEffect(() => {
+    followLatestRef.current = followLatest
+    selectedRef.current = selected
+  }, [followLatest, selected])
 
   const refresh = useCallback(
     async (force = false): Promise<void> => {
@@ -215,7 +229,11 @@ export function ChatTranscript({
         if (!changed && !force) return
         mtimeRef.current = result.latestMtime
         const latest = result.sessions.at(-1) ?? null
-        const target = followLatest ? latest : (selected ?? latest)
+        // Read the LIVE selection (refs), not the captured closure, so a pick
+        // that landed during the await is honoured instead of snapped to latest.
+        const target = followLatestRef.current
+          ? latest
+          : (selectedRef.current ?? latest)
         seq = ++seqRef.current
         const next = target ? await fetchMessages(vendor, target) : []
         // A newer pick/poll superseded this fetch — drop its result.
@@ -231,7 +249,7 @@ export function ChatTranscript({
         if (seq === seqRef.current) setLoaded(true)
       }
     },
-    [worktreePath, vendor, followLatest, selected],
+    [worktreePath, vendor],
   )
 
   // The poll must call the CURRENT refresh (which captures followLatest/
@@ -251,6 +269,8 @@ export function ChatTranscript({
   useEffect(() => {
     mtimeRef.current = -1
     setLoaded(false)
+    followLatestRef.current = true
+    selectedRef.current = null
     setFollowLatest(true)
     setSelected(null)
     setSearch("")
@@ -264,6 +284,10 @@ export function ChatTranscript({
 
   const pickSession = (sessionId: string): void => {
     const isLatest = sessionId === sessions.at(-1)
+    // Update the live mirrors synchronously so a concurrent in-flight refresh
+    // targets this pick immediately (don't wait for the sync effect).
+    followLatestRef.current = isLatest
+    selectedRef.current = sessionId
     setFollowLatest(isLatest)
     setSelected(sessionId)
     const seq = ++seqRef.current
@@ -311,18 +335,26 @@ export function ChatTranscript({
   }, [messages])
 
   const usage = useMemo(() => summarizeUsage(messages), [messages])
+  // Precompute each message's lowercased search text once per messages change,
+  // so a keystroke filters with a cheap substring check instead of re-running
+  // JSON.stringify over every tool result on every key (perceptible lag on a
+  // 359-message transcript).
+  const searchIndex = useMemo(
+    () => messages.map((m) => messageSearchText(m).toLowerCase()),
+    [messages],
+  )
   const shown = useMemo(() => {
-    const q = search.trim()
-    // Drop messages that would render NOTHING under hideTools (their only
-    // blocks are tool calls) so the shown/total count, the rendered rows, and
-    // the "no matches" empty state all agree — otherwise a search that only
-    // matches a tool-only message counts it but renders blank.
+    const q = search.trim().toLowerCase()
+    // Keep only messages that BOTH match the query AND would actually render a
+    // row (messageRendersAnything mirrors MessageRow — drops tool_result-only
+    // and empty text/thinking turns) so the shown/total count, the rendered
+    // rows, and the "no matches" empty state all agree.
     return messages.filter(
-      (m) =>
-        (!q || messageMatchesQuery(m, search)) &&
-        m.blocks.some((b) => blockVisible(b, hideTools)),
+      (m, i) =>
+        (!q || searchIndex[i].includes(q)) &&
+        messageRendersAnything(m, hideTools),
     )
-  }, [messages, search, hideTools])
+  }, [messages, searchIndex, search, hideTools])
 
   if (!worktreePath) {
     return (

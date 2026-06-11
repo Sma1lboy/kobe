@@ -44,3 +44,21 @@ export function messageMatchesQuery(
 export function blockVisible(block: ContentBlock, hideTools: boolean): boolean {
   return !(hideTools && block.type === "tool_call")
 }
+
+/** Whether a message would render ANY row — mirrors exactly what MessageRow
+ *  emits (NOT blockVisible-by-type): non-blank text or thinking, or a tool_call
+ *  when tools aren't hidden. A tool_result never renders standalone, and an
+ *  empty/whitespace text/thinking block is skipped. Used so the transcript's
+ *  shown/total count, the rendered rows, and the "no matches" empty state all
+ *  agree (otherwise a tool_result-only Codex turn, or an empty block, counts
+ *  but renders blank). */
+export function messageRendersAnything(
+  message: HistoryMessage,
+  hideTools: boolean,
+): boolean {
+  return message.blocks.some((b) => {
+    if (b.type === "text" || b.type === "thinking") return b.text.trim() !== ""
+    if (b.type === "tool_call") return !hideTools
+    return false // tool_result: never standalone
+  })
+}
