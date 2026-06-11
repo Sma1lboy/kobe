@@ -7,7 +7,9 @@ import { useNavigate } from "@tanstack/react-router"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
+import { copyText } from "../lib/clipboard.ts"
 import { useEngines } from "../lib/engines.ts"
+import { taskDeepLink } from "../lib/share.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import {
   clearSelectedTask,
@@ -99,7 +101,7 @@ function TaskOverview({ task }: { task: Task | null }) {
   const [title, setTitle] = useState(task?.title ?? "")
   const [branch, setBranch] = useState(task?.branch ?? "")
   const [busy, setBusy] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<"path" | "link" | null>(null)
   const [confirm, setConfirm] = useState<PendingConfirm>(null)
   const engines = useEngines()
   const navigate = useNavigate()
@@ -154,14 +156,20 @@ function TaskOverview({ task }: { task: Task | null }) {
     )
   }
 
+  const copyAck = (kind: "path" | "link") => (ok: boolean) => {
+    if (!ok) return
+    setCopied(kind)
+    window.setTimeout(() => setCopied(null), 1200)
+  }
+
   const copyPath = (): void => {
-    void navigator.clipboard
-      ?.writeText(task.worktreePath)
-      .then(() => {
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 1200)
-      })
-      .catch(() => {})
+    void copyText(task.worktreePath).then(copyAck("path"))
+  }
+
+  const copyLink = (): void => {
+    void copyText(taskDeepLink(window.location.origin, task.id)).then(
+      copyAck("link"),
+    )
   }
 
   const archive = (): void => {
@@ -340,7 +348,10 @@ function TaskOverview({ task }: { task: Task | null }) {
             Ensure worktree
           </ActionButton>
           <ActionButton onClick={copyPath}>
-            {copied ? "Copied" : "Copy path"}
+            {copied === "path" ? "Copied" : "Copy path"}
+          </ActionButton>
+          <ActionButton onClick={copyLink}>
+            {copied === "link" ? "Copied" : "Copy link"}
           </ActionButton>
           {!task.archived && (
             <ActionButton
