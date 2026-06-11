@@ -102,6 +102,17 @@ Unit tests are necessary. Behavior tests are sufficient.
 
 ---
 
+## Performance contracts
+
+Two layers, strictly separated:
+
+- **Counting tests gate CI.** A perf fix's contract is an *operation count* — tmux spawns per session reuse, transcript reads per poll, frame-accessor reads per tick, git runs per tick storm — pinned with injected counting fakes / module mocks at the same seams production injects. See `test/tui/perf-budgets.test.ts` (the budget net, one comment per pinned commit), plus `test/tui/git-head-poller.test.ts`, the turn-detector mtime tests, and the row-identity `toBe` tests. Deterministic, timing-free, safe on any CI runner.
+- **Benchmarks are local, opt-in, and never gate.** `bun run bench` (vitest bench, `test/bench/*.bench.ts`) times the hot pure paths — keymap dispatch, porcelain parse, row reconcile, row-view build — as a before/after baseline tool when working on those paths. Bench files never run in `test:fast`/CI: the vitest `test.include` pattern only matches `*.test.ts`.
+
+Never assert wall-clock time in a CI test. Runner jitter makes timing assertions flaky, and a flaky gate is worse than no gate — if a perf property matters, find the operation count that expresses it and count that instead.
+
+---
+
 ## The Ralph Loop, formally
 
 ```

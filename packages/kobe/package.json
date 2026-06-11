@@ -34,6 +34,7 @@
     "test:fast": "vitest run --passWithNoTests",
     "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",
     "test:behavior": "KOBE_INCLUDE_BEHAVIOR=1 vitest run test/behavior --passWithNoTests",
+    "bench": "vitest bench --run",
     "lint": "biome check .",
     "knip": "knip-bun",
     "postinstall": "bun run scripts/check-preview-deps.ts || true",
