@@ -37,6 +37,25 @@ function isAttention(state: ActivityState | undefined): boolean {
   return state === "waiting_permission" || state === "error"
 }
 
+/**
+ * Pure decision: should a transition fire a notification? Fires only on the
+ * RISING edge into an attention state, when enabled, permission is granted,
+ * and the page is hidden. Extracted from {@link notifyEngineTransition} so the
+ * edge logic is unit-tested without the Notification/DOM side effects.
+ */
+export function shouldNotify(opts: {
+  prev: ActivityState | undefined
+  next: ActivityState | undefined
+  enabled: boolean
+  permission: NotificationPermission
+  hidden: boolean
+}): boolean {
+  if (!opts.enabled || opts.permission !== "granted") return false
+  if (!opts.hidden) return false
+  // Rising edge only: was NOT attention, now IS.
+  return !isAttention(opts.prev) && isAttention(opts.next)
+}
+
 /** AppShell registers how to jump to a task when a notification is clicked. */
 export function setNotifyNavigate(fn: Navigate | null): void {
   navigate = fn
@@ -122,10 +141,10 @@ export function notifyEngineTransition(
   prev: ActivityState | undefined,
   next: ActivityState | undefined,
 ): void {
-  if (!enabled || permission() !== "granted") return
-  if (typeof document !== "undefined" && document.visibilityState === "visible")
+  const hidden =
+    typeof document === "undefined" || document.visibilityState !== "visible"
+  if (!shouldNotify({ prev, next, enabled, permission: permission(), hidden }))
     return
-  if (isAttention(prev) || !isAttention(next)) return // only on the rising edge
   const verb = next === "error" ? "errored" : "needs your input"
   try {
     const n = new Notification(`kobe: ${taskLabel}`, {

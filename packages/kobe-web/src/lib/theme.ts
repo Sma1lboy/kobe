@@ -44,14 +44,30 @@ function notify(): void {
   for (const l of listeners) l()
 }
 
-/** The theme that SHOULD be showing: web-local override, else TUI prefs,
- *  else the fallback. */
+/**
+ * Precedence: a web-local override wins over the TUI's pushed theme, which
+ * wins over the fallback. Pure so the rule is unit-tested independent of the
+ * module's mutable state.
+ */
+export function resolveEffectiveTheme(
+  user: string | null,
+  prefs: string | null,
+  fallback: string = FALLBACK_THEME,
+): string {
+  return user ?? prefs ?? fallback
+}
+
+/** The theme that SHOULD be showing, from the current module state. */
 function effectiveTheme(): string {
-  return userTheme ?? prefsTheme ?? FALLBACK_THEME
+  return resolveEffectiveTheme(userTheme, prefsTheme)
 }
 
 function ensureFetched(): void {
   if (fetched) return
+  // Browser-only: the palette comes from the bridge over a relative URL, which
+  // has no meaning (and throws) outside a browser. Keeps the module import-safe
+  // for tests/SSR.
+  if (typeof window === "undefined") return
   fetched = true
   void fetch("/api/themes")
     .then(async (res) => {
