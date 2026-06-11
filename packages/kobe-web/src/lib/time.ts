@@ -4,6 +4,23 @@
  * bucket is plenty (no per-second ticking).
  */
 
+/**
+ * Verbose "X ago" relative time from a millisecond epoch — the adopt dialog's
+ * worktree-activity style (vs {@link relativeTime}'s compact rail style). A
+ * falsy/zero timestamp renders empty. `now` is injectable for deterministic
+ * tests.
+ */
+export function relativeTimeAgo(ms: number, now: number = Date.now()): string {
+  if (!ms) return ""
+  const sec = Math.max(0, Math.round((now - ms) / 1000))
+  if (sec < 60) return "just now"
+  const min = Math.round(sec / 60)
+  if (min < 60) return `${min}m ago`
+  const hr = Math.round(min / 60)
+  if (hr < 24) return `${hr}h ago`
+  return `${Math.round(hr / 24)}d ago`
+}
+
 export function relativeTime(iso: string, now: number = Date.now()): string {
   const then = Date.parse(iso)
   if (!Number.isFinite(then)) return ""

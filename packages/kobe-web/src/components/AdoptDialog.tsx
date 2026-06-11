@@ -10,6 +10,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useRef, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
+import { relativeTimeAgo } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -21,17 +22,6 @@ interface AdoptableWorktree {
   dirty: boolean
   kobeManaged: boolean
   lastActivityMs: number
-}
-
-function relTime(ms: number): string {
-  if (!ms) return ""
-  const sec = Math.max(0, Math.round((Date.now() - ms) / 1000))
-  if (sec < 60) return "just now"
-  const min = Math.round(sec / 60)
-  if (min < 60) return `${min}m ago`
-  const hr = Math.round(min / 60)
-  if (hr < 24) return `${hr}h ago`
-  return `${Math.round(hr / 24)}d ago`
 }
 
 export function AdoptDialog({ onClose }: { onClose: () => void }) {
@@ -194,7 +184,7 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
                       <span className="truncate font-mono">{wt.path}</span>
                       {wt.lastActivityMs > 0 && (
                         <span className="ml-auto shrink-0">
-                          {relTime(wt.lastActivityMs)}
+                          {relativeTimeAgo(wt.lastActivityMs)}
                         </span>
                       )}
                     </div>
