@@ -125,22 +125,32 @@ Tab + split state is purely client-owned and persisted in localStorage
 - **vendor** — engine PTY (with a prompt composer + reattach affordance). xterm
   is lazy-loaded so it only weighs on first terminal open.
 - **terminal** — shell PTY in the worktree.
-- **transcript** — structured read-only chat render over `/api/history`.
-- **file** — read-only diff preview (with a line-number gutter + `+/−` stats).
+- **transcript** — structured read-only chat render over `/api/history`, with a
+  search box (filter to matching messages + count), a "↓ latest" jump button
+  when scrolled up, and a "tools" toggle to hide tool-call rows and read just
+  the conversation prose.
+- **file** — read-only diff preview (line-number gutter + `+/−` stats, plus a
+  "wrap" toggle to soft-wrap long lines instead of horizontal scroll).
 
 ## SPA surfaces & client modules
 
 Beyond the rail/tabs/tools grammar, the dashboard carries:
 
-- **Command palette** (Cmd/Ctrl+K) — fuzzy task jump + actions; `?` opens a
-  keyboard-help overlay. ([`CommandPalette.tsx`](../../packages/kobe-web/src/components/CommandPalette.tsx), [`KeyboardHelp.tsx`](../../packages/kobe-web/src/components/KeyboardHelp.tsx))
-- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer.
+- **Command palette** (Cmd/Ctrl+K) — fuzzy task jump + actions, plus theme
+  switching ("Theme: <name>" commands + "Follow TUI" to clear a web-local
+  override); `?` opens a keyboard-help overlay. ([`CommandPalette.tsx`](../../packages/kobe-web/src/components/CommandPalette.tsx), [`KeyboardHelp.tsx`](../../packages/kobe-web/src/components/KeyboardHelp.tsx))
+- **Search, filter & keyboard** — the task rail has a text filter + status
+  chips (All/Needs/Run/Dirty, reusing the Overview `triage`), and is
+  keyboard-first: `/` focuses the filter, Enter jumps to the top match, Escape
+  clears, `j`/`k` move. The Overview and the Changes pane have their own filter
+  boxes (Overview also takes `/`); the Changes pane filters files by path.
+- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer. The Task panel can **Copy path** + **Copy link** (the `/task/$taskId` deep link, via a shared `lib/clipboard.ts` + `lib/share.ts`).
 - **Settings** — live theme picker (precedence: web-local override > TUI `ui-prefs` > claude, [`lib/theme.ts`](../../packages/kobe-web/src/lib/theme.ts)), engines, notifications, connection/version.
 - **Desktop notifications** ([`lib/notify.ts`](../../packages/kobe-web/src/lib/notify.ts)) — fire on the rising edge into `waiting_permission`/`error` while the tab is hidden.
 - **Notes** ([`NotesPanel.tsx`](../../packages/kobe-web/src/components/NotesPanel.tsx)) — a web-only per-task markdown scratchpad (the TUI has no equivalent), autosaved server-side under `<KOBE_HOME>/.kobe/notes/<taskId>.md` via `/api/notes`, with an Edit/Preview toggle. The preview renders through an escape-first markdown renderer ([`lib/markdown.ts`](../../packages/kobe-web/src/lib/markdown.ts)) — the one `dangerouslySetInnerHTML` sink in the app, so it escapes all input before composing its own tags and drops unsafe link schemes; the taskId→file path is traversal-guarded server-side (`isSafeTaskId`).
 - **Resilience** — a root error boundary (no white-screen) and a daemon-offline banner; failed mutations surface in a toast stack ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)).
 
-Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Overview drift guard), `lib/triage.ts` (Overview attention buckets + priority), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/path-format.ts` (`tailPath`). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Overview drift guard), `lib/triage.ts` (Overview attention buckets + priority + `matchesStatusFilter` for the rail chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest), `lib/share.ts` (`taskDeepLink`). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
 
 ## Dev: production vs sandbox
 
