@@ -217,6 +217,7 @@ function TaskRail({
   const [sortMode, setSortMode] = useState<TaskSortMode>("default")
   const [showArchived, setShowArchived] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const filterRef = useRef<HTMLInputElement>(null)
 
   // Keep the selected task visible — j/k can move selection past the fold in a
   // long list; scroll the active row into view (no-op when already visible).
@@ -273,7 +274,9 @@ function TaskRail({
       const isArrow = key === "ArrowDown" || key === "ArrowUp"
       const down = key === "j" || key === "ArrowDown"
       const up = key === "k" || key === "ArrowUp"
-      if (!down && !up) return
+      const focusSearch = key === "/"
+      // Only our keys proceed past here (cheap bail for every other keystroke).
+      if (!down && !up && !focusSearch) return
       const t = event.target as HTMLElement | null
       if (
         t &&
@@ -286,6 +289,13 @@ function TaskRail({
       }
       if (document.querySelector("[role=dialog],[role=alertdialog]")) return
       if (document.querySelector("[data-settings-open]")) return
+      // `/` focuses the task filter (search-focus convention): / → type → Enter
+      // jumps (the filter's own onKeyDown handles Enter/Escape).
+      if (focusSearch) {
+        event.preventDefault()
+        filterRef.current?.focus()
+        return
+      }
       // Arrow keys defer to native scrolling unless focus is on the rail or
       // nowhere specific (document.body) — don't swallow scroll on a focused
       // transcript/diff pane.
@@ -368,6 +378,7 @@ function TaskRail({
             className="shrink-0 text-subtle"
           />
           <input
+            ref={filterRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
