@@ -253,16 +253,27 @@ export function ChatTranscript({
     [worktreePath, vendor, followLatest, selected],
   )
 
+  // The poll must call the CURRENT refresh (which captures followLatest/
+  // selected), not the one from when the interval was armed — otherwise
+  // picking an older session snaps back to latest every tick. Keep refresh in
+  // a ref so the timer reads the live closure without re-arming on every
+  // session pick.
+  const refreshRef = useRef(refresh)
+  useEffect(() => {
+    refreshRef.current = refresh
+  }, [refresh])
+
   // Initial load + light poll; mtime gate means idle ticks cost one stat-ish
-  // request and zero message fetches. Hidden tabs skip work entirely.
+  // request and zero message fetches. Hidden tabs skip work entirely. Re-armed
+  // only on task/vendor switch (not on every session pick).
   useEffect(() => {
     mtimeRef.current = -1
     setLoaded(false)
     setFollowLatest(true)
     setSelected(null)
-    void refresh(true)
+    void refreshRef.current(true)
     const timer = window.setInterval(() => {
-      if (!document.hidden) void refresh()
+      if (!document.hidden) void refreshRef.current()
     }, POLL_MS)
     return () => window.clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on task/vendor switch only

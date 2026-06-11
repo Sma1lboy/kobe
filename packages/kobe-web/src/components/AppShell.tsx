@@ -787,7 +787,12 @@ export function AppShell() {
           event.preventDefault()
           setHelpOpen(true)
         }
+        return
       }
+      // Escape closes the tools drawer — at the window level because focus is
+      // rarely inside the drawer subtree, so a div-scoped onKeyDown wouldn't
+      // see it. (The dialogs handle their own Escape; this is just the drawer.)
+      if (event.key === "Escape") setToolsOpen(false)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

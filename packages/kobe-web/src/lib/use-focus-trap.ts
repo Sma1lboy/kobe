@@ -18,8 +18,17 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",")
 
-export function useFocusTrap(ref: RefObject<HTMLElement | null>): void {
+/**
+ * @param active — when false the trap is inert. Pass the modal's open flag for
+ *   an always-mounted modal that returns null while closed (the dialog element
+ *   doesn't exist until `active` flips true, so the effect must re-run then).
+ */
+export function useFocusTrap(
+  ref: RefObject<HTMLElement | null>,
+  active = true,
+): void {
   useEffect(() => {
+    if (!active) return
     const el = ref.current
     if (!el) return
     const previouslyFocused = document.activeElement as HTMLElement | null
@@ -54,5 +63,5 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>): void {
       // Restore focus to the opener (best-effort — it may be gone).
       previouslyFocused?.focus?.()
     }
-  }, [ref])
+  }, [ref, active])
 }

@@ -123,7 +123,17 @@ const server = createServer((req, res) => {
   res.end()
 })
 
-const wss = new WebSocketServer({ server, path: "/pty" })
+// A PTY WS is arbitrary command exec in the worktree, so reject cross-origin
+// upgrades: a browser sends an Origin header, and only localhost pages may
+// attach (defends a malicious local page / DNS-rebinding even on the loopback
+// bind). Non-browser clients (no Origin) are allowed — there's no browser to
+// forge their request.
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
+const wss = new WebSocketServer({
+  server,
+  path: "/pty",
+  verifyClient: ({ origin }) => !origin || LOCAL_ORIGIN.test(origin),
+})
 
 wss.on("connection", (ws, req) => {
   const url = new URL(req.url ?? "/", "http://localhost")
@@ -181,8 +191,11 @@ wss.on("connection", (ws, req) => {
   })()
 })
 
-server.listen(PORT, () => {
-  process.stdout.write(`kobe pty-server listening on :${PORT} (bridge :${BRIDGE_PORT})\n`)
+// Bind loopback by default — a PTY is an arbitrary shell/engine in the
+// worktree, so it must never listen on all interfaces. KOBE_WEB_HOST overrides.
+const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
+server.listen(PORT, HOST, () => {
+  process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (bridge :${BRIDGE_PORT})\n`)
 })
 
 const shutdown = () => {

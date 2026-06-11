@@ -1,0 +1,5 @@
+---
+"@sma1lboy/kobe": patch
+---
+
+Fixes from an adversarial review of the web stream: the Chat transcript no longer snaps a manually-picked older session back to the latest on every poll tick (the interval captured a stale closure); the command-palette modal now actually traps focus (its always-mounted/return-null shape meant the trap never attached); the Changes list guards against out-of-order diff fetches so a fast task switch can't show the previous worktree's files; the diff parser resets hunk state at each `diff --git`, so a concatenated staged+unstaged patch no longer mis-tags the second file's headers (wrong gutter + inflated `+/−` counts); the theme picker's "following TUI" ↔ override badge updates even when you pick the already-active theme; the tools drawer closes on Escape from anywhere; and the bridge + PTY servers now bind loopback by default (not all interfaces) with a localhost-Origin check on the PTY WebSocket — closing the exposed-on-LAN hole while staying invisible for local use (`KOBE_WEB_HOST` overrides).

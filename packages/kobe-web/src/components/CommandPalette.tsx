@@ -76,7 +76,10 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
-  useFocusTrap(dialogRef)
+  // Always-mounted + returns null while closed, so the dialog element only
+  // exists once `open` is true — gate the trap on `open` so the effect re-runs
+  // (and finds the ref) when the palette opens.
+  useFocusTrap(dialogRef, open)
 
   useEffect(() => {
     if (open) {

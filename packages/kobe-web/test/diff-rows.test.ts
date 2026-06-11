@@ -74,6 +74,33 @@ describe("parseDiffRows", () => {
   it("returns an empty array for an empty patch", () => {
     expect(parseDiffRows("")).toEqual([{ kind: "meta", oldLn: null, newLn: null, text: "" }])
   })
+
+  it("resets hunk state at a new file header (concatenated patch)", () => {
+    // Two files concatenated (staged + unstaged). The second file's --- / +++
+    // headers must be META, not del/add — the bug was inHunk staying true.
+    const patch = `diff --git a/one.ts b/one.ts
+--- a/one.ts
++++ b/one.ts
+@@ -1,1 +1,1 @@
+-old
++new
+diff --git a/two.ts b/two.ts
+--- a/two.ts
++++ b/two.ts
+@@ -1,1 +1,1 @@
+-x
++y
+`
+    const rows = parseDiffRows(patch)
+    // The second file's header lines must be meta (not del/add).
+    const secondHeaderIdx = rows.findIndex((r) => r.text === "diff --git a/two.ts b/two.ts")
+    expect(secondHeaderIdx).toBeGreaterThan(0)
+    const secondHeaders = rows.slice(secondHeaderIdx, secondHeaderIdx + 3)
+    expect(secondHeaders.every((r) => r.kind === "meta")).toBe(true)
+    // And the stat must count exactly 2 add + 2 del (one per file), not be
+    // inflated by counting the `+++ b/two.ts` / `--- a/two.ts` headers.
+    expect(diffStat(patch)).toEqual({ added: 2, deleted: 2 })
+  })
 })
 
 describe("diffStat", () => {

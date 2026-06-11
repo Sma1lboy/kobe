@@ -292,7 +292,12 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
   })
 
   const handle = createRequestHandler({ link, sseSends, staticDir })
-  const server = Bun.serve({ port, idleTimeout: 0, fetch: handle })
+  // Bind loopback by default so the dashboard is never exposed on all
+  // interfaces (Bun.serve defaults to 0.0.0.0). KOBE_WEB_HOST overrides for the
+  // rare deliberate LAN case. localhost browsers + the Vite proxy reach
+  // 127.0.0.1 fine, so this is invisible in normal use.
+  const hostname = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
+  const server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: handle })
 
   return {
     port: server.port ?? port,

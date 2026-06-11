@@ -13,7 +13,7 @@
  * ToolsPane region).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
 import { type DiffRow, diffStat, parseDiffRows } from "../lib/diff-rows.ts"
 import { useAppState } from "../lib/store.ts"
@@ -287,22 +287,30 @@ export function ChangesList({
   const { worktreeChanges } = useAppState()
   const wtTotal = worktreePath ? worktreeChanges[worktreePath] : undefined
 
+  // Out-of-order guard: a fast task switch (or refresh spam) fires overlapping
+  // fetches; only the most recent may write state, else a late response for the
+  // previous worktree clobbers the current one's file list.
+  const seqRef = useRef(0)
   const load = useCallback(async () => {
     if (!worktreePath) {
       setResult(null)
       setError(null)
       return
     }
+    const seq = ++seqRef.current
     setLoading(true)
     setError(null)
     try {
       // The list renders only names + badges, so skip per-file patch assembly.
-      setResult(await fetchDiff(worktreePath, { namesOnly: true }))
+      const data = await fetchDiff(worktreePath, { namesOnly: true })
+      if (seq === seqRef.current) setResult(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setResult(null)
+      if (seq === seqRef.current) {
+        setError(err instanceof Error ? err.message : String(err))
+        setResult(null)
+      }
     } finally {
-      setLoading(false)
+      if (seq === seqRef.current) setLoading(false)
     }
   }, [worktreePath])
 

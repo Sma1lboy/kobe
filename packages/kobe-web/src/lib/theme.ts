@@ -116,7 +116,12 @@ export function setPreferredTheme(name: string): void {
   } catch {
     /* ignore */
   }
+  // notify() unconditionally: `overridden` derives from userTheme, so the
+  // picker must re-render even when the picked theme equals the painted one
+  // (paint()'s appliedTheme guard would otherwise swallow the notify and the
+  // "following TUI" → override-active badge would never flip).
   paint()
+  notify()
 }
 
 /** Clear the web-local override → follow the TUI's theme again. */
@@ -129,6 +134,7 @@ export function clearPreferredTheme(): void {
   }
   appliedTheme = null // force a repaint to the now-effective theme
   paint()
+  notify()
 }
 
 export interface ThemeState {
