@@ -5,7 +5,7 @@
  * no tabs opens an empty chooser tab automatically.
  */
 
-import { Bot, Terminal } from "lucide-react"
+import { Bot, MessagesSquare, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
 import { useState } from "react"
 import { useEngines } from "../lib/engines.ts"
@@ -23,6 +23,7 @@ import {
 import { closePtyTab } from "../lib/terminal.ts"
 import { reportError } from "../lib/toast.ts"
 import { ChatTerminal } from "./ChatTerminal.tsx"
+import { ChatTranscript } from "./ChatTranscript.tsx"
 import { FilePreview } from "./DiffView.tsx"
 
 function vendorLabel(vendor: string | undefined): string {
@@ -47,6 +48,13 @@ function EmptyTabChooser({
       action: () => configureTab(taskId, tabId, "vendor"),
     },
     {
+      title: "Chat",
+      detail: "transcript",
+      body: "Read the session as structured messages and tool calls.",
+      icon: MessagesSquare,
+      action: () => configureTab(taskId, tabId, "transcript"),
+    },
+    {
       title: "Terminal",
       detail: "shell / worktree",
       body: "Open a command shell in this task worktree.",
@@ -57,7 +65,7 @@ function EmptyTabChooser({
 
   return (
     <div className="flex h-full items-center justify-center px-6">
-      <div className="grid w-full max-w-xl grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="grid w-full max-w-2xl grid-cols-1 gap-3 md:grid-cols-3">
         {cards.map((card) => {
           const Icon = card.icon
           return (
@@ -109,6 +117,14 @@ function TabContent({
   if (tab?.kind === "terminal")
     return (
       <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="shell" />
+    )
+  if (tab?.kind === "transcript")
+    return (
+      <ChatTranscript
+        key={tab.id}
+        worktreePath={taskWorktreePath}
+        vendor={vendor}
+      />
     )
   if (tab?.kind === "file")
     return <FilePreview worktreePath={taskWorktreePath} path={tab.path} />

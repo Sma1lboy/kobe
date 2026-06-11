@@ -26,6 +26,7 @@ import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { availableEngineIds } from "../../kobe/src/engine/account-detect.ts"
 import { engineDisplayName } from "../../kobe/src/engine/interactive-command.ts"
 import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
+import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { DaemonLink } from "./daemon-link.ts"
 import { WEB_RPC_ALLOWSET } from "./rpc-allowlist.ts"
@@ -248,6 +249,8 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
       if (notes) return notes
       const diff = await handleDiffRequest(req, url)
       if (diff) return diff
+      const history = await handleHistoryRequest(req, url)
+      if (history) return history
       if (staticDir) return staticResponse(url.pathname, staticDir)
       return new Response("not found", { status: 404 })
     },

@@ -12,7 +12,12 @@ import { closePtyTab } from "./terminal.ts"
 
 const KEY = "kobe-web.tabs"
 
-export type WorkspaceTabKind = "empty" | "vendor" | "terminal" | "file"
+export type WorkspaceTabKind =
+  | "empty"
+  | "vendor"
+  | "terminal"
+  | "transcript"
+  | "file"
 
 export interface EmptyTab {
   id: string
@@ -32,6 +37,13 @@ export interface TerminalTab {
   title: string
 }
 
+/** Structured engine-history view (read-only chat render, not a PTY). */
+export interface TranscriptTab {
+  id: string
+  kind: "transcript"
+  title: string
+}
+
 export interface FilePreviewTab {
   id: string
   kind: "file"
@@ -39,7 +51,12 @@ export interface FilePreviewTab {
   path: string
 }
 
-export type WorkspaceTab = EmptyTab | VendorTab | TerminalTab | FilePreviewTab
+export type WorkspaceTab =
+  | EmptyTab
+  | VendorTab
+  | TerminalTab
+  | TranscriptTab
+  | FilePreviewTab
 
 export interface TabsState {
   selectedTaskId: string | null
@@ -224,7 +241,7 @@ export function addEmptyTab(taskId: string): string {
 export function configureTab(
   taskId: string,
   tabId: string,
-  kind: "vendor" | "terminal",
+  kind: "vendor" | "terminal" | "transcript",
 ): void {
   const list = state.tabsByTask[taskId] ?? []
   const next = list.map((tab) => {
@@ -236,6 +253,9 @@ export function configureTab(
         kind,
         title: `Vendor ${vendorCount + 1}`,
       } satisfies VendorTab
+    }
+    if (kind === "transcript") {
+      return { id: tabId, kind, title: "Chat" } satisfies TranscriptTab
     }
     const terminalCount = list.filter((item) => item.kind === "terminal").length
     return {

@@ -1,0 +1,5 @@
+---
+"@sma1lboy/kobe": patch
+---
+
+The web dashboard gains a structured Chat view — a third workspace tab kind ("Chat" in the tab chooser) that renders a task's persisted engine session as real messages instead of raw PTY bytes: user prompts, assistant text, collapsible thinking, and tool calls paired with their results by callId (codex emits results on user-role records, so the pairing — not the role — drives rendering). A session picker covers the task's whole on-disk history (latest follows automatically), a light mtime poll keeps the view live while the engine works (zero reads when nothing changed, paused while the browser tab is hidden), and the header shows a live context estimate plus session in/out token totals derived from the engine's per-turn usage records. Data comes through new bridge-local `/api/history` routes that read via the engine registry's neutral history readers — the web never parses a vendor transcript format, and session/vendor inputs are validated against path traversal (covered by tests).
