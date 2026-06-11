@@ -8,6 +8,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   FolderInput,
+  LayoutGrid,
   Loader2,
   PanelRight,
   Plus,
@@ -16,6 +17,7 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { activityColor, activityLabel } from "../lib/activity.ts"
 import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
@@ -35,40 +37,6 @@ import { ThemePicker } from "./ThemePicker.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
-
-function activityColor(state: ActivityState | undefined): string {
-  switch (state) {
-    case "running":
-      return "bg-kobe-orange"
-    case "waiting_permission":
-      return "bg-kobe-blue"
-    case "rate_limited":
-      return "bg-kobe-yellow"
-    case "error":
-      return "bg-kobe-red"
-    case "idle":
-      return "bg-kobe-green/60"
-    default:
-      return "bg-subtle"
-  }
-}
-
-function activityLabel(state: ActivityState | undefined): string {
-  switch (state) {
-    case "running":
-      return "running"
-    case "waiting_permission":
-      return "needs input"
-    case "rate_limited":
-      return "rate limited"
-    case "error":
-      return "error"
-    case "idle":
-      return "idle"
-    default:
-      return ""
-  }
-}
 
 function tail(path: string, max = 36): string {
   if (path.length <= max) return path
@@ -503,6 +471,7 @@ function TaskRail({
 function TopBar({ onToggleTools }: { onToggleTools: () => void }) {
   const { daemonConnected, streamConnected, tasks } = useAppState()
   const { selectedTaskId } = useTabsState()
+  const navigate = useNavigate()
   const task = selectedTaskId
     ? tasks.find((item) => item.id === selectedTaskId)
     : null
@@ -539,6 +508,15 @@ function TopBar({ onToggleTools }: { onToggleTools: () => void }) {
                 : "connecting…"}
           </span>
         </span>
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/overview" })}
+          className="flex items-center text-muted transition-colors hover:text-fg"
+          aria-label="Overview"
+          title="Overview — triage all tasks"
+        >
+          <LayoutGrid size={15} strokeWidth={1.8} />
+        </button>
         {/* Tools rail toggle — only on narrow screens where the rail is a drawer. */}
         <button
           type="button"

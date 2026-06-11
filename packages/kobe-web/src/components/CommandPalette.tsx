@@ -12,6 +12,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
+  LayoutGrid,
   Plus,
   Search,
   Settings as SettingsIcon,
@@ -26,7 +27,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings"
+  icon: "task" | "new" | "settings" | "overview"
   run: () => void
 }
 
@@ -53,6 +54,7 @@ function fuzzyScore(query: string, text: string): number | null {
 function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
+  if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -107,6 +109,16 @@ export function CommandPalette({
         icon: "new",
         run: () => {
           onNewTask()
+          onClose()
+        },
+      },
+      {
+        id: "action:overview",
+        label: "Open overview",
+        hint: "triage",
+        icon: "overview",
+        run: () => {
+          void navigate({ to: "/overview" })
           onClose()
         },
       },
