@@ -36,6 +36,18 @@ function isMeta(line: string): boolean {
   return META_PREFIXES.some((p) => line.startsWith(p))
 }
 
+/** Count added/removed lines in a unified-diff patch (excludes the `+++`/`---`
+ *  file-header lines, which a naive `+`/`-` count would wrongly include). */
+export function diffStat(patch: string): { added: number; deleted: number } {
+  let added = 0
+  let deleted = 0
+  for (const row of parseDiffRows(patch)) {
+    if (row.kind === "add") added++
+    else if (row.kind === "del") deleted++
+  }
+  return { added, deleted }
+}
+
 export function parseDiffRows(patch: string): DiffRow[] {
   const lines = patch.replace(/\n$/, "").split("\n")
   const rows: DiffRow[] = []

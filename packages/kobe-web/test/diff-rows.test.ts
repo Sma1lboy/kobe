@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { parseDiffRows } from "../src/lib/diff-rows.ts"
+import { diffStat, parseDiffRows } from "../src/lib/diff-rows.ts"
 
 /**
  * The hunk-header math is the load-bearing bit: old/new line numbers must
@@ -73,5 +73,26 @@ describe("parseDiffRows", () => {
 
   it("returns an empty array for an empty patch", () => {
     expect(parseDiffRows("")).toEqual([{ kind: "meta", oldLn: null, newLn: null, text: "" }])
+  })
+})
+
+describe("diffStat", () => {
+  it("counts added/removed lines, excluding +++/--- file headers", () => {
+    // PATCH has 1 removed, 2 added inside the hunk; the `---`/`+++` headers
+    // must NOT count as a del/add.
+    expect(diffStat(PATCH)).toEqual({ added: 2, deleted: 1 })
+  })
+
+  it("is zero for an empty patch", () => {
+    expect(diffStat("")).toEqual({ added: 0, deleted: 0 })
+  })
+
+  it("counts an all-added (new file) patch", () => {
+    const patch = `@@ -0,0 +1,3 @@
++line one
++line two
++line three
+`
+    expect(diffStat(patch)).toEqual({ added: 3, deleted: 0 })
   })
 })

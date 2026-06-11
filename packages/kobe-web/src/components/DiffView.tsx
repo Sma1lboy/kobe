@@ -15,9 +15,20 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
-import { type DiffRow, parseDiffRows } from "../lib/diff-rows.ts"
+import { type DiffRow, diffStat, parseDiffRows } from "../lib/diff-rows.ts"
 import { useAppState } from "../lib/store.ts"
 import "./diff-view.css"
+
+/** `+a −d` chip; renders nothing when both are zero. */
+function StatChip({ added, deleted }: { added: number; deleted: number }) {
+  if (added === 0 && deleted === 0) return null
+  return (
+    <span className="shrink-0 font-mono text-[10px]">
+      <span className="text-kobe-green">+{added}</span>{" "}
+      <span className="text-kobe-red">−{deleted}</span>
+    </span>
+  )
+}
 
 /** Stable refresh key for a worktree's daemon-collected change counts —
  *  changes exactly when the +N/−M pair moves, which is the refetch signal. */
@@ -182,18 +193,29 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
 
   const files = result?.files ?? []
   const current = files.find((f) => f.path === selected) ?? null
+  const total = useMemo(() => {
+    let added = 0
+    let deleted = 0
+    for (const f of files) {
+      const s = diffStat(f.patch)
+      added += s.added
+      deleted += s.deleted
+    }
+    return { added, deleted }
+  }, [files])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center gap-2 px-3 py-2">
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
           Changes{files.length > 0 ? ` · ${files.length}` : ""}
         </span>
+        <StatChip added={total.added} deleted={total.deleted} />
         <button
           type="button"
           onClick={() => void load()}
           disabled={!worktreePath || loading}
-          className="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface disabled:opacity-40"
+          className="ml-auto rounded border border-line px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface disabled:opacity-40"
         >
           {loading ? "…" : "↻ refresh"}
         </button>
@@ -260,6 +282,10 @@ export function ChangesList({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const changesKey = useChangesKey(worktreePath)
+  // The list is names-only (no patches), so per-file counts aren't available
+  // here — show the daemon's worktree total instead.
+  const { worktreeChanges } = useAppState()
+  const wtTotal = worktreePath ? worktreeChanges[worktreePath] : undefined
 
   const load = useCallback(async () => {
     if (!worktreePath) {
@@ -289,15 +315,18 @@ export function ChangesList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center gap-2 px-3 py-2">
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
           Changes{files.length > 0 ? ` · ${files.length}` : ""}
         </span>
+        {wtTotal && (
+          <StatChip added={wtTotal.added} deleted={wtTotal.deleted} />
+        )}
         <button
           type="button"
           onClick={() => void load()}
           disabled={!worktreePath || loading}
-          className="rounded border border-line px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface disabled:opacity-40"
+          className="ml-auto rounded border border-line px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface disabled:opacity-40"
         >
           {loading ? "…" : "↻"}
         </button>
@@ -397,14 +426,22 @@ export function FilePreview({
     }
   }, [worktreePath, path, changesKey])
 
+  const stat = file ? diffStat(file.patch) : null
   return (
     <div className="flex h-full min-h-0 flex-col border border-line bg-bg">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line px-3">
         <span className="truncate font-mono text-[12px] text-fg" title={path}>
           {path}
         </span>
+        {stat && (
+          <span className="ml-auto shrink-0">
+            <StatChip added={stat.added} deleted={stat.deleted} />
+          </span>
+        )}
         {file && (
-          <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-subtle">
+          <span
+            className={`shrink-0 text-[10px] uppercase tracking-wide text-subtle ${stat && (stat.added || stat.deleted) ? "" : "ml-auto"}`}
+          >
             {file.status}
           </span>
         )}
