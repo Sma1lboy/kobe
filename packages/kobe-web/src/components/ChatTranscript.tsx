@@ -271,10 +271,15 @@ export function ChatTranscript({
     setLoaded(false)
     followLatestRef.current = true
     selectedRef.current = null
+    // Reset scroll-follow too: a task switch remounts (different tab.id) and
+    // gets this for free, but an in-place VENDOR switch keeps the same tab.id,
+    // so without this the fresh transcript opens stuck scrolled-up.
+    stickToBottomRef.current = true
     setFollowLatest(true)
     setSelected(null)
     setSearch("")
     setHideTools(false)
+    setAtBottom(true)
     void refreshRef.current(true)
     const timer = window.setInterval(() => {
       if (!document.hidden) void refreshRef.current()
