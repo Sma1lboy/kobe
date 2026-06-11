@@ -11,7 +11,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { engineLabel, useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { selectTask } from "../lib/tabs.ts"
+import { addTab, selectTask, setPendingPrompt } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 
@@ -49,6 +49,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
   const [branch, setBranch] = useState("")
   const [baseRef, setBaseRef] = useState("")
   const [vendor, setVendor] = useState<string>(engines[0]?.id ?? "claude")
+  const [firstPrompt, setFirstPrompt] = useState("")
   const [busy, setBusy] = useState(false)
 
   const canCreate = repo.trim().length > 0 && !busy
@@ -67,6 +68,13 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         payload,
       )
       selectTask(taskId)
+      // With a first prompt, open an engine tab and seed it — the prompt waits
+      // in the composer for the user to send once the engine is ready.
+      const prompt = firstPrompt.trim()
+      if (prompt) {
+        setPendingPrompt(taskId, prompt)
+        addTab(taskId)
+      }
       void navigate({ to: "/task/$taskId", params: { taskId } })
       await rpc("task.setActive", { taskId }).catch(() => {})
       pushToast(
@@ -216,6 +224,17 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <FieldLabel>First prompt</FieldLabel>
+            <textarea
+              value={firstPrompt}
+              onChange={(event) => setFirstPrompt(event.target.value)}
+              placeholder="optional — waits in the engine composer, ready to send"
+              rows={2}
+              className={`${inputClass} resize-none`}
+            />
           </div>
 
           <div className="flex items-center justify-end gap-2 border-t border-line pt-3">

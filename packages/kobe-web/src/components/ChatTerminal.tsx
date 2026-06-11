@@ -17,6 +17,7 @@ import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { CornerDownLeft, RotateCw } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
 
@@ -80,7 +81,11 @@ export function ChatTerminal({
   // Bumping the epoch tears the terminal down and re-attaches to the
   // SAME server-side PTY (keyed by tab id) — its scrollback ring replays.
   const [epoch, setEpoch] = useState(0)
-  const [draft, setDraft] = useState("")
+  // Seed the composer with a task's pending first prompt (set by the New Task
+  // dialog) on the first engine tab to mount — consumed once.
+  const [draft, setDraft] = useState(() =>
+    mode === "engine" ? (consumePendingPrompt(taskId) ?? "") : "",
+  )
 
   useEffect(() => {
     let disposed = false
