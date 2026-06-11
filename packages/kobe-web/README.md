@@ -1,32 +1,65 @@
 # kobe-web
 
-Local browser dashboard for kobe.
+The local browser dashboard for kobe — a terminal-native workspace for running
+many AI coding sessions at once, in the browser. Full architecture (process
+model, daemon channels, route table) lives in
+[`docs/design/web-dashboard.md`](../../docs/design/web-dashboard.md).
 
-Status as of 2026-06-09: `kobe web` is an early experimental feature built for exploration and fun. It is not a product commitment, not the primary kobe experience, and does not carry broader significance beyond local experimentation for now.
+## Three processes
 
-The development server runs three cooperating processes:
+`node-pty` doesn't work under Bun, and a web crash must never take the daemon
+down — so the dashboard is split into three cooperating processes:
 
-- Vite SPA on `:5173`
-- kobe daemon web transport on `:5174`
-- node-pty terminal server on `:5175`
+- **SPA** — React + TanStack Router, served by Vite in dev (`:5173`).
+- **Bridge** (`server/`) — a standalone Bun HTTP/SSE server (`:5174`) that holds
+  ONE daemon socket (`role: "gui"`) and fronts it. NOT daemon-hosted: it
+  restarts independently and a bug here can't hurt the daemon.
+- **PTY sidecar** (`pty-server.mjs`) — a node process (`:5175`) running each
+  engine/terminal tab's PTY.
 
-Run it from this package:
+## Develop
 
 ```bash
-bun run dev
+bun run dev            # all three processes; opens http://localhost:5173
+bun run dev:sandbox    # same, but pointed at a throwaway KOBE_HOME_DIR + the
+                       # kobe-sandbox tmux socket — never touches production
+                       # ~/.kobe/tasks.json
 ```
 
-Open `http://localhost:5173`.
+`bun run dev` connects to your **production** `~/.kobe` daemon — the startup
+banner says which home it's wired to. Use `dev:sandbox` when you don't want to
+mutate real tasks.
 
-The browser UI is local-first:
+## Test, lint, build
 
-- left rail mirrors live tasks from the kobe daemon
-- center workspace owns client-side tabs persisted in localStorage
-- vendor tabs run an independent engine PTY per tab
-- terminal tabs run a shell in the selected task worktree
-- file preview tabs open from the right Changes rail
-- notes persist through daemon web under the kobe state directory
+```bash
+bun run test    # vitest — touches NO daemon (fake links / pure helpers); safe anytime
+bun run check   # biome lint + format (gate this by exit code)
+bun run build   # vite build → dist/ (what `kobe web` serves in production)
+```
 
-The PTY server runs under Node because `node-pty` does not deliver data
-correctly under Bun. The web transport is daemon-owned; the Bun sidecar only
-asks the daemon to bind local HTTP/SSE routes during browser development.
+The repo-root `bun run lint` does NOT cover this package — run `bun run check`
+here.
+
+## Production
+
+`kobe web` (in `packages/kobe`) runs the bridge in-process, serves the built
+SPA from `dist/`, and spawns the PTY sidecar on `port + 2`:
+
+```bash
+kobe web                 # http://localhost:5173
+kobe web --port 5180
+```
+
+## What it does
+
+- **Left rail** — live tasks from the daemon (sort, filter, `j`/`k` nav, change
+  chips, PR/activity, archived restore). New Task + Adopt-worktree dialogs.
+- **Center** — per-task workspace tabs (client-owned, localStorage): engine PTY
+  (with a prompt composer + reattach), shell PTY, structured Chat transcript,
+  and diff file previews.
+- **Right** — task metadata (rename/branch/status/vendor/pin/archive/delete),
+  a markdown notes scratchpad (with preview), and a live Changes/diff rail.
+- **More** — command palette (Cmd/Ctrl+K), `?` keyboard help, an Overview
+  triage route (`/overview`), deep links (`/task/:id`), live theme sync + a
+  Settings theme picker, desktop notifications, and a root error boundary.
