@@ -13,32 +13,14 @@ import { activityColor, activityLabel } from "../lib/activity.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
+import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
-
-type Bucket = "attention" | "working" | "changes" | "quiet"
 
 interface TriagedTask {
   task: Task
   engine?: EngineState
   changes?: { added: number; deleted: number }
   bucket: Bucket
-}
-
-function triage(
-  engine: EngineState | undefined,
-  changes: { added: number; deleted: number } | undefined,
-): Bucket {
-  const state = engine?.state
-  if (
-    state === "waiting_permission" ||
-    state === "error" ||
-    state === "rate_limited"
-  ) {
-    return "attention"
-  }
-  if (state === "running") return "working"
-  if (changes && (changes.added > 0 || changes.deleted > 0)) return "changes"
-  return "quiet"
 }
 
 const BUCKETS: Array<{
