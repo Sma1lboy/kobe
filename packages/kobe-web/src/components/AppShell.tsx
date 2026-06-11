@@ -27,6 +27,7 @@ import {
 } from "../lib/notify.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
+import { matchesTask, sortTasks, type TaskSortMode } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import type { EngineState, Task, TaskJob, TaskPRStatus } from "../lib/types.ts"
@@ -42,47 +43,6 @@ import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
 function tail(path: string, max = 36): string {
   if (path.length <= max) return path
   return `…${path.slice(path.length - max + 1)}`
-}
-
-function taskUpdatedMs(task: Task): number {
-  const parsed = Date.parse(task.updatedAt || task.createdAt)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-type TaskSortMode = "default" | "recent"
-
-function compareRecent(a: Task, b: Task): number {
-  const byTime = taskUpdatedMs(b) - taskUpdatedMs(a)
-  if (byTime !== 0) return byTime
-  return b.id.localeCompare(a.id)
-}
-
-function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
-  const projects = tasks.filter((task) => task.kind === "main")
-  const pinned = tasks.filter((task) => task.kind !== "main" && task.pinned)
-  const regular = tasks.filter((task) => task.kind !== "main" && !task.pinned)
-  if (mode === "recent") {
-    projects.sort(compareRecent)
-    pinned.sort(compareRecent)
-    regular.sort(compareRecent)
-  }
-  return [...projects, ...pinned, ...regular]
-}
-
-function matchesTask(task: Task, query: string): boolean {
-  if (!query) return true
-  const haystack = [
-    task.title,
-    task.branch,
-    task.repo,
-    task.worktreePath,
-    task.vendor,
-    task.status,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-  return haystack.includes(query.toLowerCase())
 }
 
 function SectionHeader({
