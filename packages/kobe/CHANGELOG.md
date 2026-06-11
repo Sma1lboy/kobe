@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.19
+
+### Patch Changes
+
+- ae63adb: Memory-leak audit, round two — five more long-session leaks fixed: sidebar rows now reconcile by identity so every task switch no longer recreates every row's renderables in every open Tasks pane; the engine-state map prunes entries for deleted tasks; a failed pane-side prefs connection no longer leaves an orphaned reconnect loop running forever; pending daemon RPCs are swept on forced reconnects instead of being retained (and awaited) forever; and auto-titles / Copilot history no longer pin multi-MB message buffers via substring retention.
+- 320919a: Navigation and cycler chords are now rebindable in `~/.kobe/settings/keybindings.yaml`: `sidebar.nav` / `files.nav` (alternating `[down, up]` pairs — e.g. `sidebar.nav: [w, s]`), `files.hierarchy` (`[collapse, expand]` pairs), and `sidebar.view` / `files.tab` (`[prev, next]` pairs), with exact-count validation so a bad override keeps the default instead of scrambling directions. Shift-discriminated chords (gg/G, Shift+P, Shift+M) and the tmux-mirroring pane-focus set remain fixed, with accurate reasons shown in Settings.
+- cf7c066: Task rows show a live "materializing" state while a large repo's worktree is being created. The daemon publishes lifecycle progress for the minute-class `task.ensureWorktree` operation on a new additive `task.jobs` channel (running → done/error, terminal phase guaranteed even on failure), and every attached Tasks pane — not just the one that initiated the switch — spins the row with a "materializing" subtitle until the `git worktree add` settles. The blocking RPC contract is unchanged; job entries are pruned against task snapshots so a task deleted mid-job never pins a phantom state.
+- 320919a: The sidebar's `+N −M` uncommitted-change chips are now fed by ONE `git status` collector in the daemon instead of every pane polling git itself (previously N panes × M tasks of duplicated background subprocesses). The daemon publishes the full counts map on a new additive `worktree.changes` channel — republished only when something actually changed, with the same guards that fixed the 30GB-repo freeze (in-flight dedupe per worktree, timeout + SIGKILL, hard backoff for timed-out repos, adaptive cadence, `GIT_OPTIONAL_LOCKS=0`). Archived tasks and remote (`ssh://`) projects are never collected, and deleted/archived tasks' entries drop from the map. Panes render the pushes and spawn zero git processes while daemon-connected; the local per-pane poller survives only as the fallback when no daemon is reachable or an older daemon doesn't advertise the channel in its hello capabilities.
+
 ## 0.7.18
 
 ### Patch Changes
