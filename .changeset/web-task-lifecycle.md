@@ -1,5 +1,0 @@
----
-"@sma1lboy/kobe": patch
----
-
-The web dashboard reaches task-lifecycle parity with the TUI: a New Task dialog (the `+` in the task rail) creates a real task — repo picker fed from the daemon's project rows with a free-path escape hatch, optional title/branch/base-ref, engine selector — and selects it; an Archived section at the rail's bottom lists archived tasks with one-click Restore; the Task panel gains branch rename, a Delete flow that mirrors the TUI's (non-force first, an explicit force confirm when the worktree has uncommitted changes), and a Restore banner on archived tasks. Native `window.confirm` is gone — archive/delete use themed confirm dialogs — and every mutation that used to fail silently now surfaces in a toast stack. Vendor pickers (Task panel, workspace tab dropdown, New Task) read the engine registry through the bridge's new `/api/engines` route (detected built-ins + custom engines with their display names) instead of a hardcoded vendor list that offered engines kobe doesn't ship.
