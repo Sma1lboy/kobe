@@ -179,6 +179,44 @@ describe("bridge request handler", () => {
     })
   })
 
+  // The session/spec routes build a PTY launch (tmux session, shell command),
+  // so only the input guard is unit-safe here — the happy path would spawn real
+  // tmux. These cases return BEFORE any link/tmux work.
+  describe("/api/session & spec guards", () => {
+    it("400s POST /api/session with no taskId (never touches the link)", async () => {
+      const { handle, link } = build()
+      const res = await handle(post("/api/session", {}))
+      expect(res.status).toBe(400)
+      expect(link.calls).toHaveLength(0)
+    })
+
+    it("400s GET /api/engine-spec with no taskId", async () => {
+      const { handle, link } = build()
+      const res = await handle(new Request("http://localhost/api/engine-spec"))
+      expect(res.status).toBe(400)
+      expect(link.calls).toHaveLength(0)
+    })
+
+    it("400s GET /api/terminal-spec with no taskId", async () => {
+      const { handle, link } = build()
+      const res = await handle(new Request("http://localhost/api/terminal-spec"))
+      expect(res.status).toBe(400)
+      expect(link.calls).toHaveLength(0)
+    })
+
+    it("500s POST /api/session on an invalid JSON body", async () => {
+      const { handle } = build()
+      const res = await handle(
+        new Request("http://localhost/api/session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{not json",
+        }),
+      )
+      expect(res.status).toBe(500)
+    })
+  })
+
   // Note: the static fallthrough uses `Bun.file`, which only exists under the
   // Bun runtime — the live `kobe web` server. It's not exercised here because
   // vitest runs under node; the route ordering (404 when no staticDir) is
