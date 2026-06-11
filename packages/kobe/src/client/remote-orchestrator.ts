@@ -13,6 +13,7 @@ import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import {
+  type ChannelName,
   DAEMON_PROTOCOL_VERSION,
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
@@ -114,6 +115,20 @@ export interface RemoteOrchestratorOptions {
    * never holds the daemon open after the user quits. See {@link SubscribeRole}.
    */
   readonly role?: SubscribeRole
+  /**
+   * Per-channel subscribe filter (KOB — per-channel subscribe). Omit to
+   * receive EVERY channel (the default — what a primary orchestrator
+   * driving the task list needs). Pass a narrow set for a single-purpose
+   * consumer: host-boot's UiPrefsSync passes `["ui-prefs", "keybindings"]`
+   * so it no longer receives — nor deserializes — the full `task.snapshot`
+   * fan-out it never reads. When the filter excludes `task.snapshot`, the
+   * `hello` task hydration is also skipped (the task list would be dead
+   * weight), and `worktreeChangesSignal()` is left null (its consumer isn't
+   * subscribed). An older daemon ignores the filter and sends everything;
+   * the unread channels simply land in signals nobody reads — still cheaper
+   * to ask, and correct.
+   */
+  readonly channels?: readonly ChannelName[]
 }
 
 export class RemoteOrchestrator {
@@ -139,6 +154,10 @@ export class RemoteOrchestrator {
   private readonly setConnectionState: (next: DaemonConnectionState) => void
   private readonly ensureReachable: () => Promise<unknown>
   private readonly role: SubscribeRole
+  /** Per-channel subscribe filter; `undefined` = subscribe to all channels. */
+  private readonly channels?: readonly ChannelName[]
+  /** True when the filter excludes `task.snapshot` — skip hello task hydration. */
+  private readonly subscribesTasks: boolean
   /** Guards against stacking multiple reconnect loops (one `close` already
    *  running a retry loop must not spawn a second on the next `close`). */
   private reconnecting = false
@@ -179,6 +198,8 @@ export class RemoteOrchestrator {
     this.setConnectionState = (next) => setConnectionState(() => next)
     this.ensureReachable = options.ensureReachable ?? ensureDaemonReachable
     this.role = options.role ?? "pane"
+    this.channels = options.channels
+    this.subscribesTasks = !options.channels || options.channels.includes("task.snapshot")
     this.client.on("*", (frame) => this.handleEvent(frame.name, frame.payload))
     // Socket drop flips us to `disconnected`. What happens next depends on
     // the role:
@@ -286,13 +307,17 @@ export class RemoteOrchestrator {
     // Re-set on every init so a reconnect to a freshly-restarted daemon clears
     // the banner once versions match.
     this.setDaemonVersionSig(typeof hello.kobeVersion === "string" ? hello.kobeVersion : null)
-    if (hello.tasks) this.setTasks(hello.tasks.map(deserializeTask))
-    // Subscribe to all channels (the daemon replays each channel's current
-    // value on connect). We only consume `task.snapshot` here; future
-    // channels get their own `client.onChannel(...)` consumers elsewhere.
-    // Pass our role so the daemon's lazy-shutdown refcount counts only
-    // real front-end attaches (`gui`), not in-tmux helper panes (`pane`).
-    await this.client.subscribe({ role: this.role })
+    // Hydrate the task list from `hello` only when this orchestrator actually
+    // subscribes to `task.snapshot`. A channel-filtered consumer (UiPrefsSync)
+    // that excluded it would otherwise deserialize the whole list into a
+    // mirror nothing reads — the exact churn the filter exists to remove.
+    if (hello.tasks && this.subscribesTasks) this.setTasks(hello.tasks.map(deserializeTask))
+    // Subscribe to the daemon's push channels (it replays each channel's
+    // current value on connect). Pass `channels` to restrict the fan-out
+    // for a narrow consumer (UiPrefsSync), or omit for everything. Pass our
+    // role so the daemon's lazy-shutdown refcount counts only real
+    // front-end attaches (`gui`), not in-tmux helper panes (`pane`).
+    await this.client.subscribe({ role: this.role, channels: this.channels })
     // Daemon-collected worktree changes (issue #6): gate on the hello
     // capability list — the honest "does this daemon run the collector?"
     // signal during a rolling upgrade. A capable daemon replays the

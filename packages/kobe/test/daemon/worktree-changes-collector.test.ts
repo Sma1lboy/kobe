@@ -196,6 +196,45 @@ describe("WorktreeChangesCollector", () => {
     expect(published).toEqual([])
   })
 
+  test("pauses entirely while hasSubscribers is false, resumes when true", async () => {
+    let subscribed = false
+    const bus = new DaemonEventBus()
+    const published: WorktreeChangesPayload[] = []
+    bus.onPublish((event) => {
+      if (event.channel === "worktree.changes") published.push(event.payload as WorktreeChangesPayload)
+    })
+    const runs: string[] = []
+    const collector = new WorktreeChangesCollector({ listTasks: () => [task({ id: "a" })] }, bus, {
+      cadence: FAST,
+      hasSubscribers: () => subscribed,
+      run: async (worktreePath) => {
+        runs.push(worktreePath)
+        return { added: 1, deleted: 0 }
+      },
+    })
+
+    // Zero subscribers (gui-less daemon) → the tick spawns no git, publishes
+    // nothing: no consumer-less disk/CPU churn.
+    collector.tick()
+    await settle()
+    expect(runs).toEqual([])
+    expect(published).toEqual([])
+
+    // A pane subscribes → the next tick repopulates and publishes.
+    subscribed = true
+    collector.tick()
+    await settle()
+    expect(runs).toEqual(["/wt/a"])
+    expect(published.at(-1)).toEqual({ changes: { "/wt/a": { added: 1, deleted: 0 } } })
+  })
+
+  test("collects unconditionally when hasSubscribers is omitted (back-compat)", async () => {
+    const { collector, runs } = harness([task({ id: "a" })], { "/wt/a": { added: 2, deleted: 1 } })
+    collector.tick()
+    await settle()
+    expect(runs).toEqual(["/wt/a"])
+  })
+
   test("tick never throws when the task lister blows up", () => {
     const bus = new DaemonEventBus()
     const collector = new WorktreeChangesCollector(

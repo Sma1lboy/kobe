@@ -281,6 +281,31 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "worktree.changes",
 ]
 
+const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)
+
+/** True for a string that names a real push channel. */
+export function isChannelName(value: unknown): value is ChannelName {
+  return typeof value === "string" && CHANNEL_NAME_SET.has(value)
+}
+
+/**
+ * Normalize a subscribe `channels` request into the filter the daemon
+ * enforces (KOB — per-channel subscribe). Returns `null` for "no filter →
+ * deliver every channel" (back-compat: a subscriber that omits `channels`,
+ * sends a non-array, or sends an empty/all-garbage list gets everything,
+ * exactly as before the filter existed). Otherwise returns the set of valid
+ * channel names requested — unknown names are dropped (forward-compat: a
+ * newer client asking for a channel this daemon doesn't have just doesn't
+ * receive it, never an error). `daemon.stopping` is intentionally NOT a
+ * channel and is always delivered regardless of the filter (server.ts).
+ */
+export function normalizeChannelFilter(value: unknown): ReadonlySet<ChannelName> | null {
+  if (!Array.isArray(value)) return null
+  const set = new Set<ChannelName>()
+  for (const name of value) if (isChannelName(name)) set.add(name)
+  return set.size > 0 ? set : null
+}
+
 /**
  * Event-frame names: every {@link ChannelName}, plus `daemon.stopping` — a
  * lifecycle signal that is deliberately NOT a channel (it has no last-value

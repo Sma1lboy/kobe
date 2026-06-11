@@ -88,11 +88,25 @@ export async function runAutoTitlePass(
  * Start the poller. Returns a `stop()` that clears the interval. Pass
  * `intervalMs <= 0` to disable (returns a no-op stop) — tests that don't
  * want a live timer use this.
+ *
+ * `hasSubscribers` is the consumer gate (KOB — idle-daemon collector
+ * pause): each tick is a no-op while it returns `false`, so a gui-less
+ * daemon with zero subscribed panes stops the transcript reads + the
+ * `tmux list-windows` chat-tab naming pass that publish to nobody. The
+ * interval keeps running; a pass runs again on the first tick after a pane
+ * subscribes. Omit to scan unconditionally (tests).
  */
-export function startAutoTitlePoller(orch: Orchestrator, intervalMs: number = DEFAULT_AUTO_TITLE_POLL_MS): () => void {
+export function startAutoTitlePoller(
+  orch: Orchestrator,
+  intervalMs: number = DEFAULT_AUTO_TITLE_POLL_MS,
+  hasSubscribers?: () => boolean,
+): () => void {
   if (intervalMs <= 0) return () => {}
   let running = false
   const tick = (): void => {
+    // Consumer gate: no subscribed pane means no Tasks pane is rendering a
+    // live rename, so skip the disk + tmux work entirely.
+    if (hasSubscribers && !hasSubscribers()) return
     // Skip if a previous pass is still in flight so a slow disk read can't
     // pile up overlapping scans.
     if (running) return

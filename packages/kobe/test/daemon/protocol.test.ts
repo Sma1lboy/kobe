@@ -1,4 +1,9 @@
-import { isDaemonVersionStale, isProtocolCompatible } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import {
+  isChannelName,
+  isDaemonVersionStale,
+  isProtocolCompatible,
+  normalizeChannelFilter,
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { describe, expect, it } from "vitest"
 
 describe("isProtocolCompatible", () => {
@@ -57,5 +62,46 @@ describe("isDaemonVersionStale", () => {
 
   it("is not stale on an empty daemon version string (treated as unknown)", () => {
     expect(isDaemonVersionStale("", "0.7.4")).toBe(false)
+  })
+})
+
+describe("isChannelName", () => {
+  it("accepts a real channel name", () => {
+    expect(isChannelName("ui-prefs")).toBe(true)
+    expect(isChannelName("task.snapshot")).toBe(true)
+  })
+
+  it("rejects unknown / non-string values", () => {
+    expect(isChannelName("daemon.stopping")).toBe(false) // a lifecycle frame, not a channel
+    expect(isChannelName("nope")).toBe(false)
+    expect(isChannelName(42)).toBe(false)
+    expect(isChannelName(undefined)).toBe(false)
+  })
+})
+
+describe("normalizeChannelFilter", () => {
+  it("returns null (deliver-everything) for an omitted / non-array request", () => {
+    // Back-compat: a subscriber that never sent `channels` gets every channel.
+    expect(normalizeChannelFilter(undefined)).toBeNull()
+    expect(normalizeChannelFilter("ui-prefs")).toBeNull()
+    expect(normalizeChannelFilter({})).toBeNull()
+  })
+
+  it("returns the requested set of valid channels", () => {
+    const set = normalizeChannelFilter(["ui-prefs", "keybindings"])
+    expect(set).not.toBeNull()
+    expect([...(set ?? [])].sort()).toEqual(["keybindings", "ui-prefs"])
+  })
+
+  it("drops unknown names (forward-compat) but keeps the valid ones", () => {
+    const set = normalizeChannelFilter(["ui-prefs", "future-channel", 7])
+    expect([...(set ?? [])]).toEqual(["ui-prefs"])
+  })
+
+  it("returns null when the filter has zero valid channels (deliver-everything)", () => {
+    // An all-garbage / empty list must not silently mute the subscriber —
+    // it falls back to the historical deliver-all behavior.
+    expect(normalizeChannelFilter([])).toBeNull()
+    expect(normalizeChannelFilter(["bogus", 1])).toBeNull()
   })
 })

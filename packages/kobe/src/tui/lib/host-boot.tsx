@@ -28,10 +28,10 @@
  */
 
 import { render } from "@opentui/solid"
-import { logClient, logClientError, setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
-import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
 import { type JSX, createEffect, createSignal, onCleanup, onMount } from "solid-js"
-import { RemoteOrchestrator } from "../../client/remote-orchestrator"
+import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
+import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { FocusProvider } from "../context/focus"
 import { applyUserKeybindings, reloadUserKeybindings } from "../context/keybindings-user"
 import { KVProvider } from "../context/kv"
@@ -176,19 +176,26 @@ function HostProviders(props: {
  *      `onMount`; all hosts now take all three through one
  *      {@link applyUiPrefs} path.
  *   2. **Live**: opens its OWN non-spawning daemon subscription (a
- *      `role: "pane"` RemoteOrchestrator via `connectIfRunning`) and
+ *      `role: "pane"` RemoteOrchestrator via `connectPaneOrchestrator`) and
  *      re-applies every `ui-prefs` push, so a Settings appearance change
  *      in ANY session restyles this pane immediately. A dedicated
  *      connection — rather than threading each host's optional
  *      orchestrator through here — keeps this a zero-wiring boot step for
- *      every current and future host; the duplicate pane socket in hosts
- *      that already have one is cheap and never holds the daemon alive.
+ *      every current and future host (some hosts, like ops, have no primary
+ *      orchestrator to thread). It is CHANNEL-SCOPED to
+ *      `["ui-prefs", "keybindings"]` (KOB — per-channel subscribe): the
+ *      daemon then sends this socket ONLY those two channels, not the full
+ *      `task.snapshot` / `engine-state` / `worktree.changes` fan-out a
+ *      Tasks pane consumes — so in a host that already has a primary
+ *      orchestrator this second socket no longer doubles the per-broadcast
+ *      write + JSON.parse of the whole task list it never reads. It never
+ *      holds the daemon alive (`role: "pane"`).
  *
  * Degraded mode (accepted): with no daemon running at mount,
- * `connectIfRunning` yields null and the pane keeps its boot-time prefs —
- * same fallback stance as the Tasks pane's file-poll. A pane that HAD a
- * connection auto-reconnects (RemoteOrchestrator's pane reconnect loop)
- * and the subscribe-time channel replay catches it up.
+ * `connectPaneOrchestrator` yields null and the pane keeps its boot-time
+ * prefs — same fallback stance as the Tasks pane's file-poll. A pane that
+ * HAD a connection auto-reconnects (RemoteOrchestrator's pane reconnect
+ * loop) and the subscribe-time channel replay catches it up.
  *
  * Echo guard: the process that caused a prefs write receives its own push
  * back; `applyUiPrefs` compares before every set, so identical values are
@@ -229,33 +236,25 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   // below — created synchronously under THIS component's owner — starts
   // tracking `uiPrefsSignal()` once the async connect resolves.
   //
-  // Leak guards on the async window: (a) a failed `init()` (protocol
-  // mismatch, daemon dying mid-handshake) must DISPOSE the half-built
-  // orchestrator — abandoning it leaked the open socket plus its pane
-  // reconnect loop, which would retry forever with no consumer; (b) if
-  // this component was cleaned up while the connect was still in flight,
-  // the late-resolving orchestrator must be disposed on the spot —
-  // `onCleanup` already ran and can never see it.
+  // `connectPaneOrchestrator` owns leak guard (a): a failed handshake
+  // disposes the half-built orchestrator (the open socket + the would-be
+  // pane reconnect loop) before yielding null, so no consumer-less ghost
+  // subscriber survives a protocol skew. It also keeps the NON-spawning
+  // rule (a helper must never resurrect an idle-stopped daemon → null when
+  // no daemon, the documented degrade). We add leak guard (b): if this
+  // component was cleaned up while the connect was still in flight, the
+  // late-resolving orchestrator must be disposed on the spot — `onCleanup`
+  // already ran and can never see it. CHANNEL-SCOPED to ui-prefs +
+  // keybindings so this socket never receives the task fan-out.
   const [prefsOrch, setPrefsOrch] = createSignal<RemoteOrchestrator | null>(null)
   let disposed = false
   onMount(() => {
     void (async () => {
-      let remote: RemoteOrchestrator | null = null
-      try {
-        // NON-spawning connect (same rule as the Tasks pane): a helper
-        // subscription must never resurrect an idle-stopped daemon.
-        const client = await connectIfRunning()
-        if (!client) {
-          logClient("ui-prefs", "no daemon — keeping boot-time visual prefs")
-          return
-        }
-        remote = new RemoteOrchestrator(client)
-        await remote.init()
-      } catch (err) {
-        logClientError("ui-prefs", err)
-        remote?.dispose()
-        return
-      }
+      const remote = await connectPaneOrchestrator({
+        logTag: "ui-prefs",
+        channels: ["ui-prefs", "keybindings"],
+      })
+      if (!remote) return
       if (disposed) {
         remote.dispose()
         return

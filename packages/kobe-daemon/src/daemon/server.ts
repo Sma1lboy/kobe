@@ -28,7 +28,7 @@ import {
   startKeybindingsWatcher,
 } from "./keybindings-watcher.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
+import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
 import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
 
@@ -107,6 +107,18 @@ type ClientState = DaemonClientConnection & {
    * {@link SubscribeRole}.
    */
   holdsLifetime: boolean
+  /**
+   * Per-channel subscribe filter (KOB — per-channel subscribe). `null` =
+   * "no filter, deliver every channel" (the historical behavior — what a
+   * subscriber that omits `channels` gets). A non-null set restricts both
+   * the connect-time replay AND every later `broadcast` to the named
+   * channels, so a narrow consumer (e.g. host-boot's UiPrefsSync, which
+   * only wants `ui-prefs` + `keybindings`) no longer receives — and
+   * deserializes — the full `task.snapshot` fan-out it never reads. The
+   * `daemon.stopping` lifecycle frame is NOT a channel and bypasses this
+   * filter (every subscriber must learn the daemon is going down).
+   */
+  channels: ReadonlySet<ChannelName> | null
 }
 
 type EventedServer = Server & {
@@ -148,6 +160,19 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     let n = 0
     for (const c of clients) if (c.holdsLifetime) n++
     return n
+  }
+
+  // Any subscribed consumer — gui OR pane (KOB — idle-daemon collector
+  // pause). Distinct from `guiCount`: this gates the background COLLECTORS
+  // (worktree-changes, auto-title), which exist to feed an attached pane.
+  // A gui-less `kobe daemon start` (or a freshly-respawned `daemon restart`)
+  // has zero subscribers, so its collectors must NOT run git/tmux walks for
+  // nobody — they pause until the first pane subscribes. A pane subscriber
+  // is enough: it renders the pushes even though it never holds the daemon
+  // alive.
+  function hasSubscribers(): boolean {
+    for (const c of clients) if (c.subscribed) return true
+    return false
   }
 
   function cancelIdleTimer(): void {
@@ -194,6 +219,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       buffer: "",
       subscribed: false,
       holdsLifetime: false,
+      channels: null,
     }
     clients.add(client)
 
@@ -253,7 +279,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // return. The rename broadcasts via the `task.snapshot` channel above,
   // so every attached Tasks pane updates without a detach.
   const autoTitlePollMs = options.autoTitlePollMs ?? DEFAULT_AUTO_TITLE_POLL_MS
-  const stopAutoTitlePoller = startAutoTitlePoller(orch, autoTitlePollMs)
+  const stopAutoTitlePoller = startAutoTitlePoller(orch, autoTitlePollMs, hasSubscribers)
 
   // Live visual prefs (KOB — cross-session theme propagation): watch
   // `state.json` for the theme / transparent / focus-accent keys and
@@ -286,6 +312,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     orch,
     bus,
     options.worktreeChangesTickMs ?? DEFAULT_WORKTREE_CHANGES_TICK_MS,
+    hasSubscribers,
   )
 
   const serverApi: DaemonServer = {
@@ -349,37 +376,55 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
     if (req.name === "subscribe") {
       const payload = objectPayload(req.payload)
+      const wasSubscribed = client.subscribed
       client.subscribed = true
       // role defaults to "pane": a subscriber that omits it is the safe
       // non-lifetime kind, so a future client can't accidentally pin the
       // daemon open. Only a "gui" attach holds the daemon alive.
       const role = payload.role === "gui" ? "gui" : "pane"
       client.holdsLifetime = role === "gui"
+      // Per-channel filter (KOB — per-channel subscribe). `null` = no filter
+      // → every channel (back-compat: an omitted/garbage `channels` behaves
+      // exactly as before). A non-null set restricts both this replay and
+      // every later `broadcast` to the named channels, so a narrow consumer
+      // (UiPrefsSync wants only ui-prefs + keybindings) stops receiving —
+      // and deserializing — the full task.snapshot fan-out it never reads.
+      client.channels = normalizeChannelFilter(payload.channels)
+      // First-time subscribe with zero prior subscribers → a collector that
+      // had paused (gui-less daemon) repopulates on its NEXT tick; nothing
+      // to kick synchronously since the interval keeps running.
+      const firstSubscriber = !wasSubscribed
       // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
       // pane subscribing must NOT cancel it: panes alone never keep the
       // daemon up, so a pane connecting during the grace window leaves the
       // countdown running.
       if (client.holdsLifetime) cancelIdleTimer()
-      logDaemonInfo("conn", `client #${client.id} subscribed as ${role} — ${clients.size} client(s), ${guiCount()} gui`)
+      logDaemonInfo(
+        "conn",
+        `client #${client.id} subscribed as ${role}${client.channels ? ` [${[...client.channels].join(",")}]` : ""} — ${clients.size} client(s), ${guiCount()} gui${firstSubscriber ? " (collectors resume)" : ""}`,
+      )
       // Replay the current value of every populated channel so a late
       // subscriber hydrates without a separate round trip — generalized
-      // from the old single task.snapshot send (KOB-246). `payload.channels`
-      // is accepted for forward-compat (a future per-channel filter) but
-      // currently ignored: every subscriber gets every channel, exactly
-      // as before. The bus cache is warm (subscribeTasks' eager fire).
+      // from the old single task.snapshot send (KOB-246). Filtered to the
+      // client's requested channels (null = all). The bus cache is warm
+      // (subscribeTasks' eager fire).
       for (const event of bus.snapshot()) {
+        if (client.channels && !client.channels.has(event.channel)) continue
         writeFrame(client, { type: "event", name: event.channel, payload: event.payload })
       }
       // The bus only caches ONE last-value per channel, but `engine-state`
       // is per-task — so additionally replay EVERY task's current non-idle
       // activity to this late subscriber (otherwise it'd only learn the most
-      // recently changed task's state).
-      for (const payload of activity.currentNonIdle()) {
-        writeFrame(client, {
-          type: "event",
-          name: "engine-state",
-          payload,
-        })
+      // recently changed task's state). Skip when the client filtered
+      // `engine-state` out.
+      if (!client.channels || client.channels.has("engine-state")) {
+        for (const payload of activity.currentNonIdle()) {
+          writeFrame(client, {
+            type: "event",
+            name: "engine-state",
+            payload,
+          })
+        }
       }
       return {}
     }
@@ -449,9 +494,17 @@ function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void 
   // frame is ~8.5KB at 20 tasks, so N subscribed panes used to cost N
   // identical JSON.stringify passes per task mutation. The wire bytes are
   // unchanged — every subscriber receives the exact same line.
+  //
+  // Per-channel filter (KOB — per-channel subscribe): a channel event is
+  // skipped for a client whose `channels` filter excludes it, so a narrow
+  // consumer no longer receives (nor parses) fan-out it never reads. The
+  // `daemon.stopping` lifecycle frame is NOT a channel — it bypasses the
+  // filter so every subscriber learns the daemon is going down.
+  const channel = frame.type === "event" && frame.name !== "daemon.stopping" ? (frame.name as ChannelName) : null
   let line: string | null = null
   for (const client of clients) {
     if (!client.subscribed && frame.type === "event") continue
+    if (channel && client.channels && !client.channels.has(channel)) continue
     line ??= frameToLine(frame)
     client.socket.write(line)
   }

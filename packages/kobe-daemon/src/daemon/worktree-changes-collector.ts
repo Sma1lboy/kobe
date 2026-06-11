@@ -117,6 +117,18 @@ export interface WorktreeChangesCollectorOptions {
   readonly cadence?: PollCadenceConfig
   /** Injectable status runner — tests avoid real git/worktrees. */
   readonly run?: WorktreeStatusRunner
+  /**
+   * Consumer gate (KOB — idle-daemon collector pause). When supplied and it
+   * returns `false`, `tick()` does NO work (no `git status` spawns, no
+   * publish) — a gui-less `kobe daemon start` / freshly-respawned `daemon
+   * restart` with zero subscribed panes must not run N git walks every 2s
+   * for nobody. The timer keeps ticking, so the FIRST tick after a pane
+   * subscribes repopulates, and the bus's last-value replay hands that late
+   * subscriber the current map. Omit (or return `true`) to collect every
+   * tick — the historical behavior, used by tests that drive `tick()`
+   * directly.
+   */
+  readonly hasSubscribers?: () => boolean
 }
 
 /**
@@ -141,6 +153,11 @@ export class WorktreeChangesCollector {
 
   tick(): void {
     if (this.stopped) return
+    // Consumer gate: with zero subscribed panes there is nobody to render
+    // the counts, so skip the whole pass — no git spawns, no publish. The
+    // first tick once a pane subscribes repopulates the map and the bus
+    // replays it to the late subscriber.
+    if (this.options.hasSubscribers && !this.options.hasSubscribers()) return
     try {
       const tracked = trackedWorktreePaths(this.orch.listTasks())
       // Prune first: a task deleted/archived since the last tick drops its
@@ -212,14 +229,21 @@ export class WorktreeChangesCollector {
  * clears the timer. Pass `tickMs <= 0` to disable (returns a no-op stop) —
  * the same disable convention as the server's other pollers; socket-suite
  * tests use it to keep servers git-free.
+ *
+ * `hasSubscribers` is the consumer gate (KOB — idle-daemon collector
+ * pause): each tick is a no-op while it returns `false`, so a gui-less
+ * daemon with zero subscribed panes stops spawning `git status` for
+ * nobody. The interval keeps running, so the first tick after a pane
+ * subscribes repopulates the cache. Omit to collect unconditionally.
  */
 export function startWorktreeChangesCollector(
   orch: TaskLister,
   bus: DaemonEventBus,
   tickMs: number = DEFAULT_WORKTREE_CHANGES_TICK_MS,
+  hasSubscribers?: () => boolean,
 ): () => void {
   if (tickMs <= 0) return () => {}
-  const collector = new WorktreeChangesCollector(orch, bus)
+  const collector = new WorktreeChangesCollector(orch, bus, { hasSubscribers })
   collector.tick()
   const timer = setInterval(() => collector.tick(), tickMs)
   timer.unref?.()
