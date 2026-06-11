@@ -19,7 +19,7 @@ The git worktree a **Task** is checked out into. 1:1 with **Task**. Allocated la
 _Avoid_: workspace (overloaded with the TUI **Pane**), checkout, branch dir.
 
 **Session**:
-A persisted Claude Code conversation on disk (`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`). kobe reads these (engine history readers, auto-title, cost summaries); it never writes them. Distinct from a **tmux Session** — disambiguate with the `tmux` qualifier when both are in play.
+A persisted Claude Code conversation on disk (`~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`). kobe reads these (engine history readers, auto-title, turn detection); it never writes them. Distinct from a **tmux Session** — disambiguate with the `tmux` qualifier when both are in play.
 _Avoid_: history (history is the contents OF a Session, not the Session itself).
 
 ### Handover model
@@ -63,7 +63,7 @@ The pure reuse/respawn policy for `ensureSession` (`src/tmux/session-decision.ts
 _Avoid_: session check, health check (those are inputs, not the policy).
 
 **Engine Registry**:
-The per-vendor wiring table (`src/engine/registry.ts`): history reader, cost summarizer, account detector, hook adapter factory, and default command, keyed by `VendorId`. Neutral layers (auto-title, settings) ask the registry instead of switching on vendor literals or parsing a vendor's transcript format directly. Custom engines resolve to a documented empty entry.
+The per-vendor wiring table (`src/engine/registry.ts`): history reader, account detector, hook adapter factory, turn detector, and default command, keyed by `VendorId`. Neutral layers (auto-title, settings) ask the registry instead of switching on vendor literals or parsing a vendor's transcript format directly. Custom engines resolve to a documented empty entry.
 _Avoid_: engine switch, vendor table.
 
 **State Store**:
@@ -128,5 +128,5 @@ The transitional opentui shell and its surfaces; kept so old comments/commits re
 - **Outer monitor** — the `app.tsx` opentui shell (sidebar + Workspace) that `kobe` used to boot into. The v0.6+ direction was always inner-first; once every flow had a tmux-native home, the shell was deleted. `kobe` now attaches straight to a **tmux Session** (`tui/direct.ts`).
 - **Workspace** (capital W) — the outer shell's right **Pane**: **Live Preview** + a **Handover** launcher (`ClaudeLauncher`), or the **Cost Dashboard**. Don't reuse the word for a UI region; "the tmux workspace" (the abstract Task-as-workspace sense) is still fine.
 - **Live Preview** — the Workspace's ~1s `tmux capture-pane` view of a Task's claude pane (`monitor/capture-pane.ts`). Dropped without a port: switching sessions *is* the preview, and the **Tasks pane** carries status badges.
-- **Cost Dashboard** — the Workspace's per-Task token table (toggle `d`). Dropped without a port; the `monitor/cost.ts` summarizer survives as **Engine Registry** plumbing (`summarizeCost`).
+- **Cost Dashboard** — the Workspace's per-Task token table (toggle `d`). Dropped without a port; the `monitor/cost.ts` summarizer briefly survived as **Engine Registry** plumbing (`summarizeCost`), but with zero production callers the whole chain (`monitor/cost.ts`, the registry field, `engine/claude-code-local/cost.ts`) was deleted too.
 - **`KOBE_NO_DAEMON`** — env flag that hosted a daemon-less in-process **Orchestrator** inside the TUI. Retired: the **Daemon** is the product; `kobe doctor` / `kobe reset` cover its failure modes. (The **Orchestrator** class itself lives on, hosted by the Daemon.)

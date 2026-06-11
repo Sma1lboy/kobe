@@ -1,13 +1,13 @@
 /**
  * Engine registry (engine/registry.ts) — the consolidation point for the
  * per-vendor conditionals that used to be scattered through
- * monitor/auto-title.ts, monitor/cost.ts, engine/hook-adapter.ts and the
+ * monitor/auto-title.ts, engine/hook-adapter.ts and the
  * three account detectors. These tests pin the registry's contract:
  *
  *  - known vendors resolve to REAL entries (the right detector, the right
- *    history reader, claude's cost summarizer, claude's hook adapter);
+ *    history reader, claude's hook adapter);
  *  - an unknown/custom vendor resolves to the documented EMPTY entry
- *    (no transcript store, no cost, no account detection, noop hooks) —
+ *    (no transcript store, no account detection, noop hooks) —
  *    the pre-registry behavior for custom engines, preserved on purpose
  *    so auto-title never mis-reads claude's transcripts for an unknown id.
  */
@@ -30,14 +30,12 @@ function deps(over: Partial<DetectDeps> = {}): DetectDeps {
 }
 
 describe("engineEntry — built-in vendors", () => {
-  it("resolves claude with display name, default command, cost reader and real hooks", () => {
+  it("resolves claude with display name, default command and real hooks", () => {
     const entry = engineEntry("claude")
     expect(entry.vendor).toBe("claude")
     expect(entry.builtin).toBe(true)
     expect(entry.displayName).toBe("Claude")
     expect(entry.defaultCommand).toEqual(["claude"])
-    // Claude is the only engine with a wired cost reader today (KOB-230).
-    expect(entry.summarizeCost).not.toBeNull()
     // Claude is the only engine with wired activity hooks.
     expect(entry.createHookAdapter().supportsHooks()).toBe(true)
     expect(entry.history).not.toBe(EMPTY_HISTORY)
@@ -47,7 +45,7 @@ describe("engineEntry — built-in vendors", () => {
     expect(detector.supportsCompletionMarkers()).toBe(true)
   })
 
-  it("resolves codex/copilot with their identity, no cost reader, noop hooks", () => {
+  it("resolves codex/copilot with their identity and noop hooks", () => {
     for (const [vendor, label] of [
       ["codex", "Codex"],
       ["copilot", "Copilot"],
@@ -57,7 +55,6 @@ describe("engineEntry — built-in vendors", () => {
       expect(entry.builtin).toBe(true)
       expect(entry.displayName).toBe(label)
       expect(entry.defaultCommand).toEqual([vendor])
-      expect(entry.summarizeCost).toBeNull()
       const hooks = entry.createHookAdapter()
       expect(hooks.supportsHooks()).toBe(false)
       expect(hooks.vendor).toBe(vendor)
@@ -113,8 +110,7 @@ describe("engineEntry — custom (user-registered) vendors", () => {
     expect(detector.vendor).toBe("aider")
     expect(detector.supportsCompletionMarkers()).toBe(false)
     expect(await detector.latestCompletion("/some/worktree")).toBeNull()
-    // No cost reader, no account detection, no hooks.
-    expect(entry.summarizeCost).toBeNull()
+    // No account detection, no hooks.
     const status = await entry.detectAccount()
     expect(status.account).toEqual({ kind: "none" })
     expect(status.binary.found).toBe(false)

@@ -58,9 +58,13 @@ Ordered; each is one commit/PR, behavior-reviewed on its own.
 2. **DONE (2026-06-09) — Cost dashboard exit: DROPPED, no port.** Jackson's
    call. No `kobe cost` page; cross-task token totals have no TUI surface —
    recorded here as a drop, per the honesty rule. `monitor/cost.ts` (the
-   summarizer) survives as engine-data plumbing: the Engine Registry's
-   `summarizeCost` field and `engine/claude-code-local/cost.ts` consume it,
-   and their tests stay. `monitor/capture-pane.ts` (LivePreview-only) died
+   summarizer) initially survived as engine-data plumbing (the Engine
+   Registry's `summarizeCost` field + `engine/claude-code-local/cost.ts`),
+   but the perf audit (2026-06-10) confirmed that chain had ZERO production
+   callers — only its own tests kept it green — so it followed the dashboard
+   out: `monitor/cost.ts`, the registry's `summarizeCost` field and
+   `EngineCostSummary` type, `engine/claude-code-local/cost.ts`, and their
+   tests are deleted. `monitor/capture-pane.ts` (LivePreview-only) died
    with slice 3.
 3. **DONE (2026-06-09) — Live preview exit: DROPPED.** Jackson's call, per
    the default: session switching inside tmux replaces "preview the

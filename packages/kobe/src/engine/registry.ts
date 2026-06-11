@@ -7,8 +7,6 @@
  * task's `vendor` and use whatever the entry exposes:
  *
  *   - `history`        — transcript store reader (auto-title, recap).
- *   - `summarizeCost`  — lifetime usage summation (cost dashboard);
- *                        `null` for engines without a wired cost reader.
  *   - `detectAccount`  — read-only login/binary probe (Settings → Accounts).
  *   - `createHookAdapter` — activity-hook installer (claude only today).
  *   - `createTurnDetector` — ChatTab turn-completion detection.
@@ -19,8 +17,8 @@
  *
  * Custom (user-registered) engines get {@link customEngineEntry}: an
  * explicit, documented EMPTY entry — no transcript store (auto-title keeps
- * the placeholder rather than mis-reading another vendor's files), no cost
- * reader, no account detection, no hooks, and a `defaultCommand` of the
+ * the placeholder rather than mis-reading another vendor's files), no
+ * account detection, no hooks, and a `defaultCommand` of the
  * bare id (the real launch command lives in the user's
  * `engineCommand.<id>` override; see `interactive-command.ts`). This
  * preserves the pre-registry behavior for unknown vendor ids exactly.
@@ -40,7 +38,6 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "./account-detect.ts"
-import { summarizeClaudeWorktreeCost } from "./claude-code-local/cost.ts"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import * as codexHistory from "./codex-local/history.ts"
@@ -75,21 +72,6 @@ export interface EngineHistoryReader {
 /** Any built-in engine's account shape (each union already has a `none` arm). */
 export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount
 
-/**
- * Vendor-neutral lifetime usage totals for one worktree — what the cost
- * dashboard renders. The monitor wraps this with task identity
- * (`TaskCostSummary` in `monitor/cost.ts`).
- */
-export interface EngineCostSummary {
-  readonly sessionCount: number
-  readonly inputTokens: number
-  readonly outputTokens: number
-  readonly cacheReadTokens: number
-  readonly cacheCreateTokens: number
-  /** Newest transcript mtime (epoch ms), or null when no sessions. */
-  readonly lastActivityMs: number | null
-}
-
 export interface EngineRegistryEntry {
   readonly vendor: VendorId
   /** True for the three first-party engines; false for user-added ids. */
@@ -103,12 +85,6 @@ export interface EngineRegistryEntry {
   readonly defaultCommand: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
-  /**
-   * Lifetime usage summation for the cost dashboard, or `null` when this
-   * engine has no wired cost reader (codex/copilot/custom today — adding
-   * codex cost later is filling this one field, KOB-232).
-   */
-  readonly summarizeCost: ((worktree: string) => Promise<EngineCostSummary>) | null
   /**
    * Read-only binary + login probe (Settings → Accounts). `deps` is the
    * injectable fs/env surface from `account-detect.ts`; omit for production.
@@ -147,7 +123,7 @@ export const EMPTY_HISTORY: EngineHistoryReader = {
 
 /**
  * Claude's reader. `listSessionFilesForWorktree` sorts NEWEST-first (the
- * cost/activity callers want that); the registry contract is oldest-first,
+ * activity callers want that); the registry contract is oldest-first,
  * so re-sort ascending by mtime here — exactly what auto-title did inline.
  */
 const claudeHistoryReader: EngineHistoryReader = {
@@ -180,7 +156,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     displayName: "Claude",
     defaultCommand: ["claude"],
     history: claudeHistoryReader,
-    summarizeCost: (worktree) => summarizeClaudeWorktreeCost(worktree),
     detectAccount: (deps) => detectClaudeAccount(deps),
     createHookAdapter: () => new ClaudeHookAdapter(),
     createTurnDetector: () => new ClaudeTurnDetector(),
@@ -191,8 +166,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     displayName: "Codex",
     defaultCommand: ["codex"],
     history: codexHistoryReader,
-    // Codex rollouts carry usage, but no cost reader is wired yet (KOB-232).
-    summarizeCost: null,
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("codex"),
     createTurnDetector: () => new CodexTurnDetector(),
@@ -203,7 +176,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     displayName: "Copilot",
     defaultCommand: ["copilot"],
     history: copilotHistoryReader,
-    summarizeCost: null,
     detectAccount: (deps) => detectCopilotAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("copilot"),
     // Copilot persists no turn-completion marker kobe can read yet.
@@ -219,7 +191,6 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
     displayName: vendor,
     defaultCommand: [vendor],
     history: EMPTY_HISTORY,
-    summarizeCost: null,
     detectAccount: async () => ({
       binary: { found: false, error: "custom engine: kobe has no account detector for it" },
       account: { kind: "none" },
