@@ -9,8 +9,10 @@
  * so notes fill the whole tab instead of behaving like a side-panel card.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { renderMarkdown } from "../lib/markdown.ts"
 import { fetchNotes, saveNotes } from "../lib/notes.ts"
+import "./notes-markdown.css"
 
 const AUTOSAVE_DEBOUNCE_MS = 600
 
@@ -54,8 +56,10 @@ export function NotesPanel({
   full?: boolean
 }) {
   const [markdown, setMarkdown] = useState("")
+  const [preview, setPreview] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saveState, setSaveState] = useState<SaveState>("idle")
+  const rendered = useMemo(() => renderMarkdown(markdown), [markdown])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Track the task the current buffer belongs to, so an in-flight load or
   // a queued autosave for a previous task never writes to the new one.
@@ -119,12 +123,28 @@ export function NotesPanel({
     <div className="flex h-full min-h-0 flex-1 flex-col bg-bg">
       <SectionHeader
         right={
-          taskId && saveState !== "idle" ? (
-            <span
-              className={`text-[10px] ${saveState === "error" ? "text-kobe-red" : "text-subtle"}`}
-            >
-              {statusLabel(saveState)}
-            </span>
+          taskId ? (
+            <div className="flex items-center gap-2">
+              {saveState !== "idle" && (
+                <span
+                  className={`text-[10px] ${saveState === "error" ? "text-kobe-red" : "text-subtle"}`}
+                >
+                  {statusLabel(saveState)}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setPreview((p) => !p)}
+                className={`border px-1.5 py-0.5 text-[10px] transition-colors ${
+                  preview
+                    ? "border-primary bg-inset text-fg"
+                    : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
+                }`}
+                title="Toggle markdown preview"
+              >
+                {preview ? "Edit" : "Preview"}
+              </button>
+            </div>
           ) : null
         }
       >
@@ -141,6 +161,22 @@ export function NotesPanel({
                 Pick a task to open its web-only scratchpad.
               </div>
             </div>
+          </div>
+        ) : preview ? (
+          <div
+            className={`h-full w-full overflow-auto bg-surface px-4 py-3 ${
+              full ? "border-t border-line" : "rounded border border-line"
+            }`}
+          >
+            {markdown.trim() ? (
+              <div
+                className="kobe-md text-[12px] leading-relaxed text-fg"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first and emits only its own tags (see lib/markdown.ts); covered by tests.
+                dangerouslySetInnerHTML={{ __html: rendered }}
+              />
+            ) : (
+              <p className="text-[12px] text-subtle">Nothing to preview yet.</p>
+            )}
           </div>
         ) : (
           <textarea
