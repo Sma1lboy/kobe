@@ -7,14 +7,29 @@
  */
 
 .kobe-diff {
-  white-space: pre;
   tab-size: 2;
 }
 
-.kobe-diff-line {
-  display: block;
-  padding: 0 0.75rem;
+/* Each row: two right-aligned line-number gutters + the content. The grid
+ * keeps numbers aligned regardless of digit count; content keeps `pre`. */
+.kobe-diff-row {
+  display: grid;
+  grid-template-columns: 3.5ch 3.5ch 1fr;
   min-height: 1.15rem;
+}
+
+.kobe-diff-gutter {
+  padding-right: 0.5rem;
+  text-align: right;
+  color: #6b665f;
+  opacity: 0.7;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.kobe-diff-text {
+  white-space: pre;
+  padding-right: 0.75rem;
 }
 
 .kobe-diff-add {
@@ -31,6 +46,13 @@
 .kobe-diff-hunk {
   color: #61aaf2;
   background: transparent;
+}
+
+/* hunk + meta rows span the gutters too (no per-side line numbers) */
+.kobe-diff-hunk .kobe-diff-text,
+.kobe-diff-meta .kobe-diff-text {
+  grid-column: 1 / -1;
+  padding-left: 0.75rem;
 }
 
 /* file headers inside a raw patch (diff --git, index, ---, +++) */

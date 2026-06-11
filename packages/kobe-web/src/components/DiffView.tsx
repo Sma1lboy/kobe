@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
+import { type DiffRow, parseDiffRows } from "../lib/diff-rows.ts"
 import { useAppState } from "../lib/store.ts"
 import "./diff-view.css"
 
@@ -54,29 +55,23 @@ function statusBadge(status: string): { label: string; cls: string } {
   }
 }
 
-/** Classify a single unified-diff line for coloring. */
-function lineClass(line: string): string {
-  if (line.startsWith("@@")) return "kobe-diff-line kobe-diff-hunk"
-  if (
-    line.startsWith("diff --git") ||
-    line.startsWith("index ") ||
-    line.startsWith("--- ") ||
-    line.startsWith("+++ ") ||
-    line.startsWith("new file") ||
-    line.startsWith("deleted file") ||
-    line.startsWith("rename ") ||
-    line.startsWith("similarity ") ||
-    line.startsWith("\\ No newline")
-  ) {
-    return "kobe-diff-line kobe-diff-meta"
+function rowClass(kind: DiffRow["kind"]): string {
+  switch (kind) {
+    case "hunk":
+      return "kobe-diff-hunk"
+    case "meta":
+      return "kobe-diff-meta"
+    case "add":
+      return "kobe-diff-add"
+    case "del":
+      return "kobe-diff-del"
+    default:
+      return "kobe-diff-ctx"
   }
-  if (line.startsWith("+")) return "kobe-diff-line kobe-diff-add"
-  if (line.startsWith("-")) return "kobe-diff-line kobe-diff-del"
-  return "kobe-diff-line kobe-diff-ctx"
 }
 
 export function DiffBody({ patch }: { patch: string }) {
-  const lines = useMemo(() => patch.replace(/\n$/, "").split("\n"), [patch])
+  const rows = useMemo(() => parseDiffRows(patch), [patch])
   if (!patch.trim()) {
     return (
       <div className="flex h-full items-center justify-center text-[12px] text-subtle">
@@ -86,11 +81,15 @@ export function DiffBody({ patch }: { patch: string }) {
   }
   return (
     <div className="kobe-diff min-h-0 flex-1 overflow-auto py-2 font-mono text-[12px] leading-[1.15rem]">
-      {lines.map((line, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: diff lines are positional and re-rendered wholesale per file
-        <span key={i} className={lineClass(line)}>
-          {line === "" ? " " : line}
-        </span>
+      {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: diff rows are positional and re-rendered wholesale per file
+        <div key={i} className={`kobe-diff-row ${rowClass(row.kind)}`}>
+          <span className="kobe-diff-gutter">{row.oldLn ?? ""}</span>
+          <span className="kobe-diff-gutter">{row.newLn ?? ""}</span>
+          <span className="kobe-diff-text">
+            {row.text === "" ? " " : row.text}
+          </span>
+        </div>
       ))}
     </div>
   )
