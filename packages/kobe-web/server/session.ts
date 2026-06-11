@@ -12,6 +12,7 @@
 
 import { interactiveEngineCommand } from "../../kobe/src/engine/interactive-command.ts"
 import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
+import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { DaemonLink } from "./daemon-link.ts"
@@ -68,4 +69,21 @@ export async function terminalSpec(link: DaemonLink, taskId: string): Promise<{ 
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
   const shell = process.env.SHELL?.trim() || "/bin/zsh"
   return { cwd: worktreePath, command: [shell, "-il"] }
+}
+
+/**
+ * Kill a task's canonical tmux session (and the engine inside it) after the
+ * task is archived or deleted. The daemon never touches tmux by design, so
+ * every front-end that commits an archive/delete RPC owns this follow-up —
+ * the TUI does it in its flows, `kobe api` does it in its CLI process, and
+ * the web bridge does it here (without this, a web delete leaves the engine
+ * subprocess running, orphaned and invisible to every kobe UI). Best-effort:
+ * the RPC is already committed, so a teardown failure must never throw back.
+ */
+export async function tearDownTaskSession(taskId: string): Promise<void> {
+  const session = tmuxSessionName(taskId)
+  // Switch any attached client away first so the kill doesn't blank a
+  // terminal (no-op when nothing is attached to that session).
+  await switchClientBeforeKill(session).catch(() => {})
+  await killSession(session).catch(() => {})
 }

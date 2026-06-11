@@ -8,6 +8,7 @@
 import { Bot, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
 import { useState } from "react"
+import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import {
   addEmptyTab,
@@ -20,10 +21,9 @@ import {
   type WorkspaceTab,
 } from "../lib/tabs.ts"
 import { closePtyTab } from "../lib/terminal.ts"
+import { reportError } from "../lib/toast.ts"
 import { ChatTerminal } from "./ChatTerminal.tsx"
 import { FilePreview } from "./DiffView.tsx"
-
-const VENDORS = ["claude", "codex", "copilot"] as const
 
 function vendorLabel(vendor: string | undefined): string {
   return vendor ?? "claude"
@@ -159,6 +159,7 @@ export function WorkspaceTabs() {
   const [splitDropActive, setSplitDropActive] = useState(false)
   const { selectedTaskId, tabsByTask, activeByTask, splitByTask } =
     useTabsState()
+  const engines = useEngines()
   const { tasks } = useAppState()
   const task = selectedTaskId
     ? tasks.find((t) => t.id === selectedTaskId)
@@ -185,7 +186,7 @@ export function WorkspaceTabs() {
     if (!selectedTaskId) return
     setVendorOpen(false)
     void rpc("task.setVendor", { taskId: selectedTaskId, vendor: next }).catch(
-      () => {},
+      (err) => reportError("switch engine", err),
     )
   }
   const onContentDragOver = (event: DragEvent<HTMLDivElement>): void => {
@@ -294,16 +295,16 @@ export function WorkspaceTabs() {
               </button>
               {vendorOpen && (
                 <div className="absolute right-2 top-8 z-10 w-40 border border-line bg-menu shadow-xl">
-                  {VENDORS.map((v) => (
+                  {engines.map((engine) => (
                     <button
-                      key={v}
+                      key={engine.id}
                       type="button"
-                      onClick={() => setVendor(v)}
+                      onClick={() => setVendor(engine.id)}
                       className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-inset ${
-                        v === vendor ? "text-primary" : "text-muted"
+                        engine.id === vendor ? "text-primary" : "text-muted"
                       }`}
                     >
-                      {v}
+                      {engine.label}
                     </button>
                   ))}
                 </div>

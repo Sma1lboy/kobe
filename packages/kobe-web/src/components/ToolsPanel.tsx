@@ -5,13 +5,16 @@
 
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
+import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import {
   clearSelectedTask,
   openFilePreviewTab,
   useTabsState,
 } from "../lib/tabs.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
+import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { ChangesList } from "./DiffView.tsx"
 import { NotesPanel } from "./NotesPanel.tsx"
 
@@ -26,7 +29,9 @@ const STATUSES = [
   "error",
 ] as const
 
-const VENDORS = ["claude", "codex", "copilot"] as const
+/** Matches the orchestrator's DIRTY_WORKTREE error prefix (the daemon only
+ *  ships the message string over the wire — same detection as the TUI). */
+const DIRTY_WORKTREE_CODE = "DIRTY_WORKTREE"
 
 function label(value: string): string {
   return value.replace(/_/g, " ")
@@ -83,14 +88,26 @@ function ActionButton({
   )
 }
 
+type PendingConfirm =
+  | { kind: "archive" }
+  | { kind: "delete"; force: boolean }
+  | null
+
 function TaskOverview({ task }: { task: Task | null }) {
   const [title, setTitle] = useState(task?.title ?? "")
+  const [branch, setBranch] = useState(task?.branch ?? "")
   const [busy, setBusy] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [confirm, setConfirm] = useState<PendingConfirm>(null)
+  const engines = useEngines()
 
   useEffect(() => {
     setTitle(task?.title ?? "")
   }, [task?.title])
+
+  useEffect(() => {
+    setBranch(task?.branch ?? "")
+  }, [task?.branch])
 
   if (!task) {
     return (
@@ -111,6 +128,8 @@ function TaskOverview({ task }: { task: Task | null }) {
     setBusy(key)
     try {
       await fn()
+    } catch (err) {
+      reportError(key.split(":")[0], err)
     } finally {
       setBusy(null)
     }
@@ -121,6 +140,14 @@ function TaskOverview({ task }: { task: Task | null }) {
     if (!next || next === task.title) return
     void run("rename", () =>
       rpc("task.rename", { taskId: task.id, title: next }),
+    )
+  }
+
+  const renameBranch = (): void => {
+    const next = branch.trim()
+    if (!next || next === task.branch) return
+    void run("branch", () =>
+      rpc("task.setBranch", { taskId: task.id, branch: next }),
     )
   }
 
@@ -135,12 +162,43 @@ function TaskOverview({ task }: { task: Task | null }) {
   }
 
   const archive = (): void => {
-    if (!window.confirm(`Archive "${task.title || task.branch}"?`)) return
+    setConfirm(null)
     void run("archive", async () => {
       await rpc("task.archive", { taskId: task.id, archived: true })
       clearSelectedTask()
       await rpc("task.setActive", { taskId: null })
     })
+  }
+
+  const restore = (): void => {
+    void run("restore", () =>
+      rpc("task.archive", { taskId: task.id, archived: false }),
+    )
+  }
+
+  // Delete flow mirrors the TUI: non-force first; a DIRTY_WORKTREE rejection
+  // re-prompts with an explicit force confirm so uncommitted work can't be
+  // lost on a single click.
+  const doDelete = (force: boolean): void => {
+    setConfirm(null)
+    setBusy("delete")
+    void (async () => {
+      try {
+        await rpc("task.delete", { taskId: task.id, force })
+        clearSelectedTask()
+        await rpc("task.setActive", { taskId: null }).catch(() => {})
+        pushToast("success", `Deleted "${task.title || task.branch}"`)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (!force && message.includes(DIRTY_WORKTREE_CODE)) {
+          setConfirm({ kind: "delete", force: true })
+        } else {
+          reportError("delete", err)
+        }
+      } finally {
+        setBusy(null)
+      }
+    })()
   }
 
   return (
@@ -163,10 +221,37 @@ function TaskOverview({ task }: { task: Task | null }) {
             Save
           </ActionButton>
         </div>
+        {task.archived && (
+          <div className="mt-2 flex items-center justify-between gap-2 border border-kobe-yellow/40 bg-kobe-yellow/10 px-2 py-1.5">
+            <span className="text-[11px] text-kobe-yellow">archived</span>
+            <ActionButton onClick={restore} disabled={busy !== null}>
+              Restore
+            </ActionButton>
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-        <Field name="Branch" value={task.branch} mono />
+        {task.kind === "main" ? (
+          <Field name="Branch" value={task.branch} mono />
+        ) : (
+          <div className="min-w-0 border-b border-line-subtle py-2">
+            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Branch
+            </div>
+            <div className="mt-1 flex gap-2">
+              <input
+                value={branch}
+                onChange={(event) => setBranch(event.target.value)}
+                onBlur={renameBranch}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") renameBranch()
+                }}
+                className="min-w-0 flex-1 border border-line bg-bg px-2 py-1 font-mono text-[12px] text-fg focus:border-line-active focus:outline-none"
+              />
+            </div>
+          </div>
+        )}
         <Field name="Vendor" value={task.vendor ?? "claude"} />
         <Field name="Worktree" value={task.worktreePath} mono />
         <Field name="Repo" value={task.repo} mono />
@@ -203,23 +288,26 @@ function TaskOverview({ task }: { task: Task | null }) {
             Vendor
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {VENDORS.map((vendor) => (
+            {engines.map((engine) => (
               <button
-                key={vendor}
+                key={engine.id}
                 type="button"
                 onClick={() =>
-                  void run(`vendor:${vendor}`, () =>
-                    rpc("task.setVendor", { taskId: task.id, vendor }),
+                  void run(`vendor:${engine.id}`, () =>
+                    rpc("task.setVendor", {
+                      taskId: task.id,
+                      vendor: engine.id,
+                    }),
                   )
                 }
                 disabled={busy !== null}
                 className={`border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
-                  (task.vendor ?? "claude") === vendor
+                  (task.vendor ?? "claude") === engine.id
                     ? "border-primary bg-inset text-fg"
                     : "border-line bg-surface text-muted hover:border-primary hover:text-fg"
                 }`}
               >
-                {vendor}
+                {engine.label}
               </button>
             ))}
           </div>
@@ -249,11 +337,61 @@ function TaskOverview({ task }: { task: Task | null }) {
           <ActionButton onClick={copyPath}>
             {copied ? "Copied" : "Copy path"}
           </ActionButton>
-          <ActionButton onClick={archive} disabled={busy !== null} danger>
-            Archive
-          </ActionButton>
+          {!task.archived && (
+            <ActionButton
+              onClick={() => setConfirm({ kind: "archive" })}
+              disabled={busy !== null}
+              danger
+            >
+              Archive
+            </ActionButton>
+          )}
         </div>
+
+        {task.kind !== "main" && (
+          <div className="mt-4 border-t border-line-subtle pt-3">
+            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Danger zone
+            </div>
+            <ActionButton
+              onClick={() => setConfirm({ kind: "delete", force: false })}
+              disabled={busy !== null}
+              danger
+            >
+              Delete task + worktree
+            </ActionButton>
+          </div>
+        )}
       </div>
+
+      {confirm?.kind === "archive" && (
+        <ConfirmDialog
+          title="Archive task"
+          body={`Archive "${task.title || task.branch}"? Its tmux session and engine will be stopped; the worktree stays on disk and the task can be restored from the Archived section.`}
+          confirmLabel="Archive"
+          danger
+          busy={busy === "archive"}
+          onConfirm={archive}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+      {confirm?.kind === "delete" && (
+        <ConfirmDialog
+          title={
+            confirm.force ? "Worktree has uncommitted changes" : "Delete task"
+          }
+          body={
+            confirm.force
+              ? `"${task.title || task.branch}" has uncommitted or untracked changes in its worktree. Force-delete discards them permanently.`
+              : `Delete "${task.title || task.branch}"? This removes the task, kills its engine session, and removes its worktree (branch history stays in git).`
+          }
+          confirmLabel={confirm.force ? "Force delete" : "Delete"}
+          danger
+          busy={busy === "delete"}
+          onConfirm={() => doDelete(confirm.force)}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
     </div>
   )
 }

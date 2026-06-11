@@ -8,6 +8,7 @@
  */
 
 import { useSyncExternalStore } from "react"
+import { closePtyTab } from "./terminal.ts"
 
 const KEY = "kobe-web.tabs"
 
@@ -147,6 +148,42 @@ function newId(): string {
 
 export function selectTask(taskId: string): void {
   set(withTaskTab({ ...state, selectedTaskId: taskId }, taskId))
+}
+
+/**
+ * Sweep tab state for tasks that no longer exist (deleted in the TUI, via
+ * `kobe api`, or by another browser). Kills the dead tasks' PTYs server-side
+ * — without this, a deleted task's engine kept running in the pty sidecar,
+ * orphaned and invisible (same bug class as the tmux orphan `kobe api delete`
+ * had). Call ONLY with an authoritative live-daemon task list.
+ */
+export function pruneMissingTasks(liveTaskIds: ReadonlySet<string>): void {
+  const dead = Object.keys(state.tabsByTask).filter(
+    (id) => !liveTaskIds.has(id),
+  )
+  const selectionDead =
+    state.selectedTaskId !== null && !liveTaskIds.has(state.selectedTaskId)
+  if (dead.length === 0 && !selectionDead) return
+  for (const taskId of dead) {
+    for (const tab of state.tabsByTask[taskId] ?? []) {
+      if (tab.kind === "vendor" || tab.kind === "terminal")
+        void closePtyTab(tab.id)
+    }
+  }
+  const tabsByTask = { ...state.tabsByTask }
+  const activeByTask = { ...state.activeByTask }
+  const splitByTask = { ...state.splitByTask }
+  for (const taskId of dead) {
+    delete tabsByTask[taskId]
+    delete activeByTask[taskId]
+    delete splitByTask[taskId]
+  }
+  set({
+    selectedTaskId: selectionDead ? null : state.selectedTaskId,
+    tabsByTask,
+    activeByTask,
+    splitByTask,
+  })
 }
 
 export function clearSelectedTask(): void {

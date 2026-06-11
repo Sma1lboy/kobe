@@ -5,11 +5,14 @@
  * brand/status bar and a bottom status bar.
  */
 
-import { Search, Settings, X } from "lucide-react"
+import { Loader2, Plus, Search, Settings, X } from "lucide-react"
 import { useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
-import type { ActivityState, EngineState, Task } from "../lib/types.ts"
+import { reportError } from "../lib/toast.ts"
+import type { ActivityState, EngineState, Task, TaskJob } from "../lib/types.ts"
+import { NewTaskDialog } from "./NewTaskDialog.tsx"
+import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
 
@@ -117,18 +120,37 @@ function SectionHeader({
   )
 }
 
+function ChangesChip({
+  counts,
+}: {
+  counts: { added: number; deleted: number } | undefined
+}) {
+  if (!counts || (counts.added === 0 && counts.deleted === 0)) return null
+  return (
+    <span className="ml-auto shrink-0 font-mono text-[10px]">
+      <span className="text-kobe-green">+{counts.added}</span>{" "}
+      <span className="text-kobe-red">−{counts.deleted}</span>
+    </span>
+  )
+}
+
 function TaskRow({
   task,
   engine,
+  job,
+  changes,
   active,
   onClick,
 }: {
   task: Task
   engine?: EngineState
+  job?: TaskJob
+  changes?: { added: number; deleted: number }
   active: boolean
   onClick: () => void
 }) {
-  const label = activityLabel(engine?.state)
+  const materializing = job?.phase === "running"
+  const label = materializing ? "materializing…" : activityLabel(engine?.state)
   return (
     <button
       type="button"
@@ -140,9 +162,17 @@ function TaskRow({
       }`}
     >
       <div className="flex items-center gap-2">
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(engine?.state)}`}
-        />
+        {materializing ? (
+          <Loader2
+            size={10}
+            strokeWidth={2.5}
+            className="shrink-0 animate-spin text-primary"
+          />
+        ) : (
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(engine?.state)}`}
+          />
+        )}
         <span
           className={`truncate text-[13px] ${active ? "text-fg" : "text-fg/90"}`}
         >
@@ -151,6 +181,7 @@ function TaskRow({
         {task.pinned && (
           <span className="ml-auto shrink-0 text-[10px] text-subtle">PIN</span>
         )}
+        {!task.pinned && <ChangesChip counts={changes} />}
       </div>
       <div className="mt-0.5 flex items-center gap-2 pl-3.5 text-[11px] text-subtle">
         <span className="truncate">{task.branch || "—"}</span>
@@ -160,12 +191,53 @@ function TaskRow({
   )
 }
 
-function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { tasks, engineStates } = useAppState()
+function ArchivedRow({
+  task,
+  onRestore,
+}: {
+  task: Task
+  onRestore: () => void
+}) {
+  return (
+    <div className="group flex items-center gap-2 border-l-2 border-transparent px-3 py-1.5">
+      <span className="min-w-0 flex-1 truncate text-[12px] text-subtle">
+        {task.title || task.branch}
+      </span>
+      <button
+        type="button"
+        onClick={onRestore}
+        className="shrink-0 border border-line bg-surface px-1.5 py-0.5 text-[10px] text-muted opacity-0 transition-opacity hover:border-primary hover:text-fg group-hover:opacity-100"
+      >
+        Restore
+      </button>
+    </div>
+  )
+}
+
+function TaskRail({
+  onOpenSettings,
+  onNewTask,
+}: {
+  onOpenSettings: () => void
+  onNewTask: () => void
+}) {
+  const {
+    tasks,
+    engineStates,
+    jobs,
+    worktreeChanges,
+    hydrated,
+    streamConnected,
+  } = useAppState()
   const { selectedTaskId } = useTabsState()
   const [query, setQuery] = useState("")
   const [sortMode, setSortMode] = useState<TaskSortMode>("default")
+  const [showArchived, setShowArchived] = useState(false)
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
+  const archivedTasks = useMemo(
+    () => tasks.filter((t) => t.archived && t.kind !== "main"),
+    [tasks],
+  )
   const visible = useMemo(
     () =>
       sortTasks(
@@ -176,10 +248,17 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
   )
   const projects = visible.filter((task) => task.kind === "main")
   const worktrees = visible.filter((task) => task.kind !== "main")
+  const booting = !hydrated || (!streamConnected && tasks.length === 0)
 
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
+  }
+
+  const restore = (task: Task): void => {
+    void rpc("task.archive", { taskId: task.id, archived: false }).catch(
+      (err) => reportError(`restore "${task.title || task.branch}"`, err),
+    )
   }
 
   return (
@@ -207,6 +286,15 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
             <span className="font-mono text-[10px] text-muted">
               {visible.length}/{activeTasks.length}
             </span>
+            <button
+              type="button"
+              onClick={onNewTask}
+              className="text-muted transition-colors hover:text-primary"
+              title="New task"
+              aria-label="New task"
+            >
+              <Plus size={14} strokeWidth={2.2} />
+            </button>
           </div>
         </div>
         <label className="mt-2 flex h-8 items-center gap-2 border border-line bg-bg px-2 text-[12px] text-muted focus-within:border-line-active">
@@ -235,11 +323,22 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
         </label>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {activeTasks.length === 0 ? (
-          <p className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
-            No tasks yet. Add a repo from the TUI or run{" "}
-            <code className="text-muted">kobe add &lt;path&gt;</code>.
-          </p>
+        {booting ? (
+          <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-subtle">
+            <Loader2 size={13} strokeWidth={2} className="animate-spin" />
+            <span>connecting…</span>
+          </div>
+        ) : activeTasks.length === 0 ? (
+          <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
+            <p>No tasks yet.</p>
+            <button
+              type="button"
+              onClick={onNewTask}
+              className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+            >
+              + New task
+            </button>
+          </div>
         ) : visible.length === 0 ? (
           <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
             <div>No matches for “{query}”.</div>
@@ -259,6 +358,8 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
                 key={t.id}
                 task={t}
                 engine={engineStates[t.id]}
+                job={jobs[t.id]}
+                changes={worktreeChanges[t.worktreePath]}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />
@@ -275,11 +376,36 @@ function TaskRail({ onOpenSettings }: { onOpenSettings: () => void }) {
                 key={t.id}
                 task={t}
                 engine={engineStates[t.id]}
+                job={jobs[t.id]}
+                changes={worktreeChanges[t.worktreePath]}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />
             ))}
           </>
+        )}
+        {!booting && archivedTasks.length > 0 && (
+          <div className="mt-2 border-t border-line-subtle pb-2">
+            <button
+              type="button"
+              onClick={() => setShowArchived((cur) => !cur)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left"
+            >
+              <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+                Archived
+              </span>
+              <span className="font-mono text-[10px] text-subtle">
+                {archivedTasks.length}
+              </span>
+              <span className="ml-auto font-mono text-[10px] text-subtle">
+                {showArchived ? "−" : "+"}
+              </span>
+            </button>
+            {showArchived &&
+              archivedTasks.map((t) => (
+                <ArchivedRow key={t.id} task={t} onRestore={() => restore(t)} />
+              ))}
+          </div>
         )}
       </div>
       <div className="border-t border-line p-2">
@@ -459,12 +585,16 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
 
 export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [newTaskOpen, setNewTaskOpen] = useState(false)
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
       <TopBar />
       <div className="flex min-h-0 flex-1">
-        <TaskRail onOpenSettings={() => setSettingsOpen(true)} />
+        <TaskRail
+          onOpenSettings={() => setSettingsOpen(true)}
+          onNewTask={() => setNewTaskOpen(true)}
+        />
         {settingsOpen ? (
           <SettingsPage onClose={() => setSettingsOpen(false)} />
         ) : (
@@ -473,6 +603,8 @@ export function AppShell() {
         <ToolsPanel />
       </div>
       <StatusBar />
+      {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
+      <Toasts />
     </div>
   )
 }

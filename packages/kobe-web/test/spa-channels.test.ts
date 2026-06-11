@@ -12,10 +12,17 @@ import { SPA_CHANNEL_SET, SPA_CHANNELS } from "../server/spa-channels.ts"
 
 // The exact set the SPA reducer handles today (mirror of store.ts applyEvent's
 // switch cases + the snapshot event's fields).
-const SPA_CONSUMED = ["task.snapshot", "active-task", "engine-state", "update"] as const
+const SPA_CONSUMED = [
+  "task.snapshot",
+  "active-task",
+  "engine-state",
+  "update",
+  "task.jobs",
+  "worktree.changes",
+] as const
 
 // The daemon channels the SPA deliberately drops — bytes it never renders.
-const SPA_DROPPED = ["ui-prefs", "keybindings", "task.jobs", "worktree.changes"] as const
+const SPA_DROPPED = ["ui-prefs", "keybindings"] as const
 
 describe("SPA_CHANNELS whitelist", () => {
   it("is exactly the channels the SPA reducer consumes", () => {

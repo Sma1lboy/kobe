@@ -47,12 +47,29 @@ export interface UpdateInfo {
   [k: string]: unknown
 }
 
+/** Lifecycle progress of a minute-class daemon job on one task
+ *  (today: `task.ensureWorktree` materializing a worktree). */
+export interface TaskJob {
+  taskId: string
+  kind: string
+  phase: "running" | "done" | "error"
+  error?: string
+}
+
+/** worktreePath → uncommitted change counts (daemon-collected). */
+export type WorktreeChangeCounts = Record<
+  string,
+  { added: number; deleted: number }
+>
+
 /** Channel push, as the bridge serializes it over SSE. */
 export type BridgeEvent =
   | { channel: "task.snapshot"; payload: { tasks: Task[] } }
   | { channel: "active-task"; payload: { taskId: string | null } }
   | { channel: "engine-state"; payload: EngineState }
   | { channel: "update"; payload: { info: UpdateInfo | null } }
+  | { channel: "task.jobs"; payload: TaskJob }
+  | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
 
 /** Full bootstrap state the bridge sends on connect. */
 export interface BridgeSnapshot {
@@ -60,5 +77,8 @@ export interface BridgeSnapshot {
   activeTaskId: string | null
   engineStates: Record<string, EngineState>
   update: UpdateInfo | null
+  /** taskId → in-flight job (running only; bridge drops terminal phases). */
+  jobs?: Record<string, TaskJob>
+  worktreeChanges?: WorktreeChangeCounts
   connected: boolean
 }

@@ -34,6 +34,8 @@ const RECONNECT_INTERVAL_MS = 500
 const QUIET_RECONNECTS = 20
 
 type EngineStatePayload = ChannelPayloads["engine-state"]
+type TaskJobPayload = ChannelPayloads["task.jobs"]
+type WorktreeChangeCounts = ChannelPayloads["worktree.changes"]["changes"]
 
 /** Full bootstrap state for the SSE `snapshot` event (mirrors the SPA's
  *  BridgeSnapshot in src/lib/types.ts). */
@@ -42,6 +44,11 @@ export interface BridgeSnapshotState {
   activeTaskId: string | null
   engineStates: Record<string, EngineStatePayload>
   update: ChannelPayloads["update"]["info"]
+  /** taskId → in-flight long job. Terminal phases are dropped, so this only
+   *  ever carries jobs that are genuinely running right now. */
+  jobs: Record<string, TaskJobPayload>
+  /** worktreePath → uncommitted +added/−deleted counts (daemon-collected). */
+  worktreeChanges: WorktreeChangeCounts
   connected: boolean
 }
 
@@ -67,6 +74,8 @@ export class DaemonLink {
   private activeTaskId: string | null = null
   private engineStates: Record<string, EngineStatePayload> = {}
   private update: ChannelPayloads["update"]["info"] = null
+  private jobs: Record<string, TaskJobPayload> = {}
+  private worktreeChanges: WorktreeChangeCounts = {}
 
   /**
    * First connection — may spawn the daemon, like any other kobe front-end
@@ -84,6 +93,8 @@ export class DaemonLink {
       activeTaskId: this.activeTaskId,
       engineStates: this.engineStates,
       update: this.update,
+      jobs: this.jobs,
+      worktreeChanges: this.worktreeChanges,
       connected: this.connected,
     }
   }
@@ -136,18 +147,21 @@ export class DaemonLink {
         minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
       })) as { tasks?: SerializedTask[] }
       if (hello.tasks) this.tasks = hello.tasks
-      // Per-connection state the subscribe replay rebuilds: engine states are
-      // transient (the daemon replays every non-idle task on subscribe), so a
-      // fresh connection starts clean instead of keeping pre-restart badges.
+      // Per-connection state the subscribe replay rebuilds: engine states and
+      // jobs are transient (the daemon replays every non-idle task / in-flight
+      // job on subscribe), so a fresh connection starts clean instead of
+      // keeping pre-restart badges. worktree.changes is last-value replayed as
+      // a full map on subscribe, so it self-heals the same way.
       this.engineStates = {}
+      this.jobs = {}
       // Wire handlers BEFORE subscribing so the replay frames are captured.
       client.on("*", (frame) => this.onFrame(frame.name, frame.payload))
       client.onLifecycle("close", () => this.onDrop(client))
-      // Ask the daemon for only the channels the SPA consumes. The daemon
-      // ignores this filter today (it replays/forwards every channel either
-      // way), so the bridge-side filter in `onFrame` is what actually saves
-      // the wire+parse cost; this is forward-compat for when the daemon honors
-      // the filter and the bytes stop crossing the socket too.
+      // Ask the daemon for only the channels the SPA consumes — the daemon
+      // honors the per-channel filter (`normalizeChannelFilter` + the
+      // broadcast gate in server.ts), so unconsumed channels stop at the
+      // daemon socket. The bridge-side filter in `onFrame` stays as
+      // belt-and-suspenders for an older daemon that predates the filter.
       await client.subscribe({ role: "gui", channels: SPA_CHANNELS })
     } catch (err) {
       client.close()
@@ -194,6 +208,19 @@ export class DaemonLink {
       case "update":
         this.update = (payload as ChannelPayloads["update"]).info
         break
+      case "task.jobs": {
+        const job = payload as TaskJobPayload
+        if (job.phase === "running") {
+          this.jobs = { ...this.jobs, [job.taskId]: job }
+        } else {
+          const { [job.taskId]: _done, ...rest } = this.jobs
+          this.jobs = rest
+        }
+        break
+      }
+      case "worktree.changes":
+        this.worktreeChanges = (payload as ChannelPayloads["worktree.changes"]).changes
+        break
       case "daemon.stopping":
         // Lifecycle signal, not a channel — the socket close that follows
         // drives the disconnect path; nothing to mirror or forward.
@@ -202,8 +229,8 @@ export class DaemonLink {
         break
     }
     // Forward only the channels the SPA renders. Unconsumed daemon channels
-    // (worktree.changes, ui-prefs, keybindings, task.jobs) are dropped here so
-    // they never hit the SSE fan-out → per-client stringify → browser parse.
+    // (ui-prefs, keybindings) are dropped here so they never hit the SSE
+    // fan-out → per-client stringify → browser parse.
     if (!SPA_CHANNEL_SET.has(name)) return
     const event: ChannelEventOut = { channel: name, payload }
     for (const sink of this.eventSinks) sink(event)

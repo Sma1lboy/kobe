@@ -11,10 +11,11 @@
  * Routes:
  *   GET  /__kobe_web          health marker (port-takeover handshake)
  *   GET  /events              SSE: `snapshot` on connect, then `channel` pushes
- *   POST /api/rpc             forward a daemon RPC by name
+ *   POST /api/rpc             forward an ALLOWLISTED daemon RPC by name
  *   POST /api/session         ensure a task's tmux session exists
  *   GET  /api/engine-spec     PTY launch spec for a task's engine tab
  *   GET  /api/terminal-spec   PTY launch spec for a task's shell tab
+ *   GET  /api/engines         engine-owned vendor list (id + display label)
  *   *    /api/notes, /api/diff  bridge-local (filesystem) routes
  *   *                         static SPA fallthrough when `staticDir` is set
  */
@@ -22,10 +23,13 @@
 import { existsSync } from "node:fs"
 import { join, normalize } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { availableEngineIds } from "../../kobe/src/engine/account-detect.ts"
+import { engineDisplayName } from "../../kobe/src/engine/interactive-command.ts"
 import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { DaemonLink } from "./daemon-link.ts"
-import { engineSpec, ensureTaskSession, terminalSpec } from "./session.ts"
+import { WEB_RPC_ALLOWSET } from "./rpc-allowlist.ts"
+import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./session.ts"
 
 export const WEB_HEALTH_MARKER = "kobe-web"
 export const WEB_HEALTH_PATH = "/__kobe_web"
@@ -83,11 +87,36 @@ async function rpcResponse(req: Request, link: DaemonLink): Promise<Response> {
   try {
     const { name, payload } = (await req.json()) as { name?: DaemonRequestName; payload?: unknown }
     if (!name) return Response.json({ error: "missing rpc name" }, { status: 400 })
-    if (name === "hello" || name === "subscribe" || name === "daemon.stop") {
-      throw new Error(`rpc ${name} is not exposed to the web UI`)
+    if (!WEB_RPC_ALLOWSET.has(name)) {
+      return Response.json({ error: `rpc ${name} is not exposed to the web UI` }, { status: 403 })
     }
     const result = await link.request(name, payload)
+    // The daemon never touches tmux: after a committed archive/delete, the
+    // session (and the engine inside it) must be torn down by the front-end
+    // that asked — same contract as the TUI flows and `kobe api`. Delete
+    // always kills; archive kills only when actually archiving (un-archive
+    // passes `archived: false` and must leave a live session alone).
+    const taskId = (payload as { taskId?: unknown } | undefined)?.taskId
+    if (typeof taskId === "string") {
+      const archiving =
+        name === "task.archive" && (payload as { archived?: unknown }).archived !== false
+      if (name === "task.delete" || archiving) void tearDownTaskSession(taskId)
+    }
     return Response.json({ result })
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
+/** Engine-owned vendor list: detected built-ins + user-registered custom
+ *  engines, labeled with their (possibly user-overridden) display names —
+ *  so the SPA never hard-codes vendor strings (CLAUDE.md: engine-owned UI
+ *  data). Falls back to the always-shippable claude entry on probe failure. */
+async function enginesResponse(): Promise<Response> {
+  try {
+    const ids = await availableEngineIds()
+    const engines = ids.map((id) => ({ id, label: engineDisplayName(id) }))
+    return Response.json({ engines: engines.length > 0 ? engines : [{ id: "claude", label: "Claude" }] })
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
@@ -214,6 +243,7 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
       if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(req, link)
       if (url.pathname === "/api/engine-spec" && req.method === "GET") return specResponse(url, link, engineSpec)
       if (url.pathname === "/api/terminal-spec" && req.method === "GET") return specResponse(url, link, terminalSpec)
+      if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
       const notes = await handleNotesRequest(req, url)
       if (notes) return notes
       const diff = await handleDiffRequest(req, url)
