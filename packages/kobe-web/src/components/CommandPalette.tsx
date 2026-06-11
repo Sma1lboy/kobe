@@ -13,14 +13,17 @@ import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
   LayoutGrid,
+  Palette,
   Plus,
   Search,
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { fuzzyScore } from "../lib/fuzzy.ts"
+import { themeCommandEntries } from "../lib/palette-commands.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
+import { setPreferredTheme, useThemeState } from "../lib/theme.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -29,7 +32,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "overview"
+  icon: "task" | "new" | "settings" | "overview" | "theme"
   run: () => void
 }
 
@@ -37,6 +40,7 @@ function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
   if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
+  if (kind === "theme") return <Palette size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -52,6 +56,7 @@ export function CommandPalette({
   onOpenSettings: () => void
 }) {
   const { tasks } = useAppState()
+  const { names: themeNames, active: activeTheme } = useThemeState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
@@ -120,8 +125,29 @@ export function CommandPalette({
         },
       },
     ]
-    return [...actions, ...taskCmds]
-  }, [tasks, navigate, onClose, onNewTask, onOpenSettings])
+    const themeCmds: Command[] = themeCommandEntries(
+      themeNames,
+      activeTheme,
+    ).map((e) => ({
+      id: e.id,
+      label: e.label,
+      hint: e.hint,
+      icon: "theme" as const,
+      run: () => {
+        setPreferredTheme(e.name)
+        onClose()
+      },
+    }))
+    return [...actions, ...themeCmds, ...taskCmds]
+  }, [
+    tasks,
+    themeNames,
+    activeTheme,
+    navigate,
+    onClose,
+    onNewTask,
+    onOpenSettings,
+  ])
 
   const matches = useMemo(() => {
     if (!query.trim()) return commands
