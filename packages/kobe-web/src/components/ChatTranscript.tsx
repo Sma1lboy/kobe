@@ -31,6 +31,7 @@ import {
   summarizeUsage,
 } from "../lib/history.ts"
 import { isNearBottom } from "../lib/scroll.ts"
+import { relativeTime } from "../lib/time.ts"
 import { pushToast } from "../lib/toast.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
 import { transcriptToMarkdown } from "../lib/transcript-markdown.ts"
@@ -143,6 +144,11 @@ function MessageRow({
   hideTools: boolean
 }) {
   const rows: React.ReactNode[] = []
+  // Relative time of this turn ("3m", "2h", "2d"), anchored once on the user
+  // prompt so a long session reads with periodic time markers. Empty/unparseable
+  // timestamps render nothing.
+  const stamp = relativeTime(message.timestamp)
+  let stamped = false
   message.blocks.forEach((block, index) => {
     if (!blockVisible(block, hideTools)) return
     const key = `${message.timestamp}-${index}`
@@ -152,16 +158,25 @@ function MessageRow({
         rows.push(
           <div
             key={key}
-            className="my-2 flex gap-2 border-l-2 border-primary/60 bg-inset/40 px-3 py-2"
+            className="my-2 flex items-baseline gap-2 border-l-2 border-primary/60 bg-inset/40 px-3 py-2"
           >
             <span className="shrink-0 font-mono text-[12px] font-bold text-primary">
               ❯
             </span>
-            <p className="min-w-0 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-fg">
+            <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[12px] leading-relaxed text-fg">
               {block.text}
             </p>
+            {stamp && !stamped && (
+              <span
+                className="shrink-0 font-mono text-[10px] text-subtle"
+                title={message.timestamp}
+              >
+                {stamp}
+              </span>
+            )}
           </div>,
         )
+        stamped = true
       } else {
         rows.push(
           <p
