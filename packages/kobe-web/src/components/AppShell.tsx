@@ -25,6 +25,7 @@ import {
   setNotifyNavigate,
   useNotifyState,
 } from "../lib/notify.ts"
+import { tailPath } from "../lib/path-format.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
 import { matchesTask, sortTasks, type TaskSortMode } from "../lib/task-list.ts"
@@ -39,11 +40,6 @@ import { ThemePicker } from "./ThemePicker.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
-
-function tail(path: string, max = 36): string {
-  if (path.length <= max) return path
-  return `…${path.slice(path.length - max + 1)}`
-}
 
 function SectionHeader({
   children,
@@ -612,7 +608,7 @@ function StatusBar() {
       {task && (
         <span className="min-w-0 truncate text-muted">
           {task.kind === "main" ? "project" : "worktree"} ·{" "}
-          {tail(task.worktreePath, 54)}
+          {tailPath(task.worktreePath, 54)}
         </span>
       )}
       <span className="ml-auto">

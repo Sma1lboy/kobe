@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
 import { rowClass, statusBadge } from "../lib/diff-display.ts"
 import { diffStat, parseDiffRows } from "../lib/diff-rows.ts"
+import { tailPath } from "../lib/path-format.ts"
 import { useAppState } from "../lib/store.ts"
 import "./diff-view.css"
 
@@ -39,12 +40,7 @@ function useChangesKey(worktreePath: string | null): string {
   return counts ? `${counts.added}:${counts.deleted}` : "none"
 }
 
-function tail(path: string, max = 36): string {
-  if (path.length <= max) return path
-  return `…${path.slice(path.length - max + 1)}`
-}
-
-/** Status → a short uppercase badge + a theme color class. */
+/** Render a parsed unified diff into the gutter+text row grid. */
 export function DiffBody({ patch }: { patch: string }) {
   const rows = useMemo(() => parseDiffRows(patch), [patch])
   if (!patch.trim()) {
@@ -104,7 +100,7 @@ function FileList({
             <span
               className={`truncate text-[12px] ${active ? "text-fg" : "text-fg/90"}`}
             >
-              {tail(f.path, 28)}
+              {tailPath(f.path, 28)}
             </span>
             {f.staged && (
               <span className="ml-auto shrink-0 text-[9px] uppercase text-subtle">
@@ -343,7 +339,7 @@ export function ChangesList({
                   {badge.label}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
-                  {tail(f.path, 34)}
+                  {tailPath(f.path, 34)}
                 </span>
                 {f.staged && (
                   <span className="shrink-0 text-[9px] uppercase text-subtle">
