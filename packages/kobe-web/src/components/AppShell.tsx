@@ -17,7 +17,7 @@ import {
   Settings,
   X,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { useEngines } from "../lib/engines.ts"
 import {
@@ -173,6 +173,7 @@ function TaskRow({
   return (
     <button
       type="button"
+      data-task-id={task.id}
       onClick={onClick}
       className={`group w-full border-l-2 px-3 py-2 text-left transition-colors ${
         active
@@ -259,6 +260,16 @@ function TaskRail({
   const [query, setQuery] = useState("")
   const [sortMode, setSortMode] = useState<TaskSortMode>("default")
   const [showArchived, setShowArchived] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  // Keep the selected task visible — j/k can move selection past the fold in a
+  // long list; scroll the active row into view (no-op when already visible).
+  useEffect(() => {
+    if (!selectedTaskId) return
+    listRef.current
+      ?.querySelector(`[data-task-id="${CSS.escape(selectedTaskId)}"]`)
+      ?.scrollIntoView({ block: "nearest" })
+  }, [selectedTaskId])
 
   // Follow the TUI's sort preference (ui-prefs fan-out): toggling sort in any
   // kobe session re-sorts this rail too. The local toggle still works between
@@ -405,7 +416,7 @@ function TaskRail({
           )}
         </label>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div ref={listRef} className="flex-1 overflow-y-auto">
         {booting ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-subtle">
             <Loader2 size={13} strokeWidth={2} className="animate-spin" />
