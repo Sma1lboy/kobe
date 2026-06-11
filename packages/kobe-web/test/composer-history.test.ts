@@ -87,4 +87,17 @@ describe("loadHistory / pushHistory (localStorage)", () => {
     localStorage.setItem("kobe-web.composer-history.bad", "{not json")
     expect(loadHistory("bad")).toEqual([])
   })
+
+  it("caps history at 50 entries, keeping the newest", () => {
+    for (let i = 0; i < 60; i++) pushHistory("t1", `prompt ${i}`)
+    const hist = loadHistory("t1")
+    expect(hist).toHaveLength(50)
+    expect(hist[0]).toBe("prompt 59") // newest kept
+    expect(hist).not.toContain("prompt 9") // oldest dropped
+  })
+
+  it("ignores a non-array stored value", () => {
+    localStorage.setItem("kobe-web.composer-history.weird", '"a string"')
+    expect(loadHistory("weird")).toEqual([])
+  })
 })
