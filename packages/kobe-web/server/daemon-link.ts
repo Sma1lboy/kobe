@@ -208,9 +208,22 @@ export class DaemonLink {
 
   private onFrame(name: string, payload: unknown): void {
     switch (name) {
-      case "task.snapshot":
-        this.tasks = (payload as ChannelPayloads["task.snapshot"]).tasks
+      case "task.snapshot": {
+        const tasks = (payload as ChannelPayloads["task.snapshot"]).tasks
+        this.tasks = tasks
+        // Sweep the engine-state mirror to the live task set — otherwise it
+        // grows forever (a deleted task's trailing idle frame, every lapsed-
+        // to-idle task) and bloats the snapshot every fresh browser hydrates
+        // from. Mirrors the SPA's pruneByTask. (worktreeChanges is path-keyed
+        // and fully replaced per frame; jobs drop terminal phases at source —
+        // neither leaks, so only engineStates needs this.)
+        const live = new Set(tasks.map((t) => t.id))
+        const kept = Object.entries(this.engineStates).filter(([id]) => live.has(id))
+        if (kept.length !== Object.keys(this.engineStates).length) {
+          this.engineStates = Object.fromEntries(kept)
+        }
         break
+      }
       case "active-task":
         this.activeTaskId = (payload as ChannelPayloads["active-task"]).taskId
         break

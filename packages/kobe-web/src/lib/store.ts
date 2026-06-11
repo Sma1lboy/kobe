@@ -96,6 +96,12 @@ function applyEvent(event: BridgeEvent): void {
     case "engine-state": {
       const prev = state.engineStates[event.payload.taskId]?.state
       const task = state.tasks.find((t) => t.id === event.payload.taskId)
+      // A delete publishes task.snapshot (task gone) THEN a trailing idle
+      // engine-state for the same id. Don't re-insert an orphan idle entry for
+      // a task that no longer exists (it self-heals on the next snapshot, but
+      // skipping keeps the map clean). Non-idle states for an unknown task are
+      // still kept — that's a mid-creation race, not an orphan.
+      if (!task && event.payload.state === "idle") break
       notifyEngineTransition(
         event.payload.taskId,
         task?.title || task?.branch || event.payload.taskId,
