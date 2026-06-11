@@ -73,6 +73,31 @@ export function pruneByTask<T>(
     : Object.fromEntries(entries)
 }
 
+/** A delete publishes task.snapshot (task gone) THEN a trailing idle
+ *  engine-state for the same id. An idle state for a task that no longer
+ *  exists is that orphan — drop it so the badge map stays clean. A NON-idle
+ *  state for an unknown task is a mid-creation race, not an orphan, so it's
+ *  kept. Exported for tests. */
+export function isOrphanIdleEngineState(
+  task: Task | undefined,
+  state: EngineState["state"],
+): boolean {
+  return !task && state === "idle"
+}
+
+/** Reduce a task.jobs event into the jobs map: a running job is tracked by
+ *  taskId; any terminal phase (done/error) clears its entry. Returns a new map
+ *  on a running insert and on a delete that hit; a delete that misses still
+ *  returns a fresh object (cheap, rare). Exported for tests. */
+export function applyJobEvent(
+  jobs: Record<string, TaskJob>,
+  job: TaskJob,
+): Record<string, TaskJob> {
+  if (job.phase === "running") return { ...jobs, [job.taskId]: job }
+  const { [job.taskId]: _done, ...rest } = jobs
+  return rest
+}
+
 /** A task.snapshot is the authoritative task list — sweep every per-task
  *  side table (engine badges, jobs, workspace tabs + their PTYs) for tasks
  *  that no longer exist, so a delete in ANY surface (TUI, api, another
@@ -98,12 +123,9 @@ function applyEvent(event: BridgeEvent): void {
     case "engine-state": {
       const prev = state.engineStates[event.payload.taskId]?.state
       const task = state.tasks.find((t) => t.id === event.payload.taskId)
-      // A delete publishes task.snapshot (task gone) THEN a trailing idle
-      // engine-state for the same id. Don't re-insert an orphan idle entry for
-      // a task that no longer exists (it self-heals on the next snapshot, but
-      // skipping keeps the map clean). Non-idle states for an unknown task are
-      // still kept — that's a mid-creation race, not an orphan.
-      if (!task && event.payload.state === "idle") break
+      // Skip the trailing idle engine-state a delete emits after its snapshot
+      // (it self-heals on the next snapshot, but skipping keeps the map clean).
+      if (isOrphanIdleEngineState(task, event.payload.state)) break
       notifyEngineTransition(
         event.payload.taskId,
         task?.title || task?.branch || event.payload.taskId,
@@ -121,16 +143,9 @@ function applyEvent(event: BridgeEvent): void {
     case "update":
       set({ update: event.payload.info })
       break
-    case "task.jobs": {
-      const job = event.payload
-      if (job.phase === "running") {
-        set({ jobs: { ...state.jobs, [job.taskId]: job } })
-      } else {
-        const { [job.taskId]: _done, ...jobs } = state.jobs
-        set({ jobs })
-      }
+    case "task.jobs":
+      set({ jobs: applyJobEvent(state.jobs, event.payload) })
       break
-    }
     case "worktree.changes":
       set({ worktreeChanges: event.payload.changes })
       break
