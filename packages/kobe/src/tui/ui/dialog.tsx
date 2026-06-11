@@ -113,9 +113,9 @@ export function Dialog(
         // cards hit the cap and clip (children that need scrolling —
         // F1 help, settings — wrap their own scrollbox).
         flexGrow={0}
-        // In transparent mode the card keeps the theme's dialog tint
-        // but uses 50% alpha; the backdrop is also lighter so two
-        // stacked translucent layers do not black out the terminal.
+        // The card is ALWAYS opaque — even in transparent mode (where
+        // only the backdrop lightens). A translucent card lets pane
+        // content bleed through the dialog text and becomes unreadable.
         backgroundColor={theme.backgroundDialog}
         paddingTop={1}
       >

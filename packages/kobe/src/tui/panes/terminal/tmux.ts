@@ -117,6 +117,7 @@ export {
   chatTabSwitchBindings,
   kobeStatusRight,
   newChatTab,
+  openHelpTab,
   openNewTaskTab,
   openSettingsTab,
   openUpdateTab,

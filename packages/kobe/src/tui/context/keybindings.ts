@@ -131,7 +131,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     scope: "global",
     keys: ["f1"],
     category: "Global",
-    description: "Show this help dialog",
+    description: "Show keybindings help",
     hint: { keys: "F1", label: "help", pin: "right" },
   },
   {

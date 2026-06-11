@@ -62,10 +62,13 @@ function groupBindings(keymap: readonly KobeBinding[]): { category: string; rows
   return order.map((cat) => ({ category: cat, rows: groups.get(cat)! }))
 }
 
-export function HelpDialog() {
+export function HelpDialog(props: { onClose?: () => void } = {}) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const grouped = () => groupBindings(KobeKeymap)
+  // Standalone full-window page (`kobe help-page`) passes its own exit;
+  // the in-pane overlay closes by clearing the dialog stack.
+  const close = () => (props.onClose ? props.onClose() : dialog.clear())
 
   // Resolve the user's real tmux prefix so `prefix f` shows as e.g. `⌃B F`
   // (their actual prefix, not a guess). Falls back to the `⌃B` default when
@@ -85,7 +88,7 @@ export function HelpDialog() {
     bindings: [
       {
         key: "?",
-        cmd: () => dialog.clear(),
+        cmd: close,
       },
     ],
   }))
@@ -96,7 +99,7 @@ export function HelpDialog() {
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {HELP_DIALOG_TITLE}
         </text>
-        <text fg={theme.textMuted} onMouseUp={() => dialog.clear()}>
+        <text fg={theme.textMuted} onMouseUp={close}>
           esc
         </text>
       </box>
