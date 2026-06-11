@@ -22,6 +22,7 @@ import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { useDialog } from "../ui/dialog"
 import { stripNewlines } from "./new-task-dialog"
+import { quickTaskBindings } from "./quick-task-bindings"
 
 export interface QuickTaskComposerOptions {
   /** Header context, e.g. the repo basename the task lands in. */
@@ -82,34 +83,18 @@ function QuickTaskComposerView(
     dialog.clear()
   }
 
+  // The engine-only chords (←/→ cycle, enter commit) are gated at
+  // REGISTRATION, not inside the handler: a matched binding consumes the
+  // keypress (dispatchKeyEvent calls preventDefault on every hit), so a
+  // handler-side `if (field() === "engine")` still STOLE the key from the
+  // focused input — Enter in the prompt field never reached the input's
+  // onSubmit (the "type a prompt, hit enter" path was dead) and ←/→
+  // couldn't move the cursor in the prompt/branch inputs. The list comes
+  // from the pure `quickTaskBindings` (vitest pins the gating); the
+  // config thunk re-runs per keypress, so it tracks `field()` live.
   useBindings(() => ({
     enabled: true,
-    bindings: [
-      { key: "tab", cmd: () => cycleField(1) },
-      { key: "shift+tab", cmd: () => cycleField(-1) },
-      { key: "ctrl+e", cmd: () => stepEngine(1) },
-      // ←/→ cycle the engine while the engine field is focused.
-      {
-        key: "left",
-        cmd: () => {
-          if (field() === "engine") stepEngine(-1)
-        },
-      },
-      {
-        key: "right",
-        cmd: () => {
-          if (field() === "engine") stepEngine(1)
-        },
-      },
-      // The text inputs commit via their own onSubmit; this covers the engine
-      // field (a chip row, no input to fire onSubmit).
-      {
-        key: "return",
-        cmd: () => {
-          if (field() === "engine") commit()
-        },
-      },
-    ],
+    bindings: quickTaskBindings(field(), { cycleField, stepEngine, commit }),
   }))
 
   const fieldColor = (f: Field) => (field() === f ? theme.accent : theme.textMuted)
