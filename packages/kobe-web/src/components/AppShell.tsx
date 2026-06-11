@@ -466,10 +466,17 @@ function TaskRail({
           </div>
         ) : visible.length === 0 ? (
           <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
-            <div>No matches for “{query}”.</div>
+            <div>
+              {query
+                ? `No matches for “${query}”.`
+                : "No tasks in this status."}
+            </div>
             <button
               type="button"
-              onClick={() => setQuery("")}
+              onClick={() => {
+                setQuery("")
+                setStatusFilter("all")
+              }}
               className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
             >
               Clear filter

@@ -70,10 +70,20 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
   // Always-mounted + returns null while closed, so the dialog element only
   // exists once `open` is true — gate the trap on `open` so the effect re-runs
   // (and finds the ref) when the palette opens.
   useFocusTrap(dialogRef, open)
+
+  // Keep the keyboard-highlighted row visible — focus stays in the input, so
+  // the browser won't auto-scroll the active button into view (mirrors the
+  // rail's j/k scroll-into-view).
+  useEffect(() => {
+    listRef.current
+      ?.querySelector(`[data-index="${cursor}"]`)
+      ?.scrollIntoView({ block: "nearest" })
+  }, [cursor])
 
   useEffect(() => {
     if (open) {
@@ -243,7 +253,7 @@ export function CommandPalette({
             esc
           </kbd>
         </div>
-        <div className="max-h-[50vh] overflow-y-auto py-1">
+        <div ref={listRef} className="max-h-[50vh] overflow-y-auto py-1">
           {matches.length === 0 ? (
             <div className="px-3 py-6 text-center text-[12px] text-subtle">
               No matches for “{query}”.
@@ -253,6 +263,7 @@ export function CommandPalette({
               <button
                 key={cmd.id}
                 type="button"
+                data-index={index}
                 onClick={cmd.run}
                 onMouseMove={() => setCursor(index)}
                 className={`flex w-full items-center gap-3 px-3 py-2 text-left ${

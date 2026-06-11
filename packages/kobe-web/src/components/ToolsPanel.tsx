@@ -6,7 +6,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { copyText } from "../lib/clipboard.ts"
 import { useEngines } from "../lib/engines.ts"
 import { taskDeepLink } from "../lib/share.ts"
@@ -102,6 +102,13 @@ function TaskOverview({ task }: { task: Task | null }) {
   const [branch, setBranch] = useState(task?.branch ?? "")
   const [busy, setBusy] = useState<string | null>(null)
   const [copied, setCopied] = useState<"path" | "link" | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    },
+    [],
+  )
   const [confirm, setConfirm] = useState<PendingConfirm>(null)
   const engines = useEngines()
   const navigate = useNavigate()
@@ -159,7 +166,10 @@ function TaskOverview({ task }: { task: Task | null }) {
   const copyAck = (kind: "path" | "link") => (ok: boolean) => {
     if (!ok) return
     setCopied(kind)
-    window.setTimeout(() => setCopied(null), 1200)
+    // Clear any prior pending timer so clicking the other copy button within
+    // 1.2s doesn't let the earlier timer revert the new ack early.
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => setCopied(null), 1200)
   }
 
   const copyPath = (): void => {

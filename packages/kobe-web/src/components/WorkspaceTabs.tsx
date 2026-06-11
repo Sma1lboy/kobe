@@ -155,7 +155,13 @@ function TabContent({
       />
     )
   if (tab?.kind === "file")
-    return <FilePreview worktreePath={taskWorktreePath} path={tab.path} />
+    return (
+      <FilePreview
+        key={tab.id}
+        worktreePath={taskWorktreePath}
+        path={tab.path}
+      />
+    )
   return (
     <div className="flex h-full items-center justify-center text-[12px] text-subtle">
       Opening a tab…

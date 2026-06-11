@@ -198,30 +198,37 @@ export function ChatTranscript({
   const mtimeRef = useRef(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
+  // Out-of-order guard (mirrors ChangesList): a fast session pick / poll
+  // overlap means a late response for a no-longer-selected session could
+  // clobber the displayed messages. Only the most recent request may write.
+  const seqRef = useRef(0)
 
   const refresh = useCallback(
     async (force = false): Promise<void> => {
       if (!worktreePath) return
+      // Bump the guard only once this refresh commits to a write (after the
+      // mtime gate), so a no-op poll tick never invalidates an in-flight pick.
+      let seq = seqRef.current
       try {
         const result = await fetchSessions(worktreePath, vendor)
         const changed = result.latestMtime !== mtimeRef.current
         if (!changed && !force) return
         mtimeRef.current = result.latestMtime
-        setSessions(result.sessions)
         const latest = result.sessions.at(-1) ?? null
         const target = followLatest ? latest : (selected ?? latest)
-        if (target) {
-          setMessages(await fetchMessages(vendor, target))
-          setSelected(target)
-        } else {
-          setMessages([])
-          setSelected(null)
-        }
+        seq = ++seqRef.current
+        const next = target ? await fetchMessages(vendor, target) : []
+        // A newer pick/poll superseded this fetch — drop its result.
+        if (seq !== seqRef.current) return
+        setSessions(result.sessions)
+        setMessages(next)
+        setSelected(target)
         setError(null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err))
+        if (seq === seqRef.current)
+          setError(err instanceof Error ? err.message : String(err))
       } finally {
-        setLoaded(true)
+        if (seq === seqRef.current) setLoaded(true)
       }
     },
     [worktreePath, vendor, followLatest, selected],
@@ -259,11 +266,15 @@ export function ChatTranscript({
     const isLatest = sessionId === sessions.at(-1)
     setFollowLatest(isLatest)
     setSelected(sessionId)
+    const seq = ++seqRef.current
     void fetchMessages(vendor, sessionId)
-      .then(setMessages)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : String(err)),
-      )
+      .then((msgs) => {
+        if (seq === seqRef.current) setMessages(msgs)
+      })
+      .catch((err) => {
+        if (seq === seqRef.current)
+          setError(err instanceof Error ? err.message : String(err))
+      })
   }
 
   // Stick to the bottom while the engine streams, unless the user scrolled up.
@@ -300,13 +311,18 @@ export function ChatTranscript({
   }, [messages])
 
   const usage = useMemo(() => summarizeUsage(messages), [messages])
-  const shown = useMemo(
-    () =>
-      search.trim()
-        ? messages.filter((m) => messageMatchesQuery(m, search))
-        : messages,
-    [messages, search],
-  )
+  const shown = useMemo(() => {
+    const q = search.trim()
+    // Drop messages that would render NOTHING under hideTools (their only
+    // blocks are tool calls) so the shown/total count, the rendered rows, and
+    // the "no matches" empty state all agree — otherwise a search that only
+    // matches a tool-only message counts it but renders blank.
+    return messages.filter(
+      (m) =>
+        (!q || messageMatchesQuery(m, search)) &&
+        m.blocks.some((b) => blockVisible(b, hideTools)),
+    )
+  }, [messages, search, hideTools])
 
   if (!worktreePath) {
     return (
