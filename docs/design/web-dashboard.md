@@ -139,7 +139,7 @@ Beyond the rail/tabs/tools grammar, the dashboard carries:
 - **Desktop notifications** ([`lib/notify.ts`](../../packages/kobe-web/src/lib/notify.ts)) — fire on the rising edge into `waiting_permission`/`error` while the tab is hidden.
 - **Resilience** — a root error boundary (no white-screen) and a daemon-offline banner; failed mutations surface in a toast stack ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)).
 
-Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (relative time), the extracted `shouldNotify` / `resolveEffectiveTheme`, plus the bridge route + channel + allowlist contracts.
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (relative time), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), the shared `activityColor` / `activityLabel` mapping, `formatError`, and the New Task pending-prompt consume-once handoff — plus the bridge route + channel + allowlist contracts.
 
 ## Dev: production vs sandbox
 
@@ -151,8 +151,19 @@ touches no daemon at all — its isolation is unconditional.
 
 ## Security posture (current + gaps)
 
-The bridge and PTY sidecar bind localhost with **no auth/origin checks** today —
-fine for the local-first model, a hard blocker before any LAN/remote exposure.
-The allowlist + teardown contract bounds the RPC blast radius; a bridge-issued
-token + Origin allowlist on `/api/rpc`, `/events`, `/pty`, `/api/notes` is the
-next step if the dashboard ever graduates from localhost-only.
+Both the bridge ([`bridge.ts`](../../packages/kobe-web/server/bridge.ts)) and the
+PTY sidecar ([`pty-server.mjs`](../../packages/kobe-web/pty-server.mjs)) bind
+**`127.0.0.1` by default** (was `0.0.0.0` — Bun/Node's default exposes every
+interface); `KOBE_WEB_HOST` overrides only when a LAN bind is intended. A PTY WS
+is arbitrary command exec in the worktree, so the upgrade enforces a
+**localhost-Origin allowlist** (`localhost`/`127.0.0.1`/`[::1]`) — a browser
+cross-origin upgrade is rejected; a non-browser client (no `Origin`) is allowed
+since there's no ambient browser session to ride.
+
+Remaining gap: there is still **no bridge auth token**, and the HTTP routes
+(`/api/rpc`, `/events`, `/api/notes`) have no Origin check (only the `/pty` WS
+does). The `/api/rpc` allowlist + the teardown contract bound the RPC blast
+radius, but a bridge-issued token + an Origin allowlist on the HTTP routes is
+the next step before the dashboard graduates from localhost-only. Deliberately
+deferred — loopback bind + the PTY Origin check already close the default
+exposure, and a token would add friction to the dev flow with no localhost payoff.
