@@ -8,7 +8,7 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Search, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
@@ -91,6 +91,31 @@ export function Overview() {
   const { tasks, engineStates, worktreeChanges, hydrated } = useAppState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
+  const filterRef = useRef<HTMLInputElement>(null)
+
+  // Keyboard-first parity with the rail: `/` focuses the filter, Escape clears
+  // it. Suppressed while typing in another field.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const t = event.target as HTMLElement | null
+      const inField =
+        !!t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      if (event.key === "/" && !inField) {
+        event.preventDefault()
+        filterRef.current?.focus()
+      } else if (event.key === "Escape" && t === filterRef.current && query) {
+        event.preventDefault()
+        setQuery("")
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [query])
 
   const triaged = useMemo<TriagedTask[]>(() => {
     return (tasks as Task[])
@@ -154,10 +179,11 @@ export function Overview() {
             className="shrink-0 text-subtle"
           />
           <input
+            ref={filterRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter tasks"
-            className="w-40 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
+            placeholder="Filter tasks  ( / )"
+            className="w-44 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
           />
           {query && (
             <button
