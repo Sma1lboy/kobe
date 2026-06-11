@@ -12,10 +12,10 @@
  * what the panes RUN; `tmux.ts` applies both).
  *
  * Deliberately NOT part of the decision (they live in the applier):
- *   - `healTaskPaneWidths` / `healKobePaneVersions` — stale-pane-version
- *     respawns of the kobe-owned Tasks/Ops panes after an upgrade. They
- *     are post-processing applied on EVERY reuse/respawn outcome, not a
- *     branch of the create/reuse/rebuild choice, and they need their own
+ *   - `healWorkspaceLayout` — the layout re-pin + stale-pane-version
+ *     respawns of the kobe-owned Tasks/Ops panes after an upgrade. It is
+ *     post-processing applied on EVERY reuse/respawn outcome, not a
+ *     branch of the create/reuse/rebuild choice, and it needs its own
  *     per-window pane listing the decision never sees.
  *   - The `respawn-engine` → rebuild fallback. Whether an engine pane
  *     actually exists to respawn is only known after a session-wide pane

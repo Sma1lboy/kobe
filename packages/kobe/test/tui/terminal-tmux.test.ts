@@ -16,6 +16,7 @@ import {
   chatTabRenameBinding,
   chatTabSwitchBindings,
   kobeStatusRight,
+  parseObservedSession,
   tmuxInitialSizeArgs,
   tmuxSessionName,
 } from "../../src/tui/panes/terminal/tmux"
@@ -105,6 +106,46 @@ describe("tmuxInitialSizeArgs", () => {
       "-y",
       "40",
     ])
+  })
+})
+
+describe("parseObservedSession", () => {
+  // One `list-panes -s` answers all four observe questions (the reuse path
+  // runs on EVERY task switch, so its spawn count matters): session options
+  // ride the format on every row, `window_active` scopes the claude-pane
+  // check to the current window, distinct window ids are the tab count.
+  test("derives options, active-window claude pane and window count from one listing", () => {
+    const stdout = [
+      "@1\t0\tclaude\t/wt/a\tclaude", // claude pane in an INACTIVE window
+      "@1\t0\ttasks\t/wt/a\tclaude",
+      "@2\t1\tclaude\t/wt/a\tclaude", // the active window's claude pane
+      "@2\t1\t\t/wt/a\tclaude", // untagged shell pane
+    ].join("\n")
+    expect(parseObservedSession(stdout)).toEqual({
+      worktree: "/wt/a",
+      vendor: "claude",
+      claudePaneAlive: true,
+      windowCount: 2,
+    })
+  })
+
+  test("a claude pane only in an inactive window does NOT count as alive", () => {
+    const stdout = ["@1\t0\tclaude\t/wt/a\tcodex", "@2\t1\ttasks\t/wt/a\tcodex"].join("\n")
+    expect(parseObservedSession(stdout)).toEqual({
+      worktree: "/wt/a",
+      vendor: "codex",
+      claudePaneAlive: false,
+      windowCount: 2,
+    })
+  })
+
+  test("unset session options degrade to empty strings (legacy/pre-tag session)", () => {
+    expect(parseObservedSession("@1\t1\t\t\t\n")).toEqual({
+      worktree: "",
+      vendor: "",
+      claudePaneAlive: false,
+      windowCount: 1,
+    })
   })
 })
 

@@ -13,8 +13,11 @@
  *   - Skip if it was named manually. `rename-window` (and F2) flips a window's
  *     `automatic-rename` to `off`; an untouched window inherits the global
  *     `on`. So `automatic-rename off` == "already named" — our don't-clobber
- *     guard. (The `#{automatic_rename}` FORMAT variable is empty on tmux 3.5a,
- *     so we query the option, not a format.)
+ *     guard. The flag rides the window listing as the `#{automatic-rename}`
+ *     OPTION-name format (hyphen — the `#{automatic_rename}` underscore
+ *     variable doesn't exist and expands empty on tmux 3.5a), which resolves
+ *     "1"/"0" through option inheritance; only the global-off corner needs a
+ *     real `show-window-options` probe (see `runChatTabNamingPass`).
  *   - With a recorded session id → name from that session (claude tabs).
  *   - Without one, only the ORIGIN (lowest-index) window is named, from the
  *     task's first session — the codex/legacy fallback, since codex can't take
@@ -43,6 +46,17 @@ export interface ChatTabWindow {
   readonly index: number
   /** `@kobe_session_id` value, or `""` when none was recorded (codex/legacy). */
   readonly sessionId: string
+  /**
+   * The window's EFFECTIVE `automatic-rename` as the `#{automatic-rename}`
+   * format flag: `"1"` on, `"0"` off, `""` when the tmux can't expand
+   * option names in formats. tmux resolves the flag through option
+   * inheritance (local window value, else the global window option), so
+   * `"1"` PROVES the local option isn't `off` (i.e. the window was never
+   * manually named) without a per-window `show-window-options` spawn;
+   * `"0"` is ambiguous when the user's tmux.conf sets the GLOBAL
+   * automatic-rename off — the pass disambiguates with one global probe.
+   */
+  readonly autoRename: string
 }
 
 /** List a session's windows with their recorded engine session id. `[]` when the session is gone. */
@@ -52,15 +66,15 @@ export async function listChatTabWindows(session: string, runner: TmuxRunner = r
     "-t",
     `=${session}`,
     "-F",
-    `#{window_index}\t#{${CHAT_TAB_SESSION_ID_OPTION}}`,
+    `#{window_index}\t#{automatic-rename}\t#{${CHAT_TAB_SESSION_ID_OPTION}}`,
   ])
   if (code !== 0) return []
   const out: ChatTabWindow[] = []
   for (const line of stdout.split("\n")) {
-    const tab = line.indexOf("\t")
-    const index = Number.parseInt((tab >= 0 ? line.slice(0, tab) : line).trim(), 10)
+    const [indexField, autoRename, sessionId] = line.split("\t")
+    const index = Number.parseInt((indexField ?? "").trim(), 10)
     if (!Number.isInteger(index)) continue
-    out.push({ index, sessionId: tab >= 0 ? line.slice(tab + 1).trim() : "" })
+    out.push({ index, sessionId: sessionId?.trim() ?? "", autoRename: autoRename?.trim() ?? "" })
   }
   return out
 }
@@ -73,6 +87,12 @@ async function windowNamedManually(session: string, index: number, runner: TmuxR
     `=${session}:${index}`,
     "automatic-rename",
   ])
+  return code === 0 && /\boff\b/.test(stdout)
+}
+
+/** True when the user's GLOBAL window automatic-rename is off (tmux.conf). */
+async function globalAutomaticRenameOff(runner: TmuxRunner): Promise<boolean> {
+  const { code, stdout } = await runner.capture(["show-window-options", "-g", "automatic-rename"])
   return code === 0 && /\boff\b/.test(stdout)
 }
 
@@ -101,6 +121,24 @@ const realDeps: ChatTabNamingDeps = {
  */
 export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNamingDeps = realDeps): Promise<number> {
   let renamed = 0
+  // Manual-name guard, mostly free of tmux spawns. The flag carried by the
+  // window listing already proves "never manually named" when it reads on
+  // (`"1"`); a `"0"` only needs the per-window `show-window-options` probe
+  // when the GLOBAL automatic-rename is off (then every window expands `"0"`
+  // and the flag can't tell local-off from inherited-off). The global state
+  // is probed lazily, at most ONCE per pass — so the steady state (all
+  // windows named, global on) costs one list-windows per task and zero
+  // per-window probes, where it used to spawn one probe per window per tick.
+  let globalOff: boolean | null = null
+  const manuallyNamed = async (session: string, w: ChatTabWindow): Promise<boolean> => {
+    if (w.autoRename === "1") return false
+    if (w.autoRename === "0") {
+      if (globalOff === null) globalOff = await globalAutomaticRenameOff(deps.runner)
+      if (!globalOff) return true
+    }
+    // Ambiguous (global off) or unexpandable flag — ask the window directly.
+    return windowNamedManually(session, w.index, deps.runner)
+  }
   for (const task of orch.listTasks()) {
     // Archived tasks are settled — skip before the per-task `tmux list-windows`
     // shell-out + transcript reads, which otherwise ran every tick for every
@@ -114,7 +152,7 @@ export async function runChatTabNamingPass(orch: Orchestrator, deps: ChatTabNami
     const vendor = task.vendor ?? DEFAULT_TASK_VENDOR
     for (const w of windows) {
       try {
-        if (await windowNamedManually(session, w.index, deps.runner)) continue
+        if (await manuallyNamed(session, w)) continue
         const title = w.sessionId
           ? await deps.titleFromSessionId(vendor, w.sessionId)
           : w.index === originIndex

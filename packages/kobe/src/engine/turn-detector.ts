@@ -62,36 +62,99 @@ export function createEngineTurnDetector(vendor: VendorId): EngineTurnDetector {
   return engineEntry(vendor).createTurnDetector()
 }
 
+/** Injectable IO surface for {@link ClaudeTurnDetector} (unit tests). */
+export interface ClaudeTurnDetectorDeps {
+  listSessionFiles(worktree: string): Promise<claudeHistory.WorktreeSessionFile[]>
+  readFile(path: string): Promise<string>
+}
+
+const defaultClaudeDeps: ClaudeTurnDetectorDeps = {
+  listSessionFiles: (worktree) => claudeHistory.listSessionFilesForWorktree(worktree),
+  readFile: (path) => readFile(path, "utf8"),
+}
+
 export class ClaudeTurnDetector extends EngineTurnDetector {
   readonly vendor = "claude" as const
 
+  /**
+   * Marker memo keyed by transcript path, valid while the file's mtime is
+   * unchanged. The Ops pane calls `latestCompletion` from a 1.5s poll, and
+   * before this gate every call re-read + re-parsed up to 4 WHOLE session
+   * JSONLs (multi-MB for a day-long session) even though nothing had been
+   * appended — the mtime the lister already stat()s is enough to prove the
+   * parse would produce the identical marker (it's a pure function of the
+   * file content + path + mtime). Pruned to the files of the latest scan,
+   * so it never holds more than the 4 entries per detector; the cached
+   * marker ids obey the memory invariant above (numbers + path only).
+   */
+  private cache = new Map<string, { mtimeMs: number; marker: TurnCompletionMarker | null }>()
+
+  constructor(private readonly deps: ClaudeTurnDetectorDeps = defaultClaudeDeps) {
+    super()
+  }
+
   async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
-    const files = await claudeHistory.listSessionFilesForWorktree(worktree)
+    const files = await this.deps.listSessionFiles(worktree)
     let latest: TurnCompletionMarker | null = null
+    const next = new Map<string, { mtimeMs: number; marker: TurnCompletionMarker | null }>()
     for (const file of files.slice(0, 4)) {
-      const raw = await readFile(file.path, "utf8").catch(() => "")
-      const marker = latestClaudeCompletionMarkerFromJsonl(raw, file.path, file.mtimeMs)
+      const hit = this.cache.get(file.path)
+      let marker: TurnCompletionMarker | null
+      // mtime 0 means the lister's stat failed — never trust it as a key.
+      if (hit && file.mtimeMs > 0 && hit.mtimeMs === file.mtimeMs) {
+        marker = hit.marker
+      } else {
+        const raw = await this.deps.readFile(file.path).catch(() => "")
+        marker = latestClaudeCompletionMarkerFromJsonl(raw, file.path, file.mtimeMs)
+      }
+      next.set(file.path, { mtimeMs: file.mtimeMs, marker })
       if (marker && (!latest || marker.timestampMs > latest.timestampMs)) latest = marker
     }
+    this.cache = next
     return latest
   }
+}
+
+/** Injectable IO surface for {@link CodexTurnDetector} (unit tests). */
+export interface CodexTurnDetectorDeps {
+  findLatestRollout(worktree: string): Promise<{ path: string; mtimeMs: number } | null>
+  readFile(path: string): Promise<string>
+}
+
+const defaultCodexDeps: CodexTurnDetectorDeps = {
+  findLatestRollout: (worktree) => codexHistory.findLatestRolloutForWorktree(worktree),
+  readFile: (path) => readFile(path, "utf8"),
 }
 
 export class CodexTurnDetector extends EngineTurnDetector {
   readonly vendor = "codex" as const
 
+  /**
+   * Same mtime gate as {@link ClaudeTurnDetector}: the rollout's
+   * cwd-matching is already cached inside `findLatestRolloutForWorktree`
+   * (a rollout's `session_meta` first line never changes), and this memo
+   * skips the whole-file re-read + re-parse when the matched rollout's
+   * mtime hasn't moved since the last poll. One entry — only the newest
+   * matching rollout is ever consulted.
+   */
+  private cache: { path: string; mtimeMs: number; marker: TurnCompletionMarker | null } | null = null
+
+  constructor(private readonly deps: CodexTurnDetectorDeps = defaultCodexDeps) {
+    super()
+  }
+
   async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
     if (!worktree) return null
-    const files = await codexHistory.listRolloutFiles()
-    let scanned = 0
-    for (const file of files) {
-      if (scanned >= 12) break
-      scanned++
-      const raw = await readFile(file, "utf8").catch(() => "")
-      if (!raw || codexHistory.rolloutCwd(raw) !== worktree) continue
-      return latestCodexCompletionMarkerFromJsonl(raw, file)
+    const found = await this.deps.findLatestRollout(worktree)
+    if (!found) return null
+    if (this.cache && this.cache.path === found.path && found.mtimeMs > 0 && this.cache.mtimeMs === found.mtimeMs) {
+      return this.cache.marker
     }
-    return null
+    const raw = await this.deps.readFile(found.path).catch(() => "")
+    if (!raw) return null
+    const marker = latestCodexCompletionMarkerFromJsonl(raw, found.path)
+    this.cache = { path: found.path, mtimeMs: found.mtimeMs, marker }
+    return marker
   }
 }
 

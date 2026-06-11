@@ -56,8 +56,6 @@ import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
-  claudePaneIdStrict,
-  getSessionOptions,
   paneIdByRole,
   runTmux,
   runTmuxCapturing,
@@ -65,7 +63,6 @@ import {
   sessionExists,
   setSessionOption,
   setWindowOption,
-  windowCount,
 } from "@/tmux/client"
 import {
   TMUX_FOCUS_DEFAULTS,
@@ -89,7 +86,7 @@ import {
   kobeStatusRight,
 } from "./chattab"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
-import { healKobePaneVersions, healRightColumn, healTaskPaneWidths, relaunchEngineInAllWindows } from "./pane-heal"
+import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`direct.ts`, pane hosts) keep their `./tmux` path.
@@ -161,8 +158,7 @@ function positiveInt(value: unknown): number | undefined {
 export async function prepareWindowForAttach(session: string): Promise<void> {
   const sizeArgs = tmuxInitialSizeArgs()
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
-  await healTaskPaneWidths(session)
-  await healRightColumn(session)
+  await healWorkspaceLayout(session)
 }
 
 export interface EnsureSessionOpts {
@@ -247,23 +243,53 @@ export async function ensureSession(opts: EnsureSessionOpts): Promise<boolean> {
 }
 
 /**
+ * `list-panes -s -F` format answering EVERY observe question in one tmux
+ * spawn: `#{@kobe_worktree}` / `#{@kobe_vendor}` are session-scoped user
+ * options, which tmux format expansion resolves from any pane of the
+ * session (format lookup consults pane, window, session and global option
+ * scopes — verified on tmux 3.5a); `window_active` scopes the
+ * claude-pane-alive check to the session's current window, matching the
+ * old `claudePaneIdStrict` (`list-panes` without `-s` lists the current
+ * window's panes); distinct `window_id`s are the window count.
+ */
+const OBSERVE_SESSION_FORMAT = "#{window_id}\t#{window_active}\t#{@kobe_role}\t#{@kobe_worktree}\t#{@kobe_vendor}"
+
+/** Parse `list-panes -F OBSERVE_SESSION_FORMAT` output. Pure, exported for tests. */
+export function parseObservedSession(stdout: string): ObservedSession {
+  let worktree = ""
+  let vendor = ""
+  let claudePaneAlive = false
+  const windows = new Set<string>()
+  for (const line of stdout.split("\n")) {
+    const [windowId, active, role, wt, vd] = line.split("\t")
+    if (!windowId?.trim()) continue
+    windows.add(windowId.trim())
+    if (!worktree && wt?.trim()) worktree = wt.trim()
+    if (!vendor && vd?.trim()) vendor = vd.trim()
+    if (active?.trim() === "1" && role?.trim() === "claude") claudePaneAlive = true
+  }
+  return { worktree, vendor, claudePaneAlive, windowCount: windows.size }
+}
+
+/**
  * Snapshot the facts about an existing session that the reuse/respawn/
  * rebuild decision needs (`null` when no session exists). All read-only
  * tmux queries live here; the policy that consumes them is the pure
- * `decideSessionAction` in `tmux/session-decision.ts`. `windowCount` is
- * now queried up front (pre-extraction it was lazy, only fetched on the
- * degraded-reuse branch) — one extra read-only `list-windows` per
- * ensureSession, same decision either way.
+ * `decideSessionAction` in `tmux/session-decision.ts`. Two tmux spawns:
+ * the quiet existence probe, then ONE `list-panes -s` whose format
+ * ({@link OBSERVE_SESSION_FORMAT}) carries the session options, the
+ * active-window claude-pane check and the window count that previously
+ * took three more spawns (`show-options` ×2 batched, `list-panes`,
+ * `list-windows`). A listing that fails AFTER the existence probe (the
+ * session vanished mid-observe) degrades to the same all-empty snapshot
+ * the three independent failed queries used to produce — the decision
+ * then rebuilds, exactly as before.
  */
 async function observeSession(name: string): Promise<ObservedSession | null> {
   if (!(await sessionExists(name))) return null
-  const sessionOptions = await getSessionOptions(name, ["@kobe_worktree", "@kobe_vendor"])
-  return {
-    worktree: sessionOptions["@kobe_worktree"] ?? "",
-    vendor: sessionOptions["@kobe_vendor"] ?? "",
-    claudePaneAlive: (await claudePaneIdStrict(name)) !== "",
-    windowCount: await windowCount(name),
-  }
+  const { code, stdout } = await runTmuxCapturing(["list-panes", "-s", "-t", `=${name}`, "-F", OBSERVE_SESSION_FORMAT])
+  if (code !== 0) return { worktree: "", vendor: "", claudePaneAlive: false, windowCount: 0 }
+  return parseObservedSession(stdout)
 }
 
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
@@ -292,9 +318,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // leave the session running, just heal pane widths + stale kobe-owned
   // pane versions.
   if (action.kind === "reuse") {
-    await healTaskPaneWidths(opts.name)
-    await healRightColumn(opts.name)
-    await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
+    await healWorkspaceLayout(opts.name, { cwd: opts.cwd, taskId: opts.taskId, vendor: opts.vendor })
     return true
   }
 
@@ -306,9 +330,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   if (action.kind === "respawn-engine") {
     if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey)) {
       if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
-      await healTaskPaneWidths(opts.name)
-      await healRightColumn(opts.name)
-      await healKobePaneVersions(opts.name, opts.cwd, opts.taskId, opts.vendor)
+      await healWorkspaceLayout(opts.name, { cwd: opts.cwd, taskId: opts.taskId, vendor: opts.vendor })
       return true
     }
   }

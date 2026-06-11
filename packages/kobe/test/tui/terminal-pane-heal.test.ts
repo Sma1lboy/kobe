@@ -45,6 +45,16 @@ describe("parseKobePaneRows", () => {
   test("trims whitespace around every field", () => {
     expect(parseKobePaneRows(" @1\t %1 \t tasks \t 0.7.0 ")).toEqual([row("@1", "%1", "tasks", "0.7.0")])
   })
+
+  test("parses the geometry-extended 5th field (pane width) when present", () => {
+    // The combined heal snapshot rides pane_width on the same listing so the
+    // rail-width heal doesn't need its own list-panes spawn.
+    expect(parseKobePaneRows("@1\t%1\ttasks\t0.7.0\t18")).toEqual([
+      { ...row("@1", "%1", "tasks", "0.7.0"), paneWidth: 18 },
+    ])
+    // An unparsable width is OMITTED (compares unequal to any target → heals).
+    expect(parseKobePaneRows("@1\t%1\ttasks\t0.7.0\t")).toEqual([row("@1", "%1", "tasks", "0.7.0")])
+  })
 })
 
 describe("paneIdsByRole", () => {

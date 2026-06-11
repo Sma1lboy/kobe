@@ -14,8 +14,9 @@
  *
  * Three respawn surfaces share the machinery:
  *
- *   - {@link healKobePaneVersions} — stale-version Tasks/Ops respawns,
- *     applied by `ensureSession` on every reuse/respawn outcome.
+ *   - {@link healWorkspaceLayout} (with `versions` passed) — stale-version
+ *     Tasks/Ops respawns, applied by `ensureSession` on every reuse/respawn
+ *     outcome alongside the layout re-pin, all from one pane snapshot.
  *   - {@link refreshKobeWorkspacePanes} — unconditional Tasks/Ops respawns
  *     after a settings change (`kobe reload`, Settings page exit).
  *   - {@link relaunchEngineInAllWindows} — the vendor-switch engine
@@ -30,18 +31,11 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { localSpawnCwd } from "@/exec/resolve"
-import {
-  getServerOption,
-  getSessionOptions,
-  globalTasksPaneWidth,
-  runTmux,
-  runTmuxCapturing,
-  runTmuxSequence,
-  sessionExists,
-} from "@/tmux/client"
+import { getServerOptions, getSessionOptions, runTmuxCapturing, runTmuxSequence, sessionExists } from "@/tmux/client"
 import {
   OPS_HEIGHT_OPTION,
   RIGHT_COLUMN_WIDTH_OPTION,
+  TASKS_PANE_WIDTH,
   TASKS_WIDTH_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
@@ -63,10 +57,24 @@ export type KobePaneRow = {
   paneId: string
   role: string
   version: string
+  /**
+   * Geometry columns (cells) — present only when the listing used the
+   * geometry-extended format ({@link KOBE_PANE_LIST_FORMAT}); absent on the
+   * legacy 4-field shape. `undefined` (not 0) when a field is missing or
+   * unparsable, so a degraded row still heals: a width that can't be read
+   * compares unequal to any target and gets the resize, same as before.
+   */
+  paneWidth?: number
 }
 
-/** The one `list-panes -F` format every heal surface reads. */
-const KOBE_PANE_LIST_FORMAT = `#{window_id}\t#{pane_id}\t#{@kobe_role}\t#{${PANE_VERSION_OPTION}}`
+/**
+ * The one `list-panes -F` format every heal surface reads. One snapshot
+ * serves all three heal questions per session build/reuse — rail width
+ * (`pane_width`), right-column geometry (role), and stale kobe-pane
+ * versions — instead of the three near-identical `list-panes -s` spawns
+ * the pre-batch heals each issued.
+ */
+const KOBE_PANE_LIST_FORMAT = `#{window_id}\t#{pane_id}\t#{@kobe_role}\t#{${PANE_VERSION_OPTION}}\t#{pane_width}`
 
 /** Parse `list-panes -F KOBE_PANE_LIST_FORMAT` output. Pure. */
 export function parseKobePaneRows(stdout: string): KobePaneRow[] {
@@ -74,9 +82,16 @@ export function parseKobePaneRows(stdout: string): KobePaneRow[] {
   for (const raw of stdout.split("\n")) {
     const line = raw.trim()
     if (!line) continue
-    const [windowId, paneId, role, version] = line.split("\t")
+    const [windowId, paneId, role, version, paneWidth] = line.split("\t")
     if (!windowId || !paneId || !role) continue
-    rows.push({ windowId: windowId.trim(), paneId: paneId.trim(), role: role.trim(), version: version?.trim() ?? "" })
+    const width = Number.parseInt(paneWidth?.trim() ?? "", 10)
+    rows.push({
+      windowId: windowId.trim(),
+      paneId: paneId.trim(),
+      role: role.trim(),
+      version: version?.trim() ?? "",
+      ...(Number.isFinite(width) ? { paneWidth: width } : {}),
+    })
   }
   return rows
 }
@@ -200,57 +215,24 @@ export async function relaunchEngineInAllWindows(
   const enginePanes = paneIdsByRole(rows, "claude")
   if (enginePanes.length === 0) return false
   const cmd = keepAlive(wrapEngineLaunch(shellQuoteArgv(command), remoteKey, cwd))
-  for (const pane of enginePanes) {
-    // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
-    // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
-    await runTmux(["respawn-pane", "-k", "-c", localSpawnCwd(cwd), "-t", pane, cmd])
-  }
+  // `-k` kills the old engine process; `-c` is the LOCAL spawn dir (the
+  // worktree is remote for a remote task — the wrapped ssh carries `cd <wt>`).
+  // One tmux invocation for all windows (per-pane exit codes were never
+  // consulted here, so batching loses no error detection).
+  await runTmuxSequence(enginePanes.map((pane) => ["respawn-pane", "-k", "-c", localSpawnCwd(cwd), "-t", pane, cmd]))
   return true
 }
 
-/**
- * Force every Tasks rail in a session to the global width.
- *
- * Runs on each session build/reuse (every task switch / re-attach). The point
- * is cross-task CONSISTENCY: the rail is one shared size, so switching never
- * changes its width. The size itself is user-adjustable — a manual drag is
- * captured into the global option on switch-away ({@link captureGlobalLayout})
- * and applied here on the next reuse — so this is what makes a resize "stick"
- * everywhere rather than reset. Idempotent: panes already at the target width
- * are skipped, so a healthy switch issues no resize.
- */
-export async function healTaskPaneWidths(session: string): Promise<void> {
-  const target = await globalTasksPaneWidth()
-  const { code, stdout } = await runTmuxCapturing([
-    "list-panes",
-    "-s",
-    "-t",
-    `=${session}`,
-    "-F",
-    "#{pane_id}\t#{@kobe_role}\t#{pane_width}",
-  ])
-  if (code !== 0) return
-  const mismatched = stdout
-    .split("\n")
-    .map((line) => line.split("\t"))
-    .filter(([, role]) => role?.trim() === "tasks")
-    .filter(([, , width]) => Number.parseInt(width?.trim() ?? "", 10) !== target)
-    .map(([id]) => id?.trim())
-    .filter((id): id is string => !!id)
-  if (mismatched.length === 0) return
-  await runTmuxSequence(mismatched.map((pane) => ["resize-pane", "-t", pane, "-x", `${target}`]))
-}
-
-/** The user's global right-column geometry (window %), `null` per axis when unset. */
-async function rightColumnPercents(): Promise<{ widthPct: number | null; heightPct: number | null }> {
-  const [width, height] = await Promise.all([
-    getServerOption(RIGHT_COLUMN_WIDTH_OPTION),
-    getServerOption(OPS_HEIGHT_OPTION),
-  ])
-  return {
-    widthPct: clampPanePercent(Number.parseInt(width, 10)),
-    heightPct: clampPanePercent(Number.parseInt(height, 10)),
-  }
+/** The user's global layout prefs (rail width + right-column %), ONE tmux spawn. */
+async function globalLayoutPrefs(): Promise<{ tasksWidth: number; rcArgs: string[] }> {
+  const opts = await getServerOptions([TASKS_WIDTH_OPTION, RIGHT_COLUMN_WIDTH_OPTION, OPS_HEIGHT_OPTION])
+  const rawWidth = Number.parseInt(opts[TASKS_WIDTH_OPTION] ?? "", 10)
+  const tasksWidth = Number.isFinite(rawWidth) && rawWidth > 0 ? clampTasksPaneWidth(rawWidth) : TASKS_PANE_WIDTH
+  const rcArgs = rightColumnResizeArgs({
+    widthPct: clampPanePercent(Number.parseInt(opts[RIGHT_COLUMN_WIDTH_OPTION] ?? "", 10)),
+    heightPct: clampPanePercent(Number.parseInt(opts[OPS_HEIGHT_OPTION] ?? "", 10)),
+  })
+  return { tasksWidth, rcArgs }
 }
 
 /** Build the `resize-pane -x/-y N%` args for an Ops pane from a geometry pair. */
@@ -263,45 +245,69 @@ function rightColumnResizeArgs(geom: { widthPct: number | null; heightPct: numbe
 
 /** The user's global right-column geometry as `resize-pane` args (empty when unset). */
 export async function globalRightColumnResizeArgs(): Promise<string[]> {
-  return rightColumnResizeArgs(await rightColumnPercents())
+  return (await globalLayoutPrefs()).rcArgs
 }
 
 /**
- * Apply the user's global right-column geometry to every window in a session.
+ * One-snapshot heal for a live session, run on every session build/reuse
+ * (every task switch / re-attach) and from the `window-resized` hook:
  *
- * The right column is the Ops (file-tree) pane stacked over the terminal. One
- * `resize-pane` on the Ops pane sets BOTH boundaries: `-x` (column width) pulls
- * from the Claude chat pane (the Tasks rail stays fixed), `-y` (file-tree
- * height) pulls from the terminal below. Mirrors {@link healTaskPaneWidths} so
- * the right column is one shared shape across tasks. No-op when neither option
- * is set — a user who never dragged the column keeps the default split.
+ *   1. Force every Tasks rail to the global width. The point is cross-task
+ *      CONSISTENCY: the rail is one shared size, so switching never changes
+ *      its width. The size itself is user-adjustable — a manual drag is
+ *      captured into the global option on switch-away
+ *      ({@link captureGlobalLayout}) and re-applied here, which is what makes
+ *      a resize "stick" everywhere. Idempotent: panes already at the target
+ *      width are skipped, so a healthy switch issues no resize.
+ *   2. Apply the user's global right-column geometry to every window. The
+ *      right column is the Ops (file-tree) pane stacked over the terminal;
+ *      one `resize-pane` on the Ops pane sets BOTH boundaries: `-x` (column
+ *      width) pulls from the Claude chat pane (the Tasks rail stays fixed),
+ *      `-y` (file-tree height) pulls from the terminal below. No-op when
+ *      neither option is set — a user who never dragged keeps the default.
+ *   3. (only when `versions` is passed) respawn kobe-owned Tasks/Ops panes
+ *      whose version tag is absent or stale — see {@link planPaneHeals} —
+ *      so newly shipped pane code doesn't appear "missing" until a manual
+ *      tmux reset. The reuse/respawn outcomes of `ensureSession` pass this;
+ *      the pre-attach/layout-hook callers don't (they must never kill a
+ *      pane process).
+ *
+ * All three decisions read the SAME `list-panes -s` snapshot and the same
+ * batched server-option read, and every mutation lands in ONE tmux
+ * invocation — 2 spawns on a healthy reuse where the pre-batch chain
+ * (`healTaskPaneWidths` + `healRightColumn` + `healKobePaneVersions`)
+ * spawned 6 reads plus up to 3 mutation sequences.
  */
-export async function healRightColumn(session: string): Promise<void> {
-  const args = await globalRightColumnResizeArgs()
-  if (args.length === 0) return
-  const { code, stdout } = await runTmuxCapturing([
-    "list-panes",
-    "-s",
-    "-t",
-    `=${session}`,
-    "-F",
-    "#{pane_id}\t#{@kobe_role}",
-  ])
-  if (code !== 0) return
-  const opsPanes = stdout
-    .split("\n")
-    .map((line) => line.split("\t"))
-    .filter(([, role]) => role?.trim() === "ops")
-    .map(([id]) => id?.trim())
-    .filter((id): id is string => !!id)
-  if (opsPanes.length === 0) return
-  await runTmuxSequence(opsPanes.map((pane) => ["resize-pane", "-t", pane, ...args]))
+export async function healWorkspaceLayout(
+  session: string,
+  versions?: { cwd: string; taskId: string | undefined; vendor: string | undefined },
+): Promise<void> {
+  const { tasksWidth, rcArgs } = await globalLayoutPrefs()
+  const rows = await listKobePanes(session)
+  if (!rows) return
+  const commands: (readonly string[])[] = []
+  for (const row of rows) {
+    if (row.role === "tasks" && row.paneWidth !== tasksWidth) {
+      commands.push(["resize-pane", "-t", row.paneId, "-x", `${tasksWidth}`])
+    }
+  }
+  if (rcArgs.length > 0) {
+    for (const row of rows) {
+      if (row.role === "ops") commands.push(["resize-pane", "-t", row.paneId, ...rcArgs])
+    }
+  }
+  if (versions) {
+    commands.push(
+      ...respawnCommandsFor(planPaneHeals(rows, { currentVersion: CURRENT_VERSION, force: false }), versions),
+    )
+  }
+  if (commands.length > 0) await runTmuxSequence(commands)
 }
 
 /**
  * Re-pin a session's whole layout (Tasks rail width + right-column geometry) to
- * the shared globals. This is the {@link healTaskPaneWidths} + {@link healRightColumn}
- * pair the reuse path runs, exposed for the `window-resized` tmux hook.
+ * the shared globals. This is the layout half of {@link healWorkspaceLayout}
+ * (no version respawns), exposed for the `window-resized` tmux hook.
  *
  * Why a hook: the FIRST task session is built detached (no client attached yet),
  * so tmux sizes its window to a default/stale size; the real terminal size only
@@ -316,8 +322,7 @@ export async function healRightColumn(session: string): Promise<void> {
  */
 export async function healSessionLayout(session: string): Promise<void> {
   if (!(await sessionExists(session))) return
-  await healTaskPaneWidths(session)
-  await healRightColumn(session)
+  await healWorkspaceLayout(session)
 }
 
 /**
@@ -325,7 +330,7 @@ export async function healSessionLayout(session: string): Promise<void> {
  * layout, so a manual resize in one task becomes the shared shape every other
  * task uses. Called when switching AWAY from a task. Captures the Tasks-rail
  * width (cells) and the right column's width + file-tree height (each as a % of
- * the window, the unit {@link healRightColumn} re-applies with). Each axis is
+ * the window, the unit {@link healWorkspaceLayout} re-applies with). Each axis is
  * skipped if unreadable; values are clamped before they are stored.
  */
 export async function captureGlobalLayout(session: string): Promise<void> {
@@ -362,28 +367,6 @@ export async function captureGlobalLayout(session: string): Promise<void> {
     if (heightPct !== null) sets.push(["set-option", "-s", OPS_HEIGHT_OPTION, `${heightPct}`])
   }
   if (sets.length > 0) await runTmuxSequence(sets)
-}
-
-/**
- * Heal only kobe-owned panes whose version tag is absent or stale:
- * respawn Tasks/Ops in place so newly shipped shortcuts and file-pane
- * behaviour don't appear "missing" until the user manually resets tmux.
- * Applied by `ensureSession` on every reuse/respawn outcome.
- */
-export async function healKobePaneVersions(
-  session: string,
-  cwd: string,
-  taskId: string | undefined,
-  vendor: string | undefined,
-): Promise<void> {
-  const rows = await listKobePanes(session)
-  if (!rows) return
-  const commands = respawnCommandsFor(planPaneHeals(rows, { currentVersion: CURRENT_VERSION, force: false }), {
-    cwd,
-    taskId,
-    vendor,
-  })
-  if (commands.length > 0) await runTmuxSequence(commands)
 }
 
 /**

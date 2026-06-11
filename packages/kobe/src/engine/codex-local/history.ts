@@ -122,6 +122,47 @@ export function rolloutCwd(raw: string): string {
   return ""
 }
 
+/**
+ * `session_meta.cwd` memo, keyed by rollout path. A rollout's
+ * `session_meta` is its FIRST line, written once at session start, and
+ * rollout filenames embed a UUID + ISO timestamp so a path is never
+ * reused — a successfully parsed, non-empty cwd is immutable and can be
+ * cached forever. The polling callers (the Ops pane's 2.5s activity poll
+ * and 1.5s turn poll, the daemon's 4s auto-title tick) previously
+ * re-READ up to 12–200 whole rollout JSONLs per tick just to re-derive
+ * the same first-line cwd.
+ *
+ * Two deliberate non-caches:
+ *   - `""` (no/invalid session_meta) is NOT cached: a rollout caught
+ *     mid-write can briefly have a partial first line, and pinning `""`
+ *     would permanently hide that session from the pollers.
+ *   - a failed read is NOT cached (the file may appear/become readable).
+ *
+ * Keyed per `HistoryDeps` object (WeakMap) so injected test deps never
+ * share state with production or with each other.
+ */
+const rolloutCwdCaches = new WeakMap<HistoryDeps, Map<string, string>>()
+
+/** Cached cwd for one rollout file: `""` = no meta, `null` = unreadable. */
+async function rolloutCwdForFile(file: string, deps: HistoryDeps): Promise<string | null> {
+  let cache = rolloutCwdCaches.get(deps)
+  if (!cache) {
+    cache = new Map()
+    rolloutCwdCaches.set(deps, cache)
+  }
+  const hit = cache.get(file)
+  if (hit !== undefined) return hit
+  let raw: string
+  try {
+    raw = await deps.readFile(file)
+  } catch {
+    return null
+  }
+  const cwd = rolloutCwd(raw)
+  if (cwd) cache.set(file, cwd)
+  return cwd
+}
+
 /** Cap on rollout files probed by {@link listSessionIdsForWorktree}. */
 const MAX_WORKTREE_SCAN = 200
 
@@ -131,7 +172,9 @@ const MAX_WORKTREE_SCAN = 200
  * `listSessionFilesForWorktree` — Codex stores rollouts in a global
  * date tree (not per-worktree dirs), so we scan newest-first (capped)
  * and filter by the recorded cwd, then reverse to oldest-first so the
- * caller sees the worktree's origin conversation first.
+ * caller sees the worktree's origin conversation first. cwd probes hit
+ * the {@link rolloutCwdForFile} memo, so a repeat scan (the auto-title
+ * poller's tick) reads no rollout it has seen before.
  */
 export async function listSessionIdsForWorktree(worktree: string, deps: HistoryDeps = defaultDeps): Promise<string[]> {
   if (!worktree) return []
@@ -141,56 +184,58 @@ export async function listSessionIdsForWorktree(worktree: string, deps: HistoryD
   for (const file of files) {
     if (scanned >= MAX_WORKTREE_SCAN) break
     scanned++
-    let raw: string
-    try {
-      raw = await deps.readFile(file)
-    } catch {
-      continue
-    }
-    if (rolloutCwd(raw) !== worktree) continue
+    if ((await rolloutCwdForFile(file, deps)) !== worktree) continue
     const id = path.basename(file).match(UUID_AT_END)?.[1]
     if (id) matches.push(id)
   }
   return matches.reverse()
 }
 
-/** Reads probed before giving up the cwd-match scan in {@link latestTranscriptMtimeForWorktree}. */
+/** Reads probed before giving up the cwd-match scan in {@link findLatestRolloutForWorktree}. */
 const MAX_MTIME_SCAN = 12
 
 /**
- * Newest rollout mtime (epoch ms) for `worktree`, or 0 when none match.
- * The Ops pane polls this to detect new Codex conversation output
- * without parsing the tmux pane (KOB-254). Codex stores rollouts in a
- * global date tree, so we walk `listRolloutFiles` (newest-first by
- * filename ≈ chronological) and return the first cwd-match's mtime —
- * the file the agent just appended to is the newest, so the common case
- * is a single read. Capped at {@link MAX_MTIME_SCAN} reads so a busy
- * machine with many unrelated sessions can't make the poll expensive.
+ * The newest rollout recorded for `worktree` (path + current mtime), or
+ * `null` when none match. Walks `listRolloutFiles` (newest-first by
+ * filename ≈ chronological) and returns the first cwd match — the file
+ * the agent just appended to is the newest, so the common case is a
+ * single probe, and with the {@link rolloutCwdForFile} memo a REPEAT
+ * poll issues no file reads at all (directory listings + one stat).
+ * Capped at {@link MAX_MTIME_SCAN} probes so a busy machine with many
+ * unrelated sessions can't make the poll expensive. A match whose stat
+ * fails (deleted mid-scan) is skipped and the scan continues.
  */
-export async function latestTranscriptMtimeForWorktree(
+export async function findLatestRolloutForWorktree(
   worktree: string,
   deps: HistoryDeps = defaultDeps,
-): Promise<number> {
-  if (!worktree) return 0
+): Promise<{ path: string; mtimeMs: number } | null> {
+  if (!worktree) return null
   const files = await listRolloutFiles(deps)
   let scanned = 0
   for (const file of files) {
     if (scanned >= MAX_MTIME_SCAN) break
     scanned++
-    let raw: string
+    if ((await rolloutCwdForFile(file, deps)) !== worktree) continue
     try {
-      raw = await deps.readFile(file)
+      return { path: file, mtimeMs: (await deps.stat(file)).mtimeMs }
     } catch {
-      continue
-    }
-    if (rolloutCwd(raw) !== worktree) continue
-    try {
-      return (await deps.stat(file)).mtimeMs
-    } catch {
-      return 0
+      // vanished between listing and stat — keep scanning older rollouts
     }
   }
-  return 0
+  return null
+}
+
+/**
+ * Newest rollout mtime (epoch ms) for `worktree`, or 0 when none match.
+ * The Ops pane polls this to detect new Codex conversation output
+ * without parsing the tmux pane (KOB-254). Thin wrapper over
+ * {@link findLatestRolloutForWorktree}.
+ */
+export async function latestTranscriptMtimeForWorktree(
+  worktree: string,
+  deps: HistoryDeps = defaultDeps,
+): Promise<number> {
+  return (await findLatestRolloutForWorktree(worktree, deps))?.mtimeMs ?? 0
 }
 
 export async function readHistory(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<Message[]> {

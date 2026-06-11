@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest"
+import {
+  type HistoryDeps,
+  findLatestRolloutForWorktree,
+  latestTranscriptMtimeForWorktree,
+  listSessionIdsForWorktree,
+} from "../../src/engine/codex-local/history.ts"
 import { normalizeCodexContent } from "../../src/engine/codex-local/normalize.ts"
 import { isSyntheticCodexUserRow, visibleCodexUserText } from "../../src/engine/codex-local/synthetic.ts"
 import { codexUsageToSnapshot } from "../../src/engine/codex-local/usage.ts"
@@ -84,6 +90,77 @@ describe("visibleCodexUserText", () => {
 
   it("returns null when there is no text", () => {
     expect(visibleCodexUserText([])).toBeNull()
+  })
+})
+
+/**
+ * The cwd memo matters because three pollers re-scan the rollout tree on
+ * 1.5–4s intervals: without it every tick re-read up to 12–200 whole rollout
+ * JSONLs just to re-derive each file's immutable first-line session_meta.cwd.
+ * The cache is per-deps (WeakMap), so each test's fresh deps object is
+ * isolated, and `""`/unreadable results are never pinned.
+ */
+describe("rollout cwd caching", () => {
+  const meta = (cwd: string) => JSON.stringify({ type: "session_meta", payload: { id: "x", cwd } })
+
+  function fakeDeps(files: Record<string, string>): { deps: HistoryDeps; reads: string[] } {
+    const reads: string[] = []
+    const names = Object.keys(files)
+    const deps: HistoryDeps = {
+      sessionsDir: () => "/sessions",
+      readdir: async (p) => {
+        if (p === "/sessions") return ["2026"]
+        if (p === "/sessions/2026") return ["06"]
+        if (p === "/sessions/2026/06") return ["10"]
+        if (p === "/sessions/2026/06/10") return names
+        return []
+      },
+      readFile: async (p) => {
+        reads.push(p)
+        const name = p.split("/").pop() ?? ""
+        const raw = files[name]
+        if (raw === undefined) throw new Error("ENOENT")
+        return raw
+      },
+      stat: async () => ({ mtimeMs: 1234 }),
+    }
+    return { deps, reads }
+  }
+
+  it("latestTranscriptMtimeForWorktree reads each rollout's meta once across repeat polls", async () => {
+    const { deps, reads } = fakeDeps({
+      "rollout-2026-06-10T02-00-00-bbbbbbbb-1111-2222-3333-444444444444.jsonl": meta("/other"),
+      "rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl": meta("/wt"),
+    })
+    expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
+    expect(reads).toHaveLength(2) // newest-first: non-match probed, then the match
+    expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
+    expect(reads).toHaveLength(2) // repeat poll: zero file reads, cwds served from the memo
+  })
+
+  it("shares the memo with listSessionIdsForWorktree and findLatestRolloutForWorktree", async () => {
+    const { deps, reads } = fakeDeps({
+      "rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl": meta("/wt"),
+    })
+    expect(await listSessionIdsForWorktree("/wt", deps)).toEqual(["aaaaaaaa-1111-2222-3333-444444444444"])
+    expect(await findLatestRolloutForWorktree("/wt", deps)).toEqual({
+      path: "/sessions/2026/06/10/rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl",
+      mtimeMs: 1234,
+    })
+    expect(reads).toHaveLength(1)
+  })
+
+  it("does not pin an empty cwd (a rollout caught mid-write is re-probed)", async () => {
+    const files: Record<string, string> = {
+      "rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl": "{not json yet",
+    }
+    const { deps, reads } = fakeDeps(files)
+    expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(0)
+    expect(reads).toHaveLength(1)
+    // The writer finished the first line — the next poll must see it.
+    files["rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"] = meta("/wt")
+    expect(await latestTranscriptMtimeForWorktree("/wt", deps)).toBe(1234)
+    expect(reads).toHaveLength(2)
   })
 })
 

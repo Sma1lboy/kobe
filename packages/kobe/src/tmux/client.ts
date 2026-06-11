@@ -266,6 +266,27 @@ export async function getServerOption(option: string): Promise<string> {
 }
 
 /**
+ * Read several server-scoped options in ONE tmux process (the plural of
+ * {@link getServerOption}, mirroring {@link getSessionOptions}). Each
+ * command is `show-options -sq <opt>` WITHOUT `-v`, so a set option prints
+ * a `<name> <value>` line we can attribute (with `-v` an unset `-q` option
+ * prints nothing and the values couldn't be told apart). Unset options
+ * resolve to `undefined`.
+ */
+export async function getServerOptions(options: readonly string[]): Promise<Record<string, string | undefined>> {
+  const values: Record<string, string | undefined> = Object.fromEntries(options.map((option) => [option, undefined]))
+  const { code, stdout } = await runTmuxSequenceCapturing(options.map((option) => ["show-options", "-sq", option]))
+  if (code !== 0) return values
+  for (const line of stdout.split("\n")) {
+    const idx = line.indexOf(" ")
+    if (idx <= 0) continue
+    const option = line.slice(0, idx)
+    if (option in values) values[option] = line.slice(idx + 1).trim()
+  }
+  return values
+}
+
+/**
  * The user's GLOBAL Tasks-rail width in cells — one value shared by every task
  * session (server option {@link TASKS_WIDTH_OPTION}), so the rail is the same
  * width in every task. Falls back to the convention default when unset/garbage.
