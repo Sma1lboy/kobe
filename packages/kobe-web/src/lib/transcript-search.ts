@@ -36,3 +36,11 @@ export function messageMatchesQuery(
   if (!q) return true
   return messageSearchText(message).toLowerCase().includes(q)
 }
+
+/** Whether a block should render given the "hide tool calls" toggle — tool
+ *  calls are the noise you collapse to read the conversation prose; everything
+ *  else (text, thinking) always shows. Tool results never render standalone
+ *  (they attach to their call), so they're irrelevant here. */
+export function blockVisible(block: ContentBlock, hideTools: boolean): boolean {
+  return !(hideTools && block.type === "tool_call")
+}

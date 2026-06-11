@@ -24,7 +24,7 @@ import {
 } from "../lib/history.ts"
 import { isNearBottom } from "../lib/scroll.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
-import { messageMatchesQuery } from "../lib/transcript-search.ts"
+import { blockVisible, messageMatchesQuery } from "../lib/transcript-search.ts"
 
 const POLL_MS = 2_500
 const OUTPUT_PREVIEW_CHARS = 600
@@ -122,12 +122,15 @@ function ThinkingRow({ text }: { text: string }) {
 function MessageRow({
   message,
   results,
+  hideTools,
 }: {
   message: HistoryMessage
   results: ReadonlyMap<string, ToolResult>
+  hideTools: boolean
 }) {
   const rows: React.ReactNode[] = []
   message.blocks.forEach((block, index) => {
+    if (!blockVisible(block, hideTools)) return
     const key = `${message.timestamp}-${index}`
     if (block.type === "text") {
       if (!block.text.trim()) return
@@ -188,6 +191,7 @@ export function ChatTranscript({
   const [followLatest, setFollowLatest] = useState(true)
   const [messages, setMessages] = useState<HistoryMessage[]>([])
   const [search, setSearch] = useState("")
+  const [hideTools, setHideTools] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
@@ -243,6 +247,7 @@ export function ChatTranscript({
     setFollowLatest(true)
     setSelected(null)
     setSearch("")
+    setHideTools(false)
     void refreshRef.current(true)
     const timer = window.setInterval(() => {
       if (!document.hidden) void refreshRef.current()
@@ -366,21 +371,37 @@ export function ChatTranscript({
             className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-fg placeholder:text-subtle focus:outline-none"
           />
           {search.trim() && (
-            <>
-              <span className="shrink-0 font-mono text-[10px] text-subtle">
-                {shown.length}/{messages.length}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="shrink-0 text-subtle transition-colors hover:text-fg"
-                aria-label="clear transcript search"
-                title="Clear search"
-              >
-                <X size={12} strokeWidth={2} />
-              </button>
-            </>
+            <span className="shrink-0 font-mono text-[10px] text-subtle">
+              {shown.length}/{messages.length}
+            </span>
           )}
+          {search.trim() && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="shrink-0 text-subtle transition-colors hover:text-fg"
+              aria-label="clear transcript search"
+              title="Clear search"
+            >
+              <X size={12} strokeWidth={2} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setHideTools((v) => !v)}
+            className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+              hideTools
+                ? "border-primary bg-inset text-fg"
+                : "border-line bg-bg text-subtle hover:border-primary hover:text-fg"
+            }`}
+            title={
+              hideTools
+                ? "Show tool calls"
+                : "Hide tool calls — read just the conversation"
+            }
+          >
+            {hideTools ? "tools off" : "tools"}
+          </button>
         </div>
       )}
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -411,6 +432,7 @@ export function ChatTranscript({
                 key={`${message.sessionId}-${index}`}
                 message={message}
                 results={results}
+                hideTools={hideTools}
               />
             ))
           )}

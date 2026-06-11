@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { ContentBlock, HistoryMessage } from "../src/lib/history.ts"
 import {
+  blockVisible,
   messageMatchesQuery,
   messageSearchText,
 } from "../src/lib/transcript-search.ts"
@@ -62,5 +63,28 @@ describe("messageMatchesQuery", () => {
 
   it("trims the query", () => {
     expect(messageMatchesQuery(m, "  login  ")).toBe(true)
+  })
+})
+
+describe("blockVisible (hide tool calls)", () => {
+  const text: ContentBlock = { type: "text", text: "hi" }
+  const thinking: ContentBlock = { type: "thinking", text: "hmm" }
+  const toolCall: ContentBlock = {
+    type: "tool_call",
+    callId: "c1",
+    name: "Bash",
+    input: {},
+  }
+
+  it("shows everything when hideTools is off", () => {
+    expect(blockVisible(text, false)).toBe(true)
+    expect(blockVisible(thinking, false)).toBe(true)
+    expect(blockVisible(toolCall, false)).toBe(true)
+  })
+
+  it("hides only tool_call blocks when hideTools is on", () => {
+    expect(blockVisible(toolCall, true)).toBe(false)
+    expect(blockVisible(text, true)).toBe(true)
+    expect(blockVisible(thinking, true)).toBe(true)
   })
 })
