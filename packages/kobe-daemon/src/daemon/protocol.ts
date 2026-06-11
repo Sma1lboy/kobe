@@ -208,6 +208,31 @@ export interface ChannelPayloads {
    * a fresh pane doesn't re-apply what it already read at boot).
    */
   keybindings: { rev: number }
+  /**
+   * Lifecycle progress of a MINUTE-CLASS daemon operation on one task
+   * (today: `task.ensureWorktree` — `git worktree add` on a huge repo).
+   * The blocking RPC contract is untouched (callers still await the
+   * result); this channel is the additive feedback path, so EVERY
+   * attached Tasks pane — not just the initiator — can show a live
+   * "materializing" state on the task row while the job runs.
+   *
+   * The publisher MUST always emit a terminal phase (`done` / `error`),
+   * including on throw — the handler wraps the operation in try/catch.
+   * Replay of a terminal phase to a late subscriber is harmless by
+   * design: clients treat `done`/`error` as "remove the entry", a no-op
+   * when nothing is tracked. A replayed `running` is only possible while
+   * the op is GENUINELY in flight (the bus is in-memory and dies with
+   * the daemon), so a late pane correctly picks up an ongoing job.
+   * Last-value caveat: with two jobs overlapping, a late subscriber only
+   * replays the most recent publish — live subscribers see both.
+   */
+  "task.jobs": {
+    taskId: string
+    kind: "ensureWorktree"
+    phase: "running" | "done" | "error"
+    /** Present only on `phase: "error"` — the thrown message, for UI hints. */
+    error?: string
+  }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -216,6 +241,9 @@ export interface ChannelPayloads {
 
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
+
+/** The `task.jobs` channel payload — long-operation lifecycle progress. */
+export type TaskJobsPayload = ChannelPayloads["task.jobs"]
 
 /** A push-channel name (a key of {@link ChannelPayloads}). */
 export type ChannelName = keyof ChannelPayloads
@@ -228,6 +256,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "engine-state",
   "ui-prefs",
   "keybindings",
+  "task.jobs",
 ]
 
 /**

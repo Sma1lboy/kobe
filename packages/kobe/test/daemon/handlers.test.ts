@@ -209,6 +209,58 @@ describe("daemon handler registry", () => {
       const { ctx } = fakeCtx()
       await expect(dispatch("task.ensureWorktree", {}, ctx)).rejects.toThrow("taskId is required")
     })
+
+    // Long-operation feedback (issue #5): `git worktree add` is minute-class
+    // on a huge repo and the RPC stays blocking, so the handler must publish
+    // lifecycle progress on `task.jobs` around the call — running before,
+    // and ALWAYS a terminal phase after (done on success, error on throw).
+    // Without the guaranteed terminal publish, the bus's last-value replay
+    // would show late subscribers a stuck "running" forever.
+    it("publishes task.jobs running → done around a successful materialisation", async () => {
+      let publishedWhenWorkStarted = -1
+      const { ctx, rec } = fakeCtx({
+        ensureWorktree: async (id: string) => {
+          publishedWhenWorkStarted = rec.published.length
+          return `/worktrees/${id}`
+        },
+      })
+      await dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)
+      // `running` was already on the bus when the orchestrator call started.
+      expect(publishedWhenWorkStarted).toBe(1)
+      expect(rec.published).toEqual([
+        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "running" } },
+        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "done" } },
+      ])
+    })
+
+    it("publishes task.jobs running → error (with the message) when the orchestrator throws, and rethrows", async () => {
+      const { ctx, rec } = fakeCtx({
+        ensureWorktree: async () => {
+          throw new Error("git worktree add failed")
+        },
+      })
+      await expect(dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)).rejects.toThrow("git worktree add failed")
+      expect(rec.published).toEqual([
+        { channel: "task.jobs", payload: { taskId: "t1", kind: "ensureWorktree", phase: "running" } },
+        {
+          channel: "task.jobs",
+          payload: { taskId: "t1", kind: "ensureWorktree", phase: "error", error: "git worktree add failed" },
+        },
+      ])
+    })
+
+    it("coerces a non-Error throw into the error string on the terminal publish", async () => {
+      const { ctx, rec } = fakeCtx({
+        ensureWorktree: async () => {
+          throw "plain failure"
+        },
+      })
+      await expect(dispatch("task.ensureWorktree", { taskId: "t1" }, ctx)).rejects.toBe("plain failure")
+      expect(rec.published[1]).toEqual({
+        channel: "task.jobs",
+        payload: { taskId: "t1", kind: "ensureWorktree", phase: "error", error: "plain failure" },
+      })
+    })
   })
 
   describe("engine.reportEvent (payload contract pinned — the activity hooks depend on it)", () => {

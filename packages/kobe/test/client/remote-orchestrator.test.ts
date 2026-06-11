@@ -95,4 +95,86 @@ describe("RemoteOrchestrator channel handling", () => {
     emit("task.snapshot", { tasks: [task("t1")] })
     expect(orch.engineStateSignal()()).toBe(after)
   })
+
+  // `task.jobs` — long daemon operations (worktree materialisation). The
+  // map holds only IN-FLIGHT jobs: `running` adds, the terminal phases
+  // remove, so every attached pane can show a "materializing" row while a
+  // minutes-long `git worktree add` runs and drop it the moment the
+  // blocking RPC settles.
+  describe("task.jobs channel", () => {
+    const snapshotTask = (id: string) => ({
+      id,
+      title: id,
+      repo: "/repo",
+      branch: id,
+      worktreePath: `/wt/${id}`,
+      kind: "worktree",
+      status: "idle",
+      archived: false,
+      pinned: false,
+      vendor: "claude",
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    it("tracks running jobs and clears them on done / error", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      expect(orch.taskJobsSignal()().size).toBe(0)
+
+      emit("task.jobs", { taskId: "t1", kind: "ensureWorktree", phase: "running" })
+      emit("task.jobs", { taskId: "t2", kind: "ensureWorktree", phase: "running" })
+      expect([...orch.taskJobsSignal()().keys()].sort()).toEqual(["t1", "t2"])
+      expect(orch.taskJobsSignal()().get("t1")).toEqual({ kind: "ensureWorktree" })
+
+      emit("task.jobs", { taskId: "t1", kind: "ensureWorktree", phase: "done" })
+      expect([...orch.taskJobsSignal()().keys()]).toEqual(["t2"])
+
+      // The error terminal phase clears too — the RPC caller gets the real
+      // error; the map only answers "is a job in flight".
+      emit("task.jobs", { taskId: "t2", kind: "ensureWorktree", phase: "error", error: "boom" })
+      expect(orch.taskJobsSignal()().size).toBe(0)
+    })
+
+    it("a replayed terminal phase for an untracked task is a true no-op (no map churn)", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      const before = orch.taskJobsSignal()()
+      // The bus replays its last `task.jobs` value to a late subscriber; a
+      // terminal phase must not rebuild the (empty) map — same ref back.
+      emit("task.jobs", { taskId: "t9", kind: "ensureWorktree", phase: "done" })
+      expect(orch.taskJobsSignal()()).toBe(before)
+    })
+
+    it("ignores malformed payloads", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("task.jobs", undefined)
+      emit("task.jobs", { taskId: "t1", kind: "somethingElse", phase: "running" })
+      emit("task.jobs", { kind: "ensureWorktree", phase: "running" })
+      expect(orch.taskJobsSignal()().size).toBe(0)
+    })
+
+    // Leak guard (same contract as engine-state pruning): a task DELETED
+    // while its job runs — or a dropped terminal frame across a reconnect —
+    // must not pin a phantom "materializing" entry forever. Each
+    // task.snapshot reconciles the map against the authoritative task list.
+    it("prunes job entries for tasks absent from a task.snapshot", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+
+      emit("task.snapshot", { tasks: [snapshotTask("t1"), snapshotTask("t2")] })
+      emit("task.jobs", { taskId: "t1", kind: "ensureWorktree", phase: "running" })
+      emit("task.jobs", { taskId: "t2", kind: "ensureWorktree", phase: "running" })
+
+      // t2 deleted mid-job — no terminal phase will ever arrive for it here.
+      emit("task.snapshot", { tasks: [snapshotTask("t1")] })
+      const after = orch.taskJobsSignal()()
+      expect([...after.keys()]).toEqual(["t1"])
+
+      // A snapshot that changes nothing must not rebuild the map.
+      emit("task.snapshot", { tasks: [snapshotTask("t1")] })
+      expect(orch.taskJobsSignal()()).toBe(after)
+    })
+  })
 })

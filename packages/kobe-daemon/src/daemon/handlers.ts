@@ -317,8 +317,33 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       name: "task.ensureWorktree",
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")
-        const path = await ctx.orch.ensureWorktree(taskId)
-        return { worktreePath: path }
+        // Long-operation feedback (issue #5): `git worktree add` is
+        // minute-class on a huge repo, and the RPC stays BLOCKING (callers
+        // need the path to build the tmux session) — so publish lifecycle
+        // progress on the `task.jobs` channel around the call. Every
+        // attached Tasks pane shows a "materializing" row state, not just
+        // the initiating client. A terminal phase (`done`/`error`) is
+        // published ALWAYS, including on throw — otherwise the bus's
+        // last-value replay would show late subscribers a stuck `running`
+        // forever. Fast paths (already-materialised worktree, `main`
+        // tasks) publish running→done back-to-back, which clients fold
+        // into a no-op blink at worst. The error message rides along for
+        // UI hints; the RPC error itself still reaches the caller via the
+        // rethrow.
+        ctx.bus.publish("task.jobs", { taskId, kind: "ensureWorktree", phase: "running" })
+        try {
+          const path = await ctx.orch.ensureWorktree(taskId)
+          ctx.bus.publish("task.jobs", { taskId, kind: "ensureWorktree", phase: "done" })
+          return { worktreePath: path }
+        } catch (err) {
+          ctx.bus.publish("task.jobs", {
+            taskId,
+            kind: "ensureWorktree",
+            phase: "error",
+            error: err instanceof Error ? err.message : String(err),
+          })
+          throw err
+        }
       },
     },
     {

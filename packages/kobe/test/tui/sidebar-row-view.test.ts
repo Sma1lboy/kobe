@@ -94,6 +94,53 @@ describe("buildSidebarRowView", () => {
     expect(v).toMatchObject({ isMain: true, titleText: "kobe", subtitleText: "main" })
   })
 
+  // Long daemon job feedback (issue #5): while the daemon's blocking
+  // `task.ensureWorktree` RPC runs a minutes-long `git worktree add`, the
+  // `task.jobs` channel marks the task in every attached pane; the row must
+  // spin with a "materializing" subtitle instead of sitting frozen on the
+  // backlog dot (or lying with a branch label that doesn't exist on disk yet).
+  it("spins with a materializing subtitle while a worktree job is in flight", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "backlog", branch: "", worktreePath: "" }),
+      job: { kind: "ensureWorktree" },
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(v).toMatchObject({
+      loading: true,
+      stateGlyph: "⠋",
+      tone: "primary",
+      subtitleText: "materializing",
+    })
+  })
+
+  it("the materializing word outranks the branch label while the job runs", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "backlog", branch: "feature/sidebar" }),
+      job: { kind: "ensureWorktree" },
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(v.subtitleText).toBe("materializing")
+    expect(v.loading).toBe(true)
+  })
+
+  it("spins for a custom-engine task too while its worktree job runs (job is daemon truth, not engine telemetry)", () => {
+    const v = buildSidebarRowView({
+      task: task({ status: "backlog", vendor: "my-custom-engine", branch: "" }),
+      job: { kind: "ensureWorktree" },
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(v).toMatchObject({ loading: true, tone: "primary", subtitleText: "materializing" })
+  })
+
   it("falls back to a neutral dash for a project with no resolvable branch", () => {
     const v = buildSidebarRowView({
       task: task({ kind: "main", branch: "", status: "backlog" }),

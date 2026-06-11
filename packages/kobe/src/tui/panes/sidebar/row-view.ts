@@ -1,4 +1,4 @@
-import type { TaskEngineState } from "@/client/remote-orchestrator"
+import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
 import type { Task, TaskStatus } from "@/types/task"
 import { isBuiltinVendor } from "@/types/vendor"
@@ -74,6 +74,14 @@ const NO_TRACKING_GLYPH = "·"
 const NO_TRACKING_SUBTITLE = "no activity tracking"
 
 /**
+ * Subtitle word while a long daemon job runs for the task (today: the
+ * `ensureWorktree` `git worktree add`, minute-class on a huge repo). The
+ * word + spinner replace the branch — there IS no branch on disk yet while
+ * the worktree materialises, so "materializing" is the honest row state.
+ */
+const MATERIALIZING_SUBTITLE = "materializing"
+
+/**
  * True when this task runs on a user-added (custom) engine, which has no
  * transcript store for the activity monitor to read — so liveness simply
  * isn't tracked. A missing vendor normalizes to the built-in default
@@ -88,6 +96,15 @@ function isCustomEngineTask(task: Task): boolean {
 export function buildSidebarRowView(opts: {
   readonly task: Task
   readonly activity?: TaskEngineState
+  /**
+   * A long daemon operation in flight for this task, from the orchestrator's
+   * `task.jobs` map (today: `ensureWorktree`). Presence means "running" —
+   * the row spins with a "materializing" subtitle, in EVERY attached pane,
+   * for the whole minutes-long `git worktree add` on a huge repo. Outranks
+   * the other signals: the worktree doesn't exist yet, so engine activity /
+   * branch labels can't be more current than this.
+   */
+  readonly job?: TaskJobState
   readonly live: boolean
   readonly spinnerFrame: number
   readonly subtitleBudget: number
@@ -117,24 +134,35 @@ export function buildSidebarRowView(opts: {
   // honour it; we only fall back to the neutral affordance when there isn't
   // one. `hasActivity` also covers `turn_complete` / `running` from hooks.
   const untrackedCustomEngine = isCustomEngineTask(task) && !hasActivity
+  // A daemon job in flight (worktree materialising) outranks everything,
+  // including the untracked-custom-engine fallback — the job signal is a
+  // genuine daemon-side liveness fact, not engine telemetry, so the spinner
+  // never lies here even for a custom engine.
+  const materializing = opts.job !== undefined
   const loading =
-    !untrackedCustomEngine &&
-    (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress"))
+    materializing ||
+    (!untrackedCustomEngine &&
+      (activityState === "running" || opts.live || (!hasActivity && !isMain && task.status === "in_progress")))
   const spinner = IN_PROGRESS_SPINNER[opts.spinnerFrame] ?? IN_PROGRESS_SPINNER[0]
-  const tone = untrackedCustomEngine
-    ? "textMuted"
-    : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? badge.tone)))
-  // Subtitle priority: a non-normal activity word (rate limited / needs
-  // permission / error) outranks the branch, then the branch, then — for an
+  const tone = materializing
+    ? "primary"
+    : untrackedCustomEngine
+      ? "textMuted"
+      : (activityLabel?.tone ?? (loading ? "primary" : (activityBadge?.tone ?? badge.tone)))
+  // Subtitle priority: the materializing word while a worktree job runs
+  // (there is no branch on disk yet), then a non-normal activity word (rate
+  // limited / needs permission / error), then the branch, then — for an
   // untracked custom engine with no branch — an explicit "no activity
   // tracking" note so the row reads as un-tracked rather than stuck, then
   // the lifecycle label (a neutral dash for `backlog`, never the word).
   const fallbackSubtitle = untrackedCustomEngine ? NO_TRACKING_SUBTITLE : STATUS_LABEL[task.status]
-  const subtitleText = activityLabel
-    ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
-    : branch.length > 0
-      ? opts.truncateBranch(branch, opts.subtitleBudget)
-      : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
+  const subtitleText = materializing
+    ? opts.truncateBranch(MATERIALIZING_SUBTITLE, opts.subtitleBudget)
+    : activityLabel
+      ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
+      : branch.length > 0
+        ? opts.truncateBranch(branch, opts.subtitleBudget)
+        : opts.truncateBranch(fallbackSubtitle, opts.subtitleBudget)
   // Untracked custom engine: a static dim dot instead of the spinner / empty
   // backlog badge, so liveness reads as "not tracked" rather than frozen.
   const restGlyph = untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? badge.glyph)

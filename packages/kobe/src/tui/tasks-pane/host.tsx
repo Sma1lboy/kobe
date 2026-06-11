@@ -602,6 +602,10 @@ function TasksShell(props: {
           // on approval), pushed from engine hooks via the daemon. Primary
           // liveness signal; the file-poll turn-detector stays as fallback.
           engineState={props.orch ? props.orch.engineStateSignal() : undefined}
+          // Long daemon jobs (worktree materialisation) pushed on the
+          // `task.jobs` channel — the row spins with "materializing" while
+          // a minutes-long `git worktree add` runs, in every attached pane.
+          taskJobs={props.orch ? props.orch.taskJobsSignal() : undefined}
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}

@@ -36,6 +36,18 @@ export interface TaskEngineState {
   readonly at: number
 }
 
+/**
+ * A long daemon operation currently IN FLIGHT for a task, accumulated from
+ * the `task.jobs` channel (today: `ensureWorktree` — `git worktree add` is
+ * minute-class on a huge repo). Presence in the map means "running"; the
+ * terminal phases (`done` / `error`) remove the entry, so a replayed
+ * terminal payload to a late subscriber is a harmless no-op. The job's
+ * outcome isn't surfaced here — the blocking RPC delivers it to the caller.
+ */
+export interface TaskJobState {
+  readonly kind: "ensureWorktree"
+}
+
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
 
 /**
@@ -73,6 +85,8 @@ export class RemoteOrchestrator {
   private readonly setDaemonVersionSig: (next: string | null) => void
   private readonly engineStateAcc: Accessor<ReadonlyMap<string, TaskEngineState>>
   private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
+  private readonly taskJobsAcc: Accessor<ReadonlyMap<string, TaskJobState>>
+  private readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
   private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
@@ -94,6 +108,7 @@ export class RemoteOrchestrator {
     const [update, setUpdate] = createSignal<UpdateInfo | null>(null)
     const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
+    const [taskJobs, setTaskJobs] = createSignal<ReadonlyMap<string, TaskJobState>>(new Map())
     const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
     const [keybindingsRev, setKeybindingsRev] = createSignal<number | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
@@ -107,6 +122,8 @@ export class RemoteOrchestrator {
     this.setDaemonVersionSig = (next) => setDaemonVersion(() => next)
     this.engineStateAcc = engineState
     this.setEngineStateSig = (next) => setEngineState(() => next)
+    this.taskJobsAcc = taskJobs
+    this.setTaskJobsSig = (next) => setTaskJobs(() => next)
     this.uiPrefsAcc = uiPrefs
     this.setUiPrefsSig = (next) => setUiPrefs(() => next)
     this.keybindingsRevAcc = keybindingsRev
@@ -310,6 +327,18 @@ export class RemoteOrchestrator {
   }
 
   /**
+   * Long daemon operations currently in flight, keyed by taskId — pushed
+   * live on the `task.jobs` channel (today: `ensureWorktree`, minute-class
+   * on a huge repo). The Tasks pane reads it to show a "materializing" row
+   * state in EVERY attached pane while the blocking RPC runs, not just the
+   * one that initiated it. Entries are removed on the terminal phases and
+   * pruned against each `task.snapshot` (same leak guard as engine-state).
+   */
+  taskJobsSignal(): Accessor<ReadonlyMap<string, TaskJobState>> {
+    return this.taskJobsAcc
+  }
+
+  /**
    * The persisted visual prefs (theme / transparent / focus accent),
    * pushed live on the daemon's `ui-prefs` channel from its state-file
    * watcher. `null` until the first payload arrives (e.g. before the
@@ -459,6 +488,7 @@ export class RemoteOrchestrator {
       if (Array.isArray(value)) {
         this.setTasks(value.map(deserializeTask))
         this.pruneEngineState(value)
+        this.pruneTaskJobs(value)
       }
       return
     }
@@ -480,6 +510,26 @@ export class RemoteOrchestrator {
       if (p.state === "idle") next.delete(p.taskId)
       else next.set(p.taskId, { state: p.state, detail: p.detail, at: typeof p.at === "number" ? p.at : 0 })
       this.setEngineStateSig(next)
+      return
+    }
+    if (name === "task.jobs") {
+      const p = payload as { taskId?: string; kind?: string; phase?: string } | undefined
+      if (typeof p?.taskId !== "string" || p.kind !== "ensureWorktree") return
+      const current = this.taskJobsAcc()
+      if (p.phase === "running") {
+        const next = new Map(current)
+        next.set(p.taskId, { kind: p.kind })
+        this.setTaskJobsSig(next)
+        return
+      }
+      // Terminal phases (`done` / `error`) remove the entry. Skip the signal
+      // write when nothing is tracked — a replayed terminal payload to a
+      // late subscriber must be a true no-op, not a map-identity churn.
+      if ((p.phase === "done" || p.phase === "error") && current.has(p.taskId)) {
+        const next = new Map(current)
+        next.delete(p.taskId)
+        this.setTaskJobsSig(next)
+      }
       return
     }
     if (name === "ui-prefs") {
@@ -528,6 +578,27 @@ export class RemoteOrchestrator {
       next.delete(key)
     }
     if (next) this.setEngineStateSig(next)
+  }
+
+  /**
+   * Drop task-job entries for tasks that no longer exist — the same leak
+   * guard as {@link pruneEngineState}. A `done`/`error` publish normally
+   * clears the entry, but a task DELETED while its job runs (or a dropped
+   * terminal frame across a reconnect) would otherwise pin a phantom
+   * "materializing" row state forever in a long-lived pane process.
+   * No-op (no signal write) when nothing is stale.
+   */
+  private pruneTaskJobs(tasks: readonly SerializedTask[]): void {
+    const current = this.taskJobsAcc()
+    if (current.size === 0) return
+    const live = new Set(tasks.map((t) => t.id))
+    let next: Map<string, TaskJobState> | null = null
+    for (const key of current.keys()) {
+      if (live.has(key)) continue
+      if (!next) next = new Map(current)
+      next.delete(key)
+    }
+    if (next) this.setTaskJobsSig(next)
   }
 }
 

@@ -72,7 +72,7 @@
  * don't yet thread the focus signal still get a working sidebar.
  */
 
-import type { TaskEngineState } from "@/client/remote-orchestrator"
+import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { TextAttributes } from "@opentui/core"
@@ -213,6 +213,15 @@ export type SidebarProps = {
    * `task.status` heuristics, so the polling turn-detector still covers it.
    */
   engineState?: Accessor<ReadonlyMap<string, TaskEngineState>>
+  /**
+   * Long daemon operations in flight, keyed by taskId, from the daemon's
+   * `task.jobs` channel (today: `ensureWorktree` — a minutes-long
+   * `git worktree add` on a huge repo). A row with an entry shows the
+   * spinner + a "materializing" subtitle — in EVERY attached Tasks pane,
+   * not just the one that initiated the blocking RPC. Optional like
+   * {@link engineState}; absent means no job feedback (e.g. no daemon).
+   */
+  taskJobs?: Accessor<ReadonlyMap<string, TaskJobState>>
 }
 
 /**
@@ -829,6 +838,7 @@ export function Sidebar(props: SidebarProps) {
                 buildSidebarRowView({
                   task,
                   activity: props.engineState?.().get(task.id),
+                  job: props.taskJobs?.().get(task.id),
                   live: isLive(),
                   spinnerFrame: spinnerFrame(),
                   subtitleBudget: subtitleBudget(),

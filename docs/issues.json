@@ -4,7 +4,7 @@
     {
       "id": 5,
       "title": "Job-ify ensureWorktree: long daemon operations return a job id + push progress",
-      "status": "open",
+      "status": "done",
       "created": "2026-06-09",
       "body": "Follow-up to the async-ExecHost fix (commit 'fix: exec — async ExecHost run/fs ops'). The daemon's event loop no longer freezes during git worktree add, but the CALLING client still awaits the full RPC (minutes on a 30GB repo) with no feedback. Make minute-class operations (ensureWorktree, future clone) jobs: RPC returns immediately with a job id, progress/completion pushed over the existing subscribe channel, UI shows a materializing state on the task row. Job table + existing push channel — no external MQ; that was the 'daemon 要不要 MQ' answer (2026-06-09 audit)."
     },
