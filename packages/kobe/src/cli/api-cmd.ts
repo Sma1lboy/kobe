@@ -44,7 +44,7 @@ import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../lib/feedback.ts"
 import type { ResolvedRepoInit } from "../state/repo-init.ts"
-import { sessionExists, tmuxSessionName } from "../tmux/client.ts"
+import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
 import type { EnsureSessionOpts } from "../tui/panes/terminal/tmux.ts"
 import type { TaskStatus } from "../types/task.ts"
@@ -357,11 +357,7 @@ const VERBS: readonly VerbSpec[] = [
       F.taskId(),
       { name: "archived", type: "bool", default: "true", description: "true to archive, false to unarchive." },
     ],
-    handler: (ctx) =>
-      simpleRpc(ctx, "task.archive", {
-        taskId: ctx.args.require("task-id"),
-        archived: ctx.args.bool("archived") ?? true,
-      }),
+    handler: archive,
   },
   {
     name: "pin",
@@ -393,11 +389,7 @@ const VERBS: readonly VerbSpec[] = [
     summary:
       "Permanently remove a task (and its worktree). DESTRUCTIVE — prefer `archive`. Needs --force on a dirty worktree.",
     flags: [F.taskId(), { name: "force", type: "bool", description: "Delete even with uncommitted changes." }],
-    handler: (ctx) =>
-      simpleRpc(ctx, "task.delete", {
-        taskId: ctx.args.require("task-id"),
-        force: ctx.args.bool("force") ?? false,
-      }),
+    handler: deleteTask,
   },
   {
     name: "discover-adoptable",
@@ -871,6 +863,16 @@ interface ApiRuntime {
   resolveRepoRoot(absPath: string): Promise<string>
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
+  /**
+   * Stop and kill a task's tmux session (and its engine), mirroring the TUI's
+   * delete/archive teardown. The daemon must NOT touch tmux (it never imports
+   * it), so the CLI process owns this teardown — run only AFTER the matching
+   * `task.delete`/`task.archive` RPC succeeds. `switchClientBeforeKill` no-ops
+   * outside tmux (the CLI is rarely attached); `killSession` no-ops when the
+   * session isn't live. Best-effort: a teardown failure must not fail the
+   * already-committed RPC, so it never throws.
+   */
+  tearDownSession(taskId: string): Promise<void>
 }
 
 const defaultApiRuntime: ApiRuntime = {
@@ -879,6 +881,14 @@ const defaultApiRuntime: ApiRuntime = {
   resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveRepoRoot(absPath),
   readWorktreeChanges: async (worktreePath) =>
     (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
+  tearDownSession: async (taskId) => {
+    const session = tmuxSessionName(taskId)
+    // Switch any attached client away first so a kill doesn't blank a terminal
+    // (no-op when this process isn't on that session), then kill the session +
+    // its engine. Both are swallowed — the task is already gone from the index.
+    await switchClientBeforeKill(session).catch(() => {})
+    await killSession(session).catch(() => {})
+  },
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -985,6 +995,36 @@ async function setActive(ctx: VerbContext): Promise<unknown> {
   const taskId = none ? null : ctx.args.require("task-id")
   await daemon.request("task.setActive", { taskId })
   return { ok: true, activeTaskId: taskId }
+}
+
+async function archive(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const archived = ctx.args.bool("archived") ?? true
+  const res = await daemon.request("task.archive", { taskId, archived })
+  // Archiving STOPS the engine (matching the TUI's archiveTaskFlow + the verb's
+  // own "non-destructive: worktree/branch/history stay" contract): the data
+  // survives, but the live tmux session + engine subprocess must not keep
+  // burning resources. Unarchive is the inverse — it must NOT kill (the session
+  // is rebuilt fresh on next enter), so teardown is gated on `archived === true`.
+  // The daemon never touches tmux, so the kill runs here in the CLI process,
+  // only after the RPC has committed the flag.
+  if (archived) await ctx.runtime.tearDownSession(taskId)
+  return res
+}
+
+async function deleteTask(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const force = ctx.args.bool("force") ?? false
+  const res = await daemon.request("task.delete", { taskId, force })
+  // The daemon's task.delete removes the worktree + index entry but never the
+  // tmux session (it doesn't import tmux). Without this, a scripted delete
+  // orphans the `kobe-<id>` session + its engine — invisible to every kobe UI
+  // since the task is gone from tasks.json. Mirror the TUI's finishDeletedTaskFlow
+  // and kill it here, after the delete RPC succeeds.
+  await ctx.runtime.tearDownSession(taskId)
+  return res
 }
 
 async function adopt(ctx: VerbContext): Promise<unknown> {

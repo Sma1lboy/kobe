@@ -97,8 +97,18 @@ function stubRuntime(overrides: Partial<ApiRuntime> = {}): ApiRuntime {
     },
     resolveRepoRoot: async (p) => p,
     readWorktreeChanges: async () => ({ added: 0, deleted: 0 }),
+    tearDownSession: async () => {},
     ...overrides,
   }
+}
+
+/** A tearDownSession stub that records the task ids it was asked to kill. */
+function recordingTearDown() {
+  const killed: string[] = []
+  const tearDownSession: ApiRuntime["tearDownSession"] = async (taskId) => {
+    killed.push(taskId)
+  }
+  return { killed, tearDownSession }
 }
 
 /** A deliverPrompt that records its calls instead of touching tmux. */
@@ -440,6 +450,42 @@ describe("simple verb handlers", () => {
     ])
   })
 
+  it("archive(true) kills the task's tmux session AFTER the RPC commits", async () => {
+    // Archiving stops the engine (matching the TUI archiveTaskFlow + the verb's
+    // own "worktree/branch/history stay" contract): the live session must not
+    // outlive the archive flag, or it keeps burning resources.
+    const order: string[] = []
+    const client = new FakeClient({
+      "task.archive": () => {
+        order.push("rpc")
+        return {}
+      },
+    })
+    const { killed, tearDownSession } = recordingTearDown()
+    await invokeVerb("archive", ["--task-id", "t1"], {
+      client,
+      runtime: stubRuntime({
+        tearDownSession: async (id) => {
+          order.push("kill")
+          await tearDownSession(id)
+        },
+      }),
+    })
+    expect(killed).toEqual(["t1"])
+    // The kill runs only after the daemon has committed the archive.
+    expect(order).toEqual(["rpc", "kill"])
+  })
+
+  it("unarchive does NOT kill the session (it's rebuilt fresh on next enter)", async () => {
+    const client = new FakeClient({ "task.archive": () => ({}) })
+    const { killed, tearDownSession } = recordingTearDown()
+    await invokeVerb("archive", ["--task-id", "t1", "--archived=false"], {
+      client,
+      runtime: stubRuntime({ tearDownSession }),
+    })
+    expect(killed).toEqual([])
+  })
+
   it("delete defaults force:false; --force flips it", async () => {
     const client = new FakeClient({ "task.delete": () => ({}) })
     await invokeVerb("delete", ["--task-id", "t1"], { client, runtime: stubRuntime() })
@@ -448,6 +494,31 @@ describe("simple verb handlers", () => {
       { taskId: "t1", force: false },
       { taskId: "t1", force: true },
     ])
+  })
+
+  it("delete kills the orphaned tmux session AFTER the delete RPC commits", async () => {
+    // The daemon's task.delete removes the worktree + index entry but never the
+    // tmux session (it can't — it never imports tmux). The CLI must kill it, or
+    // a scripted delete leaks a live engine invisible to every kobe UI.
+    const order: string[] = []
+    const client = new FakeClient({
+      "task.delete": () => {
+        order.push("rpc")
+        return {}
+      },
+    })
+    const { killed, tearDownSession } = recordingTearDown()
+    await invokeVerb("delete", ["--task-id", "t1", "--force"], {
+      client,
+      runtime: stubRuntime({
+        tearDownSession: async (id) => {
+          order.push("kill")
+          await tearDownSession(id)
+        },
+      }),
+    })
+    expect(killed).toEqual(["t1"])
+    expect(order).toEqual(["rpc", "kill"])
   })
 })
 
