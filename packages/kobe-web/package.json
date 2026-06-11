@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "bun run dev.ts",
+    "dev:sandbox": "KOBE_HOME_DIR=../kobe/.dev-sandbox/home KOBE_TMUX_SOCKET=kobe-sandbox bun run dev.ts",
     "dev:vite": "vite dev --port 5173 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
