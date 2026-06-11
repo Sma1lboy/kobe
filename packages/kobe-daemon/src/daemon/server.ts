@@ -30,6 +30,7 @@ import {
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
+import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
 // (tests, the kobe-web bridge) can reach it via the existing
@@ -76,6 +77,8 @@ export interface DaemonServerOptions {
   readonly uiPrefsDebounceMs?: number
   /** Keybindings watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_KEYBINDINGS_DEBOUNCE_MS}. */
   readonly keybindingsDebounceMs?: number
+  /** Worktree-changes collector tick in ms; `0` disables. Defaults to {@link DEFAULT_WORKTREE_CHANGES_TICK_MS}. */
+  readonly worktreeChangesTickMs?: number
 }
 
 export interface DaemonServer {
@@ -273,6 +276,18 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     debounceMs: options.keybindingsDebounceMs ?? DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
   })
 
+  // Single worktree-changes collector (issue #6): the daemon runs the
+  // guarded `git status` polls for every non-archived local worktree and
+  // publishes the full counts map on the `worktree.changes` channel, so
+  // panes render pushes instead of each spawning their own per-row git
+  // polls. Panes detect the channel via `hello.capabilities` and keep
+  // their local poller only as the no-daemon / old-daemon fallback.
+  const stopWorktreeChangesCollector = startWorktreeChangesCollector(
+    orch,
+    bus,
+    options.worktreeChangesTickMs ?? DEFAULT_WORKTREE_CHANGES_TICK_MS,
+  )
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -286,6 +301,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       stopAutoTitlePoller()
       stopUiPrefsWatcher()
       stopKeybindingsWatcher()
+      stopWorktreeChangesCollector()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

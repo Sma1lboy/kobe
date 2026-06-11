@@ -45,6 +45,33 @@ export interface WorktreeChanges {
 const ZERO: WorktreeChanges = { added: 0, deleted: 0 }
 
 /**
+ * Value equality for change counts — shared by the local poller's signal
+ * `equals`, the sidebar's per-row memo, and the RemoteOrchestrator's
+ * pushed-map comparison, so "unchanged counts don't re-render rows"
+ * (DESIGN §5.5) is one predicate everywhere.
+ */
+export function sameWorktreeChanges(a: WorktreeChanges, b: WorktreeChanges): boolean {
+  return a.added === b.added && a.deleted === b.deleted
+}
+
+/**
+ * Pick the DAEMON-pushed counts for a row, or `null` when the local
+ * poller must serve it (issue #6). A non-null `pushed` map means a
+ * daemon-side collector owns git polling for this process — a worktree
+ * absent from the map (just-created task, archived row, remote project)
+ * reads as zeros (chip hidden), NEVER as "poll locally": the fallback is
+ * per-connection, not per-row, or every pane would re-grow git polls for
+ * exactly the rows the daemon deliberately skips. Pure — unit-tested.
+ */
+export function pickPushedChanges(
+  pushed: ReadonlyMap<string, WorktreeChanges> | null | undefined,
+  worktreePath: string,
+): WorktreeChanges | null {
+  if (!pushed) return null
+  return pushed.get(worktreePath) ?? ZERO
+}
+
+/**
  * Read worktree change counts for `worktreePath`. Never throws —
  * returns zeros for any failure mode so the renderer skips the chip.
  */

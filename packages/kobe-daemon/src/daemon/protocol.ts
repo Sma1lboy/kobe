@@ -233,6 +233,24 @@ export interface ChannelPayloads {
     /** Present only on `phase: "error"` — the thrown message, for UI hints. */
     error?: string
   }
+  /**
+   * Uncommitted-change counts for every collected worktree (issue #6) —
+   * the daemon is the SINGLE `git status` collector; panes render these
+   * pushes instead of each running their own per-row git polls (N panes ×
+   * M tasks of duplicated subprocesses, the pre-daemon shape). The payload
+   * is the FULL map (worktreePath → counts), republished only when
+   * something actually changed, so the last-value replay hands a late
+   * subscriber the whole picture in one frame. Keys are absolute LOCAL
+   * worktree paths; archived tasks and remote (`ssh://`) projects are
+   * never collected, and a deleted/archived task's entry drops from the
+   * map on the collector's next tick. A `Record` (not a Map) because this
+   * is a JSON wire payload. Clients that never see this channel (an older
+   * daemon — detected via `hello.capabilities`) fall back to local
+   * polling.
+   */
+  "worktree.changes": {
+    changes: Record<string, { added: number; deleted: number }>
+  }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -244,6 +262,9 @@ export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
 
 /** The `task.jobs` channel payload — long-operation lifecycle progress. */
 export type TaskJobsPayload = ChannelPayloads["task.jobs"]
+
+/** The `worktree.changes` channel payload — daemon-collected change counts. */
+export type WorktreeChangesPayload = ChannelPayloads["worktree.changes"]
 
 /** A push-channel name (a key of {@link ChannelPayloads}). */
 export type ChannelName = keyof ChannelPayloads
@@ -257,6 +278,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "ui-prefs",
   "keybindings",
   "task.jobs",
+  "worktree.changes",
 ]
 
 /**

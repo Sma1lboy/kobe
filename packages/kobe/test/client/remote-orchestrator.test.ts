@@ -1,6 +1,10 @@
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { describe, expect, it } from "vitest"
-import { RemoteOrchestrator } from "../../src/client/remote-orchestrator.ts"
+import {
+  RemoteOrchestrator,
+  parseWorktreeChangesPayload,
+  sameWorktreeChangesMap,
+} from "../../src/client/remote-orchestrator.ts"
 
 /**
  * Minimal fake daemon client: RemoteOrchestrator only needs `on("*", …)`
@@ -176,5 +180,122 @@ describe("RemoteOrchestrator channel handling", () => {
       emit("task.snapshot", { tasks: [snapshotTask("t1")] })
       expect(orch.taskJobsSignal()()).toBe(after)
     })
+  })
+
+  // `worktree.changes` — the daemon-collected `+N −M` map (issue #6). Each
+  // push REPLACES the whole map (the daemon publishes the full picture and
+  // prunes deleted/archived tasks' entries itself), so unlike engine-state
+  // there's no snapshot reconciliation — but unchanged pushes must still be
+  // identity no-ops or every sidebar row re-renders on bus-replay noise.
+  describe("worktree.changes channel", () => {
+    it("starts null (no daemon-collected data → local-poller fallback)", () => {
+      const { client } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      expect(orch.worktreeChangesSignal()()).toBeNull()
+    })
+
+    it("reflects a pushed map and replaces it wholesale (absent keys drop)", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+
+      emit("worktree.changes", {
+        changes: { "/wt/a": { added: 2, deleted: 1 }, "/wt/b": { added: 0, deleted: 0 } },
+      })
+      const first = orch.worktreeChangesSignal()()
+      expect(first?.get("/wt/a")).toEqual({ added: 2, deleted: 1 })
+      expect(first?.size).toBe(2)
+
+      // The daemon pruned /wt/b (task archived/deleted) — the replacement
+      // map is authoritative; the stale key is gone without client logic.
+      emit("worktree.changes", { changes: { "/wt/a": { added: 2, deleted: 1 } } })
+      const second = orch.worktreeChangesSignal()()
+      expect(second?.size).toBe(1)
+      expect(second?.has("/wt/b")).toBe(false)
+    })
+
+    it("an unchanged push keeps the same map reference (no re-render churn)", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
+      const before = orch.worktreeChangesSignal()()
+      // Bus replay across a reconnect resends the identical last value.
+      emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
+      expect(orch.worktreeChangesSignal()()).toBe(before)
+    })
+
+    it("ignores malformed payloads instead of clobbering a good map", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
+      const before = orch.worktreeChangesSignal()()
+      emit("worktree.changes", undefined)
+      emit("worktree.changes", { changes: "nope" })
+      emit("worktree.changes", { changes: { "/wt/a": { added: "two", deleted: 0 } } })
+      expect(orch.worktreeChangesSignal()()).toBe(before)
+    })
+  })
+})
+
+// Rolling-upgrade fallback: the client trusts daemon pushes only when the
+// daemon ADVERTISES the channel in hello.capabilities. An old daemon (no
+// capability) leaves the signal null → the sidebar's local poller engages;
+// a capable daemon flips it non-null even before the first publish, so the
+// pane stops spawning git processes the moment it connects.
+describe("worktree.changes capability gating (init)", () => {
+  function fakeRpcClient(hello: Record<string, unknown>) {
+    let star: ((frame: { name: string; payload: unknown }) => void) | undefined
+    const client = {
+      on: (name: string, handler: (frame: { name: string; payload: unknown }) => void) => {
+        if (name === "*") star = handler
+        return () => {}
+      },
+      onLifecycle: () => () => {},
+      request: async (name: string) => (name === "hello" ? hello : {}),
+      subscribe: async () => ({}),
+    } as unknown as KobeDaemonClient
+    return { client, emit: (name: string, payload: unknown) => star?.({ name, payload }) }
+  }
+
+  it("a capable daemon yields an empty map (trust pushes) before any publish", async () => {
+    const { client } = fakeRpcClient({ protocolVersion: 3, capabilities: ["task.snapshot", "worktree.changes"] })
+    const orch = new RemoteOrchestrator(client)
+    await orch.init()
+    expect(orch.worktreeChangesSignal()()?.size).toBe(0)
+  })
+
+  it("a capability-less (old) daemon resets the signal to null — fallback engages", async () => {
+    const { client, emit } = fakeRpcClient({ protocolVersion: 3, capabilities: ["task.snapshot"] })
+    const orch = new RemoteOrchestrator(client)
+    // A stale map from a previous connection must not survive a reconnect
+    // to a downgraded daemon.
+    emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
+    await orch.init()
+    expect(orch.worktreeChangesSignal()()).toBeNull()
+  })
+
+  it("a replayed map delivered during subscribe is not clobbered by init", async () => {
+    const { client, emit } = fakeRpcClient({ protocolVersion: 3, capabilities: ["worktree.changes"] })
+    const orch = new RemoteOrchestrator(client)
+    // The daemon replays the channel's last value before the subscribe
+    // response resolves; the capability step must keep it.
+    emit("worktree.changes", { changes: { "/wt/a": { added: 4, deleted: 2 } } })
+    await orch.init()
+    expect(orch.worktreeChangesSignal()()?.get("/wt/a")).toEqual({ added: 4, deleted: 2 })
+  })
+})
+
+describe("worktree.changes pure helpers", () => {
+  it("parseWorktreeChangesPayload accepts an empty map and rejects malformed entries", () => {
+    expect(parseWorktreeChangesPayload({ changes: {} })?.size).toBe(0)
+    expect(parseWorktreeChangesPayload(undefined)).toBeNull()
+    expect(parseWorktreeChangesPayload({ changes: [] })).toBeNull()
+    expect(parseWorktreeChangesPayload({ changes: { "/wt": { added: 1 } } })).toBeNull()
+  })
+
+  it("sameWorktreeChangesMap compares entry-wise", () => {
+    const a = new Map([["/wt", { added: 1, deleted: 2 }]])
+    expect(sameWorktreeChangesMap(a, new Map([["/wt", { added: 1, deleted: 2 }]]))).toBe(true)
+    expect(sameWorktreeChangesMap(a, new Map([["/wt", { added: 1, deleted: 3 }]]))).toBe(false)
+    expect(sameWorktreeChangesMap(a, new Map())).toBe(false)
   })
 })

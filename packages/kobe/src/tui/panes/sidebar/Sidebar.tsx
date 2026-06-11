@@ -104,6 +104,7 @@ import {
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
 import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
+import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
 
 export type SidebarProps = {
@@ -222,6 +223,16 @@ export type SidebarProps = {
    * {@link engineState}; absent means no job feedback (e.g. no daemon).
    */
   taskJobs?: Accessor<ReadonlyMap<string, TaskJobState>>
+  /**
+   * Daemon-collected `+N −M` counts keyed by worktree path, from the
+   * `worktree.changes` channel (issue #6). When this yields a non-null
+   * map, the per-row chips render the PUSHED counts and this process
+   * spawns ZERO git subprocesses — the daemon is the single collector.
+   * `null` / omitted (no daemon, an old daemon without the channel, or
+   * the socket dropped) falls back to the local async poller, row by
+   * row, with the original archived-row gate intact.
+   */
+  worktreeChanges?: Accessor<ReadonlyMap<string, WorktreeChanges> | null>
 }
 
 /**
@@ -807,24 +818,37 @@ export function Sidebar(props: SidebarProps) {
                 }
               }
               // Per-row "uncommitted changes" file counts, rendered on
-              // the right edge as `+N −M`. The `branchTick` read keeps
-              // the ~2s cadence, but the git status itself runs through
-              // the ASYNC poller — a huge worktree costs a background
-              // child process, never a frozen event loop (a 30GB repo's
-              // sync `git status` used to hard-freeze the pane the
-              // moment its row rendered). Archived rows don't poll at
-              // all: the Archives view must not pay git-status for
-              // shelved worktrees — that listing was the reported
-              // trigger. Empty when the worktree is clean — the
-              // renderer skips the chip entirely. Returned as a struct
-              // (not a joined string) so the renderer can colour `+N`
-              // with `theme.success` and `−N` with `theme.error`,
-              // matching the FileTree pane's per-file `+/−` badges.
-              const changes = createMemo(() => {
-                branchTick()
-                if (!task.archived) pollWorktreeChanges(task.worktreePath)
-                return worktreeChanges(task.worktreePath)
-              })
+              // the right edge as `+N −M`. PREFERRED source: the daemon's
+              // `worktree.changes` pushes (issue #6) — one collector in
+              // the daemon, zero git subprocesses in this pane. FALLBACK
+              // (no daemon / old daemon / socket down): the local ASYNC
+              // poller — the `branchTick` read keeps the ~2s cadence, and
+              // a huge worktree costs a background child process, never a
+              // frozen event loop (a 30GB repo's sync `git status` used
+              // to hard-freeze the pane the moment its row rendered).
+              // Archived rows show nothing and trigger nothing on either
+              // path: the daemon never collects them, and the local path
+              // keeps its poll gate — the Archives view must not pay
+              // git-status for shelved worktrees (the original bug).
+              // The memo's custom `equals` keeps §5.5 intact on the push
+              // path: each push is a fresh map reference, so the memo
+              // recomputes, but unchanged counts don't propagate to the
+              // row. Empty when the worktree is clean — the renderer
+              // skips the chip entirely. Returned as a struct (not a
+              // joined string) so the renderer can colour `+N` with
+              // `theme.success` and `−N` with `theme.error`, matching
+              // the FileTree pane's per-file `+/−` badges.
+              const changes = createMemo(
+                () => {
+                  const pushed = pickPushedChanges(props.worktreeChanges?.(), task.worktreePath)
+                  if (pushed) return pushed
+                  branchTick()
+                  if (!task.archived) pollWorktreeChanges(task.worktreePath)
+                  return worktreeChanges(task.worktreePath)
+                },
+                undefined,
+                { equals: sameWorktreeChanges },
+              )
               // A `main` (project) row's branch isn't stored on the task — it's
               // the repo root's live checkout. Resolve it on the same 2s tick as
               // the change chip, through the same ASYNC poller pattern — even an

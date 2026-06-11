@@ -24,13 +24,27 @@
  *     (children spawned via `spawnCapture` get SIGKILLed) and the key
  *     backs off for `slowRetryMs`.
  *
+ * The guards themselves (the pure scheduling math + the abort/timeout run
+ * wrapper + `spawnCapture`) live in the dependency-free
+ * `src/lib/poll-scheduling.ts`, shared with the DAEMON's worktree-changes
+ * collector (issue #6) — this module is the solid-js binding: per-key
+ * signals so reads are reactive. The re-exports below keep this module's
+ * public API exactly what it was before the extraction.
+ *
  * Failure contract: a run that throws, is aborted, or resolves after the
  * timeout never writes — `read` keeps returning the last good value (or
  * `initial`), so the UI goes stale or stays hidden rather than erroring.
  */
 
-import { spawn } from "node:child_process"
 import { createSignal } from "solid-js"
+import { type PollScheduleState, maybeStartScheduledRun } from "../../lib/poll-scheduling.ts"
+
+export {
+  computeNextAllowedAt,
+  shouldPoll,
+  spawnCapture,
+  type SpawnCaptureResult,
+} from "../../lib/poll-scheduling.ts"
 
 export interface BackgroundPollerConfig<T> {
   /**
@@ -68,31 +82,9 @@ export interface BackgroundPoller<T> {
   reset(): void
 }
 
-/**
- * When the next run may start. Pure — exported for unit tests.
- * Timed-out runs back off hard; completed runs scale with their own
- * duration so slow repos self-thin without a special case.
- */
-export function computeNextAllowedAt(
-  startedAt: number,
-  finishedAt: number,
-  timedOut: boolean,
-  cfg: { readonly slowRetryMs: number; readonly minIntervalMs: number },
-): number {
-  if (timedOut) return startedAt + cfg.slowRetryMs
-  return finishedAt + Math.max(cfg.minIntervalMs, (finishedAt - startedAt) * 5)
-}
-
-/** Whether a run may start now. Pure — exported for unit tests. */
-export function shouldPoll(state: { inFlight: boolean; nextAllowedAt: number }, now: number): boolean {
-  return !state.inFlight && now >= state.nextAllowedAt
-}
-
-interface PollEntry<T> {
+interface PollEntry<T> extends PollScheduleState {
   read: () => T
   write: (next: T) => void
-  inFlight: boolean
-  nextAllowedAt: number
 }
 
 export function createBackgroundPoller<T>(cfg: BackgroundPollerConfig<T>): BackgroundPoller<T> {
@@ -129,70 +121,15 @@ export function createBackgroundPoller<T>(cfg: BackgroundPollerConfig<T>): Backg
     poll(key: string): void {
       if (!key) return
       const entry = entryFor(key)
-      const startedAt = Date.now()
-      if (!shouldPoll(entry, startedAt)) return
-      entry.inFlight = true
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), cfg.timeoutMs)
-      void (async () => {
-        let value: T | undefined
-        let ok = false
-        try {
-          value = await cfg.run(key, controller.signal)
-          ok = true
-        } catch {
-          // Keep the last value — the reader goes stale, never errors.
-        }
-        clearTimeout(timer)
-        const timedOut = controller.signal.aborted
-        entry.nextAllowedAt = computeNextAllowedAt(startedAt, Date.now(), timedOut, cfg)
-        entry.inFlight = false
-        if (ok && !timedOut) entry.write(value as T)
-      })()
+      maybeStartScheduledRun(
+        entry,
+        cfg,
+        (signal) => cfg.run(key, signal),
+        (value) => entry.write(value),
+      )
     },
     reset(): void {
       entries.clear()
     },
   }
-}
-
-export interface SpawnCaptureResult {
-  /** Exit code, or null when the child errored / was killed (timeout). */
-  readonly status: number | null
-  readonly stdout: string
-}
-
-/**
- * Async spawn that collects stdout and resolves on close. Never rejects —
- * a spawn error (missing cwd, binary not on PATH) or an abort resolves
- * with `status: null` so callers branch on status, mirroring the
- * never-throw contract of the pane-side sync git helpers it replaces.
- * The AbortSignal kills the child with SIGKILL.
- */
-export function spawnCapture(
-  cmd: string,
-  args: readonly string[],
-  opts: { readonly cwd: string; readonly env?: NodeJS.ProcessEnv; readonly signal: AbortSignal },
-): Promise<SpawnCaptureResult> {
-  return new Promise((resolve) => {
-    let out = ""
-    let settled = false
-    const finish = (status: number | null): void => {
-      if (settled) return
-      settled = true
-      resolve({ status, stdout: out })
-    }
-    const child = spawn(cmd, args.slice(), {
-      cwd: opts.cwd,
-      stdio: ["ignore", "pipe", "ignore"],
-      env: opts.env,
-      signal: opts.signal,
-      killSignal: "SIGKILL",
-    })
-    child.stdout?.on("data", (chunk: Buffer | string) => {
-      out += String(chunk)
-    })
-    child.on("error", () => finish(null))
-    child.on("close", (code) => finish(code))
-  })
 }

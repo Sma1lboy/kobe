@@ -606,6 +606,24 @@ function TasksShell(props: {
           // `task.jobs` channel — the row spins with "materializing" while
           // a minutes-long `git worktree add` runs, in every attached pane.
           taskJobs={props.orch ? props.orch.taskJobsSignal() : undefined}
+          // Daemon-collected `+N −M` counts (issue #6): one `git status`
+          // collector in the daemon, pushed on `worktree.changes`; this
+          // pane spawns zero git processes while connected. Gated on the
+          // LIVE connection (same pattern as the task-list source above):
+          // a daemon idle-stop / restart flips this to null so the
+          // Sidebar's local poller takes over instead of freezing on the
+          // last pushed counts. The signal itself is null when the daemon
+          // predates the channel (absent from hello.capabilities) — the
+          // honest rolling-upgrade fallback.
+          worktreeChanges={
+            props.orch
+              ? () => {
+                  const orch = props.orch
+                  if (!orch || orch.connectionStateSignal()() !== "online") return null
+                  return orch.worktreeChangesSignal()()
+                }
+              : undefined
+          }
           onRenameRequest={(id) => void renameTask(id)}
           onDeleteRequest={(id) => void deleteTask(id)}
           onArchiveRequest={(id) => void archiveTask(id)}

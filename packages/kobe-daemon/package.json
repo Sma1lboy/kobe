@@ -19,7 +19,8 @@
     "./daemon/paths": "./src/daemon/paths.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/server": "./src/daemon/server.ts",
-    "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts"
+    "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
+    "./daemon/worktree-changes-collector": "./src/daemon/worktree-changes-collector.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -24,6 +24,7 @@ import {
 import { type Accessor, createEffect, createRoot, createSignal } from "solid-js"
 import type { EngineActivityDetail, TaskActivityState } from "../engine/hook-events.ts"
 import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
+import { type WorktreeChanges, sameWorktreeChanges } from "../tui/panes/sidebar/worktree-changes.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -46,6 +47,47 @@ export interface TaskEngineState {
  */
 export interface TaskJobState {
   readonly kind: "ensureWorktree"
+}
+
+/**
+ * Daemon-collected `+N −M` counts keyed by worktree path, from the
+ * `worktree.changes` channel (issue #6 — one collector in the daemon
+ * instead of per-pane git polling). `null` means "no daemon-collected
+ * data": either the daemon predates the channel (absent from
+ * `hello.capabilities`) or `init()` hasn't completed — the sidebar then
+ * falls back to its local poller.
+ */
+export type WorktreeChangesMap = ReadonlyMap<string, WorktreeChanges>
+
+/**
+ * Parse a `worktree.changes` wire payload into a path→counts map.
+ * Returns `null` for a malformed payload (the event is then ignored —
+ * never clobber a good map with garbage). Exported for unit tests.
+ */
+export function parseWorktreeChangesPayload(payload: unknown): Map<string, WorktreeChanges> | null {
+  const changes = (payload as { changes?: unknown } | undefined)?.changes
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) return null
+  const map = new Map<string, WorktreeChanges>()
+  for (const [path, value] of Object.entries(changes as Record<string, unknown>)) {
+    const counts = value as { added?: unknown; deleted?: unknown } | undefined
+    if (typeof counts?.added !== "number" || typeof counts.deleted !== "number") return null
+    map.set(path, { added: counts.added, deleted: counts.deleted })
+  }
+  return map
+}
+
+/**
+ * Entry-wise equality for two changes maps — an unchanged republish (e.g.
+ * the bus replaying its last value across a reconnect) must not churn the
+ * signal and re-render every sidebar row. Exported for unit tests.
+ */
+export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChangesMap): boolean {
+  if (a.size !== b.size) return false
+  for (const [path, counts] of a) {
+    const other = b.get(path)
+    if (!other || !sameWorktreeChanges(counts, other)) return false
+  }
+  return true
 }
 
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
@@ -87,6 +129,8 @@ export class RemoteOrchestrator {
   private readonly setEngineStateSig: (next: ReadonlyMap<string, TaskEngineState>) => void
   private readonly taskJobsAcc: Accessor<ReadonlyMap<string, TaskJobState>>
   private readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
+  private readonly worktreeChangesAcc: Accessor<WorktreeChangesMap | null>
+  private readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
   private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
@@ -109,6 +153,7 @@ export class RemoteOrchestrator {
     const [daemonVersion, setDaemonVersion] = createSignal<string | null>(null)
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
     const [taskJobs, setTaskJobs] = createSignal<ReadonlyMap<string, TaskJobState>>(new Map())
+    const [worktreeChanges, setWorktreeChanges] = createSignal<WorktreeChangesMap | null>(null)
     const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
     const [keybindingsRev, setKeybindingsRev] = createSignal<number | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
@@ -124,6 +169,8 @@ export class RemoteOrchestrator {
     this.setEngineStateSig = (next) => setEngineState(() => next)
     this.taskJobsAcc = taskJobs
     this.setTaskJobsSig = (next) => setTaskJobs(() => next)
+    this.worktreeChangesAcc = worktreeChanges
+    this.setWorktreeChangesSig = (next) => setWorktreeChanges(() => next)
     this.uiPrefsAcc = uiPrefs
     this.setUiPrefsSig = (next) => setUiPrefs(() => next)
     this.keybindingsRevAcc = keybindingsRev
@@ -207,9 +254,11 @@ export class RemoteOrchestrator {
       // Distinct from the protocol versions above: those gate compatibility,
       // this drives the non-fatal stale-build banner (see daemonStaleSignal).
       kobeVersion?: string
-      // Forward-compat: the daemon advertises its channel/feature set here.
-      // Unused today (we negotiate by version range); declared so the field
-      // is typed when a future client starts gating on a capability.
+      // The daemon's channel/feature set. The client gates the
+      // `worktree.changes` consumer on it (see below) — a capability list
+      // is the honest rollout mechanism for an additive channel: an old
+      // daemon simply doesn't advertise it, and the pane keeps its local
+      // git-polling fallback instead of waiting for pushes that never come.
       capabilities?: readonly string[]
     }>("hello", {
       protocolVersion: DAEMON_PROTOCOL_VERSION,
@@ -244,6 +293,20 @@ export class RemoteOrchestrator {
     // Pass our role so the daemon's lazy-shutdown refcount counts only
     // real front-end attaches (`gui`), not in-tmux helper panes (`pane`).
     await this.client.subscribe({ role: this.role })
+    // Daemon-collected worktree changes (issue #6): gate on the hello
+    // capability list — the honest "does this daemon run the collector?"
+    // signal during a rolling upgrade. A capable daemon replays the
+    // channel's last value during subscribe (handled above by handleEvent
+    // before this response resolves); when no value was published yet, an
+    // EMPTY map (not null) says "daemon collects — trust pushes, spawn no
+    // local git". An old daemon without the capability resets the signal
+    // to null so the sidebar's local poller engages cleanly — including
+    // after a reconnect that downgraded daemons.
+    if (hello.capabilities?.includes("worktree.changes")) {
+      if (this.worktreeChangesAcc() === null) this.setWorktreeChangesSig(new Map())
+    } else {
+      this.setWorktreeChangesSig(null)
+    }
     this.setConnectionState("online")
     logClient("orch", `subscribed as ${this.role} (${this.tasksAcc().length} tasks)`)
   }
@@ -336,6 +399,23 @@ export class RemoteOrchestrator {
    */
   taskJobsSignal(): Accessor<ReadonlyMap<string, TaskJobState>> {
     return this.taskJobsAcc
+  }
+
+  /**
+   * Daemon-collected `+N −M` uncommitted-change counts keyed by worktree
+   * path, pushed live on the `worktree.changes` channel (issue #6 — ONE
+   * collector in the daemon instead of per-pane git polling). `null` =
+   * no daemon-collected data (old daemon without the channel, or before
+   * `init()`): the sidebar then falls back to its local poller; non-null
+   * means "render pushes, spawn zero git processes".
+   *
+   * Unlike `engine-state` / `task.jobs` there is NO per-snapshot prune:
+   * each push REPLACES the whole map (the daemon publishes the full
+   * picture and drops deleted/archived tasks' entries itself on its next
+   * tick), so stale keys cannot accumulate in a long-lived pane.
+   */
+  worktreeChangesSignal(): Accessor<WorktreeChangesMap | null> {
+    return this.worktreeChangesAcc
   }
 
   /**
@@ -530,6 +610,17 @@ export class RemoteOrchestrator {
         next.delete(p.taskId)
         this.setTaskJobsSig(next)
       }
+      return
+    }
+    if (name === "worktree.changes") {
+      const next = parseWorktreeChangesPayload(payload)
+      if (!next) return // malformed → never clobber a good map
+      // Value-equality gate: an unchanged republish (bus replay across a
+      // reconnect, or a daemon publish that round-trips to the same counts)
+      // must not swap the map reference and re-render every sidebar row.
+      const current = this.worktreeChangesAcc()
+      if (current && sameWorktreeChangesMap(current, next)) return
+      this.setWorktreeChangesSig(next)
       return
     }
     if (name === "ui-prefs") {

@@ -11,7 +11,7 @@
     {
       "id": 6,
       "title": "Sink worktree-changes collection into the daemon (single collector, push to panes)",
-      "status": "open",
+      "status": "done",
       "created": "2026-06-09",
       "body": "Today every pane process polls git status itself through tui/lib/background-poll.ts (N panes x M tasks background processes, work duplicated per pane). Move collection into the daemon as the single collector and broadcast results over a new subscribe channel (worktree.changes), following the task.snapshot precedent; panes drop their git subprocesses entirely and just read pushes. Depends on nothing; pairs well with the job-ification issue. From the 2026-06-09 render-path/daemon audit."
     },

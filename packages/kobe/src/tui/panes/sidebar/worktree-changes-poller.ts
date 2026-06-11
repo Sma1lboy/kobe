@@ -22,10 +22,18 @@
  * Archived rows never call `poll()` at all (Sidebar gates on
  * `task.archived`): an Archives listing must not pay git-status for
  * worktrees the user has shelved — that's the exact original bug.
+ *
+ * Since issue #6 this poller is the NO-DAEMON FALLBACK only: when a
+ * connected daemon advertises the `worktree.changes` channel (one
+ * collector in the daemon, pushed counts), the Sidebar renders the pushes
+ * and never calls `poll()` here — a pane spawns zero git processes while
+ * daemon-connected. The daemon's collector
+ * (`kobe-daemon/daemon/worktree-changes-collector.ts`) reuses the same
+ * scheduling guards via `src/lib/poll-scheduling.ts`.
  */
 
 import { computeNextAllowedAt, createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
-import { type WorktreeChanges, parsePorcelain } from "./worktree-changes"
+import { type WorktreeChanges, parsePorcelain, sameWorktreeChanges } from "./worktree-changes"
 
 export { shouldPoll } from "../../lib/background-poll"
 
@@ -42,7 +50,7 @@ const poller = createBackgroundPoller<WorktreeChanges>({
   initial: ZERO,
   // Value-equality so a poll returning the same counts doesn't
   // re-render every visible row each tick.
-  equals: (a, b) => a.added === b.added && a.deleted === b.deleted,
+  equals: sameWorktreeChanges,
   timeoutMs: POLL_TIMEOUT_MS,
   slowRetryMs: SLOW_REPO_RETRY_MS,
   minIntervalMs: MIN_POLL_INTERVAL_MS,
