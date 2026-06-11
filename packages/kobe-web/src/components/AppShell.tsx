@@ -8,6 +8,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { Loader2, PanelRight, Plus, Search, Settings, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
+import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
@@ -21,6 +22,7 @@ import type {
 } from "../lib/types.ts"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
+import { ThemePicker } from "./ThemePicker.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
@@ -557,6 +559,32 @@ function StatusBar() {
   )
 }
 
+function EnginesCard() {
+  const engines = useEngines()
+  return (
+    <div className="border border-line bg-surface p-4">
+      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+        Engines
+      </div>
+      <div className="mt-4 flex flex-wrap gap-1.5">
+        {engines.map((engine) => (
+          <span
+            key={engine.id}
+            className="border border-line bg-bg px-2 py-1 font-mono text-[11px] text-muted"
+            title={engine.id}
+          >
+            {engine.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
+        Detected engine CLIs plus any custom engines you've registered. Switch a
+        task's engine from its Task panel or the workspace tab dropdown.
+      </p>
+    </div>
+  )
+}
+
 function SettingsPage({ onClose }: { onClose: () => void }) {
   const { daemonConnected, streamConnected, update } = useAppState()
 
@@ -626,24 +654,11 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           </div>
-          <div className="border border-line bg-surface p-4 md:col-span-2">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-              Workspace
-            </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-3">
-              <div className="border border-line-subtle bg-bg p-3">
-                <div className="text-subtle">Brand</div>
-                <div className="mt-2 font-mono text-primary">[kobe]</div>
-              </div>
-              <div className="border border-line-subtle bg-bg p-3">
-                <div className="text-subtle">Notes</div>
-                <div className="mt-2 text-fg">center tab</div>
-              </div>
-              <div className="border border-line-subtle bg-bg p-3">
-                <div className="text-subtle">Changes</div>
-                <div className="mt-2 text-fg">right rail</div>
-              </div>
-            </div>
+          <div className="md:col-span-2">
+            <ThemePicker />
+          </div>
+          <div className="md:col-span-2">
+            <EnginesCard />
           </div>
         </div>
       </div>

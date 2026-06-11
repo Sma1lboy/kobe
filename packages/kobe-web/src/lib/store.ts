@@ -7,7 +7,7 @@
 
 import { useSyncExternalStore } from "react"
 import { pruneMissingTasks } from "./tabs.ts"
-import { applyTheme } from "./theme.ts"
+import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   BridgeEvent,
   BridgeSnapshot,
@@ -118,7 +118,7 @@ function applyEvent(event: BridgeEvent): void {
       break
     case "ui-prefs":
       set({ uiPrefs: event.payload })
-      applyTheme(event.payload.theme)
+      applyThemeFromPrefs(event.payload.theme)
       break
   }
 }
@@ -143,7 +143,7 @@ function ensureStream(): void {
       daemonConnected: snap.connected,
       streamConnected: true,
     })
-    if (snap.uiPrefs) applyTheme(snap.uiPrefs.theme)
+    if (snap.uiPrefs) applyThemeFromPrefs(snap.uiPrefs.theme)
     // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
     // tasks deleted while this browser was away. A disconnected snapshot
     // carries the bridge's stale mirror; never prune from that.
