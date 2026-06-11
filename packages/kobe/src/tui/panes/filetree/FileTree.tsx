@@ -65,6 +65,7 @@ import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
 import { openExternally } from "./open-external"
+import { type Row, flattenTree, reconcileRows, sameFileList, sameStatusEntries, statusRows } from "./rows"
 
 /**
  * Default width of the pane in terminal cells from the old centre-column
@@ -123,22 +124,6 @@ export type FileTreeProps = {
    */
   onRefresh?: () => void
 }
-
-/**
- * Internal row shape. The All tab renders a tree (files + collapsible
- * directories with `depth` for indentation). The Changes tab renders a
- * flat list of status rows carrying +/- diff stats.
- */
-type Row =
-  | { kind: "file"; path: string; name: string; depth: number }
-  | { kind: "dir"; path: string; name: string; depth: number; expanded: boolean; hasChildren: boolean }
-  | {
-      kind: "status"
-      path: string
-      status: FileStatus
-      added: number | null | undefined
-      deleted: number | null | undefined
-    }
 
 /**
  * Map a status code to its theme token. Resolved at render time so a
@@ -225,8 +210,16 @@ export function FileTree(props: FileTreeProps) {
   // Loaded data + last error per fetch. We keep both `allFiles` and
   // `changes` so a tab switch is instant if both have been loaded
   // already (and refreshes when the user explicitly asks).
-  const [allFiles, setAllFiles] = createSignal<string[] | null>(null)
-  const [changes, setChanges] = createSignal<StatusEntry[] | null>(null)
+  //
+  // Content-equality on both signals is load-bearing for memory, not a
+  // perf nicety: the Ops pane refreshes on fs-watch events, and most
+  // events don't change the `git ls-files` / `git status` output at all
+  // (an engine re-writing a tracked file leaves the All list identical).
+  // Without `equals`, every refresh notified downstream, rebuilt every
+  // row, and forced `<For>` to recreate every opentui renderable —
+  // which leaks natively in @opentui/core 0.2.4 (see rows.ts).
+  const [allFiles, setAllFiles] = createSignal<string[] | null>(null, { equals: sameFileList })
+  const [changes, setChanges] = createSignal<StatusEntry[] | null>(null, { equals: sameStatusEntries })
   const [error, setError] = createSignal<string | null>(null)
   // Set of expanded directory paths (relative to worktree root). The
   // tree renders top-level entries always; deeper levels show only
@@ -346,47 +339,24 @@ export function FileTree(props: FileTreeProps) {
     return buildTree(files)
   })
 
-  function flattenTree(node: TreeNode, expanded: ReadonlySet<string>, depth: number, out: Row[]): void {
-    for (const child of node.children) {
-      if (child.isDir) {
-        const isOpen = expanded.has(child.path)
-        out.push({
-          kind: "dir",
-          path: child.path,
-          name: child.name,
-          depth,
-          expanded: isOpen,
-          hasChildren: child.children.length > 0,
-        })
-        if (isOpen) flattenTree(child, expanded, depth + 1, out)
-      } else {
-        out.push({ kind: "file", path: child.path, name: child.name, depth })
-      }
-    }
-  }
-
   // ---------- derived rows ----------
-  const rows = createMemo<Row[]>(() => {
+  // Rebuilds produce fresh row objects, but `<For>` keys by identity —
+  // so the memo reconciles against its previous value and keeps the old
+  // object for every row whose fields are unchanged. Renderables are
+  // then reused instead of destroyed+recreated (rows.ts has the full
+  // memory-leak story). Returning `prev` itself when nothing changed
+  // also suppresses downstream notification entirely.
+  const rows = createMemo<readonly Row[]>((prev) => {
+    const next: Row[] = []
     if (tab() === "all") {
       const root = tree()
-      if (root == null) return []
-      const out: Row[] = []
-      flattenTree(root, expandedDirs(), 0, out)
-      return out
-    }
-    if (tab() === "changes") {
+      if (root != null) flattenTree(root, expandedDirs(), 0, next)
+    } else if (tab() === "changes") {
       const list = changes()
-      if (list == null) return []
-      return list.map((e) => ({
-        kind: "status" as const,
-        path: e.path,
-        status: e.status,
-        added: e.added,
-        deleted: e.deleted,
-      }))
+      if (list != null) next.push(...statusRows(list))
     }
-    return []
-  })
+    return reconcileRows(prev ?? [], next)
+  }, [])
 
   /**
    * Column widths for the `+N` / `-N` stats on the Changes tab. Computed
