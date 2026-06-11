@@ -51,7 +51,14 @@ export async function ensureTaskSession(
   return { session, worktreePath }
 }
 
-function shellQuote(argv: readonly string[]): string {
+/**
+ * Quote an argv array into a single shell command line. Safe chars pass
+ * through bare; anything else is single-quoted with the `'\''` escape for
+ * embedded single quotes — so a value can't break out of the quoting and
+ * inject extra commands. Exported for tests (it builds the engine launch
+ * line that runs in the worktree).
+ */
+export function shellQuote(argv: readonly string[]): string {
   return argv.map((a) => (/^[A-Za-z0-9_/.:=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ")
 }
 
