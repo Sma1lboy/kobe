@@ -17,6 +17,7 @@ const SHORTCUTS: Shortcut[] = [
     keys: ["⌘", "K"],
     label: "Command palette — jump to a task or run an action",
   },
+  { keys: ["j", "k"], label: "Move between tasks in the rail (also ↑ / ↓)" },
   { keys: ["?"], label: "This help" },
   { keys: ["esc"], label: "Close a dialog / palette / help" },
 ]
