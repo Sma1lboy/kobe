@@ -17,6 +17,7 @@ import { matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
+import { PrChip } from "./PrChip.tsx"
 
 interface TriagedTask {
   task: Task
@@ -76,6 +77,7 @@ function Card({
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
+        <PrChip pr={task.prStatus} />
         {changes && (changes.added > 0 || changes.deleted > 0) && (
           <span className="shrink-0 font-mono text-[10px]">
             <span className="text-kobe-green">+{changes.added}</span>{" "}
