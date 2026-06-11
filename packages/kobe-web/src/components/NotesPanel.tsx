@@ -12,11 +12,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { renderMarkdown } from "../lib/markdown.ts"
 import { fetchNotes, saveNotes } from "../lib/notes.ts"
+import { type SaveState, saveStatusLabel } from "../lib/save-state.ts"
 import "./notes-markdown.css"
 
 const AUTOSAVE_DEBOUNCE_MS = 600
-
-type SaveState = "idle" | "saving" | "saved" | "error"
 
 function SectionHeader({
   children,
@@ -33,19 +32,6 @@ function SectionHeader({
       {right}
     </div>
   )
-}
-
-function statusLabel(state: SaveState): string {
-  switch (state) {
-    case "saving":
-      return "saving…"
-    case "saved":
-      return "saved"
-    case "error":
-      return "save failed"
-    default:
-      return ""
-  }
 }
 
 export function NotesPanel({
@@ -132,7 +118,7 @@ export function NotesPanel({
                 <span
                   className={`text-[10px] ${saveState === "error" ? "text-kobe-red" : "text-subtle"}`}
                 >
-                  {statusLabel(saveState)}
+                  {saveStatusLabel(saveState)}
                 </span>
               )}
               <button
