@@ -31,6 +31,7 @@ import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
 import { matchesTask, sortTasks, type TaskSortMode } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
+import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob, TaskPRStatus } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
@@ -214,6 +215,7 @@ function TaskRail({
   } = useAppState()
   const { selectedTaskId } = useTabsState()
   const [query, setQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<Bucket | "all">("all")
   const [sortMode, setSortMode] = useState<TaskSortMode>("default")
   const [showArchived, setShowArchived] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -243,10 +245,18 @@ function TaskRail({
   const visible = useMemo(
     () =>
       sortTasks(
-        activeTasks.filter((task) => matchesTask(task, query)),
+        activeTasks.filter(
+          (task) =>
+            matchesTask(task, query) &&
+            matchesStatusFilter(
+              engineStates[task.id],
+              worktreeChanges[task.worktreePath],
+              statusFilter,
+            ),
+        ),
         sortMode,
       ),
-    [activeTasks, query, sortMode],
+    [activeTasks, query, statusFilter, sortMode, engineStates, worktreeChanges],
   )
   const projects = visible.filter((task) => task.kind === "main")
   const worktrees = visible.filter((task) => task.kind !== "main")
@@ -408,6 +418,34 @@ function TaskRail({
             </button>
           )}
         </label>
+        <div className="mt-2 flex items-center gap-1">
+          {(
+            [
+              { key: "all", label: "All", title: "All tasks" },
+              {
+                key: "attention",
+                label: "Needs",
+                title: "Needs input / errored / rate-limited",
+              },
+              { key: "working", label: "Run", title: "Engine running" },
+              { key: "changes", label: "Dirty", title: "Uncommitted changes" },
+            ] as Array<{ key: Bucket | "all"; label: string; title: string }>
+          ).map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setStatusFilter(c.key)}
+              title={c.title}
+              className={`border px-1.5 py-0.5 text-[10px] transition-colors ${
+                statusFilter === c.key
+                  ? "border-primary bg-inset text-fg"
+                  : "border-line bg-bg text-subtle hover:border-primary hover:text-fg"
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div ref={listRef} className="flex-1 overflow-y-auto">
         {booting ? (

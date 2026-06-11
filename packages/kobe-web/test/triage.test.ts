@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { triage } from "../src/lib/triage.ts"
+import { matchesStatusFilter, triage } from "../src/lib/triage.ts"
 import type { EngineState } from "../src/lib/types.ts"
 
 /**
@@ -59,5 +59,26 @@ describe("triage", () => {
   it("buckets an unknown engine state by dirtiness, not as working/attention", () => {
     expect(triage(eng("compacting"), dirty)).toBe("changes")
     expect(triage(eng("compacting"), clean)).toBe("quiet")
+  })
+})
+
+describe("matchesStatusFilter (rail status chips)", () => {
+  it("keeps every task when the filter is 'all'", () => {
+    expect(matchesStatusFilter(eng("running"), dirty, "all")).toBe(true)
+    expect(matchesStatusFilter(undefined, undefined, "all")).toBe(true)
+  })
+
+  it("keeps only tasks whose bucket matches the selected filter", () => {
+    expect(matchesStatusFilter(eng("error"), clean, "attention")).toBe(true)
+    expect(matchesStatusFilter(eng("running"), clean, "working")).toBe(true)
+    expect(matchesStatusFilter(eng("idle"), dirty, "changes")).toBe(true)
+  })
+
+  it("drops tasks in a different bucket than the filter", () => {
+    // a running task is NOT in the 'changes' or 'attention' filter
+    expect(matchesStatusFilter(eng("running"), dirty, "changes")).toBe(false)
+    expect(matchesStatusFilter(eng("running"), dirty, "attention")).toBe(false)
+    // an idle clean task is only in 'quiet', so no active-state filter keeps it
+    expect(matchesStatusFilter(eng("idle"), clean, "working")).toBe(false)
   })
 })

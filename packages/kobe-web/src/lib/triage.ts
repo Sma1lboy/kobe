@@ -30,3 +30,14 @@ export function triage(
   if (changes && (changes.added > 0 || changes.deleted > 0)) return "changes"
   return "quiet"
 }
+
+/** A status filter for the task rail's chips: "all" keeps everything, otherwise
+ *  keep only tasks whose triage bucket equals the selected one. Pure so the
+ *  rail's filter logic is unit-testable. */
+export function matchesStatusFilter(
+  engine: EngineState | undefined,
+  changes: { added: number; deleted: number } | undefined,
+  filter: Bucket | "all",
+): boolean {
+  return filter === "all" || triage(engine, changes) === filter
+}
