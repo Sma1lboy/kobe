@@ -15,6 +15,7 @@ import {
   chatTabCloseBinding,
   chatTabRenameBinding,
   chatTabSwitchBindings,
+  focusBindCommand,
   kobeStatusRight,
   parseObservedSession,
   tmuxInitialSizeArgs,
@@ -42,6 +43,71 @@ describe("chatTabSwitchBindings", () => {
     expect(chatTabSwitchBindings("C-[", "C-]")).toEqual([
       ["bind-key", "-n", "C-[", "previous-window"],
       ["bind-key", "-n", "C-]", "next-window"],
+    ])
+  })
+})
+
+describe("focusBindCommand", () => {
+  // Directional focus must NOT wrap: bare `select-pane -L` jumps from the
+  // leftmost Tasks pane to the RIGHTMOST pane. Each bind is gated on the
+  // matching `pane_at_*` edge format var — "" at the edge (falsy →
+  // if-shell runs nothing; the else command is omitted, which parses)
+  // and "1" elsewhere (→ the move runs). The OUTER window_zoomed_flag
+  // conditional exempts zoomed panes: zoom sets ALL FOUR pane_at_* flags
+  // to 1, which would otherwise make every focus chord a dead key while
+  // zoomed — zoomed presses fall through to plain select-pane (unzoom +
+  // move, the pre-guard behavior). Both halves verified live on tmux
+  // 3.5a with an attached client.
+  test("guards each direction with its pane_at_* edge variable", () => {
+    expect(focusBindCommand("C-h", "-L")).toEqual([
+      "bind-key",
+      "-n",
+      "C-h",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_left,,1}}",
+      "select-pane -L",
+    ])
+    expect(focusBindCommand("C-j", "-D")).toEqual([
+      "bind-key",
+      "-n",
+      "C-j",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_bottom,,1}}",
+      "select-pane -D",
+    ])
+    expect(focusBindCommand("C-k", "-U")).toEqual([
+      "bind-key",
+      "-n",
+      "C-k",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_top,,1}}",
+      "select-pane -U",
+    ])
+    expect(focusBindCommand("C-l", "-R")).toEqual([
+      "bind-key",
+      "-n",
+      "C-l",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_right,,1}}",
+      "select-pane -R",
+    ])
+  })
+
+  // The guard lives on the COMMAND side, so a user-overridden tmux.focus
+  // key set (resolveUserTmuxKeys) gets the same no-wrap behavior.
+  test("wraps whatever resolved key the user chose for the direction", () => {
+    expect(focusBindCommand("C-Left", "-L")).toEqual([
+      "bind-key",
+      "-n",
+      "C-Left",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_left,,1}}",
+      "select-pane -L",
     ])
   })
 })

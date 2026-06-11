@@ -36,6 +36,7 @@
 import { existsSync } from "node:fs"
 import { stat } from "node:fs/promises"
 import {
+  claudePaneIdStrict,
   currentSessionName,
   getSessionOption,
   runTmux,
@@ -393,6 +394,27 @@ function TasksShell(props: {
     }
   }
 
+  // Right arrow → re-focus THIS window's engine (claude/codex) pane, the
+  // inverse of ctrl+h. Targeting: the role-tagged lookup
+  // (`claudePaneIdStrict` → `@kobe_role=claude`, vendor-neutral) is the
+  // honest "current window's engine pane" — `paneIdByRole` lists the
+  // session's ACTIVE window, which is necessarily the window holding this
+  // pane (we only receive the keystroke while active), so no window
+  // derivation from $TMUX_PANE is needed. Preferred over
+  // `select-pane -t $TMUX_PANE -R`, which grabs whatever pane happens to
+  // sit right of the rail (wrong after a manual rearrange) — same shape as
+  // selectTasksPane, the ctrl+q first stage, just pointed the other way.
+  // No-op outside tmux (standalone `kobe tasks` has no $TMUX_PANE) or when
+  // the window has no tagged engine pane (legacy session).
+  async function focusEnginePane(): Promise<void> {
+    if (!process.env.TMUX_PANE) return
+    const session = await currentSessionName()
+    if (!session) return
+    const pane = await claudePaneIdStrict(session)
+    if (!pane) return
+    await runTmux(["select-pane", "-t", pane])
+  }
+
   async function moveTask(id: string, delta: -1 | 1): Promise<void> {
     const task = props.tasks().find((t) => t.id === id)
     if (!task || task.kind === "main" || !props.orch) return
@@ -461,6 +483,10 @@ function TasksShell(props: {
         if (id) void cycleVendor(id)
       },
       "tasks.toggleKeys": () => setKeysCollapsed(!keysCollapsed()),
+      // Fire-and-forget with an explicit catch — this pane process has no
+      // crash net, so a rejection must not become an unhandled one.
+      "tasks.focusEngine": () =>
+        void focusEnginePane().catch((err) => console.error("[kobe tasks] focus engine pane failed:", err)),
     }),
   }))
 
@@ -748,6 +774,9 @@ function ShortcutHints(props: {
   // resolution lands.
   const defaultHints = (): ReadonlyArray<Hint> => [
     { k: "enter", label: "open" },
+    // Right arrow re-focuses the current window's engine pane
+    // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
+    { k: "right", label: "focus engine" },
     { k: "n", label: "new task" },
     { k: "s", label: "settings" },
     { k: "o", label: "open wt" },

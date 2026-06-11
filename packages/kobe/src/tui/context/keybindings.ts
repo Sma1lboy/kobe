@@ -410,6 +410,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "u", label: "update", status: false },
   },
   {
+    // Right arrow jumps from the Tasks pane back into the current
+    // window's engine (claude/codex) pane — the spatial "go right into
+    // the conversation" gesture, the inverse of ctrl+h. Named key, not a
+    // bare letter, but still sidebar-scoped per the boundary rule; the
+    // Tasks-pane host gates it on no dialog + `/`-search inactive, so
+    // Right typed while searching keeps moving the input cursor.
+    id: "tasks.focusEngine",
+    scope: "sidebar",
+    keys: ["right"],
+    category: "Tasks pane",
+    description: "Focus the engine pane of the current window",
+    hint: { keys: "→", label: "engine", status: false },
+  },
+  {
     // `?` (shift+/ — terminals deliver the literal character) folds the
     // Tasks pane's `── keys ──` legend down to its header line and back.
     // The legend is ~20 rows tall with the tmux session chords included;

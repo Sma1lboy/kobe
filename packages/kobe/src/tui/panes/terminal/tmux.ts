@@ -161,6 +161,51 @@ export async function prepareWindowForAttach(session: string): Promise<void> {
   await healWorkspaceLayout(session)
 }
 
+/** Direction flag → the tmux format var that is `1` when the pane sits at that edge. */
+const FOCUS_EDGE_VARS = {
+  "-L": "pane_at_left",
+  "-D": "pane_at_bottom",
+  "-U": "pane_at_top",
+  "-R": "pane_at_right",
+} as const
+
+export type FocusDirection = keyof typeof FOCUS_EDGE_VARS
+
+/**
+ * One directional pane-focus binding, edge-guarded so it never WRAPS.
+ *
+ * Bare `select-pane -L` wraps at the window edge — ctrl+h from the
+ * leftmost Tasks pane landed on the RIGHTMOST pane, which reads as a
+ * teleport, not a move. The guard makes an edge press a no-op instead:
+ * `if-shell -F "#{?pane_at_left,,1}" "select-pane -L"` expands the
+ * conditional to `""` at the edge (falsy → if-shell runs nothing; the
+ * else command is simply OMITTED, which parses fine) and `"1"` elsewhere
+ * (truthy → the move runs). Verified live on tmux 3.5a (scratch `-L`
+ * socket): a real attached client's ctrl+h was a no-op on the leftmost
+ * pane and still moved left from a middle pane; same for the
+ * top/bottom/right edge vars. Wraps whatever key the user resolved for
+ * the `tmux.focus` group — the guard lives on the command side.
+ *
+ * ZOOM exemption: a zoomed pane reports ALL FOUR `pane_at_*` flags as 1
+ * (verified live), so a bare edge guard would turn every focus chord
+ * into a dead key while zoomed. The outer `window_zoomed_flag`
+ * conditional bypasses the guard when zoomed, so the chord falls
+ * through to plain `select-pane` — which unzooms and moves, exactly the
+ * pre-guard behavior (also verified live: zoomed %1 + ctrl+h → %0,
+ * zoom released).
+ */
+export function focusBindCommand(key: string, dir: FocusDirection): readonly string[] {
+  return [
+    "bind-key",
+    "-n",
+    key,
+    "if-shell",
+    "-F",
+    `#{?window_zoomed_flag,1,#{?${FOCUS_EDGE_VARS[dir]},,1}}`,
+    `select-pane ${dir}`,
+  ]
+}
+
 export interface EnsureSessionOpts {
   readonly name: string
   /** Working directory for every pane in the new session. */
@@ -436,7 +481,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // No-prefix Ctrl+Q is two-stage: focus the current window's Tasks pane,
   // then detach back to the launching shell on a second press from there.
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
-  // vim-tmux-navigator convention. (Ctrl+1/2/3 was tried first but
+  // vim-tmux-navigator convention — and are edge-guarded so they never
+  // wrap (see focusBindCommand). (Ctrl+1/2/3 was tried first but
   // terminals can't encode Ctrl+<digit> without the kitty protocol, so
   // the bindings registered yet never fired — KOB-233.) Directional
   // keys DO produce distinct codes and are the tmux-idiomatic choice.
@@ -532,10 +578,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     const t = chordToTmuxKey(def)
     if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
   }
-  const focusDirections = ["-L", "-D", "-U", "-R"] as const
+  const focusDirections: readonly FocusDirection[] = ["-L", "-D", "-U", "-R"]
   const focusBinds = userKeys.focus.flatMap((bind, i) => {
     const dir = focusDirections[i]
-    return bind && dir ? [["bind-key", "-n", bind.key, "select-pane", dir] as const] : []
+    return bind && dir ? [focusBindCommand(bind.key, dir)] : []
   })
   const b = userKeys.binds
   await runTmuxSequence([
