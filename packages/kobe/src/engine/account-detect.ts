@@ -184,7 +184,19 @@ async function probeBinary(probe: () => Promise<string>): Promise<BinaryStatus> 
  * the three CLIs are found — callers fall back to showing all vendors so an
  * empty selector never blocks task creation.
  */
-export async function detectAvailableVendors(deps: DetectDeps = defaultDeps): Promise<readonly VendorId[]> {
+/**
+ * Per-process memo of the production binary-discovery result. Installed engine
+ * CLIs don't appear or vanish mid-session, and the underlying `which` is three
+ * blocking `spawnSync` probes — uncached this re-runs on every engine-cycle
+ * keypress, every new-task dialog open, and every Ctrl+T (~10-15ms render-thread
+ * block each, repeated forever for an effectively-constant value). Cached only
+ * for the DEFAULT deps (the production path); a caller that injects custom deps
+ * (tests, an explicit re-probe) always runs fresh, so injectability and the
+ * first-call correctness are preserved.
+ */
+let cachedDefaultVendors: Promise<readonly VendorId[]> | null = null
+
+async function probeAvailableVendors(deps: DetectDeps): Promise<readonly VendorId[]> {
   const probes: ReadonlyArray<readonly [VendorId, () => Promise<string>]> = [
     ["claude", () => deps.findClaudeBinary()],
     ["codex", () => deps.findCodexBinary()],
@@ -196,12 +208,44 @@ export async function detectAvailableVendors(deps: DetectDeps = defaultDeps): Pr
   return detected.filter((v): v is VendorId => v !== null)
 }
 
+// NOT `async`: a plain function returns the cached promise VERBATIM, so the
+// memo is real (an `async` wrapper would mint a fresh outer promise per call
+// even when the inner value is cached).
+export function detectAvailableVendors(deps: DetectDeps = defaultDeps): Promise<readonly VendorId[]> {
+  // Only the production (default-deps) path is memoized — custom deps must
+  // re-probe so tests and explicit re-checks stay honest.
+  if (deps !== defaultDeps) return probeAvailableVendors(deps)
+  if (cachedDefaultVendors) return cachedDefaultVendors
+  // Cache the PROMISE (not the resolved value) so concurrent first calls share
+  // one probe; on rejection, clear it so a later call can retry.
+  const pending = probeAvailableVendors(deps).catch((err) => {
+    cachedDefaultVendors = null
+    throw err
+  })
+  cachedDefaultVendors = pending
+  return pending
+}
+
+/** Drop the memoized production binary-discovery result so the next
+ *  {@link detectAvailableVendors} (and {@link availableEngineIds}) re-probes.
+ *  For the rare case a CLI is installed/removed mid-session and the UI offers a
+ *  "rescan" — the Settings Accounts section is the natural caller. */
+export function resetAvailableVendorsCache(): void {
+  cachedDefaultVendors = null
+}
+
 /**
  * The full engine list to OFFER in the new-task selector: the detected
  * built-ins (above) PLUS every user-registered custom engine. Custom
  * engines are always shown — "the user added it" counts as available, no
  * binary probe (a missing binary just fails to launch with a shell error).
  * Reads the customEngineIds registry from the shared state.json.
+ *
+ * The built-in probe is memoized per process (see
+ * {@link detectAvailableVendors}) since installed CLIs don't change
+ * mid-session, but the custom-engine ids are re-read from state.json on EVERY
+ * call — state.json can change (Settings → Engines), and only the slow binary
+ * `which` probes are worth caching.
  */
 export async function availableEngineIds(deps: DetectDeps = defaultDeps): Promise<readonly VendorId[]> {
   const builtins = await detectAvailableVendors(deps)

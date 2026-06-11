@@ -469,6 +469,21 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     setCloneParentCursor(absoluteIndex)
   }
 
+  // Ctrl+A toggles select-all on the Adopt tab. It MUST be gated at
+  // REGISTRATION (not handler-side): the dispatcher calls preventDefault()
+  // on every matched binding, so an unconditional ctrl+a with an internal
+  // `if (tab() !== "adopt") return` would still swallow the key and kill
+  // opentui's input line-home (ctrl+a) in the Existing/Clone text fields.
+  // Same regression class the quick-task composer fixed — see
+  // quick-task-bindings.ts. The config thunk re-runs per keypress, so this
+  // spread tracks tab() live.
+  const adoptSelectAll = () => {
+    const list = adoptList()
+    if (list.length === 0) return
+    const allSelected = list.every((w) => adoptSelected().has(w.path))
+    setAdoptSelected(allSelected ? new Set<string>() : new Set(list.map((w) => w.path)))
+  }
+
   useBindings(() => ({
     bindings: [
       {
@@ -549,18 +564,10 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           }
         },
       },
-      {
-        // Ctrl+A on the Adopt tab toggles select-all over the filtered
-        // list (all-on unless everything is already selected → clears).
-        key: "ctrl+a",
-        cmd: () => {
-          if (tab() !== "adopt") return
-          const list = adoptList()
-          if (list.length === 0) return
-          const allSelected = list.every((w) => adoptSelected().has(w.path))
-          setAdoptSelected(allSelected ? new Set<string>() : new Set(list.map((w) => w.path)))
-        },
-      },
+      // Ctrl+A select-all exists ONLY on the Adopt tab (registration-gated;
+      // see `adoptSelectAll` above). On the Existing/Clone tabs it's absent,
+      // so ctrl+a falls through to the focused input as line-home.
+      ...(tab() === "adopt" ? [{ key: "ctrl+a", cmd: adoptSelectAll }] : []),
     ],
   }))
 

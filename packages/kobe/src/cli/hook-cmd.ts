@@ -30,14 +30,42 @@ import { isEngineActivityKind } from "../engine/hook-events.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 import { ALL_VENDORS } from "../types/vendor.ts"
 
+/** Default timeout for the stdin race — bounds a manual invocation without
+ *  stdin so it can't hang. */
+const STDIN_READ_TIMEOUT_MS = 500
+
+/**
+ * Race a text reader against a fallback timeout, returning "" if the timeout
+ * wins. CRUCIALLY clears the timer the moment the race settles: an un-cleared
+ * `setTimeout` stays pending and keeps the event loop alive for the full
+ * `timeoutMs` after the work is already done. `kobe hook` runs on EVERY Bash
+ * tool call + turn boundary of every Claude session machine-wide (it's the
+ * global PostToolUse / activity hook), so a dangling 500ms timer added ~500ms
+ * of pure idle wait to each of those invocations. Pure (reader + clock are the
+ * only inputs) so the timer-hygiene contract is unit-testable without `Bun`.
+ */
+export async function readTextWithTimeout(
+  read: () => Promise<string>,
+  timeoutMs: number = STDIN_READ_TIMEOUT_MS,
+): Promise<string> {
+  let raceTimer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      read(),
+      new Promise<string>((resolve) => {
+        raceTimer = setTimeout(() => resolve(""), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (raceTimer !== undefined) clearTimeout(raceTimer)
+  }
+}
+
 /** Read the hook's stdin JSON payload (Claude Code pipes it), bounded so a
  *  manual invocation without stdin can't hang. Returns {} on anything odd. */
 async function readStdinPayload(): Promise<Record<string, unknown>> {
   try {
-    const text = await Promise.race([
-      Bun.stdin.text(),
-      new Promise<string>((resolve) => setTimeout(() => resolve(""), 500)),
-    ])
+    const text = await readTextWithTimeout(() => Bun.stdin.text())
     if (!text.trim()) return {}
     const parsed = JSON.parse(text) as unknown
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
