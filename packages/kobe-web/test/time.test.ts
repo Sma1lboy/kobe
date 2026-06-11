@@ -14,6 +14,13 @@ describe("relativeTime", () => {
     expect(relativeTime(ago(30 * SEC), NOW)).toBe("now")
   })
 
+  it("crosses the 'now' → minutes boundary at 45s (not 60s)", () => {
+    // The cutoff is `sec < 45`; pin it so a `< 60` refactor can't slip past
+    // (the 30s case above wouldn't catch that).
+    expect(relativeTime(ago(44 * SEC), NOW)).toBe("now")
+    expect(relativeTime(ago(45 * SEC), NOW)).toBe("1m")
+  })
+
   it("buckets minutes", () => {
     expect(relativeTime(ago(3 * MIN), NOW)).toBe("3m")
     expect(relativeTime(ago(59 * MIN), NOW)).toBe("59m")
