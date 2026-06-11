@@ -36,6 +36,7 @@ const QUIET_RECONNECTS = 20
 type EngineStatePayload = ChannelPayloads["engine-state"]
 type TaskJobPayload = ChannelPayloads["task.jobs"]
 type WorktreeChangeCounts = ChannelPayloads["worktree.changes"]["changes"]
+type UiPrefsPayload = ChannelPayloads["ui-prefs"]
 
 /** Full bootstrap state for the SSE `snapshot` event (mirrors the SPA's
  *  BridgeSnapshot in src/lib/types.ts). */
@@ -49,6 +50,8 @@ export interface BridgeSnapshotState {
   jobs: Record<string, TaskJobPayload>
   /** worktreePath → uncommitted +added/−deleted counts (daemon-collected). */
   worktreeChanges: WorktreeChangeCounts
+  /** The user's persisted visual prefs (theme/sort) — null until replayed. */
+  uiPrefs: UiPrefsPayload | null
   connected: boolean
 }
 
@@ -76,6 +79,7 @@ export class DaemonLink {
   private update: ChannelPayloads["update"]["info"] = null
   private jobs: Record<string, TaskJobPayload> = {}
   private worktreeChanges: WorktreeChangeCounts = {}
+  private uiPrefs: UiPrefsPayload | null = null
 
   /**
    * First connection — may spawn the daemon, like any other kobe front-end
@@ -95,6 +99,7 @@ export class DaemonLink {
       update: this.update,
       jobs: this.jobs,
       worktreeChanges: this.worktreeChanges,
+      uiPrefs: this.uiPrefs,
       connected: this.connected,
     }
   }
@@ -220,6 +225,9 @@ export class DaemonLink {
       }
       case "worktree.changes":
         this.worktreeChanges = (payload as ChannelPayloads["worktree.changes"]).changes
+        break
+      case "ui-prefs":
+        this.uiPrefs = payload as UiPrefsPayload
         break
       case "daemon.stopping":
         // Lifecycle signal, not a channel — the socket close that follows

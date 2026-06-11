@@ -19,10 +19,11 @@ const SPA_CONSUMED = [
   "update",
   "task.jobs",
   "worktree.changes",
+  "ui-prefs",
 ] as const
 
 // The daemon channels the SPA deliberately drops — bytes it never renders.
-const SPA_DROPPED = ["ui-prefs", "keybindings"] as const
+const SPA_DROPPED = ["keybindings"] as const
 
 describe("SPA_CHANNELS whitelist", () => {
   it("is exactly the channels the SPA reducer consumes", () => {

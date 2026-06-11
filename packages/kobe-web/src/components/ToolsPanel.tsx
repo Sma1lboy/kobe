@@ -3,6 +3,7 @@
  * scratchpad and a compact worktree CHANGES list.
  */
 
+import { useNavigate } from "@tanstack/react-router"
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { useEngines } from "../lib/engines.ts"
@@ -100,6 +101,7 @@ function TaskOverview({ task }: { task: Task | null }) {
   const [copied, setCopied] = useState(false)
   const [confirm, setConfirm] = useState<PendingConfirm>(null)
   const engines = useEngines()
+  const navigate = useNavigate()
 
   useEffect(() => {
     setTitle(task?.title ?? "")
@@ -166,6 +168,7 @@ function TaskOverview({ task }: { task: Task | null }) {
     void run("archive", async () => {
       await rpc("task.archive", { taskId: task.id, archived: true })
       clearSelectedTask()
+      void navigate({ to: "/" })
       await rpc("task.setActive", { taskId: null })
     })
   }
@@ -186,6 +189,7 @@ function TaskOverview({ task }: { task: Task | null }) {
       try {
         await rpc("task.delete", { taskId: task.id, force })
         clearSelectedTask()
+        void navigate({ to: "/" })
         await rpc("task.setActive", { taskId: null }).catch(() => {})
         pushToast("success", `Deleted "${task.title || task.branch}"`)
       } catch (err) {

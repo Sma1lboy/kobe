@@ -7,12 +7,14 @@
 
 import { useSyncExternalStore } from "react"
 import { pruneMissingTasks } from "./tabs.ts"
+import { applyTheme } from "./theme.ts"
 import type {
   BridgeEvent,
   BridgeSnapshot,
   EngineState,
   Task,
   TaskJob,
+  UiPrefs,
   UpdateInfo,
   WorktreeChangeCounts,
 } from "./types.ts"
@@ -26,6 +28,8 @@ export interface AppState {
   jobs: Record<string, TaskJob>
   /** worktreePath → uncommitted +added/−deleted counts. */
   worktreeChanges: WorktreeChangeCounts
+  /** Persisted visual prefs shared with the TUI (theme, sort mode). */
+  uiPrefs: UiPrefs | null
   /** True once the first snapshot has hydrated the store. */
   hydrated: boolean
   /** The daemon connection behind the bridge is live. */
@@ -41,6 +45,7 @@ const initial: AppState = {
   update: null,
   jobs: {},
   worktreeChanges: {},
+  uiPrefs: null,
   hydrated: false,
   daemonConnected: false,
   streamConnected: false,
@@ -111,6 +116,10 @@ function applyEvent(event: BridgeEvent): void {
     case "worktree.changes":
       set({ worktreeChanges: event.payload.changes })
       break
+    case "ui-prefs":
+      set({ uiPrefs: event.payload })
+      applyTheme(event.payload.theme)
+      break
   }
 }
 
@@ -129,10 +138,12 @@ function ensureStream(): void {
       update: snap.update,
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
+      uiPrefs: snap.uiPrefs ?? null,
       hydrated: true,
       daemonConnected: snap.connected,
       streamConnected: true,
     })
+    if (snap.uiPrefs) applyTheme(snap.uiPrefs.theme)
     // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
     // tasks deleted while this browser was away. A disconnected snapshot
     // carries the bridge's stale mirror; never prune from that.

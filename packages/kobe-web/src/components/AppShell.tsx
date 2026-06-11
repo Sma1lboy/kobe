@@ -5,8 +5,9 @@
  * brand/status bar and a bottom status bar.
  */
 
+import { useNavigate } from "@tanstack/react-router"
 import { Loader2, Plus, Search, Settings, X } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
@@ -226,6 +227,7 @@ function TaskRail({
     engineStates,
     jobs,
     worktreeChanges,
+    uiPrefs,
     hydrated,
     streamConnected,
   } = useAppState()
@@ -233,6 +235,14 @@ function TaskRail({
   const [query, setQuery] = useState("")
   const [sortMode, setSortMode] = useState<TaskSortMode>("default")
   const [showArchived, setShowArchived] = useState(false)
+
+  // Follow the TUI's sort preference (ui-prefs fan-out): toggling sort in any
+  // kobe session re-sorts this rail too. The local toggle still works between
+  // pref pushes — there's no prefs.set RPC yet, so web-side toggles are local.
+  const prefSort = uiPrefs?.sortMode
+  useEffect(() => {
+    if (prefSort) setSortMode(prefSort)
+  }, [prefSort])
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const archivedTasks = useMemo(
     () => tasks.filter((t) => t.archived && t.kind !== "main"),
@@ -249,10 +259,14 @@ function TaskRail({
   const projects = visible.filter((task) => task.kind === "main")
   const worktrees = visible.filter((task) => task.kind !== "main")
   const booting = !hydrated || (!streamConnected && tasks.length === 0)
+  const navigate = useNavigate()
 
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
+    // Push the deep link so tasks are shareable and back/forward walks the
+    // task-switch history.
+    void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
   const restore = (task: Task): void => {

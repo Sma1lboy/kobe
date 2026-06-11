@@ -62,6 +62,16 @@ export type WorktreeChangeCounts = Record<
   { added: number; deleted: number }
 >
 
+/** The user's persisted visual prefs, fanned out by the daemon's
+ *  state.json watcher (mirror of the `ui-prefs` channel payload). */
+export interface UiPrefs {
+  theme: string
+  transparentBackground: boolean
+  focusAccent: string | null
+  sortMode: "default" | "recent"
+  keysCollapsed: boolean
+}
+
 /** Channel push, as the bridge serializes it over SSE. */
 export type BridgeEvent =
   | { channel: "task.snapshot"; payload: { tasks: Task[] } }
@@ -70,6 +80,7 @@ export type BridgeEvent =
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
+  | { channel: "ui-prefs"; payload: UiPrefs }
 
 /** Full bootstrap state the bridge sends on connect. */
 export interface BridgeSnapshot {
@@ -80,5 +91,6 @@ export interface BridgeSnapshot {
   /** taskId → in-flight job (running only; bridge drops terminal phases). */
   jobs?: Record<string, TaskJob>
   worktreeChanges?: WorktreeChangeCounts
+  uiPrefs?: UiPrefs | null
   connected: boolean
 }

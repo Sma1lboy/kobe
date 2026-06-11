@@ -3,8 +3,8 @@ import type { ChannelName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 /**
  * The ONLY daemon channels the web SPA actually consumes (see the SPA's
  * `applyEvent` + `snapshot` hydration in `src/lib/store.ts`). Everything else
- * the daemon publishes — `ui-prefs`, `keybindings` — is dead weight for the
- * web UI today: it would get JSON-stringified per client, pushed over SSE,
+ * the daemon publishes — today just `keybindings` — is dead weight for the
+ * web UI: it would get JSON-stringified per client, pushed over SSE,
  * JSON-parsed by the browser, and dropped.
  *
  * Two enforcement points share this list (both in `daemon-link.ts` /
@@ -25,6 +25,7 @@ export const SPA_CHANNELS: readonly ChannelName[] = [
   "update",
   "task.jobs",
   "worktree.changes",
+  "ui-prefs",
 ]
 
 /** Membership test for the SSE fan-out filter. */

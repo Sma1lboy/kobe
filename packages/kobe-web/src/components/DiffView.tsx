@@ -3,8 +3,10 @@
  *
  * Shows the git working-tree changes of a task's worktree: a file list (left)
  * + the selected file's unified diff (main), with per-line +/- coloring from
- * the claude theme. Read-only; re-fetches when worktreePath changes and on a
- * manual refresh (diffs move as the agent works).
+ * the claude theme. Read-only; re-fetches when worktreePath changes, on a
+ * manual refresh, and LIVE whenever the daemon's worktree.changes counts for
+ * this worktree move (the agent edits → daemon collector ticks → counts
+ * change → we refetch; no browser-side git polling).
  *
  * Mount note: render <DiffView worktreePath={activeTask?.worktreePath ?? null} />
  * — the lead wires the active task's worktreePath in (e.g. in AppShell's
@@ -13,7 +15,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
+import { useAppState } from "../lib/store.ts"
 import "./diff-view.css"
+
+/** Stable refresh key for a worktree's daemon-collected change counts —
+ *  changes exactly when the +N/−M pair moves, which is the refetch signal. */
+function useChangesKey(worktreePath: string | null): string {
+  const { worktreeChanges } = useAppState()
+  const counts = worktreePath ? worktreeChanges[worktreePath] : undefined
+  return counts ? `${counts.added}:${counts.deleted}` : "none"
+}
 
 function tail(path: string, max = 36): string {
   if (path.length <= max) return path
@@ -138,6 +149,7 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const changesKey = useChangesKey(worktreePath)
 
   const load = useCallback(async () => {
     if (!worktreePath) {
@@ -164,9 +176,10 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
     }
   }, [worktreePath])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey is the live-refresh trigger, not a read dependency.
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, changesKey])
 
   const files = result?.files ?? []
   const current = files.find((f) => f.path === selected) ?? null
@@ -247,6 +260,7 @@ export function ChangesList({
   const [result, setResult] = useState<DiffResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const changesKey = useChangesKey(worktreePath)
 
   const load = useCallback(async () => {
     if (!worktreePath) {
@@ -267,9 +281,10 @@ export function ChangesList({
     }
   }, [worktreePath])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey is the live-refresh trigger, not a read dependency.
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, changesKey])
 
   const files = result?.files ?? []
 
@@ -354,7 +369,9 @@ export function FilePreview({
   const [file, setFile] = useState<DiffFile | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const changesKey = useChangesKey(worktreePath)
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey re-fetches the patch when the worktree's counts move.
   useEffect(() => {
     if (!worktreePath) {
       setFile(null)
@@ -379,7 +396,7 @@ export function FilePreview({
     return () => {
       cancelled = true
     }
-  }, [worktreePath, path])
+  }, [worktreePath, path, changesKey])
 
   return (
     <div className="flex h-full min-h-0 flex-col border border-line bg-bg">
@@ -397,12 +414,14 @@ export function FilePreview({
         <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
           {error}
         </div>
+      ) : file ? (
+        // Keep the previous patch on screen during a live refetch — a count
+        // tick must not flash the view back to a loading state.
+        <DiffBody patch={file.patch} />
       ) : loading ? (
         <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
           Loading preview…
         </div>
-      ) : file ? (
-        <DiffBody patch={file.patch} />
       ) : (
         <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
           No diff for this file.

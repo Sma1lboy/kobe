@@ -3,13 +3,22 @@
  * PTY-backed workspace tab. Vendor tabs run the selected engine; terminal
  * tabs run the user's shell. Keyed by tab id in the parent so switching tabs
  * swaps terminals while the PTY persists server-side across reconnects.
+ *
+ * Engine tabs get a prompt composer under the terminal: a textarea whose
+ * submit pastes into the engine via bracketed paste + Enter (the same
+ * delivery contract as kobe's tmux `pasteAndSubmit`), so driving a session
+ * doesn't require terminal typing ergonomics. A dropped socket shows a
+ * Reattach affordance — the PTY survives server-side and replays its
+ * scrollback ring on re-attach, so reattaching is loss-free.
  */
 
 import { FitAddon } from "@xterm/addon-fit"
 import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
-import { useEffect, useRef } from "react"
+import { CornerDownLeft, RotateCw } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
+import { xtermTheme } from "../lib/theme.ts"
 
 // One decoder reused across every WebSocket message — a fresh `new
 // TextDecoder()` per frame (hundreds/sec during engine streaming) was needless
@@ -54,6 +63,8 @@ async function loadTerminalFont(): Promise<void> {
   }
 }
 
+type WsStatus = "connecting" | "open" | "closed"
+
 export function ChatTerminal({
   tabId,
   taskId,
@@ -64,6 +75,12 @@ export function ChatTerminal({
   mode: PtyMode
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const [status, setStatus] = useState<WsStatus>("connecting")
+  // Bumping the epoch tears the terminal down and re-attaches to the
+  // SAME server-side PTY (keyed by tab id) — its scrollback ring replays.
+  const [epoch, setEpoch] = useState(0)
+  const [draft, setDraft] = useState("")
 
   useEffect(() => {
     let disposed = false
@@ -73,13 +90,15 @@ export function ChatTerminal({
     let term: Terminal | null = null
     let ws: WebSocket | null = null
     let resizeObserver: ResizeObserver | null = null
+    setStatus("connecting")
 
     void (async () => {
       await loadTerminalFont()
       if (disposed) return
 
       term = new Terminal({
-        theme: CLAUDE_XTERM_THEME,
+        // Active TUI-synced palette when loaded; static claude otherwise.
+        theme: xtermTheme() ?? CLAUDE_XTERM_THEME,
         fontFamily: TERMINAL_FONT_FAMILY,
         fontSize: 12,
         cursorBlink: true,
@@ -96,7 +115,11 @@ export function ChatTerminal({
       }
 
       ws = new WebSocket(ptyUrl(tabId, taskId, mode, term.cols, term.rows))
+      wsRef.current = ws
       ws.binaryType = "arraybuffer"
+      ws.onopen = () => {
+        if (!disposed) setStatus("open")
+      }
       ws.onmessage = (e) => {
         const data =
           typeof e.data === "string"
@@ -107,7 +130,8 @@ export function ChatTerminal({
       ws.onclose = (event) => {
         if (!disposed) {
           const reason = event.reason ? `: ${event.reason}` : ""
-          term?.writeln(`\r\n[detached${reason}]`)
+          term?.writeln(`\r\n[detached${reason} — reattach below]`)
+          setStatus("closed")
         }
       }
       term.onData((d) => {
@@ -140,8 +164,73 @@ export function ChatTerminal({
       resizeObserver?.disconnect()
       ws?.close()
       term?.dispose()
+      wsRef.current = null
     }
-  }, [tabId, taskId, mode])
+  }, [tabId, taskId, mode, epoch])
 
-  return <div ref={ref} className="h-full w-full overflow-hidden" />
+  const sendPrompt = (): void => {
+    const ws = wsRef.current
+    const text = draft.trim()
+    if (!text || ws?.readyState !== WebSocket.OPEN) return
+    // Bracketed paste + Enter — the same submit contract as kobe's tmux
+    // prompt delivery (`paste-buffer -p` + Enter), so multi-line prompts
+    // arrive as ONE paste instead of line-by-line keystrokes.
+    ws.send(`\x1b[200~${text}\x1b[201~`)
+    ws.send("\r")
+    setDraft("")
+  }
+
+  const composer = mode === "engine"
+
+  return (
+    <div className="flex h-full w-full flex-col">
+      <div ref={ref} className="min-h-0 w-full flex-1 overflow-hidden" />
+      {status === "closed" ? (
+        <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line bg-surface px-2">
+          <span className="text-[11px] text-kobe-yellow">
+            detached — the session keeps running
+          </span>
+          <button
+            type="button"
+            onClick={() => setEpoch((cur) => cur + 1)}
+            className="flex items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+          >
+            <RotateCw size={11} strokeWidth={2} />
+            Reattach
+          </button>
+        </div>
+      ) : composer ? (
+        <form
+          className="flex shrink-0 items-end gap-2 border-t border-line bg-surface px-2 py-1.5"
+          onSubmit={(event) => {
+            event.preventDefault()
+            sendPrompt()
+          }}
+        >
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault()
+                sendPrompt()
+              }
+            }}
+            placeholder="Send a prompt (Enter to send, Shift+Enter for newline)"
+            rows={Math.min(4, Math.max(1, draft.split("\n").length))}
+            className="min-w-0 flex-1 resize-none border border-line bg-bg px-2 py-1 text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || status !== "open"}
+            className="flex shrink-0 items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:opacity-40"
+            title="Paste into the engine and submit"
+          >
+            <CornerDownLeft size={11} strokeWidth={2} />
+            Send
+          </button>
+        </form>
+      ) : null}
+    </div>
+  )
 }

@@ -7,6 +7,7 @@
  * project row daemon-side, exactly like `kobe api add`.
  */
 
+import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { engineLabel, useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -65,6 +66,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         payload,
       )
       selectTask(taskId)
+      void navigate({ to: "/task/$taskId", params: { taskId } })
       await rpc("task.setActive", { taskId }).catch(() => {})
       pushToast(
         "success",
