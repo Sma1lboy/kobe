@@ -131,7 +131,13 @@ describe("startUiPrefsWatcher", () => {
     patchStateFile({ activeTheme: "dracula", focusAccent: "info" })
     stop = startUiPrefsWatcher(bus, { statePath, debounceMs: 25 })
     expect(events).toEqual([
-      { theme: "dracula", transparentBackground: false, focusAccent: "info", sortMode: "default", keysCollapsed: false },
+      {
+        theme: "dracula",
+        transparentBackground: false,
+        focusAccent: "info",
+        sortMode: "default",
+        keysCollapsed: false,
+      },
     ])
     // The bus last-value cache is warm — what a `subscribe` replays.
     expect(bus.snapshot().find((e) => e.channel === "ui-prefs")?.payload).toEqual(events[0])

@@ -22,13 +22,13 @@ import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-p
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
-import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
-import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 import {
   DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
   defaultKeybindingsPath,
   startKeybindingsWatcher,
 } from "./keybindings-watcher.ts"
+import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers

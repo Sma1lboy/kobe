@@ -397,9 +397,7 @@ function TasksShell(props: {
   // kv so the daemon's ui-prefs watcher re-folds the legend in EVERY other
   // session's Tasks pane (the broadcast effect below). The kv write also
   // keeps the preference across pane respawns/upgrades.
-  const [keysCollapsed, setKeysCollapsedSig] = createSignal<boolean>(
-    kv.get("tasksPane.keysCollapsed", false) === true,
-  )
+  const [keysCollapsed, setKeysCollapsedSig] = createSignal<boolean>(kv.get("tasksPane.keysCollapsed", false) === true)
   const setKeysCollapsed = (next: boolean) => {
     setKeysCollapsedSig(next)
     kv.set("tasksPane.keysCollapsed", next)

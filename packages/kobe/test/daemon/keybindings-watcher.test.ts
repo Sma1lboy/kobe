@@ -20,10 +20,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { type ChannelEvent, DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
-import {
-  defaultKeybindingsPath,
-  startKeybindingsWatcher,
-} from "@sma1lboy/kobe-daemon/daemon/keybindings-watcher"
+import { defaultKeybindingsPath, startKeybindingsWatcher } from "@sma1lboy/kobe-daemon/daemon/keybindings-watcher"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 let tmpHome: string
@@ -70,9 +67,7 @@ async function waitFor(cond: () => boolean): Promise<void> {
 
 describe("defaultKeybindingsPath", () => {
   test("resolves under the given home (mirror of keybindingsConfigPath in env.ts)", () => {
-    expect(defaultKeybindingsPath("/some/home")).toBe(
-      path.join("/some/home", ".kobe", "settings", "keybindings.yaml"),
-    )
+    expect(defaultKeybindingsPath("/some/home")).toBe(path.join("/some/home", ".kobe", "settings", "keybindings.yaml"))
   })
 })
 
