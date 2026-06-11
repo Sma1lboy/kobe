@@ -203,6 +203,18 @@ Everything under `src/tui/**` runs inside a render process — the TUI itself or
 
 The rule is enforced by `packages/kobe/test/tui/render-path-sync-guard.test.ts`, which scans `src/tui/**` for sync-subprocess imports/calls and fails on anything outside its short, reason-annotated whitelist (post-`renderer.destroy()` updater paths and the one-shot CLI helper). Extend the whitelist only with a reason — and prefer not to.
 
+### 5.5 Long-lived-pane rule: polled lists must keep row identity stable
+
+Pane hosts live for days, so per-tick allocation that LOOKS like garbage can be a leak in disguise. The concrete failure (2026-06): the Ops pane's fs-watch refresh rebuilt the file tree with all-new row objects every event; Solid's `<For>` keys by object identity, so every refresh destroyed and recreated every row's renderables — and @opentui/core 0.2.4 retains a small amount of native memory (~300B) per renderable create/destroy cycle. A busy worktree refreshes thousands of times a day → two production Ops panes at 2.9GB / 1.7GB RSS while the Tasks pane (stable row objects) sat at ~100MB.
+
+So for any list a pane rebuilds on a poll/watch tick:
+
+- **Suppress no-op refreshes at the signal** — give the source signal a content-`equals` so an event that produced identical data notifies nobody (`filetree/rows.ts` `sameFileList`/`sameStatusEntries`).
+- **Reconcile identity on real changes** — keep the PREVIOUS row object whenever its fields are unchanged so `<For>` reuses renderables (`reconcileRows`); return the previous ARRAY when nothing changed at all.
+- **Pin the contract with `toBe`** — identity reuse is invisible to value-equality assertions; a regression renders identically while the leak quietly returns (`test/tui/filetree-rows.test.ts`).
+
+The Tasks pane never needed this because its rows derive from stable Task objects — which is the cheapest way to comply: derive rows from stable upstream identities when you can, reconcile when you can't.
+
 ---
 
 ## 6. Pluggability — and the engine port
