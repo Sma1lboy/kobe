@@ -103,7 +103,13 @@ import {
 } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
-import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
+import {
+  IN_PROGRESS_SPINNER,
+  SPINNER_FRAME_MS,
+  type SidebarTone,
+  buildSidebarRowView,
+  withSpinnerFrame,
+} from "./row-view"
 import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "./worktree-changes-poller"
 
@@ -858,18 +864,30 @@ export function Sidebar(props: SidebarProps) {
                 if (isMain) pollCurrentBranch(task.repo)
                 return isMain ? currentBranch(task.repo) : ""
               })
-              const rowView = createMemo(() =>
+              // Two-stage view derivation (waste audit). Stage 1 builds
+              // everything EXCEPT the animated glyph with a fixed frame —
+              // it deliberately does NOT read `spinnerFrame`, so the 10Hz
+              // tick re-derives nothing here. Stage 2 overlays the live
+              // frame via `withSpinnerFrame`, which reads the frame
+              // accessor only when the row is loading — Solid re-collects
+              // memo deps per run, so an idle row's memo simply isn't
+              // subscribed to the tick. Before this split every row
+              // rebuilt its full view 10×/s even with nothing running
+              // (N rows × 10Hz string/object churn); now an idle sidebar
+              // does zero per-tick work.
+              const baseRowView = createMemo(() =>
                 buildSidebarRowView({
                   task,
                   activity: props.engineState?.().get(task.id),
                   job: props.taskJobs?.().get(task.id),
                   live: isLive(),
-                  spinnerFrame: spinnerFrame(),
+                  spinnerFrame: 0,
                   subtitleBudget: subtitleBudget(),
                   truncateBranch: truncateBranchLabel,
                   mainBranch: projectBranch(),
                 }),
               )
+              const rowView = createMemo(() => withSpinnerFrame(baseRowView(), spinnerFrame))
               const stateColor = () => (isMain && !rowView().loading ? theme.primary : toneColor(rowView().tone))
               // Accent edge: focus-accent ▌ on the cursor row, a quieter
               // (dimmed primary) ▌ on the active row when the two differ after

@@ -34,6 +34,7 @@
  */
 
 import { existsSync } from "node:fs"
+import { stat } from "node:fs/promises"
 import {
   currentSessionName,
   getSessionOption,
@@ -906,9 +907,32 @@ async function setupTasksPane(opts: { initialTaskId?: string }): Promise<HostScr
   // before — that gate was the freeze bug). It does the file read only when
   // the daemon push path is NOT the live source, so an online pane pays
   // nothing and an offline one stays fresh within RELOAD_MS.
+  //
+  // Offline ticks are additionally mtime-gated (waste audit): tasks.json
+  // only changes on a mutation, so a cheap `stat` decides whether the full
+  // read+parse is needed — an idle offline pane pays one stat per 1.5s
+  // instead of re-reading and re-parsing the whole index 40×/min. Writes
+  // are atomic temp+rename, so mtime+size always move on a real change.
+  // A stat failure maps to a distinct "missing" fingerprint: deletion →
+  // recreation each reload exactly once. Explicit `reload()` calls (after
+  // mutations) bypass the gate on purpose. Errors are swallowed — this
+  // pane process has no crash net (see ops/host.tsx), so a transient fs
+  // error must degrade to a stale list, not an unhandled rejection.
+  let lastTasksFileFingerprint = ""
   const timer = setInterval(() => {
     if (orch && orch.connectionStateSignal()() === "online") return
-    void reload()
+    void (async () => {
+      let fingerprint = "missing"
+      try {
+        const st = await stat(store.filePath)
+        fingerprint = `${st.mtimeMs}:${st.size}`
+      } catch {
+        // keep the "missing" fingerprint
+      }
+      if (fingerprint === lastTasksFileFingerprint) return
+      lastTasksFileFingerprint = fingerprint
+      await reload()
+    })().catch(() => {})
   }, RELOAD_MS)
 
   return {

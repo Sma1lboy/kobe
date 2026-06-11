@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildSidebarRowView } from "../../src/tui/panes/sidebar/row-view.ts"
+import { IN_PROGRESS_SPINNER, buildSidebarRowView, withSpinnerFrame } from "../../src/tui/panes/sidebar/row-view.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -151,5 +151,67 @@ describe("buildSidebarRowView", () => {
       mainBranch: "",
     })
     expect(v.subtitleText).toBe("—")
+  })
+})
+
+// The spinner-frame overlay is what makes the 10Hz tick a CONDITIONAL
+// dependency in the Sidebar (waste audit): the frame accessor must only
+// be read for loading rows, so an idle sidebar does zero per-tick work
+// — Solid's dep collection drops the tick signal entirely when nothing
+// is spinning. These tests pin both halves: identity preservation +
+// accessor non-read for idle rows, exact frame overlay for loading ones.
+describe("withSpinnerFrame", () => {
+  function loadingView() {
+    return buildSidebarRowView({
+      task: task({ status: "backlog" }),
+      activity: { state: "running", at: 1 },
+      live: false,
+      spinnerFrame: 0,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+  }
+
+  it("returns an idle view UNCHANGED and never reads the frame accessor", () => {
+    const idle = view({ status: "done" })
+    expect(idle.loading).toBe(false)
+    let reads = 0
+    const out = withSpinnerFrame(idle, () => {
+      reads++
+      return 3
+    })
+    expect(out).toBe(idle) // identity preserved → downstream memos never notify
+    expect(reads).toBe(0) // the 10Hz signal is not a dependency of idle rows
+  })
+
+  it("overlays the live frame on both glyph fields of a loading view", () => {
+    const base = loadingView()
+    expect(base.loading).toBe(true)
+    const out = withSpinnerFrame(base, () => 3)
+    expect(out.stateGlyph).toBe(IN_PROGRESS_SPINNER[3])
+    expect(out.projectGlyph).toBe(IN_PROGRESS_SPINNER[3])
+    // Everything else is untouched — exactly what buildSidebarRowView
+    // would have produced with spinnerFrame: 3.
+    const direct = buildSidebarRowView({
+      task: task({ status: "backlog" }),
+      activity: { state: "running", at: 1 },
+      live: false,
+      spinnerFrame: 3,
+      subtitleBudget: 80,
+      truncateBranch: (b) => b,
+    })
+    expect(out).toEqual(direct)
+  })
+
+  it("keeps identity when the frame resolves to the glyph already shown", () => {
+    const base = loadingView() // built with frame 0
+    const out = withSpinnerFrame(base, () => 0)
+    expect(out).toBe(base)
+  })
+
+  it("wraps out-of-range frames into the spinner cycle", () => {
+    const base = loadingView()
+    const out = withSpinnerFrame(base, () => IN_PROGRESS_SPINNER.length + 2)
+    expect(out.stateGlyph).toBe(IN_PROGRESS_SPINNER[2])
   })
 })

@@ -824,9 +824,21 @@ export function bumpKeymapVersion(): void {
   setKeymapVersion((v) => v + 1)
 }
 
+/**
+ * id → row index. Safe to build once: `KobeKeymap` rows are mutated in
+ * place by overrides (`keys` / `hint` fields change) but never added,
+ * removed, or replaced, so the row identities the map holds stay
+ * canonical forever. This keeps `findBinding` O(1) — it runs per id per
+ * registered binding group on EVERY keypress (`useBindings` configs call
+ * `bindByIds` on each dispatch), where the previous linear scan cost
+ * ~60 row comparisons per id (~1.4k per keypress at a realistic
+ * 5-group / 23-id stack).
+ */
+const KEYMAP_BY_ID: ReadonlyMap<string, KobeBinding> = new Map(KobeKeymap.map((b) => [b.id, b]))
+
 /** Lookup helper used by tests and pane registration. */
 export function findBinding(id: string): KobeBinding | undefined {
-  return KobeKeymap.find((b) => b.id === id)
+  return KEYMAP_BY_ID.get(id)
 }
 
 /**

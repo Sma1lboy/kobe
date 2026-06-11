@@ -27,6 +27,8 @@
  * ones.
  */
 
+import { stat } from "node:fs/promises"
+import { join } from "node:path"
 import { createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 
 /** Kill a ref read that runs longer than this — O(1) commands, tight leash. */
@@ -42,35 +44,81 @@ export const BRANCH_MIN_POLL_INTERVAL_MS = 1_500
 // future command swap can't reintroduce `.git/index.lock` races.
 const gitEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" })
 
+/**
+ * Per-repo `.git/HEAD` fingerprint cache (waste audit). The branch NAME is
+ * a pure function of HEAD's content — a checkout rewrites the file, a
+ * commit on a branch does not — so when HEAD's mtime+size haven't moved
+ * since the last successful resolve, the cached name is returned without
+ * spawning git at all. Before this gate, every visible project row cost
+ * one `git symbolic-ref` spawn per ~2s tick forever (5 projects ≈ 150
+ * spawns/min steady-state, daemon-connected or not); now the steady state
+ * is one ~µs `stat` per row per tick, with a spawn only on an actual HEAD
+ * change. Repos where `.git/HEAD` isn't statable (a linked-worktree `.git`
+ * FILE, permissions) skip the gate and keep the old always-spawn path.
+ */
+const headCache = new Map<string, { fingerprint: string; value: string }>()
+
+async function headFingerprint(repo: string): Promise<string | null> {
+  try {
+    const st = await stat(join(repo, ".git", "HEAD"))
+    return `${st.mtimeMs}:${st.size}`
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolve `repo`'s current short branch name, with the HEAD-fingerprint
+ * fast path above. `spawn` is injectable so tests can count subprocess
+ * launches; production passes nothing and gets the real `spawnCapture`.
+ * Exported for tests only — render code goes through the poller.
+ */
+export async function resolveBranchHead(
+  repo: string,
+  signal: AbortSignal,
+  spawn: typeof spawnCapture = spawnCapture,
+): Promise<string> {
+  // Fingerprint FIRST (before the spawn): if HEAD changes mid-resolve we
+  // cache the new value against the pre-change fingerprint, and the next
+  // tick's mismatch simply re-resolves — the race converges.
+  const fingerprint = await headFingerprint(repo)
+  if (fingerprint !== null) {
+    const cached = headCache.get(repo)
+    if (cached && cached.fingerprint === fingerprint) return cached.value
+  }
+  // `symbolic-ref --short HEAD` is more direct than `rev-parse
+  // --abbrev-ref HEAD` for the "what branch am I on" question — it
+  // exits non-zero on detached HEAD instead of returning the literal
+  // string `HEAD`, so the failure mode is unambiguous.
+  let value = ""
+  const ref = await spawn("git", ["symbolic-ref", "--short", "HEAD"], {
+    cwd: repo,
+    env: gitEnv(),
+    signal,
+  })
+  const name = ref.status === 0 ? ref.stdout.trim() : ""
+  if (name && name !== "HEAD") {
+    value = name
+  } else {
+    // Detached HEAD path: symbolic-ref exits non-zero. Confirm with
+    // rev-parse so we don't mislabel an unreadable repo as detached.
+    const head = await spawn("git", ["rev-parse", "--verify", "HEAD"], {
+      cwd: repo,
+      env: gitEnv(),
+      signal,
+    })
+    if (head.status === 0) value = "(detached)"
+  }
+  if (fingerprint !== null) headCache.set(repo, { fingerprint, value })
+  return value
+}
+
 const poller = createBackgroundPoller<string>({
   initial: "",
   timeoutMs: BRANCH_POLL_TIMEOUT_MS,
   slowRetryMs: BRANCH_SLOW_RETRY_MS,
   minIntervalMs: BRANCH_MIN_POLL_INTERVAL_MS,
-  run: async (repo, signal) => {
-    // `symbolic-ref --short HEAD` is more direct than `rev-parse
-    // --abbrev-ref HEAD` for the "what branch am I on" question — it
-    // exits non-zero on detached HEAD instead of returning the literal
-    // string `HEAD`, so the failure mode is unambiguous.
-    const ref = await spawnCapture("git", ["symbolic-ref", "--short", "HEAD"], {
-      cwd: repo,
-      env: gitEnv(),
-      signal,
-    })
-    if (ref.status === 0) {
-      const name = ref.stdout.trim()
-      if (name && name !== "HEAD") return name
-    }
-    // Detached HEAD path: symbolic-ref exits non-zero. Confirm with
-    // rev-parse so we don't mislabel an unreadable repo as detached.
-    const head = await spawnCapture("git", ["rev-parse", "--verify", "HEAD"], {
-      cwd: repo,
-      env: gitEnv(),
-      signal,
-    })
-    if (head.status === 0) return "(detached)"
-    return ""
-  },
+  run: (repo, signal) => resolveBranchHead(repo, signal),
 })
 
 /**
@@ -94,4 +142,5 @@ export function pollCurrentBranch(repo: string): void {
 /** Test hook: drop all cached entries/backoff state. */
 export function resetGitHeadPoller(): void {
   poller.reset()
+  headCache.clear()
 }

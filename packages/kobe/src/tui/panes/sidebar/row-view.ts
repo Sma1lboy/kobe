@@ -178,6 +178,24 @@ export function buildSidebarRowView(opts: {
   }
 }
 
+/**
+ * Overlay the LIVE spinner frame onto a row view built with a fixed
+ * `spinnerFrame: 0`. The frame is passed as an ACCESSOR and read only
+ * when the row is actually loading — inside a Solid memo that makes the
+ * 10Hz frame signal a conditional dependency, so an idle row never
+ * re-derives on the spinner tick (waste audit: with N tasks and nothing
+ * running, every row used to rebuild its whole view 10×/s; now the tick
+ * has zero subscribers when no row spins). For a loading row this
+ * reproduces exactly what `buildSidebarRowView` would have produced with
+ * the live frame: both glyph fields carry the spinner.
+ */
+export function withSpinnerFrame(view: SidebarRowView, frame: () => number): SidebarRowView {
+  if (!view.loading) return view
+  const spinner = IN_PROGRESS_SPINNER[frame() % IN_PROGRESS_SPINNER.length] ?? "⠋"
+  if (spinner === view.stateGlyph && spinner === view.projectGlyph) return view
+  return { ...view, stateGlyph: spinner, projectGlyph: spinner }
+}
+
 function activityBadgeFor(
   state: TaskActivityState | undefined,
 ): { glyph: string; tone: "primary" | "warning" | "error" } | null {
