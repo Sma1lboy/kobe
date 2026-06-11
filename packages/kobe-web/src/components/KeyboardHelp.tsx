@@ -29,6 +29,12 @@ const SHORTCUTS: Shortcut[] = [
 const PALETTE: Shortcut[] = [
   { keys: ["↑", "↓"], label: "Move selection" },
   { keys: ["↵"], label: "Run the selected command" },
+  { keys: ["theme"], label: 'Type "theme" to switch theme (or Follow TUI)' },
+]
+
+const COMPOSER: Shortcut[] = [
+  { keys: ["↑", "↓"], label: "Recall previously-sent prompts (newest first)" },
+  { keys: ["↵"], label: "Send · Shift+↵ for a newline" },
 ]
 
 const AFFORDANCES: Array<{ label: string; detail: string }> = [
@@ -46,7 +52,21 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   },
   {
     label: "Chat / Vendor / Terminal",
-    detail: "tab kinds inside a task workspace",
+    detail:
+      "tab kinds inside a task workspace; Chat has search + a hide-tools toggle",
+  },
+  {
+    label: "Triage",
+    detail:
+      "rail status chips (All/Needs/Run/Dirty) + the Overview grid — filter by what needs you",
+  },
+  {
+    label: "Changes / diff",
+    detail: "filter files by path, toggle line wrap on a file preview",
+  },
+  {
+    label: "Copy link",
+    detail: "Task panel → Copy link — share a deep link to a task",
   },
   {
     label: "Notifications",
@@ -125,6 +145,14 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
               In the command palette
             </div>
             {PALETTE.map((s) => (
+              <Row key={s.label} {...s} />
+            ))}
+          </section>
+          <section>
+            <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              In the engine composer
+            </div>
+            {COMPOSER.map((s) => (
               <Row key={s.label} {...s} />
             ))}
           </section>
