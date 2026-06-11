@@ -283,7 +283,7 @@ export function ChatTerminal({
                 }
               }
             }}
-            placeholder="Send a prompt (Enter to send, Shift+Enter for newline)"
+            placeholder="Send a prompt — Enter sends, Shift+Enter newline, ↑ history"
             rows={Math.min(4, Math.max(1, draft.split("\n").length))}
             className="min-w-0 flex-1 resize-none border border-line bg-bg px-2 py-1 text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
           />
