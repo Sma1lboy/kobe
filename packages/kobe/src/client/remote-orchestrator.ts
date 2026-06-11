@@ -470,6 +470,8 @@ export class RemoteOrchestrator {
         focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
         // Older daemons omit `sortMode` → treat as the default ordering.
         sortMode: p.sortMode === "recent" ? "recent" : "default",
+        // Older daemons omit `keysCollapsed` → legend expanded.
+        keysCollapsed: p.keysCollapsed === true,
       })
       return
     }

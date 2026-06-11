@@ -182,16 +182,19 @@ export interface ChannelPayloads {
    * pane read the prefs once at boot and kept the old look forever. The
    * same fan-out carries `sortMode`: toggling the Tasks-pane sort (`t`) in
    * one session re-sorts the Tasks pane of EVERY session, instead of only
-   * the pane the key was pressed in. Last-value replay hydrates a
-   * late/reconnecting subscriber. `focusAccent` is the raw slot string
-   * (`null` = unset → the default slot); the TUI side validates it — the
-   * daemon stays vendor/UI-neutral and just mirrors the file.
+   * the pane the key was pressed in; `keysCollapsed` likewise syncs the
+   * Tasks-pane `── keys ──` legend fold (`?`) across every session. Last-
+   * value replay hydrates a late/reconnecting subscriber. `focusAccent` is
+   * the raw slot string (`null` = unset → the default slot); the TUI side
+   * validates it — the daemon stays vendor/UI-neutral and just mirrors the
+   * file.
    */
   "ui-prefs": {
     theme: string
     transparentBackground: boolean
     focusAccent: string | null
     sortMode: "default" | "recent"
+    keysCollapsed: boolean
   }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:

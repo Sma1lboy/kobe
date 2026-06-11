@@ -84,6 +84,7 @@ describe("readUiPrefsFromStateFile", () => {
       transparentBackground: false,
       focusAccent: null,
       sortMode: "default",
+      keysCollapsed: false,
     })
   })
 
@@ -95,6 +96,7 @@ describe("readUiPrefsFromStateFile", () => {
       transparentBackground: false,
       focusAccent: null,
       sortMode: "default",
+      keysCollapsed: false,
     })
   })
 
@@ -105,6 +107,7 @@ describe("readUiPrefsFromStateFile", () => {
       transparentBackground: true,
       focusAccent: null,
       sortMode: "default",
+      keysCollapsed: false,
     })
   })
 
@@ -114,6 +117,13 @@ describe("readUiPrefsFromStateFile", () => {
     patchStateFile({ activeSortMode: "bogus" })
     expect(readUiPrefsFromStateFile(statePath).sortMode).toBe("default")
   })
+
+  test("reads tasksPane.keysCollapsed; only an explicit true collapses the legend", () => {
+    patchStateFile({ "tasksPane.keysCollapsed": true })
+    expect(readUiPrefsFromStateFile(statePath).keysCollapsed).toBe(true)
+    patchStateFile({ "tasksPane.keysCollapsed": false })
+    expect(readUiPrefsFromStateFile(statePath).keysCollapsed).toBe(false)
+  })
 })
 
 describe("startUiPrefsWatcher", () => {
@@ -121,7 +131,7 @@ describe("startUiPrefsWatcher", () => {
     patchStateFile({ activeTheme: "dracula", focusAccent: "info" })
     stop = startUiPrefsWatcher(bus, { statePath, debounceMs: 25 })
     expect(events).toEqual([
-      { theme: "dracula", transparentBackground: false, focusAccent: "info", sortMode: "default" },
+      { theme: "dracula", transparentBackground: false, focusAccent: "info", sortMode: "default", keysCollapsed: false },
     ])
     // The bus last-value cache is warm — what a `subscribe` replays.
     expect(bus.snapshot().find((e) => e.channel === "ui-prefs")?.payload).toEqual(events[0])
@@ -140,6 +150,7 @@ describe("startUiPrefsWatcher", () => {
       transparentBackground: true,
       focusAccent: null,
       sortMode: "default",
+      keysCollapsed: false,
     })
 
     // A write that doesn't move the visual prefs (an unrelated key, then
@@ -157,6 +168,7 @@ describe("startUiPrefsWatcher", () => {
       transparentBackground: true,
       focusAccent: "success",
       sortMode: "default",
+      keysCollapsed: false,
     })
   })
 

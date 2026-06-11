@@ -194,11 +194,13 @@ function TasksShell(props: {
 
   // Visual prefs (theme / transparent / focus accent) are applied
   // centrally — boot + live `ui-prefs` pushes — by host-boot's
-  // UiPrefsSync; this shell no longer re-applies them itself. Sort mode
-  // rides the SAME `ui-prefs` channel but is pane-state, not theme-state,
-  // so the Tasks pane follows it here: a `t` toggle in ANY session lands
-  // as a push and re-sorts this pane too. Changed-only assignment makes
-  // the echo of our own write (round-tripped through the watcher) a no-op.
+  // UiPrefsSync; this shell no longer re-applies them itself. Sort mode AND
+  // the keys-legend fold ride the SAME `ui-prefs` channel but are
+  // pane-state, not theme-state, so the Tasks pane follows them here: a `t`
+  // / `?` toggle in ANY session lands as a push and re-applies to this pane
+  // too. Changed-only assignment makes the echo of our own write
+  // (round-tripped through the watcher) a no-op. (Sort here; the
+  // keys-legend effect lives next to its signal further down.)
   createEffect(() => {
     const payload = props.orch?.uiPrefsSignal()()
     if (payload && payload.sortMode !== sortMode()) setSortMode(payload.sortMode)
@@ -390,11 +392,24 @@ function TasksShell(props: {
   }
 
   // Collapsed state of the `── keys ──` legend (toggled by `?` / clicking
-  // the header). KV-persisted so the preference survives pane respawns
-  // and upgrades. kv.get reads the reactive store, so the footer re-renders
-  // on toggle.
-  const keysCollapsed = () => kv.get("tasksPane.keysCollapsed", false) === true
-  const setKeysCollapsed = (next: boolean) => kv.set("tasksPane.keysCollapsed", next)
+  // the header). A GLOBAL pref fanned out like sort/theme: seed from the
+  // persisted value, apply locally for instant feedback, and persist via
+  // kv so the daemon's ui-prefs watcher re-folds the legend in EVERY other
+  // session's Tasks pane (the broadcast effect below). The kv write also
+  // keeps the preference across pane respawns/upgrades.
+  const [keysCollapsed, setKeysCollapsedSig] = createSignal<boolean>(
+    kv.get("tasksPane.keysCollapsed", false) === true,
+  )
+  const setKeysCollapsed = (next: boolean) => {
+    setKeysCollapsedSig(next)
+    kv.set("tasksPane.keysCollapsed", next)
+  }
+  // Follow the broadcast: a `?` toggle in another session re-folds this
+  // legend too. Changed-only, so our own write's echo is a no-op.
+  createEffect(() => {
+    const payload = props.orch?.uiPrefsSignal()()
+    if (payload && payload.keysCollapsed !== keysCollapsed()) setKeysCollapsedSig(payload.keysCollapsed)
+  })
 
   // The sidebar's `/`-search lifts its active state here so the host-level
   // plain-letter chords below go quiet while the user is TYPING a query —
