@@ -12,8 +12,16 @@
  *  - thinking and tool output bodies are collapsed by default.
  */
 
-import { ChevronDown, ChevronRight, RotateCw, Search, X } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardCopy,
+  RotateCw,
+  Search,
+  X,
+} from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { copyText } from "../lib/clipboard.ts"
 import {
   type ContentBlock,
   fetchMessages,
@@ -23,7 +31,9 @@ import {
   summarizeUsage,
 } from "../lib/history.ts"
 import { isNearBottom } from "../lib/scroll.ts"
+import { pushToast } from "../lib/toast.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
+import { transcriptToMarkdown } from "../lib/transcript-markdown.ts"
 import {
   blockVisible,
   messageRendersAnything,
@@ -186,9 +196,11 @@ function MessageRow({
 export function ChatTranscript({
   worktreePath,
   vendor,
+  title = "Session",
 }: {
   worktreePath: string | null
   vendor: string
+  title?: string
 }) {
   const [sessions, setSessions] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -361,6 +373,26 @@ export function ChatTranscript({
     )
   }, [messages, searchIndex, search, hideTools])
 
+  // Copy the transcript you're looking at (search-filtered, hide-tools-aware)
+  // as Markdown — the "take this session with you" path. `results` spans the
+  // whole session so a tool call still resolves its output when the message
+  // holding the result was filtered out.
+  const copyMarkdown = async (): Promise<void> => {
+    if (shown.length === 0) return
+    const md = transcriptToMarkdown(shown, results, hideTools, {
+      title,
+      vendor,
+      total: messages.length,
+    })
+    const ok = await copyText(md)
+    pushToast(
+      ok ? "success" : "error",
+      ok
+        ? `Copied transcript as Markdown (${shown.length} messages)`
+        : "Couldn't copy to the clipboard",
+    )
+  }
+
   if (!worktreePath) {
     return (
       <div className="flex h-full items-center justify-center text-[12px] text-subtle">
@@ -401,6 +433,17 @@ export function ChatTranscript({
               ⇡{formatTokens(usage.inputTokens)} ⇣
               {formatTokens(usage.outputTokens)}
             </span>
+          )}
+          {shown.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void copyMarkdown()}
+              className="text-subtle transition-colors hover:text-fg"
+              title="Copy transcript as Markdown (respects search + hide-tools)"
+              aria-label="Copy transcript as Markdown"
+            >
+              <ClipboardCopy size={11} strokeWidth={2} />
+            </button>
           )}
           <button
             type="button"

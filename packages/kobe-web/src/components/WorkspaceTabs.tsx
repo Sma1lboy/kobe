@@ -115,11 +115,13 @@ function TabContent({
   tab,
   taskId,
   taskWorktreePath,
+  taskTitle,
   vendor,
 }: {
   tab: WorkspaceTab | undefined
   taskId: string
   taskWorktreePath: string | null
+  taskTitle: string
   vendor: string
 }) {
   if (tab?.kind === "empty")
@@ -152,6 +154,7 @@ function TabContent({
         key={tab.id}
         worktreePath={taskWorktreePath}
         vendor={vendor}
+        title={taskTitle}
       />
     )
   if (tab?.kind === "file")
@@ -232,6 +235,7 @@ export function WorkspaceTabs() {
       ? tabs.find((t) => t.id === split)
       : undefined
   const vendor = vendorLabel(task?.vendor)
+  const taskTitle = task?.title || task?.branch || "Session"
   const setVendor = (next: string): void => {
     if (!selectedTaskId) return
     setVendorOpen(false)
@@ -378,6 +382,7 @@ export function WorkspaceTabs() {
                 tab={activeTab}
                 taskId={selectedTaskId}
                 taskWorktreePath={task?.worktreePath ?? null}
+                taskTitle={taskTitle}
                 vendor={vendor}
               />
             </PaneFrame>
@@ -395,6 +400,7 @@ export function WorkspaceTabs() {
                     tab={splitTab}
                     taskId={selectedTaskId}
                     taskWorktreePath={task?.worktreePath ?? null}
+                    taskTitle={taskTitle}
                     vendor={vendor}
                   />
                 </PaneFrame>
