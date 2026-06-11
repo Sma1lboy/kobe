@@ -87,6 +87,7 @@ export function ChatTerminal({
     mode === "engine" ? (consumePendingPrompt(taskId) ?? "") : "",
   )
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `epoch` is a deliberate trigger — bumping it tears down + re-attaches to the same server-side PTY (Reattach). It isn't read in the body, so biome thinks it's extraneous, but removing it would break reattach.
   useEffect(() => {
     let disposed = false
     const el = ref.current

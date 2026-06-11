@@ -266,6 +266,7 @@ export function ChatTranscript({
   // Initial load + light poll; mtime gate means idle ticks cost one stat-ish
   // request and zero message fetches. Hidden tabs skip work entirely. Re-armed
   // only on task/vendor switch (not on every session pick).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: worktreePath/vendor are the deliberate re-arm triggers (reset on task/vendor switch); the body reaches the live closure via refreshRef, so they aren't read directly.
   useEffect(() => {
     mtimeRef.current = -1
     setLoaded(false)
@@ -276,7 +277,6 @@ export function ChatTranscript({
       if (!document.hidden) void refreshRef.current()
     }, POLL_MS)
     return () => window.clearInterval(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on task/vendor switch only
   }, [worktreePath, vendor])
 
   const pickSession = (sessionId: string): void => {
@@ -387,6 +387,7 @@ export function ChatTranscript({
         ) : (
           messages.map((message, index) => (
             <MessageRow
+              // biome-ignore lint/suspicious/noArrayIndexKey: transcript is positional + re-rendered wholesale per session; messages carry no stable id, so sessionId+index is the stable-enough key.
               key={`${message.sessionId}-${index}`}
               message={message}
               results={results}

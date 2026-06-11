@@ -25,7 +25,6 @@ interface TriagedTask {
 }
 
 function triage(
-  task: Task,
   engine: EngineState | undefined,
   changes: { added: number; deleted: number } | undefined,
 ): Bucket {
@@ -117,7 +116,7 @@ export function Overview() {
         const changes = (worktreeChanges as WorktreeChangeCounts)[
           task.worktreePath
         ]
-        return { task, engine, changes, bucket: triage(task, engine, changes) }
+        return { task, engine, changes, bucket: triage(engine, changes) }
       })
   }, [tasks, engineStates, worktreeChanges])
 

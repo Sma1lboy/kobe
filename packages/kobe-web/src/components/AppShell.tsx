@@ -29,13 +29,7 @@ import { rpc, useAppState } from "../lib/store.ts"
 import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
-import type {
-  ActivityState,
-  EngineState,
-  Task,
-  TaskJob,
-  TaskPRStatus,
-} from "../lib/types.ts"
+import type { EngineState, Task, TaskJob, TaskPRStatus } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { KeyboardHelp } from "./KeyboardHelp.tsx"
@@ -298,6 +292,42 @@ function TaskRail({
     // task-switch history.
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
+
+  // Keyboard-first task nav: j/k or ↑/↓ move between visible tasks and open
+  // them — the TUI's muscle memory. Suppressed while typing in a field or
+  // while any dialog/palette is open (so those keep their own key handling).
+  // `visible` is the current sort/filter order, so nav follows what's shown.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: open() closes only over stable refs; re-attaching on visible/selectedTaskId is enough and avoids re-arming every render.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const key = event.key
+      const down = key === "j" || key === "ArrowDown"
+      const up = key === "k" || key === "ArrowUp"
+      if (!down && !up) return
+      const t = event.target as HTMLElement | null
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return
+      }
+      if (document.querySelector("[role=dialog],[role=alertdialog]")) return
+      if (visible.length === 0) return
+      event.preventDefault()
+      const cur = visible.findIndex((task) => task.id === selectedTaskId)
+      const next =
+        cur === -1
+          ? 0
+          : Math.min(Math.max(cur + (down ? 1 : -1), 0), visible.length - 1)
+      open(visible[next].id)
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [visible, selectedTaskId])
 
   const restore = (task: Task): void => {
     void rpc("task.archive", { taskId: task.id, archived: false }).catch(
@@ -877,10 +907,12 @@ export function AppShell() {
             role="presentation"
           >
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Task tools"
               className="h-full w-80 max-w-[85vw] border-l border-line bg-bg shadow-2xl"
               onClick={(event) => event.stopPropagation()}
               onKeyDown={() => {}}
-              role="presentation"
             >
               <ToolsPanel drawer onClose={() => setToolsOpen(false)} />
             </div>
