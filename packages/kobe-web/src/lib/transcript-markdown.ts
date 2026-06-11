@@ -121,5 +121,5 @@ export function transcriptToMarkdown(
   const body = messages
     .map((m) => messageMarkdown(m, results, hideTools))
     .filter((chunk): chunk is string => chunk !== null)
-  return [head, ...body].join("\n\n---\n\n") + "\n"
+  return `${[head, ...body].join("\n\n---\n\n")}\n`
 }

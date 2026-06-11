@@ -10,6 +10,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
+import { loadPromptPreview, usePromptPreviews } from "../lib/prompt-preview.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
@@ -51,7 +52,15 @@ const BUCKETS: Array<{
   { key: "quiet", title: "Quiet", hint: "idle, clean", accent: "text-subtle" },
 ]
 
-function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
+function Card({
+  entry,
+  preview,
+  onOpen,
+}: {
+  entry: TriagedTask
+  preview: string | null | undefined
+  onOpen: () => void
+}) {
   const { task, engine, changes } = entry
   const label = activityLabel(engine?.state)
   return (
@@ -74,6 +83,15 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
           </span>
         )}
       </div>
+      {preview && (
+        <div
+          className="flex items-baseline gap-1.5 text-[11px] text-muted"
+          title={preview}
+        >
+          <span className="shrink-0 font-mono text-subtle">❯</span>
+          <span className="min-w-0 truncate">{preview}</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[11px] text-subtle">
         <span className="min-w-0 truncate font-mono">
           {task.branch || task.repo}
@@ -90,8 +108,22 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
 export function Overview() {
   const { tasks, engineStates, worktreeChanges, hydrated } = useAppState()
   const navigate = useNavigate()
+  const previews = usePromptPreviews()
   const [query, setQuery] = useState("")
   const filterRef = useRef<HTMLInputElement>(null)
+
+  // Refresh previews on task-list changes AND engine activity. The second
+  // trigger is load-bearing: a prompt/turn publishes only on the engine-state
+  // channel and never bumps the tasks identity, so without it the previews
+  // would freeze while Overview sits open. mtime-gated inside the store, so a
+  // re-run is one cheap sessions call per task, no message re-downloads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: engineStates is a deliberate re-trigger, not a read — engine transitions mark "transcript advanced" without changing tasks identity.
+  useEffect(() => {
+    for (const task of tasks as Task[]) {
+      if (task.archived || task.kind === "main") continue
+      void loadPromptPreview(task)
+    }
+  }, [tasks, engineStates])
 
   // Keyboard-first parity with the rail: `/` focuses the filter, Escape clears
   // it. Suppressed while typing in another field.
@@ -244,6 +276,7 @@ export function Overview() {
                         <Card
                           key={entry.task.id}
                           entry={entry}
+                          preview={previews[entry.task.id]}
                           onOpen={() => open(entry.task.id)}
                         />
                       ))
