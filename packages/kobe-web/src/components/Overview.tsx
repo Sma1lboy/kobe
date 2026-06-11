@@ -7,11 +7,12 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft } from "lucide-react"
-import { useMemo } from "react"
+import { ArrowLeft, Search, X } from "lucide-react"
+import { useMemo, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
+import { matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
@@ -89,6 +90,7 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
 export function Overview() {
   const { tasks, engineStates, worktreeChanges, hydrated } = useAppState()
   const navigate = useNavigate()
+  const [query, setQuery] = useState("")
 
   const triaged = useMemo<TriagedTask[]>(() => {
     return (tasks as Task[])
@@ -102,6 +104,11 @@ export function Overview() {
       })
   }, [tasks, engineStates, worktreeChanges])
 
+  const shown = useMemo(
+    () => triaged.filter((e) => matchesTask(e.task, query)),
+    [triaged, query],
+  )
+
   const byBucket = useMemo(() => {
     const map: Record<Bucket, TriagedTask[]> = {
       attention: [],
@@ -109,9 +116,9 @@ export function Overview() {
       changes: [],
       quiet: [],
     }
-    for (const entry of triaged) map[entry.bucket].push(entry)
+    for (const entry of shown) map[entry.bucket].push(entry)
     return map
-  }, [triaged])
+  }, [shown])
 
   const open = (id: string): void => {
     selectTask(id)
@@ -140,6 +147,30 @@ export function Overview() {
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
           Overview
         </span>
+        <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
+          <Search
+            size={13}
+            strokeWidth={1.8}
+            className="shrink-0 text-subtle"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter tasks"
+            className="w-40 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="shrink-0 text-subtle hover:text-fg"
+              aria-label="clear filter"
+              title="Clear filter"
+            >
+              <X size={13} strokeWidth={2} />
+            </button>
+          )}
+        </label>
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px]">
           <span className="text-kobe-blue">{counts.attention} need input</span>
           <span className="text-kobe-orange">{counts.working} running</span>
@@ -153,6 +184,10 @@ export function Overview() {
         ) : triaged.length === 0 ? (
           <p className="text-[12px] text-subtle">
             No worktree tasks yet. Create one from the workspace.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="text-[12px] text-subtle">
+            No tasks match “{query.trim()}”.
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
