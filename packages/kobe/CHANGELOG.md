@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.20
+
+### Patch Changes
+
+- fbaa3e0: Big idle-efficiency pass — long-running kobe panes and the daemon now do dramatically less background work: task switches re-verify sessions with 4 tmux calls instead of 10 (attach/resize healing 6→3); turn/activity polling stops re-reading multi-MB transcripts when their mtime hasn't changed (Claude and Codex both — previously up to hundreds of whole-file reads per minute per pane); ChatTab auto-naming drops from ~450 to ~165 tmux calls/min by riding window options through the listing; sidebar branch labels stat .git/HEAD instead of spawning git every 2s (~150 spawns/min → ~0); the idle spinner tick no longer rebuilds every row's view 10×/s; the offline tasks.json poll is mtime-gated; the daemon serializes each broadcast frame once instead of once per subscriber; and keymap lookups are O(1) per keypress.
+- 93214cc: Pane-focus polish in the tmux handover: the directional focus chords (ctrl+h/j/k/l, or your `tmux.focus` overrides) no longer wrap at window edges — pressing ctrl+h on the leftmost Tasks pane is now a no-op instead of teleporting to the rightmost pane (each bind is gated on tmux's `pane_at_*` edge variables). And in the Tasks pane, the Right arrow jumps back into the current window's engine pane (`tasks.focusEngine` — user-overridable, F1-visible, shown in the keys legend), the natural inverse of ctrl+h.
+
 ## 0.7.19
 
 ### Patch Changes
