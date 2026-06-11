@@ -9,6 +9,22 @@ export type TaskKind = "main" | "task"
 export type TaskStatus = string
 export type Vendor = string | undefined
 
+/** Mirror of the daemon's TaskPRStatus (types/task.ts) — only the fields
+ *  the web rail renders are typed; the rest pass through untouched. */
+export interface TaskPRStatus {
+  provider?: string
+  lifecycle?:
+    | "creating"
+    | "open"
+    | "ready_to_merge"
+    | "merged"
+    | "closed"
+    | "unknown"
+  checkState?: "none" | "pending" | "passing" | "failing" | "unknown"
+  number?: number
+  url?: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -20,7 +36,7 @@ export interface Task {
   archived: boolean
   pinned: boolean
   vendor?: Vendor
-  prStatus?: unknown
+  prStatus?: TaskPRStatus
   createdAt: string
   updatedAt: string
 }

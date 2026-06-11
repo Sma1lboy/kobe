@@ -29,6 +29,7 @@ const inputClass =
 export function NewTaskDialog({ onClose }: { onClose: () => void }) {
   const { tasks } = useAppState()
   const engines = useEngines()
+  const navigate = useNavigate()
   const repos = useMemo(() => {
     const seen = new Set<string>()
     const list: string[] = []

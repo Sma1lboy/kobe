@@ -6,12 +6,20 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { Loader2, Plus, Search, Settings, X } from "lucide-react"
+import { Loader2, PanelRight, Plus, Search, Settings, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
+import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
-import type { ActivityState, EngineState, Task, TaskJob } from "../lib/types.ts"
+import type {
+  ActivityState,
+  EngineState,
+  Task,
+  TaskJob,
+  TaskPRStatus,
+} from "../lib/types.ts"
+import { CommandPalette } from "./CommandPalette.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
@@ -128,9 +136,38 @@ function ChangesChip({
 }) {
   if (!counts || (counts.added === 0 && counts.deleted === 0)) return null
   return (
-    <span className="ml-auto shrink-0 font-mono text-[10px]">
+    <span className="shrink-0 font-mono text-[10px]">
       <span className="text-kobe-green">+{counts.added}</span>{" "}
       <span className="text-kobe-red">−{counts.deleted}</span>
+    </span>
+  )
+}
+
+/** PR lifecycle/check → a short chip + theme color. Hidden when there's no
+ *  PR (lifecycle unknown/none). Mirrors the daemon's TaskPRStatus shape. */
+function PrChip({ pr }: { pr: TaskPRStatus | undefined }) {
+  const lifecycle = pr?.lifecycle
+  if (!pr || !lifecycle || lifecycle === "unknown") return null
+  const check = pr.checkState
+  const cls =
+    lifecycle === "merged"
+      ? "text-kobe-violet"
+      : lifecycle === "closed"
+        ? "text-kobe-red"
+        : check === "failing"
+          ? "text-kobe-red"
+          : check === "passing"
+            ? "text-kobe-green"
+            : check === "pending"
+              ? "text-kobe-yellow"
+              : "text-kobe-blue"
+  const label = pr.number ? `PR #${pr.number}` : "PR"
+  return (
+    <span
+      className={`shrink-0 font-mono text-[10px] ${cls}`}
+      title={`${lifecycle}${check && check !== "none" ? ` · ${check}` : ""}`}
+    >
+      {label}
     </span>
   )
 }
@@ -152,6 +189,7 @@ function TaskRow({
 }) {
   const materializing = job?.phase === "running"
   const label = materializing ? "materializing…" : activityLabel(engine?.state)
+  const updated = relativeTime(task.updatedAt || task.createdAt)
   return (
     <button
       type="button"
@@ -175,18 +213,22 @@ function TaskRow({
           />
         )}
         <span
-          className={`truncate text-[13px] ${active ? "text-fg" : "text-fg/90"}`}
+          className={`min-w-0 flex-1 truncate text-[13px] ${active ? "text-fg" : "text-fg/90"}`}
         >
           {task.title || task.branch}
         </span>
+        <PrChip pr={task.prStatus} />
         {task.pinned && (
-          <span className="ml-auto shrink-0 text-[10px] text-subtle">PIN</span>
+          <span className="shrink-0 text-[10px] text-subtle">PIN</span>
         )}
-        {!task.pinned && <ChangesChip counts={changes} />}
+        <ChangesChip counts={changes} />
       </div>
       <div className="mt-0.5 flex items-center gap-2 pl-3.5 text-[11px] text-subtle">
-        <span className="truncate">{task.branch || "—"}</span>
-        {label && <span className="ml-auto shrink-0 text-muted">{label}</span>}
+        <span className="min-w-0 truncate">{task.branch || "—"}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-2">
+          {label && <span className="text-muted">{label}</span>}
+          {updated && <span className="text-subtle">{updated}</span>}
+        </span>
       </div>
     </button>
   )
@@ -436,7 +478,7 @@ function TaskRail({
   )
 }
 
-function TopBar() {
+function TopBar({ onToggleTools }: { onToggleTools: () => void }) {
   const { daemonConnected, streamConnected, tasks } = useAppState()
   const { selectedTaskId } = useTabsState()
   const task = selectedTaskId
@@ -462,17 +504,29 @@ function TopBar() {
           Workspace
         </span>
       )}
-      <div className="ml-auto flex items-center gap-2 text-[11px] text-subtle">
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
-        />
-        <span>
-          {ok
-            ? "daemon connected"
-            : streamConnected
-              ? "no daemon"
-              : "connecting…"}
+      <div className="ml-auto flex items-center gap-3 text-[11px] text-subtle">
+        <span className="hidden items-center gap-1.5 sm:flex">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
+          />
+          <span>
+            {ok
+              ? "daemon connected"
+              : streamConnected
+                ? "no daemon"
+                : "connecting…"}
+          </span>
         </span>
+        {/* Tools rail toggle — only on narrow screens where the rail is a drawer. */}
+        <button
+          type="button"
+          onClick={onToggleTools}
+          className="flex items-center text-muted transition-colors hover:text-fg lg:hidden"
+          aria-label="Toggle task tools"
+          title="Task tools"
+        >
+          <PanelRight size={15} strokeWidth={1.8} />
+        </button>
       </div>
     </header>
   )
@@ -600,10 +654,27 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
 export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  // The right tools rail is a fixed column at lg+, and a slide-in drawer on
+  // narrow windows (where it used to vanish entirely, making rename/changes
+  // unreachable on a phone).
+  const [toolsOpen, setToolsOpen] = useState(false)
+
+  // Cmd/Ctrl+K toggles the palette globally; Escape closes the drawer.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault()
+        setPaletteOpen((cur) => !cur)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
-      <TopBar />
+      <TopBar onToggleTools={() => setToolsOpen((cur) => !cur)} />
       <div className="flex min-h-0 flex-1">
         <TaskRail
           onOpenSettings={() => setSettingsOpen(true)}
@@ -614,10 +685,39 @@ export function AppShell() {
         ) : (
           <WorkspaceTabs />
         )}
-        <ToolsPanel />
+        {/* lg+: inline column. Narrow: off-canvas drawer toggled from TopBar. */}
+        <div className="hidden lg:flex">
+          <ToolsPanel />
+        </div>
+        {toolsOpen && (
+          // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss; the × button + Escape are the keyboard paths.
+          <div
+            className="fixed inset-0 z-30 flex justify-end bg-black/50 lg:hidden"
+            onClick={() => setToolsOpen(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setToolsOpen(false)
+            }}
+            role="presentation"
+          >
+            <div
+              className="h-full w-80 max-w-[85vw] border-l border-line bg-bg shadow-2xl"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={() => {}}
+              role="presentation"
+            >
+              <ToolsPanel drawer onClose={() => setToolsOpen(false)} />
+            </div>
+          </div>
+        )}
       </div>
       <StatusBar />
       {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNewTask={() => setNewTaskOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
       <Toasts />
     </div>
   )

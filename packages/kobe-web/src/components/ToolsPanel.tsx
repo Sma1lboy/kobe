@@ -4,6 +4,7 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
+import { X } from "lucide-react"
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { useEngines } from "../lib/engines.ts"
@@ -400,7 +401,15 @@ function TaskOverview({ task }: { task: Task | null }) {
   )
 }
 
-export function ToolsPanel() {
+export function ToolsPanel({
+  drawer = false,
+  onClose,
+}: {
+  /** Drawer mode (narrow screens): fills its container + shows a close ×.
+   *  Default (lg+ column): fixed 20rem width, no close button. */
+  drawer?: boolean
+  onClose?: () => void
+} = {}) {
   const [tool, setTool] = useState<Tool>("overview")
   const { selectedTaskId } = useTabsState()
   const { tasks } = useAppState()
@@ -409,7 +418,13 @@ export function ToolsPanel() {
     : null
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-l border-line bg-bg lg:flex">
+    <aside
+      className={
+        drawer
+          ? "flex h-full w-full flex-col bg-bg"
+          : "flex w-80 shrink-0 flex-col border-l border-line bg-bg"
+      }
+    >
       <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface">
         {(["overview", "notes", "changes"] as const).map((t) => (
           <button
@@ -425,6 +440,16 @@ export function ToolsPanel() {
             {t === "overview" ? "Task" : t === "notes" ? "Notes" : "Changes"}
           </button>
         ))}
+        {drawer && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto px-3 text-subtle hover:text-fg"
+            aria-label="Close tools"
+          >
+            <X size={14} strokeWidth={2} />
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1">
         {tool === "overview" ? (
