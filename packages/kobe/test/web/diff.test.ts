@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { mapPool, splitDiffByFile, statusLabel } from "../../src/web/diff.ts"
+import { handleDiffRequest, mapPool, splitDiffByFile, statusLabel } from "../../src/web/diff.ts"
 
 describe("mapPool", () => {
   it("preserves input → output order regardless of completion order", async () => {
@@ -180,5 +180,45 @@ describe("splitDiffByFile", () => {
     ].join("\n")
     const byFile = splitDiffByFile(diff)
     expect([...byFile.keys()]).toEqual(["x.ts"])
+  })
+})
+
+/**
+ * worktreePath is the route's only user input and it feeds `git -C <path>`, so
+ * the input guards ARE the security boundary. These cases all return BEFORE any
+ * git spawn, so they need no repo. (The happy path needs a real worktree and is
+ * exercised end-to-end via the bridge, not here.)
+ */
+describe("handleDiffRequest — input guards", () => {
+  const req = (path: string, method = "GET") => {
+    const url = new URL(`http://localhost${path}`)
+    return { req: new Request(url, { method }), url }
+  }
+
+  it("falls through (null) for a non-diff path", async () => {
+    const { req: r, url } = req("/api/notes?taskId=abc")
+    expect(await handleDiffRequest(r, url)).toBeNull()
+  })
+
+  it("rejects a non-GET method with 405", async () => {
+    const { req: r, url } = req("/api/diff?worktreePath=/tmp", "POST")
+    expect((await handleDiffRequest(r, url))?.status).toBe(405)
+  })
+
+  it("rejects a missing worktreePath with 400", async () => {
+    const { req: r, url } = req("/api/diff")
+    expect((await handleDiffRequest(r, url))?.status).toBe(400)
+  })
+
+  it("rejects a non-absolute worktreePath with 400", async () => {
+    for (const bad of ["relative/path", "../../etc", "."]) {
+      const { req: r, url } = req(`/api/diff?worktreePath=${encodeURIComponent(bad)}`)
+      expect((await handleDiffRequest(r, url))?.status, bad).toBe(400)
+    }
+  })
+
+  it("rejects a non-existent absolute worktreePath with 400", async () => {
+    const { req: r, url } = req("/api/diff?worktreePath=/nonexistent-kobe-diff-test-dir-xyz")
+    expect((await handleDiffRequest(r, url))?.status).toBe(400)
   })
 })
