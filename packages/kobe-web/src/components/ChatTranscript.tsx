@@ -22,6 +22,7 @@ import {
   type HistoryMessage,
   summarizeUsage,
 } from "../lib/history.ts"
+import { outputText, toolInputSummary } from "../lib/tool-display.ts"
 
 const POLL_MS = 2_500
 const OUTPUT_PREVIEW_CHARS = 600
@@ -30,41 +31,6 @@ type ToolResult = Extract<ContentBlock, { type: "tool_result" }>
 type ToolCall = Extract<ContentBlock, { type: "tool_call" }>
 
 /** One-line, human-scannable summary of a tool's input (per-tool narrowing). */
-function toolInputSummary(call: ToolCall): string {
-  const input = call.input as Record<string, unknown> | null | undefined
-  if (input && typeof input === "object") {
-    const pick = (key: string): string | null =>
-      typeof input[key] === "string" ? (input[key] as string) : null
-    const candidate =
-      pick("command") ??
-      pick("file_path") ??
-      pick("pattern") ??
-      pick("url") ??
-      pick("description") ??
-      pick("prompt") ??
-      pick("query")
-    if (candidate)
-      return candidate.length > 90 ? `${candidate.slice(0, 89)}…` : candidate
-  }
-  try {
-    const raw = JSON.stringify(call.input)
-    if (!raw || raw === "{}" || raw === "null") return ""
-    return raw.length > 90 ? `${raw.slice(0, 89)}…` : raw
-  } catch {
-    return ""
-  }
-}
-
-function outputText(output: unknown): string {
-  if (typeof output === "string") return output
-  if (output == null) return ""
-  try {
-    return JSON.stringify(output, null, 2)
-  } catch {
-    return String(output)
-  }
-}
-
 function ToolRow({
   call,
   result,
