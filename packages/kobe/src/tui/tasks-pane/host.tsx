@@ -65,7 +65,7 @@ import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
-import { bindByIds, keymapVersion } from "../context/keybindings"
+import { bindByIds, findBinding, keymapVersion } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
@@ -521,6 +521,17 @@ function TasksShell(props: {
     if (exists) {
       const cwd = (await getSessionOption(name, "@kobe_worktree")) || task?.worktreePath || ""
       if (worktreeCwdUsable(cwd)) {
+        // Thread the per-repo init even on the heal path: ensureSession may
+        // decide to REBUILD a stale/legacy session here (session-decision.ts),
+        // and a rebuild goes through the create path that weaves the init
+        // `if [ ! -f marker ]` group. Without this, a worktree whose init
+        // previously failed (the marker is touched only on success, so it must
+        // retry) never retries via this — the most common — re-entry surface,
+        // contradicting CLAUDE.md's "a full kill+rebuild does re-evaluate it".
+        // Passing on a pure REUSE is harmless: only the create path applies
+        // these (EnsureSessionOpts), and the first prompt is create-branch-only
+        // so there's no double paste.
+        const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
         await ensureSession({
           name,
           cwd,
@@ -528,6 +539,8 @@ function TasksShell(props: {
           taskId: id,
           vendor: task?.vendor,
           repo: task?.repo,
+          initScript: init.initScript,
+          initPrompt: init.initPrompt,
         })
       }
       await runTmux(["switch-client", "-t", `=${name}`])
@@ -693,6 +706,36 @@ function TasksShell(props: {
 }
 
 /**
+ * Resolve a single binding id to the chord cap the footer should advertise:
+ * the cosmetic `hint.keys` when present (it's refreshed in place on an
+ * override — keymap-overrides.ts), else the canonical first chord. Returns
+ * `null` when the id is unbound (no chords) — the row that owns it should
+ * then drop, since advertising a dead chord is worse than none (mirrors the
+ * override path that nulls a hint on unbind).
+ *
+ * Pure + exported so the legend derivation is unit-testable against a faked
+ * keymap without booting a tmux pane (the host itself isn't CI-runnable).
+ */
+export function legendCap(id: string): string | null {
+  const row = findBinding(id)
+  if (!row) return null
+  const cap = row.hint?.keys ?? row.keys[0]
+  return cap && cap.length > 0 ? cap : null
+}
+
+/**
+ * Resolve a (possibly composite) legend row's keycap from the binding ids it
+ * represents. Each id contributes its {@link legendCap}; unbound ids drop out
+ * and the survivors join with `/` (so `r/b/v` becomes `r/v` if `b` is
+ * unbound, or the whole row drops when nothing survives). Returns `null` when
+ * every id resolved to no chord — the caller drops the row entirely.
+ */
+export function legendRowCap(ids: readonly string[]): string | null {
+  const caps = ids.map(legendCap).filter((c): c is string => c !== null)
+  return caps.length > 0 ? caps.join("/") : null
+}
+
+/**
  * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
  * shows the in-pane task actions plus the session-level tmux chords so the
  * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
@@ -772,27 +815,52 @@ function ShortcutHints(props: {
   // `prefix …` rows with the user's REAL resolved prefix (`prefixCap()`, #12).
   // Derived (not a static const) so those rows re-render once the async prefix
   // resolution lands.
-  const defaultHints = (): ReadonlyArray<Hint> => [
-    { k: "enter", label: "open" },
-    // Right arrow re-focuses the current window's engine pane
-    // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
-    { k: "right", label: "focus engine" },
-    { k: "n", label: "new task" },
-    { k: "s", label: "settings" },
-    { k: "o", label: "open wt" },
-    { k: "[/]", label: "views" },
-    { k: "t", label: "sort" },
-    // Move (`M`) is Shift+M and early-returns on a main row — dim it there.
-    { k: "M", label: "move task", dimWhenMain: true },
-    // `a` is a TOGGLE — archive AND unarchive — so the label says both.
-    { k: "a/d", label: "un/archive·delete" },
-    // Rename title (`r`) and cycle engine (`v`) work on a main row; only
-    // rename branch (`b`) early-returns there, so the row dims as a whole
-    // on main to signal the branch action is unavailable.
-    { k: "r/b/v", label: "name/branch/engine", dimWhenMain: true },
-    { k: "f1", label: "help" },
-    ...tmuxHints(),
-  ]
+  // Each in-pane row's keycap is DERIVED from KobeKeymap (legendRowCap) so a
+  // user override / unbind in ~/.kobe/settings/keybindings.yaml is reflected
+  // here — the footer is the only always-visible legend, and the doc promises
+  // it follows the keymap (docs/KEYBINDINGS.md). The ids mirror the pane's own
+  // bindByIds block plus the Sidebar-owned sidebar.* rows it delegates to
+  // (Enter→sidebar.select, [/]→sidebar.view, sort→sidebar.sort, the a/d/r and
+  // M rows). `keymapVersion()` is read at the top so a live reload re-renders
+  // the legend with the freshly-resolved chords — same pattern as tmuxHints().
+  // Each row is conditional: an id that resolved to no chord (unbound) drops
+  // its row rather than advertising a dead key. Composite rows (a/d, r/b/v)
+  // keep the surviving caps joined.
+  const defaultHints = (): ReadonlyArray<Hint> => {
+    keymapVersion()
+    const rows: Array<{ ids: readonly string[]; label: string; dimWhenMain?: boolean }> = [
+      { ids: ["sidebar.select"], label: "open" },
+      // Right arrow re-focuses the current window's engine pane
+      // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
+      { ids: ["tasks.focusEngine"], label: "focus engine" },
+      { ids: ["task.new"], label: "new task" },
+      { ids: ["settings.open.sidebar"], label: "settings" },
+      { ids: ["tasks.openWorktree"], label: "open wt" },
+      { ids: ["sidebar.view"], label: "views" },
+      { ids: ["sidebar.sort"], label: "sort" },
+      // Move/merge (`M`) early-returns on a main row — dim it there.
+      { ids: ["sidebar.localMerge"], label: "move task", dimWhenMain: true },
+      // `a` is a TOGGLE — archive AND unarchive — so the label says both.
+      { ids: ["sidebar.archive", "sidebar.delete"], label: "un/archive·delete" },
+      // Rename title (`r`) and cycle engine (`v`) work on a main row; only
+      // rename branch (`b`) early-returns there, so the row dims as a whole
+      // on main to signal the branch action is unavailable.
+      {
+        ids: ["sidebar.rename", "tasks.renameBranch", "tasks.cycleEngine"],
+        label: "name/branch/engine",
+        dimWhenMain: true,
+      },
+      { ids: ["help.open"], label: "help" },
+    ]
+    const out: Hint[] = []
+    for (const row of rows) {
+      const k = legendRowCap(row.ids)
+      if (k === null) continue
+      out.push({ k, label: row.label, dimWhenMain: row.dimWhenMain })
+    }
+    out.push(...tmuxHints())
+    return out
+  }
   const MOVE_HINTS: ReadonlyArray<Hint> = [
     { k: "j/k", label: "reorder" },
     { k: "enter/esc", label: "done" },
