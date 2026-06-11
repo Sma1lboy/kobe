@@ -17,6 +17,11 @@ import { Terminal } from "@xterm/xterm"
 import "@xterm/xterm/css/xterm.css"
 import { CornerDownLeft, RotateCw } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
+import {
+  loadHistory,
+  navigateHistory,
+  pushHistory,
+} from "../lib/composer-history.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
@@ -86,6 +91,12 @@ export function ChatTerminal({
   const [draft, setDraft] = useState(() =>
     mode === "engine" ? (consumePendingPrompt(taskId) ?? "") : "",
   )
+  // Shell-like prompt recall: ↑/↓ walk previously-sent prompts (newest-first).
+  const [history, setHistory] = useState<string[]>(() =>
+    mode === "engine" ? loadHistory(taskId) : [],
+  )
+  const histCursorRef = useRef(-1)
+  const liveDraftRef = useRef("")
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: `epoch` is a deliberate trigger — bumping it tears down + re-attaches to the same server-side PTY (Reattach). It isn't read in the body, so biome thinks it's extraneous, but removing it would break reattach.
   useEffect(() => {
@@ -183,6 +194,9 @@ export function ChatTerminal({
     // arrive as ONE paste instead of line-by-line keystrokes.
     ws.send(`\x1b[200~${text}\x1b[201~`)
     ws.send("\r")
+    setHistory(pushHistory(taskId, text))
+    histCursorRef.current = -1
+    liveDraftRef.current = ""
     setDraft("")
   }
 
@@ -215,11 +229,51 @@ export function ChatTerminal({
         >
           <textarea
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              // Editing means we're back on a live draft, not browsing history.
+              histCursorRef.current = -1
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault()
                 sendPrompt()
+                return
+              }
+              const ta = event.currentTarget
+              const browsing = histCursorRef.current >= 0
+              const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0
+              const atEnd =
+                ta.selectionStart === draft.length &&
+                ta.selectionEnd === draft.length
+              // Enter history from a live draft only when the caret is at the
+              // edge (so ↑/↓ still move inside a multi-line draft); once
+              // browsing, ↑/↓ keep walking the ring regardless of caret.
+              if (event.key === "ArrowUp" && (browsing || atStart)) {
+                if (histCursorRef.current === -1) liveDraftRef.current = draft
+                const step = navigateHistory(
+                  history,
+                  histCursorRef.current,
+                  "up",
+                  liveDraftRef.current,
+                )
+                if (step) {
+                  event.preventDefault()
+                  histCursorRef.current = step.cursor
+                  setDraft(step.value)
+                }
+              } else if (event.key === "ArrowDown" && (browsing || atEnd)) {
+                const step = navigateHistory(
+                  history,
+                  histCursorRef.current,
+                  "down",
+                  liveDraftRef.current,
+                )
+                if (step) {
+                  event.preventDefault()
+                  histCursorRef.current = step.cursor
+                  setDraft(step.value)
+                }
               }
             }}
             placeholder="Send a prompt (Enter to send, Shift+Enter for newline)"
