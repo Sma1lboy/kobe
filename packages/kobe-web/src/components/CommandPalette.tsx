@@ -18,6 +18,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { fuzzyScore } from "../lib/fuzzy.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
@@ -30,26 +31,6 @@ interface Command {
   hint?: string
   icon: "task" | "new" | "settings" | "overview"
   run: () => void
-}
-
-/** Subsequence fuzzy match (every query char appears in order). Cheap and
- *  good enough for a task list; returns a score for ranking (lower = better,
- *  rewards earlier + tighter matches). null = no match. */
-function fuzzyScore(query: string, text: string): number | null {
-  if (!query) return 0
-  const q = query.toLowerCase()
-  const t = text.toLowerCase()
-  let qi = 0
-  let score = 0
-  let lastHit = -1
-  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-    if (t[ti] === q[qi]) {
-      score += ti - lastHit // gap penalty: contiguous runs score lowest
-      lastHit = ti
-      qi++
-    }
-  }
-  return qi === q.length ? score : null
 }
 
 function CommandIcon({ kind }: { kind: Command["icon"] }) {
