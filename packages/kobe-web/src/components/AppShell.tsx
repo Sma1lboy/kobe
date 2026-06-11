@@ -304,15 +304,17 @@ function TaskRail({
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
-  // Keyboard-first task nav: j/k or ↑/↓ move between visible tasks and open
-  // them — the TUI's muscle memory. Suppressed while typing in a field or
-  // while any dialog/palette is open (so those keep their own key handling).
-  // `visible` is the current sort/filter order, so nav follows what's shown.
+  // Keyboard-first task nav: `j`/`k` move between visible tasks (TUI muscle
+  // memory), and ↑/↓ do too BUT only when the rail (or nothing specific) owns
+  // focus — so arrow-scroll still works natively inside the transcript / diff
+  // panes. Suppressed in inputs, with any dialog/palette open, and while the
+  // Settings overlay is open (it's not a role=dialog).
   // biome-ignore lint/correctness/useExhaustiveDependencies: open() closes only over stable refs; re-attaching on visible/selectedTaskId is enough and avoids re-arming every render.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const key = event.key
+      const isArrow = key === "ArrowDown" || key === "ArrowUp"
       const down = key === "j" || key === "ArrowDown"
       const up = key === "k" || key === "ArrowUp"
       if (!down && !up) return
@@ -327,6 +329,18 @@ function TaskRail({
         return
       }
       if (document.querySelector("[role=dialog],[role=alertdialog]")) return
+      if (document.querySelector("[data-settings-open]")) return
+      // Arrow keys defer to native scrolling unless focus is on the rail or
+      // nowhere specific (document.body) — don't swallow scroll on a focused
+      // transcript/diff pane.
+      if (
+        isArrow &&
+        t &&
+        t !== document.body &&
+        !listRef.current?.contains(t)
+      ) {
+        return
+      }
       if (visible.length === 0) return
       event.preventDefault()
       const cur = visible.findIndex((task) => task.id === selectedTaskId)
@@ -710,6 +724,7 @@ function NotificationsCard() {
 
 function ResetLayoutCard() {
   const [armed, setArmed] = useState(false)
+  const navigate = useNavigate()
   return (
     <div className="border border-line bg-surface p-4">
       <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -728,6 +743,9 @@ function ResetLayoutCard() {
             return
           }
           resetLayout()
+          // Leave the deep-link route so the /task/$taskId effect can't
+          // immediately re-select the task we just cleared.
+          void navigate({ to: "/" })
           setArmed(false)
         }}
         onBlur={() => setArmed(false)}
@@ -747,7 +765,9 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
   const { daemonConnected, streamConnected, update } = useAppState()
 
   return (
-    <section className="flex min-w-0 flex-1 flex-col bg-bg">
+    // data-settings-open lets the rail's j/k handler suppress nav while this
+    // overlay is up (it's an inline section, not a role=dialog).
+    <section data-settings-open className="flex min-w-0 flex-1 flex-col bg-bg">
       <div className="flex h-9 shrink-0 items-center justify-between border-b border-line bg-surface px-3">
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
           Settings

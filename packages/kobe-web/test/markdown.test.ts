@@ -79,4 +79,33 @@ describe("renderMarkdown — blocks & inline", () => {
   it("returns empty string for empty input", () => {
     expect(renderMarkdown("").trim()).toBe("")
   })
+
+  it("does NOT rewrite markdown inside a code span", () => {
+    const out = renderMarkdown("`**not bold** [x](y)`")
+    expect(out).toContain("<code")
+    expect(out).not.toContain("<strong")
+    expect(out).not.toContain("<a ")
+  })
+
+  it("renders bold that contains italic", () => {
+    expect(renderMarkdown("**bold *it* more**")).toContain(
+      "<strong>bold <em>it</em> more</strong>",
+    )
+  })
+
+  it("keeps two separate bold spans (non-greedy)", () => {
+    const out = renderMarkdown("**a** **b**")
+    expect((out.match(/<strong>/g) ?? []).length).toBe(2)
+  })
+
+  it("does not mistake ' <digit> ' text for a code placeholder", () => {
+    expect(renderMarkdown("step 3 done")).toContain("step 3 done")
+  })
+
+  it("drops protocol-relative //host links (renders as inert text)", () => {
+    const out = renderMarkdown("[x](//evil.com)")
+    expect(out).not.toContain("href")
+    expect(out).not.toContain("<a ")
+    expect(out).toContain("x")
+  })
 })

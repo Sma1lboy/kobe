@@ -1,10 +1,11 @@
 /**
- * Minimal, SAFE markdown → HTML for the notes preview. Security model: escape
- * ALL HTML first, then emit only our own tags from the escaped text — so user
- * input can never inject markup. Link hrefs are scheme-checked (http/https/
- * relative only; `javascript:` etc. are dropped to plain text). Not a full
- * CommonMark engine — a pragmatic subset (headings, lists, quotes, code,
- * fences, hr, bold/italic/code/links) that covers scratchpad notes.
+ * Minimal, SAFE markdown to HTML for the notes preview. Security model: escape
+ * ALL HTML first, then emit only our own tags from the escaped text, so user
+ * input can never inject markup. Link hrefs are scheme-checked (http/https or
+ * a true relative path only; javascript:, data:, and protocol-relative //host
+ * are dropped to plain text). Not a full CommonMark engine, a pragmatic subset
+ * (headings, lists, quotes, code, fences, hr, bold/italic/code/links) that
+ * covers scratchpad notes.
  *
  * Output is rendered via dangerouslySetInnerHTML, which is safe ONLY because
  * every code path here escapes before composing tags. Keep that invariant.
@@ -18,10 +19,12 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
-/** Allow only http(s) and relative links; everything else renders as text. */
+/** Allow only http(s) and true relative links; everything else renders as
+ *  text. `//host` is protocol-relative (resolves off-site), not relative. */
 function safeHref(raw: string): string | null {
   const url = raw.trim()
   if (/^https?:\/\//i.test(url)) return url
+  if (url.startsWith("//")) return null
   if (
     url.startsWith("/") ||
     url.startsWith("#") ||
@@ -33,30 +36,50 @@ function safeHref(raw: string): string | null {
   return null
 }
 
-/** Inline spans on ALREADY-ESCAPED text: code, bold, italic, links. */
-function renderInline(escaped: string): string {
-  let out = escaped
-  // `code` first so its contents aren't re-processed for bold/italic.
-  out = out.replace(/`([^`]+)`/g, '<code class="kobe-md-code">$1</code>')
-  // [text](url) — url is from escaped text; validate scheme, drop unsafe.
-  // Skip the link regex entirely when there's no `]`/`(` to match: its
-  // `[^\]]+`/`[^)]+` classes backtrack quadratically on a long run of
-  // unmatched `[`, so a bracket-heavy line could otherwise stall the render.
-  if (out.includes("]") && out.includes(")"))
+/** Link/bold/italic on a NON-code, already-escaped fragment. */
+function transformSpans(s: string): string {
+  let out = s
+  // [text](url): url is from escaped text; validate scheme, drop unsafe.
+  // Skip the link regex when there's no `]`/`(` to match: its `[^\]]+`/`[^)]+`
+  // classes backtrack quadratically on a long run of unmatched `[`.
+  if (out.includes("]") && out.includes(")")) {
     out = out.replace(
       /\[([^\]]+)\]\(([^)]+)\)/g,
       (_m, text: string, url: string) => {
-        // The URL was HTML-escaped (e.g. &amp;); unescape &amp; for the scheme
-        // check and the href, but it's still HTML-safe inside an attribute.
+        // The url was HTML-escaped (e.g. &amp;); unescape &amp; for the scheme
+        // check, then re-escape, so it's HTML-safe inside the href attribute.
         const href = safeHref(url.replace(/&amp;/g, "&"))
         if (!href) return `${text}(${url})`
-        const safe = escapeHtml(href)
-        return `<a href="${safe}" target="_blank" rel="noopener noreferrer" class="kobe-md-link">${text}</a>`
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="kobe-md-link">${text}</a>`
       },
     )
-  out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+  }
+  // Bold is non-greedy so `**bold *italic* more**` keeps the inner `*…*` for
+  // the italic pass that runs next (and `**a** **b**` stays two spans).
+  out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
   out = out.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
   return out
+}
+
+/**
+ * Inline spans on ALREADY-ESCAPED text. Split on `code` spans so the
+ * link/bold/italic passes only ever touch the NON-code segments — they can't
+ * rewrite markdown inside a code span, nor pair a `*`/`[` inside a code span
+ * with one outside it. (Trade-off: emphasis can't span across a code span,
+ * which is a rare edge and the safe choice.)
+ */
+function renderInline(escaped: string): string {
+  // The capture group keeps the `code` delimiters in the split result: even
+  // indices are non-code text, odd indices are the matched code spans.
+  return escaped
+    .split(/(`[^`]+`)/g)
+    .map((part, idx) => {
+      if (idx % 2 === 1) {
+        return `<code class="kobe-md-code">${part.slice(1, -1)}</code>`
+      }
+      return transformSpans(part)
+    })
+    .join("")
 }
 
 export function renderMarkdown(md: string): string {
@@ -147,7 +170,7 @@ export function renderMarkdown(md: string): string {
       continue
     }
 
-    // Blank line → list/paragraph break
+    // Blank line: list/paragraph break
     if (line.trim() === "") {
       closeList()
       i++

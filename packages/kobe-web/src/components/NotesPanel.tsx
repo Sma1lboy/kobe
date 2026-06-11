@@ -70,8 +70,11 @@ export function NotesPanel({
     if (debounceRef.current) clearTimeout(debounceRef.current)
     loadedTaskRef.current = taskId
     setSaveState("idle")
+    // Clear the buffer + drop to Edit mode immediately so the previous task's
+    // content (or a stale preview render) can't show during the async reload.
+    setMarkdown("")
+    setPreview(false)
     if (!taskId) {
-      setMarkdown("")
       return
     }
     let cancelled = false
