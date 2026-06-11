@@ -22,6 +22,7 @@ import {
   type HistoryMessage,
   summarizeUsage,
 } from "../lib/history.ts"
+import { isNearBottom } from "../lib/scroll.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
 import { messageMatchesQuery } from "../lib/transcript-search.ts"
 
@@ -189,6 +190,7 @@ export function ChatTranscript({
   const [search, setSearch] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  const [atBottom, setAtBottom] = useState(true)
   const mtimeRef = useRef(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -269,8 +271,17 @@ export function ChatTranscript({
   const onScroll = (): void => {
     const el = scrollRef.current
     if (!el) return
-    stickToBottomRef.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    const near = isNearBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+    stickToBottomRef.current = near
+    setAtBottom(near)
+  }
+
+  const jumpToLatest = (): void => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+    stickToBottomRef.current = true
+    setAtBottom(true)
   }
 
   const results = useMemo(() => {
@@ -372,35 +383,46 @@ export function ChatTranscript({
           )}
         </div>
       )}
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
-      >
-        {error ? (
-          <div className="py-4 text-[12px] text-kobe-red">{error}</div>
-        ) : !loaded ? (
-          <div className="py-4 text-[12px] text-subtle">
-            Loading transcript…
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="py-4 text-[12px] leading-relaxed text-subtle">
-            No engine session recorded for this worktree yet. Open a Vendor tab
-            and start a conversation — the transcript appears here.
-          </div>
-        ) : shown.length === 0 ? (
-          <div className="py-4 text-[12px] leading-relaxed text-subtle">
-            No messages match “{search.trim()}”.
-          </div>
-        ) : (
-          shown.map((message, index) => (
-            <MessageRow
-              // biome-ignore lint/suspicious/noArrayIndexKey: transcript is positional + re-rendered wholesale per session; messages carry no stable id, so sessionId+index is the stable-enough key.
-              key={`${message.sessionId}-${index}`}
-              message={message}
-              results={results}
-            />
-          ))
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
+        >
+          {error ? (
+            <div className="py-4 text-[12px] text-kobe-red">{error}</div>
+          ) : !loaded ? (
+            <div className="py-4 text-[12px] text-subtle">
+              Loading transcript…
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="py-4 text-[12px] leading-relaxed text-subtle">
+              No engine session recorded for this worktree yet. Open a Vendor
+              tab and start a conversation — the transcript appears here.
+            </div>
+          ) : shown.length === 0 ? (
+            <div className="py-4 text-[12px] leading-relaxed text-subtle">
+              No messages match “{search.trim()}”.
+            </div>
+          ) : (
+            shown.map((message, index) => (
+              <MessageRow
+                // biome-ignore lint/suspicious/noArrayIndexKey: transcript is positional + re-rendered wholesale per session; messages carry no stable id, so sessionId+index is the stable-enough key.
+                key={`${message.sessionId}-${index}`}
+                message={message}
+                results={results}
+              />
+            ))
+          )}
+        </div>
+        {!atBottom && shown.length > 0 && (
+          <button
+            type="button"
+            onClick={jumpToLatest}
+            className="absolute bottom-3 right-4 flex items-center gap-1 border border-line bg-surface px-2 py-1 font-mono text-[10px] text-muted shadow-md transition-colors hover:border-primary hover:text-fg"
+          >
+            ↓ latest
+          </button>
         )}
       </div>
     </div>
