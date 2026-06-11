@@ -40,10 +40,17 @@ export function dismissToast(id: number): void {
   emit()
 }
 
+/** Standard shape for a failed mutation: `label: cause`. An Error contributes
+ *  its message; anything else is stringified. Pure + exported so the contract
+ *  is testable without the window-bound toast store. */
+export function formatError(label: string, err: unknown): string {
+  const cause = err instanceof Error ? err.message : String(err)
+  return `${label}: ${cause}`
+}
+
 /** Standard shape for a failed mutation: `label: cause`. */
 export function reportError(label: string, err: unknown): void {
-  const cause = err instanceof Error ? err.message : String(err)
-  pushToast("error", `${label}: ${cause}`)
+  pushToast("error", formatError(label, err))
 }
 
 export function useToasts(): readonly Toast[] {
