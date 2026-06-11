@@ -240,6 +240,13 @@ export function ChatTerminal({
                 sendPrompt()
                 return
               }
+              // Escape exits history browsing → restore the in-progress draft.
+              if (event.key === "Escape" && histCursorRef.current >= 0) {
+                event.preventDefault()
+                histCursorRef.current = -1
+                setDraft(liveDraftRef.current)
+                return
+              }
               const ta = event.currentTarget
               const browsing = histCursorRef.current >= 0
               const atStart = ta.selectionStart === 0 && ta.selectionEnd === 0
