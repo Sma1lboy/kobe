@@ -15,14 +15,14 @@ import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import type { DaemonLink } from "./daemon-link.ts"
+import type { RpcLink } from "./daemon-link.ts"
 
-async function getTask(link: DaemonLink, taskId: string): Promise<SerializedTask> {
+async function getTask(link: RpcLink, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
   return task
 }
 
-async function ensureTaskWorktree(link: DaemonLink, taskId: string): Promise<{ task: SerializedTask; worktreePath: string }> {
+async function ensureTaskWorktree(link: RpcLink, taskId: string): Promise<{ task: SerializedTask; worktreePath: string }> {
   const task = await getTask(link, taskId)
   if (task.worktreePath) return { task, worktreePath: task.worktreePath }
   const { worktreePath } = await link.request<{ worktreePath: string | null }>("task.ensureWorktree", { taskId })
@@ -31,7 +31,7 @@ async function ensureTaskWorktree(link: DaemonLink, taskId: string): Promise<{ t
 }
 
 export async function ensureTaskSession(
-  link: DaemonLink,
+  link: RpcLink,
   taskId: string,
 ): Promise<{ session: string; worktreePath: string }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
@@ -55,7 +55,7 @@ function shellQuote(argv: readonly string[]): string {
   return argv.map((a) => (/^[A-Za-z0-9_/.:=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ")
 }
 
-export async function engineSpec(link: DaemonLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   const argv = [...interactiveEngineCommand(task.vendor)]
   const init = resolveRepoInit(task.repo ?? "", worktreePath)
@@ -65,7 +65,7 @@ export async function engineSpec(link: DaemonLink, taskId: string): Promise<{ cw
   return { cwd: worktreePath, command: [shell, "-ilc", script] }
 }
 
-export async function terminalSpec(link: DaemonLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function terminalSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
   const shell = process.env.SHELL?.trim() || "/bin/zsh"
   return { cwd: worktreePath, command: [shell, "-il"] }

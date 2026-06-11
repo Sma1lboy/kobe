@@ -65,6 +65,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * The minimal link surface the bridge's session/spec routes need — just the
+ * RPC call. Extracted so those helpers (and their tests) don't depend on the
+ * full {@link DaemonLink} (sockets, reconnect, channel mirror).
+ */
+export interface RpcLink {
+  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
+}
+
 export class DaemonLink {
   private client: KobeDaemonClient | null = null
   private closed = false

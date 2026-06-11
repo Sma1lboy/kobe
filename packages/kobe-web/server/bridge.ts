@@ -49,6 +49,26 @@ export interface BridgeServer {
 
 type SseSend = (type: string, data: unknown) => void
 
+/**
+ * The slice of {@link DaemonLink} the request handler needs — extracted so
+ * the route table can be tested against a fake link (no socket, no daemon).
+ */
+export interface BridgeLink {
+  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
+  snapshot(): unknown
+}
+
+/** Dependencies for {@link createRequestHandler} — all injectable so the
+ *  full route table is unit-testable. */
+export interface RequestHandlerDeps {
+  link: BridgeLink
+  /** Open SSE sinks; /events registers into this set, the fan-out reads it. */
+  sseSends: Set<SseSend>
+  staticDir?: string
+  /** tmux teardown after a committed archive/delete (default: real tmux). */
+  tearDownSession?: (taskId: string) => void
+}
+
 function sseResponse(register: (send: SseSend) => () => void): Response {
   let unregister: (() => void) | null = null
   let heartbeat: ReturnType<typeof setInterval> | null = null
@@ -85,7 +105,11 @@ function sseResponse(register: (send: SseSend) => () => void): Response {
   })
 }
 
-async function rpcResponse(req: Request, link: DaemonLink): Promise<Response> {
+async function rpcResponse(
+  req: Request,
+  link: BridgeLink,
+  tearDown: (taskId: string) => void,
+): Promise<Response> {
   try {
     const { name, payload } = (await req.json()) as { name?: DaemonRequestName; payload?: unknown }
     if (!name) return Response.json({ error: "missing rpc name" }, { status: 400 })
@@ -102,7 +126,7 @@ async function rpcResponse(req: Request, link: DaemonLink): Promise<Response> {
     if (typeof taskId === "string") {
       const archiving =
         name === "task.archive" && (payload as { archived?: unknown }).archived !== false
-      if (name === "task.delete" || archiving) void tearDownTaskSession(taskId)
+      if (name === "task.delete" || archiving) tearDown(taskId)
     }
     return Response.json({ result })
   } catch (err) {
@@ -124,7 +148,7 @@ async function enginesResponse(): Promise<Response> {
   }
 }
 
-async function sessionResponse(req: Request, link: DaemonLink): Promise<Response> {
+async function sessionResponse(req: Request, link: BridgeLink): Promise<Response> {
   try {
     const { taskId } = (await req.json()) as { taskId?: string }
     if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
@@ -136,8 +160,8 @@ async function sessionResponse(req: Request, link: DaemonLink): Promise<Response
 
 async function specResponse(
   url: URL,
-  link: DaemonLink,
-  spec: (link: DaemonLink, taskId: string) => Promise<{ cwd: string; command: string[] }>,
+  link: BridgeLink,
+  spec: (link: BridgeLink, taskId: string) => Promise<{ cwd: string; command: string[] }>,
 ): Promise<Response> {
   try {
     const taskId = url.searchParams.get("taskId")
@@ -145,6 +169,47 @@ async function specResponse(
     return Response.json(await spec(link, taskId))
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
+/**
+ * The bridge's full HTTP route table as one (req) → Response function,
+ * decoupled from `Bun.serve` and the live socket so the whole surface — the
+ * RPC allowlist + teardown hook, the SSE snapshot/fan-out, the spec/engine/
+ * theme/history routes, and the static fallthrough — is unit-testable against
+ * a fake link. `createBridgeServer` wraps this; tests call it directly.
+ */
+export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) => Promise<Response> {
+  const { link, sseSends, staticDir } = deps
+  const tearDown = deps.tearDownSession ?? ((taskId: string) => void tearDownTaskSession(taskId))
+  return async function handle(req: Request): Promise<Response> {
+    const url = new URL(req.url)
+    if (url.pathname === WEB_HEALTH_PATH) return new Response(WEB_HEALTH_MARKER)
+    if (url.pathname === "/events") {
+      return sseResponse((send) => {
+        send("snapshot", link.snapshot())
+        sseSends.add(send)
+        return () => {
+          sseSends.delete(send)
+        }
+      })
+    }
+    if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link, tearDown)
+    if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(req, link)
+    if (url.pathname === "/api/engine-spec" && req.method === "GET") return specResponse(url, link, engineSpec)
+    if (url.pathname === "/api/terminal-spec" && req.method === "GET")
+      return specResponse(url, link, terminalSpec)
+    if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
+    const notes = await handleNotesRequest(req, url)
+    if (notes) return notes
+    const diff = await handleDiffRequest(req, url)
+    if (diff) return diff
+    const history = await handleHistoryRequest(req, url)
+    if (history) return history
+    const themes = handleThemesRequest(req, url)
+    if (themes) return themes
+    if (staticDir) return staticResponse(url.pathname, staticDir)
+    return new Response("not found", { status: 404 })
   }
 }
 
@@ -226,38 +291,8 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
     for (const send of sseSends) send("snapshot", link.snapshot())
   })
 
-  const server = Bun.serve({
-    port,
-    idleTimeout: 0,
-    async fetch(req) {
-      const url = new URL(req.url)
-      if (url.pathname === WEB_HEALTH_PATH) return new Response(WEB_HEALTH_MARKER)
-      if (url.pathname === "/events") {
-        return sseResponse((send) => {
-          send("snapshot", link.snapshot())
-          sseSends.add(send)
-          return () => {
-            sseSends.delete(send)
-          }
-        })
-      }
-      if (url.pathname === "/api/rpc" && req.method === "POST") return rpcResponse(req, link)
-      if (url.pathname === "/api/session" && req.method === "POST") return sessionResponse(req, link)
-      if (url.pathname === "/api/engine-spec" && req.method === "GET") return specResponse(url, link, engineSpec)
-      if (url.pathname === "/api/terminal-spec" && req.method === "GET") return specResponse(url, link, terminalSpec)
-      if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
-      const notes = await handleNotesRequest(req, url)
-      if (notes) return notes
-      const diff = await handleDiffRequest(req, url)
-      if (diff) return diff
-      const history = await handleHistoryRequest(req, url)
-      if (history) return history
-      const themes = handleThemesRequest(req, url)
-      if (themes) return themes
-      if (staticDir) return staticResponse(url.pathname, staticDir)
-      return new Response("not found", { status: 404 })
-    },
-  })
+  const handle = createRequestHandler({ link, sseSends, staticDir })
+  const server = Bun.serve({ port, idleTimeout: 0, fetch: handle })
 
   return {
     port: server.port ?? port,
