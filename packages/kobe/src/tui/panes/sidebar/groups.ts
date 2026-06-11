@@ -163,3 +163,82 @@ export function repoBasename(repo: string): string {
 export function flattenIds(rows: readonly SidebarRow[]): string[] {
   return rows.map((r) => r.task.id)
 }
+
+/**
+ * Field-level equality over exactly the Task fields the sidebar row
+ * renderer dereferences from its captured `row.task` (Sidebar.tsx reads
+ * the task NON-reactively inside the `<For>` callback, so a reused row
+ * object freezes these fields until identity breaks).
+ *
+ * Deliberately excludes `createdAt` / `updatedAt` / `prStatus`: none are
+ * rendered by a row, and `updatedAt` is bumped by every
+ * `setActiveTask` recency touch — comparing it would re-key (destroy +
+ * recreate) the switched-to row on every task switch for no visual
+ * change. They still participate upstream: `buildRows` consumes
+ * `updatedAt` for `recent` ordering BEFORE reconciliation, and a real
+ * order change breaks reuse via `flatIndex`.
+ *
+ * If the row renderer starts reading a new Task field, add it here —
+ * otherwise the row will render stale data after that field changes.
+ */
+export function sameSidebarRowTask(a: Task, b: Task): boolean {
+  return (
+    a === b ||
+    (a.id === b.id &&
+      a.kind === b.kind &&
+      a.title === b.title &&
+      a.repo === b.repo &&
+      a.branch === b.branch &&
+      a.worktreePath === b.worktreePath &&
+      a.status === b.status &&
+      a.archived === b.archived &&
+      a.pinned === b.pinned &&
+      a.vendor === b.vendor)
+  )
+}
+
+/**
+ * Reconcile a freshly built sidebar row list against the previous one,
+ * preserving object identity for rows whose rendered fields are
+ * unchanged (docs/DESIGN.md §5.5 — the long-lived-pane rule).
+ *
+ * Why: every daemon `task.snapshot` push deserializes ALL-new Task
+ * objects, so `buildRows` produces all-new `SidebarRow` wrappers even
+ * when nothing the row renders changed (the common case: a
+ * `setActiveTask` recency touch echoing back). Solid's `<For>` keys by
+ * object identity, so without reconciliation each push destroyed and
+ * recreated every row's opentui renderables — and @opentui/core 0.2.4
+ * retains ~300B of native memory per renderable create/destroy cycle.
+ * A Tasks pane lives for days in every tmux session; task switches
+ * happen constantly; multiply and that's unbounded native growth
+ * (same class as the Ops-pane filetree leak, `filetree/rows.ts`).
+ *
+ * Contract (mirrors `reconcileRows` in filetree):
+ * - A `next` row whose task id exists in `prev` at the SAME flatIndex
+ *   with {@link sameSidebarRowTask}-equal task fields → the PREV row
+ *   object is returned in its place (so `<For>` reuses renderables).
+ *   flatIndex must match because the renderer captures it non-reactively
+ *   too (cursor compare + section-header placement).
+ * - When every position resolves to its previous object, the `prev`
+ *   ARRAY itself is returned, so a memo holding the result keeps its
+ *   value identity and notifies nobody downstream.
+ */
+export function reconcileSidebarRows(prev: readonly SidebarRow[], next: readonly SidebarRow[]): readonly SidebarRow[] {
+  if (prev.length === 0) return next
+  const prevById = new Map<string, SidebarRow>()
+  for (const row of prev) prevById.set(row.task.id, row)
+  let allReused = prev.length === next.length
+  const out: SidebarRow[] = new Array(next.length)
+  for (let i = 0; i < next.length; i++) {
+    const fresh = next[i] as SidebarRow
+    const old = prevById.get(fresh.task.id)
+    if (old && old.flatIndex === fresh.flatIndex && sameSidebarRowTask(old.task, fresh.task)) {
+      out[i] = old
+      if (allReused && prev[i] !== old) allReused = false
+    } else {
+      out[i] = fresh
+      allReused = false
+    }
+  }
+  return allReused ? prev : out
+}

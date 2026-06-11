@@ -92,7 +92,15 @@ const SIDEBAR_WIDTH = 32
 void _useTheme
 import { useTheme } from "../../context/theme"
 import { currentBranch, pollCurrentBranch } from "./git-head"
-import { type SidebarView, type TaskSortMode, buildRows, flattenIds, repoBasename } from "./groups"
+import {
+  type SidebarRow,
+  type SidebarView,
+  type TaskSortMode,
+  buildRows,
+  flattenIds,
+  reconcileSidebarRows,
+  repoBasename,
+} from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
 import { IN_PROGRESS_SPINNER, SPINNER_FRAME_MS, type SidebarTone, buildSidebarRowView } from "./row-view"
@@ -390,11 +398,10 @@ export function Sidebar(props: SidebarProps) {
 
   // Tick that busts each main row's branch-name memo on a fixed
   // interval. Cheap (one signal write per tick); the actual git call
-  // only happens when a row is visible and re-renders. We deliberately
-  // do NOT register onCleanup here — sidebar can be off-screen briefly
-  // during pane focus changes and we still want branch labels to be
-  // fresh when it comes back. The interval lives for the process lifetime
-  // (kobe's app shell never unmounts the sidebar in normal use).
+  // only happens when a row is visible and re-renders. onCleanup pairs
+  // the interval with the component lifetime (leak class 2, #104): the
+  // app shell normally never unmounts the sidebar, but an embedder that
+  // does must not leave a detached timer ticking a dead signal.
   const [branchTick, setBranchTick] = createSignal(0)
   const branchInterval = setInterval(() => setBranchTick((n) => n + 1), MAIN_BRANCH_POLL_MS)
   onCleanup(() => clearInterval(branchInterval))
@@ -415,8 +422,22 @@ export function Sidebar(props: SidebarProps) {
   // the upstream tasks accessor, the view, or the search query
   // changes. Search query is only applied when `searchMode` is on so
   // we don't keep filtering against stale query text after esc-cancel.
+  //
+  // Identity reconciliation (docs/DESIGN.md §5.5): every daemon
+  // `task.snapshot` push deserializes ALL-new Task objects — including
+  // the no-visual-change pushes from `setActiveTask`'s recency touch on
+  // every task switch — so `buildRows` alone would feed `<For>` all-new
+  // row objects each push and churn every row's renderables (the native
+  // @opentui leak class fixed in filetree/rows.ts). `reconcileSidebarRows`
+  // keeps the previous row object when its rendered fields are unchanged,
+  // and returns the previous ARRAY when nothing changed at all so the
+  // memo's value identity holds and downstream never notifies.
   const sortMode = (): TaskSortMode => props.sortMode?.() ?? "default"
-  const rows = createMemo(() => buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode()))
+  const rows = createMemo<readonly SidebarRow[]>(
+    (prev) =>
+      reconcileSidebarRows(prev, buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode())),
+    [],
+  )
   const flatIds = createMemo(() => flattenIds(rows()))
   // The list is two sections: PROJECTS (the `main` repo-root rows, which
   // `buildRows` always emits first) then all TASKS (worktrees) flat — NOT
