@@ -77,7 +77,7 @@ function FileList({
   onSelect: (path: string) => void
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+    <div className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-line">
       {files.map((f) => {
         const badge = statusBadge(f.status)
         const active = f.path === selected
@@ -120,16 +120,7 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState("")
   const changesKey = useChangesKey(worktreePath)
-
-  // Clear the file filter when the task changes — a query for one worktree's
-  // paths is meaningless in another. (Not on changesKey: a live refresh of the
-  // SAME worktree must keep what the user typed.)
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on worktreePath only, by design.
-  useEffect(() => {
-    setFilter("")
-  }, [worktreePath])
 
   const load = useCallback(async () => {
     if (!worktreePath) {
@@ -162,7 +153,6 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
   }, [load, changesKey])
 
   const files = result?.files ?? []
-  const shown = useMemo(() => filterDiffFiles(files, filter), [files, filter])
   const current = files.find((f) => f.path === selected) ?? null
   const total = useMemo(() => {
     let added = 0
@@ -213,28 +203,7 @@ export function DiffView({ worktreePath }: { worktreePath: string | null }) {
         </div>
       ) : (
         <div className="flex min-h-0 flex-1">
-          <div className="flex w-56 shrink-0 flex-col border-r border-line">
-            {files.length > 1 && (
-              <input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder={`Filter ${files.length} files…`}
-                spellCheck={false}
-                className="shrink-0 border-b border-line bg-bg px-2 py-1.5 font-mono text-[11px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-              />
-            )}
-            {shown.length === 0 ? (
-              <div className="px-2 py-3 text-center text-[11px] text-subtle">
-                No files match.
-              </div>
-            ) : (
-              <FileList
-                files={shown}
-                selected={selected}
-                onSelect={setSelected}
-              />
-            )}
-          </div>
+          <FileList files={files} selected={selected} onSelect={setSelected} />
           <div className="flex min-w-0 flex-1 flex-col">
             {current && (
               <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
@@ -311,7 +280,17 @@ export function ChangesList({
     void load()
   }, [load, changesKey])
 
+  const [filter, setFilter] = useState("")
+  // Clear the filter on task switch — a query for one worktree's paths is
+  // meaningless in another. (Not on changesKey: a live refresh of the SAME
+  // worktree must keep what the user typed.)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset is keyed on worktreePath only, by design.
+  useEffect(() => {
+    setFilter("")
+  }, [worktreePath])
+
   const files = result?.files ?? []
+  const shown = useMemo(() => filterDiffFiles(files, filter), [files, filter])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -354,34 +333,51 @@ export function ChangesList({
           </div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {files.map((f) => {
-            const badge = statusBadge(f.status)
-            return (
-              <button
-                key={f.path}
-                type="button"
-                onClick={() => onOpenFile(f.path)}
-                title={f.path}
-                className="flex w-full items-center gap-2 border-l-2 border-transparent px-3 py-2 text-left transition-colors hover:border-primary hover:bg-inset"
-              >
-                <span
-                  className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}
-                >
-                  {badge.label}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
-                  {tailPath(f.path, 34)}
-                </span>
-                {f.staged && (
-                  <span className="shrink-0 text-[9px] uppercase text-subtle">
-                    staged
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+        <>
+          {files.length > 1 && (
+            <input
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder={`Filter ${files.length} files…`}
+              spellCheck={false}
+              className="mx-3 mb-1 shrink-0 border border-line bg-bg px-2 py-1 font-mono text-[11px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+            />
+          )}
+          {shown.length === 0 ? (
+            <div className="px-3 py-3 text-center text-[11px] text-subtle">
+              No files match.
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {shown.map((f) => {
+                const badge = statusBadge(f.status)
+                return (
+                  <button
+                    key={f.path}
+                    type="button"
+                    onClick={() => onOpenFile(f.path)}
+                    title={f.path}
+                    className="flex w-full items-center gap-2 border-l-2 border-transparent px-3 py-2 text-left transition-colors hover:border-primary hover:bg-inset"
+                  >
+                    <span
+                      className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}
+                    >
+                      {badge.label}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[12px] text-fg/90">
+                      {tailPath(f.path, 34)}
+                    </span>
+                    {f.staged && (
+                      <span className="shrink-0 text-[9px] uppercase text-subtle">
+                        staged
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
