@@ -7,7 +7,7 @@
 
 import { Bot, MessagesSquare, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
-import { useState } from "react"
+import { lazy, Suspense, useState } from "react"
 import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import {
@@ -22,9 +22,23 @@ import {
 } from "../lib/tabs.ts"
 import { closePtyTab } from "../lib/terminal.ts"
 import { reportError } from "../lib/toast.ts"
-import { ChatTerminal } from "./ChatTerminal.tsx"
 import { ChatTranscript } from "./ChatTranscript.tsx"
 import { FilePreview } from "./DiffView.tsx"
+
+// xterm (+ addon-fit) is the heaviest dependency in the app and only matters
+// once a vendor/terminal tab opens — lazy-load it so it splits into its own
+// chunk and never bloats the dashboard's first paint.
+const ChatTerminal = lazy(() =>
+  import("./ChatTerminal.tsx").then((m) => ({ default: m.ChatTerminal })),
+)
+
+function TerminalFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center text-[12px] text-subtle">
+      Loading terminal…
+    </div>
+  )
+}
 
 function vendorLabel(vendor: string | undefined): string {
   return vendor ?? "claude"
@@ -112,11 +126,25 @@ function TabContent({
     return <EmptyTabChooser taskId={taskId} tabId={tab.id} vendor={vendor} />
   if (tab?.kind === "vendor")
     return (
-      <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="engine" />
+      <Suspense fallback={<TerminalFallback />}>
+        <ChatTerminal
+          key={tab.id}
+          tabId={tab.id}
+          taskId={taskId}
+          mode="engine"
+        />
+      </Suspense>
     )
   if (tab?.kind === "terminal")
     return (
-      <ChatTerminal key={tab.id} tabId={tab.id} taskId={taskId} mode="shell" />
+      <Suspense fallback={<TerminalFallback />}>
+        <ChatTerminal
+          key={tab.id}
+          tabId={tab.id}
+          taskId={taskId}
+          mode="shell"
+        />
+      </Suspense>
     )
   if (tab?.kind === "transcript")
     return (
