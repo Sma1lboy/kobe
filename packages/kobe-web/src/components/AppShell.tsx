@@ -7,6 +7,7 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import {
+  CircleHelp,
   FolderInput,
   LayoutGrid,
   Loader2,
@@ -37,6 +38,7 @@ import type {
 } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
+import { KeyboardHelp } from "./KeyboardHelp.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { ThemePicker } from "./ThemePicker.tsx"
 import { Toasts } from "./Toasts.tsx"
@@ -473,7 +475,13 @@ function TaskRail({
   )
 }
 
-function TopBar({ onToggleTools }: { onToggleTools: () => void }) {
+function TopBar({
+  onToggleTools,
+  onShowHelp,
+}: {
+  onToggleTools: () => void
+  onShowHelp: () => void
+}) {
   const { daemonConnected, streamConnected, tasks } = useAppState()
   const { selectedTaskId } = useTabsState()
   const navigate = useNavigate()
@@ -521,6 +529,15 @@ function TopBar({ onToggleTools }: { onToggleTools: () => void }) {
           title="Overview — triage all tasks"
         >
           <LayoutGrid size={15} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={onShowHelp}
+          className="hidden items-center text-muted transition-colors hover:text-fg sm:flex"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+        >
+          <CircleHelp size={15} strokeWidth={1.8} />
         </button>
         {/* Tools rail toggle — only on narrow screens where the rail is a drawer. */}
         <button
@@ -738,17 +755,38 @@ export function AppShell() {
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [adoptOpen, setAdoptOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   // The right tools rail is a fixed column at lg+, and a slide-in drawer on
   // narrow windows (where it used to vanish entirely, making rename/changes
   // unreachable on a phone).
   const [toolsOpen, setToolsOpen] = useState(false)
 
-  // Cmd/Ctrl+K toggles the palette globally; Escape closes the drawer.
+  // Cmd/Ctrl+K toggles the palette; `?` opens help — but only when the user
+  // isn't typing into a field (so "?" in an input types a literal question
+  // mark, like GitHub/Linear).
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
         setPaletteOpen((cur) => !cur)
+        return
+      }
+      if (
+        event.key === "?" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
+        const t = event.target as HTMLElement | null
+        const typing =
+          t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable)
+        if (!typing) {
+          event.preventDefault()
+          setHelpOpen(true)
+        }
       }
     }
     window.addEventListener("keydown", onKey)
@@ -767,7 +805,10 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
-      <TopBar onToggleTools={() => setToolsOpen((cur) => !cur)} />
+      <TopBar
+        onToggleTools={() => setToolsOpen((cur) => !cur)}
+        onShowHelp={() => setHelpOpen(true)}
+      />
       <DaemonBanner />
       <div className="flex min-h-0 flex-1">
         <TaskRail
@@ -808,6 +849,7 @@ export function AppShell() {
       <StatusBar />
       {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
       {adoptOpen && <AdoptDialog onClose={() => setAdoptOpen(false)} />}
+      {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}

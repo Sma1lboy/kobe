@@ -239,6 +239,11 @@ export function CommandPalette({
             ))
           )}
         </div>
+        <div className="flex items-center gap-3 border-t border-line px-3 py-1.5 font-mono text-[10px] text-subtle">
+          <span>↑↓ move</span>
+          <span>↵ run</span>
+          <span>esc close</span>
+        </div>
       </div>
     </div>
   )
