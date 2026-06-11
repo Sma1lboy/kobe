@@ -32,6 +32,16 @@ export type KeybindingsFile = {
 
 let cached: KeybindingsFile | null = null
 
+/**
+ * Drop the cached read so the next {@link readKeybindingsFile} hits disk
+ * again. Used by the live-reload path (`reloadUserKeybindings`) when the
+ * daemon's keybindings watcher reports the file changed; the boot read is
+ * otherwise "once per process".
+ */
+export function resetKeybindingsFileCache(): void {
+  cached = null
+}
+
 /** Resolve the config file, accepting `.yml` when `.yaml` is absent. */
 function resolveConfigFile(): { canonical: string; found: string | null } {
   const canonical = keybindingsConfigPath()

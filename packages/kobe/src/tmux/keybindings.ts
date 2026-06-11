@@ -231,6 +231,17 @@ export function tmuxChordOptsFor(id: string): { allowShiftCharacter?: boolean } 
 let cached: TmuxKeyResolution | null = null
 
 /**
+ * Drop the cached resolution so the next {@link resolveUserTmuxKeys}
+ * re-reads. Used by the live-reload path (`reloadUserKeybindings`) so the
+ * Tasks-pane footer's tmux hints re-derive from the edited file. NOTE: this
+ * only refreshes the DISPLAY — the tmux session keys themselves are bound on
+ * the tmux server at session build, so their BEHAVIOR still needs a rebuild.
+ */
+export function resetTmuxKeysCache(): void {
+  cached = null
+}
+
+/**
  * The tmux key set for THIS process, from the user's keybindings YAML.
  * Cached (the file reader is cached too); warnings are console-logged
  * once here — the Settings → Keybindings section reports them separately

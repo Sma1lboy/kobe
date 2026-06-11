@@ -22,6 +22,11 @@ import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-p
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
+import {
+  DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
+  defaultKeybindingsPath,
+  startKeybindingsWatcher,
+} from "./keybindings-watcher.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type DaemonFrame, frameToLine, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
@@ -69,6 +74,8 @@ export interface DaemonServerOptions {
   readonly autoTitlePollMs?: number
   /** UI-prefs watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_UI_PREFS_DEBOUNCE_MS}. */
   readonly uiPrefsDebounceMs?: number
+  /** Keybindings watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_KEYBINDINGS_DEBOUNCE_MS}. */
+  readonly keybindingsDebounceMs?: number
 }
 
 export interface DaemonServer {
@@ -256,6 +263,16 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     debounceMs: options.uiPrefsDebounceMs ?? DEFAULT_UI_PREFS_DEBOUNCE_MS,
   })
 
+  // Live keybindings (KOB — cross-session keybinding propagation): watch
+  // `~/.kobe/settings/keybindings.yaml` and ping the `keybindings` channel
+  // on change, so every pane re-reads + re-applies the file onto its
+  // KobeKeymap live instead of needing a session rebuild. Same homeDir
+  // isolation as the ui-prefs watcher above.
+  const stopKeybindingsWatcher = startKeybindingsWatcher(bus, {
+    path: defaultKeybindingsPath(options.homeDir),
+    debounceMs: options.keybindingsDebounceMs ?? DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
+  })
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -268,6 +285,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
       stopUiPrefsWatcher()
+      stopKeybindingsWatcher()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

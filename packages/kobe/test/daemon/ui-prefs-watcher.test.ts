@@ -83,6 +83,8 @@ describe("readUiPrefsFromStateFile", () => {
       theme: "claude",
       transparentBackground: false,
       focusAccent: null,
+      sortMode: "default",
+      keysCollapsed: false,
     })
   })
 
@@ -93,16 +95,34 @@ describe("readUiPrefsFromStateFile", () => {
       theme: "claude",
       transparentBackground: false,
       focusAccent: null,
+      sortMode: "default",
+      keysCollapsed: false,
     })
   })
 
-  test("reads the three visual keys; an unknown focusAccent slot is dropped to null", () => {
+  test("reads the visual keys; an unknown focusAccent slot is dropped to null", () => {
     patchStateFile({ activeTheme: "nord", transparentBackground: true, focusAccent: "chartreuse" })
     expect(readUiPrefsFromStateFile(statePath)).toEqual({
       theme: "nord",
       transparentBackground: true,
       focusAccent: null,
+      sortMode: "default",
+      keysCollapsed: false,
     })
+  })
+
+  test("reads activeSortMode; a non-`recent` value falls back to the default ordering", () => {
+    patchStateFile({ activeSortMode: "recent" })
+    expect(readUiPrefsFromStateFile(statePath).sortMode).toBe("recent")
+    patchStateFile({ activeSortMode: "bogus" })
+    expect(readUiPrefsFromStateFile(statePath).sortMode).toBe("default")
+  })
+
+  test("reads tasksPane.keysCollapsed; only an explicit true collapses the legend", () => {
+    patchStateFile({ "tasksPane.keysCollapsed": true })
+    expect(readUiPrefsFromStateFile(statePath).keysCollapsed).toBe(true)
+    patchStateFile({ "tasksPane.keysCollapsed": false })
+    expect(readUiPrefsFromStateFile(statePath).keysCollapsed).toBe(false)
   })
 })
 
@@ -110,7 +130,15 @@ describe("startUiPrefsWatcher", () => {
   test("publishes the current prefs immediately so late subscribers can replay", () => {
     patchStateFile({ activeTheme: "dracula", focusAccent: "info" })
     stop = startUiPrefsWatcher(bus, { statePath, debounceMs: 25 })
-    expect(events).toEqual([{ theme: "dracula", transparentBackground: false, focusAccent: "info" }])
+    expect(events).toEqual([
+      {
+        theme: "dracula",
+        transparentBackground: false,
+        focusAccent: "info",
+        sortMode: "default",
+        keysCollapsed: false,
+      },
+    ])
     // The bus last-value cache is warm — what a `subscribe` replays.
     expect(bus.snapshot().find((e) => e.channel === "ui-prefs")?.payload).toEqual(events[0])
   })
@@ -123,7 +151,13 @@ describe("startUiPrefsWatcher", () => {
     // exactly the case a file-watch (instead of dir-watch) would go dead on.
     patchStateFile({ activeTheme: "tokyonight", transparentBackground: true })
     await waitFor(() => events.length === 2)
-    expect(events[1]).toEqual({ theme: "tokyonight", transparentBackground: true, focusAccent: null })
+    expect(events[1]).toEqual({
+      theme: "tokyonight",
+      transparentBackground: true,
+      focusAccent: null,
+      sortMode: "default",
+      keysCollapsed: false,
+    })
 
     // A write that doesn't move the visual prefs (an unrelated key, then
     // the SAME visual values again) publishes nothing.
@@ -135,7 +169,13 @@ describe("startUiPrefsWatcher", () => {
     // A later real change still lands (the watcher is alive after renames).
     patchStateFile({ focusAccent: "success" })
     await waitFor(() => events.length === 3)
-    expect(events[2]).toEqual({ theme: "tokyonight", transparentBackground: true, focusAccent: "success" })
+    expect(events[2]).toEqual({
+      theme: "tokyonight",
+      transparentBackground: true,
+      focusAccent: "success",
+      sortMode: "default",
+      keysCollapsed: false,
+    })
   })
 
   test("debounceMs <= 0 disables the watcher entirely (no publish, no-op stop)", () => {

@@ -62,12 +62,13 @@ export function defaultUiPrefsStatePath(homeDir = process.env.KOBE_HOME_DIR ?? h
 }
 
 /**
- * Read the three visual-pref keys out of the state file. Never throws —
+ * Read the visual-pref keys out of the state file. Never throws —
  * a missing / corrupt file yields the documented defaults (`claude`
- * theme, opaque, unset accent), the same corrupt-file policy as the
- * State Store and `readPersistedUiPrefs`. The theme NAME is passed
- * through unvalidated (the daemon has no theme registry); the TUI-side
- * apply validates it against its own registry.
+ * theme, opaque, unset accent, `default` sort, expanded keys legend), the
+ * same corrupt-file policy as the State Store and `readPersistedUiPrefs`.
+ * The theme NAME is
+ * passed through unvalidated (the daemon has no theme registry); the
+ * TUI-side apply validates it against its own registry.
  */
 export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
   let parsed: Record<string, unknown> = {}
@@ -85,11 +86,24 @@ export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
     (FOCUS_ACCENT_SLOT_NAMES as readonly string[]).includes(parsed.focusAccent)
       ? parsed.focusAccent
       : null
-  return { theme, transparentBackground, focusAccent }
+  // Only `recent` is a non-default sort; any other / missing value is the
+  // `default` ordering (the TUI's `TaskSortMode` union — kept in sync,
+  // same UI-neutral mirror stance as the focus-accent slot list).
+  const sortMode = parsed.activeSortMode === "recent" ? "recent" : "default"
+  // Tasks-pane `── keys ──` legend fold (`?`); only an explicit `true`
+  // collapses, anything else (missing / non-bool) is expanded.
+  const keysCollapsed = parsed["tasksPane.keysCollapsed"] === true
+  return { theme, transparentBackground, focusAccent, sortMode, keysCollapsed }
 }
 
 function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
-  return a.theme === b.theme && a.transparentBackground === b.transparentBackground && a.focusAccent === b.focusAccent
+  return (
+    a.theme === b.theme &&
+    a.transparentBackground === b.transparentBackground &&
+    a.focusAccent === b.focusAccent &&
+    a.sortMode === b.sortMode &&
+    a.keysCollapsed === b.keysCollapsed
+  )
 }
 
 export interface UiPrefsWatcherOptions {

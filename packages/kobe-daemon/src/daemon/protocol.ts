@@ -175,16 +175,39 @@ export interface ChannelPayloads {
   "engine-state": { taskId: string; state: TaskActivityState; detail?: EngineActivityDetail; at: number }
   /**
    * The user's persisted VISUAL prefs (`state.json`'s `activeTheme` /
-   * `transparentBackground` / `focusAccent`), pushed whenever the daemon's
-   * file watcher sees them change. Every pane host applies the payload live
-   * so a theme switch in one session's Settings restyles the Tasks/Ops
-   * panes of EVERY task session — without this, each pane read the prefs
-   * once at boot and kept the old look forever. Last-value replay hydrates
-   * a late/reconnecting subscriber. `focusAccent` is the raw slot string
-   * (`null` = unset → the default slot); the TUI side validates it — the
-   * daemon stays vendor/UI-neutral and just mirrors the file.
+   * `transparentBackground` / `focusAccent` / `activeSortMode`), pushed
+   * whenever the daemon's file watcher sees them change. Every pane host
+   * applies the payload live so a theme switch in one session's Settings
+   * restyles the Tasks/Ops panes of EVERY task session — without this, each
+   * pane read the prefs once at boot and kept the old look forever. The
+   * same fan-out carries `sortMode`: toggling the Tasks-pane sort (`t`) in
+   * one session re-sorts the Tasks pane of EVERY session, instead of only
+   * the pane the key was pressed in; `keysCollapsed` likewise syncs the
+   * Tasks-pane `── keys ──` legend fold (`?`) across every session. Last-
+   * value replay hydrates a late/reconnecting subscriber. `focusAccent` is
+   * the raw slot string (`null` = unset → the default slot); the TUI side
+   * validates it — the daemon stays vendor/UI-neutral and just mirrors the
+   * file.
    */
-  "ui-prefs": { theme: string; transparentBackground: boolean; focusAccent: string | null }
+  "ui-prefs": {
+    theme: string
+    transparentBackground: boolean
+    focusAccent: string | null
+    sortMode: "default" | "recent"
+    keysCollapsed: boolean
+  }
+  /**
+   * "Re-read your keybindings" ping (KOB — live keybinding propagation).
+   * The daemon's keybindings-file watcher bumps `rev` whenever
+   * `~/.kobe/settings/keybindings.yaml` changes; every pane re-reads +
+   * re-applies the file onto its in-memory `KobeKeymap` (and re-renders the
+   * chord legends), so an edit takes effect across EVERY session without a
+   * rebuild. The daemon carries no keymap data — `rev` is an opaque change
+   * token; only its TRANSITIONS matter. Last-value replay lets a late
+   * subscriber learn the channel's current rev (it skips the first value so
+   * a fresh pane doesn't re-apply what it already read at boot).
+   */
+  keybindings: { rev: number }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -204,6 +227,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "update",
   "engine-state",
   "ui-prefs",
+  "keybindings",
 ]
 
 /**

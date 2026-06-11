@@ -63,7 +63,7 @@ import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { SettingsDialog } from "../component/settings-dialog"
 import { ToastOverlay } from "../component/toast-overlay"
 import { VersionSkewBanner } from "../component/version-skew-banner"
-import { bindByIds } from "../context/keybindings"
+import { bindByIds, keymapVersion } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
@@ -147,7 +147,15 @@ function TasksShell(props: {
     notif.notify({ kind: "done", taskId: selectedId() ?? "", tabId: "", title: message })
   }
   const [moveMode, setMoveMode] = createSignal(false)
-  const [sortMode, setSortMode] = createSignal<TaskSortMode>("default")
+  // Sort mode is a GLOBAL pref, fanned out like theme/appearance: the toggle
+  // writes `activeSortMode` to state.json (below), the daemon's ui-prefs
+  // watcher sees the change and pushes it on the `ui-prefs` channel, and the
+  // effect below re-applies it here AND in every other session's Tasks pane.
+  // Seed from the persisted value so a freshly-spawned pane opens in the
+  // user's last sort, not always `default` (no-flash + no-daemon fallback).
+  const [sortMode, setSortMode] = createSignal<TaskSortMode>(
+    kv.get("activeSortMode") === "recent" ? "recent" : "default",
+  )
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -187,7 +195,17 @@ function TasksShell(props: {
 
   // Visual prefs (theme / transparent / focus accent) are applied
   // centrally — boot + live `ui-prefs` pushes — by host-boot's
-  // UiPrefsSync; this shell no longer re-applies them itself.
+  // UiPrefsSync; this shell no longer re-applies them itself. Sort mode AND
+  // the keys-legend fold ride the SAME `ui-prefs` channel but are
+  // pane-state, not theme-state, so the Tasks pane follows them here: a `t`
+  // / `?` toggle in ANY session lands as a push and re-applies to this pane
+  // too. Changed-only assignment makes the echo of our own write
+  // (round-tripped through the watcher) a no-op. (Sort here; the
+  // keys-legend effect lives next to its signal further down.)
+  createEffect(() => {
+    const payload = props.orch?.uiPrefsSignal()()
+    if (payload && payload.sortMode !== sortMode()) setSortMode(payload.sortMode)
+  })
 
   // Update info comes from the daemon-owned `update` channel (the daemon polls
   // npm once and fans it out) rather than each pane hitting the registry. Keep
@@ -389,11 +407,22 @@ function TasksShell(props: {
   }
 
   // Collapsed state of the `── keys ──` legend (toggled by `?` / clicking
-  // the header). KV-persisted so the preference survives pane respawns
-  // and upgrades. kv.get reads the reactive store, so the footer re-renders
-  // on toggle.
-  const keysCollapsed = () => kv.get("tasksPane.keysCollapsed", false) === true
-  const setKeysCollapsed = (next: boolean) => kv.set("tasksPane.keysCollapsed", next)
+  // the header). A GLOBAL pref fanned out like sort/theme: seed from the
+  // persisted value, apply locally for instant feedback, and persist via
+  // kv so the daemon's ui-prefs watcher re-folds the legend in EVERY other
+  // session's Tasks pane (the broadcast effect below). The kv write also
+  // keeps the preference across pane respawns/upgrades.
+  const [keysCollapsed, setKeysCollapsedSig] = createSignal<boolean>(kv.get("tasksPane.keysCollapsed", false) === true)
+  const setKeysCollapsed = (next: boolean) => {
+    setKeysCollapsedSig(next)
+    kv.set("tasksPane.keysCollapsed", next)
+  }
+  // Follow the broadcast: a `?` toggle in another session re-folds this
+  // legend too. Changed-only, so our own write's echo is a no-op.
+  createEffect(() => {
+    const payload = props.orch?.uiPrefsSignal()()
+    if (payload && payload.keysCollapsed !== keysCollapsed()) setKeysCollapsedSig(payload.keysCollapsed)
+  })
 
   // The sidebar's `/`-search lifts its active state here so the host-level
   // plain-letter chords below go quiet while the user is TYPING a query —
@@ -586,7 +615,14 @@ function TasksShell(props: {
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
           sortMode={sortMode}
-          onSortModeToggle={() => setSortMode((cur) => (cur === "default" ? "recent" : "default"))}
+          onSortModeToggle={() => {
+            const next: TaskSortMode = sortMode() === "default" ? "recent" : "default"
+            // Apply locally for instant feedback, then persist — the kv write
+            // lands in state.json and the daemon's ui-prefs watcher fans it
+            // out to every other session's Tasks pane (KOB — global sort).
+            setSortMode(next)
+            kv.set("activeSortMode", next)
+          }}
           // Gate the Sidebar's own bindings (Enter→switchTo, j/k, …) on an
           // empty dialog stack — otherwise Enter pressed to submit a dialog
           // (new-task / rename) leaks past the input to switchTo and yanks
@@ -651,6 +687,10 @@ function ShortcutHints(props: {
   // ("ctrl+hjkl", "ctrl+[/]") are kept only while the relevant keys are
   // still at their defaults — overridden keys render as plain chords.
   const tmuxHints = (): ReadonlyArray<Hint> => {
+    // Re-derive after a live keybindings reload: the bump invalidates this
+    // accessor so the footer re-renders with the freshly-resolved tmux
+    // chords (the resolver's cache is cleared in the same reload).
+    keymapVersion()
     const res = resolveUserTmuxKeys()
     const b = res.binds
     const out: Hint[] = []
