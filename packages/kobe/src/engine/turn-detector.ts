@@ -18,6 +18,18 @@ import { engineEntry } from "./registry.ts"
 export type ChatTabTurnState = "idle" | "running" | "done" | "error" | "unknown"
 
 export interface TurnCompletionMarker {
+  /**
+   * Opaque identity for "this exact completion". Callers (the Ops pane's
+   * turn poller) store it long-lived as a baseline across polls.
+   *
+   * MEMORY INVARIANT: the id must NEVER be (or contain) a substring of the
+   * transcript file contents. In JSC (Bun) a `.slice`/`.match` of a string
+   * shares the parent's backing buffer, so a long-lived id sliced out of a
+   * whole-file JSONL read would pin the entire multi-MB transcript in
+   * memory between polls. The builders below construct ids from template
+   * literals over numbers + the file PATH (an independent small string) —
+   * keep it that way, or force-copy with `Buffer.from(s).toString()`.
+   */
   readonly id: string
   readonly timestampMs: number
   /** Which engine's transcript produced the marker (built-ins only today). */

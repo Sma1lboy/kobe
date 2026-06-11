@@ -85,6 +85,13 @@ export class KobeDaemonClient {
     this.disposed = true
     this.socket?.end()
     this.socket = null
+    // Reject in-flight requests NOW. `onSocketClose` can't do it for us:
+    // its stale-close guard sees `this.socket === null` (we just nulled it)
+    // and returns early, so without this the `pending` map retained every
+    // unanswered request — promise, resolver closures, payload — for the
+    // life of the client object (a leak that grew with each teardown that
+    // raced an in-flight RPC).
+    this.failPending()
   }
 
   /**
@@ -98,6 +105,19 @@ export class KobeDaemonClient {
     if (!socket) return
     this.socket = null
     socket.destroy()
+    // Same rationale as `close()`: the destroyed socket's close event hits
+    // `onSocketClose` with `this.socket` already null, so the guard skips
+    // the pending sweep. A long-lived TUI client calls this on EVERY manual
+    // reconnect — leaked entries would accumulate across reconnects.
+    this.failPending()
+  }
+
+  /** Reject + clear every in-flight request (connection is gone for good). */
+  private failPending(): void {
+    if (this.pending.size === 0) return
+    const err = new Error("daemon connection closed")
+    for (const pending of this.pending.values()) pending.reject(err)
+    this.pending.clear()
   }
 
   on(name: DaemonEventName | "*", handler: DaemonEventHandler): () => void {
@@ -191,8 +211,7 @@ export class KobeDaemonClient {
     // OS delivering the close event for the prior socket).
     if (this.socket !== which) return
     this.socket = null
-    for (const pending of this.pending.values()) pending.reject(new Error("daemon connection closed"))
-    this.pending.clear()
+    this.failPending()
     this.emitLifecycle("close")
   }
 

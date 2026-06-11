@@ -123,19 +123,30 @@ export class DaemonLink {
     const socketPath = allowSpawn ? await ensureDaemonReachable() : defaultDaemonSocketPath()
     const client = new KobeDaemonClient(socketPath)
     await client.connect()
-    const hello = (await client.request("hello", {
-      protocolVersion: DAEMON_PROTOCOL_VERSION,
-      minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
-    })) as { tasks?: SerializedTask[] }
-    if (hello.tasks) this.tasks = hello.tasks
-    // Per-connection state the subscribe replay rebuilds: engine states are
-    // transient (the daemon replays every non-idle task on subscribe), so a
-    // fresh connection starts clean instead of keeping pre-restart badges.
-    this.engineStates = {}
-    // Wire handlers BEFORE subscribing so the replay frames are captured.
-    client.on("*", (frame) => this.onFrame(frame.name, frame.payload))
-    client.onLifecycle("close", () => this.onDrop(client))
-    await client.subscribe({ role: "gui" })
+    // From here the socket is OPEN: a `hello`/`subscribe` failure (e.g. a
+    // protocol-mismatch rejection from an upgraded daemon) must close it
+    // before rethrowing into the reconnect loop. Without this, every 500ms
+    // retry leaked one connected socket — on BOTH ends: the bridge held the
+    // client object alive via its handlers, and the daemon held a
+    // ClientState in its `clients` set until the socket actually closed.
+    try {
+      const hello = (await client.request("hello", {
+        protocolVersion: DAEMON_PROTOCOL_VERSION,
+        minProtocolVersion: MIN_COMPATIBLE_PROTOCOL_VERSION,
+      })) as { tasks?: SerializedTask[] }
+      if (hello.tasks) this.tasks = hello.tasks
+      // Per-connection state the subscribe replay rebuilds: engine states are
+      // transient (the daemon replays every non-idle task on subscribe), so a
+      // fresh connection starts clean instead of keeping pre-restart badges.
+      this.engineStates = {}
+      // Wire handlers BEFORE subscribing so the replay frames are captured.
+      client.on("*", (frame) => this.onFrame(frame.name, frame.payload))
+      client.onLifecycle("close", () => this.onDrop(client))
+      await client.subscribe({ role: "gui" })
+    } catch (err) {
+      client.close()
+      throw err
+    }
     this.client = client
     this.setConnected(true)
   }

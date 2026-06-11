@@ -35,7 +35,14 @@ function titleFromMessages(messages: Message[]): string {
     .filter((b): b is { type: "text"; text: string } => b.type === "text")
     .map((b) => b.text)
     .join(" ")
-  return deriveTitleFromPrompt(text)
+  const title = deriveTitleFromPrompt(text)
+  // Force-copy before the title escapes into long-lived state (the task
+  // store in the daemon process, via orch.setTitle). `deriveTitleFromPrompt`
+  // truncates with `.slice(...)`, and in JSC (Bun) a slice SHARES the parent
+  // string's backing buffer — so a 40-char title would otherwise pin the
+  // user's entire (possibly pasted-huge) first prompt in memory for the life
+  // of the daemon. Buffer round-trip allocates an independent string.
+  return title.length > 0 ? Buffer.from(title, "utf8").toString("utf8") : title
 }
 
 /**

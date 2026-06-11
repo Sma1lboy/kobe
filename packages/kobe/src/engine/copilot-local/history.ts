@@ -192,7 +192,10 @@ export function parseEvents(
     if (record.type === "user.message") {
       const text = typeof data.content === "string" ? data.content : ""
       if (!text) continue
-      if (!firstUserMessage) firstUserMessage = text.slice(0, PREVIEW_CHAR_CAP)
+      // Force-copy: in JSC (Bun) `.slice` shares the parent string's backing
+      // buffer, so a 200-char preview would otherwise pin the full message
+      // text for as long as a caller retains the preview.
+      if (!firstUserMessage) firstUserMessage = Buffer.from(text.slice(0, PREVIEW_CHAR_CAP), "utf8").toString("utf8")
       messages.push({ role: "user", blocks: [{ type: "text", text }], timestamp, sessionId })
       continue
     }
