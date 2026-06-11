@@ -6,7 +6,15 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { Loader2, PanelRight, Plus, Search, Settings, X } from "lucide-react"
+import {
+  FolderInput,
+  Loader2,
+  PanelRight,
+  Plus,
+  Search,
+  Settings,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -20,6 +28,7 @@ import type {
   TaskJob,
   TaskPRStatus,
 } from "../lib/types.ts"
+import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { ThemePicker } from "./ThemePicker.tsx"
@@ -262,9 +271,11 @@ function ArchivedRow({
 function TaskRail({
   onOpenSettings,
   onNewTask,
+  onAdopt,
 }: {
   onOpenSettings: () => void
   onNewTask: () => void
+  onAdopt: () => void
 }) {
   const {
     tasks,
@@ -344,6 +355,15 @@ function TaskRail({
             <span className="font-mono text-[10px] text-muted">
               {visible.length}/{activeTasks.length}
             </span>
+            <button
+              type="button"
+              onClick={onAdopt}
+              className="text-muted transition-colors hover:text-primary"
+              title="Adopt an existing worktree"
+              aria-label="Adopt worktree"
+            >
+              <FolderInput size={14} strokeWidth={1.9} />
+            </button>
             <button
               type="button"
               onClick={onNewTask}
@@ -669,6 +689,7 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
 export function AppShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const [adoptOpen, setAdoptOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   // The right tools rail is a fixed column at lg+, and a slide-in drawer on
   // narrow windows (where it used to vanish entirely, making rename/changes
@@ -694,6 +715,7 @@ export function AppShell() {
         <TaskRail
           onOpenSettings={() => setSettingsOpen(true)}
           onNewTask={() => setNewTaskOpen(true)}
+          onAdopt={() => setAdoptOpen(true)}
         />
         {settingsOpen ? (
           <SettingsPage onClose={() => setSettingsOpen(false)} />
@@ -727,6 +749,7 @@ export function AppShell() {
       </div>
       <StatusBar />
       {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
+      {adoptOpen && <AdoptDialog onClose={() => setAdoptOpen(false)} />}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
