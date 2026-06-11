@@ -19,6 +19,11 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { useEngines } from "../lib/engines.ts"
+import {
+  setNotificationsEnabled,
+  setNotifyNavigate,
+  useNotifyState,
+} from "../lib/notify.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { relativeTime } from "../lib/time.ts"
@@ -611,6 +616,40 @@ function EnginesCard() {
   )
 }
 
+function NotificationsCard() {
+  const { supported, permission, enabled } = useNotifyState()
+  return (
+    <div className="border border-line bg-surface p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+          Notifications
+        </div>
+        {supported ? (
+          <button
+            type="button"
+            onClick={() => void setNotificationsEnabled(!enabled)}
+            disabled={permission === "denied" && !enabled}
+            className={`border px-2 py-0.5 text-[10px] transition-colors disabled:opacity-40 ${
+              enabled
+                ? "border-primary bg-inset text-fg"
+                : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
+            }`}
+          >
+            {enabled ? "On" : "Off"}
+          </button>
+        ) : (
+          <span className="font-mono text-[10px] text-subtle">unsupported</span>
+        )}
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
+        {permission === "denied" && !enabled
+          ? "Browser notifications are blocked — allow them in your browser's site settings to enable."
+          : "Get a desktop notification when a task needs your input or errors while this tab is in the background. Click it to jump to the task."}
+      </p>
+    </div>
+  )
+}
+
 function SettingsPage({ onClose }: { onClose: () => void }) {
   const { daemonConnected, streamConnected, update } = useAppState()
 
@@ -683,6 +722,7 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
           <div className="md:col-span-2">
             <ThemePicker />
           </div>
+          <NotificationsCard />
           <div className="md:col-span-2">
             <EnginesCard />
           </div>
@@ -693,6 +733,7 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
 }
 
 export function AppShell() {
+  const navigate = useNavigate()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [newTaskOpen, setNewTaskOpen] = useState(false)
   const [adoptOpen, setAdoptOpen] = useState(false)
@@ -713,6 +754,16 @@ export function AppShell() {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [])
+
+  // Let a notification click jump to its task (lib/notify can't useNavigate).
+  useEffect(() => {
+    setNotifyNavigate((taskId) => {
+      selectTask(taskId)
+      void rpc("task.setActive", { taskId }).catch(() => {})
+      void navigate({ to: "/task/$taskId", params: { taskId } })
+    })
+    return () => setNotifyNavigate(null)
+  }, [navigate])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">

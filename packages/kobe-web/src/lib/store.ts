@@ -6,6 +6,7 @@
  */
 
 import { useSyncExternalStore } from "react"
+import { notifyEngineTransition } from "./notify.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
@@ -92,7 +93,15 @@ function applyEvent(event: BridgeEvent): void {
     case "active-task":
       set({ activeTaskId: event.payload.taskId })
       break
-    case "engine-state":
+    case "engine-state": {
+      const prev = state.engineStates[event.payload.taskId]?.state
+      const task = state.tasks.find((t) => t.id === event.payload.taskId)
+      notifyEngineTransition(
+        event.payload.taskId,
+        task?.title || task?.branch || event.payload.taskId,
+        prev,
+        event.payload.state,
+      )
       set({
         engineStates: {
           ...state.engineStates,
@@ -100,6 +109,7 @@ function applyEvent(event: BridgeEvent): void {
         },
       })
       break
+    }
     case "update":
       set({ update: event.payload.info })
       break
