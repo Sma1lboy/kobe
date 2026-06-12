@@ -154,16 +154,28 @@ const server = createServer((req, res) => {
       // Same submit contract as the composer / tmux pasteAndSubmit:
       // bracketed paste so a multi-line prompt arrives as ONE paste, then
       // Enter. A freshly spawned engine gets a grace delay so the paste
-      // isn't eaten by its startup.
+      // isn't eaten by its startup. The Enter MUST land in a separate,
+      // later write: written back-to-back it coalesces into the same tty
+      // chunk as the paste and claude treats it as paste content — the
+      // text sits in the composer and never submits. (tmux pasteAndSubmit
+      // gets this separation for free from its two commands; the web
+      // composer from its two WS messages.)
       const target = entry
       setTimeout(
         () => {
           try {
             target.pty.write(`\x1b[200~${text}\x1b[201~`)
-            target.pty.write("\r")
           } catch {
             /* engine died between spawn and paste — next attach shows why */
+            return
           }
+          setTimeout(() => {
+            try {
+              target.pty.write("\r")
+            } catch {
+              /* same: best-effort */
+            }
+          }, 150)
         },
         spawned ? 2500 : 0,
       )
