@@ -10,7 +10,7 @@
  * precedent).
  */
 
-import type { Task } from "./types.ts"
+import type { ConflictPair, Task } from "./types.ts"
 
 export interface BoardColumnSpec {
   key: string
@@ -338,4 +338,86 @@ export function reconcileOverrides(
  *  column renders cards but is not a drag target. */
 export function isDroppableColumn(key: string): boolean {
   return BOARD_COLUMNS.some((spec) => spec.key === key)
+}
+
+/* ----- project (repo) filter --------------------------------------------- */
+
+export interface RepoOption {
+  /** Full repo key (local path or remote key) — the filter value. */
+  readonly repo: string
+  /** Short display name: path basename, parent/basename on collision. */
+  readonly label: string
+  /** Board cards (non-archived, non-main) currently in this repo. */
+  readonly count: number
+}
+
+function repoBasename(repo: string): string {
+  const trimmed = repo.replace(/\/+$/, "")
+  return trimmed.split("/").pop() || trimmed
+}
+
+/**
+ * Distinct projects among the board's cards, for the filter-chip row.
+ * Labels are path basenames; two repos sharing a basename are
+ * disambiguated to `parent/basename`. Sorted by label so chips don't
+ * reorder as card counts shift.
+ */
+export function repoOptions(tasks: readonly Task[]): RepoOption[] {
+  const counts = new Map<string, number>()
+  for (const task of tasks) {
+    if (!isBoardTask(task)) continue
+    counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
+  }
+  const repos = [...counts.keys()]
+  const label = (repo: string): string => {
+    const base = repoBasename(repo)
+    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
+    if (!collides) return base
+    const parts = repo.replace(/\/+$/, "").split("/")
+    return parts.slice(-2).join("/")
+  }
+  return repos
+    .map((repo) => ({ repo, label: label(repo), count: counts.get(repo) ?? 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+/* ----- conflict radar (docs/design/conflict-radar.md) -------------------- */
+
+/** The radar pairs touching one task. */
+export function conflictsForTask(
+  pairs: readonly ConflictPair[],
+  taskId: string,
+): ConflictPair[] {
+  return pairs.filter((pair) => pair.a === taskId || pair.b === taskId)
+}
+
+/** Card badge summary: the strongest level + how many counterparts. */
+export function conflictBadge(
+  pairs: readonly ConflictPair[],
+  taskId: string,
+): { level: "overlap" | "conflict"; count: number } | null {
+  const mine = conflictsForTask(pairs, taskId)
+  if (mine.length === 0) return null
+  return {
+    level: mine.some((pair) => pair.level === "conflict")
+      ? "conflict"
+      : "overlap",
+    count: mine.length,
+  }
+}
+
+/** Yarn palette — one distinct kobe hue per conflict pair, cycling. The
+ *  pair's index in the (sorted, stable) pair list picks the color, so a
+ *  pair keeps its yarn color as long as the pair exists. */
+export const YARN_COLORS: readonly string[] = [
+  "var(--color-kobe-orange)",
+  "var(--color-kobe-blue)",
+  "var(--color-kobe-violet)",
+  "var(--color-kobe-yellow)",
+  "var(--color-kobe-green)",
+  "var(--color-kobe-red)",
+]
+
+export function yarnColor(index: number): string {
+  return YARN_COLORS[index % YARN_COLORS.length] as string
 }

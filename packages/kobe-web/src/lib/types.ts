@@ -80,6 +80,15 @@ export type WorktreeChangeCounts = Record<
   { added: number; deleted: number }
 >
 
+/** One conflict-radar pair (`a` < `b`, sorted task ids): the overlapping
+ *  files and the strongest proven signal level. */
+export interface ConflictPair {
+  a: string
+  b: string
+  files: string[]
+  level: "overlap" | "conflict"
+}
+
 /** The user's persisted visual prefs, fanned out by the daemon's
  *  state.json watcher (mirror of the `ui-prefs` channel payload). */
 export interface UiPrefs {
@@ -98,6 +107,7 @@ export type BridgeEvent =
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
+  | { channel: "task.conflicts"; payload: { pairs: ConflictPair[] } }
   | { channel: "ui-prefs"; payload: UiPrefs }
 
 /** Full bootstrap state the bridge sends on connect. */
@@ -109,6 +119,8 @@ export interface BridgeSnapshot {
   /** taskId → in-flight job (running only; bridge drops terminal phases). */
   jobs?: Record<string, TaskJob>
   worktreeChanges?: WorktreeChangeCounts
+  /** Conflict-radar pairs (file overlap / proven merge conflict). */
+  conflicts?: ConflictPair[]
   uiPrefs?: UiPrefs | null
   connected: boolean
 }
