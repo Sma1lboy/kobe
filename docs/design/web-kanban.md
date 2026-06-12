@@ -332,6 +332,13 @@ sequenceDiagram
   "Auto status flow"(即 state.json `experimental.autoStatus`),各决策点
   实时读取,无需重启 daemon。注意注入发生在 spawn 时——开关打开后,**新**
   会话才带协议;已在跑的会话要 respawn 才有。
+- **一键 review(后续追加)**:`In review` 列的卡片多一个 clipboard 按钮,把
+  review 指令([`lib/review.ts`](../../packages/kobe-web/src/lib/review.ts))
+  直接粘进任务的引擎会话(PTY sidecar 新端点 `POST /pty/send`,composer 同款
+  bracketed-paste 契约;会话没起会先 spawn)。**`done` 授权随点击走**:常驻协议
+  永远只授权 in_review,review 指令里才携带一次性的"通过则 set done";没被
+  点过 review 的会话永远到不了 done——这保住了"done 由人决定"的红线,只是
+  把人的动作从"拖卡"换成了"点 review"。
 
 实施期每个里程碑落一个 changeset(patch,按仓库规则不自报 minor);M1 起在
 [`web-dashboard.md`](./web-dashboard.md) 增补看板一节。

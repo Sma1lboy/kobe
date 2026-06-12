@@ -34,7 +34,15 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, Eye, GripVertical, Search, X } from "lucide-react"
+import {
+  ArrowLeft,
+  ClipboardCheck,
+  Eye,
+  GitPullRequest,
+  GripVertical,
+  Search,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
@@ -59,11 +67,14 @@ import {
   setStatusOverride,
   useBoardState,
 } from "../lib/board-state.ts"
+import { fetchQuickPrompts } from "../lib/quick-prompts.ts"
+import { createPrPrompt, reviewPrompt } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { selectTask } from "../lib/tabs.ts"
+import { ensureEngineTab, selectTask } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
+import { sendPtyText } from "../lib/terminal.ts"
 import { relativeTime } from "../lib/time.ts"
-import { reportError } from "../lib/toast.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
@@ -72,6 +83,13 @@ import { ChangesChip, PrChip } from "./chips.tsx"
  *  error/canceled stay drag-only — they're fold-away exception states, not
  *  everyday destinations. */
 const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
+
+/** Instant hover tooltip rendered from the data-tip attribute — the native
+ *  `title` takes a beat to appear, and one-glyph buttons need names. */
+const TIP_ABOVE =
+  "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+const TIP_RIGHT =
+  "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 
 /**
  * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column
@@ -178,6 +196,8 @@ function BoardCard({
   changes,
   canDrag,
   onMoveTo,
+  onReview,
+  onCreatePr,
   onOpen,
   onPeek,
 }: {
@@ -187,6 +207,8 @@ function BoardCard({
   changes?: { added: number; deleted: number }
   canDrag: boolean
   onMoveTo: (statusKey: string) => void
+  onReview?: () => void
+  onCreatePr?: () => void
   onOpen: () => void
   onPeek: () => void
 }) {
@@ -244,7 +266,8 @@ function BoardCard({
           {...attributes}
           {...listeners}
           aria-label={`Move ${task.title || task.branch || task.id}`}
-          className="absolute top-0 bottom-0 left-0 flex w-5 cursor-grab items-center justify-center text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
+          data-tip="Drag to move"
+          className={`absolute top-0 bottom-0 left-0 flex w-5 cursor-grab items-center justify-center text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100 ${TIP_RIGHT}`}
         >
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
@@ -271,15 +294,39 @@ function BoardCard({
             </button>
           )
         })}
-        <button
-          type="button"
-          onClick={onPeek}
-          aria-label={`Peek ${task.title || task.branch || task.id}`}
-          title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
-          className="ml-auto flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
-        >
-          <Eye size={11} strokeWidth={1.8} />
-        </button>
+        <div className="ml-auto flex gap-0.5">
+          {onReview && (
+            <button
+              type="button"
+              onClick={onReview}
+              aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
+              data-tip="Review → done if it passes"
+              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+            >
+              <ClipboardCheck size={11} strokeWidth={1.8} />
+            </button>
+          )}
+          {onCreatePr && (
+            <button
+              type="button"
+              onClick={onCreatePr}
+              aria-label={`Open a PR for ${task.title || task.branch || task.id}`}
+              data-tip="Open a PR for this branch"
+              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+            >
+              <GitPullRequest size={11} strokeWidth={1.8} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onPeek}
+            aria-label={`Peek ${task.title || task.branch || task.id}`}
+            data-tip="Peek session"
+            className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+          >
+            <Eye size={11} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -291,6 +338,8 @@ function ColumnView({
   worktreeChanges,
   canDrag,
   onMoveTo,
+  onReview,
+  onCreatePr,
   onOpen,
   onPeek,
 }: {
@@ -299,6 +348,8 @@ function ColumnView({
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
   onMoveTo: (task: Task, statusKey: string) => void
+  onReview: (task: Task) => void
+  onCreatePr: (task: Task) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
 }) {
@@ -345,6 +396,19 @@ function ColumnView({
                 changes={worktreeChanges[task.worktreePath]}
                 canDrag={canDrag}
                 onMoveTo={(statusKey) => onMoveTo(task, statusKey)}
+                // Review only makes sense where work awaits a verdict.
+                onReview={
+                  column.key === "in_review" ? () => onReview(task) : undefined
+                }
+                // PR only for finished work that doesn't already have one
+                // (the PrChip covers the has-a-PR case).
+                onCreatePr={
+                  column.key === "done" &&
+                  (!task.prStatus?.lifecycle ||
+                    task.prStatus.lifecycle === "unknown")
+                    ? () => onCreatePr(task)
+                    : undefined
+                }
                 onOpen={() => onOpen(task.id)}
                 onPeek={() => onPeek(task.id)}
               />
@@ -528,6 +592,49 @@ export function Board() {
       })
   }
 
+  /** One-click review: paste the review instruction (the user's template,
+   *  if set, plus the one-time `done` authorization kobe always appends)
+   *  into the task's engine session — spawns the engine if needed. */
+  const sendReview = (task: Task): void => {
+    const tabId = ensureEngineTab(task.id)
+    fetchQuickPrompts()
+      .then((prompts) =>
+        sendPtyText(
+          tabId,
+          task.id,
+          reviewPrompt(task.id, task.vendor, prompts.review),
+        ),
+      )
+      .then(({ spawned }) => {
+        pushToast(
+          "success",
+          spawned
+            ? "review sent — engine starting, peek to watch"
+            : "review sent to the session",
+        )
+      })
+      .catch((err: unknown) => reportError("send review", err))
+  }
+
+  /** One-click PR: ask the session that DID the work to push its branch and
+   *  open the PR — it writes the title/body from its own context. */
+  const sendCreatePr = (task: Task): void => {
+    const tabId = ensureEngineTab(task.id)
+    fetchQuickPrompts()
+      .then((prompts) =>
+        sendPtyText(tabId, task.id, createPrPrompt(prompts.pr)),
+      )
+      .then(({ spawned }) => {
+        pushToast(
+          "success",
+          spawned
+            ? "PR instruction sent — engine starting, peek to watch"
+            : "PR instruction sent to the session",
+        )
+      })
+      .catch((err: unknown) => reportError("open PR", err))
+  }
+
   /** Hover-tag move: jump the card straight to a status, landing at the
    *  TOP of the target — a deliberate move should stay under the eye. */
   const moveToStatus = (task: Task, toKey: string): void => {
@@ -680,6 +787,8 @@ export function Board() {
                   worktreeChanges={worktreeChanges}
                   canDrag={canDrag}
                   onMoveTo={moveToStatus}
+                  onReview={sendReview}
+                  onCreatePr={sendCreatePr}
                   onOpen={open}
                   onPeek={setPeekTaskId}
                 />
