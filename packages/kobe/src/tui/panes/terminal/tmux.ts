@@ -51,7 +51,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { withClaudeSessionId, withStatusProtocol } from "@/engine/interactive-command"
+import { withClaudeSessionId, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
@@ -416,7 +416,15 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // `kobe api` would run on the remote host, where this daemon isn't).
   const isMainSession = opts.repo !== undefined && opts.cwd === opts.repo
   const protocolTaskId = isMainSession || remoteKey ? undefined : opts.taskId
-  const launchArgv = withStatusProtocol(launch.argv, opts.vendor, protocolTaskId)
+  // Dispatcher protocol (docs/design/dispatcher.md): the exact complement —
+  // only a LOCAL MAIN session gets the dispatcher seat. The taskId gates are
+  // mutually exclusive by construction, so at most one protocol injects.
+  const dispatcherTaskId = isMainSession && !remoteKey ? opts.taskId : undefined
+  const launchArgv = withDispatcherProtocol(
+    withWorktreeProtocol(launch.argv, opts.vendor, protocolTaskId),
+    opts.vendor,
+    dispatcherTaskId,
+  )
   // Remote task: the engine runs over SSH on the remote host (`ssh … 'cd <wt>
   // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
   // remote. The repo's init script is deferred for remote (it runs locally

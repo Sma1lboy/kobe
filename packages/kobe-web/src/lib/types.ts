@@ -89,6 +89,17 @@ export interface ConflictPair {
   level: "overlap" | "conflict"
 }
 
+/** One "paste this into task X" event (mirror of the daemon's
+ *  `session.deliver` channel; docs/design/dispatcher.md). The SPA is the
+ *  front-end that hosts web sessions, so it owns the actual delivery —
+ *  see lib/dispatch-delivery.ts. `at` is the dedupe key. */
+export interface SessionDeliver {
+  taskId: string
+  text: string
+  at: number
+  source: "note" | "dispatcher"
+}
+
 /** The user's persisted visual prefs, fanned out by the daemon's
  *  state.json watcher (mirror of the `ui-prefs` channel payload). */
 export interface UiPrefs {
@@ -108,6 +119,7 @@ export type BridgeEvent =
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
   | { channel: "task.conflicts"; payload: { pairs: ConflictPair[] } }
+  | { channel: "session.deliver"; payload: SessionDeliver }
   | { channel: "ui-prefs"; payload: UiPrefs }
 
 /** Full bootstrap state the bridge sends on connect. */
@@ -121,6 +133,9 @@ export interface BridgeSnapshot {
   worktreeChanges?: WorktreeChangeCounts
   /** Conflict-radar pairs (file overlap / proven merge conflict). */
   conflicts?: ConflictPair[]
+  /** Most recent session.deliver event — replayed to late browsers; the
+   *  forwarder dedupes on `at`. */
+  deliver?: SessionDeliver | null
   uiPrefs?: UiPrefs | null
   connected: boolean
 }
