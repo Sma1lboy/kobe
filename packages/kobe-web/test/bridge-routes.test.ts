@@ -106,6 +106,31 @@ describe("bridge request handler", () => {
       expect((await res.json()).error).toContain("daemon exploded")
     })
 
+    it("forwards a NAMED daemon error so the SPA can branch on it", async () => {
+      const { handle } = build({
+        onRequest: () => {
+          const err = new Error("illegal transition for task t1")
+          err.name = "IllegalTransitionError"
+          throw err
+        },
+      })
+      const res = await handle(post("/api/rpc", { name: "task.status" }))
+      expect(res.status).toBe(500)
+      const body = await res.json()
+      expect(body.name).toBe("IllegalTransitionError")
+      expect(body.error).toContain("illegal transition")
+    })
+
+    it("omits the name field for a plain anonymous Error", async () => {
+      const { handle } = build({
+        onRequest: () => {
+          throw new Error("boom")
+        },
+      })
+      const res = await handle(post("/api/rpc", { name: "task.list" }))
+      expect(await res.json()).not.toHaveProperty("name")
+    })
+
     it("tears down the session after a delete", async () => {
       const { handle, tearDown } = build()
       await handle(post("/api/rpc", { name: "task.delete", payload: { taskId: "t9" } }))

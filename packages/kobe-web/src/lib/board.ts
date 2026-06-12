@@ -126,3 +126,54 @@ export function buildBoard(tasks: Task[]): BoardColumn[] {
 export function boardCardCount(columns: readonly BoardColumn[]): number {
   return columns.reduce((sum, col) => sum + col.tasks.length, 0)
 }
+
+/* ----- optimistic drag overrides (M2) ------------------------------------
+ * A drop paints the card into its target column immediately; the daemon's
+ * task.snapshot round-trip is the truth. taskId → expected status. */
+
+export type StatusOverrides = Readonly<Record<string, string>>
+
+/** Paint pending drops over the authoritative task list. */
+export function applyStatusOverrides(
+  tasks: Task[],
+  overrides: StatusOverrides,
+): Task[] {
+  if (Object.keys(overrides).length === 0) return tasks
+  return tasks.map((task) => {
+    const status = overrides[task.id]
+    return status && status !== task.status ? { ...task, status } : task
+  })
+}
+
+/**
+ * Drop overrides the snapshot has confirmed (task.status === expected) and
+ * overrides whose task vanished (deleted/archived elsewhere). An UNRELATED
+ * snapshot — some other task changed — must keep a pending override, or the
+ * card bounces back mid-RPC (docs/design/web-kanban.md R4). Returns the SAME
+ * reference when nothing changed so React can skip.
+ */
+export function reconcileOverrides(
+  overrides: StatusOverrides,
+  tasks: Task[],
+): StatusOverrides {
+  const entries = Object.entries(overrides)
+  if (entries.length === 0) return overrides
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const next: Record<string, string> = {}
+  let changed = false
+  for (const [taskId, status] of entries) {
+    const task = byId.get(taskId)
+    if (!task || task.status === status) {
+      changed = true
+      continue
+    }
+    next[taskId] = status
+  }
+  return changed ? next : overrides
+}
+
+/** Only canonical lifecycle columns accept drops — a dynamic unknown-status
+ *  column renders cards but is not a drag target. */
+export function isDroppableColumn(key: string): boolean {
+  return BOARD_COLUMNS.some((spec) => spec.key === key)
+}

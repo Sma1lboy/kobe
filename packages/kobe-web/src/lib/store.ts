@@ -215,8 +215,17 @@ export async function rpc<T = unknown>(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, payload }),
   })
-  const json = (await res.json()) as { result?: T; error?: string }
-  if (!res.ok || json.error)
-    throw new Error(json.error ?? `rpc ${name} failed (${res.status})`)
+  const json = (await res.json()) as {
+    result?: T
+    error?: string
+    name?: string
+  }
+  if (!res.ok || json.error) {
+    const err = new Error(json.error ?? `rpc ${name} failed (${res.status})`)
+    // The bridge forwards the daemon's error name (e.g.
+    // IllegalTransitionError) so callers can branch without string-matching.
+    if (json.name) err.name = json.name
+    throw err
+  }
   return json.result as T
 }

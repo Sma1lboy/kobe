@@ -1,15 +1,21 @@
 import { afterEach, describe, expect, it } from "vitest"
 import {
+  applyStatusOverrides,
   BOARD_COLUMNS,
   boardCardCount,
   buildBoard,
   compareCards,
   isBoardTask,
+  isDroppableColumn,
+  reconcileOverrides,
 } from "../src/lib/board.ts"
 import {
+  clearStatusOverride,
   getBoardState,
+  reconcileBoardOverrides,
   resetBoardStateForTest,
   setBoardQuery,
+  setStatusOverride,
 } from "../src/lib/board-state.ts"
 import type { Task } from "../src/lib/types.ts"
 
@@ -149,5 +155,78 @@ describe("board-state — module store filter", () => {
     setBoardQuery("y")
     resetBoardStateForTest()
     expect(getBoardState().query).toBe("")
+  })
+})
+
+describe("applyStatusOverrides — optimistic paint", () => {
+  it("returns the same reference with no overrides", () => {
+    const tasks = [task({ id: "a" })]
+    expect(applyStatusOverrides(tasks, {})).toBe(tasks)
+  })
+
+  it("paints the pending status without mutating the source task", () => {
+    const a = task({ id: "a", status: "backlog" })
+    const painted = applyStatusOverrides([a], { a: "in_review" })
+    expect(painted[0].status).toBe("in_review")
+    expect(a.status).toBe("backlog")
+  })
+})
+
+describe("reconcileOverrides — R4 precise-clear rule", () => {
+  it("keeps an in-flight override across an UNRELATED snapshot", () => {
+    const overrides = { a: "in_review" }
+    // Snapshot where some other task changed; a is still backlog.
+    const next = reconcileOverrides(overrides, [
+      task({ id: "a", status: "backlog" }),
+      task({ id: "b", status: "done" }),
+    ])
+    expect(next).toBe(overrides) // same ref: nothing cleared, React skips
+  })
+
+  it("clears once the snapshot confirms the expected status", () => {
+    const next = reconcileOverrides({ a: "in_review" }, [
+      task({ id: "a", status: "in_review" }),
+    ])
+    expect(next).toEqual({})
+  })
+
+  it("drops the override when the task vanished mid-flight", () => {
+    expect(reconcileOverrides({ gone: "done" }, [])).toEqual({})
+  })
+})
+
+describe("board-state — override store", () => {
+  afterEach(() => resetBoardStateForTest())
+
+  it("records and rolls back a failed drop", () => {
+    setStatusOverride("a", "in_review")
+    expect(getBoardState().overrides).toEqual({ a: "in_review" })
+    clearStatusOverride("a", "in_review")
+    expect(getBoardState().overrides).toEqual({})
+  })
+
+  it("an older RPC's rollback must not clear a newer drag's override", () => {
+    setStatusOverride("a", "in_review") // first drag (will fail)
+    setStatusOverride("a", "done") // user drags again before the reject
+    clearStatusOverride("a", "in_review") // first RPC rejects
+    expect(getBoardState().overrides).toEqual({ a: "done" })
+  })
+
+  it("reconciles against an authoritative task list", () => {
+    setStatusOverride("a", "in_review")
+    setStatusOverride("b", "done")
+    reconcileBoardOverrides([
+      task({ id: "a", status: "in_review" }), // confirmed → clear
+      task({ id: "b", status: "backlog" }), // still in flight → keep
+    ])
+    expect(getBoardState().overrides).toEqual({ b: "done" })
+  })
+})
+
+describe("isDroppableColumn", () => {
+  it("accepts canonical lifecycle columns, rejects dynamic unknowns", () => {
+    expect(isDroppableColumn("in_review")).toBe(true)
+    expect(isDroppableColumn("canceled")).toBe(true)
+    expect(isDroppableColumn("qa_hold")).toBe(false)
   })
 })
