@@ -120,11 +120,13 @@ function ConflictYarn({
       const next: Array<{ id: string; d: string; color: string; tip: string }> =
         []
       conflictPairs.forEach((pair, index) => {
+        // window.CSS, not the bare identifier — the dnd-kit `CSS` transform
+        // helper imported above shadows the global and has no .escape.
         const ea = container.querySelector(
-          `[data-task-id="${CSS.escape(pair.a)}"]`,
+          `[data-task-id="${window.CSS.escape(pair.a)}"]`,
         )
         const eb = container.querySelector(
-          `[data-task-id="${CSS.escape(pair.b)}"]`,
+          `[data-task-id="${window.CSS.escape(pair.b)}"]`,
         )
         if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
         const ra = ea.getBoundingClientRect()
@@ -162,18 +164,27 @@ function ConflictYarn({
       className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
     >
       {lines.map((line) => (
-        <path
-          key={line.id}
-          d={line.d}
-          fill="none"
-          stroke={line.color}
-          strokeWidth={2}
-          strokeOpacity={0.65}
-          strokeLinecap="round"
-          style={{ pointerEvents: "stroke" }}
-        >
-          <title>{line.tip}</title>
-        </path>
+        <g key={line.id}>
+          <path
+            d={line.d}
+            fill="none"
+            stroke={line.color}
+            strokeWidth={2}
+            strokeOpacity={0.65}
+            strokeLinecap="round"
+          />
+          {/* Invisible fat twin — a 14px hit corridor so the tooltip
+              doesn't demand pixel-perfect aim at a 2px thread. */}
+          <path
+            d={line.d}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={14}
+            style={{ pointerEvents: "stroke" }}
+          >
+            <title>{line.tip}</title>
+          </path>
+        </g>
       ))}
     </svg>
   )
@@ -188,6 +199,10 @@ const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
  *  `title` takes a beat to appear, and one-glyph buttons need names. */
 const TIP_ABOVE =
   "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+/** Conflict-badge variant: instant, multi-line (pre-line honors the \n-joined
+ *  pair list), wide enough for "CONFLICTS with <task>: file, file, …". */
+const TIP_BADGE =
+  "after:pointer-events-none after:absolute after:top-full after:right-0 after:z-20 after:mt-0.5 after:hidden after:w-max after:max-w-[320px] after:whitespace-pre-line after:border after:border-line after:bg-menu after:px-2 after:py-1 after:text-left after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 const TIP_RIGHT =
   "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 
@@ -274,10 +289,10 @@ function CardBody({
         </span>
         {badge && (
           <span
-            title={badge.tip}
-            className={`shrink-0 font-mono text-[10px] ${
+            data-tip={badge.tip}
+            className={`relative -my-1.5 shrink-0 cursor-help px-1.5 py-1.5 font-mono text-[10px] ${
               badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
-            }`}
+            } ${TIP_BADGE}`}
           >
             ⚠{badge.count}
           </span>
