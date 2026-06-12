@@ -71,10 +71,18 @@ export async function sendPtyText(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ tab: tabId, taskId, text }),
   })
-  const json = (await res.json()) as {
-    sent?: boolean
-    spawned?: boolean
-    error?: string
+  // Parse defensively: a sidecar that predates this endpoint 404s with an
+  // EMPTY body, and a raw res.json() would surface as a cryptic JSON parse
+  // error instead of the actual problem.
+  let json: { sent?: boolean; spawned?: boolean; error?: string } = {}
+  try {
+    json = (await res.json()) as typeof json
+  } catch {
+    if (res.status === 404) {
+      throw new Error(
+        "the PTY server doesn't know /pty/send — restart `kobe web` (the sidecar doesn't hot-reload)",
+      )
+    }
   }
   if (!res.ok || !json.sent) {
     throw new Error(json.error ?? `send failed (${res.status})`)

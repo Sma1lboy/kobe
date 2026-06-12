@@ -82,6 +82,13 @@ import { ChangesChip, PrChip } from "./chips.tsx"
  *  everyday destinations. */
 const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
 
+/** Instant hover tooltip rendered from the data-tip attribute — the native
+ *  `title` takes a beat to appear, and one-glyph buttons need names. */
+const TIP_ABOVE =
+  "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+const TIP_RIGHT =
+  "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+
 /**
  * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column
  * (geometric x-band), ←/→ jump to the nearest card — or the column surface,
@@ -255,7 +262,8 @@ function BoardCard({
           {...attributes}
           {...listeners}
           aria-label={`Move ${task.title || task.branch || task.id}`}
-          className="absolute top-0 bottom-0 left-0 flex w-5 cursor-grab items-center justify-center text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
+          data-tip="Drag to move"
+          className={`absolute top-0 bottom-0 left-0 flex w-5 cursor-grab items-center justify-center text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100 ${TIP_RIGHT}`}
         >
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
@@ -288,8 +296,8 @@ function BoardCard({
               type="button"
               onClick={onReview}
               aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
-              title="Ask the session to review its work — a passing review sets the task done"
-              className="flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
+              data-tip="Review → done if it passes"
+              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
             >
               <ClipboardCheck size={11} strokeWidth={1.8} />
             </button>
@@ -298,8 +306,8 @@ function BoardCard({
             type="button"
             onClick={onPeek}
             aria-label={`Peek ${task.title || task.branch || task.id}`}
-            title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
-            className="flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
+            data-tip="Peek session"
+            className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
           >
             <Eye size={11} strokeWidth={1.8} />
           </button>
