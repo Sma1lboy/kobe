@@ -85,20 +85,21 @@ import { ChangesChip, PrChip } from "./chips.tsx"
  * Conflict yarn — one sagging colored thread per PROVEN conflict pair,
  * strung between the two cards (the detective-board look). Lines live in
  * an SVG overlay inside the horizontally-scrolling column wrapper, so they
- * scroll with the columns; endpoints re-measure on resize, any inner
- * scroll (capture — column lists scroll independently), and layout
- * changes. The overlay never intercepts the pointer except on the thread
- * itself (2px stroke), which exists only to carry the tooltip.
+ * scroll with the columns. Endpoints are ANCHORED by a per-frame rAF loop
+ * (alive only while proven pairs exist): re-measuring every frame is the
+ * one approach that tracks dnd-kit's mid-drag transforms, the post-drop
+ * settle transition, and inner column scrolls without enumerating event
+ * sources. Cost is a couple of rect reads per pair per frame, the state
+ * update is equality-guarded, and rAF pauses in background tabs. The
+ * overlay never intercepts the pointer except on the thread itself
+ * (2px stroke), which exists only to carry the tooltip.
  */
 function ConflictYarn({
   pairs,
-  layoutKey,
   titles,
   containerRef,
 }: {
   pairs: ConflictPair[]
-  /** Changes whenever card positions could have moved (membership/order). */
-  layoutKey: string
   titles: ReadonlyMap<string, string>
   containerRef: React.RefObject<HTMLDivElement | null>
 }) {
@@ -106,63 +107,52 @@ function ConflictYarn({
     Array<{ id: string; d: string; color: string; tip: string }>
   >([])
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: layoutKey is the deliberate re-measure trigger (card membership/order moved), not a read dependency.
   useEffect(() => {
     const container = containerRef.current
-    if (!container) return
+    const conflictPairs = pairs.filter((pair) => pair.level === "conflict")
+    if (!container || conflictPairs.length === 0) {
+      setLines((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
     let raf = 0
     const measure = (): void => {
-      raf = 0
       const base = container.getBoundingClientRect()
       const next: Array<{ id: string; d: string; color: string; tip: string }> =
         []
-      pairs
-        .filter((pair) => pair.level === "conflict")
-        .forEach((pair, index) => {
-          const ea = container.querySelector(
-            `[data-task-id="${CSS.escape(pair.a)}"]`,
-          )
-          const eb = container.querySelector(
-            `[data-task-id="${CSS.escape(pair.b)}"]`,
-          )
-          if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
-          const ra = ea.getBoundingClientRect()
-          const rb = eb.getBoundingClientRect()
-          const x1 = ra.left + ra.width / 2 - base.left
-          const y1 = ra.bottom - 4 - base.top
-          const x2 = rb.left + rb.width / 2 - base.left
-          const y2 = rb.bottom - 4 - base.top
-          // Quadratic droop — yarn, not a laser.
-          const sag = Math.min(120, Math.abs(x2 - x1) / 4 + 28)
-          const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.max(y1, y2) + sag} ${x2} ${y2}`
-          const names = `${titles.get(pair.a) ?? pair.a} ⇄ ${titles.get(pair.b) ?? pair.b}`
-          const files = pair.files.slice(0, 6).join(", ")
-          next.push({
-            id: `${pair.a}|${pair.b}`,
-            d,
-            color: yarnColor(index),
-            tip: `${names}\nconflicts: ${files}${pair.files.length > 6 ? ", …" : ""}`,
-          })
+      conflictPairs.forEach((pair, index) => {
+        const ea = container.querySelector(
+          `[data-task-id="${CSS.escape(pair.a)}"]`,
+        )
+        const eb = container.querySelector(
+          `[data-task-id="${CSS.escape(pair.b)}"]`,
+        )
+        if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
+        const ra = ea.getBoundingClientRect()
+        const rb = eb.getBoundingClientRect()
+        const x1 = ra.left + ra.width / 2 - base.left
+        const y1 = ra.bottom - 4 - base.top
+        const x2 = rb.left + rb.width / 2 - base.left
+        const y2 = rb.bottom - 4 - base.top
+        // Quadratic droop — yarn, not a laser.
+        const sag = Math.min(120, Math.abs(x2 - x1) / 4 + 28)
+        const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.max(y1, y2) + sag} ${x2} ${y2}`
+        const names = `${titles.get(pair.a) ?? pair.a} ⇄ ${titles.get(pair.b) ?? pair.b}`
+        const files = pair.files.slice(0, 6).join(", ")
+        next.push({
+          id: `${pair.a}|${pair.b}`,
+          d,
+          color: yarnColor(index),
+          tip: `${names}\nconflicts: ${files}${pair.files.length > 6 ? ", …" : ""}`,
         })
+      })
       setLines((prev) =>
         JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
       )
+      raf = requestAnimationFrame(measure)
     }
-    const schedule = (): void => {
-      if (!raf) raf = requestAnimationFrame(measure)
-    }
-    schedule()
-    window.addEventListener("resize", schedule)
-    container.addEventListener("scroll", schedule, true)
-    const observer = new ResizeObserver(schedule)
-    observer.observe(container)
-    return () => {
-      window.removeEventListener("resize", schedule)
-      container.removeEventListener("scroll", schedule, true)
-      observer.disconnect()
-      if (raf) cancelAnimationFrame(raf)
-    }
-  }, [pairs, layoutKey, titles, containerRef])
+    raf = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(raf)
+  }, [pairs, titles, containerRef])
 
   if (lines.length === 0) return null
   return (
@@ -670,17 +660,6 @@ export function Board() {
     }
     return badges
   }, [conflicts, taskTitles])
-  const yarnLayoutKey = useMemo(
-    () =>
-      columns
-        .map(
-          (column) =>
-            `${column.key}:${column.tasks.map((t) => t.id).join(",")}`,
-        )
-        .join("|"),
-    [columns],
-  )
-
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
@@ -972,7 +951,6 @@ export function Board() {
               ))}
               <ConflictYarn
                 pairs={conflicts}
-                layoutKey={yarnLayoutKey}
                 titles={taskTitles}
                 containerRef={yarnContainerRef}
               />
