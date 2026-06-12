@@ -34,7 +34,14 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, Eye, GripVertical, Search, X } from "lucide-react"
+import {
+  ArrowLeft,
+  ClipboardCheck,
+  Eye,
+  GripVertical,
+  Search,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
@@ -59,11 +66,13 @@ import {
   setStatusOverride,
   useBoardState,
 } from "../lib/board-state.ts"
+import { reviewPrompt } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { selectTask } from "../lib/tabs.ts"
+import { ensureEngineTab, selectTask } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
+import { sendPtyText } from "../lib/terminal.ts"
 import { relativeTime } from "../lib/time.ts"
-import { reportError } from "../lib/toast.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
@@ -178,6 +187,7 @@ function BoardCard({
   changes,
   canDrag,
   onMoveTo,
+  onReview,
   onOpen,
   onPeek,
 }: {
@@ -187,6 +197,7 @@ function BoardCard({
   changes?: { added: number; deleted: number }
   canDrag: boolean
   onMoveTo: (statusKey: string) => void
+  onReview?: () => void
   onOpen: () => void
   onPeek: () => void
 }) {
@@ -271,15 +282,28 @@ function BoardCard({
             </button>
           )
         })}
-        <button
-          type="button"
-          onClick={onPeek}
-          aria-label={`Peek ${task.title || task.branch || task.id}`}
-          title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
-          className="ml-auto flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
-        >
-          <Eye size={11} strokeWidth={1.8} />
-        </button>
+        <div className="ml-auto flex gap-0.5">
+          {onReview && (
+            <button
+              type="button"
+              onClick={onReview}
+              aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
+              title="Ask the session to review its work — a passing review sets the task done"
+              className="flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
+            >
+              <ClipboardCheck size={11} strokeWidth={1.8} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onPeek}
+            aria-label={`Peek ${task.title || task.branch || task.id}`}
+            title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
+            className="flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
+          >
+            <Eye size={11} strokeWidth={1.8} />
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -291,6 +315,7 @@ function ColumnView({
   worktreeChanges,
   canDrag,
   onMoveTo,
+  onReview,
   onOpen,
   onPeek,
 }: {
@@ -299,6 +324,7 @@ function ColumnView({
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
   onMoveTo: (task: Task, statusKey: string) => void
+  onReview: (task: Task) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
 }) {
@@ -345,6 +371,10 @@ function ColumnView({
                 changes={worktreeChanges[task.worktreePath]}
                 canDrag={canDrag}
                 onMoveTo={(statusKey) => onMoveTo(task, statusKey)}
+                // Review only makes sense where work awaits a verdict.
+                onReview={
+                  column.key === "in_review" ? () => onReview(task) : undefined
+                }
                 onOpen={() => onOpen(task.id)}
                 onPeek={() => onPeek(task.id)}
               />
@@ -528,6 +558,23 @@ export function Board() {
       })
   }
 
+  /** One-click review: paste the review instruction (which carries the
+   *  one-time `done` authorization) into the task's engine session via the
+   *  PTY sidecar — spawns the engine if it isn't running. */
+  const sendReview = (task: Task): void => {
+    const tabId = ensureEngineTab(task.id)
+    sendPtyText(tabId, task.id, reviewPrompt(task.id))
+      .then(({ spawned }) => {
+        pushToast(
+          "success",
+          spawned
+            ? "review sent — engine starting, peek to watch"
+            : "review sent to the session",
+        )
+      })
+      .catch((err: unknown) => reportError("send review", err))
+  }
+
   /** Hover-tag move: jump the card straight to a status, landing at the
    *  TOP of the target — a deliberate move should stay under the eye. */
   const moveToStatus = (task: Task, toKey: string): void => {
@@ -680,6 +727,7 @@ export function Board() {
                   worktreeChanges={worktreeChanges}
                   canDrag={canDrag}
                   onMoveTo={moveToStatus}
+                  onReview={sendReview}
                   onOpen={open}
                   onPeek={setPeekTaskId}
                 />

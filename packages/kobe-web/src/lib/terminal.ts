@@ -52,3 +52,32 @@ export async function closePtyTab(tabId: string): Promise<void> {
     /* best-effort — the tab is already gone from the UI */
   }
 }
+
+/**
+ * Paste text + Enter into a tab's engine — the composer's submit contract,
+ * fired from outside any terminal view (board quick actions). The sidecar
+ * spawns the engine on demand when the tab has no process yet, so a board
+ * action works without the terminal ever having been opened; output lands
+ * in the scrollback ring for the next attach. Throws on failure so callers
+ * can toast.
+ */
+export async function sendPtyText(
+  tabId: string,
+  taskId: string,
+  text: string,
+): Promise<{ spawned: boolean }> {
+  const res = await fetch(`${ptyHttpOrigin()}/pty/send`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ tab: tabId, taskId, text }),
+  })
+  const json = (await res.json()) as {
+    sent?: boolean
+    spawned?: boolean
+    error?: string
+  }
+  if (!res.ok || !json.sent) {
+    throw new Error(json.error ?? `send failed (${res.status})`)
+  }
+  return { spawned: json.spawned === true }
+}

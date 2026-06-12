@@ -10,6 +10,7 @@
  *
  *   ws  /pty?tab=<id>&taskId=<id>&mode=engine|shell&cols=<n>&rows=<n>
  *   POST /pty/close   { tab }                          kill the tab process
+ *   POST /pty/send    { tab, taskId, text }            paste text + Enter into the tab's engine
  */
 
 import { createServer } from "node:http"
@@ -96,6 +97,78 @@ const server = createServer((req, res) => {
       "access-control-allow-headers": "content-type",
     })
     res.end()
+    return
+  }
+  if (req.method === "POST" && url.pathname === "/pty/send") {
+    // Sending text DRIVES the engine like a keyboard, so unlike /pty/close
+    // (best-effort kill) this holds the same origin policy as the WS attach:
+    // localhost pages or non-browser clients only.
+    const origin = req.headers.origin
+    if (origin && !LOCAL_ORIGIN.test(origin)) {
+      res.writeHead(403)
+      res.end()
+      return
+    }
+    let body = ""
+    req.on("data", (c) => {
+      body += c
+    })
+    req.on("end", async () => {
+      let tab
+      let taskId
+      let text
+      try {
+        ;({ tab, taskId, text } = JSON.parse(body || "{}"))
+      } catch {
+        /* ignore */
+      }
+      const respond = (status, payload) => {
+        res.writeHead(status, {
+          "content-type": "application/json",
+          "access-control-allow-origin": "*",
+        })
+        res.end(JSON.stringify(payload))
+      }
+      if (typeof tab !== "string" || !tab || typeof text !== "string" || !text) {
+        respond(400, { sent: false, error: "tab and text are required" })
+        return
+      }
+      let entry = tabs.get(tab)
+      let spawned = false
+      if (!entry && typeof taskId === "string" && taskId) {
+        // Spawn-on-send: a board action can fire without the terminal ever
+        // opening — output lands in the scrollback ring for the next attach.
+        try {
+          const spec = await fetchSpec(taskId, "engine")
+          entry = spawnTab(tab, spec, 80, 24)
+          spawned = true
+        } catch (err) {
+          respond(500, { sent: false, error: `failed to start engine: ${err?.message ?? err}` })
+          return
+        }
+      }
+      if (!entry) {
+        respond(404, { sent: false, error: "no such tab" })
+        return
+      }
+      // Same submit contract as the composer / tmux pasteAndSubmit:
+      // bracketed paste so a multi-line prompt arrives as ONE paste, then
+      // Enter. A freshly spawned engine gets a grace delay so the paste
+      // isn't eaten by its startup.
+      const target = entry
+      setTimeout(
+        () => {
+          try {
+            target.pty.write(`\x1b[200~${text}\x1b[201~`)
+            target.pty.write("\r")
+          } catch {
+            /* engine died between spawn and paste — next attach shows why */
+          }
+        },
+        spawned ? 2500 : 0,
+      )
+      respond(200, { sent: true, spawned })
+    })
     return
   }
   if (req.method === "POST" && url.pathname === "/pty/close") {
