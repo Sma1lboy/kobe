@@ -571,7 +571,7 @@ export function Board() {
    *  PTY sidecar — spawns the engine if it isn't running. */
   const sendReview = (task: Task): void => {
     const tabId = ensureEngineTab(task.id)
-    sendPtyText(tabId, task.id, reviewPrompt(task.id))
+    sendPtyText(tabId, task.id, reviewPrompt(task.id, task.vendor))
       .then(({ spawned }) => {
         pushToast(
           "success",
