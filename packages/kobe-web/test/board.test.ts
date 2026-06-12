@@ -5,6 +5,8 @@ import {
   boardCardCount,
   buildBoard,
   compareCards,
+  conflictBadge,
+  conflictsForTask,
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
@@ -14,6 +16,8 @@ import {
   reconcileOverrides,
   renormalizedMoves,
   TERMINAL_COLUMN_CAP,
+  YARN_COLORS,
+  yarnColor,
 } from "../src/lib/board.ts"
 import {
   clearPositionOverride,
@@ -296,6 +300,31 @@ describe("buildBoard — terminal-column cap", () => {
     expect(doneCol?.hiddenCount).toBe(5)
     expect(activeCol?.tasks).toHaveLength(TERMINAL_COLUMN_CAP + 5)
     expect(activeCol?.hiddenCount).toBe(0)
+  })
+})
+
+describe("conflict radar helpers", () => {
+  const pairs = [
+    { a: "a", b: "b", files: ["src/x.ts"], level: "conflict" as const },
+    { a: "a", b: "c", files: ["src/y.ts"], level: "overlap" as const },
+  ]
+
+  it("conflictsForTask returns pairs touching the task", () => {
+    expect(conflictsForTask(pairs, "a")).toHaveLength(2)
+    expect(conflictsForTask(pairs, "b")).toHaveLength(1)
+    expect(conflictsForTask(pairs, "zzz")).toHaveLength(0)
+  })
+
+  it("conflictBadge takes the strongest level and counts counterparts", () => {
+    expect(conflictBadge(pairs, "a")).toEqual({ level: "conflict", count: 2 })
+    expect(conflictBadge(pairs, "c")).toEqual({ level: "overlap", count: 1 })
+    expect(conflictBadge(pairs, "zzz")).toBeNull()
+  })
+
+  it("yarnColor is stable per index and cycles the palette", () => {
+    expect(yarnColor(0)).toBe(YARN_COLORS[0])
+    expect(yarnColor(YARN_COLORS.length)).toBe(YARN_COLORS[0])
+    expect(yarnColor(1)).not.toBe(yarnColor(2))
   })
 })
 

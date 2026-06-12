@@ -19,6 +19,7 @@ import type { Orchestrator } from "@/orchestrator/core"
 import { type UpdateInfo, checkLatestVersion } from "@/version"
 import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
+import { DEFAULT_CONFLICTS_TICK_MS, startConflictCollector } from "./conflict-collector.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
@@ -79,6 +80,8 @@ export interface DaemonServerOptions {
   readonly keybindingsDebounceMs?: number
   /** Worktree-changes collector tick in ms; `0` disables. Defaults to {@link DEFAULT_WORKTREE_CHANGES_TICK_MS}. */
   readonly worktreeChangesTickMs?: number
+  /** Conflict-radar collector tick in ms; `0` disables. Defaults to {@link DEFAULT_CONFLICTS_TICK_MS}. */
+  readonly conflictsTickMs?: number
 }
 
 export interface DaemonServer {
@@ -315,6 +318,17 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     hasSubscribers,
   )
 
+  // Conflict radar (docs/design/conflict-radar.md): pairwise file-overlap +
+  // merge-tree dry-runs over in-flight worktree tasks, published on
+  // `task.conflicts`. Same guarded-poll + consumer-gate discipline as the
+  // worktree-changes collector above.
+  const stopConflictCollector = startConflictCollector(
+    orch,
+    bus,
+    options.conflictsTickMs ?? DEFAULT_CONFLICTS_TICK_MS,
+    hasSubscribers,
+  )
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -329,6 +343,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       stopUiPrefsWatcher()
       stopKeybindingsWatcher()
       stopWorktreeChangesCollector()
+      stopConflictCollector()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

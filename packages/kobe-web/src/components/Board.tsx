@@ -44,6 +44,7 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
   applyBoardOverrides,
@@ -52,9 +53,11 @@ import {
   boardCardCount,
   buildBoard,
   compareCards,
+  conflictBadge,
   isBoardTask,
   isDroppableColumn,
   planColumnDrop,
+  yarnColor,
 } from "../lib/board.ts"
 import {
   clearPositionOverride,
@@ -75,9 +78,122 @@ import { matchesTask } from "../lib/task-list.ts"
 import { sendPtyText } from "../lib/terminal.ts"
 import { relativeTime } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
-import type { EngineState, Task } from "../lib/types.ts"
+import type { ConflictPair, EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
+
+/**
+ * Conflict yarn — one sagging colored thread per PROVEN conflict pair,
+ * strung between the two cards (the detective-board look). Lines live in
+ * an SVG overlay inside the horizontally-scrolling column wrapper, so they
+ * scroll with the columns. Endpoints are ANCHORED by a per-frame rAF loop
+ * (alive only while proven pairs exist): re-measuring every frame is the
+ * one approach that tracks dnd-kit's mid-drag transforms, the post-drop
+ * settle transition, and inner column scrolls without enumerating event
+ * sources. Cost is a couple of rect reads per pair per frame, the state
+ * update is equality-guarded, and rAF pauses in background tabs. The
+ * overlay never intercepts the pointer except on the thread itself
+ * (2px stroke), which exists only to carry the tooltip.
+ */
+function ConflictYarn({
+  pairs,
+  titles,
+  containerRef,
+}: {
+  pairs: ConflictPair[]
+  titles: ReadonlyMap<string, string>
+  containerRef: React.RefObject<HTMLDivElement | null>
+}) {
+  const [lines, setLines] = useState<
+    Array<{ id: string; d: string; color: string; tip: string }>
+  >([])
+
+  useEffect(() => {
+    const container = containerRef.current
+    const conflictPairs = pairs.filter((pair) => pair.level === "conflict")
+    if (!container || conflictPairs.length === 0) {
+      setLines((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
+    let raf = 0
+    const measure = (): void => {
+      const base = container.getBoundingClientRect()
+      const next: Array<{ id: string; d: string; color: string; tip: string }> =
+        []
+      // window.CSS, not the bare identifier — the dnd-kit `CSS` transform
+      // helper imported above shadows the global and has no .escape.
+      // A card being dragged is anchored at its DragOverlay clone (portaled
+      // to <body>, riding the pointer) so the yarn follows the drag live;
+      // viewport-rect math stays valid across the portal boundary.
+      const anchor = (id: string): Element | null =>
+        document.querySelector(
+          `[data-yarn-anchor="${window.CSS.escape(id)}"]`,
+        ) ??
+        container.querySelector(`[data-task-id="${window.CSS.escape(id)}"]`)
+      conflictPairs.forEach((pair, index) => {
+        const ea = anchor(pair.a)
+        const eb = anchor(pair.b)
+        if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
+        const ra = ea.getBoundingClientRect()
+        const rb = eb.getBoundingClientRect()
+        const x1 = ra.left + ra.width / 2 - base.left
+        const y1 = ra.bottom - 4 - base.top
+        const x2 = rb.left + rb.width / 2 - base.left
+        const y2 = rb.bottom - 4 - base.top
+        // Quadratic droop — yarn, not a laser.
+        const sag = Math.min(120, Math.abs(x2 - x1) / 4 + 28)
+        const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.max(y1, y2) + sag} ${x2} ${y2}`
+        const names = `${titles.get(pair.a) ?? pair.a} ⇄ ${titles.get(pair.b) ?? pair.b}`
+        const files = pair.files.slice(0, 6).join(", ")
+        next.push({
+          id: `${pair.a}|${pair.b}`,
+          d,
+          color: yarnColor(index),
+          tip: `${names}\nconflicts: ${files}${pair.files.length > 6 ? ", …" : ""}`,
+        })
+      })
+      setLines((prev) =>
+        JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
+      )
+      raf = requestAnimationFrame(measure)
+    }
+    raf = requestAnimationFrame(measure)
+    return () => cancelAnimationFrame(raf)
+  }, [pairs, titles, containerRef])
+
+  if (lines.length === 0) return null
+  return (
+    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative overlay (aria-hidden); the per-path <title> elements carry the hover tooltips.
+    <svg
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
+    >
+      {lines.map((line) => (
+        <g key={line.id}>
+          <path
+            d={line.d}
+            fill="none"
+            stroke={line.color}
+            strokeWidth={2}
+            strokeOpacity={0.65}
+            strokeLinecap="round"
+          />
+          {/* Invisible fat twin — a 14px hit corridor so the tooltip
+              doesn't demand pixel-perfect aim at a 2px thread. */}
+          <path
+            d={line.d}
+            fill="none"
+            stroke="transparent"
+            strokeWidth={14}
+            style={{ pointerEvents: "stroke" }}
+          >
+            <title>{line.tip}</title>
+          </path>
+        </g>
+      ))}
+    </svg>
+  )
+}
 
 /** The hover bar's jump targets: the four always-visible lifecycle columns.
  *  error/canceled stay drag-only — they're fold-away exception states, not
@@ -149,14 +265,76 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
   return target ? { x: target.left, y: target.top } : undefined
 }
 
+/**
+ * ⚠N conflict badge with an instant tooltip PORTALED to <body> — the column
+ * lists are overflow-y scrollers, which forces overflow-x to clip too, so an
+ * absolutely-positioned tooltip inside the card gets cut at the column edge.
+ * Fixed positioning at body level escapes every scroll container; any scroll
+ * while open just dismisses it (the anchor rect went stale).
+ */
+function ConflictBadge({
+  badge,
+}: {
+  badge: { level: "overlap" | "conflict"; count: number; tip: string }
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    if (!pos) return
+    const close = (): void => setPos(null)
+    window.addEventListener("scroll", close, true)
+    return () => window.removeEventListener("scroll", close, true)
+  }, [pos])
+  const show = (): void => {
+    const rect = ref.current?.getBoundingClientRect()
+    if (rect)
+      setPos({
+        top: rect.bottom + 2,
+        right: Math.max(8, window.innerWidth - rect.right),
+      })
+  }
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover-only tooltip trigger inside the card's open button — not an action of its own.
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={() => setPos(null)}
+      className={`-my-1.5 relative shrink-0 cursor-help px-1.5 py-1.5 font-mono text-[10px] ${
+        badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
+      }`}
+    >
+      ⚠{badge.count}
+      {pos &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: pos.top,
+              right: pos.right,
+              maxWidth: 380,
+              overflowWrap: "anywhere",
+            }}
+            className="pointer-events-none z-50 whitespace-pre-line border border-line bg-menu px-2 py-1 text-left font-mono text-[10px] text-fg"
+          >
+            {badge.tip}
+          </div>,
+          document.body,
+        )}
+    </span>
+  )
+}
+
 function CardBody({
   task,
   engine,
   changes,
+  badge,
 }: {
   task: Task
   engine?: EngineState
   changes?: { added: number; deleted: number }
+  /** Conflict-radar summary: ⚠ overlap (yellow) / proven conflict (red). */
+  badge?: { level: "overlap" | "conflict"; count: number; tip: string }
 }) {
   const label = activityLabel(engine?.state)
   const updated = relativeTime(task.updatedAt || task.createdAt)
@@ -169,6 +347,7 @@ function CardBody({
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
+        {badge && <ConflictBadge badge={badge} />}
         <PrChip pr={task.prStatus} />
         {task.pinned && (
           <span className="shrink-0 text-[10px] text-subtle">PIN</span>
@@ -194,6 +373,7 @@ function BoardCard({
   columnKey,
   engine,
   changes,
+  badge,
   canDrag,
   onMoveTo,
   onReview,
@@ -205,6 +385,7 @@ function BoardCard({
   columnKey: string
   engine?: EngineState
   changes?: { added: number; deleted: number }
+  badge?: { level: "overlap" | "conflict"; count: number; tip: string }
   canDrag: boolean
   onMoveTo: (statusKey: string) => void
   onReview?: () => void
@@ -257,7 +438,7 @@ function BoardCard({
         onClick={open}
         className="flex w-full cursor-pointer flex-col gap-1.5 border border-line bg-surface p-3 pl-6 text-left transition-colors hover:border-primary hover:bg-inset"
       >
-        <CardBody task={task} engine={engine} changes={changes} />
+        <CardBody task={task} engine={engine} changes={changes} badge={badge} />
       </button>
       {canDrag && (
         <button
@@ -336,6 +517,7 @@ function ColumnView({
   column,
   engineStates,
   worktreeChanges,
+  badges,
   canDrag,
   onMoveTo,
   onReview,
@@ -346,6 +528,10 @@ function ColumnView({
   column: BoardColumn
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
+  badges: ReadonlyMap<
+    string,
+    { level: "overlap" | "conflict"; count: number; tip: string }
+  >
   canDrag: boolean
   onMoveTo: (task: Task, statusKey: string) => void
   onReview: (task: Task) => void
@@ -394,6 +580,7 @@ function ColumnView({
                 columnKey={column.key}
                 engine={engineStates[task.id]}
                 changes={worktreeChanges[task.worktreePath]}
+                badge={badges.get(task.id)}
                 canDrag={canDrag}
                 onMoveTo={(statusKey) => onMoveTo(task, statusKey)}
                 // Review only makes sense where work awaits a verdict.
@@ -430,12 +617,14 @@ export function Board() {
     tasks,
     engineStates,
     worktreeChanges,
+    conflicts,
     hydrated,
     daemonConnected,
     streamConnected,
   } = useAppState()
   const { query, overrides } = useBoardState()
   const navigate = useNavigate()
+  const yarnContainerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
   const [dragTaskId, setDragTaskId] = useState<string | null>(null)
   const [peekTaskId, setPeekTaskId] = useState<string | null>(null)
@@ -508,6 +697,35 @@ export function Board() {
     ? boardTasks.find((t) => t.id === dragTaskId)
     : undefined
 
+  // Conflict radar: per-card badge summaries + display titles for the yarn
+  // tooltips, plus a layout fingerprint that re-measures the yarn whenever
+  // card membership/order shifts.
+  const taskTitles = useMemo(
+    () =>
+      new Map(tasks.map((t) => [t.id, t.title || t.branch || t.id] as const)),
+    [tasks],
+  )
+  const conflictBadges = useMemo(() => {
+    const badges = new Map<
+      string,
+      { level: "overlap" | "conflict"; count: number; tip: string }
+    >()
+    const ids = new Set(conflicts.flatMap((pair) => [pair.a, pair.b]))
+    for (const id of ids) {
+      const summary = conflictBadge(conflicts, id)
+      if (!summary) continue
+      const tip = conflicts
+        .filter((pair) => pair.a === id || pair.b === id)
+        .map((pair) => {
+          const other = pair.a === id ? pair.b : pair.a
+          const verb = pair.level === "conflict" ? "CONFLICTS with" : "overlaps"
+          return `${verb} ${taskTitles.get(other) ?? other}: ${pair.files.slice(0, 4).join(", ")}${pair.files.length > 4 ? ", …" : ""}`
+        })
+        .join("\n")
+      badges.set(id, { ...summary, tip })
+    }
+    return badges
+  }, [conflicts, taskTitles])
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
@@ -778,13 +996,17 @@ export function Board() {
             onDragEnd={onDragEnd}
             onDragCancel={() => setDragTaskId(null)}
           >
-            <div className="flex h-full min-w-max gap-4">
+            <div
+              ref={yarnContainerRef}
+              className="relative flex h-full min-w-max gap-4"
+            >
               {columns.map((column) => (
                 <ColumnView
                   key={column.key}
                   column={column}
                   engineStates={engineStates}
                   worktreeChanges={worktreeChanges}
+                  badges={conflictBadges}
                   canDrag={canDrag}
                   onMoveTo={moveToStatus}
                   onReview={sendReview}
@@ -793,10 +1015,18 @@ export function Board() {
                   onPeek={setPeekTaskId}
                 />
               ))}
+              <ConflictYarn
+                pairs={conflicts}
+                titles={taskTitles}
+                containerRef={yarnContainerRef}
+              />
             </div>
             <DragOverlay>
               {dragTask ? (
-                <div className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg">
+                <div
+                  data-yarn-anchor={dragTask.id}
+                  className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg"
+                >
                   <CardBody
                     task={dragTask}
                     engine={engineStates[dragTask.id]}
