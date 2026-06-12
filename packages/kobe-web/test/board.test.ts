@@ -5,6 +5,8 @@ import {
   boardCardCount,
   buildBoard,
   compareCards,
+  conflictBadge,
+  conflictsForTask,
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
@@ -13,7 +15,10 @@ import {
   positionBetween,
   reconcileOverrides,
   renormalizedMoves,
+  repoOptions,
   TERMINAL_COLUMN_CAP,
+  YARN_COLORS,
+  yarnColor,
 } from "../src/lib/board.ts"
 import {
   clearPositionOverride,
@@ -299,6 +304,31 @@ describe("buildBoard — terminal-column cap", () => {
   })
 })
 
+describe("conflict radar helpers", () => {
+  const pairs = [
+    { a: "a", b: "b", files: ["src/x.ts"], level: "conflict" as const },
+    { a: "a", b: "c", files: ["src/y.ts"], level: "overlap" as const },
+  ]
+
+  it("conflictsForTask returns pairs touching the task", () => {
+    expect(conflictsForTask(pairs, "a")).toHaveLength(2)
+    expect(conflictsForTask(pairs, "b")).toHaveLength(1)
+    expect(conflictsForTask(pairs, "zzz")).toHaveLength(0)
+  })
+
+  it("conflictBadge takes the strongest level and counts counterparts", () => {
+    expect(conflictBadge(pairs, "a")).toEqual({ level: "conflict", count: 2 })
+    expect(conflictBadge(pairs, "c")).toEqual({ level: "overlap", count: 1 })
+    expect(conflictBadge(pairs, "zzz")).toBeNull()
+  })
+
+  it("yarnColor is stable per index and cycles the palette", () => {
+    expect(yarnColor(0)).toBe(YARN_COLORS[0])
+    expect(yarnColor(YARN_COLORS.length)).toBe(YARN_COLORS[0])
+    expect(yarnColor(1)).not.toBe(yarnColor(2))
+  })
+})
+
 describe("effectivePosition", () => {
   it("prefers the explicit position and falls back to -createdMs", () => {
     expect(effectivePosition(task({ position: 7 }))).toBe(7)
@@ -424,3 +454,41 @@ describe("isDroppableColumn", () => {
   })
 })
 
+
+describe("repoOptions — project chips", () => {
+  it("counts board cards only: archived and main rows don't register a project", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/proj/kobe" }),
+      task({ id: "b", repo: "/u/proj/kobe" }),
+      task({ id: "m", repo: "/u/proj/kobe", kind: "main" }),
+      task({ id: "x", repo: "/u/proj/old", archived: true }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/proj/kobe", label: "kobe", count: 2 },
+    ])
+  })
+
+  it("labels are basenames, sorted; colliding basenames get parent/basename", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/work/api" }),
+      task({ id: "b", repo: "/u/personal/api" }),
+      task({ id: "c", repo: "/u/proj/zeta" }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/personal/api", label: "personal/api", count: 1 },
+      { repo: "/u/work/api", label: "work/api", count: 1 },
+      { repo: "/u/proj/zeta", label: "zeta", count: 1 },
+    ])
+  })
+
+  it("handles trailing slashes and remote-style repo keys", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/proj/kobe/" }),
+      task({ id: "b", repo: "ssh://host/srv/repos/widget" }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/proj/kobe/", label: "kobe", count: 1 },
+      { repo: "ssh://host/srv/repos/widget", label: "widget", count: 1 },
+    ])
+  })
+})

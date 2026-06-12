@@ -15,11 +15,13 @@ import type { Task } from "./types.ts"
 interface BoardState {
   /** Free-text card filter (matchesTask semantics). */
   query: string
+  /** Project chip filter: a repo key, or null = all projects. */
+  repo: string | null
   /** Pending optimistic drops: taskId → expected fields (board.ts R4). */
   overrides: BoardOverrides
 }
 
-let state: BoardState = { query: "", overrides: {} }
+let state: BoardState = { query: "", repo: null, overrides: {} }
 const listeners = new Set<() => void>()
 
 function set(next: Partial<BoardState>): void {
@@ -49,6 +51,11 @@ export function useBoardState(): BoardState {
 
 export function setBoardQuery(query: string): void {
   if (query !== state.query) set({ query })
+}
+
+/** Select a project chip (null = all). Composes with the text query. */
+export function setBoardRepo(repo: string | null): void {
+  if (repo !== state.repo) set({ repo })
 }
 
 /** Record an optimistic status drop — the card paints into its target
@@ -140,5 +147,5 @@ export function reconcileBoardOverrides(tasks: Task[]): void {
 
 /** Test-only reset so cases don't leak filter state into each other. */
 export function resetBoardStateForTest(): void {
-  state = { query: "", overrides: {} }
+  state = { query: "", repo: null, overrides: {} }
 }

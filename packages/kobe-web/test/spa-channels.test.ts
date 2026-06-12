@@ -19,6 +19,7 @@ const SPA_CONSUMED = [
   "update",
   "task.jobs",
   "worktree.changes",
+  "task.conflicts",
   "ui-prefs",
 ] as const
 

@@ -12,6 +12,7 @@ import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   BridgeEvent,
   BridgeSnapshot,
+  ConflictPair,
   EngineState,
   Task,
   TaskJob,
@@ -29,6 +30,8 @@ export interface AppState {
   jobs: Record<string, TaskJob>
   /** worktreePath → uncommitted +added/−deleted counts. */
   worktreeChanges: WorktreeChangeCounts
+  /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
+  conflicts: ConflictPair[]
   /** Persisted visual prefs shared with the TUI (theme, sort mode). */
   uiPrefs: UiPrefs | null
   /** True once the first snapshot has hydrated the store. */
@@ -46,6 +49,7 @@ const initial: AppState = {
   update: null,
   jobs: {},
   worktreeChanges: {},
+  conflicts: [],
   uiPrefs: null,
   hydrated: false,
   daemonConnected: false,
@@ -149,6 +153,9 @@ function applyEvent(event: BridgeEvent): void {
     case "worktree.changes":
       set({ worktreeChanges: event.payload.changes })
       break
+    case "task.conflicts":
+      set({ conflicts: event.payload.pairs })
+      break
     case "ui-prefs":
       set({ uiPrefs: event.payload })
       applyThemeFromPrefs(event.payload.theme)
@@ -171,6 +178,7 @@ function ensureStream(): void {
       update: snap.update,
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
+      conflicts: snap.conflicts ?? [],
       uiPrefs: snap.uiPrefs ?? null,
       hydrated: true,
       daemonConnected: snap.connected,
