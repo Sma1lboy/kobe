@@ -106,4 +106,16 @@ describe("dispatcherProtocol", () => {
     expect(text).toContain("task 01HMAIN")
     expect(text).not.toContain("set-status")
   })
+
+  it("pins the resolution rules: branch-direct, one yielder, never via main", () => {
+    const text = dispatcherProtocol("01HMAIN")
+    // Conflicts resolve between the two branches — waiting on a human main
+    // merge would park the fleet on the one gate that's deliberately manual.
+    expect(text).toContain("Never propose waiting for main")
+    expect(text).toContain("ONE side to yield")
+    // One direction only, and merge — no criss-cross, no rebase onto a
+    // moving branch.
+    expect(text).toContain("Never tell both sides to merge each other")
+    expect(text).toContain("merge, don't rewrite")
+  })
 })
