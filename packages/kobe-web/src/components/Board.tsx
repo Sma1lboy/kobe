@@ -44,6 +44,7 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
   applyBoardOverrides,
@@ -119,15 +120,19 @@ function ConflictYarn({
       const base = container.getBoundingClientRect()
       const next: Array<{ id: string; d: string; color: string; tip: string }> =
         []
+      // window.CSS, not the bare identifier — the dnd-kit `CSS` transform
+      // helper imported above shadows the global and has no .escape.
+      // A card being dragged is anchored at its DragOverlay clone (portaled
+      // to <body>, riding the pointer) so the yarn follows the drag live;
+      // viewport-rect math stays valid across the portal boundary.
+      const anchor = (id: string): Element | null =>
+        document.querySelector(
+          `[data-yarn-anchor="${window.CSS.escape(id)}"]`,
+        ) ??
+        container.querySelector(`[data-task-id="${window.CSS.escape(id)}"]`)
       conflictPairs.forEach((pair, index) => {
-        // window.CSS, not the bare identifier — the dnd-kit `CSS` transform
-        // helper imported above shadows the global and has no .escape.
-        const ea = container.querySelector(
-          `[data-task-id="${window.CSS.escape(pair.a)}"]`,
-        )
-        const eb = container.querySelector(
-          `[data-task-id="${window.CSS.escape(pair.b)}"]`,
-        )
+        const ea = anchor(pair.a)
+        const eb = anchor(pair.b)
         if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
         const ra = ea.getBoundingClientRect()
         const rb = eb.getBoundingClientRect()
@@ -199,10 +204,6 @@ const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
  *  `title` takes a beat to appear, and one-glyph buttons need names. */
 const TIP_ABOVE =
   "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
-/** Conflict-badge variant: instant, multi-line (pre-line honors the \n-joined
- *  pair list), wide enough for "CONFLICTS with <task>: file, file, …". */
-const TIP_BADGE =
-  "after:pointer-events-none after:absolute after:top-full after:right-0 after:z-20 after:mt-0.5 after:hidden after:w-max after:max-w-[320px] after:whitespace-pre-line after:border after:border-line after:bg-menu after:px-2 after:py-1 after:text-left after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 const TIP_RIGHT =
   "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 
@@ -264,6 +265,65 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
   return target ? { x: target.left, y: target.top } : undefined
 }
 
+/**
+ * ⚠N conflict badge with an instant tooltip PORTALED to <body> — the column
+ * lists are overflow-y scrollers, which forces overflow-x to clip too, so an
+ * absolutely-positioned tooltip inside the card gets cut at the column edge.
+ * Fixed positioning at body level escapes every scroll container; any scroll
+ * while open just dismisses it (the anchor rect went stale).
+ */
+function ConflictBadge({
+  badge,
+}: {
+  badge: { level: "overlap" | "conflict"; count: number; tip: string }
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
+  useEffect(() => {
+    if (!pos) return
+    const close = (): void => setPos(null)
+    window.addEventListener("scroll", close, true)
+    return () => window.removeEventListener("scroll", close, true)
+  }, [pos])
+  const show = (): void => {
+    const rect = ref.current?.getBoundingClientRect()
+    if (rect)
+      setPos({
+        top: rect.bottom + 2,
+        right: Math.max(8, window.innerWidth - rect.right),
+      })
+  }
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: hover-only tooltip trigger inside the card's open button — not an action of its own.
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={() => setPos(null)}
+      className={`-my-1.5 relative shrink-0 cursor-help px-1.5 py-1.5 font-mono text-[10px] ${
+        badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
+      }`}
+    >
+      ⚠{badge.count}
+      {pos &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              top: pos.top,
+              right: pos.right,
+              maxWidth: 380,
+              overflowWrap: "anywhere",
+            }}
+            className="pointer-events-none z-50 whitespace-pre-line border border-line bg-menu px-2 py-1 text-left font-mono text-[10px] text-fg"
+          >
+            {badge.tip}
+          </div>,
+          document.body,
+        )}
+    </span>
+  )
+}
+
 function CardBody({
   task,
   engine,
@@ -287,16 +347,7 @@ function CardBody({
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
-        {badge && (
-          <span
-            data-tip={badge.tip}
-            className={`relative -my-1.5 shrink-0 cursor-help px-1.5 py-1.5 font-mono text-[10px] ${
-              badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
-            } ${TIP_BADGE}`}
-          >
-            ⚠{badge.count}
-          </span>
-        )}
+        {badge && <ConflictBadge badge={badge} />}
         <PrChip pr={task.prStatus} />
         {task.pinned && (
           <span className="shrink-0 text-[10px] text-subtle">PIN</span>
@@ -972,7 +1023,10 @@ export function Board() {
             </div>
             <DragOverlay>
               {dragTask ? (
-                <div className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg">
+                <div
+                  data-yarn-anchor={dragTask.id}
+                  className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg"
+                >
                   <CardBody
                     task={dragTask}
                     engine={engineStates[dragTask.id]}
