@@ -38,6 +38,7 @@ import {
   ArrowLeft,
   ClipboardCheck,
   Eye,
+  GitPullRequest,
   GripVertical,
   Search,
   X,
@@ -66,7 +67,8 @@ import {
   setStatusOverride,
   useBoardState,
 } from "../lib/board-state.ts"
-import { reviewPrompt } from "../lib/review.ts"
+import { fetchQuickPrompts } from "../lib/quick-prompts.ts"
+import { createPrPrompt, reviewPrompt } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { ensureEngineTab, selectTask } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
@@ -195,6 +197,7 @@ function BoardCard({
   canDrag,
   onMoveTo,
   onReview,
+  onCreatePr,
   onOpen,
   onPeek,
 }: {
@@ -205,6 +208,7 @@ function BoardCard({
   canDrag: boolean
   onMoveTo: (statusKey: string) => void
   onReview?: () => void
+  onCreatePr?: () => void
   onOpen: () => void
   onPeek: () => void
 }) {
@@ -302,6 +306,17 @@ function BoardCard({
               <ClipboardCheck size={11} strokeWidth={1.8} />
             </button>
           )}
+          {onCreatePr && (
+            <button
+              type="button"
+              onClick={onCreatePr}
+              aria-label={`Open a PR for ${task.title || task.branch || task.id}`}
+              data-tip="Open a PR for this branch"
+              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+            >
+              <GitPullRequest size={11} strokeWidth={1.8} />
+            </button>
+          )}
           <button
             type="button"
             onClick={onPeek}
@@ -324,6 +339,7 @@ function ColumnView({
   canDrag,
   onMoveTo,
   onReview,
+  onCreatePr,
   onOpen,
   onPeek,
 }: {
@@ -333,6 +349,7 @@ function ColumnView({
   canDrag: boolean
   onMoveTo: (task: Task, statusKey: string) => void
   onReview: (task: Task) => void
+  onCreatePr: (task: Task) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
 }) {
@@ -382,6 +399,15 @@ function ColumnView({
                 // Review only makes sense where work awaits a verdict.
                 onReview={
                   column.key === "in_review" ? () => onReview(task) : undefined
+                }
+                // PR only for finished work that doesn't already have one
+                // (the PrChip covers the has-a-PR case).
+                onCreatePr={
+                  column.key === "done" &&
+                  (!task.prStatus?.lifecycle ||
+                    task.prStatus.lifecycle === "unknown")
+                    ? () => onCreatePr(task)
+                    : undefined
                 }
                 onOpen={() => onOpen(task.id)}
                 onPeek={() => onPeek(task.id)}
@@ -566,12 +592,19 @@ export function Board() {
       })
   }
 
-  /** One-click review: paste the review instruction (which carries the
-   *  one-time `done` authorization) into the task's engine session via the
-   *  PTY sidecar — spawns the engine if it isn't running. */
+  /** One-click review: paste the review instruction (the user's template,
+   *  if set, plus the one-time `done` authorization kobe always appends)
+   *  into the task's engine session — spawns the engine if needed. */
   const sendReview = (task: Task): void => {
     const tabId = ensureEngineTab(task.id)
-    sendPtyText(tabId, task.id, reviewPrompt(task.id, task.vendor))
+    fetchQuickPrompts()
+      .then((prompts) =>
+        sendPtyText(
+          tabId,
+          task.id,
+          reviewPrompt(task.id, task.vendor, prompts.review),
+        ),
+      )
       .then(({ spawned }) => {
         pushToast(
           "success",
@@ -581,6 +614,25 @@ export function Board() {
         )
       })
       .catch((err: unknown) => reportError("send review", err))
+  }
+
+  /** One-click PR: ask the session that DID the work to push its branch and
+   *  open the PR — it writes the title/body from its own context. */
+  const sendCreatePr = (task: Task): void => {
+    const tabId = ensureEngineTab(task.id)
+    fetchQuickPrompts()
+      .then((prompts) =>
+        sendPtyText(tabId, task.id, createPrPrompt(prompts.pr)),
+      )
+      .then(({ spawned }) => {
+        pushToast(
+          "success",
+          spawned
+            ? "PR instruction sent — engine starting, peek to watch"
+            : "PR instruction sent to the session",
+        )
+      })
+      .catch((err: unknown) => reportError("open PR", err))
   }
 
   /** Hover-tag move: jump the card straight to a status, landing at the
@@ -736,6 +788,7 @@ export function Board() {
                   canDrag={canDrag}
                   onMoveTo={moveToStatus}
                   onReview={sendReview}
+                  onCreatePr={sendCreatePr}
                   onOpen={open}
                   onPeek={setPeekTaskId}
                 />

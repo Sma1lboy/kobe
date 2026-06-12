@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { describe, expect, it, vi } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import {
   type BridgeLink,
   createRequestHandler,
@@ -246,4 +249,66 @@ describe("bridge request handler", () => {
   // Bun runtime — the live `kobe web` server. It's not exercised here because
   // vitest runs under node; the route ordering (404 when no staticDir) is
   // covered above.
+})
+
+describe("/api/quick-prompts", () => {
+  // These hit the real state.json helpers, so point KOBE_HOME_DIR at a
+  // throwaway dir for the duration (the other suites never touch it).
+  let home: string
+  let prevHome: string | undefined
+
+  beforeAll(async () => {
+    prevHome = process.env.KOBE_HOME_DIR
+    home = await mkdtemp(join(tmpdir(), "kobe-qp-"))
+    process.env.KOBE_HOME_DIR = home
+  })
+
+  afterAll(async () => {
+    if (prevHome === undefined) delete process.env.KOBE_HOME_DIR
+    else process.env.KOBE_HOME_DIR = prevHome
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it("rounds templates through state.json: empty → PUT → GET", async () => {
+    const { handle } = build()
+    const empty = await (
+      await handle(new Request("http://localhost/api/quick-prompts"))
+    ).json()
+    expect(empty).toEqual({ review: null, pr: null })
+
+    const put = await handle(
+      new Request("http://localhost/api/quick-prompts", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ review: "/review --deep", pr: "open a DRAFT pr" }),
+      }),
+    )
+    expect(await put.json()).toEqual({ review: "/review --deep", pr: "open a DRAFT pr" })
+
+    const got = await (
+      await handle(new Request("http://localhost/api/quick-prompts"))
+    ).json()
+    expect(got).toEqual({ review: "/review --deep", pr: "open a DRAFT pr" })
+  })
+
+  it("400s malformed JSON and ignores non-string fields", async () => {
+    const { handle } = build()
+    const bad = await handle(
+      new Request("http://localhost/api/quick-prompts", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: "not json",
+      }),
+    )
+    expect(bad.status).toBe(400)
+
+    const partial = await handle(
+      new Request("http://localhost/api/quick-prompts", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ review: 42 }),
+      }),
+    )
+    expect(partial.status).toBe(200)
+  })
 })

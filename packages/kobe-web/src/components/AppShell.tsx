@@ -27,11 +27,13 @@ import {
   useNotifyState,
 } from "../lib/notify.ts"
 import { tailPath } from "../lib/path-format.ts"
+import { fetchQuickPrompts, saveQuickPrompts } from "../lib/quick-prompts.ts"
+import { DEFAULT_PR_TEMPLATE, defaultReviewTemplate } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
 import { matchesTask, sortTasks, type TaskSortMode } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
-import { reportError } from "../lib/toast.ts"
+import { pushToast, reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
@@ -753,6 +755,84 @@ function ResetLayoutCard() {
   )
 }
 
+/**
+ * Board quick-action prompt templates (review / open-PR). The textarea is
+ * the user-editable HALF of each instruction — kobe appends its own clause
+ * (review's one-time `done` authorization, PR's reply-with-URL) after it at
+ * send time, so the guardrails can't be edited away. Empty = built-in
+ * default (shown as the placeholder). Stored host-side via the bridge.
+ */
+function QuickPromptsCard() {
+  const [review, setReview] = useState("")
+  const [pr, setPr] = useState("")
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchQuickPrompts().then((prompts) => {
+      if (cancelled) return
+      setReview(prompts.review ?? "")
+      setPr(prompts.pr ?? "")
+      setLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const save = (): void => {
+    saveQuickPrompts({ review, pr })
+      .then(() => pushToast("success", "quick-action templates saved"))
+      .catch((err: unknown) => reportError("save templates", err))
+  }
+
+  return (
+    <div className="border border-line bg-surface p-4 md:col-span-2">
+      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+        Board quick actions
+      </div>
+      <div className="mt-4 space-y-3 text-[12px]">
+        <label className="block">
+          <span className="text-muted">Review template</span>
+          <textarea
+            value={review}
+            onChange={(event) => setReview(event.target.value)}
+            placeholder={`default: ${defaultReviewTemplate("claude")}`}
+            rows={2}
+            disabled={!loaded}
+            className="mt-1 w-full resize-y border border-line bg-bg p-2 font-mono text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="text-muted">Open-PR template</span>
+          <textarea
+            value={pr}
+            onChange={(event) => setPr(event.target.value)}
+            placeholder={`default:\n${DEFAULT_PR_TEMPLATE}`}
+            rows={4}
+            disabled={!loaded}
+            className="mt-1 w-full resize-y border border-line bg-bg p-2 font-mono text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+          />
+        </label>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] text-subtle">
+            Empty = built-in default. kobe appends its status/URL clause after
+            your template — the guardrails stay regardless.
+          </span>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!loaded}
+            className="shrink-0 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SettingsPage({ onClose }: { onClose: () => void }) {
   const { daemonConnected, streamConnected, update } = useAppState()
 
@@ -774,6 +854,7 @@ function SettingsPage({ onClose }: { onClose: () => void }) {
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-4">
         <div className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2">
+          <QuickPromptsCard />
           <div className="border border-line bg-surface p-4">
             <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
               Connection
