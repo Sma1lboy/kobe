@@ -306,6 +306,27 @@ sequenceDiagram
 | **M2 拖拽换列** | DnD 接入;拖放调 `task.status`;乐观层(R4 清除条件)+ 失败回滚;键盘拖拽;断线禁拖;触屏 fallback(R3) | 拖放即改状态不闪跳;非法跳转回滚有 toast;全键盘可完成一次流转;断线时拖放被禁用 | daemon 协议无;bridge 错误转发或有小改(R4 裁决) |
 | **M3 列内排序 + 打磨** | position 字段 + `task.reorder` RPC(协议 + allowlist + spa 契约测试三表同步);列内拖序;收尾(空列占位、列计数、筛选态持久、done 收纳政策落地) | 列内顺序跨刷新/跨端稳定;契约测试过 | **有**(唯一一次) |
 | **M4 板内 peek 抽屉** | 看板侧拉抽屉内嵌 engine PTY + transcript(R9);卡片次级动作(R6) | 不离开看板可查看/接管会话;关抽屉不杀会话;与工作区双 attach 无冲突 | 无(复用 `/pty` 与 `/api/history`) |
+| **M5 自动流转(opt-in)** | daemon 侧两级判定:turn-complete + 启发式门(脏 worktree/开 PR)→ haiku 终判,自动 `in_progress → in_review` | 误判不致灾(单向、绝不 done、人手最终裁决);默认关 | 无(daemon 内部规则,复用 hook 管道) |
+
+### M5 自动流转(2026-06-11 拍板:机制 = daemon 侧两级判定,作用 = 直接挪卡)
+
+实现:[`monitor/status-judge.ts`](../../packages/kobe/src/monitor/status-judge.ts),
+挂在 `engine.reportEvent` 的 `turn-complete` 上(hook 管道本来就把"做完一轮"
+标准化送进 daemon——Claude Stop hook / codex 等价事件 → `kobe hook turn-complete`)。
+
+- **两级判定**:① 免费启发式门——仅 `in_progress`、非 main、非 archived、且有
+  review 证据(`git status` 脏 或 PR open/ready_to_merge)的任务才成为候选,
+  绝大多数 turn-complete 在此打住;② `claude -p --model claude-haiku-4-5`
+  (可用 `KOBE_JUDGE_MODEL` 覆盖)只判一件事:最后一条 assistant 消息是
+  "活干完了"还是"中途等指示"——这是启发式分不出来的唯一情形。判定输入是
+  引擎中立的(vendor 的 history reader,auto-title 同款管道);judge 模型是
+  daemon 的工具,与任务 vendor 无关。
+- **守门规则**(吸取 auto-done 翻车史):唯一可能的转移是
+  `in_progress → in_review`,绝不自动 done/canceled;judge 返回后**重查**
+  status,用户在判定期间手动挪过卡就放弃;judge 不可用(无 claude 二进制 /
+  超时 / 输出不可解析)= 跳过,绝不靠启发式单独挪卡;每任务同时只跑一个 judge。
+- **开关**:默认**关**。`~/.kobe/state.json` 加 `"autoInReview": true` 开启,
+  每次事件实时读取,改完即生效,无需重启 daemon。
 
 实施期每个里程碑落一个 changeset(patch,按仓库规则不自报 minor);M1 起在
 [`web-dashboard.md`](./web-dashboard.md) 增补看板一节。
@@ -316,9 +337,10 @@ sequenceDiagram
   DnD 库。本文档已留证据链(§1.3)。
 - **三张表契约**:M3 新增 RPC/字段必须同步 `WEB_RPC_ALLOWLIST`、`SPA_CHANNELS`(如有
   新频道)与 store reducer,契约测试会拦——这是机制不是风险,但要进 M3 验收。
-- **看板不会"自己动"**:`Task.status` 是用户驱动的,引擎跑完不会自动把卡片推到
-  in_review。要预期管理:第一期接受"列靠人推、灯靠引擎闪";"引擎事件自动流转状态"
-  是独立的产品决定,**显式列为非目标**,未来若做应走 daemon 侧规则而非 web 侧。
+- **看板默认不会"自己动"**:`Task.status` 是用户驱动的。M5 增加了 **opt-in** 的
+  daemon 侧自动流转(turn-complete → 两级判定 → `in_progress → in_review`,见
+  §5 M5),走的正是本条预留的"daemon 侧规则"路径;默认关闭,且永远不自动
+  done/canceled。
 - **性能预算**:看板一屏渲染全部任务(rail 只渲染可视行),且 `engine-state` /
   `worktree.changes` 推送频繁、每次都触发 store 订阅者重渲。第一期假设 **≤100 个任务**,
   按列 `useMemo`(键在 tasks 数组身份上);超过再考虑列内虚拟化——写明阈值,不提前优化。

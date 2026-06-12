@@ -34,6 +34,7 @@
  */
 
 import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
+import { maybeAutoReview } from "@/monitor/status-judge"
 import type { Orchestrator } from "@/orchestrator/core"
 import type { VendorId } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
@@ -462,6 +463,19 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
         ctx.activity.report(taskId, kind, detail)
+        // Auto in-review judge (docs/design/web-kanban.md M5): on a turn
+        // ending, a daemon-side rule may advance in_progress → in_review.
+        // Fire-and-forget — the hook's RPC must never wait on a model call.
+        // Gated inside maybeAutoReview (opt-in state.json flag, heuristics).
+        if (kind === "turn-complete") {
+          maybeAutoReview(ctx.orch, taskId)
+            .then((result) => {
+              if (result === "moved") {
+                console.log(`[status-judge] task ${taskId} auto-moved in_progress → in_review`)
+              }
+            })
+            .catch((err) => logDaemonError("status-judge", err))
+        }
         return {}
       },
     },
