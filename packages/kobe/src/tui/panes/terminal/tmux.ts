@@ -51,7 +51,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { withClaudeSessionId } from "@/engine/interactive-command"
+import { withClaudeSessionId, withStatusProtocol } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
@@ -407,11 +407,15 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // to its transcript and auto-named from its first prompt (KOB). No-op for
   // codex/copilot or a command that already pins its session.
   const launch = withClaudeSessionId(opts.command, opts.vendor)
+  // Status self-report protocol (web-kanban.md M5): bake this task's id into
+  // the session's system prompt so the agent can move its own card to
+  // in_review when done. No-op unless experimental.autoStatus is on.
+  const launchArgv = withStatusProtocol(launch.argv, opts.vendor, opts.taskId)
   // Remote task: the engine runs over SSH on the remote host (`ssh … 'cd <wt>
   // && <engine>'`), and the pane spawns in a LOCAL dir since the worktree is
   // remote. The repo's init script is deferred for remote (it runs locally
   // today — see docs/design/remote-projects.md phase 8), so it's skipped here.
-  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launch.argv), remoteKey, opts.cwd)
+  const engineCmd = wrapEngineLaunch(shellQuoteArgv(launchArgv), remoteKey, opts.cwd)
   const r0 = await runTmuxCapturing([
     "new-session",
     "-d",

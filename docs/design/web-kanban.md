@@ -306,27 +306,32 @@ sequenceDiagram
 | **M2 拖拽换列** | DnD 接入;拖放调 `task.status`;乐观层(R4 清除条件)+ 失败回滚;键盘拖拽;断线禁拖;触屏 fallback(R3) | 拖放即改状态不闪跳;非法跳转回滚有 toast;全键盘可完成一次流转;断线时拖放被禁用 | daemon 协议无;bridge 错误转发或有小改(R4 裁决) |
 | **M3 列内排序 + 打磨** | position 字段 + `task.reorder` RPC(协议 + allowlist + spa 契约测试三表同步);列内拖序;收尾(空列占位、列计数、筛选态持久、done 收纳政策落地) | 列内顺序跨刷新/跨端稳定;契约测试过 | **有**(唯一一次) |
 | **M4 板内 peek 抽屉** | 看板侧拉抽屉内嵌 engine PTY + transcript(R9);卡片次级动作(R6) | 不离开看板可查看/接管会话;关抽屉不杀会话;与工作区双 attach 无冲突 | 无(复用 `/pty` 与 `/api/history`) |
-| **M5 自动流转(opt-in)** | daemon 侧两级判定:turn-complete + 启发式门(脏 worktree/开 PR)→ haiku 终判,自动 `in_progress → in_review` | 误判不致灾(单向、绝不 done、人手最终裁决);默认关 | 无(daemon 内部规则,复用 hook 管道) |
+| **M5 自动流转(opt-in)** | 开工:daemon 规则 turn-start → `backlog → in_progress`;收工:spawn 时注入 system prompt,agent 自报 `in_review` | 单向、绝不 done/canceled、人手最终裁决;默认关 | 无(daemon 规则 + 启动参数注入) |
 
-### M5 自动流转(2026-06-11 拍板:机制 = daemon 侧两级判定,作用 = 直接挪卡)
+### M5 自动流转(2026-06-11 二次拍板:规则开工 + agent 自报收工;小模型 judge 已移除)
 
-实现:[`monitor/status-judge.ts`](../../packages/kobe/src/monitor/status-judge.ts),
-挂在 `engine.reportEvent` 的 `turn-complete` 上(hook 管道本来就把"做完一轮"
-标准化送进 daemon——Claude Stop hook / codex 等价事件 → `kobe hook turn-complete`)。
+第一版用 `claude -p` haiku 终判收工,当天即移除——按"无歧义用规则,有歧义找
+最知情者"重新分工:
 
-- **两级判定**:① 免费启发式门——仅 `in_progress`、非 main、非 archived、且有
-  review 证据(`git status` 脏 或 PR open/ready_to_merge)的任务才成为候选,
-  绝大多数 turn-complete 在此打住;② `claude -p --model claude-haiku-4-5`
-  (可用 `KOBE_JUDGE_MODEL` 覆盖)只判一件事:最后一条 assistant 消息是
-  "活干完了"还是"中途等指示"——这是启发式分不出来的唯一情形。判定输入是
-  引擎中立的(vendor 的 history reader,auto-title 同款管道);judge 模型是
-  daemon 的工具,与任务 vendor 无关。
-- **守门规则**(吸取 auto-done 翻车史):唯一可能的转移是
-  `in_progress → in_review`,绝不自动 done/canceled;judge 返回后**重查**
-  status,用户在判定期间手动挪过卡就放弃;judge 不可用(无 claude 二进制 /
-  超时 / 输出不可解析)= 跳过,绝不靠启发式单独挪卡;每任务同时只跑一个 judge。
-- **开关**:默认**关**。`~/.kobe/state.json` 加 `"autoInReview": true` 开启,
-  每次事件实时读取,改完即生效,无需重启 daemon。
+- **开工 = daemon 规则**([`monitor/status-rules.ts`](../../packages/kobe/src/monitor/status-rules.ts),
+  挂 `engine.reportEvent` 的 `turn-start`):引擎对 `backlog` 任务开跑一轮 =
+  开工,无歧义,纯字段规则推到 `in_progress`。守门:仅此一个转移;用户摆在
+  其他列的任务永不触碰。
+- **收工 = agent 自报**([`engine/interactive-command.ts`](../../packages/kobe/src/engine/interactive-command.ts)
+  `withStatusProtocol`):spawn 引擎时给 claude 追加
+  `--append-system-prompt`,把**该任务的 id**和自报命令烘进会话的 system
+  prompt——agent 是唯一知道"这轮是干完了还是在提问"的一方(Stop hook 对两者
+  一视同仁,这一比特只存在于语义里)。协议只授权
+  `kobe api edit set-status --task-id <id> --status in_review`,明令禁止其他
+  状态。选 flag 不选文件:落 CLAUDE.local.md 会永久弄脏 worktree(污染 ±计数);
+  flag 只作用于 kobe 拉起的会话,手动 `claude` 不受影响;system prompt 不会被
+  上下文压缩冲掉。两个 spawn 路径都已接线(tmux `ensureSession` 与 web PTY 的
+  `engineSpec`);自定义启动命令已带该 flag 时不重复注入(withClaudeSessionId
+  同款先例)。codex 暂无等价 flag——它的卡片手动挪,待其 adapter 长出注入点。
+- **开关**:一个开关管两半,默认**关**:Settings → Dev → Experimental 的
+  "Auto status flow"(即 state.json `experimental.autoStatus`),各决策点
+  实时读取,无需重启 daemon。注意注入发生在 spawn 时——开关打开后,**新**
+  会话才带协议;已在跑的会话要 respawn 才有。
 
 实施期每个里程碑落一个 changeset(patch,按仓库规则不自报 minor);M1 起在
 [`web-dashboard.md`](./web-dashboard.md) 增补看板一节。
