@@ -178,7 +178,41 @@ export function statusReportProtocol(taskId: string, api: string = kobeApiInvoca
 }
 
 /**
- * Append the status protocol to a CLAUDE launch argv via
+ * The note-FILING protocol for worktree (card) sessions (docs/design/
+ * dispatcher.md): when a session resolves a non-obvious repo-level gotcha,
+ * it files a one-line note that the daemon forwards to the repo's
+ * dispatcher for routing. Knowledge flows up; the dispatcher decides who
+ * needs it.
+ */
+export function noteFilingProtocol(taskId: string, api: string = kobeApiInvocation()): string {
+  return [
+    "kobe shares hard-won discoveries between its parallel sessions as one-line field notes.",
+    "When you RESOLVE a non-obvious, repo-level gotcha (a build flag, a flaky test, an environment quirk, an API trap), file it:",
+    `  ${api} note --task-id ${taskId} --text "<one line: the verified conclusion>"`,
+    "File only verified conclusions another session could act on — never progress logs, opinions, or details specific to your own task. A handful per session at most.",
+  ].join("\n")
+}
+
+/**
+ * Compose the protocols a WORKTREE (board-card) session gets, each behind
+ * its own switch: status self-report (`experimental.autoStatus`) and note
+ * filing (`experimental.dispatcher`). One composed string because claude
+ * takes a single `--append-system-prompt` — two sequential with* wrappers
+ * would trip each other's existing-flag guard. `null` = nothing enabled.
+ */
+export function worktreeProtocol(
+  taskId: string,
+  api: string = kobeApiInvocation(),
+  gates: { status?: () => boolean; notes?: () => boolean } = {},
+): string | null {
+  const parts: string[] = []
+  if ((gates.status ?? autoStatusEnabled)()) parts.push(statusReportProtocol(taskId, api))
+  if ((gates.notes ?? dispatcherEnabled)()) parts.push(noteFilingProtocol(taskId, api))
+  return parts.length > 0 ? parts.join("\n\n") : null
+}
+
+/**
+ * Append the composed worktree protocol to a CLAUDE launch argv via
  * `--append-system-prompt` — per-invocation injection scoped exactly to
  * kobe-spawned sessions. Why a flag and not a file: a dropped
  * CLAUDE.local.md would sit untracked in the worktree and permanently
@@ -186,52 +220,52 @@ export function statusReportProtocol(taskId: string, api: string = kobeApiInvoca
  * same worktree must stay untouched, and a system prompt survives context
  * compaction where a first-message blurb may not.
  *
- * Gates, in order: the auto-status switch is on (state.json,
- * `experimental.autoStatus`), there is a task to report, the launch
- * targets claude (other vendors have no equivalent flag yet — their cards
- * move by hand until their adapters grow an injection point), and a custom
- * command that already sets the flag is left alone (the
- * {@link withClaudeSessionId} precedent).
+ * Gates, in order: there is a task to report, the launch targets claude
+ * (other vendors have no equivalent flag yet — their cards move by hand
+ * until their adapters grow an injection point), a custom command that
+ * already sets the flag is left alone (the {@link withClaudeSessionId}
+ * precedent), and at least one protocol switch is on.
  */
-export function withStatusProtocol(
+export function withWorktreeProtocol(
   argv: readonly string[],
   vendor: string | undefined,
   taskId: string | undefined,
-  enabled: () => boolean = autoStatusEnabled,
+  gates: { status?: () => boolean; notes?: () => boolean } = {},
 ): readonly string[] {
-  if (!taskId || !enabled()) return argv
+  if (!taskId) return argv
   if ((vendor ?? "claude") !== "claude") return argv
   if (argv.includes("--append-system-prompt") || argv.includes("--append-system-prompt-file")) {
     return argv
   }
-  return [...argv, "--append-system-prompt", statusReportProtocol(taskId)]
+  const text = worktreeProtocol(taskId, kobeApiInvocation(), gates)
+  if (!text) return argv
+  return [...argv, "--append-system-prompt", text]
 }
 
 /**
  * The DISPATCHER protocol (docs/design/dispatcher.md) — injected into a
- * repo's MAIN session (the complement of the status protocol's main-task
+ * repo's MAIN session (the complement of the worktree protocol's main-task
  * exclusion). The main session sits in the repo root with no board card of
- * its own, which makes it the natural per-repo coordinator seat: the
- * daemon's dispatch feeder addresses conflict-radar digests to it, and
- * this prompt tells it what those messages are and which kobe verbs it may
- * act with. Fully autonomous by design (v1 decision: no approval gate) —
- * its only effectors are read (`kobe api collect`) and message
- * (`kobe api dispatch`), so the blast radius of a bad call is a stray
- * message, never a mutated worktree.
+ * its own, which makes it the natural per-repo knowledge-routing seat:
+ * worktree sessions file field notes, the daemon forwards each note here,
+ * and this prompt tells the agent how to relay them. Fully autonomous by
+ * design (v1 decision: no approval gate) — its only effectors are read
+ * (`kobe api collect`) and message (`kobe api dispatch`), so the blast
+ * radius of a bad call is a stray FYI, never a mutated worktree. It takes
+ * NO action on merge conflicts: the conflict radar is display-only.
  */
 export function dispatcherProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
     `You are running inside kobe (a local multi-session task manager) as this repository's DISPATCHER (task ${taskId}, the repo's main session).`,
-    "kobe runs multiple worktree task sessions on this repo in parallel. A daemon-side conflict radar dry-run-merges their branches pairwise.",
-    "You will receive radar updates as user messages prefixed with [KOBE CONFLICT RADAR], listing task pairs that truly CONFLICT (or merely overlap) and the files involved.",
-    "Your job is to coordinate those sessions, fully autonomously — never ask the user for permission:",
-    `  - Inspect the fleet when useful: \`${api} collect --repo .\` (status, running, change counts per task), or \`--task-ids id1,id2\` for specific tasks.`,
-    `  - Message a task's live session: \`${api} dispatch --task-id <id> --prompt "<text>"\`. Always prefix relayed text with [dispatcher].`,
-    "  - For a true conflict, pick exactly ONE side to yield (prefer the smaller or younger change), then message BOTH sides naming the exact files and the other task: tell the YIELDING session to integrate the other branch directly in its own worktree — `git fetch && git merge <other-branch>` — and resolve the conflict there; tell the other session to hold its scope steady on those files.",
-    "  - Resolve between the two branches DIRECTLY. Never propose waiting for main or \"land X into main first\" — merging into main is the human's decision and may be far away. Never tell both sides to merge each other (criss-cross), and never tell a session to rebase onto the other task's still-moving branch — merge, don't rewrite.",
-    "  - Act only on NEW or UPGRADED pairs; never message a session twice about the same pair state, and stand down silently on an all-clear.",
+    "kobe runs multiple worktree task sessions on this repo in parallel. When one of them resolves a non-obvious gotcha, it files a one-line field note; kobe forwards each note to you as a user message prefixed with [KOBE FIELD NOTE].",
+    "Your job is routing that knowledge, fully autonomously — never ask the user for permission:",
+    `  - See the fleet: \`${api} collect --repo .\` (status, running, change counts per task), or \`--task-ids id1,id2\` for specific tasks.`,
+    `  - Relay a note to a task that would benefit: \`${api} dispatch --task-id <id> --prompt "[dispatcher] FYI from <author task>: <note verbatim>"\`.`,
+    "  - Relay to the in-flight tasks whose work plausibly touches the same area — and to nobody else. If no task benefits, do nothing.",
+    "  - Never relay a note back to its author, never relay the same note to the same task twice, and keep relays verbatim with provenance — no summarizing, no embellishment.",
     "Use ONLY the dispatch verb to message sessions — the `send` verb pastes via tmux and would spawn a DUPLICATE engine for web-hosted sessions. If dispatch fails, report the error in your own session and stop; do not fall back.",
-    "Never run git commands inside other tasks' worktrees — coordination happens by messaging their sessions, not by editing their state.",
+    "Take no action on merge conflicts between tasks — the board's conflict radar is display-only by design, and resolution timing belongs to the humans and the tasks themselves.",
+    "Never run git commands inside other tasks' worktrees.",
   ].join("\n")
 }
 

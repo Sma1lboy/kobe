@@ -13,7 +13,7 @@
 import {
   interactiveEngineCommand,
   withDispatcherProtocol,
-  withStatusProtocol,
+  withWorktreeProtocol,
 } from "../../kobe/src/engine/interactive-command.ts"
 import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
@@ -68,10 +68,10 @@ export function shellQuote(argv: readonly string[]): string {
 
 export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  // Status self-report protocol (web-kanban.md M5) — same injection as the
-  // tmux launch path, so the web PTY's engine knows its task id too. Main
-  // project rows are excluded: they aren't board cards, and a stray
-  // in_review on one isn't covered by the load-time status heal.
+  // Worktree protocol (status self-report + field-note filing) — same
+  // injection as the tmux launch path, so the web PTY's engine knows its
+  // task id too. Main project rows are excluded: they aren't board cards,
+  // and a stray in_review on one isn't covered by the load-time status heal.
   const protocolTaskId = task.kind === "main" ? undefined : taskId
   // Dispatcher protocol (docs/design/dispatcher.md): the exact complement —
   // only the main session gets the dispatcher seat. Mutually exclusive with
@@ -79,7 +79,7 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
   const dispatcherTaskId = task.kind === "main" ? taskId : undefined
   const argv = [
     ...withDispatcherProtocol(
-      withStatusProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId),
+      withWorktreeProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId),
       task.vendor,
       dispatcherTaskId,
     ),

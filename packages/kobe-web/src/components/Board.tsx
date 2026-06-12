@@ -1053,10 +1053,10 @@ export function Board() {
               type="button"
               onClick={() => setPeekTaskId(dispatcherTask.id)}
               title={
-                deliver?.source === "radar" &&
+                deliver?.source === "note" &&
                 deliver.taskId === dispatcherTask.id
-                  ? `Dispatcher — last radar feed ${relativeTime(new Date(deliver.at).toISOString()) || "just now"}`
-                  : "Dispatcher — this repo's main session"
+                  ? `Dispatcher — last field note ${relativeTime(new Date(deliver.at).toISOString()) || "just now"}`
+                  : "Dispatcher — this repo's main session (field-note router)"
               }
               className="flex items-center gap-1.5 border border-line px-1.5 py-0.5 text-[10px] text-subtle transition-colors hover:border-primary hover:text-fg"
             >

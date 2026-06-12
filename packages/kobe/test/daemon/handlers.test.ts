@@ -126,6 +126,7 @@ describe("daemon handler registry", () => {
       "worktree.reconcile",
       "engine.reportEvent",
       "session.deliver",
+      "note.file",
     ]
     const registry = createDaemonHandlerRegistry()
     for (const name of rpcNames) expect(registry.get(name), name).toBeDefined()

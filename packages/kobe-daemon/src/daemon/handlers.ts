@@ -433,16 +433,14 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         // Dispatcher messenger (docs/design/dispatcher.md): `kobe api
         // dispatch` routes text to a task's live engine session. The daemon
         // only validates + broadcasts; the front-end hosting that session
-        // (the SPA via /pty/send) owns the actual paste. `source` defaults
-        // to "dispatcher" — the dispatch feeder publishes its radar digests
-        // on the bus directly, not through this RPC.
+        // (the SPA via /pty/send) owns the actual paste.
         const taskId = requireString(payload, "taskId")
         const text = requireString(payload, "text")
         const source = optionalString(payload, "source")
-        if (source !== undefined && source !== "radar" && source !== "dispatcher") {
-          throw new Error('source must be "radar" or "dispatcher"')
+        if (source !== undefined && source !== "note" && source !== "dispatcher") {
+          throw new Error('source must be "note" or "dispatcher"')
         }
-        await ctx.orch.getTask(taskId) // throws on unknown task
+        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
         ctx.bus.publish("session.deliver", {
           taskId,
           text,
@@ -450,6 +448,35 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           source: source ?? "dispatcher",
         })
         return { ok: true }
+      },
+    },
+    {
+      name: "note.file",
+      async handle(payload, ctx) {
+        // Field note (docs/design/dispatcher.md): a worktree session files a
+        // one-line resolved gotcha. The daemon's only intelligence is
+        // ADDRESSING — find the author's repo's dispatcher seat (the main
+        // session) and forward over session.deliver with provenance. WHO
+        // benefits from the note is the dispatcher agent's judgment, not
+        // daemon code.
+        const taskId = requireString(payload, "taskId")
+        const text = requireString(payload, "text")
+        const author = ctx.orch.getTask(taskId)
+        if (!author) throw new Error(`task not found: ${taskId}`)
+        const main = ctx.orch
+          .listTasks()
+          .find((t) => (t.kind ?? "task") === "main" && t.repo === author.repo && !t.archived)
+        // No dispatcher seat, or the dispatcher noting to itself: accepted
+        // but unrouted — filing must never error a working agent.
+        if (!main || main.id === author.id) return { ok: true, routed: false }
+        const label = author.title || author.branch || taskId
+        ctx.bus.publish("session.deliver", {
+          taskId: main.id,
+          text: `[KOBE FIELD NOTE] from "${label}" (task ${taskId}): ${text}`,
+          at: Date.now(),
+          source: "note",
+        })
+        return { ok: true, routed: true }
       },
     },
     {

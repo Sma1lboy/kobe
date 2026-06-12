@@ -97,7 +97,7 @@ export interface SessionDeliver {
   taskId: string
   text: string
   at: number
-  source: "radar" | "dispatcher"
+  source: "note" | "dispatcher"
 }
 
 /** The user's persisted visual prefs, fanned out by the daemon's

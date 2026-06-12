@@ -223,9 +223,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     props.kv.set(AUTO_STATUS_KEY, !autoStatusOn())
   }
 
-  // Experimental: conflict dispatcher (off by default) — the repo's main
-  // session gets the dispatcher protocol injected and the daemon feeds it
-  // conflict-radar digests. See docs/design/dispatcher.md.
+  // Experimental: field-notes dispatcher (off by default) — task sessions
+  // file one-line gotchas, the repo's main session (injected with the
+  // dispatcher protocol) relays them to the tasks that benefit. See
+  // docs/design/dispatcher.md.
   function dispatcherOn(): boolean {
     return props.kv.get(DISPATCHER_KEY, false) === true
   }

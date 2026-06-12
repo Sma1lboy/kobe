@@ -122,6 +122,10 @@ export type DaemonRequestName =
   // `session.deliver` channel event addressed to a task's live session.
   // The daemon only routes; the front-end hosting that session delivers.
   | "session.deliver"
+  // Field note (docs/design/dispatcher.md): a worktree session files a
+  // one-line resolved gotcha; the daemon forwards it to the repo's
+  // dispatcher seat (the main session) over `session.deliver`.
+  | "note.file"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -274,13 +278,13 @@ export interface ChannelPayloads {
    * by front-ends (tmux panes, the web PTY sidecar), so this channel is
    * the daemon-side half of the contract: producers publish "paste this
    * into task X", and whichever front-end hosts that task's session
-   * delivers it (the SPA via /pty/send today). Producers: the dispatch
-   * feeder (conflict-radar digests for a repo's main-task dispatcher,
-   * `source: "radar"`) and the `session.deliver` RPC (`kobe api dispatch`,
+   * delivers it (the SPA via /pty/send today). Producers: the `note.file`
+   * RPC (a worktree session's field note, forwarded to the repo's
+   * main-task dispatcher, `source: "note"`) and the `session.deliver` RPC
+   * (`kobe api dispatch` — the dispatcher relaying a note onward,
    * `source: "dispatcher"`). EVENT channel, not state: last-value replay
    * hands a late subscriber only the most recent item (the event-bus
-   * definition-time caveat) — consumers dedupe on `at`, and the radar
-   * feeder republishes on the next conflict change anyway.
+   * definition-time caveat) — consumers dedupe on `at`.
    */
   "session.deliver": SessionDeliverPayload
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
@@ -295,7 +299,7 @@ export interface SessionDeliverPayload {
   readonly text: string
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
-  readonly source: "radar" | "dispatcher"
+  readonly source: "note" | "dispatcher"
 }
 
 /** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and

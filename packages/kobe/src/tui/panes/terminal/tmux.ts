@@ -51,7 +51,7 @@
  */
 
 import { kobeCliInvocation } from "@/cli/invocation"
-import { withClaudeSessionId, withDispatcherProtocol, withStatusProtocol } from "@/engine/interactive-command"
+import { withClaudeSessionId, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
@@ -421,7 +421,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // mutually exclusive by construction, so at most one protocol injects.
   const dispatcherTaskId = isMainSession && !remoteKey ? opts.taskId : undefined
   const launchArgv = withDispatcherProtocol(
-    withStatusProtocol(launch.argv, opts.vendor, protocolTaskId),
+    withWorktreeProtocol(launch.argv, opts.vendor, protocolTaskId),
     opts.vendor,
     dispatcherTaskId,
   )

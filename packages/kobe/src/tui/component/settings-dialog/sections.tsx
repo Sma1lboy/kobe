@@ -833,9 +833,9 @@ export function DevSettingsSection(
           </text>
         </box>
         <text fg={theme.textMuted} wrapMode="word">
-          Conflict dispatcher: each repo's main session becomes a coordinator — new claude launches there get a
-          dispatcher system prompt, and the daemon feeds it conflict-radar digests so it can message the conflicting
-          tasks' sessions (`kobe api dispatch`). Web-hosted sessions receive the messages today.
+          Field-notes dispatcher: task sessions file one-line gotchas (`kobe api note`), the daemon forwards each to the
+          repo's main session, and that session relays them to the in-flight tasks that benefit (`kobe api dispatch`).
+          Web-hosted sessions receive the relays today.
         </text>
         <box
           flexDirection="row"
@@ -852,7 +852,7 @@ export function DevSettingsSection(
             fg={dispatcherIsCursor() ? theme.selectedListItemText : theme.text}
             attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
           >
-            {props.dispatcherEnabled() ? "[x] Conflict dispatcher (on)" : "[ ] Conflict dispatcher (off)"}
+            {props.dispatcherEnabled() ? "[x] Field-notes dispatcher (on)" : "[ ] Field-notes dispatcher (off)"}
           </text>
         </box>
       </box>
