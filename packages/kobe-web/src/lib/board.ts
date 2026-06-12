@@ -140,6 +140,68 @@ export function renormalizedMoves(
   }))
 }
 
+export type DropPlan =
+  | { kind: "single"; position: number }
+  | { kind: "renormalize"; moves: Array<{ taskId: string; position: number }> }
+
+/**
+ * Persistence plan for dropping `moving` into a column. The math runs over
+ * the FULL column membership (uncapped, unfiltered — pass every task whose
+ * displayed status is the target column, minus the moving card, in
+ * compareCards order), never the rendered slice: positions computed against
+ * visible-only neighbors would strand hidden cards (terminal-column cap,
+ * active filter) on the wrong side of the drop.
+ *
+ * `visiblePrev`/`visibleNext` are the moving card's rendered neighbors at
+ * the drop slot; they anchor the slot inside the full order. The insertion
+ * index is clamped to the pinned prefix (compareCards floats pinned cards
+ * regardless of position, so an unpinned card can never actually land above
+ * a pinned one — persisting a position that pretends otherwise would
+ * teleport it). The single-position candidate is then VALIDATED by
+ * simulation: if sorting the column with the candidate doesn't land the
+ * card in the intended slot (pin shuffles, midpoint degeneracy), the plan
+ * falls back to renormalizing the whole column.
+ */
+export function planColumnDrop(opts: {
+  fullColumn: readonly Task[]
+  moving: Task
+  visiblePrev?: Task
+  visibleNext?: Task
+}): DropPlan {
+  const { fullColumn, moving, visiblePrev, visibleNext } = opts
+  const nextIdx = visibleNext
+    ? fullColumn.findIndex((t) => t.id === visibleNext.id)
+    : -1
+  const prevIdx = visiblePrev
+    ? fullColumn.findIndex((t) => t.id === visiblePrev.id)
+    : -1
+  let insertAt = nextIdx >= 0 ? nextIdx : prevIdx >= 0 ? prevIdx + 1 : 0
+
+  const pinnedCount = fullColumn.filter((t) => t.pinned).length
+  insertAt = moving.pinned
+    ? Math.min(insertAt, pinnedCount)
+    : Math.max(insertAt, pinnedCount)
+
+  const finalOrder = [
+    ...fullColumn.slice(0, insertAt),
+    moving,
+    ...fullColumn.slice(insertAt),
+  ]
+  const candidate = positionBetween(
+    fullColumn[insertAt - 1],
+    fullColumn[insertAt],
+  )
+  if (candidate !== null) {
+    const simulated = [...fullColumn, { ...moving, position: candidate }].sort(
+      compareCards,
+    )
+    if (simulated.findIndex((t) => t.id === moving.id) === insertAt) {
+      return { kind: "single", position: candidate }
+    }
+  }
+  return { kind: "renormalize", moves: renormalizedMoves(finalOrder) }
+}
+
 /**
  * Bucket tasks into render-ready columns. A status outside the canonical
  * enum (a newer daemon) must not drop cards — it becomes a trailing dynamic

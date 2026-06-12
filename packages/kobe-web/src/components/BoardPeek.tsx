@@ -7,8 +7,11 @@
  * PTY — the sidecar fans output to every attached socket, and a
  * drawer-private id would instead spawn a second engine instance. Closing
  * the drawer only detaches the WebSocket: the PTY survives server-side
- * (/pty/close stays reserved for real tab closes), so peeking is always
- * non-destructive (docs/design/web-kanban.md R9/M4).
+ * (/pty/close stays reserved for real tab closes), so peeking never kills
+ * a session. The converse holds too: peeking a task whose session ISN'T
+ * running starts it (worktree + engine spawn — same as opening the
+ * workspace vendor tab), which the eye button's tooltip discloses
+ * (docs/design/web-kanban.md R9/M4).
  */
 
 import { ExternalLink, X } from "lucide-react"
@@ -79,6 +82,9 @@ export function BoardPeek({
       />
       <div
         ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Session peek: ${task.title || task.branch || task.id}`}
         className="relative flex h-full w-[640px] max-w-[92vw] flex-col border-l border-line bg-bg shadow-2xl"
       >
         <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">

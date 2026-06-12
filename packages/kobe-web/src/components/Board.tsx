@@ -19,6 +19,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
+  type KeyboardCoordinateGetter,
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
@@ -28,7 +29,6 @@ import {
 } from "@dnd-kit/core"
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
@@ -42,9 +42,10 @@ import {
   type BoardColumn,
   boardCardCount,
   buildBoard,
+  compareCards,
+  isBoardTask,
   isDroppableColumn,
-  positionBetween,
-  renormalizedMoves,
+  planColumnDrop,
 } from "../lib/board.ts"
 import {
   clearPositionOverride,
@@ -65,6 +66,64 @@ import { reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
+
+/**
+ * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column
+ * (geometric x-band), ←/→ jump to the nearest card — or the column surface,
+ * for an empty column — in an adjacent column. The stock
+ * sortableKeyboardCoordinates treats every droppable as a flat list, which
+ * made ↓ at a column's bottom hop diagonally into the next column: a status
+ * change the user didn't ask for.
+ */
+const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
+  event,
+  { context: { active, collisionRect, droppableContainers, droppableRects } },
+) => {
+  if (!active || !collisionRect) return undefined
+  if (
+    event.code !== "ArrowUp" &&
+    event.code !== "ArrowDown" &&
+    event.code !== "ArrowLeft" &&
+    event.code !== "ArrowRight"
+  ) {
+    return undefined
+  }
+  event.preventDefault()
+  const cx = collisionRect.left + collisionRect.width / 2
+  const candidates: Array<{ left: number; top: number; score: number }> = []
+  for (const container of droppableContainers.getEnabled()) {
+    if (container.id === active.id) continue
+    const rect = droppableRects.get(container.id)
+    if (!rect) continue
+    const data = container.data.current as { type?: string } | undefined
+    const rcx = rect.left + rect.width / 2
+    const sameColumn = Math.abs(rcx - cx) < collisionRect.width / 2
+    if (event.code === "ArrowUp" || event.code === "ArrowDown") {
+      if (!sameColumn || data?.type !== "card") continue
+      const dy =
+        event.code === "ArrowUp"
+          ? collisionRect.top - rect.top
+          : rect.top - collisionRect.top
+      if (dy > 1) candidates.push({ left: rect.left, top: rect.top, score: dy })
+    } else {
+      if (sameColumn) continue
+      const dx = event.code === "ArrowLeft" ? cx - rcx : rcx - cx
+      if (dx <= 1) continue
+      // Nearest column wins; within it, the card closest vertically (a bare
+      // column surface scores worse than its cards, so it only wins when
+      // the column is empty).
+      const dy = Math.abs(rect.top - collisionRect.top)
+      candidates.push({
+        left: rect.left,
+        top: rect.top,
+        score: dx * 10_000 + dy,
+      })
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score)
+  const target = candidates[0]
+  return target ? { x: target.left, y: target.top } : undefined
+}
 
 function CardBody({
   task,
@@ -140,10 +199,16 @@ function BoardCard({
   // ONLY on the grip button, so Enter on the card body stays "open task".
   const { onKeyDown: _liftKey, ...pointerListeners } = listeners ?? {}
   // A pointer drag ends with pointerup on the card → the browser still
-  // synthesizes a click; swallow it so a drop doesn't also navigate.
+  // synthesizes a click; swallow it so a drop doesn't also navigate. Armed
+  // only on a true→false transition — arming on every non-dragging render
+  // put a 250ms click-dead window on freshly MOUNTED cards.
   const lastDragEndRef = useRef(0)
+  const wasDraggingRef = useRef(false)
   useEffect(() => {
-    if (!isDragging) lastDragEndRef.current = Date.now()
+    if (wasDraggingRef.current && !isDragging) {
+      lastDragEndRef.current = Date.now()
+    }
+    wasDraggingRef.current = isDragging
   }, [isDragging])
   const open = (): void => {
     if (Date.now() - lastDragEndRef.current < 250) return
@@ -180,7 +245,7 @@ function BoardCard({
         type="button"
         onClick={onPeek}
         aria-label={`Peek ${task.title || task.branch || task.id}`}
-        title="Peek session — terminal + transcript without leaving the board"
+        title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
         className="absolute right-1 bottom-1 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
       >
         <Eye size={11} strokeWidth={1.8} />
@@ -283,7 +348,7 @@ export function Board() {
       activationConstraint: { delay: 250, tolerance: 8 },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      coordinateGetter: boardKeyboardCoordinates,
     }),
   )
 
@@ -306,9 +371,12 @@ export function Board() {
   }, [tasks, peekTaskId])
 
   // Keyboard-first parity with Overview: `/` focuses the filter, Escape
-  // clears it. Suppressed while typing in another field.
+  // clears it. Suppressed while typing in another field, and dormant while
+  // the peek drawer is open — `/` yanking focus to the background filter
+  // would punch through the drawer's focus trap.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      if (peekTaskId) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const t = event.target as HTMLElement | null
       const inField =
@@ -327,7 +395,7 @@ export function Board() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [query])
+  }, [query, peekTaskId])
 
   const boardTasks = useMemo(
     () =>
@@ -375,7 +443,7 @@ export function Board() {
     const toColumn = columns.find((c) => c.key === toKey)
     if (!toColumn) return
 
-    // Final visual order of the target column (without the moving card).
+    // The visible drop slot (rendered slice, without the moving card).
     const others = toColumn.tasks.filter((t) => t.id !== activeId)
     let insertAt = others.length
     if (overData?.type === "card" && overId !== activeId) {
@@ -393,55 +461,89 @@ export function Board() {
     } else if (overId === activeId) {
       return // dropped back onto itself — nothing to do
     }
-    const finalOrder = [
-      ...others.slice(0, insertAt),
-      task,
-      ...others.slice(insertAt),
-    ]
 
-    const statusChanged = toKey !== task.status
-    if (statusChanged) {
-      setStatusOverride(activeId, toKey)
-      rpc("task.status", { taskId: activeId, status: toKey }).catch(
-        (err: unknown) => {
-          clearStatusOverride(activeId, toKey)
-          const illegal =
-            err instanceof Error && err.name === "IllegalTransitionError"
-          reportError(
-            illegal ? `move blocked (${task.status} → ${toKey})` : "move task",
-            err,
-          )
-        },
-      )
-    } else if (
-      finalOrder.length === toColumn.tasks.length &&
-      toColumn.tasks[insertAt]?.id === activeId
+    // Compare against the DISPLAYED status: a drag back to the origin column
+    // while the first move's RPC is still in flight must repaint the card
+    // home and send the compensating RPC (the daemon no-ops an equal
+    // status), not silently no-op while the stale override wins.
+    const statusChanged = toKey !== displayedStatus
+    // A cross-column drop onto a capped column's SURFACE would land in the
+    // "+N more" fold (after the last visible card, before the hidden ones).
+    // Land it at the top instead, where the user can see it arrive.
+    if (
+      statusChanged &&
+      overData?.type !== "card" &&
+      toColumn.hiddenCount > 0
     ) {
-      return // same column, same slot — no reorder needed
+      insertAt = 0
+    }
+    if (!statusChanged && toColumn.tasks[insertAt]?.id === activeId) {
+      return // same column, same slot — nothing to persist
     }
 
-    const position = positionBetween(
-      finalOrder[insertAt - 1],
-      finalOrder[insertAt + 1],
-    )
-    if (position !== null) {
-      setPositionOverride(activeId, position)
-      rpc("task.reorder", {
-        moves: [{ taskId: activeId, position }],
-      }).catch((err: unknown) => {
-        clearPositionOverride(activeId, position)
+    // Persistence math runs over the FULL column membership — uncapped and
+    // unfiltered — so hidden cards never end up on the wrong side of a drop
+    // (planColumnDrop). The rendered neighbors only anchor the slot.
+    const fullColumn = applyBoardOverrides(tasks, overrides)
+      .filter(
+        (t) =>
+          t.id !== activeId &&
+          isBoardTask(t) &&
+          (t.status || "backlog") === toKey,
+      )
+      .sort(compareCards)
+    const plan = planColumnDrop({
+      fullColumn,
+      moving: task,
+      visiblePrev: others[insertAt - 1],
+      visibleNext: others[insertAt],
+    })
+
+    // Paint everything the drop implies up front…
+    if (statusChanged) setStatusOverride(activeId, toKey)
+    if (plan.kind === "single") setPositionOverride(activeId, plan.position)
+    else setPositionOverrides(plan.moves)
+
+    const rollbackPosition = (): void => {
+      if (plan.kind === "single") {
+        clearPositionOverride(activeId, plan.position)
+      } else {
+        clearPositionOverrides(plan.moves)
+      }
+    }
+    const sendReorder = (): void => {
+      const moves =
+        plan.kind === "single"
+          ? [{ taskId: activeId, position: plan.position }]
+          : plan.moves
+      rpc("task.reorder", { moves }).catch((err: unknown) => {
+        rollbackPosition()
         reportError("reorder task", err)
       })
-    } else {
-      // Midpoint degenerated (float precision) — renormalize the whole
-      // column to spaced keys in ONE batch.
-      const moves = renormalizedMoves(finalOrder)
-      setPositionOverrides(moves)
-      rpc("task.reorder", { moves }).catch((err: unknown) => {
-        clearPositionOverrides(moves)
-        reportError("reorder column", err)
-      })
     }
+
+    if (!statusChanged) {
+      sendReorder()
+      return
+    }
+    // …but the reorder RPC is GATED on the status RPC succeeding. Firing
+    // them independently let a rejected transition (done ↔ error) still
+    // persist a position computed from the foreign column's neighbors —
+    // the card snapped home into the wrong slot, durably.
+    rpc("task.status", { taskId: activeId, status: toKey })
+      .then(sendReorder)
+      .catch((err: unknown) => {
+        clearStatusOverride(activeId, toKey)
+        rollbackPosition()
+        const illegal =
+          err instanceof Error && err.name === "IllegalTransitionError"
+        reportError(
+          illegal
+            ? `move blocked (${displayedStatus} → ${toKey})`
+            : "move task",
+          err,
+        )
+      })
   }
 
   return (

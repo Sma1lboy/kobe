@@ -254,14 +254,24 @@ export class TaskIndexStore {
       return { idx, position: move.position }
     })
     let dirty = false
+    const before = new Map<number, Task>()
     for (const { idx, position } of resolved) {
       const existing = this.cache.tasks[idx]
       if (!existing || existing.position === position) continue
+      if (!before.has(idx)) before.set(idx, existing)
       this.cache.tasks[idx] = { ...existing, position }
       dirty = true
     }
     if (!dirty) return
-    await this.save()
+    try {
+      await this.save()
+    } catch (err) {
+      // A failed write must not leave the cache ahead of disk — the caller's
+      // rejection rolls the UI back, so a later unrelated save would silently
+      // resurrect the positions. Restore and rethrow.
+      for (const [idx, task] of before) this.cache.tasks[idx] = task
+      throw err
+    }
     this.notifyListeners()
   }
 

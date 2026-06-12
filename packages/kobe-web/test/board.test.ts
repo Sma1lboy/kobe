@@ -8,6 +8,7 @@ import {
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
+  planColumnDrop,
   POSITION_STEP,
   positionBetween,
   reconcileOverrides,
@@ -197,6 +198,86 @@ describe("positionBetween / renormalizedMoves — drop math", () => {
       { taskId: "x", position: POSITION_STEP },
       { taskId: "y", position: 2 * POSITION_STEP },
     ])
+  })
+})
+
+describe("planColumnDrop — persistence plan over the FULL column", () => {
+  const at = (id: string, over: Partial<Task> = {}) => task({ id, ...over })
+
+  it("plain insert between full-column neighbors yields a single midpoint", () => {
+    const a = at("a", { position: 1000 })
+    const b = at("b", { position: 2000 })
+    const plan = planColumnDrop({
+      fullColumn: [a, b],
+      moving: at("m"),
+      visiblePrev: a,
+      visibleNext: b,
+    })
+    expect(plan).toEqual({ kind: "single", position: 1500 })
+  })
+
+  it("clamps an unpinned drop below the pinned prefix instead of persisting a lie", () => {
+    // P floats first regardless of position; dropping M "above P" must plan
+    // M at the top of the UNPINNED region, not a position that pretends to
+    // outrank the pin.
+    const p = at("p", { pinned: true, position: 100 })
+    const a = at("a", { position: 1000 })
+    const plan = planColumnDrop({
+      fullColumn: [p, a],
+      moving: at("m"),
+      visibleNext: p, // dropped at the very top of the column
+    })
+    expect(plan.kind).toBe("single")
+    if (plan.kind === "single") {
+      const simulated = [p, a, { ...at("m"), position: plan.position }].sort(
+        compareCards,
+      )
+      expect(simulated.map((t) => t.id)).toEqual(["p", "m", "a"])
+    }
+  })
+
+  it("anchors against hidden cards: dropping after the last VISIBLE card lands before the hidden ones", () => {
+    // Full column [v1, v2, h1] where h1 is beyond the rendered slice (cap or
+    // filter). Dropping after v2 must midpoint between v2 and h1 — computed
+    // from visible neighbors only, the card would have landed AFTER h1.
+    const v1 = at("v1", { position: 1000 })
+    const v2 = at("v2", { position: 2000 })
+    const h1 = at("h1", { position: 3000 })
+    const plan = planColumnDrop({
+      fullColumn: [v1, v2, h1],
+      moving: at("m"),
+      visiblePrev: v2,
+      visibleNext: undefined, // end of the RENDERED slice
+    })
+    expect(plan).toEqual({ kind: "single", position: 2500 })
+  })
+
+  it("renormalizes the WHOLE column (hidden cards included) on midpoint degeneracy", () => {
+    const a = at("a", { position: 1000 })
+    const b = at("b", { position: 1000 }) // degenerate gap
+    const hidden = at("h", { position: 5000 })
+    const plan = planColumnDrop({
+      fullColumn: [a, b, hidden],
+      moving: at("m"),
+      visiblePrev: a,
+      visibleNext: b,
+    })
+    expect(plan.kind).toBe("renormalize")
+    if (plan.kind === "renormalize") {
+      expect(plan.moves.map((m) => m.taskId)).toEqual(["a", "m", "b", "h"])
+      expect(plan.moves.map((m) => m.position)).toEqual([
+        POSITION_STEP,
+        2 * POSITION_STEP,
+        3 * POSITION_STEP,
+        4 * POSITION_STEP,
+      ])
+    }
+  })
+
+  it("an empty column plans position 0", () => {
+    expect(
+      planColumnDrop({ fullColumn: [], moving: at("m") }),
+    ).toEqual({ kind: "single", position: 0 })
   })
 })
 
