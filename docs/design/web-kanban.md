@@ -322,7 +322,7 @@ sequenceDiagram
   `--append-system-prompt`,把**该任务的 id**和自报命令烘进会话的 system
   prompt——agent 是唯一知道"这轮是干完了还是在提问"的一方(Stop hook 对两者
   一视同仁,这一比特只存在于语义里)。协议只授权
-  `kobe api edit set-status --task-id <id> --status in_review`,明令禁止其他
+  `kobe api set-status --task-id <id> --status in_review`,明令禁止其他
   状态。选 flag 不选文件:落 CLAUDE.local.md 会永久弄脏 worktree(污染 ±计数);
   flag 只作用于 kobe 拉起的会话,手动 `claude` 不受影响;system prompt 不会被
   上下文压缩冲掉。两个 spawn 路径都已接线(tmux `ensureSession` 与 web PTY 的

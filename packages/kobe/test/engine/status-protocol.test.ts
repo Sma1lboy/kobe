@@ -16,7 +16,10 @@ describe("withStatusProtocol", () => {
     const argv = withStatusProtocol(["claude"], "claude", "t1", on)
     expect(argv.slice(0, 2)).toEqual(["claude", "--append-system-prompt"])
     expect(argv[2]).toContain("task t1")
-    expect(argv[2]).toContain("kobe api edit set-status --task-id t1 --status in_review")
+    // `set-status` is a TOP-LEVEL api verb — `edit` is only a schema-doc
+    // grouping label, not a command path (a real agent hit BAD_VERB on it).
+    expect(argv[2]).toContain("kobe api set-status --task-id t1 --status in_review")
+    expect(argv[2]).not.toContain("api edit")
   })
 
   it("missing vendor defaults to claude (the withClaudeSessionId convention)", () => {

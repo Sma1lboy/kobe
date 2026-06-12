@@ -148,7 +148,7 @@ export function statusReportProtocol(taskId: string): string {
     `You are running inside kobe (a local multi-session task manager) as task ${taskId}.`,
     "kobe tracks a lifecycle status for this task on a board.",
     "When you have COMPLETED the work requested in this session and verified it, report it by running:",
-    `  kobe api edit set-status --task-id ${taskId} --status in_review`,
+    `  kobe api set-status --task-id ${taskId} --status in_review`,
     "Run it only when the work is genuinely done — never while you are asking the user a question, waiting for input, or mid-task.",
     "Never set any other status value; everything beyond in_review is the user's decision.",
   ].join("\n")
