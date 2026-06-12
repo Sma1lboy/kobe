@@ -130,7 +130,3 @@ The transitional opentui shell and its surfaces; kept so old comments/commits re
 - **Live Preview** — the Workspace's ~1s `tmux capture-pane` view of a Task's claude pane (`monitor/capture-pane.ts`). Dropped without a port: switching sessions *is* the preview, and the **Tasks pane** carries status badges.
 - **Cost Dashboard** — the Workspace's per-Task token table (toggle `d`). Dropped without a port; the `monitor/cost.ts` summarizer briefly survived as **Engine Registry** plumbing (`summarizeCost`), but with zero production callers the whole chain (`monitor/cost.ts`, the registry field, `engine/claude-code-local/cost.ts`) was deleted too.
 - **`KOBE_NO_DAEMON`** — env flag that hosted a daemon-less in-process **Orchestrator** inside the TUI. Retired: the **Daemon** is the product; `kobe doctor` / `kobe reset` cover its failure modes. (The **Orchestrator** class itself lives on, hosted by the Daemon.)
-
-## Session log
-
-- agent A: reviewed the handover vocabulary and confirmed the tmux Session / Session split (2026-06-12)
