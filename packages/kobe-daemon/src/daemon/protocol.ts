@@ -255,11 +255,32 @@ export interface ChannelPayloads {
   "worktree.changes": {
     changes: Record<string, { added: number; deleted: number }>
   }
+  /**
+   * Conflict radar (docs/design/conflict-radar.md): pairs of in-flight
+   * tasks whose branches touch the same files (`overlap`) or whose heads
+   * demonstrably conflict under a dry-run merge (`conflict`,
+   * `git merge-tree`). Daemon-collected on a guarded tick; the board draws
+   * yarn between `conflict` pairs and badges both cards. Full list,
+   * republished on change only.
+   */
+  "task.conflicts": { pairs: ConflictPair[] }
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
   // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
 }
+
+/** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and
+ *  the strongest proven signal level. */
+export interface ConflictPair {
+  readonly a: string
+  readonly b: string
+  readonly files: readonly string[]
+  readonly level: "overlap" | "conflict"
+}
+
+/** The `task.conflicts` channel payload. */
+export type ConflictsPayload = ChannelPayloads["task.conflicts"]
 
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
@@ -283,6 +304,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "keybindings",
   "task.jobs",
   "worktree.changes",
+  "task.conflicts",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)

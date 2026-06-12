@@ -10,7 +10,7 @@
  * precedent).
  */
 
-import type { Task } from "./types.ts"
+import type { ConflictPair, Task } from "./types.ts"
 
 export interface BoardColumnSpec {
   key: string
@@ -338,4 +338,45 @@ export function reconcileOverrides(
  *  column renders cards but is not a drag target. */
 export function isDroppableColumn(key: string): boolean {
   return BOARD_COLUMNS.some((spec) => spec.key === key)
+}
+
+/* ----- conflict radar (docs/design/conflict-radar.md) -------------------- */
+
+/** The radar pairs touching one task. */
+export function conflictsForTask(
+  pairs: readonly ConflictPair[],
+  taskId: string,
+): ConflictPair[] {
+  return pairs.filter((pair) => pair.a === taskId || pair.b === taskId)
+}
+
+/** Card badge summary: the strongest level + how many counterparts. */
+export function conflictBadge(
+  pairs: readonly ConflictPair[],
+  taskId: string,
+): { level: "overlap" | "conflict"; count: number } | null {
+  const mine = conflictsForTask(pairs, taskId)
+  if (mine.length === 0) return null
+  return {
+    level: mine.some((pair) => pair.level === "conflict")
+      ? "conflict"
+      : "overlap",
+    count: mine.length,
+  }
+}
+
+/** Yarn palette — one distinct kobe hue per conflict pair, cycling. The
+ *  pair's index in the (sorted, stable) pair list picks the color, so a
+ *  pair keeps its yarn color as long as the pair exists. */
+export const YARN_COLORS: readonly string[] = [
+  "var(--color-kobe-orange)",
+  "var(--color-kobe-blue)",
+  "var(--color-kobe-violet)",
+  "var(--color-kobe-yellow)",
+  "var(--color-kobe-green)",
+  "var(--color-kobe-red)",
+]
+
+export function yarnColor(index: number): string {
+  return YARN_COLORS[index % YARN_COLORS.length] as string
 }
