@@ -130,7 +130,14 @@ async function rpcResponse(
     }
     return Response.json({ result })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    // Forward the daemon's error NAME alongside the message so the SPA can
+    // branch on typed failures (e.g. IllegalTransitionError → board rollback
+    // toast) without string-matching.
+    const name = err instanceof Error && err.name !== "Error" ? err.name : undefined
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err), ...(name ? { name } : {}) },
+      { status: 500 },
+    )
   }
 }
 

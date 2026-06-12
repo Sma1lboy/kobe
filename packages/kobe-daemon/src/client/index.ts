@@ -260,8 +260,14 @@ export class KobeDaemonClient {
     const pending = this.pending.get(frame.id)
     if (!pending) return
     this.pending.delete(frame.id)
-    if (frame.error) pending.reject(new Error(frame.error.message))
-    else pending.resolve(frame.payload)
+    if (frame.error) {
+      // Preserve the daemon's error NAME (shapeDaemonError puts it on the
+      // wire) so callers can branch on e.g. IllegalTransitionError instead
+      // of string-matching the message.
+      const err = new Error(frame.error.message)
+      if (frame.error.name) err.name = frame.error.name
+      pending.reject(err)
+    } else pending.resolve(frame.payload)
   }
 
   private emit(frame: Extract<DaemonFrame, { type: "event" }>): void {

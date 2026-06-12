@@ -26,6 +26,7 @@
 
 import { randomUUID } from "node:crypto"
 import { engineEntry } from "@/engine/registry"
+import { autoStatusEnabled } from "@/state/auto-status"
 import { getPersistedString } from "@/state/repos"
 import type { VendorId } from "@/types/task"
 import { BUILTIN_VENDORS } from "@/types/vendor"
@@ -131,4 +132,54 @@ export function withClaudeSessionId(
   if (argv.some((a) => CLAUDE_SESSION_CONTROL_FLAGS.has(a))) return { argv, sessionId: null }
   const sessionId = randomUUID()
   return { argv: [...argv, "--session-id", sessionId], sessionId }
+}
+
+/**
+ * The status self-report protocol injected into a session's system prompt
+ * (docs/design/web-kanban.md M5): the agent itself reports `in_review` when
+ * its work is done — it is the one party that KNOWS whether the turn ended
+ * "complete" or "asking the user", information the hook layer cannot carry
+ * (Stop fires identically for both). The concrete task id is baked in at
+ * spawn time (ids are immutable), so the agent never has to guess which
+ * task it is.
+ */
+export function statusReportProtocol(taskId: string): string {
+  return [
+    `You are running inside kobe (a local multi-session task manager) as task ${taskId}.`,
+    "kobe tracks a lifecycle status for this task on a board.",
+    "When you have COMPLETED the work requested in this session and verified it, report it by running:",
+    `  kobe api set-status --task-id ${taskId} --status in_review`,
+    "Run it only when the work is genuinely done — never while you are asking the user a question, waiting for input, or mid-task.",
+    "Never set any other status value; everything beyond in_review is the user's decision.",
+  ].join("\n")
+}
+
+/**
+ * Append the status protocol to a CLAUDE launch argv via
+ * `--append-system-prompt` — per-invocation injection scoped exactly to
+ * kobe-spawned sessions. Why a flag and not a file: a dropped
+ * CLAUDE.local.md would sit untracked in the worktree and permanently
+ * dirty it (polluting the board's ± counts), manual `claude` runs in the
+ * same worktree must stay untouched, and a system prompt survives context
+ * compaction where a first-message blurb may not.
+ *
+ * Gates, in order: the auto-status switch is on (state.json,
+ * `experimental.autoStatus`), there is a task to report, the launch
+ * targets claude (other vendors have no equivalent flag yet — their cards
+ * move by hand until their adapters grow an injection point), and a custom
+ * command that already sets the flag is left alone (the
+ * {@link withClaudeSessionId} precedent).
+ */
+export function withStatusProtocol(
+  argv: readonly string[],
+  vendor: string | undefined,
+  taskId: string | undefined,
+  enabled: () => boolean = autoStatusEnabled,
+): readonly string[] {
+  if (!taskId || !enabled()) return argv
+  if ((vendor ?? "claude") !== "claude") return argv
+  if (argv.includes("--append-system-prompt") || argv.includes("--append-system-prompt-file")) {
+    return argv
+  }
+  return [...argv, "--append-system-prompt", statusReportProtocol(taskId)]
 }

@@ -31,6 +31,7 @@ export const WEB_RPC_ALLOWLIST: readonly DaemonRequestName[] = [
   "task.pin",
   "task.move",
   "task.status",
+  "task.reorder",
   "task.ensureMain",
   "task.ensureWorktree",
   "task.setActive",

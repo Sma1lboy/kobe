@@ -116,6 +116,26 @@ TanStack Router, file-based ([`src/routes/`](../../packages/kobe-web/src/routes)
 | `/` | The workspace shell (rail + tabs + tools). |
 | `/task/$taskId` | Deep link — selects the task; back/forward walks task-switch history. |
 | `/overview` | Mission-control triage of every task (needs you / working / dirty / quiet). |
+| `/board` | Kanban over the persisted `Task.status` lifecycle (see below). |
+
+## Board (`/board`)
+
+The kanban lens over the same task list (full plan + decisions:
+[`web-kanban.md`](./web-kanban.md)). One column per `TaskStatus`
+(`error`/`canceled` fold away when empty; unknown statuses become trailing
+read-only columns rather than dropping cards). Columns bind ONLY to the
+persisted status — transient engine activity stays a per-card signal lamp,
+never a column. Cards drag across columns (`task.status`) and within a column
+(`task.reorder`, a web-only sparse fractional `position` that never bumps
+`updatedAt` and is invisible to the TUI). Drops paint through an optimistic
+override layer in [`src/lib/board-state.ts`](../../packages/kobe-web/src/lib/board-state.ts)
+whose clear rule is snapshot-confirmation per field; dragging disables while
+the daemon/stream is down. The card's eye button opens a **peek drawer** —
+the task's live engine PTY + transcript without leaving the board. The drawer
+attaches by the task's WORKSPACE vendor-tab id (`ensureEngineTab`), because
+PTYs are keyed by tab id: a drawer-private id would spawn a second engine
+instance. Closing the drawer never calls `/pty/close`; the sidecar fans
+output to every attached socket, so peek and workspace coexist.
 
 ## Workspace tabs
 

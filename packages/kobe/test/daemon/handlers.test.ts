@@ -117,6 +117,7 @@ describe("daemon handler registry", () => {
       "task.pin",
       "task.move",
       "task.status",
+      "task.reorder",
       "task.ensureMain",
       "task.ensureWorktree",
       "task.setActive",
@@ -175,6 +176,31 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.rename", { taskId: "t1", title: "new" }, ctx)).resolves.toEqual({})
       expect(renames).toEqual([["t1", "new"]])
       await expect(dispatch("task.rename", { taskId: "t1" }, ctx)).rejects.toThrow("title is required")
+    })
+
+    it("task.reorder forwards a validated batch and returns the empty object", async () => {
+      const batches: unknown[] = []
+      const { ctx } = fakeCtx({
+        reorderTasks: async (moves: unknown) => {
+          batches.push(moves)
+        },
+      })
+      await expect(dispatch("task.reorder", { moves: [{ taskId: "t1", position: 1.5 }] }, ctx)).resolves.toEqual({})
+      expect(batches).toEqual([[{ taskId: "t1", position: 1.5 }]])
+    })
+
+    it("task.reorder rejects an empty batch and non-finite positions", async () => {
+      const { ctx } = fakeCtx({
+        reorderTasks: async () => {
+          throw new Error("must not be called")
+        },
+      })
+      await expect(dispatch("task.reorder", { moves: [] }, ctx)).rejects.toThrow("moves must be a non-empty array")
+      await expect(dispatch("task.reorder", {}, ctx)).rejects.toThrow("moves must be a non-empty array")
+      await expect(dispatch("task.reorder", { moves: [{ taskId: "t1", position: Number.NaN }] }, ctx)).rejects.toThrow(
+        "position must be a finite number",
+      )
+      await expect(dispatch("task.reorder", { moves: [{ position: 1 }] }, ctx)).rejects.toThrow("taskId is required")
     })
 
     it("task.delete clears the task's transient activity after the orchestrator delete", async () => {
