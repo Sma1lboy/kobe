@@ -340,6 +340,47 @@ export function isDroppableColumn(key: string): boolean {
   return BOARD_COLUMNS.some((spec) => spec.key === key)
 }
 
+/* ----- project (repo) filter --------------------------------------------- */
+
+export interface RepoOption {
+  /** Full repo key (local path or remote key) — the filter value. */
+  readonly repo: string
+  /** Short display name: path basename, parent/basename on collision. */
+  readonly label: string
+  /** Board cards (non-archived, non-main) currently in this repo. */
+  readonly count: number
+}
+
+function repoBasename(repo: string): string {
+  const trimmed = repo.replace(/\/+$/, "")
+  return trimmed.split("/").pop() || trimmed
+}
+
+/**
+ * Distinct projects among the board's cards, for the filter-chip row.
+ * Labels are path basenames; two repos sharing a basename are
+ * disambiguated to `parent/basename`. Sorted by label so chips don't
+ * reorder as card counts shift.
+ */
+export function repoOptions(tasks: readonly Task[]): RepoOption[] {
+  const counts = new Map<string, number>()
+  for (const task of tasks) {
+    if (!isBoardTask(task)) continue
+    counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
+  }
+  const repos = [...counts.keys()]
+  const label = (repo: string): string => {
+    const base = repoBasename(repo)
+    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
+    if (!collides) return base
+    const parts = repo.replace(/\/+$/, "").split("/")
+    return parts.slice(-2).join("/")
+  }
+  return repos
+    .map((repo) => ({ repo, label: label(repo), count: counts.get(repo) ?? 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
 /* ----- conflict radar (docs/design/conflict-radar.md) -------------------- */
 
 /** The radar pairs touching one task. */
