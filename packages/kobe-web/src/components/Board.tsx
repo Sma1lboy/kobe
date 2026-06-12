@@ -57,6 +57,7 @@ import {
   isBoardTask,
   isDroppableColumn,
   planColumnDrop,
+  repoOptions,
   yarnColor,
 } from "../lib/board.ts"
 import {
@@ -65,6 +66,7 @@ import {
   clearStatusOverride,
   reconcileBoardOverrides,
   setBoardQuery,
+  setBoardRepo,
   setPositionOverride,
   setPositionOverrides,
   setStatusOverride,
@@ -622,7 +624,7 @@ export function Board() {
     daemonConnected,
     streamConnected,
   } = useAppState()
-  const { query, overrides } = useBoardState()
+  const { query, repo: repoFilter, overrides } = useBoardState()
   const navigate = useNavigate()
   const yarnContainerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
@@ -684,12 +686,25 @@ export function Board() {
     return () => window.removeEventListener("keydown", onKey)
   }, [query, peekTaskId])
 
+  // Project chips: the distinct repos with board cards. Computed from the
+  // UNfiltered list so chips (and their counts) don't vanish while one is
+  // selected or a text query narrows the view.
+  const repos = useMemo(() => repoOptions(tasks), [tasks])
+  // A selected project can disappear entirely (last card archived/deleted)
+  // — snap back to All rather than showing a permanently empty board.
+  useEffect(() => {
+    if (repoFilter && !repos.some((option) => option.repo === repoFilter)) {
+      setBoardRepo(null)
+    }
+  }, [repos, repoFilter])
+
   const boardTasks = useMemo(
     () =>
-      applyBoardOverrides(tasks, overrides).filter((task) =>
-        matchesTask(task, query),
+      applyBoardOverrides(tasks, overrides).filter(
+        (task) =>
+          (!repoFilter || task.repo === repoFilter) && matchesTask(task, query),
       ),
-    [tasks, overrides, query],
+    [tasks, overrides, query, repoFilter],
   )
   const columns = useMemo(() => buildBoard(boardTasks), [boardTasks])
   const shownCount = boardCardCount(columns)
@@ -971,6 +986,49 @@ export function Board() {
             </button>
           )}
         </label>
+        {/* Project chips: partition the board by repo. Hidden for a
+            single-project board — no point paying header space for a
+            filter with one value. Click the active chip to deselect. */}
+        {repos.length >= 2 && (
+          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => setBoardRepo(null)}
+              className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                repoFilter === null
+                  ? "border-line-active bg-inset text-fg"
+                  : "border-line text-subtle hover:text-fg"
+              }`}
+            >
+              all
+            </button>
+            {repos.map((option) => (
+              <button
+                key={option.repo}
+                type="button"
+                title={option.repo}
+                onClick={() =>
+                  setBoardRepo(repoFilter === option.repo ? null : option.repo)
+                }
+                className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                  repoFilter === option.repo
+                    ? "border-line-active bg-inset text-fg"
+                    : "border-line text-subtle hover:text-fg"
+                }`}
+              >
+                {option.label}
+                <span
+                  className={
+                    repoFilter === option.repo ? "text-muted" : "text-subtle"
+                  }
+                >
+                  {" "}
+                  {option.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           {!canDrag && hydrated && (
             <span className="text-kobe-yellow">read-only (offline)</span>

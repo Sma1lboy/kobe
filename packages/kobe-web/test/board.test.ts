@@ -15,6 +15,7 @@ import {
   positionBetween,
   reconcileOverrides,
   renormalizedMoves,
+  repoOptions,
   TERMINAL_COLUMN_CAP,
   YARN_COLORS,
   yarnColor,
@@ -453,3 +454,41 @@ describe("isDroppableColumn", () => {
   })
 })
 
+
+describe("repoOptions — project chips", () => {
+  it("counts board cards only: archived and main rows don't register a project", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/proj/kobe" }),
+      task({ id: "b", repo: "/u/proj/kobe" }),
+      task({ id: "m", repo: "/u/proj/kobe", kind: "main" }),
+      task({ id: "x", repo: "/u/proj/old", archived: true }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/proj/kobe", label: "kobe", count: 2 },
+    ])
+  })
+
+  it("labels are basenames, sorted; colliding basenames get parent/basename", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/work/api" }),
+      task({ id: "b", repo: "/u/personal/api" }),
+      task({ id: "c", repo: "/u/proj/zeta" }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/personal/api", label: "personal/api", count: 1 },
+      { repo: "/u/work/api", label: "work/api", count: 1 },
+      { repo: "/u/proj/zeta", label: "zeta", count: 1 },
+    ])
+  })
+
+  it("handles trailing slashes and remote-style repo keys", () => {
+    const tasks = [
+      task({ id: "a", repo: "/u/proj/kobe/" }),
+      task({ id: "b", repo: "ssh://host/srv/repos/widget" }),
+    ]
+    expect(repoOptions(tasks)).toEqual([
+      { repo: "/u/proj/kobe/", label: "kobe", count: 1 },
+      { repo: "ssh://host/srv/repos/widget", label: "widget", count: 1 },
+    ])
+  })
+})
