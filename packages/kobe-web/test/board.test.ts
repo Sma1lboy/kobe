@@ -423,3 +423,4 @@ describe("isDroppableColumn", () => {
     expect(isDroppableColumn("qa_hold")).toBe(false)
   })
 })
+

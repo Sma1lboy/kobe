@@ -4,13 +4,13 @@
  * tickets — the dot is the engine's transient activity, and opening a card
  * lands on the task's real workspace (PTY/transcript).
  *
- * Drag a card (anywhere with the pointer; keyboard from the grip handle)
- * across columns to move its lifecycle status, or within a column to set a
- * persisted manual order (`task.reorder` positions). Drops paint
- * optimistically via the board-state override layer; the daemon's
- * task.snapshot confirms, and a typed error rolls back + toasts. Dragging
- * is disabled while the daemon/stream is down — a drop would silently
- * vanish (docs/design/web-kanban.md R4).
+ * Two ways to move a card's lifecycle status: drag it (anywhere with the
+ * pointer; keyboard from the grip handle) onto a column / slot, or use the
+ * hover bar's status tags to jump it straight to a primary column without
+ * dragging. Both paths share commitColumnMove: optimistic paint via the
+ * board-state override layer, daemon task.snapshot confirmation, and a
+ * typed-error rollback + toast. Moves are disabled while the daemon/stream
+ * is down — they'd silently vanish (docs/design/web-kanban.md R4).
  */
 
 import {
@@ -39,6 +39,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
   applyBoardOverrides,
+  BOARD_COLUMNS,
   type BoardColumn,
   boardCardCount,
   buildBoard,
@@ -66,6 +67,11 @@ import { reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
+
+/** The hover bar's jump targets: the four always-visible lifecycle columns.
+ *  error/canceled stay drag-only — they're fold-away exception states, not
+ *  everyday destinations. */
+const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
 
 /**
  * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column
@@ -171,6 +177,7 @@ function BoardCard({
   engine,
   changes,
   canDrag,
+  onMoveTo,
   onOpen,
   onPeek,
 }: {
@@ -179,6 +186,7 @@ function BoardCard({
   engine?: EngineState
   changes?: { added: number; deleted: number }
   canDrag: boolean
+  onMoveTo: (statusKey: string) => void
   onOpen: () => void
   onPeek: () => void
 }) {
@@ -241,15 +249,38 @@ function BoardCard({
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
       )}
-      <button
-        type="button"
-        onClick={onPeek}
-        aria-label={`Peek ${task.title || task.branch || task.id}`}
-        title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
-        className="absolute right-1 bottom-1 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
-      >
-        <Eye size={11} strokeWidth={1.8} />
-      </button>
+      {/* Hover bar: one tag per primary status — click to jump the card
+          there without dragging. Overlays the card footer on hover only. */}
+      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 border-t border-line bg-surface px-2 py-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+        {PRIMARY_COLUMNS.map((spec) => {
+          const current = spec.key === columnKey
+          return (
+            <button
+              key={spec.key}
+              type="button"
+              disabled={current || !canDrag}
+              onClick={() => onMoveTo(spec.key)}
+              title={current ? "Current column" : `Move to ${spec.title}`}
+              className={`px-1 text-[10px] transition-colors ${
+                current
+                  ? `font-bold ${spec.accent}`
+                  : "text-subtle hover:text-fg disabled:opacity-40 disabled:hover:text-subtle"
+              }`}
+            >
+              {spec.title}
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          onClick={onPeek}
+          aria-label={`Peek ${task.title || task.branch || task.id}`}
+          title="Peek session — live terminal + transcript without leaving the board (starts the session if it isn't running)"
+          className="ml-auto flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg"
+        >
+          <Eye size={11} strokeWidth={1.8} />
+        </button>
+      </div>
     </div>
   )
 }
@@ -259,6 +290,7 @@ function ColumnView({
   engineStates,
   worktreeChanges,
   canDrag,
+  onMoveTo,
   onOpen,
   onPeek,
 }: {
@@ -266,6 +298,7 @@ function ColumnView({
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
+  onMoveTo: (task: Task, statusKey: string) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
 }) {
@@ -311,6 +344,7 @@ function ColumnView({
                 engine={engineStates[task.id]}
                 changes={worktreeChanges[task.worktreePath]}
                 canDrag={canDrag}
+                onMoveTo={(statusKey) => onMoveTo(task, statusKey)}
                 onOpen={() => onOpen(task.id)}
                 onPeek={() => onPeek(task.id)}
               />
@@ -416,6 +450,94 @@ export function Board() {
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 
+  /**
+   * Shared move executor for drag drops AND arrow/button moves: full-column
+   * placement math, optimistic paint, and the status→reorder RPC sequencing
+   * (a rejected transition rolls back both overrides and never reorders).
+   */
+  const commitColumnMove = (
+    task: Task,
+    toKey: string,
+    visiblePrev: Task | undefined,
+    visibleNext: Task | undefined,
+  ): void => {
+    const displayedStatus = overrides[task.id]?.status ?? task.status
+    const statusChanged = toKey !== displayedStatus
+    // Persistence math runs over the FULL column membership — uncapped and
+    // unfiltered — so hidden cards never end up on the wrong side of a move
+    // (planColumnDrop). The rendered neighbors only anchor the slot.
+    const fullColumn = applyBoardOverrides(tasks, overrides)
+      .filter(
+        (t) =>
+          t.id !== task.id &&
+          isBoardTask(t) &&
+          (t.status || "backlog") === toKey,
+      )
+      .sort(compareCards)
+    const plan = planColumnDrop({
+      fullColumn,
+      moving: task,
+      visiblePrev,
+      visibleNext,
+    })
+
+    // Paint everything the move implies up front…
+    if (statusChanged) setStatusOverride(task.id, toKey)
+    if (plan.kind === "single") setPositionOverride(task.id, plan.position)
+    else setPositionOverrides(plan.moves)
+
+    const rollbackPosition = (): void => {
+      if (plan.kind === "single") {
+        clearPositionOverride(task.id, plan.position)
+      } else {
+        clearPositionOverrides(plan.moves)
+      }
+    }
+    const sendReorder = (): void => {
+      const moves =
+        plan.kind === "single"
+          ? [{ taskId: task.id, position: plan.position }]
+          : plan.moves
+      rpc("task.reorder", { moves }).catch((err: unknown) => {
+        rollbackPosition()
+        reportError("reorder task", err)
+      })
+    }
+
+    if (!statusChanged) {
+      sendReorder()
+      return
+    }
+    // …but the reorder RPC is GATED on the status RPC succeeding. Firing
+    // them independently let a rejected transition (done ↔ error) still
+    // persist a position computed from the foreign column's neighbors —
+    // the card snapped home into the wrong slot, durably.
+    rpc("task.status", { taskId: task.id, status: toKey })
+      .then(sendReorder)
+      .catch((err: unknown) => {
+        clearStatusOverride(task.id, toKey)
+        rollbackPosition()
+        const illegal =
+          err instanceof Error && err.name === "IllegalTransitionError"
+        reportError(
+          illegal
+            ? `move blocked (${displayedStatus} → ${toKey})`
+            : "move task",
+          err,
+        )
+      })
+  }
+
+  /** Hover-tag move: jump the card straight to a status, landing at the
+   *  TOP of the target — a deliberate move should stay under the eye. */
+  const moveToStatus = (task: Task, toKey: string): void => {
+    if (!canDrag || dragTaskId) return
+    const displayed = overrides[task.id]?.status ?? task.status
+    if (toKey === displayed || !isDroppableColumn(toKey)) return
+    const target = columns.find((c) => c.key === toKey)
+    commitColumnMove(task, toKey, undefined, target?.tasks[0])
+  }
+
   const onDragStart = (event: DragStartEvent): void => {
     setDragTaskId(String(event.active.id))
   }
@@ -481,69 +603,7 @@ export function Board() {
       return // same column, same slot — nothing to persist
     }
 
-    // Persistence math runs over the FULL column membership — uncapped and
-    // unfiltered — so hidden cards never end up on the wrong side of a drop
-    // (planColumnDrop). The rendered neighbors only anchor the slot.
-    const fullColumn = applyBoardOverrides(tasks, overrides)
-      .filter(
-        (t) =>
-          t.id !== activeId &&
-          isBoardTask(t) &&
-          (t.status || "backlog") === toKey,
-      )
-      .sort(compareCards)
-    const plan = planColumnDrop({
-      fullColumn,
-      moving: task,
-      visiblePrev: others[insertAt - 1],
-      visibleNext: others[insertAt],
-    })
-
-    // Paint everything the drop implies up front…
-    if (statusChanged) setStatusOverride(activeId, toKey)
-    if (plan.kind === "single") setPositionOverride(activeId, plan.position)
-    else setPositionOverrides(plan.moves)
-
-    const rollbackPosition = (): void => {
-      if (plan.kind === "single") {
-        clearPositionOverride(activeId, plan.position)
-      } else {
-        clearPositionOverrides(plan.moves)
-      }
-    }
-    const sendReorder = (): void => {
-      const moves =
-        plan.kind === "single"
-          ? [{ taskId: activeId, position: plan.position }]
-          : plan.moves
-      rpc("task.reorder", { moves }).catch((err: unknown) => {
-        rollbackPosition()
-        reportError("reorder task", err)
-      })
-    }
-
-    if (!statusChanged) {
-      sendReorder()
-      return
-    }
-    // …but the reorder RPC is GATED on the status RPC succeeding. Firing
-    // them independently let a rejected transition (done ↔ error) still
-    // persist a position computed from the foreign column's neighbors —
-    // the card snapped home into the wrong slot, durably.
-    rpc("task.status", { taskId: activeId, status: toKey })
-      .then(sendReorder)
-      .catch((err: unknown) => {
-        clearStatusOverride(activeId, toKey)
-        rollbackPosition()
-        const illegal =
-          err instanceof Error && err.name === "IllegalTransitionError"
-        reportError(
-          illegal
-            ? `move blocked (${displayedStatus} → ${toKey})`
-            : "move task",
-          err,
-        )
-      })
+    commitColumnMove(task, toKey, others[insertAt - 1], others[insertAt])
   }
 
   return (
@@ -619,6 +679,7 @@ export function Board() {
                   engineStates={engineStates}
                   worktreeChanges={worktreeChanges}
                   canDrag={canDrag}
+                  onMoveTo={moveToStatus}
                   onOpen={open}
                   onPeek={setPeekTaskId}
                 />
