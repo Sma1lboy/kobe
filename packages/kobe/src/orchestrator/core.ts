@@ -413,6 +413,24 @@ export class Orchestrator {
   }
 
   /**
+   * Batch-assign web-board positions (docs/design/web-kanban.md M3).
+   * Positions are fractional ordering keys consumed ONLY by the web
+   * board's per-status columns; the TUI sidebar never reads them. Main
+   * rows are never board cards, so they're refused like moveTask.
+   * Validation is all-or-nothing: one bad entry fails the whole batch
+   * before anything persists.
+   */
+  async reorderTasks(moves: ReadonlyArray<{ readonly taskId: string; readonly position: number }>): Promise<void> {
+    if (moves.length === 0) return
+    for (const move of moves) {
+      const task = this.requireTask(move.taskId)
+      if (task.kind === "main") throw new Error(`cannot reorder a main task: ${move.taskId}`)
+      if (!Number.isFinite(move.position)) throw new Error(`position must be a finite number: ${move.taskId}`)
+    }
+    await this.store.reorder(moves.map((move) => ({ id: move.taskId, position: move.position })))
+  }
+
+  /**
    * Move a task between status states. The transitions are not
    * machine-enforced in v0.6 (the user does it from the sidebar) but
    * we still refuse `done` ↔ `error` flip-flops to surface bad code.

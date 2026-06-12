@@ -37,6 +37,8 @@ export interface Task {
   pinned: boolean
   vendor?: Vendor
   prStatus?: TaskPRStatus
+  /** Web-board ordering key (sparse fractional; absent until first drop). */
+  position?: number
   createdAt: string
   updatedAt: string
 }

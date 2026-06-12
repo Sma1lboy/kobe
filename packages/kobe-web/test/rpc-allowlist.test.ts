@@ -30,6 +30,7 @@ const REQUIRED = [
   "task.delete",
   "task.pin",
   "task.status",
+  "task.reorder",
   "task.ensureWorktree",
   "task.setActive",
 ] as const

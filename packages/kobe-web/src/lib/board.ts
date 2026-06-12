@@ -65,25 +65,79 @@ export const BOARD_COLUMNS: readonly BoardColumnSpec[] = [
 
 export interface BoardColumn extends BoardColumnSpec {
   tasks: Task[]
+  /** Cards beyond the terminal-column cap — rendered as a "+N more" note. */
+  hiddenCount: number
 }
+
+/**
+ * Terminal columns accrete forever (`done` ≠ `archived`), so only the most
+ * recent slice renders; the rest is a count (R1 done-growth policy). Active
+ * columns are never capped — hiding live work would be lying.
+ */
+export const TERMINAL_COLUMN_CAP = 30
+const TERMINAL_KEYS = new Set(["done", "canceled", "error"])
 
 /** Only worktree tasks flow across the board. */
 export function isBoardTask(task: Task): boolean {
   return !task.archived && task.kind !== "main"
 }
 
-function taskUpdatedMs(task: Task): number {
-  const parsed = Date.parse(task.updatedAt || task.createdAt)
-  return Number.isFinite(parsed) ? parsed : 0
+/** Spacing between renormalized position keys — wide enough that midpoint
+ *  insertion practically never degenerates between renorms. */
+export const POSITION_STEP = 1024
+
+/**
+ * Effective ordering key: the explicit `position` when set, else
+ * newest-created-first (negative creation epoch). createdAt never changes,
+ * so an un-dragged column is STABLE — unlike updatedAt ordering, which made
+ * cards jump around while engines ran.
+ */
+export function effectivePosition(task: Task): number {
+  if (typeof task.position === "number" && Number.isFinite(task.position)) {
+    return task.position
+  }
+  const created = Date.parse(task.createdAt)
+  return Number.isFinite(created) ? -created : 0
 }
 
-/** Within a column: pinned cards float, then newest activity first (id as a
- *  stable tiebreak). Persisted ordering (`position`) is M3. */
+/** Within a column: pinned cards float, then ascending effective position
+ *  (id as a stable tiebreak). */
 export function compareCards(a: Task, b: Task): number {
-  if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
-  const byTime = taskUpdatedMs(b) - taskUpdatedMs(a)
-  if (byTime !== 0) return byTime
+  if ((a.pinned ?? false) !== (b.pinned ?? false)) return a.pinned ? -1 : 1
+  const byPosition = effectivePosition(a) - effectivePosition(b)
+  if (byPosition !== 0) return byPosition
   return b.id.localeCompare(a.id)
+}
+
+/**
+ * Position for inserting between two rendered neighbors: the midpoint, a
+ * STEP beyond an edge neighbor, or 0 into an empty column. Returns null when
+ * float precision collapses the midpoint into a neighbor — the caller then
+ * renormalizes the whole column ({@link renormalizedMoves}).
+ */
+export function positionBetween(
+  prev: Task | undefined,
+  next: Task | undefined,
+): number | null {
+  if (!prev && !next) return 0
+  if (!prev && next) return effectivePosition(next) - POSITION_STEP
+  if (prev && !next) return effectivePosition(prev) + POSITION_STEP
+  if (!prev || !next) return 0
+  const a = effectivePosition(prev)
+  const b = effectivePosition(next)
+  const mid = a + (b - a) / 2
+  return mid > a && mid < b ? mid : null
+}
+
+/** Explicit spaced positions for a whole column in its final visual order —
+ *  the degenerate-midpoint fallback, sent as ONE task.reorder batch. */
+export function renormalizedMoves(
+  finalOrder: readonly Task[],
+): Array<{ taskId: string; position: number }> {
+  return finalOrder.map((task, index) => ({
+    taskId: task.id,
+    position: (index + 1) * POSITION_STEP,
+  }))
 }
 
 /**
@@ -102,10 +156,25 @@ export function buildBoard(tasks: Task[]): BoardColumn[] {
   }
   for (const bucket of byStatus.values()) bucket.sort(compareCards)
 
+  const capped = (
+    key: string,
+    tasks: Task[],
+  ): { tasks: Task[]; hiddenCount: number } => {
+    if (!TERMINAL_KEYS.has(key) || tasks.length <= TERMINAL_COLUMN_CAP) {
+      return { tasks, hiddenCount: 0 }
+    }
+    return {
+      tasks: tasks.slice(0, TERMINAL_COLUMN_CAP),
+      hiddenCount: tasks.length - TERMINAL_COLUMN_CAP,
+    }
+  }
+
   const known = BOARD_COLUMNS.map((spec) => ({
     ...spec,
-    tasks: byStatus.get(spec.key) ?? [],
-  })).filter((col) => col.alwaysVisible || col.tasks.length > 0)
+    ...capped(spec.key, byStatus.get(spec.key) ?? []),
+  })).filter(
+    (col) => col.alwaysVisible || col.tasks.length + col.hiddenCount > 0,
+  )
 
   const knownKeys = new Set(BOARD_COLUMNS.map((spec) => spec.key))
   const extras = [...byStatus.keys()]
@@ -117,6 +186,7 @@ export function buildBoard(tasks: Task[]): BoardColumn[] {
       accent: "text-muted",
       alwaysVisible: false,
       tasks: byStatus.get(key) ?? [],
+      hiddenCount: 0,
     }))
 
   return [...known, ...extras]
@@ -127,47 +197,77 @@ export function boardCardCount(columns: readonly BoardColumn[]): number {
   return columns.reduce((sum, col) => sum + col.tasks.length, 0)
 }
 
-/* ----- optimistic drag overrides (M2) ------------------------------------
- * A drop paints the card into its target column immediately; the daemon's
- * task.snapshot round-trip is the truth. taskId → expected status. */
+/* ----- optimistic drag overrides (M2 status, M3 position) ----------------
+ * A drop paints the card into its target column/slot immediately; the
+ * daemon's task.snapshot round-trip is the truth. taskId → expected fields. */
 
-export type StatusOverrides = Readonly<Record<string, string>>
+export interface BoardOverride {
+  readonly status?: string
+  readonly position?: number
+}
+
+export type BoardOverrides = Readonly<Record<string, BoardOverride>>
 
 /** Paint pending drops over the authoritative task list. */
-export function applyStatusOverrides(
+export function applyBoardOverrides(
   tasks: Task[],
-  overrides: StatusOverrides,
+  overrides: BoardOverrides,
 ): Task[] {
   if (Object.keys(overrides).length === 0) return tasks
   return tasks.map((task) => {
-    const status = overrides[task.id]
-    return status && status !== task.status ? { ...task, status } : task
+    const override = overrides[task.id]
+    if (!override) return task
+    const status = override.status ?? task.status
+    const position = override.position ?? task.position
+    if (status === task.status && position === task.position) return task
+    return { ...task, status, position }
   })
 }
 
 /**
- * Drop overrides the snapshot has confirmed (task.status === expected) and
- * overrides whose task vanished (deleted/archived elsewhere). An UNRELATED
- * snapshot — some other task changed — must keep a pending override, or the
- * card bounces back mid-RPC (docs/design/web-kanban.md R4). Returns the SAME
- * reference when nothing changed so React can skip.
+ * Drop override FIELDS the snapshot has confirmed (task.status / position
+ * equals the expected value) and whole entries whose task vanished
+ * (deleted/archived elsewhere). An UNRELATED snapshot — some other task
+ * changed — must keep a pending override, or the card bounces back mid-RPC
+ * (docs/design/web-kanban.md R4). Returns the SAME reference when nothing
+ * changed so React can skip.
  */
 export function reconcileOverrides(
-  overrides: StatusOverrides,
+  overrides: BoardOverrides,
   tasks: Task[],
-): StatusOverrides {
+): BoardOverrides {
   const entries = Object.entries(overrides)
   if (entries.length === 0) return overrides
   const byId = new Map(tasks.map((task) => [task.id, task]))
-  const next: Record<string, string> = {}
+  const next: Record<string, BoardOverride> = {}
   let changed = false
-  for (const [taskId, status] of entries) {
+  for (const [taskId, override] of entries) {
     const task = byId.get(taskId)
-    if (!task || task.status === status) {
+    if (!task) {
       changed = true
       continue
     }
-    next[taskId] = status
+    const keep: { status?: string; position?: number } = {}
+    if (override.status !== undefined && task.status !== override.status) {
+      keep.status = override.status
+    }
+    if (
+      override.position !== undefined &&
+      task.position !== override.position
+    ) {
+      keep.position = override.position
+    }
+    if (keep.status === undefined && keep.position === undefined) {
+      changed = true
+      continue
+    }
+    if (
+      keep.status !== override.status ||
+      keep.position !== override.position
+    ) {
+      changed = true
+    }
+    next[taskId] = keep
   }
   return changed ? next : overrides
 }

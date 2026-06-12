@@ -100,6 +100,10 @@ export type DaemonRequestName =
   | "task.pin"
   | "task.move"
   | "task.status"
+  // Web-board ordering (docs/design/web-kanban.md M3): batch-assign sparse
+  // fractional `position` keys for per-status column order. ONE snapshot
+  // push per batch; the TUI never reads `position`.
+  | "task.reorder"
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
@@ -330,6 +334,8 @@ export interface SerializedTask {
   readonly pinned: boolean
   readonly vendor?: Task["vendor"]
   readonly prStatus?: Task["prStatus"]
+  /** Web-board ordering key (sparse fractional; absent until first drop). */
+  readonly position?: number
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -347,6 +353,7 @@ export function serializeTask(task: Task): SerializedTask {
     pinned: task.pinned ?? false,
     vendor: task.vendor,
     prStatus: task.prStatus,
+    position: task.position,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

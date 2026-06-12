@@ -1,15 +1,16 @@
 /**
  * Board — the kanban lens over the same tasks the rail and Overview show:
- * one column per persisted Task.status, newest activity first. Cards are
- * live sessions, not tickets — the dot is the engine's transient activity,
- * and opening a card lands on the task's real workspace (PTY/transcript).
+ * one column per persisted Task.status. Cards are live sessions, not
+ * tickets — the dot is the engine's transient activity, and opening a card
+ * lands on the task's real workspace (PTY/transcript).
  *
- * Drag a card (grip handle, or anywhere with the pointer) onto a column to
- * move its lifecycle status: the drop paints optimistically via the
- * board-state override layer, `task.status` does the real move, and the
- * daemon's task.snapshot confirms (or a typed error rolls back + toasts).
- * Dragging is disabled while the daemon/stream is down — a drop would
- * silently vanish (docs/design/web-kanban.md R4).
+ * Drag a card (anywhere with the pointer; keyboard from the grip handle)
+ * across columns to move its lifecycle status, or within a column to set a
+ * persisted manual order (`task.reorder` positions). Drops paint
+ * optimistically via the board-state override layer; the daemon's
+ * task.snapshot confirms, and a typed error rolls back + toasts. Dragging
+ * is disabled while the daemon/stream is down — a drop would silently
+ * vanish (docs/design/web-kanban.md R4).
  */
 
 import {
@@ -18,30 +19,41 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
-  type KeyboardCoordinateGetter,
   KeyboardSensor,
   PointerSensor,
   TouchSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, GripVertical, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
-  applyStatusOverrides,
+  applyBoardOverrides,
   type BoardColumn,
   boardCardCount,
   buildBoard,
   isDroppableColumn,
+  positionBetween,
+  renormalizedMoves,
 } from "../lib/board.ts"
 import {
+  clearPositionOverride,
+  clearPositionOverrides,
   clearStatusOverride,
   reconcileBoardOverrides,
   setBoardQuery,
+  setPositionOverride,
+  setPositionOverrides,
   setStatusOverride,
   useBoardState,
 } from "../lib/board-state.ts"
@@ -52,46 +64,6 @@ import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { ChangesChip, PrChip } from "./chips.tsx"
-
-/** Arrow keys jump between column centers (left/right) and hop cards
- *  (up/down) instead of the default 25px nudge — a keyboard move across the
- *  board is a handful of presses, not fifty. */
-const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
-  event,
-  { context: { droppableRects, droppableContainers, collisionRect } },
-) => {
-  if (!collisionRect) return undefined
-  const step = 64 // roughly one card row
-  switch (event.code) {
-    case "ArrowUp":
-      event.preventDefault()
-      return { x: collisionRect.left, y: collisionRect.top - step }
-    case "ArrowDown":
-      event.preventDefault()
-      return { x: collisionRect.left, y: collisionRect.top + step }
-    case "ArrowLeft":
-    case "ArrowRight": {
-      event.preventDefault()
-      const cx = collisionRect.left + collisionRect.width / 2
-      const columns = droppableContainers
-        .getEnabled()
-        .map((container) => droppableRects.get(container.id))
-        .filter((rect): rect is NonNullable<typeof rect> => !!rect)
-        .map((rect) => ({ rect, cx: rect.left + rect.width / 2 }))
-        .sort((a, b) => a.cx - b.cx)
-      const target =
-        event.code === "ArrowRight"
-          ? columns.find((c) => c.cx > cx + 1)
-          : [...columns].reverse().find((c) => c.cx < cx - 1)
-      if (!target) return undefined
-      return {
-        x: target.cx - collisionRect.width / 2,
-        y: Math.max(collisionRect.top, target.rect.top),
-      }
-    }
-  }
-  return undefined
-}
 
 function CardBody({
   task,
@@ -135,19 +107,32 @@ function CardBody({
 
 function BoardCard({
   task,
+  columnKey,
   engine,
   changes,
   canDrag,
   onOpen,
 }: {
   task: Task
+  columnKey: string
   engine?: EngineState
   changes?: { added: number; deleted: number }
   canDrag: boolean
   onOpen: () => void
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
-    useDraggable({ id: task.id, disabled: !canDrag })
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    disabled: !canDrag,
+    data: { type: "card", columnKey },
+  })
   // Pointer/touch drags start anywhere on the card; the keyboard lift lives
   // ONLY on the grip button, so Enter on the card body stays "open task".
   const { onKeyDown: _liftKey, ...pointerListeners } = listeners ?? {}
@@ -166,6 +151,7 @@ function BoardCard({
       ref={setNodeRef}
       {...pointerListeners}
       data-task-id={task.id}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`group/card relative ${isDragging ? "opacity-40" : ""}`}
     >
       <button
@@ -208,6 +194,7 @@ function ColumnView({
   const { setNodeRef, isOver } = useDroppable({
     id: column.key,
     disabled: !droppable,
+    data: { type: "column" },
   })
   return (
     <section
@@ -224,25 +211,36 @@ function ColumnView({
           {column.title}
         </h2>
         <span className="font-mono text-[10px] text-subtle">
-          {column.tasks.length}
+          {column.tasks.length + column.hiddenCount}
         </span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
-        {column.tasks.length === 0 ? (
-          <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
-            none
+        <SortableContext
+          items={column.tasks.map((task) => task.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {column.tasks.length === 0 ? (
+            <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
+              none
+            </div>
+          ) : (
+            column.tasks.map((task) => (
+              <BoardCard
+                key={task.id}
+                task={task}
+                columnKey={column.key}
+                engine={engineStates[task.id]}
+                changes={worktreeChanges[task.worktreePath]}
+                canDrag={canDrag}
+                onOpen={() => onOpen(task.id)}
+              />
+            ))
+          )}
+        </SortableContext>
+        {column.hiddenCount > 0 && (
+          <div className="p-2 text-center text-[10px] text-subtle">
+            +{column.hiddenCount} more — archive cards to thin this column
           </div>
-        ) : (
-          column.tasks.map((task) => (
-            <BoardCard
-              key={task.id}
-              task={task}
-              engine={engineStates[task.id]}
-              changes={worktreeChanges[task.worktreePath]}
-              canDrag={canDrag}
-              onOpen={() => onOpen(task.id)}
-            />
-          ))
         )}
       </div>
     </section>
@@ -268,7 +266,9 @@ export function Board() {
     useSensor(TouchSensor, {
       activationConstraint: { delay: 250, tolerance: 8 },
     }),
-    useSensor(KeyboardSensor, { coordinateGetter: boardKeyboardCoordinates }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   )
 
   // A drop while disconnected would paint, fail to send, and silently revert
@@ -307,7 +307,7 @@ export function Board() {
 
   const boardTasks = useMemo(
     () =>
-      applyStatusOverrides(tasks, overrides).filter((task) =>
+      applyBoardOverrides(tasks, overrides).filter((task) =>
         matchesTask(task, query),
       ),
     [tasks, overrides, query],
@@ -330,21 +330,90 @@ export function Board() {
 
   const onDragEnd = (event: DragEndEvent): void => {
     setDragTaskId(null)
-    const taskId = String(event.active.id)
-    const target = event.over ? String(event.over.id) : null
-    if (!target || !isDroppableColumn(target)) return
-    const task = tasks.find((t) => t.id === taskId)
-    if (!task || task.status === target) return
-    setStatusOverride(taskId, target)
-    rpc("task.status", { taskId, status: target }).catch((err: unknown) => {
-      clearStatusOverride(taskId, target)
-      const illegal =
-        err instanceof Error && err.name === "IllegalTransitionError"
-      reportError(
-        illegal ? `move blocked (${task.status} → ${target})` : "move task",
-        err,
+    const activeId = String(event.active.id)
+    const over = event.over
+    if (!over) return
+    const task = tasks.find((t) => t.id === activeId)
+    if (!task) return
+
+    // Where the card lands: a card target contributes its column + slot, a
+    // column target means "append at the end of that column".
+    const overData = over.data.current as
+      | { type?: string; columnKey?: string }
+      | undefined
+    const overId = String(over.id)
+    const displayedStatus = overrides[activeId]?.status ?? task.status
+    const toKey =
+      overData?.type === "card"
+        ? (overData.columnKey ?? displayedStatus)
+        : overId
+    if (!isDroppableColumn(toKey)) return
+    const toColumn = columns.find((c) => c.key === toKey)
+    if (!toColumn) return
+
+    // Final visual order of the target column (without the moving card).
+    const others = toColumn.tasks.filter((t) => t.id !== activeId)
+    let insertAt = others.length
+    if (overData?.type === "card" && overId !== activeId) {
+      const overIndex = others.findIndex((t) => t.id === overId)
+      if (overIndex >= 0) {
+        insertAt = overIndex
+        if (toKey === displayedStatus) {
+          // Same-column arrayMove semantics: dropping on a card below the
+          // origin lands AFTER it, on a card above lands BEFORE it.
+          const oldIndex = toColumn.tasks.findIndex((t) => t.id === activeId)
+          const overFull = toColumn.tasks.findIndex((t) => t.id === overId)
+          if (oldIndex >= 0 && overFull > oldIndex) insertAt = overIndex + 1
+        }
+      }
+    } else if (overId === activeId) {
+      return // dropped back onto itself — nothing to do
+    }
+    const finalOrder = others.toSpliced(insertAt, 0, task)
+
+    const statusChanged = toKey !== task.status
+    if (statusChanged) {
+      setStatusOverride(activeId, toKey)
+      rpc("task.status", { taskId: activeId, status: toKey }).catch(
+        (err: unknown) => {
+          clearStatusOverride(activeId, toKey)
+          const illegal =
+            err instanceof Error && err.name === "IllegalTransitionError"
+          reportError(
+            illegal ? `move blocked (${task.status} → ${toKey})` : "move task",
+            err,
+          )
+        },
       )
-    })
+    } else if (
+      finalOrder.length === toColumn.tasks.length &&
+      toColumn.tasks[insertAt]?.id === activeId
+    ) {
+      return // same column, same slot — no reorder needed
+    }
+
+    const position = positionBetween(
+      finalOrder[insertAt - 1],
+      finalOrder[insertAt + 1],
+    )
+    if (position !== null) {
+      setPositionOverride(activeId, position)
+      rpc("task.reorder", {
+        moves: [{ taskId: activeId, position }],
+      }).catch((err: unknown) => {
+        clearPositionOverride(activeId, position)
+        reportError("reorder task", err)
+      })
+    } else {
+      // Midpoint degenerated (float precision) — renormalize the whole
+      // column to spaced keys in ONE batch.
+      const moves = renormalizedMoves(finalOrder)
+      setPositionOverrides(moves)
+      rpc("task.reorder", { moves }).catch((err: unknown) => {
+        clearPositionOverrides(moves)
+        reportError("reorder column", err)
+      })
+    }
   }
 
   return (

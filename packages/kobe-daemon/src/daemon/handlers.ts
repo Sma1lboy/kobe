@@ -306,6 +306,26 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "task.reorder",
+      async handle(payload, ctx) {
+        const moves = payload.moves
+        if (!Array.isArray(moves) || moves.length === 0) throw new Error("moves must be a non-empty array")
+        if (moves.length > 500) throw new Error("too many moves in one task.reorder batch (max 500)")
+        const parsed = moves.map((move) => {
+          if (typeof move !== "object" || move === null) throw new Error("each move needs taskId and position")
+          const entry = move as Record<string, unknown>
+          const taskId = requireString(entry, "taskId")
+          const position = entry.position
+          if (typeof position !== "number" || !Number.isFinite(position)) {
+            throw new Error("position must be a finite number")
+          }
+          return { taskId, position }
+        })
+        await ctx.orch.reorderTasks(parsed)
+        return {}
+      },
+    },
+    {
       name: "task.ensureMain",
       async handle(payload, ctx) {
         const repo = requireString(payload, "repo")

@@ -9,14 +9,14 @@
  */
 
 import { useSyncExternalStore } from "react"
-import { reconcileOverrides, type StatusOverrides } from "./board.ts"
+import { type BoardOverrides, reconcileOverrides } from "./board.ts"
 import type { Task } from "./types.ts"
 
 interface BoardState {
   /** Free-text card filter (matchesTask semantics). */
   query: string
-  /** Pending optimistic drops: taskId → expected status (board.ts R4). */
-  overrides: StatusOverrides
+  /** Pending optimistic drops: taskId → expected fields (board.ts R4). */
+  overrides: BoardOverrides
 }
 
 let state: BoardState = { query: "", overrides: {} }
@@ -51,18 +51,83 @@ export function setBoardQuery(query: string): void {
   if (query !== state.query) set({ query })
 }
 
-/** Record an optimistic drop — the card paints into its target column now. */
+/** Record an optimistic status drop — the card paints into its target
+ *  column now. */
 export function setStatusOverride(taskId: string, status: string): void {
-  set({ overrides: { ...state.overrides, [taskId]: status } })
+  set({
+    overrides: {
+      ...state.overrides,
+      [taskId]: { ...state.overrides[taskId], status },
+    },
+  })
 }
 
-/** Roll back ONE failed drop. Clears only if the pending override still is
- *  the one that failed — a newer drag on the same card must survive an older
- *  RPC's rejection. */
+/** Record an optimistic in-column placement. */
+export function setPositionOverride(taskId: string, position: number): void {
+  set({
+    overrides: {
+      ...state.overrides,
+      [taskId]: { ...state.overrides[taskId], position },
+    },
+  })
+}
+
+/** Batch variant for a renormalized column (one entry per card). */
+export function setPositionOverrides(
+  moves: ReadonlyArray<{ taskId: string; position: number }>,
+): void {
+  const overrides = { ...state.overrides }
+  for (const move of moves) {
+    overrides[move.taskId] = {
+      ...overrides[move.taskId],
+      position: move.position,
+    }
+  }
+  set({ overrides })
+}
+
+/** Drop a field from an entry, dropping the entry when it empties. */
+function clearField(
+  overrides: BoardOverrides,
+  taskId: string,
+  field: "status" | "position",
+  expected: string | number,
+): BoardOverrides {
+  const entry = overrides[taskId]
+  if (!entry || entry[field] !== expected) return overrides
+  const { [field]: _gone, ...kept } = entry
+  const next = { ...overrides }
+  if (kept.status === undefined && kept.position === undefined) {
+    delete next[taskId]
+  } else {
+    next[taskId] = kept
+  }
+  return next
+}
+
+/** Roll back ONE failed status drop. Clears only if the pending override
+ *  still is the one that failed — a newer drag on the same card must survive
+ *  an older RPC's rejection. */
 export function clearStatusOverride(taskId: string, status: string): void {
-  if (state.overrides[taskId] !== status) return
-  const { [taskId]: _gone, ...rest } = state.overrides
-  set({ overrides: rest })
+  const next = clearField(state.overrides, taskId, "status", status)
+  if (next !== state.overrides) set({ overrides: next })
+}
+
+/** Roll back ONE failed placement (same value-match guard as status). */
+export function clearPositionOverride(taskId: string, position: number): void {
+  const next = clearField(state.overrides, taskId, "position", position)
+  if (next !== state.overrides) set({ overrides: next })
+}
+
+/** Roll back a failed renormalize batch. */
+export function clearPositionOverrides(
+  moves: ReadonlyArray<{ taskId: string; position: number }>,
+): void {
+  let next = state.overrides
+  for (const move of moves) {
+    next = clearField(next, move.taskId, "position", move.position)
+  }
+  if (next !== state.overrides) set({ overrides: next })
 }
 
 /** Reconcile pending overrides against an authoritative task list — clears
