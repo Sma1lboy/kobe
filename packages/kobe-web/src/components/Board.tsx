@@ -82,7 +82,7 @@ import { relativeTime } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { ConflictPair, EngineState, Task } from "../lib/types.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
-import { ChangesChip, PrChip } from "./chips.tsx"
+import { ChangesChip, PrChip, TIP_ABOVE, TIP_RIGHT } from "./chips.tsx"
 
 /**
  * Conflict yarn — one sagging colored thread per PROVEN conflict pair,
@@ -201,13 +201,6 @@ function ConflictYarn({
  *  error/canceled stay drag-only — they're fold-away exception states, not
  *  everyday destinations. */
 const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
-
-/** Instant hover tooltip rendered from the data-tip attribute — the native
- *  `title` takes a beat to appear, and one-glyph buttons need names. */
-const TIP_ABOVE =
-  "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
-const TIP_RIGHT =
-  "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
 
 /**
  * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column

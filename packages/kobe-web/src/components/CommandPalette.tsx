@@ -12,6 +12,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
+  CircleDot,
   Columns3,
   LayoutGrid,
   Palette,
@@ -37,7 +38,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "overview" | "board" | "theme"
+  icon: "task" | "new" | "settings" | "overview" | "board" | "issues" | "theme"
   run: () => void
 }
 
@@ -46,6 +47,7 @@ function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
   if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
+  if (kind === "issues") return <CircleDot size={14} strokeWidth={1.8} />
   if (kind === "theme") return <Palette size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
@@ -141,6 +143,16 @@ export function CommandPalette({
         icon: "board",
         run: () => {
           void navigate({ to: "/board" })
+          onClose()
+        },
+      },
+      {
+        id: "action:issues",
+        label: "Open issues",
+        hint: "docs/issues.json",
+        icon: "issues",
+        run: () => {
+          void navigate({ to: "/issues" })
           onClose()
         },
       },
