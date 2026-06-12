@@ -10,7 +10,11 @@
  * daemon-side implementation could reach that this one can't.
  */
 
-import { interactiveEngineCommand, withStatusProtocol } from "../../kobe/src/engine/interactive-command.ts"
+import {
+  interactiveEngineCommand,
+  withDispatcherProtocol,
+  withStatusProtocol,
+} from "../../kobe/src/engine/interactive-command.ts"
 import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
@@ -69,7 +73,17 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
   // project rows are excluded: they aren't board cards, and a stray
   // in_review on one isn't covered by the load-time status heal.
   const protocolTaskId = task.kind === "main" ? undefined : taskId
-  const argv = [...withStatusProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId)]
+  // Dispatcher protocol (docs/design/dispatcher.md): the exact complement —
+  // only the main session gets the dispatcher seat. Mutually exclusive with
+  // the status protocol by construction.
+  const dispatcherTaskId = task.kind === "main" ? taskId : undefined
+  const argv = [
+    ...withDispatcherProtocol(
+      withStatusProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId),
+      task.vendor,
+      dispatcherTaskId,
+    ),
+  ]
   const init = resolveRepoInit(task.repo ?? "", worktreePath)
   const quoted = shellQuote(argv)
   const script = init.initScript?.trim() ? `${init.initScript}\n${quoted}` : quoted

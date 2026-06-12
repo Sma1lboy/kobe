@@ -167,7 +167,7 @@ const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
   read: ["list", "get-task", "collect"],
   create: ["add", "fan-out"],
-  drive: ["send", "set-active"],
+  drive: ["send", "dispatch", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   lifecycle: ["archive", "pin", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
@@ -283,6 +283,13 @@ const VERBS: readonly VerbSpec[] = [
     summary: "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task.",
     flags: [F.taskId(false), F.prompt(true, "Text pasted + submitted into the engine pane.")],
     handler: send,
+  },
+  {
+    name: "dispatch",
+    summary:
+      "Route text into a task's live session via the daemon's session.deliver channel — the front-end hosting the session pastes it. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it never spawns or touches tmux itself.",
+    flags: [F.taskId(true), F.prompt(true, "Text delivered into the task's engine session.")],
+    handler: dispatch,
   },
   {
     name: "feedback",
@@ -975,6 +982,14 @@ async function send(ctx: VerbContext): Promise<unknown> {
     started: delivered.started,
     engineReady: delivered.engineReady,
   }
+}
+
+async function dispatch(ctx: VerbContext): Promise<unknown> {
+  const daemon = daemonOf(ctx)
+  const taskId = ctx.args.require("task-id")
+  const text = ctx.args.require("prompt")
+  await daemon.request("session.deliver", { taskId, text, source: "dispatcher" })
+  return { ok: true, taskId, routed: "session.deliver" }
 }
 
 async function getTask(ctx: VerbContext): Promise<unknown> {

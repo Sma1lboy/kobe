@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { statusReportProtocol, withStatusProtocol } from "../../src/engine/interactive-command.ts"
+import {
+  dispatcherProtocol,
+  statusReportProtocol,
+  withDispatcherProtocol,
+  withStatusProtocol,
+} from "../../src/engine/interactive-command.ts"
 
 /**
  * Status self-report injection (web-kanban.md M5). Load-bearing: the
@@ -47,5 +52,49 @@ describe("statusReportProtocol", () => {
     expect(text).toContain("--task-id 01HXABC --status in_review")
     // The agent must never be told to set anything beyond in_review.
     expect(text).not.toContain("--status done")
+  })
+})
+
+describe("withDispatcherProtocol", () => {
+  it("appends the dispatcher protocol for an enabled claude main-session launch", () => {
+    const argv = withDispatcherProtocol(["claude"], "claude", "m1", on)
+    expect(argv.slice(0, 2)).toEqual(["claude", "--append-system-prompt"])
+    expect(argv[2]).toContain("DISPATCHER")
+    expect(argv[2]).toContain("task m1")
+    // The messenger is the daemon-routed `dispatch`, NOT tmux-bound `send`
+    // (web-hosted sessions would get a duplicate tmux twin otherwise).
+    expect(argv[2]).toContain("kobe api dispatch --task-id <id>")
+    expect(argv[2]).not.toContain("kobe api send")
+    expect(argv[2]).toContain("[KOBE CONFLICT RADAR]")
+  })
+
+  it("leaves the argv alone when disabled, vendor isn't claude, or no task", () => {
+    expect(withDispatcherProtocol(["claude"], "claude", "m1", off)).toEqual(["claude"])
+    expect(withDispatcherProtocol(["codex"], "codex", "m1", on)).toEqual(["codex"])
+    expect(withDispatcherProtocol(["claude"], "claude", undefined, on)).toEqual(["claude"])
+  })
+
+  it("never double-injects over a custom command that sets the flag", () => {
+    const custom = ["claude", "--append-system-prompt", "user's own"]
+    expect(withDispatcherProtocol(custom, "claude", "m1", on)).toEqual(custom)
+  })
+
+  it("composes with withStatusProtocol: mutually exclusive task ids → exactly one protocol", () => {
+    // A board card: status taskId set, dispatcher taskId undefined.
+    const card = withDispatcherProtocol(withStatusProtocol(["claude"], "claude", "t1", on), "claude", undefined, on)
+    expect(card.filter((a) => a === "--append-system-prompt")).toHaveLength(1)
+    expect(card[2]).toContain("in_review")
+    // A main session: the reverse.
+    const main = withDispatcherProtocol(withStatusProtocol(["claude"], "claude", undefined, on), "claude", "m1", on)
+    expect(main.filter((a) => a === "--append-system-prompt")).toHaveLength(1)
+    expect(main[2]).toContain("DISPATCHER")
+  })
+})
+
+describe("dispatcherProtocol", () => {
+  it("bakes the task id and never instructs status writes", () => {
+    const text = dispatcherProtocol("01HMAIN")
+    expect(text).toContain("task 01HMAIN")
+    expect(text).not.toContain("set-status")
   })
 })

@@ -713,6 +713,8 @@ export function DevSettingsSection(
     toggleRemoteProjects: () => void
     autoStatusEnabled: Accessor<boolean>
     toggleAutoStatus: () => void
+    dispatcherEnabled: Accessor<boolean>
+    toggleDispatcher: () => void
   },
 ) {
   const { theme } = useTheme()
@@ -722,6 +724,8 @@ export function DevSettingsSection(
   const remoteIsCursor = () => props.level() === "body" && props.bodyRow() === experimentalRow()
   const autoStatusRow = () => rowIndex(devRows(props.hasDaemon), "auto-status")
   const autoStatusIsCursor = () => props.level() === "body" && props.bodyRow() === autoStatusRow()
+  const dispatcherRow = () => rowIndex(devRows(props.hasDaemon), "dispatcher")
+  const dispatcherIsCursor = () => props.level() === "body" && props.bodyRow() === dispatcherRow()
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -826,6 +830,29 @@ export function DevSettingsSection(
             attributes={props.autoStatusEnabled() ? TextAttributes.BOLD : undefined}
           >
             {props.autoStatusEnabled() ? "[x] Auto status flow (on)" : "[ ] Auto status flow (off)"}
+          </text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="word">
+          Conflict dispatcher: each repo's main session becomes a coordinator — new claude launches there get a
+          dispatcher system prompt, and the daemon feeds it conflict-radar digests so it can message the conflicting
+          tasks' sessions (`kobe api dispatch`). Web-hosted sessions receive the messages today.
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={dispatcherIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(dispatcherRow())
+            props.toggleDispatcher()
+          }}
+        >
+          <text
+            fg={dispatcherIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.dispatcherEnabled() ? "[x] Conflict dispatcher (on)" : "[ ] Conflict dispatcher (off)"}
           </text>
         </box>
       </box>

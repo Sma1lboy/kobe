@@ -21,6 +21,7 @@ import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { DEFAULT_CONFLICTS_TICK_MS, startConflictCollector } from "./conflict-collector.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
+import { startDispatchFeeder } from "./dispatch-feeder.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
 import {
@@ -329,6 +330,12 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     hasSubscribers,
   )
 
+  // Dispatcher feed (docs/design/dispatcher.md): forwards radar digests to
+  // each repo's main-task dispatcher session over `session.deliver`. Pure
+  // in-process bus subscriber — no polling of its own, and inert until the
+  // `experimental.dispatcher` switch is on (read fresh per publish).
+  const dispatchFeeder = startDispatchFeeder(orch, bus)
+
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -344,6 +351,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       stopKeybindingsWatcher()
       stopWorktreeChangesCollector()
       stopConflictCollector()
+      dispatchFeeder.stop()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

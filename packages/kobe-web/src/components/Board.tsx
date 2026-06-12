@@ -620,6 +620,7 @@ export function Board() {
     engineStates,
     worktreeChanges,
     conflicts,
+    deliver,
     hydrated,
     daemonConnected,
     streamConnected,
@@ -690,6 +691,20 @@ export function Board() {
   // UNfiltered list so chips (and their counts) don't vanish while one is
   // selected or a text query narrows the view.
   const repos = useMemo(() => repoOptions(tasks), [tasks])
+  // The dispatcher seat exists ONLY on a repo-scoped board (a selected
+  // project chip, or a board that has just one project): it's the repo's
+  // main session (docs/design/dispatcher.md), which has no card of its own.
+  const scopedRepo =
+    repoFilter ?? (repos.length === 1 ? (repos[0]?.repo ?? null) : null)
+  const dispatcherTask = useMemo(
+    () =>
+      scopedRepo
+        ? tasks.find(
+            (t) => t.kind === "main" && t.repo === scopedRepo && !t.archived,
+          )
+        : undefined,
+    [tasks, scopedRepo],
+  )
   // A selected project can disappear entirely (last card archived/deleted)
   // — snap back to All rather than showing a permanently empty board.
   useEffect(() => {
@@ -1030,6 +1045,26 @@ export function Board() {
           </div>
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
+          {/* Dispatcher seat — repo-scoped boards only. Opens the repo's
+              main session (where the dispatcher protocol + radar feed land). */}
+          {dispatcherTask && (
+            <button
+              type="button"
+              onClick={() => open(dispatcherTask.id)}
+              title={
+                deliver?.source === "radar" &&
+                deliver.taskId === dispatcherTask.id
+                  ? `Dispatcher — last radar feed ${relativeTime(new Date(deliver.at).toISOString()) || "just now"}`
+                  : "Dispatcher — this repo's main session"
+              }
+              className="flex items-center gap-1.5 border border-line px-1.5 py-0.5 text-[10px] text-subtle transition-colors hover:border-primary hover:text-fg"
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${activityColor(engineStates[dispatcherTask.id]?.state)}`}
+              />
+              dispatcher
+            </button>
+          )}
           {!canDrag && hydrated && (
             <span className="text-kobe-yellow">read-only (offline)</span>
           )}

@@ -428,6 +428,31 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "session.deliver",
+      async handle(payload, ctx) {
+        // Dispatcher messenger (docs/design/dispatcher.md): `kobe api
+        // dispatch` routes text to a task's live engine session. The daemon
+        // only validates + broadcasts; the front-end hosting that session
+        // (the SPA via /pty/send) owns the actual paste. `source` defaults
+        // to "dispatcher" — the dispatch feeder publishes its radar digests
+        // on the bus directly, not through this RPC.
+        const taskId = requireString(payload, "taskId")
+        const text = requireString(payload, "text")
+        const source = optionalString(payload, "source")
+        if (source !== undefined && source !== "radar" && source !== "dispatcher") {
+          throw new Error('source must be "radar" or "dispatcher"')
+        }
+        await ctx.orch.getTask(taskId) // throws on unknown task
+        ctx.bus.publish("session.deliver", {
+          taskId,
+          text,
+          at: Date.now(),
+          source: source ?? "dispatcher",
+        })
+        return { ok: true }
+      },
+    },
+    {
       name: "engine.reportEvent",
       async handle(payload, ctx) {
         // A `kobe hook <verb>` process reporting a NORMALIZED engine activity

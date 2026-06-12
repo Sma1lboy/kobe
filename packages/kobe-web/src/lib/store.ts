@@ -6,6 +6,7 @@
  */
 
 import { useSyncExternalStore } from "react"
+import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
@@ -14,6 +15,7 @@ import type {
   BridgeSnapshot,
   ConflictPair,
   EngineState,
+  SessionDeliver,
   Task,
   TaskJob,
   UiPrefs,
@@ -32,6 +34,9 @@ export interface AppState {
   worktreeChanges: WorktreeChangeCounts
   /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
   conflicts: ConflictPair[]
+  /** Most recent dispatcher delivery (display only; delivery itself is the
+   *  dispatch-delivery forwarder's job). */
+  deliver: SessionDeliver | null
   /** Persisted visual prefs shared with the TUI (theme, sort mode). */
   uiPrefs: UiPrefs | null
   /** True once the first snapshot has hydrated the store. */
@@ -50,6 +55,7 @@ const initial: AppState = {
   jobs: {},
   worktreeChanges: {},
   conflicts: [],
+  deliver: null,
   uiPrefs: null,
   hydrated: false,
   daemonConnected: false,
@@ -156,6 +162,11 @@ function applyEvent(event: BridgeEvent): void {
     case "task.conflicts":
       set({ conflicts: event.payload.pairs })
       break
+    case "session.deliver":
+      // This SPA hosts web sessions, so it owns the paste (dedupe inside).
+      set({ deliver: event.payload })
+      void deliverToSession(event.payload)
+      break
     case "ui-prefs":
       set({ uiPrefs: event.payload })
       applyThemeFromPrefs(event.payload.theme)
@@ -179,12 +190,17 @@ function ensureStream(): void {
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
       conflicts: snap.conflicts ?? [],
+      deliver: snap.deliver ?? null,
       uiPrefs: snap.uiPrefs ?? null,
       hydrated: true,
       daemonConnected: snap.connected,
       streamConnected: true,
     })
     if (snap.uiPrefs) applyThemeFromPrefs(snap.uiPrefs.theme)
+    // A snapshot replays the most recent session.deliver — forward it too
+    // (the forwarder's `at` dedupe makes a re-replay a no-op), so a deliver
+    // published while no browser was open still lands on the next visit.
+    if (snap.connected && snap.deliver) void deliverToSession(snap.deliver)
     // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
     // tasks deleted while this browser was away. A disconnected snapshot
     // carries the bridge's stale mirror; never prune from that.

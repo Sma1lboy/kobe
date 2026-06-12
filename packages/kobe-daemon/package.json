@@ -13,6 +13,7 @@
     "./daemon/auto-title-poller": "./src/daemon/auto-title-poller.ts",
     "./daemon/conflict-collector": "./src/daemon/conflict-collector.ts",
     "./daemon/crash-log": "./src/daemon/crash-log.ts",
+    "./daemon/dispatch-feeder": "./src/daemon/dispatch-feeder.ts",
     "./daemon/cwd-task": "./src/daemon/cwd-task.ts",
     "./daemon/event-bus": "./src/daemon/event-bus.ts",
     "./daemon/keybindings-watcher": "./src/daemon/keybindings-watcher.ts",

@@ -25,6 +25,7 @@ import {
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
+import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
@@ -220,6 +221,17 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleAutoStatus(): void {
     props.kv.set(AUTO_STATUS_KEY, !autoStatusOn())
+  }
+
+  // Experimental: conflict dispatcher (off by default) — the repo's main
+  // session gets the dispatcher protocol injected and the daemon feeds it
+  // conflict-radar digests. See docs/design/dispatcher.md.
+  function dispatcherOn(): boolean {
+    return props.kv.get(DISPATCHER_KEY, false) === true
+  }
+
+  function toggleDispatcher(): void {
+    props.kv.set(DISPATCHER_KEY, !dispatcherOn())
   }
 
   // Engines section: per-vendor launch command. Stored in the shared
@@ -475,6 +487,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     devRestartDaemon: () => void confirmRestartDaemon(dialog, props.orchestrator, renderer),
     devRemoteProjects: () => toggleRemoteProjects(),
     devAutoStatus: () => toggleAutoStatus(),
+    devDispatcher: () => toggleDispatcher(),
   }
 
   function activateBodyRow(): void {
@@ -634,6 +647,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               toggleRemoteProjects={toggleRemoteProjects}
               autoStatusEnabled={autoStatusOn}
               toggleAutoStatus={toggleAutoStatus}
+              dispatcherEnabled={dispatcherOn}
+              toggleDispatcher={toggleDispatcher}
             />
           </Show>
         </box>

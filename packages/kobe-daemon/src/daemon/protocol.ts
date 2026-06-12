@@ -118,6 +118,10 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
+  // Dispatcher messenger (docs/design/dispatcher.md): publish a
+  // `session.deliver` channel event addressed to a task's live session.
+  // The daemon only routes; the front-end hosting that session delivers.
+  | "session.deliver"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -264,10 +268,34 @@ export interface ChannelPayloads {
    * republished on change only.
    */
   "task.conflicts": { pairs: ConflictPair[] }
+  /**
+   * Text addressed INTO a task's live engine session (docs/design/
+   * dispatcher.md). The daemon never owns delivery — engines are hosted
+   * by front-ends (tmux panes, the web PTY sidecar), so this channel is
+   * the daemon-side half of the contract: producers publish "paste this
+   * into task X", and whichever front-end hosts that task's session
+   * delivers it (the SPA via /pty/send today). Producers: the dispatch
+   * feeder (conflict-radar digests for a repo's main-task dispatcher,
+   * `source: "radar"`) and the `session.deliver` RPC (`kobe api dispatch`,
+   * `source: "dispatcher"`). EVENT channel, not state: last-value replay
+   * hands a late subscriber only the most recent item (the event-bus
+   * definition-time caveat) — consumers dedupe on `at`, and the radar
+   * feeder republishes on the next conflict change anyway.
+   */
+  "session.deliver": SessionDeliverPayload
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
   // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
+}
+
+/** The `session.deliver` channel payload — one "paste this into task X". */
+export interface SessionDeliverPayload {
+  readonly taskId: string
+  readonly text: string
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+  readonly source: "radar" | "dispatcher"
 }
 
 /** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and
@@ -305,6 +333,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "task.jobs",
   "worktree.changes",
   "task.conflicts",
+  "session.deliver",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)

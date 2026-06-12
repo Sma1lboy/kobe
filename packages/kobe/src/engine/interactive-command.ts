@@ -27,6 +27,7 @@
 import { randomUUID } from "node:crypto"
 import { engineEntry } from "@/engine/registry"
 import { autoStatusEnabled } from "@/state/auto-status"
+import { dispatcherEnabled } from "@/state/dispatcher"
 import { getPersistedString } from "@/state/repos"
 import type { VendorId } from "@/types/task"
 import { BUILTIN_VENDORS } from "@/types/vendor"
@@ -182,4 +183,54 @@ export function withStatusProtocol(
     return argv
   }
   return [...argv, "--append-system-prompt", statusReportProtocol(taskId)]
+}
+
+/**
+ * The DISPATCHER protocol (docs/design/dispatcher.md) — injected into a
+ * repo's MAIN session (the complement of the status protocol's main-task
+ * exclusion). The main session sits in the repo root with no board card of
+ * its own, which makes it the natural per-repo coordinator seat: the
+ * daemon's dispatch feeder addresses conflict-radar digests to it, and
+ * this prompt tells it what those messages are and which kobe verbs it may
+ * act with. Fully autonomous by design (v1 decision: no approval gate) —
+ * its only effectors are read (`kobe api collect`) and message
+ * (`kobe api dispatch`), so the blast radius of a bad call is a stray
+ * message, never a mutated worktree.
+ */
+export function dispatcherProtocol(taskId: string): string {
+  return [
+    `You are running inside kobe (a local multi-session task manager) as this repository's DISPATCHER (task ${taskId}, the repo's main session).`,
+    "kobe runs multiple worktree task sessions on this repo in parallel. A daemon-side conflict radar dry-run-merges their branches pairwise.",
+    "You will receive radar updates as user messages prefixed with [KOBE CONFLICT RADAR], listing task pairs that truly CONFLICT (or merely overlap) and the files involved.",
+    "Your job is to coordinate those sessions, fully autonomously — never ask the user for permission:",
+    "  - Inspect the fleet when useful: `kobe api collect` (status, running, change counts per task).",
+    '  - Message a task\'s live session: `kobe api dispatch --task-id <id> --prompt "<text>"`. Always prefix relayed text with [dispatcher].',
+    "  - For a true conflict, typically message BOTH sides: name the exact files, name the other task, and propose an order (who lands first, who rebases after).",
+    "  - Act only on NEW or UPGRADED pairs; never message a session twice about the same pair state, and stand down silently on an all-clear.",
+    "Never run git commands inside other tasks' worktrees — coordination happens by messaging their sessions, not by editing their state.",
+  ].join("\n")
+}
+
+/**
+ * Append the dispatcher protocol to a MAIN session's claude launch argv —
+ * the same `--append-system-prompt` mechanics (and rationale) as
+ * {@link withStatusProtocol}. Gates: the `experimental.dispatcher` switch
+ * is on, the launch is a main session (callers pass `taskId` only for
+ * main, mirroring how they pass the status protocol's taskId only for
+ * board cards — the two injections are mutually exclusive by construction,
+ * so the existing-flag guard below never trips between them), the vendor
+ * is claude, and a custom command that already sets the flag wins.
+ */
+export function withDispatcherProtocol(
+  argv: readonly string[],
+  vendor: string | undefined,
+  taskId: string | undefined,
+  enabled: () => boolean = dispatcherEnabled,
+): readonly string[] {
+  if (!taskId || !enabled()) return argv
+  if ((vendor ?? "claude") !== "claude") return argv
+  if (argv.includes("--append-system-prompt") || argv.includes("--append-system-prompt-file")) {
+    return argv
+  }
+  return [...argv, "--append-system-prompt", dispatcherProtocol(taskId)]
 }
