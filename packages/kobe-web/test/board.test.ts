@@ -144,7 +144,9 @@ describe("compareCards — within a column", () => {
       position: -9e12, // dragged above everything
       createdAt: "2026-01-01T00:00:00Z",
     })
-    expect(columnIds([old, fresh, placedFirst], "backlog")[0]).toBe("placed")
+    expect(columnIds([old, fresh, placedFirst], "backlog")?.[0]).toBe(
+      "placed",
+    )
     // Identical keys: higher id first (deterministic).
     const a = task({ id: "a", createdAt: "2026-06-01T00:00:00Z" })
     const b = task({ id: "b", createdAt: "2026-06-01T00:00:00Z" })

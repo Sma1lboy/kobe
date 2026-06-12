@@ -34,7 +34,7 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, GripVertical, Search, X } from "lucide-react"
+import { ArrowLeft, Eye, GripVertical, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
@@ -63,6 +63,7 @@ import { matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
+import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
 
 function CardBody({
@@ -112,6 +113,7 @@ function BoardCard({
   changes,
   canDrag,
   onOpen,
+  onPeek,
 }: {
   task: Task
   columnKey: string
@@ -119,6 +121,7 @@ function BoardCard({
   changes?: { added: number; deleted: number }
   canDrag: boolean
   onOpen: () => void
+  onPeek: () => void
 }) {
   const {
     attributes,
@@ -173,6 +176,15 @@ function BoardCard({
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
       )}
+      <button
+        type="button"
+        onClick={onPeek}
+        aria-label={`Peek ${task.title || task.branch || task.id}`}
+        title="Peek session — terminal + transcript without leaving the board"
+        className="absolute right-1 bottom-1 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
+      >
+        <Eye size={11} strokeWidth={1.8} />
+      </button>
     </div>
   )
 }
@@ -183,12 +195,14 @@ function ColumnView({
   worktreeChanges,
   canDrag,
   onOpen,
+  onPeek,
 }: {
   column: BoardColumn
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
   onOpen: (id: string) => void
+  onPeek: (id: string) => void
 }) {
   const droppable = isDroppableColumn(column.key)
   const { setNodeRef, isOver } = useDroppable({
@@ -233,6 +247,7 @@ function ColumnView({
                 changes={worktreeChanges[task.worktreePath]}
                 canDrag={canDrag}
                 onOpen={() => onOpen(task.id)}
+                onPeek={() => onPeek(task.id)}
               />
             ))
           )}
@@ -260,6 +275,7 @@ export function Board() {
   const navigate = useNavigate()
   const filterRef = useRef<HTMLInputElement>(null)
   const [dragTaskId, setDragTaskId] = useState<string | null>(null)
+  const [peekTaskId, setPeekTaskId] = useState<string | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -280,6 +296,14 @@ export function Board() {
   useEffect(() => {
     reconcileBoardOverrides(tasks)
   }, [tasks])
+
+  // Close the peek when its task vanishes (deleted/archived elsewhere) —
+  // a drawer onto a dead session would just error confusingly.
+  useEffect(() => {
+    if (peekTaskId && !tasks.some((t) => t.id === peekTaskId)) {
+      setPeekTaskId(null)
+    }
+  }, [tasks, peekTaskId])
 
   // Keyboard-first parity with Overview: `/` focuses the filter, Escape
   // clears it. Suppressed while typing in another field.
@@ -369,7 +393,11 @@ export function Board() {
     } else if (overId === activeId) {
       return // dropped back onto itself — nothing to do
     }
-    const finalOrder = others.toSpliced(insertAt, 0, task)
+    const finalOrder = [
+      ...others.slice(0, insertAt),
+      task,
+      ...others.slice(insertAt),
+    ]
 
     const statusChanged = toKey !== task.status
     if (statusChanged) {
@@ -490,6 +518,7 @@ export function Board() {
                   worktreeChanges={worktreeChanges}
                   canDrag={canDrag}
                   onOpen={open}
+                  onPeek={setPeekTaskId}
                 />
               ))}
             </div>
@@ -507,6 +536,25 @@ export function Board() {
           </DndContext>
         )}
       </div>
+
+      {(() => {
+        const peekTask = peekTaskId
+          ? tasks.find((t) => t.id === peekTaskId)
+          : undefined
+        if (!peekTask) return null
+        return (
+          <BoardPeek
+            key={peekTask.id}
+            task={peekTask}
+            engine={engineStates[peekTask.id]}
+            onClose={() => setPeekTaskId(null)}
+            onOpenWorkspace={() => {
+              setPeekTaskId(null)
+              open(peekTask.id)
+            }}
+          />
+        )
+      })()}
     </div>
   )
 }

@@ -36,9 +36,12 @@
 3. **定位:看板是"活会话"的透镜,不是工单系统。** kobe 的卡片天生背着常驻、可
    resume 的引擎会话(Task = worktree + engine session + branch)——与 multica
    "卡片是工单、代理是外挂执行者"的模型相反。点开卡片落到的就是那个活会话:
-   engine PTY attach([`ChatTerminal`](../../packages/kobe-web/src/components/ChatTerminal.tsx)
-   经 PTY sidecar 接管任务的 tmux 引擎会话)、transcript 回放(engine-owned
-   `EngineHistory`)、`engine-state` 实时信号灯,全部现成,看板不新建任何会话管道。
+   engine PTY([`ChatTerminal`](../../packages/kobe-web/src/components/ChatTerminal.tsx))、
+   transcript 回放(engine-owned `EngineHistory`)、`engine-state` 实时信号灯,
+   全部现成,看板不新建任何会话管道。
+   (实现期勘误:web 的 engine PTY **不是** attach tmux——PTY sidecar 按 tab id
+   直接 spawn 引擎进程(`session.ts` `engineSpec`)。所以"同一会话"的关键是
+   **复用 tab id**,见 R9 结论。)
 
 ## 1. multica 调研结论
 
@@ -264,11 +267,15 @@ flowchart TB
 - **R9 板内 peek 抽屉(M4 前收口,不阻塞 M0)。** 不离开看板,侧拉面板内嵌该任务的
   engine PTY + transcript。会话管道全复用:PTY sidecar 的 WebSocket attach
   (`/pty?tab=&taskId=&mode=engine`)、scrollback ring、`/api/history`。要研究的是
-  生命周期与并存:抽屉关闭时 PTY tab 保留还是 close(倾向保留,与 WorkspaceTabs 的
-  tab 生命周期共享语义);抽屉与工作区 tab 对同一引擎会话**双 attach** 是否安全
-  (tmux 本支持多 client,需验证 PTY sidecar 按 tab id 各开一个 PTY 时的尺寸协商);
-  布局(抽屉宽度、焦点陷阱、Esc 关闭)与移动端表现。产出:抽屉生命周期设计 + 双
-  attach 验证结论。
+  生命周期与并存:抽屉关闭时 PTY tab 保留还是 close;抽屉与工作区对同一引擎会话
+  **双 attach** 是否安全;布局(抽屉宽度、焦点陷阱、Esc 关闭)。
+  **M4 结论(2026-06-11)**:① web 的 PTY 按 **tab id** 键进程,不是 tmux attach
+  ——抽屉必须复用任务工作区的 vendor tab id(`tabs.ts` `ensureEngineTab`,无则代建),
+  否则会给同一任务 spawn 第二个引擎实例;② 双 attach 天然安全:sidecar 的
+  `entry.sockets` 是 Set,输出向所有连接扇出,尺寸 last-resize-wins(且 /board 与
+  workspace 是互斥路由,同浏览器不会并发 attach);③ 关抽屉只断 WebSocket,
+  **不调 `/pty/close`**——PTY 服务端存活,重开抽屉 scrollback 回放,会话无损;
+  ④ Esc 关抽屉,但焦点在 xterm 或输入框内时放行(引擎里的 vim/菜单需要 Esc)。
 
 ## 5. 里程碑
 

@@ -277,6 +277,20 @@ export function addTab(taskId: string): string {
   return id
 }
 
+/**
+ * The task's engine tab id, minting a vendor tab when none exists. The
+ * board's peek drawer attaches by THIS id so peek and workspace are two
+ * views of ONE server-side PTY — tab ids key PTY processes, so a
+ * drawer-private id would spawn a second engine instance for the task.
+ */
+export function ensureEngineTab(taskId: string): string {
+  const existing = (state.tabsByTask[taskId] ?? []).find(
+    (tab) => tab.kind === "vendor",
+  )
+  if (existing) return existing.id
+  return addTab(taskId)
+}
+
 export function addEmptyTab(taskId: string): string {
   const list = state.tabsByTask[taskId] ?? []
   const tab = emptyTab()

@@ -95,7 +95,8 @@ function clearField(
 ): BoardOverrides {
   const entry = overrides[taskId]
   if (!entry || entry[field] !== expected) return overrides
-  const { [field]: _gone, ...kept } = entry
+  const kept: { status?: string; position?: number } = { ...entry }
+  delete kept[field]
   const next = { ...overrides }
   if (kept.status === undefined && kept.position === undefined) {
     delete next[taskId]
