@@ -1045,12 +1045,13 @@ export function Board() {
           </div>
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
-          {/* Dispatcher seat — repo-scoped boards only. Opens the repo's
-              main session (where the dispatcher protocol + radar feed land). */}
+          {/* Dispatcher seat — repo-scoped boards only. Expands the repo's
+              main session (where the dispatcher protocol + radar feed land)
+              in the right-side peek drawer; the board stays put. */}
           {dispatcherTask && (
             <button
               type="button"
-              onClick={() => open(dispatcherTask.id)}
+              onClick={() => setPeekTaskId(dispatcherTask.id)}
               title={
                 deliver?.source === "radar" &&
                 deliver.taskId === dispatcherTask.id

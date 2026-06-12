@@ -25,6 +25,7 @@
  */
 
 import { randomUUID } from "node:crypto"
+import { kobeCliInvocation } from "@/cli/invocation"
 import { engineEntry } from "@/engine/registry"
 import { autoStatusEnabled } from "@/state/auto-status"
 import { dispatcherEnabled } from "@/state/dispatcher"
@@ -136,20 +137,41 @@ export function withClaudeSessionId(
 }
 
 /**
+ * Shell-ready `… api` command prefix for protocol prompts. Packaged builds
+ * bake plain `kobe api`; a source checkout bakes the dev invocation
+ * (`bun --preload … src/cli/index.ts api`) — the same {@link
+ * kobeCliInvocation} every kobe-owned pane uses. Without this, a protocol
+ * agent in a dev sandbox resolves `kobe` to whatever STALE global install
+ * is on PATH, and any verb newer than that install dies with BAD_VERB
+ * (field bug: the dispatcher's `dispatch` verb on kobe@0.7.24).
+ */
+export function kobeApiInvocation(): string {
+  const quote = (a: string): string => (/^[A-Za-z0-9_/.:=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)
+  try {
+    return [...kobeCliInvocation(), "api"].map(quote).join(" ")
+  } catch {
+    // import.meta.resolve is unavailable in some hosts (vitest's SSR
+    // transform) — bare `kobe api` is the best-effort fallback there.
+    return "kobe api"
+  }
+}
+
+/**
  * The status self-report protocol injected into a session's system prompt
  * (docs/design/web-kanban.md M5): the agent itself reports `in_review` when
  * its work is done — it is the one party that KNOWS whether the turn ended
  * "complete" or "asking the user", information the hook layer cannot carry
  * (Stop fires identically for both). The concrete task id is baked in at
  * spawn time (ids are immutable), so the agent never has to guess which
- * task it is.
+ * task it is. `api` defaults to the environment-correct CLI invocation —
+ * tests pass a literal.
  */
-export function statusReportProtocol(taskId: string): string {
+export function statusReportProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
     `You are running inside kobe (a local multi-session task manager) as task ${taskId}.`,
     "kobe tracks a lifecycle status for this task on a board.",
     "When you have COMPLETED the work requested in this session and verified it, report it by running:",
-    `  kobe api set-status --task-id ${taskId} --status in_review`,
+    `  ${api} set-status --task-id ${taskId} --status in_review`,
     "Run it only when the work is genuinely done — never while you are asking the user a question, waiting for input, or mid-task.",
     "Never set any other status value; everything beyond in_review is the user's decision.",
   ].join("\n")
@@ -197,16 +219,17 @@ export function withStatusProtocol(
  * (`kobe api dispatch`), so the blast radius of a bad call is a stray
  * message, never a mutated worktree.
  */
-export function dispatcherProtocol(taskId: string): string {
+export function dispatcherProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
     `You are running inside kobe (a local multi-session task manager) as this repository's DISPATCHER (task ${taskId}, the repo's main session).`,
     "kobe runs multiple worktree task sessions on this repo in parallel. A daemon-side conflict radar dry-run-merges their branches pairwise.",
     "You will receive radar updates as user messages prefixed with [KOBE CONFLICT RADAR], listing task pairs that truly CONFLICT (or merely overlap) and the files involved.",
     "Your job is to coordinate those sessions, fully autonomously — never ask the user for permission:",
-    "  - Inspect the fleet when useful: `kobe api collect` (status, running, change counts per task).",
-    '  - Message a task\'s live session: `kobe api dispatch --task-id <id> --prompt "<text>"`. Always prefix relayed text with [dispatcher].',
+    `  - Inspect the fleet when useful: \`${api} collect --repo .\` (status, running, change counts per task), or \`--task-ids id1,id2\` for specific tasks.`,
+    `  - Message a task's live session: \`${api} dispatch --task-id <id> --prompt "<text>"\`. Always prefix relayed text with [dispatcher].`,
     "  - For a true conflict, typically message BOTH sides: name the exact files, name the other task, and propose an order (who lands first, who rebases after).",
     "  - Act only on NEW or UPGRADED pairs; never message a session twice about the same pair state, and stand down silently on an all-clear.",
+    "Use ONLY the dispatch verb to message sessions — the `send` verb pastes via tmux and would spawn a DUPLICATE engine for web-hosted sessions. If dispatch fails, report the error in your own session and stop; do not fall back.",
     "Never run git commands inside other tasks' worktrees — coordination happens by messaging their sessions, not by editing their state.",
   ].join("\n")
 }

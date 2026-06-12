@@ -23,7 +23,7 @@ describe("withStatusProtocol", () => {
     expect(argv[2]).toContain("task t1")
     // `set-status` is a TOP-LEVEL api verb — `edit` is only a schema-doc
     // grouping label, not a command path (a real agent hit BAD_VERB on it).
-    expect(argv[2]).toContain("kobe api set-status --task-id t1 --status in_review")
+    expect(argv[2]).toContain("api set-status --task-id t1 --status in_review")
     expect(argv[2]).not.toContain("api edit")
   })
 
@@ -53,6 +53,15 @@ describe("statusReportProtocol", () => {
     // The agent must never be told to set anything beyond in_review.
     expect(text).not.toContain("--status done")
   })
+
+  it("the api prefix is injectable — packaged builds bake plain `kobe api`", () => {
+    // The default resolves the environment's CLI invocation (the dev bun
+    // line from a source checkout), so a protocol agent never drives a
+    // stale global `kobe` that predates a new verb (BAD_VERB field bug).
+    expect(statusReportProtocol("t9", "kobe api")).toContain("kobe api set-status --task-id t9")
+    expect(dispatcherProtocol("m9", "kobe api")).toContain('kobe api dispatch --task-id <id> --prompt "<text>"')
+    expect(dispatcherProtocol("m9", "kobe api")).toContain("kobe api collect --repo .")
+  })
 })
 
 describe("withDispatcherProtocol", () => {
@@ -63,8 +72,8 @@ describe("withDispatcherProtocol", () => {
     expect(argv[2]).toContain("task m1")
     // The messenger is the daemon-routed `dispatch`, NOT tmux-bound `send`
     // (web-hosted sessions would get a duplicate tmux twin otherwise).
-    expect(argv[2]).toContain("kobe api dispatch --task-id <id>")
-    expect(argv[2]).not.toContain("kobe api send")
+    expect(argv[2]).toContain("api dispatch --task-id <id>")
+    expect(argv[2]).not.toContain("api send")
     expect(argv[2]).toContain("[KOBE CONFLICT RADAR]")
   })
 
