@@ -3,7 +3,7 @@ name: kobe
 description: Drive kobe — a local TUI that runs many parallel AI coding sessions — from your shell via `kobe api`. Use to spawn/fan-out parallel attempts, AND to manage the full task lifecycle (create, rename, re-branch, archive, delete, pin, switch focus) without leaving the terminal. Each task is its own git worktree + agent session. Run `kobe api schema` to discover the whole surface.
 ---
 
-<!-- kobe-skill-version: 1 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts) whenever this file's guidance changes; that's how `kobe` detects an out-of-date installed skill and prompts `kobe skill install`. -->
+<!-- kobe-skill-version: 2 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts) whenever this file's guidance changes; that's how `kobe` detects an out-of-date installed skill and prompts `kobe skill install`. -->
 
 # kobe — parallel coding tasks + full task control from your shell
 
@@ -105,6 +105,32 @@ All one-shot; see `kobe api <verb> --help` for flags.
 | `delete --task-id ID [--force]` | **Destructive** — remove the task + worktree (prefer archive) |
 | `discover-adoptable --repo PATH` | List untracked git worktrees in a repo |
 | `adopt --repo PATH --worktree PATH` | Import an existing worktree as a task |
+
+## Issue tracker
+
+Issues are daemon-owned state, not repo files. Do not create or edit
+`docs/issues.json`; use `kobe api issue-*` so web, TUI, and agents all see
+the same tracker from any source checkout or task worktree.
+
+```bash
+# List issues for the current repo/worktree.
+kobe api issue-list --repo "$PWD" --pretty
+
+# Create an issue.
+kobe api issue-create --repo "$PWD" --title "short title" --body "context"
+
+# Move an issue through open/doing/hold/done.
+kobe api issue-set-status --repo "$PWD" --id <n> --status done
+
+# Update title and/or body.
+kobe api issue-update --repo "$PWD" --id <n> --title "new title" --body "new body"
+```
+
+Inside a kobe task worktree, `--repo "$PWD"` resolves to the same daemon
+issue record as the source checkout because kobe keys issues by the repo's
+git common-dir. When a kobe-generated prompt gives you a concrete command,
+use that exact command: dev/source sessions may receive an environment-
+specific Bun invocation instead of the packaged `kobe api` binary.
 
 ## Workflow — fan-out + compare
 
