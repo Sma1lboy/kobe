@@ -15,9 +15,15 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
-/** A `*`-glob anchored to the whole path; literal segments are escaped. */
+/**
+ * A `*`-glob anchored to the whole path; literal segments are escaped. Runs of
+ * `*` are COLLAPSED to one first: adjacent `.*.*` in an anchored regex
+ * backtracks catastrophically on a non-matching path (typing `**` — the
+ * any-depth glob — or key-autorepeat `****` would otherwise hang the tab), and
+ * `**` means the same as `*` here anyway (`*` already spans `/`).
+ */
 function globToRegExp(glob: string): RegExp {
-  const body = glob.split("*").map(escapeRegExp).join(".*")
+  const body = glob.replace(/\*+/g, "*").split("*").map(escapeRegExp).join(".*")
   return new RegExp(`^${body}$`)
 }
 
@@ -27,8 +33,11 @@ function globToRegExp(glob: string): RegExp {
  * pattern (or a bare `!`) matches everything (the negation of nothing).
  */
 export function matchesPath(path: string, pattern: string): boolean {
-  const negate = pattern.startsWith("!")
-  const pat = (negate ? pattern.slice(1) : pattern).trim().toLowerCase()
+  // Trim BEFORE testing for `!` so " !*.json" still negates (the body is
+  // trimmed too — testing negation on the raw string would silently drop it).
+  const trimmed = pattern.trim()
+  const negate = trimmed.startsWith("!")
+  const pat = (negate ? trimmed.slice(1) : trimmed).trim().toLowerCase()
   if (!pat) return true
   const lc = path.toLowerCase()
   const matched = pat.includes("*")

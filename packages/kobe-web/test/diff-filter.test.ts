@@ -101,6 +101,25 @@ describe("matchesPath", () => {
     expect(matchesPath("anything", "!")).toBe(true)
   })
 
+  it("trims before testing `!`, so leading space still negates", () => {
+    // Regression: negate was once checked before trim, so a leading space
+    // silently dropped negation (inverted the result).
+    expect(matchesPath("a.json", " !*.json")).toBe(false)
+    expect(matchesPath("a.ts", " !*.json")).toBe(true)
+  })
+
+  it("collapses runs of `*` (no catastrophic backtracking, `**` == `*`)", () => {
+    // Returning at all proves it didn't hang: a naive `.*.*…` anchored regex
+    // backtracks exponentially on this non-matching path.
+    const deep = "src/components/very/deep/generated/file"
+    const t0 = performance.now()
+    expect(matchesPath(deep, "************x")).toBe(false)
+    expect(performance.now() - t0).toBeLessThan(50)
+    // `**` behaves the same as `*` (any-depth).
+    expect(matchesPath("a/b/c.json", "**.json")).toBe(true)
+    expect(matchesPath("a/b/c.ts", "**.json")).toBe(false)
+  })
+
   it("escapes regex metachars in a glob's literal segments", () => {
     // In the glob `a.*` the dot is literal, not 'any char' — so it must match
     // "a." exactly, not "ax".

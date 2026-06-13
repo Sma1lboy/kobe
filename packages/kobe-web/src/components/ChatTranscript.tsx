@@ -218,14 +218,16 @@ function MessageRow({
     )
   }
   return (
-    <div className="group/msg relative">
+    // pr-6 reserves a right gutter so the absolute copy button never paints
+    // over a user-turn timestamp or the trailing chars of an assistant line.
+    <div className="group/msg relative pr-6">
       {rows}
       <button
         type="button"
         onClick={copyMessage}
         title="Copy this message as Markdown"
         aria-label="Copy message as Markdown"
-        className="absolute right-1 top-1 border border-line bg-surface p-1 text-subtle opacity-0 transition-opacity hover:text-fg group-hover/msg:opacity-100"
+        className="absolute right-0 top-1 border border-line bg-surface p-0.5 text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/msg:opacity-100"
       >
         <ClipboardCopy size={12} strokeWidth={1.8} />
       </button>
