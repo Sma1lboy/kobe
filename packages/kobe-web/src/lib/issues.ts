@@ -241,8 +241,14 @@ function repoBasename(repo: string): string {
  */
 export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
   const counts = new Map<string, number>()
+  const mainRepos = new Set(
+    tasks
+      .filter((task) => !task.archived && task.kind === "main" && task.repo)
+      .map((task) => task.repo),
+  )
   for (const task of tasks) {
     if (task.archived || !task.repo) continue
+    if (mainRepos.size > 0 && !mainRepos.has(task.repo)) continue
     counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
   }
   const repos = [...counts.keys()]

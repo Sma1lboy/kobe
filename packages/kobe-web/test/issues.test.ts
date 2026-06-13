@@ -225,6 +225,29 @@ describe("issueRepoOptions", () => {
 
     expect(issueRepoOptions(tasks)).toEqual([])
   })
+
+  it("ignores task repos that are not backed by a main project", () => {
+    const tasks = [
+      {
+        id: "main",
+        repo: "/Users/narwhal/proj/kobe/",
+        worktreePath: "/Users/narwhal/proj/kobe/",
+        kind: "main",
+        archived: false,
+      },
+      {
+        id: "bad-quickstart",
+        repo: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+        worktreePath: "/Users/narwhal/.kobe/worktrees/bovid/hawk",
+        kind: "task",
+        archived: false,
+      },
+    ] as Task[]
+
+    expect(issueRepoOptions(tasks)).toEqual([
+      { repo: "/Users/narwhal/proj/kobe/", label: "kobe", count: 1 },
+    ])
+  })
 })
 
 describe("statusActions", () => {
