@@ -7,6 +7,7 @@ import {
   compareCards,
   conflictBadge,
   conflictsForTask,
+  conflictTip,
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
@@ -320,6 +321,32 @@ describe("conflict radar helpers", () => {
     expect(conflictBadge(pairs, "a")).toEqual({ level: "conflict", count: 2 })
     expect(conflictBadge(pairs, "c")).toEqual({ level: "overlap", count: 1 })
     expect(conflictBadge(pairs, "zzz")).toBeNull()
+  })
+
+  it("conflictTip names each counterpart, verb by level, files listed", () => {
+    const titleOf = (id: string) => ({ b: "Auth fix", c: "Docs" })[id] ?? id
+    expect(conflictTip(pairs, "a", titleOf)).toBe(
+      "CONFLICTS with Auth fix: src/x.ts\noverlaps Docs: src/y.ts",
+    )
+    expect(conflictTip(pairs, "zzz", titleOf)).toBe("")
+  })
+
+  it("conflictTip falls back to the id when a title is unknown", () => {
+    expect(conflictTip(pairs, "b", (id) => id)).toBe("CONFLICTS with a: src/x.ts")
+  })
+
+  it("conflictTip elides past four files with an ellipsis", () => {
+    const many = [
+      {
+        a: "a",
+        b: "b",
+        files: ["1.ts", "2.ts", "3.ts", "4.ts", "5.ts", "6.ts"],
+        level: "conflict" as const,
+      },
+    ]
+    expect(conflictTip(many, "a", (id) => id)).toBe(
+      "CONFLICTS with b: 1.ts, 2.ts, 3.ts, 4.ts, …",
+    )
   })
 
   it("yarnColor is stable per index and cycles the palette", () => {

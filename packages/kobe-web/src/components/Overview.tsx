@@ -10,6 +10,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
+import { conflictBadge, conflictTip } from "../lib/board.ts"
 import { moveHighlight, reconcileHighlight } from "../lib/overview-nav.ts"
 import { loadPromptPreview, usePromptPreviews } from "../lib/prompt-preview.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -57,11 +58,13 @@ const BUCKETS: Array<{
 function Card({
   entry,
   preview,
+  conflict,
   highlighted,
   onOpen,
 }: {
   entry: TriagedTask
   preview: string | null | undefined
+  conflict: { level: "overlap" | "conflict"; count: number; tip: string } | null
   highlighted: boolean
   onOpen: () => void
 }) {
@@ -83,6 +86,18 @@ function Card({
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
+        {conflict && (
+          <span
+            className={`shrink-0 font-mono text-[10px] ${
+              conflict.level === "conflict"
+                ? "text-kobe-red"
+                : "text-kobe-yellow"
+            }`}
+            title={conflict.tip}
+          >
+            ⚠{conflict.count}
+          </span>
+        )}
         <PrChip pr={task.prStatus} />
         {changes && (changes.added > 0 || changes.deleted > 0) && (
           <span className="shrink-0 font-mono text-[10px]">
@@ -114,11 +129,33 @@ function Card({
 }
 
 export function Overview() {
-  const { tasks, engineStates, worktreeChanges, hydrated } = useAppState()
+  const { tasks, engineStates, worktreeChanges, conflicts, hydrated } =
+    useAppState()
   const navigate = useNavigate()
   const previews = usePromptPreviews()
   const [query, setQuery] = useState("")
   const filterRef = useRef<HTMLInputElement>(null)
+
+  // Conflict radar (daemon-collected, shared with the board): a task that
+  // truly collides with another in-flight task gets a ⚠ badge here too —
+  // a merge conflict is exactly the kind of thing the triage view exists to
+  // surface. Same badge summary + tooltip text as the board (lib/board.ts).
+  const conflictByTask = useMemo(() => {
+    const titleOf = (id: string): string => {
+      const t = (tasks as Task[]).find((task) => task.id === id)
+      return t?.title || t?.branch || id
+    }
+    const map = new Map<
+      string,
+      { level: "overlap" | "conflict"; count: number; tip: string }
+    >()
+    for (const id of new Set(conflicts.flatMap((p) => [p.a, p.b]))) {
+      const summary = conflictBadge(conflicts, id)
+      if (summary)
+        map.set(id, { ...summary, tip: conflictTip(conflicts, id, titleOf) })
+    }
+    return map
+  }, [conflicts, tasks])
 
   // Refresh previews on task-list changes AND engine activity. The second
   // trigger is load-bearing: a prompt/turn publishes only on the engine-state
@@ -336,6 +373,7 @@ export function Overview() {
                           key={entry.task.id}
                           entry={entry}
                           preview={previews[entry.task.id]}
+                          conflict={conflictByTask.get(entry.task.id) ?? null}
                           highlighted={entry.task.id === highlighted}
                           onOpen={() => open(entry.task.id)}
                         />

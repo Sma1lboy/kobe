@@ -54,6 +54,7 @@ import {
   buildBoard,
   compareCards,
   conflictBadge,
+  conflictTip,
   isBoardTask,
   isDroppableColumn,
   planColumnDrop,
@@ -741,18 +742,11 @@ export function Board() {
       { level: "overlap" | "conflict"; count: number; tip: string }
     >()
     const ids = new Set(conflicts.flatMap((pair) => [pair.a, pair.b]))
+    const titleOf = (id: string): string => taskTitles.get(id) ?? id
     for (const id of ids) {
       const summary = conflictBadge(conflicts, id)
       if (!summary) continue
-      const tip = conflicts
-        .filter((pair) => pair.a === id || pair.b === id)
-        .map((pair) => {
-          const other = pair.a === id ? pair.b : pair.a
-          const verb = pair.level === "conflict" ? "CONFLICTS with" : "overlaps"
-          return `${verb} ${taskTitles.get(other) ?? other}: ${pair.files.slice(0, 4).join(", ")}${pair.files.length > 4 ? ", …" : ""}`
-        })
-        .join("\n")
-      badges.set(id, { ...summary, tip })
+      badges.set(id, { ...summary, tip: conflictTip(conflicts, id, titleOf) })
     }
     return badges
   }, [conflicts, taskTitles])

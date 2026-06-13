@@ -406,6 +406,31 @@ export function conflictBadge(
   }
 }
 
+/** Max files named per counterpart before eliding with "…". */
+const CONFLICT_TIP_FILES = 4
+
+/**
+ * Multi-line tooltip for a task's conflict badge — one line per counterpart
+ * ("CONFLICTS with <title>: a.ts, b.ts" / "overlaps <title>: …"). Shared by
+ * the board's portaled tooltip and the Overview card's title attribute so the
+ * two never drift. `titleOf` resolves the other task's display label.
+ */
+export function conflictTip(
+  pairs: readonly ConflictPair[],
+  taskId: string,
+  titleOf: (id: string) => string,
+): string {
+  return conflictsForTask(pairs, taskId)
+    .map((pair) => {
+      const other = pair.a === taskId ? pair.b : pair.a
+      const verb = pair.level === "conflict" ? "CONFLICTS with" : "overlaps"
+      const files = pair.files.slice(0, CONFLICT_TIP_FILES).join(", ")
+      const more = pair.files.length > CONFLICT_TIP_FILES ? ", …" : ""
+      return `${verb} ${titleOf(other)}: ${files}${more}`
+    })
+    .join("\n")
+}
+
 /** Yarn palette — one distinct kobe hue per conflict pair, cycling. The
  *  pair's index in the (sorted, stable) pair list picks the color, so a
  *  pair keeps its yarn color as long as the pair exists. */
