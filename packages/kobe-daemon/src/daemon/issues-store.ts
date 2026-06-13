@@ -41,6 +41,11 @@ type IssueOp =
   | { type: "setStatus"; id?: unknown; status?: unknown }
   | { type: "update"; id?: unknown; title?: unknown; body?: unknown }
 
+function isGitNotRepositoryError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.includes("not a git repository")
+}
+
 export function defaultIssuesStorePath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
   return join(homeDir, ".kobe", "issues.json")
 }
@@ -99,8 +104,13 @@ async function resolveRepo(raw: unknown): Promise<{ repoRoot: string; repoKey: s
   const absolute = resolve(raw)
   const s = await stat(absolute).catch(() => null)
   if (!s?.isDirectory()) throw new Error("repoRoot does not exist")
-  const [repoRoot, repoKey] = await Promise.all([gitMainWorktree(absolute), gitCommonDir(absolute)])
-  return { repoRoot, repoKey }
+  try {
+    const [repoRoot, repoKey] = await Promise.all([gitMainWorktree(absolute), gitCommonDir(absolute)])
+    return { repoRoot, repoKey }
+  } catch (err) {
+    if (isGitNotRepositoryError(err)) throw new Error("repoRoot is not a git repository")
+    throw err
+  }
 }
 
 async function readStore(path: string): Promise<IssuesStoreFile> {

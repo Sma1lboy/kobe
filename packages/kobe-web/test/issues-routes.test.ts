@@ -84,6 +84,16 @@ describe("/api/issues daemon proxy route", () => {
     ])
   })
 
+  it("maps non-git repo probes to 400", async () => {
+    const l = failingLink(new Error("repoRoot is not a git repository"))
+    const url = new URL("http://localhost/api/issues?repoRoot=%2FUsers%2Fnarwhal")
+    const res = await handleIssuesRequest(new Request(url), url, l)
+    expect(res?.status).toBe(400)
+    expect(await res?.json()).toEqual({
+      error: "repoRoot is not a git repository",
+    })
+  })
+
   it("maps missing issue ids to 404", async () => {
     const l = failingLink(new Error("no issue #99"))
     const url = new URL("http://localhost/api/issues")

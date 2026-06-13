@@ -248,6 +248,7 @@ describe("issueRepoOptions", () => {
       { repo: "/Users/narwhal/proj/kobe/", label: "kobe", count: 1 },
     ])
   })
+
 })
 
 describe("statusActions", () => {

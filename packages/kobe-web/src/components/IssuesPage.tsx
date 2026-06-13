@@ -200,6 +200,10 @@ function NewIssueDialog({
   )
 }
 
+function isNonGitRepoFailure(message: string | undefined): boolean {
+  return message?.includes("repoRoot is not a git repository") ?? false
+}
+
 export function IssuesPage() {
   const { tasks, hydrated, issueSnapshots } = useAppState()
   const navigate = useNavigate()
@@ -220,9 +224,16 @@ export function IssuesPage() {
   // Project chips: one per canonical source repo. Worktree tasks fold into
   // task.repo because the daemon issue store is keyed by the shared git dir.
   const repos = useMemo(() => issueRepoOptions(tasks), [tasks])
+  const visibleRepos = useMemo(
+    () => repos.filter((option) => !isNonGitRepoFailure(failed[option.repo])),
+    [repos, failed],
+  )
   const repoLabels = useMemo(
-    () => new Map(repos.map((option) => [option.repo, option.label] as const)),
-    [repos],
+    () =>
+      new Map(
+        visibleRepos.map((option) => [option.repo, option.label] as const),
+      ),
+    [visibleRepos],
   )
 
   // Out-of-order guard (the DiffView seqRef pattern, per repo): every
@@ -297,21 +308,21 @@ export function IssuesPage() {
         state,
       ]),
     )
-    for (const option of repos) {
+    for (const option of visibleRepos) {
       const pushed = byNormalized.get(normalize(option.repo))
       if (!pushed) continue
       const seq = beginRequest(option.repo)
       applyState(pushed, seq, option.repo)
     }
-  }, [issueSnapshots, repos])
+  }, [issueSnapshots, visibleRepos])
 
   // A selected project can disappear (its last task archived) — snap back
   // to the overview rather than a permanently stale view (Board precedent).
   useEffect(() => {
-    if (repo && !repos.some((option) => option.repo === repo)) {
+    if (repo && !visibleRepos.some((option) => option.repo === repo)) {
       setRepo(null)
     }
-  }, [repos, repo])
+  }, [visibleRepos, repo])
 
   // Keyboard-first parity with Board/Overview: `/` focuses the filter,
   // Escape clears it. Dormant while a drawer/dialog owns the keyboard.
@@ -413,12 +424,12 @@ export function IssuesPage() {
     // Failed repos render only their dashed failure card (the project view
     // gives `failed` the same precedence) — a stale snapshot row alongside
     // it would show the repo twice.
-    const loaded = repos
+    const loaded = visibleRepos
       .filter((option) => !(option.repo in failed))
       .map((option) => data[option.repo])
       .filter((state): state is RepoIssues => !!state && state.exists)
     return overviewRows(loaded)
-  }, [repos, data, failed])
+  }, [visibleRepos, data, failed])
 
   const columns = useMemo(() => {
     if (!selected) return null
@@ -484,7 +495,7 @@ export function IssuesPage() {
           >
             all
           </button>
-          {repos.map((option) => {
+          {visibleRepos.map((option) => {
             const state = data[option.repo]
             const openish = state
               ? state.issues.filter((issue) => issue.status !== "done").length
@@ -532,7 +543,9 @@ export function IssuesPage() {
           )}
           <button
             type="button"
-            onClick={() => refresh(repo ? [repo] : repos.map((o) => o.repo))}
+            onClick={() =>
+              refresh(repo ? [repo] : visibleRepos.map((o) => o.repo))
+            }
             disabled={loading}
             className="flex items-center text-muted transition-colors hover:text-fg disabled:opacity-40"
             aria-label="Refresh issues"
@@ -557,9 +570,9 @@ export function IssuesPage() {
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {!hydrated ? (
             <p className="text-[12px] text-subtle">Loading…</p>
-          ) : repos.length === 0 ? (
+          ) : visibleRepos.length === 0 ? (
             <p className="text-[12px] text-subtle">
-              No projects yet. Create a task from the workspace first.
+              No git-backed projects with issues yet.
             </p>
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -595,7 +608,7 @@ export function IssuesPage() {
                   </div>
                 </button>
               ))}
-              {repos
+              {visibleRepos
                 .filter((option) => {
                   const state = data[option.repo]
                   return (state && !state.exists) || option.repo in failed

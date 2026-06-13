@@ -16,6 +16,7 @@ function statusForIssueError(err: unknown): number {
   if (
     message === "repoRoot is required" ||
     message === "repoRoot does not exist" ||
+    message === "repoRoot is not a git repository" ||
     message === "missing op" ||
     message === "create requires a non-empty title" ||
     message === "body must be a string" ||

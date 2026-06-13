@@ -30,6 +30,15 @@ afterEach(async () => {
 })
 
 describe("IssuesStore", () => {
+  it("rejects plain directories with a clean non-git error", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "kobe-issues-store-plain-"))
+    cleanups.push(dir)
+    const storePath = join(dir, "home", ".kobe", "issues.json")
+    const store = new IssuesStore(storePath)
+
+    await expect(store.list(dir)).rejects.toThrow("repoRoot is not a git repository")
+  })
+
   it("shares daemon issue state across git worktrees", async () => {
     const repo = await makeRepo()
     const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-wt-"))
