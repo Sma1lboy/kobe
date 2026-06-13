@@ -10,13 +10,33 @@ function errorResponse(err: unknown, status = 500): Response {
   return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
 }
 
+function statusForIssueError(err: unknown): number {
+  const message = err instanceof Error ? err.message : String(err)
+  if (/^no issue #\d+$/.test(message)) return 404
+  if (
+    message === "repoRoot is required" ||
+    message === "repoRoot does not exist" ||
+    message === "missing op" ||
+    message === "create requires a non-empty title" ||
+    message === "body must be a string" ||
+    message === "setStatus requires a numeric id" ||
+    message.startsWith("invalid status:") ||
+    message === "update requires a numeric id" ||
+    message === "title must be a non-empty string" ||
+    message.startsWith("unknown op type:")
+  ) {
+    return 400
+  }
+  return 500
+}
+
 async function handleGet(link: RpcLink, url: URL): Promise<Response> {
   const repoRoot = url.searchParams.get("repoRoot")
   if (!repoRoot) return Response.json({ error: "missing repoRoot" }, { status: 400 })
   try {
     return Response.json(await link.request("issue.list", { repoRoot }))
   } catch (err) {
-    return errorResponse(err)
+    return errorResponse(err, statusForIssueError(err))
   }
 }
 
@@ -37,7 +57,7 @@ async function handlePost(link: RpcLink, req: Request): Promise<Response> {
   try {
     return Response.json(await link.request("issue.mutate", { repoRoot: body.repoRoot, op: body.op }))
   } catch (err) {
-    return errorResponse(err)
+    return errorResponse(err, statusForIssueError(err))
   }
 }
 

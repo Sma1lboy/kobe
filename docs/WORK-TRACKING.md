@@ -14,14 +14,21 @@ kobe work is tracked locally — there is no external issue tracker. Agents shou
 
 The daemon owns active issue state so web edits and agent automation see the
 same data from every worktree. Deliberately low-ceremony: no type taxonomy,
-just a `status`. The persisted daemon shape is:
+just a `status`. The persisted daemon file is keyed by each repo's git
+common-dir, so the source checkout and its worktrees share one issue record:
 
 ```json
 {
-  "nextId": 4,
-  "issues": [
-    { "id": 1, "title": "short imperative title", "status": "open", "created": "YYYY-MM-DD", "body": "context, repro, scope — one field, free text" }
-  ]
+  "version": 1,
+  "repos": {
+    "/path/to/repo/.git": {
+      "repoRoot": "/path/to/repo",
+      "nextId": 4,
+      "issues": [
+        { "id": 1, "title": "short imperative title", "status": "open", "created": "YYYY-MM-DD", "body": "context, repro, scope — one field, free text" }
+      ]
+    }
+  }
 }
 ```
 
