@@ -6,7 +6,8 @@
  */
 
 import { useSyncExternalStore } from "react"
-import { notifyEngineTransition } from "./notify.ts"
+import { notifyEngineTransition, notifyPrTransitions } from "./notify.ts"
+import { prTransitions } from "./pr-notify.ts"
 import { prunePromptPreviews } from "./prompt-preview.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
@@ -104,6 +105,9 @@ export function applyJobEvent(
  *  that no longer exist, so a delete in ANY surface (TUI, api, another
  *  browser) cleans this one up too. */
 function applyTaskList(tasks: Task[]): void {
+  // Diff BEFORE replacing state: PR check/lifecycle flips (CI red/green,
+  // ready to merge, merged) ping like engine attention states do.
+  notifyPrTransitions(prTransitions(state.tasks, tasks))
   const live = new Set(tasks.map((t) => t.id))
   set({
     tasks,
