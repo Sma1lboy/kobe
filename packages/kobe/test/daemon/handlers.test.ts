@@ -255,6 +255,12 @@ describe("daemon handler registry", () => {
         { method: "list", repo: "/repo" },
         { method: "mutate", repo: "/repo", op: { type: "setStatus", id: 8, status: "done" } },
       ])
+      expect(rec.published).toEqual([
+        {
+          channel: "issue.snapshot",
+          payload: { repoRoot: "/repo", exists: true, nextId: 2, issues: [] },
+        },
+      ])
     })
   })
 

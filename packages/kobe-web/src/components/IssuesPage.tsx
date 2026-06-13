@@ -6,9 +6,9 @@
  * one-click quick start that spawns a kobe task on an issue via the
  * existing task-creation + PTY plumbing (lib/issues.ts).
  *
- * Data flow: every mutation returns the repo's full RepoIssues state, and
- * the page replaces its per-repo cache with it — no optimistic layer; the
- * daemon store is the only truth.
+ * Data flow: initial loads use `/api/issues`; every daemon issue mutation
+ * also publishes `issue.snapshot`, and the page replaces its per-repo cache
+ * from that push. No optimistic layer; the daemon store is the only truth.
  */
 
 import { useNavigate } from "@tanstack/react-router"
@@ -201,7 +201,7 @@ function NewIssueDialog({
 }
 
 export function IssuesPage() {
-  const { tasks, hydrated } = useAppState()
+  const { tasks, hydrated, issueSnapshots } = useAppState()
   const navigate = useNavigate()
   const [repo, setRepo] = useState<string | null>(null)
   const [data, setData] = useState<Record<string, RepoIssues>>({})
@@ -282,6 +282,28 @@ export function IssuesPage() {
   useEffect(() => {
     refresh(repoKey ? repoKey.split("\n") : [])
   }, [repoKey])
+
+  // Live daemon broadcasts: an issue mutation from any surface (another
+  // browser, TUI, or `kobe api issue-*`) arrives as the repo's full
+  // RepoIssues state. Cache it under every matching project-chip key so
+  // `/repo` and `/repo/` don't split the UI cache.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: issueSnapshots + repos are the event inputs; beginRequest/applyState are render-local helpers over stable refs/setters and would retrigger this effect every render.
+  useEffect(() => {
+    const normalize = (root: string): string =>
+      root.length > 1 ? root.replace(/\/+$/, "") : root
+    const byNormalized = new Map(
+      Object.values(issueSnapshots).map((state) => [
+        normalize(state.repoRoot),
+        state,
+      ]),
+    )
+    for (const option of repos) {
+      const pushed = byNormalized.get(normalize(option.repo))
+      if (!pushed) continue
+      const seq = beginRequest(option.repo)
+      applyState(pushed, seq, option.repo)
+    }
+  }, [issueSnapshots, repos])
 
   // A selected project can disappear (its last task archived) — snap back
   // to the overview rather than a permanently stale view (Board precedent).
@@ -378,8 +400,6 @@ export function IssuesPage() {
     setQuickStartingId(issue.id)
     quickStartIssue(root, issue)
       .then(({ taskId }) => {
-        // Refresh the doing-flip quickStartIssue made best-effort.
-        refresh([root])
         selectTask(taskId)
         void navigate({ to: "/task/$taskId", params: { taskId } })
       })

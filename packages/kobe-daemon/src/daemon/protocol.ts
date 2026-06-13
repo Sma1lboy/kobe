@@ -12,6 +12,7 @@
 import type { EngineActivityDetail, TaskActivityState } from "@/engine/hook-events"
 import type { Task } from "@/types/task"
 import type { UpdateInfo } from "@/version"
+import type { RepoIssues } from "./issues-store.ts"
 
 /**
  * Bumped to 2 in v0.6 to signal the shape change. The handshake now
@@ -163,6 +164,17 @@ export type SubscribeRole = "gui" | "pane"
  */
 export interface ChannelPayloads {
   "task.snapshot": { tasks: SerializedTask[] }
+  /**
+   * Daemon-owned issue tracker snapshot for ONE repo. Published after every
+   * `issue.mutate`, so every attached web Issues pane updates from the same
+   * source of truth whether the edit came from web, TUI, or `kobe api`.
+   * The payload is the repo's full issue state, not a delta, matching the
+   * `/api/issues` route and keeping clients stateless. Last-value replay only
+   * carries the most recently changed repo; browsers still do their normal
+   * initial `/api/issues` load for every visible repo, then use this channel
+   * for live updates.
+   */
+  "issue.snapshot": RepoIssues
   /**
    * The currently-active task (the session last switched/entered into).
    * Shared so EVERY Tasks pane + the outer monitor highlight the SAME
@@ -331,6 +343,7 @@ export type ChannelName = keyof ChannelPayloads
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
 export const CHANNEL_NAMES: readonly ChannelName[] = [
   "task.snapshot",
+  "issue.snapshot",
   "active-task",
   "update",
   "engine-state",

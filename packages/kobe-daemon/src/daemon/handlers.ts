@@ -439,7 +439,9 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     {
       name: "issue.mutate",
       async handle(payload, ctx) {
-        return ctx.issues.mutate(requireString(payload, "repoRoot"), payload.op)
+        const state = await ctx.issues.mutate(requireString(payload, "repoRoot"), payload.op)
+        ctx.bus.publish("issue.snapshot", state)
+        return state
       },
     },
     {

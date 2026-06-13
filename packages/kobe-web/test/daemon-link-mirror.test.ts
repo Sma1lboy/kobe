@@ -73,6 +73,32 @@ describe("DaemonLink mirror — task.jobs reducer", () => {
   })
 })
 
+describe("DaemonLink mirror — issue snapshots", () => {
+  it("stores the latest issue state by repo and forwards the channel", () => {
+    const link = new DaemonLink()
+    const f = drive(link)
+    const forwarded: string[] = []
+    link.onEvent((e) => forwarded.push(e.channel))
+
+    f.onFrame("issue.snapshot", {
+      repoRoot: "/repo",
+      exists: true,
+      nextId: 2,
+      issues: [{ id: 1, title: "fix", status: "open", created: "2026-06-13", body: "" }],
+    })
+
+    expect(link.snapshot().issueSnapshots).toEqual({
+      "/repo": {
+        repoRoot: "/repo",
+        exists: true,
+        nextId: 2,
+        issues: [{ id: 1, title: "fix", status: "open", created: "2026-06-13", body: "" }],
+      },
+    })
+    expect(forwarded).toContain("issue.snapshot")
+  })
+})
+
 describe("DaemonLink — SSE forward filter", () => {
   it("forwards SPA channels but never the daemon.stopping lifecycle signal", () => {
     const link = new DaemonLink()

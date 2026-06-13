@@ -15,6 +15,7 @@ import type {
   BridgeSnapshot,
   ConflictPair,
   EngineState,
+  RepoIssues,
   SessionDeliver,
   Task,
   TaskJob,
@@ -34,6 +35,8 @@ export interface AppState {
   worktreeChanges: WorktreeChangeCounts
   /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
   conflicts: ConflictPair[]
+  /** repoRoot → daemon-owned issue state from live `issue.snapshot` pushes. */
+  issueSnapshots: Record<string, RepoIssues>
   /** Most recent dispatcher delivery (display only; delivery itself is the
    *  dispatch-delivery forwarder's job). */
   deliver: SessionDeliver | null
@@ -55,6 +58,7 @@ const initial: AppState = {
   jobs: {},
   worktreeChanges: {},
   conflicts: [],
+  issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
   hydrated: false,
@@ -162,6 +166,14 @@ function applyEvent(event: BridgeEvent): void {
     case "task.conflicts":
       set({ conflicts: event.payload.pairs })
       break
+    case "issue.snapshot":
+      set({
+        issueSnapshots: {
+          ...state.issueSnapshots,
+          [event.payload.repoRoot]: event.payload,
+        },
+      })
+      break
     case "session.deliver":
       // This SPA hosts web sessions, so it owns the paste (dedupe inside).
       set({ deliver: event.payload })
@@ -190,6 +202,7 @@ function ensureStream(): void {
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
       conflicts: snap.conflicts ?? [],
+      issueSnapshots: snap.issueSnapshots ?? {},
       deliver: snap.deliver ?? null,
       uiPrefs: snap.uiPrefs ?? null,
       hydrated: true,

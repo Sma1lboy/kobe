@@ -37,6 +37,7 @@ type EngineStatePayload = ChannelPayloads["engine-state"]
 type TaskJobPayload = ChannelPayloads["task.jobs"]
 type WorktreeChangeCounts = ChannelPayloads["worktree.changes"]["changes"]
 type UiPrefsPayload = ChannelPayloads["ui-prefs"]
+type IssueSnapshotPayload = ChannelPayloads["issue.snapshot"]
 
 /** Full bootstrap state for the SSE `snapshot` event (mirrors the SPA's
  *  BridgeSnapshot in src/lib/types.ts). */
@@ -52,6 +53,8 @@ export interface BridgeSnapshotState {
   worktreeChanges: WorktreeChangeCounts
   /** Conflict-radar pairs (file overlap / proven merge conflict). */
   conflicts: ChannelPayloads["task.conflicts"]["pairs"]
+  /** repoRoot → daemon-owned issue state replayed by `issue.snapshot`. */
+  issueSnapshots: Record<string, IssueSnapshotPayload>
   /** Most recent session.deliver event (dispatcher plumbing) — the SPA
    *  dedupes on `at`, so replaying the last one to a late browser is safe. */
   deliver: ChannelPayloads["session.deliver"] | null
@@ -94,6 +97,7 @@ export class DaemonLink {
   private jobs: Record<string, TaskJobPayload> = {}
   private worktreeChanges: WorktreeChangeCounts = {}
   private conflicts: ChannelPayloads["task.conflicts"]["pairs"] = []
+  private issueSnapshots: Record<string, IssueSnapshotPayload> = {}
   private deliver: ChannelPayloads["session.deliver"] | null = null
   private uiPrefs: UiPrefsPayload | null = null
 
@@ -116,6 +120,7 @@ export class DaemonLink {
       jobs: this.jobs,
       worktreeChanges: this.worktreeChanges,
       conflicts: this.conflicts,
+      issueSnapshots: this.issueSnapshots,
       deliver: this.deliver,
       uiPrefs: this.uiPrefs,
       connected: this.connected,
@@ -260,6 +265,14 @@ export class DaemonLink {
       case "task.conflicts":
         this.conflicts = (payload as ChannelPayloads["task.conflicts"]).pairs
         break
+      case "issue.snapshot": {
+        const state = payload as IssueSnapshotPayload
+        this.issueSnapshots = {
+          ...this.issueSnapshots,
+          [state.repoRoot]: state,
+        }
+        break
+      }
       case "session.deliver":
         this.deliver = payload as ChannelPayloads["session.deliver"]
         break

@@ -43,6 +43,23 @@ export interface Task {
   updatedAt: string
 }
 
+export type IssueStatus = "open" | "doing" | "hold" | "done"
+
+export interface Issue {
+  id: number
+  title: string
+  status: IssueStatus
+  created: string
+  body: string
+}
+
+export interface RepoIssues {
+  repoRoot: string
+  exists: boolean
+  nextId: number
+  issues: Issue[]
+}
+
 /** Transient engine activity (what the agent is doing right now). */
 export type ActivityState =
   | "idle"
@@ -113,6 +130,7 @@ export interface UiPrefs {
 /** Channel push, as the bridge serializes it over SSE. */
 export type BridgeEvent =
   | { channel: "task.snapshot"; payload: { tasks: Task[] } }
+  | { channel: "issue.snapshot"; payload: RepoIssues }
   | { channel: "active-task"; payload: { taskId: string | null } }
   | { channel: "engine-state"; payload: EngineState }
   | { channel: "update"; payload: { info: UpdateInfo | null } }
@@ -133,6 +151,8 @@ export interface BridgeSnapshot {
   worktreeChanges?: WorktreeChangeCounts
   /** Conflict-radar pairs (file overlap / proven merge conflict). */
   conflicts?: ConflictPair[]
+  /** repoRoot → daemon-owned issue state replayed by `issue.snapshot`. */
+  issueSnapshots?: Record<string, RepoIssues>
   /** Most recent session.deliver event — replayed to late browsers; the
    *  forwarder dedupes on `at`. */
   deliver?: SessionDeliver | null
