@@ -69,7 +69,7 @@ import { bindByIds, findBinding, keymapVersion } from "../context/keybindings"
 import { useKV } from "../context/kv"
 import { useNotifications } from "../context/notifications"
 import { useTheme } from "../context/theme"
-import { formatChord, tmuxPrefixGlyph } from "../lib/chord-glyphs"
+import { formatChord } from "../lib/chord-glyphs"
 import { type HostScreen, bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "../lib/settings-surface"
@@ -737,14 +737,13 @@ export function legendRowCap(ids: readonly string[]): string | null {
 
 /**
  * A small shortcut legend pinned to the bottom of the Tasks pane (KOB-244):
- * shows the in-pane task actions plus the session-level tmux chords so the
- * keys are discoverable without leaving the pane. The `ctrl+h/j/k/l` and
- * `ctrl+[/]` lines are tmux session bindings — shown here, not rebound.
+ * shows the highest-value in-pane task actions plus the session-level tmux
+ * chords that help the user leave or move around the pane. The `ctrl+h/j/k/l`
+ * line is a tmux session binding — shown here, not rebound.
  *
- * Collapsible: the legend is ~20 rows with the tmux chords included, which
- * crowds the task list on short terminals. `?` (or clicking the header)
- * folds it down to the header line; move-mode hints ignore the fold — a
- * user inside reorder mode must always see how to leave it.
+ * Collapsible: the legend is optional chrome on short terminals. `?` (or
+ * clicking the header) folds it down to the header line; move-mode hints ignore
+ * the fold — a user inside reorder mode must always see how to leave it.
  */
 function ShortcutHints(props: {
   moveMode?: Accessor<boolean>
@@ -753,31 +752,18 @@ function ShortcutHints(props: {
   onToggleCollapsed?: () => void
 }) {
   const { theme } = useTheme()
-  // Resolve the user's REAL tmux prefix at runtime (#12). kobe loads the
-  // user's own prefix, so a literal `Prefix F` is un-actionable — the user may
-  // not know their prefix is C-a. Shell `tmux show-options -g prefix` on the
-  // -L kobe socket (runTmuxCapturing already targets it) and render `C-b` as
-  // `⌃B`. Falls back to the literal `Prefix` when resolution fails / is flaky.
-  const [prefixCap, setPrefixCap] = createSignal("Prefix")
-  onMount(() => {
-    void runTmuxCapturing(["show-options", "-g", "prefix"]).then(({ code, stdout }) => {
-      if (code !== 0) return
-      const glyph = tmuxPrefixGlyph(stdout)
-      if (glyph) setPrefixCap(glyph)
-    })
-  })
-  // A hint row. `k` is a MACHINE chord string (`ctrl+q`, `prefix f`, `a/d`);
-  // it's rendered as macOS glyphs via `formatChord` at draw time, so the
-  // footer, the F1 help, and the status bar all read the same (one formatter,
-  // no drift). `dimWhenMain` flags a keycap whose action early-returns on a
-  // `main` (project root) row — the footer dims that cap so a press there reads
-  // as "doesn't apply here" rather than a silent no-op (Issue #7).
+  // A hint row. `k` is a MACHINE chord string (`ctrl+q`, `a/d`); it's rendered
+  // as macOS glyphs via `formatChord` at draw time, so the footer, the F1 help,
+  // and the status bar all read the same (one formatter, no drift).
+  // `dimWhenMain` flags a keycap whose action early-returns on a `main`
+  // (project root) row — the footer dims that cap so a press there reads as
+  // "doesn't apply here" rather than a silent no-op (Issue #7).
   type Hint = { k: string; label: string; dimWhenMain?: boolean }
   // tmux session-key rows derive from the RESOLVED key set so user
   // overrides (`tmux.*` ids in ~/.kobe/settings/keybindings.yaml) show
-  // their own chords here; an unbound id drops its row. Pseudo-chords
-  // ("ctrl+hjkl", "ctrl+[/]") are kept only while the relevant keys are
-  // still at their defaults — overridden keys render as plain chords.
+  // their own chords here; an unbound id drops its row. The `ctrl+hjkl`
+  // pseudo-chord is kept only while focus keys are still at their defaults —
+  // overridden keys render as plain chords.
   const tmuxHints = (): ReadonlyArray<Hint> => {
     // Re-derive after a live keybindings reload: the bump invalidates this
     // accessor so the footer re-renders with the freshly-resolved tmux
@@ -792,65 +778,40 @@ function ShortcutHints(props: {
     } else if (focusChords.length > 0) {
       out.push({ k: focusChords[0] as string, label: "move panes" })
     }
-    const prev = b["tmux.tab.prev"]
-    const next = b["tmux.tab.next"]
-    if (prev?.chord === "ctrl+[" && next?.chord === "ctrl+]") {
-      out.push({ k: "ctrl+[/]", label: "switch tabs" })
-    } else {
-      if (prev) out.push({ k: prev.chord, label: "prev tab" })
-      if (next) out.push({ k: next.chord, label: "next tab" })
-    }
-    if (b["tmux.tab.new"]) out.push({ k: b["tmux.tab.new"].chord, label: "new tab" })
-    if (b["tmux.tab.chooseEngine"]) out.push({ k: b["tmux.tab.chooseEngine"].chord, label: "engine tab" })
-    out.push({ k: "prefix t", label: "engine tab" }, { k: "prefix f", label: "new task" })
-    if (b["tmux.tab.rename"]) out.push({ k: b["tmux.tab.rename"].chord, label: "rename tab" })
-    if (b["tmux.tab.close"]) out.push({ k: b["tmux.tab.close"].chord, label: "close tab" })
     if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
     return out
   }
   // Fixed-width key column so labels line up — a terminal-grammar legend
   // column, not a proportional pane (allowed hardcode). formatChord keeps
   // plain-letter caps lowercase (the EXACT key to press, #14), uppercases the
-  // key of modifier chords (`⌃ Q`), shows `tab` as a word, and renders the two
-  // `prefix …` rows with the user's REAL resolved prefix (`prefixCap()`, #12).
-  // Derived (not a static const) so those rows re-render once the async prefix
-  // resolution lands.
+  // key of modifier chords (`⌃ Q`), and shows `tab` as a word.
   // Each in-pane row's keycap is DERIVED from KobeKeymap (legendRowCap) so a
   // user override / unbind in ~/.kobe/settings/keybindings.yaml is reflected
   // here — the footer is the only always-visible legend, and the doc promises
   // it follows the keymap (docs/KEYBINDINGS.md). The ids mirror the pane's own
   // bindByIds block plus the Sidebar-owned sidebar.* rows it delegates to
-  // (Enter→sidebar.select, [/]→sidebar.view, sort→sidebar.sort, the a/d/r and
-  // M rows). `keymapVersion()` is read at the top so a live reload re-renders
-  // the legend with the freshly-resolved chords — same pattern as tmuxHints().
+  // (F1→help.open, n→task.new, s→settings.open.sidebar for dispatcher,
+  // Enter→sidebar.select, [/]→sidebar.view, o→tasks.openWorktree, and
+  // d→sidebar.delete). Low-frequency task/tab management stays in the full F1
+  // help page instead of crowding the always-visible legend. `keymapVersion()`
+  // is read at the top so a live reload re-renders the legend with the
+  // freshly-resolved chords — same pattern as tmuxHints().
   // Each row is conditional: an id that resolved to no chord (unbound) drops
   // its row rather than advertising a dead key. Composite rows (a/d, r/b/v)
   // keep the surviving caps joined.
   const defaultHints = (): ReadonlyArray<Hint> => {
     keymapVersion()
     const rows: Array<{ ids: readonly string[]; label: string; dimWhenMain?: boolean }> = [
+      { ids: ["help.open"], label: "full help" },
+      { ids: ["task.new"], label: "new task" },
+      { ids: ["settings.open.sidebar"], label: "dispatcher" },
       { ids: ["sidebar.select"], label: "open" },
       // Right arrow re-focuses the current window's engine pane
       // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
       { ids: ["tasks.focusEngine"], label: "focus engine" },
-      { ids: ["task.new"], label: "new task" },
-      { ids: ["settings.open.sidebar"], label: "settings" },
       { ids: ["tasks.openWorktree"], label: "open wt" },
+      { ids: ["sidebar.delete"], label: "delete" },
       { ids: ["sidebar.view"], label: "views" },
-      { ids: ["sidebar.sort"], label: "sort" },
-      // Move/merge (`M`) early-returns on a main row — dim it there.
-      { ids: ["sidebar.localMerge"], label: "move task", dimWhenMain: true },
-      // `a` is a TOGGLE — archive AND unarchive — so the label says both.
-      { ids: ["sidebar.archive", "sidebar.delete"], label: "un/archive·delete" },
-      // Rename title (`r`) and cycle engine (`v`) work on a main row; only
-      // rename branch (`b`) early-returns there, so the row dims as a whole
-      // on main to signal the branch action is unavailable.
-      {
-        ids: ["sidebar.rename", "tasks.renameBranch", "tasks.cycleEngine"],
-        label: "name/branch/engine",
-        dimWhenMain: true,
-      },
-      { ids: ["help.open"], label: "help" },
     ]
     const out: Hint[] = []
     for (const row of rows) {
@@ -911,7 +872,7 @@ function ShortcutHints(props: {
                     attributes={dim() ? TextAttributes.DIM : TextAttributes.BOLD}
                     wrapMode="none"
                   >
-                    [{formatChord(h.k, prefixCap())}]
+                    [{formatChord(h.k)}]
                   </text>
                 </box>
                 {/* Description column — fixed width = longest label, pushed to the
