@@ -14,7 +14,6 @@
 import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Play, Plus, RefreshCw, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { repoOptions } from "../lib/board.ts"
 import {
   canQuickStart,
   createIssue,
@@ -24,6 +23,7 @@ import {
   ISSUE_STATUSES,
   type Issue,
   type IssueStatus,
+  issueRepoOptions,
   overviewRows,
   quickStartIssue,
   type RepoIssues,
@@ -217,9 +217,9 @@ export function IssuesPage() {
   const [quickStartingId, setQuickStartingId] = useState<number | null>(null)
   const filterRef = useRef<HTMLInputElement>(null)
 
-  // Project chips: the same repo set Board partitions by, with the same
-  // basename labels (collision → parent/basename).
-  const repos = useMemo(() => repoOptions(tasks), [tasks])
+  // Project chips: one per canonical source repo. Worktree tasks fold into
+  // task.repo because the daemon issue store is keyed by the shared git dir.
+  const repos = useMemo(() => issueRepoOptions(tasks), [tasks])
   const repoLabels = useMemo(
     () => new Map(repos.map((option) => [option.repo, option.label] as const)),
     [repos],

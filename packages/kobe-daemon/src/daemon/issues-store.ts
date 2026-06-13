@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process"
 import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { basename, dirname, isAbsolute, join, resolve } from "node:path"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
@@ -84,13 +84,17 @@ async function gitTopLevel(path: string): Promise<string> {
   return stdout.trim()
 }
 
+async function canonicalRepoRoot(repoRoot: string, repoKey: string): Promise<string> {
+  return basename(repoKey) === ".git" ? realpath(dirname(repoKey)) : repoRoot
+}
+
 async function resolveRepo(raw: unknown): Promise<{ repoRoot: string; repoKey: string }> {
   if (typeof raw !== "string" || raw.length === 0) throw new Error("repoRoot is required")
   const absolute = resolve(raw)
   const s = await stat(absolute).catch(() => null)
   if (!s?.isDirectory()) throw new Error("repoRoot does not exist")
-  const [repoRoot, repoKey] = await Promise.all([gitTopLevel(absolute), gitCommonDir(absolute)])
-  return { repoRoot, repoKey }
+  const [worktreeRoot, repoKey] = await Promise.all([gitTopLevel(absolute), gitCommonDir(absolute)])
+  return { repoRoot: await canonicalRepoRoot(worktreeRoot, repoKey), repoKey }
 }
 
 async function readStore(path: string): Promise<IssuesStoreFile> {

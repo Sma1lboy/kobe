@@ -10,6 +10,7 @@ import {
   groupByStatus,
   type Issue,
   ISSUE_STATUSES,
+  issueRepoOptions,
   overviewRows,
   quickStartIssue,
   quickStartPrompt,
@@ -19,6 +20,7 @@ import {
 import { rpc } from "../src/lib/store.ts"
 import { ensureEngineTab } from "../src/lib/tabs.ts"
 import { sendPtyText } from "../src/lib/terminal.ts"
+import type { Task } from "../src/lib/types.ts"
 
 /**
  * Pure helpers for the Issues panel: search/filter semantics, column
@@ -183,6 +185,45 @@ describe("overviewRows", () => {
     const rows = overviewRows([repo("/u/p/bare", [], false)])
     expect(rows[0].total).toBe(0)
     expect(rows[0].openish).toBe(0)
+  })
+})
+
+describe("issueRepoOptions", () => {
+  it("folds worktree tasks into their source repo instead of listing the worktree path", () => {
+    const tasks = [
+      {
+        id: "main",
+        repo: "/Users/narwhal/proj/kobe/",
+        worktreePath: "/Users/narwhal/proj/kobe/",
+        kind: "main",
+        archived: false,
+      },
+      {
+        id: "task",
+        repo: "/Users/narwhal/proj/kobe/",
+        worktreePath: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+        kind: "task",
+        archived: false,
+      },
+    ] as Task[]
+
+    expect(issueRepoOptions(tasks)).toEqual([
+      { repo: "/Users/narwhal/proj/kobe/", label: "kobe", count: 2 },
+    ])
+  })
+
+  it("ignores archived tasks when building issue repo chips", () => {
+    const tasks = [
+      {
+        id: "archived",
+        repo: "/repo/old",
+        worktreePath: "/repo/old",
+        kind: "task",
+        archived: true,
+      },
+    ] as Task[]
+
+    expect(issueRepoOptions(tasks)).toEqual([])
   })
 })
 

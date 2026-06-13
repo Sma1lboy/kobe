@@ -9,6 +9,7 @@ import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
 import { ensureEngineTab } from "./tabs.ts"
 import { sendPtyText } from "./terminal.ts"
+import type { Task } from "./types.ts"
 
 export type IssueStatus = "open" | "doing" | "hold" | "done"
 
@@ -25,6 +26,15 @@ export interface RepoIssues {
   exists: boolean
   nextId: number
   issues: Issue[]
+}
+
+export interface IssueRepoOption {
+  /** Canonical source repo path; worktree checkouts fold into this key. */
+  readonly repo: string
+  /** Short display name: path basename, parent/basename on collision. */
+  readonly label: string
+  /** Non-archived tasks currently associated with this repo. */
+  readonly count: number
 }
 
 /* ----- fetch helpers ------------------------------------------------------ */
@@ -217,6 +227,35 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
     .sort(
       (a, b) => b.openish - a.openish || a.repoRoot.localeCompare(b.repoRoot),
     )
+}
+
+function repoBasename(repo: string): string {
+  const trimmed = repo.replace(/\/+$/, "")
+  return trimmed.split("/").pop() || trimmed
+}
+
+/**
+ * Distinct source repos for the Issues lens. Unlike the Board, Issues are
+ * keyed by the repository's shared daemon store, so task worktrees must fold
+ * back into `task.repo` instead of appearing as separate projects.
+ */
+export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
+  const counts = new Map<string, number>()
+  for (const task of tasks) {
+    if (task.archived || !task.repo) continue
+    counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
+  }
+  const repos = [...counts.keys()]
+  const label = (repo: string): string => {
+    const base = repoBasename(repo)
+    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
+    if (!collides) return base
+    const parts = repo.replace(/\/+$/, "").split("/")
+    return parts.slice(-2).join("/")
+  }
+  return repos
+    .map((repo) => ({ repo, label: label(repo), count: counts.get(repo) ?? 0 }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 }
 
 /**
