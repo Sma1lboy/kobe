@@ -51,8 +51,6 @@ export interface BridgeSnapshotState {
   jobs: Record<string, TaskJobPayload>
   /** worktreePath → uncommitted +added/−deleted counts (daemon-collected). */
   worktreeChanges: WorktreeChangeCounts
-  /** Conflict-radar pairs (file overlap / proven merge conflict). */
-  conflicts: ChannelPayloads["task.conflicts"]["pairs"]
   /** repoRoot → daemon-owned issue state replayed by `issue.snapshot`. */
   issueSnapshots: Record<string, IssueSnapshotPayload>
   /** Most recent session.deliver event (dispatcher plumbing) — the SPA
@@ -114,7 +112,6 @@ export class DaemonLink {
   private update: ChannelPayloads["update"]["info"] = null
   private jobs: Record<string, TaskJobPayload> = {}
   private worktreeChanges: WorktreeChangeCounts = {}
-  private conflicts: ChannelPayloads["task.conflicts"]["pairs"] = []
   private issueSnapshots: Record<string, IssueSnapshotPayload> = {}
   private deliver: ChannelPayloads["session.deliver"] | null = null
   private uiPrefs: UiPrefsPayload | null = null
@@ -137,7 +134,6 @@ export class DaemonLink {
       update: this.update,
       jobs: this.jobs,
       worktreeChanges: this.worktreeChanges,
-      conflicts: this.conflicts,
       issueSnapshots: this.issueSnapshots,
       deliver: this.deliver,
       uiPrefs: this.uiPrefs,
@@ -279,9 +275,6 @@ export class DaemonLink {
       }
       case "worktree.changes":
         this.worktreeChanges = (payload as ChannelPayloads["worktree.changes"]).changes
-        break
-      case "task.conflicts":
-        this.conflicts = (payload as ChannelPayloads["task.conflicts"]).pairs
         break
       case "issue.snapshot": {
         const state = payload as IssueSnapshotPayload

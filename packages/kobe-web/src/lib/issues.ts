@@ -5,6 +5,7 @@
  * plumbing.
  */
 
+import { labelRepo } from "./board.ts"
 import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
 import { ensureEngineTab } from "./tabs.ts"
@@ -19,6 +20,10 @@ export interface Issue {
   status: IssueStatus
   created: string
   body: string
+  /** Task this issue was quick-started into — kept in sync with the web
+   *  Task interface (lib/types.ts). A live task here hides the issue from the
+   *  unified board. */
+  taskId?: string
 }
 
 export interface RepoIssues {
@@ -87,6 +92,26 @@ export async function updateIssue(
   patch: { title?: string; body?: string },
 ): Promise<RepoIssues> {
   return postOp(repoRoot, { type: "update", id, ...patch })
+}
+
+/** Link an issue to the task spawned from it — the daemon stamps the issue's
+ *  `taskId` (and mirrors the issue to `done` when the task hits done). The
+ *  unified board uses this link to dedup the issue against its task card. */
+export async function linkIssue(
+  repoRoot: string,
+  id: number,
+  taskId: string,
+): Promise<RepoIssues> {
+  return postOp(repoRoot, { type: "link", id, taskId })
+}
+
+/** Drop an issue↔task link — resurfaces the issue on the board (e.g. its task
+ *  was deleted). */
+export async function unlinkIssue(
+  repoRoot: string,
+  id: number,
+): Promise<RepoIssues> {
+  return postOp(repoRoot, { type: "unlink", id })
 }
 
 async function fetchKobeApiInvocation(): Promise<string> {
@@ -229,15 +254,11 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
     )
 }
 
-function repoBasename(repo: string): string {
-  const trimmed = repo.replace(/\/+$/, "")
-  return trimmed.split("/").pop() || trimmed
-}
-
 /**
  * Distinct source repos for the Issues lens. Unlike the Board, Issues are
  * keyed by the repository's shared daemon store, so task worktrees must fold
- * back into `task.repo` instead of appearing as separate projects.
+ * back into `task.repo` instead of appearing as separate projects. Labels
+ * come from the shared {@link labelRepo} helper (board.ts).
  */
 export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
   const counts = new Map<string, number>()
@@ -252,15 +273,12 @@ export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
     counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
   }
   const repos = [...counts.keys()]
-  const label = (repo: string): string => {
-    const base = repoBasename(repo)
-    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
-    if (!collides) return base
-    const parts = repo.replace(/\/+$/, "").split("/")
-    return parts.slice(-2).join("/")
-  }
   return repos
-    .map((repo) => ({ repo, label: label(repo), count: counts.get(repo) ?? 0 }))
+    .map((repo) => ({
+      repo,
+      label: labelRepo(repo, repos),
+      count: counts.get(repo) ?? 0,
+    }))
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
@@ -282,28 +300,35 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
 /* ----- quick start (side-effectful) --------------------------------------- */
 
 /**
- * Spawn a kobe task from an issue: create the task (branch derived later
- * by ensureWorktree — KOB-244; vendor = shared Settings default), mark the issue
- * `doing`, then deliver the prompt through the pty sidecar's
- * spawn-on-send path, which materializes the worktree + engine. The
- * status flip is best-effort: the task already exists, so a write
- * failure must not strand it.
+ * Spawn a kobe task from an issue: create the task (branch derived later by
+ * ensureWorktree — KOB-244), stamping `issueId` so the daemon can pair the
+ * two; link the issue → new task (which also flips it `doing` and mirrors it
+ * to `done` when the task finishes), then deliver the prompt through the pty
+ * sidecar's spawn-on-send path, which materializes the worktree + engine.
+ *
+ * `vendor` is the engine chosen in the drawer; when omitted it falls back to
+ * the shared Settings default. The link is best-effort: the task already
+ * exists, so a write failure must not strand it.
  */
 export async function quickStartIssue(
   repoRoot: string,
   issue: Issue,
+  vendor?: string,
 ): Promise<{ taskId: string }> {
-  const vendor = await fetchDefaultEngine()
+  const engine = vendor?.trim() || (await fetchDefaultEngine())
   const { taskId } = await rpc<{ taskId: string }>("task.create", {
     repo: repoRoot,
     title: `#${issue.id} ${issue.title}`,
-    ...(vendor ? { vendor } : {}),
+    issueId: issue.id,
+    ...(engine ? { vendor: engine } : {}),
   })
   // Move the daemon's active-task pointer too — every sibling open-task
   // path pairs selectTask with this (Board/NewTaskDialog), and the
   // /task/$taskId route effect won't fire it (selectTask runs first).
   void rpc("task.setActive", { taskId }).catch(() => {})
-  await setIssueStatus(repoRoot, issue.id, "doing").catch(() => {})
+  // Link issue → task: stamps the issue's taskId, flips it `doing`, and arms
+  // the daemon's auto-mirror to `done` when the task completes.
+  await linkIssue(repoRoot, issue.id, taskId).catch(() => {})
   const api = await fetchKobeApiInvocation().catch(() => "kobe api")
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))

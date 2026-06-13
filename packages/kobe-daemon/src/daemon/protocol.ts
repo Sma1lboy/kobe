@@ -278,15 +278,6 @@ export interface ChannelPayloads {
     changes: Record<string, { added: number; deleted: number }>
   }
   /**
-   * Conflict radar (docs/design/conflict-radar.md): pairs of in-flight
-   * tasks whose branches touch the same files (`overlap`) or whose heads
-   * demonstrably conflict under a dry-run merge (`conflict`,
-   * `git merge-tree`). Daemon-collected on a guarded tick; the board draws
-   * yarn between `conflict` pairs and badges both cards. Full list,
-   * republished on change only.
-   */
-  "task.conflicts": { pairs: ConflictPair[] }
-  /**
    * Text addressed INTO a task's live engine session (docs/design/
    * dispatcher.md). The daemon never owns delivery — engines are hosted
    * by front-ends (tmux panes, the web PTY sidecar), so this channel is
@@ -316,18 +307,6 @@ export interface SessionDeliverPayload {
   readonly source: "note" | "dispatcher"
 }
 
-/** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and
- *  the strongest proven signal level. */
-export interface ConflictPair {
-  readonly a: string
-  readonly b: string
-  readonly files: readonly string[]
-  readonly level: "overlap" | "conflict"
-}
-
-/** The `task.conflicts` channel payload. */
-export type ConflictsPayload = ChannelPayloads["task.conflicts"]
-
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
 
@@ -351,7 +330,6 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "keybindings",
   "task.jobs",
   "worktree.changes",
-  "task.conflicts",
   "session.deliver",
 ]
 
@@ -406,6 +384,8 @@ export interface SerializedTask {
   readonly prStatus?: Task["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
+  /** Linked repo-scoped issue id — set when this task was spawned from an issue. */
+  readonly issueId?: number
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -424,6 +404,7 @@ export function serializeTask(task: Task): SerializedTask {
     vendor: task.vendor,
     prStatus: task.prStatus,
     position: task.position,
+    issueId: task.issueId,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

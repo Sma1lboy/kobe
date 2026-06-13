@@ -45,11 +45,13 @@ function ToggleRow({
   detail,
   enabled,
   onToggle,
+  disabled,
 }: {
   label: string
   detail?: string
   enabled: boolean
   onToggle: () => void
+  disabled?: boolean
 }) {
   return (
     <div className="flex items-start justify-between gap-4 border border-line bg-bg p-3">
@@ -64,7 +66,8 @@ function ToggleRow({
       <button
         type="button"
         onClick={onToggle}
-        className={`shrink-0 border px-2 py-0.5 text-[10px] transition-colors ${
+        disabled={disabled}
+        className={`shrink-0 border px-2 py-0.5 text-[10px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
           enabled
             ? "border-primary bg-inset text-fg"
             : "border-line bg-surface text-muted hover:border-primary hover:text-fg"
@@ -449,6 +452,7 @@ function NotificationsSection() {
             detail="Get pinged when a task needs input or errors while this browser tab is in the background."
             enabled={enabled}
             onToggle={() => void setNotificationsEnabled(!enabled)}
+            disabled={permission === "denied" && !enabled}
           />
         ) : (
           <p className="text-[11px] leading-relaxed text-subtle">

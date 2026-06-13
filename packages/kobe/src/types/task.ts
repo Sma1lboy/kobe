@@ -120,6 +120,14 @@ export interface Task {
    * `default` sort). Cards without one sort by creation time on the board.
    */
   readonly position?: number
+  /**
+   * The repo-scoped issue this task was spawned from, if any. Links a task
+   * back to its source issue so a future unified board can dedup the two.
+   * Scoped by the task's own `repo`. Optional + additive: missing records
+   * load unchanged. The reverse link (`Issue.taskId`) is owned by the
+   * daemon's issues store.
+   */
+  readonly issueId?: number
   readonly createdAt: string
   readonly updatedAt: string
 }

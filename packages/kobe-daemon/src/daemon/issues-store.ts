@@ -16,6 +16,8 @@ export interface Issue {
   status: IssueStatus
   created: string
   body: string
+  /** Linked task ULID — set when a task is spawned from this issue (link op). */
+  taskId?: string
 }
 
 export interface RepoIssues {
@@ -40,6 +42,8 @@ type IssueOp =
   | { type: "create"; title?: unknown; body?: unknown }
   | { type: "setStatus"; id?: unknown; status?: unknown }
   | { type: "update"; id?: unknown; title?: unknown; body?: unknown }
+  | { type: "link"; id?: unknown; taskId?: unknown }
+  | { type: "unlink"; id?: unknown }
 
 function isGitNotRepositoryError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
@@ -64,6 +68,7 @@ function normalizeIssue(entry: unknown): Issue | null {
     status: isValidStatus(raw.status) ? raw.status : "open",
     created: typeof raw.created === "string" ? raw.created : "",
     body: typeof raw.body === "string" ? raw.body : "",
+    taskId: typeof raw.taskId === "string" ? raw.taskId : undefined,
   }
 }
 
@@ -231,6 +236,19 @@ export class IssuesStore {
         if (!issue) throw new Error(`no issue #${typed.id}`)
         if (typeof typed.title === "string") issue.title = typed.title
         if (typeof typed.body === "string") issue.body = typed.body
+      } else if (typed.type === "link") {
+        if (typeof typed.id !== "number") throw new Error("link requires a numeric id")
+        if (typeof typed.taskId !== "string" || typed.taskId.length === 0) {
+          throw new Error("link requires a non-empty taskId")
+        }
+        const issue = record.issues.find((i) => i.id === typed.id)
+        if (!issue) throw new Error(`no issue #${typed.id}`)
+        issue.taskId = typed.taskId
+      } else if (typed.type === "unlink") {
+        if (typeof typed.id !== "number") throw new Error("unlink requires a numeric id")
+        const issue = record.issues.find((i) => i.id === typed.id)
+        if (!issue) throw new Error(`no issue #${typed.id}`)
+        issue.taskId = undefined
       } else {
         throw new Error(`unknown op type: ${(typed as { type: string }).type}`)
       }

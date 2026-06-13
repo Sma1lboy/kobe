@@ -513,6 +513,7 @@ export class RemoteOrchestrator {
     branch?: string
     baseRef?: string
     vendor?: VendorId
+    issueId?: number
   }): Promise<Task> {
     const res = await this.client.request<{ task: SerializedTask }>("task.create", input)
     return deserializeTask(res.task)
@@ -731,6 +732,7 @@ function deserializeTask(s: SerializedTask): Task {
     pinned: s.pinned,
     vendor: s.vendor,
     prStatus: s.prStatus,
+    issueId: s.issueId,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   }

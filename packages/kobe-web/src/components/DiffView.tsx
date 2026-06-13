@@ -272,6 +272,7 @@ export function FilePreview({
   const load = useCallback(async () => {
     if (!worktreePath) {
       setFile(null)
+      setError(null)
       return
     }
     const seq = ++seqRef.current

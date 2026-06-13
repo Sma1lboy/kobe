@@ -7,7 +7,6 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import {
-  CircleDot,
   CircleHelp,
   Columns3,
   FolderInput,
@@ -580,15 +579,6 @@ function TopBar({
           title="Board — tasks by status"
         >
           <Columns3 size={15} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/issues" })}
-          className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Issues"
-          title="Issues — daemon tracker"
-        >
-          <CircleDot size={15} strokeWidth={1.8} />
         </button>
         <button
           type="button"

@@ -115,30 +115,50 @@ TanStack Router, file-based ([`src/routes/`](../../packages/kobe-web/src/routes)
 |---|---|
 | `/` | The workspace shell (rail + tabs + tools). |
 | `/task/$taskId` | Deep link — selects the task; back/forward walks task-switch history. |
-| `/board` | Kanban over the persisted `Task.status` lifecycle (see below). |
-| `/issues` | The daemon-owned issue tracker. |
+| `/board` | The unified kanban — the daemon-owned issues AND the persisted `Task.status` lifecycle in one board (see below). |
 
-The top nav is two buttons — **Board** and **Issues**. The former `/overview`
-mission-control route is gone; its triage now lives in the rail status chips and
-the Board's attention-filter chips (see "Search, filter & keyboard", below).
+The top nav is two buttons — **Workspace** and **Board**. The standalone
+`/issues` route folded into the Board (issues are now the Backlog column), and
+the former `/overview` mission-control route is gone; its triage lives in the
+rail status chips and the Board's attention-filter chips (see "Search, filter &
+keyboard", below).
 
 ## Board (`/board`)
 
-The kanban lens over the same task list (full plan + decisions:
-[`web-kanban.md`](./web-kanban.md)). One column per `TaskStatus`
+The unified kanban over BOTH stores — the daemon-owned issues and the task
+list — grouped by **Project (= git repo)** (full plan + decisions:
+[`web-kanban.md`](./web-kanban.md)). The two stores stay separate (Path 1);
+the board is a join, not a merge. One column per `TaskStatus`
 (`error`/`canceled` fold away when empty; unknown statuses become trailing
 read-only columns rather than dropping cards). Columns bind ONLY to the
 persisted status — transient engine activity stays a per-card signal lamp,
-never a column. Cards drag across columns (`task.status`) and within a column
-(`task.reorder`, a web-only sparse fractional `position` that never bumps
-`updatedAt` and is invisible to the TUI). Drops paint through an optimistic
-override layer in [`src/lib/board-state.ts`](../../packages/kobe-web/src/lib/board-state.ts)
-whose clear rule is snapshot-confirmation per field; dragging disables while
-the daemon/stream is down. The card's eye button opens a **peek drawer** —
-the task's live engine PTY + transcript without leaving the board. The drawer
-attaches by the task's WORKSPACE vendor-tab id (`ensureEngineTab`), because
-PTYs are keyed by tab id: a drawer-private id would spawn a second engine
-instance. Closing the drawer never calls `/pty/close`; the sidecar fans
+never a column.
+
+**What lands in each column.** Backlog shows the repo's **issues** plus any
+tasks still in `backlog` status; `in_progress` / `in_review` show **tasks**;
+Done shows both. **Dedup is by link:** an issue linked to a LIVE task (status
+not `done`/`canceled`/`error`, not archived) is hidden — it's represented by
+its task card, which carries a `#<issueId>` back-link chip. Deleting or
+archiving that task resurfaces its issue in Backlog. Issues are non-optimistic
+(the daemon `issue.snapshot` push is truth), but an issue is optimistically
+hidden the moment `quickStartIssue` resolves with a `taskId`, so there's no
+flash of a duplicate card before the snapshot catches up.
+
+**Interaction split.** Task cards are draggable across status columns
+(`task.status`) and within a column (`task.reorder`, a web-only sparse
+fractional `position` that never bumps `updatedAt` and is invisible to the TUI);
+drops paint through an optimistic override layer in
+[`src/lib/board-state.ts`](../../packages/kobe-web/src/lib/board-state.ts)
+(ULID-keyed, tasks only) whose clear rule is snapshot-confirmation per field,
+and dragging disables while the daemon/stream is down. **Issue cards are NOT
+draggable.** Clicking an issue card opens a **right-side drawer** (the extended
+`IssuePeek`) where you can edit title + description, pick an **engine**, and
+click **Start** — Start spawns a task with the chosen engine via
+`quickStartIssue` and links the two. A task card's eye button opens a **peek
+drawer** — the task's live engine PTY + transcript without leaving the board.
+The drawer attaches by the task's WORKSPACE vendor-tab id (`ensureEngineTab`),
+because PTYs are keyed by tab id: a drawer-private id would spawn a second
+engine instance. Closing the drawer never calls `/pty/close`; the sidecar fans
 output to every attached socket, so peek and workspace coexist.
 
 ## Workspace tabs
@@ -175,7 +195,7 @@ Beyond the rail/tabs/tools grammar, the dashboard carries:
 - **Notes** ([`NotesPanel.tsx`](../../packages/kobe-web/src/components/NotesPanel.tsx)) — a web-only per-task markdown scratchpad (the TUI has no equivalent), autosaved server-side under `<KOBE_HOME>/.kobe/notes/<taskId>.md` via `/api/notes`, with an Edit/Preview toggle. The preview renders through an escape-first markdown renderer ([`lib/markdown.ts`](../../packages/kobe-web/src/lib/markdown.ts)) — the one `dangerouslySetInnerHTML` sink in the app, so it escapes all input before composing its own tags and drops unsafe link schemes; the taskId→file path is traversal-guarded server-side (`isSafeTaskId`).
 - **Resilience & empty states** — a root error boundary (no white-screen) and a
   daemon-offline banner; failed mutations surface in a toast stack
-  ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)). The Board, Issues,
+  ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)). The Board,
   transcript, diff, Settings, and Adopt surfaces each carry their own
   offline/empty-state hint instead of rendering blank — e.g. "no tasks yet",
   "nothing to review", or a "daemon offline, reconnecting" line — so a fresh or

@@ -244,8 +244,9 @@ flowchart TB
   小改,daemon 协议不动)还是 string-match;同时留意 `ConcurrencyCapError` 等未来可能
   出现的第二种拒绝类型,回滚设计不要写死单一错误。方法:在 store.ts 之外做组件级实验,
   不动全局 store 语义。产出:乐观层归属(组件局部 vs store)+ 清除条件 + 错误转发裁决。
-- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/`、`/issues` 并列;原 `/overview`
-  视图已移除),入口加进命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放
+- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/` 并列;原 `/overview`
+  与独立的 `/issues` 视图均已移除——issues 折进统一看板,见下文"M6 统一看板"),
+  入口加进命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放
   module store 或 URL search
   params。方法:复盘 issue #7 的修复方向,与之同构。产出:状态持有方案。
 - **R6 卡片信息密度。** 第一版卡片上放什么:标题、activity dot、vendor 徽标、PR chip
@@ -309,6 +310,30 @@ sequenceDiagram
 | **M3 列内排序 + 打磨** | position 字段 + `task.reorder` RPC(协议 + allowlist + spa 契约测试三表同步);列内拖序;收尾(空列占位、列计数、筛选态持久、done 收纳政策落地) | 列内顺序跨刷新/跨端稳定;契约测试过 | **有**(唯一一次) |
 | **M4 板内 peek 抽屉** | 看板侧拉抽屉内嵌 engine PTY + transcript(R9);卡片次级动作(R6) | 不离开看板可查看/接管会话;关抽屉不杀会话;与工作区双 attach 无冲突 | 无(复用 `/pty` 与 `/api/history`) |
 | **M5 自动流转(opt-in)** | 开工:daemon 规则 turn-start → `backlog → in_progress`;收工:spawn 时注入 system prompt,agent 自报 `in_review` | 单向、绝不 done/canceled、人手最终裁决;默认关 | 无(daemon 规则 + 启动参数注入) |
+| **M6 统一看板** | 看板按 Project(= git repo)分组,统一收纳 daemon issues 与 tasks 两个 store(Path 1,两 store 各自独立);独立 `/issues` 路由折入看板并移除;顶栏改为 Workspace + Board | issue 与 task 在同一项目看板上去重正确;点 issue 出右侧抽屉可编辑 + 选引擎 + Start;issue 卡片不可拖,task 卡片可拖 | 无(后端已就位:`Task.issueId` / `Issue.taskId` + link/unlink op + linked-issue→done 镜像) |
+
+### M6 统一看板(Path 1:两 store 各自独立,看板做"连接"不"合并")
+
+owner 拍板把独立 `/issues` 路由折进看板(Option B),顶栏从 Board + Issues
+改为 **Workspace + Board**。一个看板按 **Project(= git repo)** 分组,Backlog
+列收纳该 repo 的 **issues**(外加仍处 `backlog` 状态的 tasks);
+`in_progress` / `in_review` 列收纳 **tasks**;Done 列两者都收。
+
+- **去重靠 link。** 链接到一个**活** task(status 非 `done`/`canceled`/`error`、
+  未 archived)的 issue 隐藏,由它的 task 卡片代表——task 卡片上挂一个
+  `#<issueId>` 回链 chip。删除/归档该 task 会让 issue 重新出现在 Backlog。
+- **issue 交互(owner 指定,非拖拽)。** 点 issue 卡片打开**右侧抽屉**(复用并
+  扩展 `IssuePeek`):可编辑标题 + 描述、选一个**引擎**、点 **Start**——Start 用
+  所选引擎经 `quickStartIssue` 拉起一个 task 并把二者 link。**issue 卡片不可拖**;
+  **task 卡片仍可跨状态列拖动**。
+- **乐观策略。** 保留 ULID 键的看板乐观 override 层(仅 task);issues 非乐观
+  (daemon `issue.snapshot` 为真值)——但 `quickStartIssue` 一旦带 `taskId`
+  resolve,就**乐观隐藏**该 issue,避免重复卡片闪一下。
+- **复用真组件。** 复用 `IssueCard` / `NewIssueDialog` / `IssuePeek`,不另起一个
+  简化版 issue 编辑器。后端已就位(daemon 已重启):`Task.issueId?:number`、
+  `Issue.taskId?:string`、`/api/issues` 的 `{type:"link",id,taskId}` /
+  `{type:"unlink",id}` op,以及 linked issue 在其 task 到 `done` 时自动镜像
+  到 `done`。
 
 ### M5 自动流转(2026-06-11 二次拍板:规则开工 + agent 自报收工;小模型 judge 已移除)
 

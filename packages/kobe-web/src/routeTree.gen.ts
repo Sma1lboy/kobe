@@ -9,16 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IssuesRouteImport } from './routes/issues'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TaskTaskIdRouteImport } from './routes/task.$taskId'
 
-const IssuesRoute = IssuesRouteImport.update({
-  id: '/issues',
-  path: '/issues',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const BoardRoute = BoardRouteImport.update({
   id: '/board',
   path: '/board',
@@ -38,46 +32,35 @@ const TaskTaskIdRoute = TaskTaskIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/board' | '/issues' | '/task/$taskId'
+  fullPaths: '/' | '/board' | '/task/$taskId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/board' | '/issues' | '/task/$taskId'
-  id: '__root__' | '/' | '/board' | '/issues' | '/task/$taskId'
+  to: '/' | '/board' | '/task/$taskId'
+  id: '__root__' | '/' | '/board' | '/task/$taskId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BoardRoute: typeof BoardRoute
-  IssuesRoute: typeof IssuesRoute
   TaskTaskIdRoute: typeof TaskTaskIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/issues': {
-      id: '/issues'
-      path: '/issues'
-      fullPath: '/issues'
-      preLoaderRoute: typeof IssuesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/board': {
       id: '/board'
       path: '/board'
@@ -105,7 +88,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BoardRoute: BoardRoute,
-  IssuesRoute: IssuesRoute,
   TaskTaskIdRoute: TaskTaskIdRoute,
 }
 export const routeTree = rootRouteImport

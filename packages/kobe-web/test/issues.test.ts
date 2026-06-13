@@ -11,11 +11,13 @@ import {
   type Issue,
   ISSUE_STATUSES,
   issueRepoOptions,
+  linkIssue,
   overviewRows,
   quickStartIssue,
   quickStartPrompt,
   type RepoIssues,
   statusActions,
+  unlinkIssue,
 } from "../src/lib/issues.ts"
 import { rpc } from "../src/lib/store.ts"
 import { ensureEngineTab } from "../src/lib/tabs.ts"
@@ -322,14 +324,14 @@ describe("quickStartIssue", () => {
     vi.mocked(sendPtyText).mockReset()
   })
 
-  it("creates the task, flips to doing, and delivers the prompt", async () => {
+  it("creates the task (stamping issueId), links the issue, delivers the prompt", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-1" }
       return {}
     })
     vi.mocked(ensureEngineTab).mockReturnValue("tab-1")
     vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
-    const fetchMock = vi.fn((url: string) =>
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) =>
       Promise.resolve(
         new Response(
           JSON.stringify(
@@ -346,10 +348,12 @@ describe("quickStartIssue", () => {
 
     const result = await quickStartIssue("/u/p/kobe", target)
     expect(result).toEqual({ taskId: "task-1" })
-    // No branch; vendor follows Settings' default engine.
+    // No branch; vendor follows Settings' default engine; issueId is stamped
+    // so the daemon can pair the task back to the issue.
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
+      issueId: 3,
       vendor: "codex",
     })
     // The daemon's active-task pointer follows, like every open-task path.
@@ -361,16 +365,55 @@ describe("quickStartIssue", () => {
       "task-1",
       quickStartPrompt(target, "bun ./src/cli/index.ts api"),
     )
-    // The doing flip went through the issues POST route.
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/issues",
-      expect.objectContaining({ method: "POST" }),
+    // The link went through the issues POST route as a {type:"link"} op
+    // carrying the new taskId (flips status doing + arms the daemon mirror).
+    const issuesPost = fetchMock.mock.calls.find(
+      ([url, opts]) =>
+        url === "/api/issues" &&
+        (opts as RequestInit | undefined)?.method === "POST",
     )
+    expect(issuesPost).toBeDefined()
+    const body = JSON.parse(
+      (issuesPost?.[1] as RequestInit).body as string,
+    ) as { repoRoot: string; op: unknown }
+    expect(body).toEqual({
+      repoRoot: "/u/p/kobe",
+      op: { type: "link", id: 3, taskId: "task-1" },
+    })
     expect(fetchMock).not.toHaveBeenCalledWith("/api/issues/sync-worktree", expect.anything())
     vi.unstubAllGlobals()
   })
 
-  it("survives a failed status flip (task already exists)", async () => {
+  it("uses an explicit vendor arg over the Settings default", async () => {
+    vi.mocked(rpc).mockImplementation(async (name) => {
+      if (name === "task.create") return { taskId: "task-9" }
+      return {}
+    })
+    vi.mocked(ensureEngineTab).mockReturnValue("tab-9")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/api/settings"
+          ? Promise.resolve(
+              new Response(JSON.stringify({ defaultEngine: "codex" })),
+            )
+          : Promise.resolve(new Response(JSON.stringify({ api: "kobe api" }))),
+      ),
+    )
+
+    await quickStartIssue("/u/p/kobe", target, "claude")
+    // Drawer-chosen engine wins; Settings is not even read for the vendor.
+    expect(rpc).toHaveBeenCalledWith("task.create", {
+      repo: "/u/p/kobe",
+      title: "#3 Fix it",
+      issueId: 3,
+      vendor: "claude",
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it("survives a failed link (task already exists)", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-2" }
       return {}
@@ -417,6 +460,7 @@ describe("quickStartIssue", () => {
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
+      issueId: 3,
     })
     vi.unstubAllGlobals()
   })
@@ -435,6 +479,66 @@ describe("quickStartIssue", () => {
     )
     expect(ensureEngineTab).not.toHaveBeenCalled()
     expect(sendPtyText).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
+
+describe("linkIssue / unlinkIssue", () => {
+  const okResponse = (): Response =>
+    new Response(
+      JSON.stringify({
+        repoRoot: "/u/p/kobe",
+        exists: true,
+        nextId: 5,
+        issues: [],
+      } satisfies RepoIssues),
+    )
+
+  it("posts a {type:'link'} op carrying id + taskId", async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(okResponse()),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const state = await linkIssue("/u/p/kobe", 7, "task-7")
+    expect(state.repoRoot).toBe("/u/p/kobe")
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/issues",
+      expect.objectContaining({ method: "POST" }),
+    )
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(body).toEqual({
+      repoRoot: "/u/p/kobe",
+      op: { type: "link", id: 7, taskId: "task-7" },
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it("posts a {type:'unlink'} op carrying id", async () => {
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(okResponse()),
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    await unlinkIssue("/u/p/kobe", 7)
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)
+    expect(body).toEqual({
+      repoRoot: "/u/p/kobe",
+      op: { type: "unlink", id: 7 },
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it("throws with the bridge's detail on a non-ok response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(new Response("nope", { status: 500 })),
+      ),
+    )
+    await expect(linkIssue("/u/p/kobe", 7, "task-7")).rejects.toThrow(
+      /update issues/,
+    )
     vi.unstubAllGlobals()
   })
 })

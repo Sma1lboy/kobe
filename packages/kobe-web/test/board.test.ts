@@ -2,12 +2,20 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   applyBoardOverrides,
   BOARD_COLUMNS,
+  type BoardCard,
   boardCardCount,
   buildBoard,
+  buildProjectBoards,
+  compareBacklogCards,
   compareCards,
+  droppableId,
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
+  isLiveTask,
+  labelRepo,
+  liveLinkedIssueIds,
+  parseDroppableId,
   planColumnDrop,
   POSITION_STEP,
   positionBetween,
@@ -30,7 +38,7 @@ import {
 } from "../src/lib/board-state.ts"
 import { matchesStatusFilter } from "../src/lib/triage.ts"
 import { matchesTask } from "../src/lib/task-list.ts"
-import type { EngineState, Task } from "../src/lib/types.ts"
+import type { EngineState, Issue, Task } from "../src/lib/types.ts"
 
 /**
  * Kanban column math. The load-bearing rules: columns bind to the persisted
@@ -51,11 +59,38 @@ const task = (over: Partial<Task>): Task =>
     ...over,
   }) as Task
 
-const columnKeys = (tasks: Task[]) => buildBoard(tasks).map((c) => c.key)
+const issue = (over: Partial<Issue>): Issue => ({
+  id: over.id ?? 1,
+  title: "",
+  status: "open",
+  created: "2026-06-01",
+  body: "",
+  ...over,
+})
+
+/** Wrap a Task as a board card (buildBoard takes BoardCard[]). Preserves the
+ *  task's own `kind` ("main"/"task") at runtime so buildBoard's isBoardTask
+ *  filter still sees a main row; cast because the BoardCard task variant
+ *  narrows `kind` to "task". */
+const tc = (t: Task): BoardCard => ({ ...t, kind: t.kind }) as BoardCard
+/** An issue card for `repo`. */
+const ic = (repo: string, i: Issue): BoardCard => ({
+  kind: "issue",
+  repo,
+  issue: i,
+})
+/** Wrap a Task[] as task cards. */
+const cards = (tasks: Task[]): BoardCard[] => tasks.map(tc)
+
+const columnKeys = (tasks: Task[]) =>
+  buildBoard(cards(tasks)).map((c) => c.key)
+/** Card ids in a column: task id for a task card, `#<id>` for an issue card. */
+const cardId = (c: BoardCard): string =>
+  c.kind === "issue" ? `#${c.issue.id}` : c.id
 const columnIds = (tasks: Task[], key: string) =>
-  buildBoard(tasks)
+  buildBoard(cards(tasks))
     .find((c) => c.key === key)
-    ?.tasks.map((t) => t.id)
+    ?.cards.map(cardId)
 
 describe("isBoardTask", () => {
   it("keeps regular worktree tasks", () => {
@@ -110,11 +145,11 @@ describe("buildBoard — bucketing", () => {
     expect(columnIds(tasks, "backlog")).toEqual(["b1"])
     expect(columnIds(tasks, "in_progress")).toEqual(["p1"])
     // Unknown status → trailing dynamic column titled by the raw key.
-    const board = buildBoard(tasks)
+    const board = buildBoard(cards(tasks))
     const extra = board[board.length - 1]
     expect(extra.key).toBe("qa_hold")
     expect(extra.title).toBe("qa_hold")
-    expect(extra.tasks.map((t) => t.id)).toEqual(["weird"])
+    expect(extra.cards.map(cardId)).toEqual(["weird"])
   })
 
   it("treats a missing status as backlog and excludes non-board tasks", () => {
@@ -124,7 +159,7 @@ describe("buildBoard — bucketing", () => {
       task({ id: "proj", kind: "main" }),
     ]
     expect(columnIds(tasks, "backlog")).toEqual(["nostatus"])
-    expect(boardCardCount(buildBoard(tasks))).toBe(1)
+    expect(boardCardCount(buildBoard(cards(tasks)))).toBe(1)
   })
 })
 
@@ -294,12 +329,12 @@ describe("buildBoard — terminal-column cap", () => {
     const active = Array.from({ length: TERMINAL_COLUMN_CAP + 5 }, (_, i) =>
       task({ id: `a${String(i).padStart(3, "0")}`, status: "in_progress" }),
     )
-    const board = buildBoard([...done, ...active])
+    const board = buildBoard(cards([...done, ...active]))
     const doneCol = board.find((c) => c.key === "done")
     const activeCol = board.find((c) => c.key === "in_progress")
-    expect(doneCol?.tasks).toHaveLength(TERMINAL_COLUMN_CAP)
+    expect(doneCol?.cards).toHaveLength(TERMINAL_COLUMN_CAP)
     expect(doneCol?.hiddenCount).toBe(5)
-    expect(activeCol?.tasks).toHaveLength(TERMINAL_COLUMN_CAP + 5)
+    expect(activeCol?.cards).toHaveLength(TERMINAL_COLUMN_CAP + 5)
     expect(activeCol?.hiddenCount).toBe(0)
   })
 })
@@ -501,6 +536,45 @@ describe("isDroppableColumn", () => {
     expect(isDroppableColumn("canceled")).toBe(true)
     expect(isDroppableColumn("qa_hold")).toBe(false)
   })
+
+  it("accepts composite project droppable ids by their column key", () => {
+    // The unified board namespaces drop targets per project.
+    expect(isDroppableColumn(droppableId("/u/proj/kobe", "in_review"))).toBe(
+      true,
+    )
+    expect(isDroppableColumn(droppableId("/u/proj/kobe", "qa_hold"))).toBe(
+      false,
+    )
+    // Repos can contain colons (ssh://): split from the RIGHT.
+    expect(
+      isDroppableColumn(droppableId("ssh://host/srv/widget", "done")),
+    ).toBe(true)
+  })
+})
+
+describe("droppableId / parseDroppableId — composite per-project ids", () => {
+  it("round-trips a plain path repo", () => {
+    const id = droppableId("/u/proj/kobe", "in_review")
+    expect(id).toBe("/u/proj/kobe:in_review")
+    expect(parseDroppableId(id)).toEqual({
+      repo: "/u/proj/kobe",
+      columnKey: "in_review",
+    })
+  })
+
+  it("round-trips a colon-bearing remote repo (splits from the right)", () => {
+    const id = droppableId("ssh://host/srv/widget", "done")
+    expect(parseDroppableId(id)).toEqual({
+      repo: "ssh://host/srv/widget",
+      columnKey: "done",
+    })
+  })
+
+  it("returns null for a string without a usable separator", () => {
+    expect(parseDroppableId("in_review")).toBeNull()
+    expect(parseDroppableId(":in_review")).toBeNull()
+    expect(parseDroppableId("/u/proj/kobe:")).toBeNull()
+  })
 })
 
 
@@ -539,5 +613,222 @@ describe("repoOptions — project chips", () => {
       { repo: "/u/proj/kobe/", label: "kobe", count: 1 },
       { repo: "ssh://host/srv/repos/widget", label: "widget", count: 1 },
     ])
+  })
+})
+
+describe("labelRepo — shared basename/parent labeler", () => {
+  it("returns the basename when it's unique in the set", () => {
+    expect(labelRepo("/u/proj/kobe", ["/u/proj/kobe", "/u/proj/zeta"])).toBe(
+      "kobe",
+    )
+  })
+
+  it("disambiguates colliding basenames to parent/basename", () => {
+    const repos = ["/u/work/api", "/u/personal/api"]
+    expect(labelRepo("/u/work/api", repos)).toBe("work/api")
+    expect(labelRepo("/u/personal/api", repos)).toBe("personal/api")
+  })
+
+  it("ignores trailing slashes and handles remote keys", () => {
+    expect(labelRepo("/u/proj/kobe/", ["/u/proj/kobe/"])).toBe("kobe")
+    expect(
+      labelRepo("ssh://host/srv/repos/widget", ["ssh://host/srv/repos/widget"]),
+    ).toBe("widget")
+  })
+})
+
+describe("isLiveTask / liveLinkedIssueIds — issue↔task dedup", () => {
+  it("a task is live unless archived or terminal (done/canceled/error)", () => {
+    expect(isLiveTask(task({ status: "backlog" }))).toBe(true)
+    expect(isLiveTask(task({ status: "in_progress" }))).toBe(true)
+    expect(isLiveTask(task({ status: "in_review" }))).toBe(true)
+    expect(isLiveTask(task({ status: "done" }))).toBe(false)
+    expect(isLiveTask(task({ status: "canceled" }))).toBe(false)
+    expect(isLiveTask(task({ status: "error" }))).toBe(false)
+    expect(isLiveTask(task({ status: "in_progress", archived: true }))).toBe(
+      false,
+    )
+  })
+
+  it("keys live issue links by `${repo}:${issueId}` from the FULL task list", () => {
+    const tasks = [
+      task({ id: "t1", repo: "/u/kobe", issueId: 7, status: "in_progress" }),
+      task({ id: "t2", repo: "/u/kobe", issueId: 8, status: "done" }), // dead → not live
+      task({ id: "t3", repo: "/u/kobe", issueId: 9, archived: true }), // archived → not live
+      task({ id: "t4", repo: "/u/web", issueId: 7, status: "backlog" }), // diff repo
+      task({ id: "t5", repo: "/u/kobe", status: "in_progress" }), // no issueId
+    ]
+    const ids = liveLinkedIssueIds(tasks)
+    expect([...ids].sort()).toEqual(["/u/kobe:7", "/u/web:7"])
+  })
+})
+
+describe("compareBacklogCards — kind-aware backlog ordering", () => {
+  it("floats task cards above issue cards", () => {
+    const t = tc(task({ id: "t" }))
+    const i = ic("/u/kobe", issue({ id: 1 }))
+    expect(compareBacklogCards(t, i)).toBeLessThan(0)
+    expect(compareBacklogCards(i, t)).toBeGreaterThan(0)
+  })
+
+  it("sorts issue cards newest-created first, then id desc", () => {
+    const old = ic("/u/kobe", issue({ id: 1, created: "2026-06-01" }))
+    const newA = ic("/u/kobe", issue({ id: 5, created: "2026-06-10" }))
+    const newB = ic("/u/kobe", issue({ id: 3, created: "2026-06-10" }))
+    const sorted = [old, newA, newB]
+      .sort(compareBacklogCards)
+      .map((c) => (c.kind === "issue" ? c.issue.id : 0))
+    expect(sorted).toEqual([5, 3, 1])
+  })
+
+  it("delegates same-kind task ordering to compareCards (pinned floats)", () => {
+    const pin = tc(task({ id: "p", pinned: true }))
+    const reg = tc(task({ id: "r" }))
+    expect(compareBacklogCards(pin, reg)).toBe(compareCards(task({ id: "p", pinned: true }), task({ id: "r" })))
+  })
+})
+
+describe("buildBoard — Backlog mixes issues + backlog tasks", () => {
+  it("puts issue cards in Backlog (always) regardless of any status field", () => {
+    const board = buildBoard([
+      tc(task({ id: "bt", status: "backlog" })),
+      tc(task({ id: "ip", status: "in_progress" })),
+      ic("/u/kobe", issue({ id: 1, status: "done" })), // issue status ignored
+    ])
+    const backlog = board.find((c) => c.key === "backlog")
+    // Task card floats first, then the issue card.
+    expect(backlog?.cards.map(cardId)).toEqual(["bt", "#1"])
+    // The in_progress task is NOT in backlog.
+    expect(
+      board.find((c) => c.key === "in_progress")?.cards.map(cardId),
+    ).toEqual(["ip"])
+  })
+
+  it("issue cards never land in a non-Backlog column", () => {
+    const board = buildBoard([ic("/u/kobe", issue({ id: 1 }))])
+    for (const col of board) {
+      if (col.key === "backlog") continue
+      expect(col.cards).toEqual([])
+    }
+  })
+})
+
+describe("buildProjectBoards — one board per project, deduped", () => {
+  it("derives projects from the UNION of issue-repos and task-repos", () => {
+    const allTasks = [task({ id: "t1", repo: "/u/web", status: "in_progress" })]
+    const boards = buildProjectBoards(
+      [
+        ...allTasks.map(tc),
+        ic("/u/kobe", issue({ id: 1 })), // issue-only project
+      ],
+      allTasks,
+    )
+    expect(boards.map((b) => b.repo).sort()).toEqual(["/u/kobe", "/u/web"])
+    // Each project's columns are independent.
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    expect(kobe?.columns.find((c) => c.key === "backlog")?.cards).toHaveLength(1)
+  })
+
+  it("hides an issue linked to a LIVE task (its task card represents it)", () => {
+    const allTasks = [
+      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "in_progress" }),
+    ]
+    const boards = buildProjectBoards(
+      [
+        ...allTasks.map(tc),
+        ic("/u/kobe", issue({ id: 1 })), // linked + live → hidden
+        ic("/u/kobe", issue({ id: 2 })), // unlinked → shown in backlog
+      ],
+      allTasks,
+    )
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    expect(kobe?.columns.find((c) => c.key === "backlog")?.cards.map(cardId)).toEqual([
+      "#2",
+    ])
+    // The live task represents issue #1 in in_progress.
+    expect(
+      kobe?.columns.find((c) => c.key === "in_progress")?.cards.map(cardId),
+    ).toEqual(["t1"])
+  })
+
+  it("resurfaces an issue whose linked task is dead/archived", () => {
+    const deadTasks = [
+      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "done" }),
+    ]
+    const boards = buildProjectBoards(
+      [
+        // the done task IS a board card (lands in done), issue resurfaces
+        ...deadTasks.map(tc),
+        ic("/u/kobe", issue({ id: 1 })),
+      ],
+      deadTasks,
+    )
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    // Issue #1 is back in Backlog because its task is no longer live.
+    expect(
+      kobe?.columns.find((c) => c.key === "backlog")?.cards.map(cardId),
+    ).toEqual(["#1"])
+  })
+
+  it("dedups against the FULL task list even when the live task isn't a passed card", () => {
+    // A project filter might exclude the live task card from `cards`, but the
+    // issue must STILL hide (dedup reads allTasks, not the rendered cards).
+    const allTasks = [
+      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "in_progress" }),
+    ]
+    const boards = buildProjectBoards(
+      [ic("/u/kobe", issue({ id: 1 }))], // task card omitted from render set
+      allTasks,
+    )
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    expect(kobe).toBeUndefined() // no visible cards → no project board
+  })
+
+  it("sorts projects by label", () => {
+    const allTasks: Task[] = []
+    const boards = buildProjectBoards(
+      [
+        ic("/u/proj/zeta", issue({ id: 1 })),
+        ic("/u/proj/alpha", issue({ id: 1 })),
+      ],
+      allTasks,
+    )
+    expect(boards.map((b) => b.label)).toEqual(["alpha", "zeta"])
+  })
+})
+
+describe("statusFilter composes with issue cards (matchesStatusFilter)", () => {
+  // An issue card has no engine state or worktree changes. matchesStatusFilter
+  // must not throw on the undefined inputs: "all" keeps it, every attention
+  // bucket except "quiet" drops it (a bodiless idle issue triages as quiet).
+  it('"all" shows issue cards; non-quiet attention chips hide them', () => {
+    expect(matchesStatusFilter(undefined, undefined, "all")).toBe(true)
+    expect(matchesStatusFilter(undefined, undefined, "attention")).toBe(false)
+    expect(matchesStatusFilter(undefined, undefined, "working")).toBe(false)
+    expect(matchesStatusFilter(undefined, undefined, "changes")).toBe(false)
+    expect(matchesStatusFilter(undefined, undefined, "quiet")).toBe(true)
+  })
+
+  it("a board predicate ANDs repo + status, keeping issues under 'all'", () => {
+    // Reconstruct the unified board's render predicate over a tiny fixture:
+    // task cards triage by their engine state, issue cards by (undefined,
+    // undefined). The "all" chip must leave issue cards visible.
+    const running: EngineState = { state: "running" } as EngineState
+    const fixture: BoardCard[] = [
+      tc(task({ id: "t1", repo: "/u/kobe", status: "in_progress" })),
+      ic("/u/kobe", issue({ id: 9 })),
+    ]
+    const engines: Record<string, EngineState | undefined> = { t1: running }
+    const visible = (filter: "all" | "working"): string[] =>
+      fixture
+        .filter((c) =>
+          c.kind === "task"
+            ? matchesStatusFilter(engines[c.id], undefined, filter)
+            : matchesStatusFilter(undefined, undefined, filter),
+        )
+        .map(cardId)
+
+    expect(visible("all")).toEqual(["t1", "#9"]) // both
+    expect(visible("working")).toEqual(["t1"]) // issue drops, task stays
   })
 })

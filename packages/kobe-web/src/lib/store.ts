@@ -8,13 +8,11 @@
 import { useSyncExternalStore } from "react"
 import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
-import { prunePromptPreviews } from "./prompt-preview.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   BridgeEvent,
   BridgeSnapshot,
-  ConflictPair,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -34,8 +32,6 @@ export interface AppState {
   jobs: Record<string, TaskJob>
   /** worktreePath → uncommitted +added/−deleted counts. */
   worktreeChanges: WorktreeChangeCounts
-  /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
-  conflicts: ConflictPair[]
   /** repoRoot → daemon-owned issue state from live `issue.snapshot` pushes. */
   issueSnapshots: Record<string, RepoIssues>
   /** Most recent dispatcher delivery (display only; delivery itself is the
@@ -58,7 +54,6 @@ const initial: AppState = {
   update: null,
   jobs: {},
   worktreeChanges: {},
-  conflicts: [],
   issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
@@ -158,7 +153,6 @@ function applyTaskList(tasks: Task[]): void {
     jobs: pruneByTask(state.jobs, live),
   })
   pruneMissingTasks(live)
-  prunePromptPreviews(live)
 }
 
 function applyEvent(event: BridgeEvent): void {
@@ -198,9 +192,6 @@ function applyEvent(event: BridgeEvent): void {
     case "worktree.changes":
       set({ worktreeChanges: event.payload.changes })
       break
-    case "task.conflicts":
-      set({ conflicts: event.payload.pairs })
-      break
     case "issue.snapshot":
       set({
         issueSnapshots: applyIssueSnapshotEvent(
@@ -237,7 +228,6 @@ function ensureStream(): void {
       update: snap.update,
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
-      conflicts: snap.conflicts ?? [],
       issueSnapshots: snap.issueSnapshots ?? {},
       deliver: snap.deliver ?? null,
       uiPrefs: snap.uiPrefs ?? null,
@@ -256,7 +246,6 @@ function ensureStream(): void {
     if (snap.connected) {
       const live = new Set(snap.tasks.map((t) => t.id))
       pruneMissingTasks(live)
-      prunePromptPreviews(live)
     }
   })
   source.addEventListener("channel", (e) => {

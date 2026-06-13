@@ -428,6 +428,9 @@ function coerceTask(value: unknown): Task | null {
     // Web-board ordering key — must survive the load coercion or every
     // daemon restart silently forgets the user's column order.
     ...(typeof v.position === "number" && Number.isFinite(v.position) ? { position: v.position } : {}),
+    // Linked source-issue id — must survive the load coercion or the task
+    // forgets which issue it was spawned from on every daemon restart.
+    ...(typeof v.issueId === "number" && Number.isFinite(v.issueId) ? { issueId: v.issueId } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }

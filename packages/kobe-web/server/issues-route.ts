@@ -24,6 +24,9 @@ function statusForIssueError(err: unknown): number {
     message.startsWith("invalid status:") ||
     message === "update requires a numeric id" ||
     message === "title must be a non-empty string" ||
+    message === "link requires a numeric id" ||
+    message === "link requires a non-empty taskId" ||
+    message === "unlink requires a numeric id" ||
     message.startsWith("unknown op type:")
   ) {
     return 400

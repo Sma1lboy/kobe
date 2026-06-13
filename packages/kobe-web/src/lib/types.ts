@@ -39,6 +39,10 @@ export interface Task {
   prStatus?: TaskPRStatus
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   position?: number
+  /** Issue this task was spawned from (quick-start link) — the unified board
+   *  dedups the issue against this task and the task card shows a `#<id>`
+   *  back-link chip. */
+  issueId?: number
   createdAt: string
   updatedAt: string
 }
@@ -51,6 +55,9 @@ export interface Issue {
   status: IssueStatus
   created: string
   body: string
+  /** Task this issue was quick-started into (link) — a LIVE task here hides
+   *  the issue from the unified board (the task card represents it). */
+  taskId?: string
 }
 
 export interface RepoIssues {
@@ -97,15 +104,6 @@ export type WorktreeChangeCounts = Record<
   { added: number; deleted: number }
 >
 
-/** One conflict-radar pair (`a` < `b`, sorted task ids): the overlapping
- *  files and the strongest proven signal level. */
-export interface ConflictPair {
-  a: string
-  b: string
-  files: string[]
-  level: "overlap" | "conflict"
-}
-
 /** One "paste this into task X" event (mirror of the daemon's
  *  `session.deliver` channel; docs/design/dispatcher.md). The SPA is the
  *  front-end that hosts web sessions, so it owns the actual delivery —
@@ -136,7 +134,6 @@ export type BridgeEvent =
   | { channel: "update"; payload: { info: UpdateInfo | null } }
   | { channel: "task.jobs"; payload: TaskJob }
   | { channel: "worktree.changes"; payload: { changes: WorktreeChangeCounts } }
-  | { channel: "task.conflicts"; payload: { pairs: ConflictPair[] } }
   | { channel: "session.deliver"; payload: SessionDeliver }
   | { channel: "ui-prefs"; payload: UiPrefs }
 
@@ -149,8 +146,6 @@ export interface BridgeSnapshot {
   /** taskId → in-flight job (running only; bridge drops terminal phases). */
   jobs?: Record<string, TaskJob>
   worktreeChanges?: WorktreeChangeCounts
-  /** Conflict-radar pairs (file overlap / proven merge conflict). */
-  conflicts?: ConflictPair[]
   /** repoRoot → daemon-owned issue state replayed by `issue.snapshot`. */
   issueSnapshots?: Record<string, RepoIssues>
   /** Most recent session.deliver event — replayed to late browsers; the
