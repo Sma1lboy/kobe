@@ -34,7 +34,10 @@ import { isNearBottom } from "../lib/scroll.ts"
 import { relativeTime } from "../lib/time.ts"
 import { pushToast } from "../lib/toast.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
-import { transcriptToMarkdown } from "../lib/transcript-markdown.ts"
+import {
+  messageMarkdown,
+  transcriptToMarkdown,
+} from "../lib/transcript-markdown.ts"
 import {
   blockVisible,
   messageRendersAnything,
@@ -205,7 +208,29 @@ function MessageRow({
     // tool_result: rendered inline under its tool_call row — never standalone.
   })
   if (rows.length === 0) return null
-  return <>{rows}</>
+  const copyMessage = async (): Promise<void> => {
+    const md = messageMarkdown(message, results, hideTools)
+    if (!md) return
+    const ok = await copyText(md)
+    pushToast(
+      ok ? "success" : "error",
+      ok ? "Copied message as Markdown" : "Couldn't copy to the clipboard",
+    )
+  }
+  return (
+    <div className="group/msg relative">
+      {rows}
+      <button
+        type="button"
+        onClick={copyMessage}
+        title="Copy this message as Markdown"
+        aria-label="Copy message as Markdown"
+        className="absolute right-1 top-1 border border-line bg-surface p-1 text-subtle opacity-0 transition-opacity hover:text-fg group-hover/msg:opacity-100"
+      >
+        <ClipboardCopy size={12} strokeWidth={1.8} />
+      </button>
+    </div>
+  )
 }
 
 export function ChatTranscript({

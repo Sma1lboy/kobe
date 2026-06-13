@@ -73,7 +73,12 @@ function toolMarkdown(
 
 /** Serialize one message into its Markdown chunks (role header + each rendered
  *  block), or null when the message would render nothing on screen. */
-function messageMarkdown(
+/**
+ * One message as Markdown (`### Role` + its blocks), or null when it renders
+ * nothing (empty prose, or tool-only while tools are hidden). Exported so the
+ * transcript can offer a per-message copy that matches the full-export format.
+ */
+export function messageMarkdown(
   message: HistoryMessage,
   results: ReadonlyMap<string, ToolResult>,
   hideTools: boolean,

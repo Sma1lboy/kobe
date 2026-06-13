@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import type { ContentBlock, HistoryMessage } from "../src/lib/history.ts"
-import { transcriptToMarkdown } from "../src/lib/transcript-markdown.ts"
+import {
+  messageMarkdown,
+  transcriptToMarkdown,
+} from "../src/lib/transcript-markdown.ts"
 
 type ToolResult = Extract<ContentBlock, { type: "tool_result" }>
 
@@ -117,5 +120,38 @@ describe("transcriptToMarkdown", () => {
     expect(md).toContain("> think")
     // inner ``` forces a ```` fence so the block doesn't break out
     expect(md).toContain("````")
+  })
+})
+
+describe("messageMarkdown (single-message copy)", () => {
+  it("renders one role section for a prose message", () => {
+    const m = msg("assistant", [{ type: "text", text: "Here's the fix." }])
+    expect(messageMarkdown(m, new Map(), false)).toBe(
+      "### Assistant\n\nHere's the fix.",
+    )
+  })
+
+  it("includes a tool call + its resolved output", () => {
+    const m = msg("assistant", [
+      { type: "tool_call", callId: "c1", name: "Read", input: { path: "a" } },
+    ])
+    const results = resultsOf([
+      msg("user", [
+        { type: "tool_result", callId: "c1", output: "file body", isError: false },
+      ]),
+    ])
+    const md = messageMarkdown(m, results, false)
+    expect(md).toContain("### Assistant")
+    expect(md).toContain("Read")
+    expect(md).toContain("file body")
+  })
+
+  it("drops a tool-only message when tools are hidden, else null on empty", () => {
+    const toolOnly = msg("assistant", [
+      { type: "tool_call", callId: "c1", name: "Read", input: {} },
+    ])
+    expect(messageMarkdown(toolOnly, new Map(), true)).toBeNull()
+    const blank = msg("assistant", [{ type: "text", text: "   " }])
+    expect(messageMarkdown(blank, new Map(), false)).toBeNull()
   })
 })

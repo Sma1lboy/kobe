@@ -54,7 +54,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Chat / Vendor / Terminal",
     detail:
-      "tab kinds inside a task workspace; Chat has search, a hide-tools toggle, and copy-as-Markdown",
+      "tab kinds inside a task workspace; Chat has search, a hide-tools toggle, and copy-as-Markdown (whole session, or hover a message to copy just it)",
   },
   {
     label: "Triage",
