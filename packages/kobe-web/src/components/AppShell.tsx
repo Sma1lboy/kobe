@@ -23,9 +23,17 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { setNotifyNavigate } from "../lib/notify.ts"
 import { tailPath } from "../lib/path-format.ts"
+import {
+  applyPrefSort,
+  setRailQuery,
+  setRailShowArchived,
+  setRailSortMode,
+  setRailStatusFilter,
+  useRailState,
+} from "../lib/rail-state.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
-import { matchesTask, sortTasks, type TaskSortMode } from "../lib/task-list.ts"
+import { matchesTask, sortTasks } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
@@ -169,10 +177,10 @@ function TaskRail({
     streamConnected,
   } = useAppState()
   const { selectedTaskId } = useTabsState()
-  const [query, setQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState<Bucket | "all">("all")
-  const [sortMode, setSortMode] = useState<TaskSortMode>("default")
-  const [showArchived, setShowArchived] = useState(false)
+  // Module store, not useState — the `/` → /task/$taskId nav remounts AppShell
+  // (different route trees), which used to wipe these on the first task open
+  // (issue #7). In-memory only: survives route nav, resets on full reload.
+  const { query, statusFilter, sortMode, showArchived } = useRailState()
   const listRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
 
@@ -188,9 +196,11 @@ function TaskRail({
   // Follow the TUI's sort preference (ui-prefs fan-out): toggling sort in any
   // kobe session re-sorts this rail too. The local toggle still works between
   // pref pushes — there's no prefs.set RPC yet, so web-side toggles are local.
+  // applyPrefSort is rising-edge (store-tracked), so a remount replaying the
+  // same pref no longer stomps a local toggle.
   const prefSort = uiPrefs?.sortMode
   useEffect(() => {
-    if (prefSort) setSortMode(prefSort)
+    applyPrefSort(prefSort)
   }, [prefSort])
   const activeTasks = useMemo(() => tasks.filter((t) => !t.archived), [tasks])
   const archivedTasks = useMemo(
@@ -302,7 +312,7 @@ function TaskRail({
             <button
               type="button"
               onClick={() =>
-                setSortMode((cur) => (cur === "default" ? "recent" : "default"))
+                setRailSortMode(sortMode === "default" ? "recent" : "default")
               }
               className={`font-mono text-[10px] uppercase ${
                 sortMode === "recent"
@@ -345,7 +355,7 @@ function TaskRail({
           <input
             ref={filterRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => setRailQuery(event.target.value)}
             onKeyDown={(event) => {
               // Keyboard-first: Enter jumps to the top match (visible is
               // already sorted + filtered), Escape clears the query.
@@ -355,7 +365,7 @@ function TaskRail({
                 event.currentTarget.blur()
               } else if (event.key === "Escape" && query) {
                 event.preventDefault()
-                setQuery("")
+                setRailQuery("")
               }
             }}
             placeholder="Filter tasks"
@@ -364,7 +374,7 @@ function TaskRail({
           {query && (
             <button
               type="button"
-              onClick={() => setQuery("")}
+              onClick={() => setRailQuery("")}
               className="shrink-0 text-subtle hover:text-fg"
               aria-label="clear task filter"
               title="Clear filter"
@@ -389,7 +399,7 @@ function TaskRail({
             <button
               key={c.key}
               type="button"
-              onClick={() => setStatusFilter(c.key)}
+              onClick={() => setRailStatusFilter(c.key)}
               title={c.title}
               className={`border px-1.5 py-0.5 text-[10px] transition-colors ${
                 statusFilter === c.key
@@ -429,8 +439,8 @@ function TaskRail({
             <button
               type="button"
               onClick={() => {
-                setQuery("")
-                setStatusFilter("all")
+                setRailQuery("")
+                setRailStatusFilter("all")
               }}
               className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
             >
@@ -475,7 +485,7 @@ function TaskRail({
           <div className="mt-2 border-t border-line-subtle pb-2">
             <button
               type="button"
-              onClick={() => setShowArchived((cur) => !cur)}
+              onClick={() => setRailShowArchived(!showArchived)}
               className="flex w-full items-center gap-2 px-3 py-2 text-left"
             >
               <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">

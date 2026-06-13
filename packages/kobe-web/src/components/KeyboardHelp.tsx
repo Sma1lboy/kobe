@@ -48,7 +48,8 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   },
   {
     label: "Overview",
-    detail: "the grid icon in the top bar — triage every task at once",
+    detail:
+      "the grid icon in the top bar — triage every task at once; j/k highlight, Enter opens",
   },
   {
     label: "Chat / Vendor / Terminal",

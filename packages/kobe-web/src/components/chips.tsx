@@ -4,6 +4,7 @@
  * identically (the activity.ts "never drift" precedent).
  */
 
+import { prChipView } from "../lib/pr-chip.ts"
 import type { TaskPRStatus } from "../lib/types.ts"
 
 /** Instant hover tooltip rendered from the data-tip attribute — the native
@@ -29,30 +30,17 @@ export function ChangesChip({
 }
 
 /** PR lifecycle/check → a short chip + theme color. Hidden when there's no
- *  PR (lifecycle unknown/none). Mirrors the daemon's TaskPRStatus shape. */
+ *  PR (lifecycle unknown/none). Precedence rules live in lib/pr-chip.ts
+ *  (pure, unit-tested) so the rail, the board, and the Overview never drift. */
 export function PrChip({ pr }: { pr: TaskPRStatus | undefined }) {
-  const lifecycle = pr?.lifecycle
-  if (!pr || !lifecycle || lifecycle === "unknown") return null
-  const check = pr.checkState
-  const cls =
-    lifecycle === "merged"
-      ? "text-kobe-violet"
-      : lifecycle === "closed"
-        ? "text-kobe-red"
-        : check === "failing"
-          ? "text-kobe-red"
-          : check === "passing"
-            ? "text-kobe-green"
-            : check === "pending"
-              ? "text-kobe-yellow"
-              : "text-kobe-blue"
-  const label = pr.number ? `PR #${pr.number}` : "PR"
+  const view = prChipView(pr)
+  if (!view) return null
   return (
     <span
-      className={`shrink-0 font-mono text-[10px] ${cls}`}
-      title={`${lifecycle}${check && check !== "none" ? ` · ${check}` : ""}`}
+      className={`shrink-0 font-mono text-[10px] ${view.cls}`}
+      title={view.title}
     >
-      {label}
+      {view.label}
     </span>
   )
 }

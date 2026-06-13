@@ -7,7 +7,9 @@
 
 import { useSyncExternalStore } from "react"
 import { deliverToSession } from "./dispatch-delivery.ts"
-import { notifyEngineTransition } from "./notify.ts"
+import { notifyEngineTransition, notifyPrTransitions } from "./notify.ts"
+import { prTransitions } from "./pr-notify.ts"
+import { prunePromptPreviews } from "./prompt-preview.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
@@ -150,6 +152,9 @@ function applyIssueSnapshotEvent(
  *  that no longer exist, so a delete in ANY surface (TUI, api, another
  *  browser) cleans this one up too. */
 function applyTaskList(tasks: Task[]): void {
+  // Diff BEFORE replacing state: PR check/lifecycle flips (CI red/green,
+  // ready to merge, merged) ping like engine attention states do.
+  notifyPrTransitions(prTransitions(state.tasks, tasks))
   const live = new Set(tasks.map((t) => t.id))
   set({
     tasks,
@@ -157,6 +162,7 @@ function applyTaskList(tasks: Task[]): void {
     jobs: pruneByTask(state.jobs, live),
   })
   pruneMissingTasks(live)
+  prunePromptPreviews(live)
 }
 
 function applyEvent(event: BridgeEvent): void {
@@ -251,7 +257,11 @@ function ensureStream(): void {
     // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
     // tasks deleted while this browser was away. A disconnected snapshot
     // carries the bridge's stale mirror; never prune from that.
-    if (snap.connected) pruneMissingTasks(new Set(snap.tasks.map((t) => t.id)))
+    if (snap.connected) {
+      const live = new Set(snap.tasks.map((t) => t.id))
+      pruneMissingTasks(live)
+      prunePromptPreviews(live)
+    }
   })
   source.addEventListener("channel", (e) => {
     applyEvent(JSON.parse((e as MessageEvent).data) as BridgeEvent)

@@ -10,12 +10,15 @@ import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
+import { moveHighlight, reconcileHighlight } from "../lib/overview-nav.ts"
+import { loadPromptPreview, usePromptPreviews } from "../lib/prompt-preview.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
+import { PrChip } from "./chips.tsx"
 
 interface TriagedTask {
   task: Task
@@ -51,14 +54,27 @@ const BUCKETS: Array<{
   { key: "quiet", title: "Quiet", hint: "idle, clean", accent: "text-subtle" },
 ]
 
-function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
+function Card({
+  entry,
+  preview,
+  highlighted,
+  onOpen,
+}: {
+  entry: TriagedTask
+  preview: string | null | undefined
+  highlighted: boolean
+  onOpen: () => void
+}) {
   const { task, engine, changes } = entry
   const label = activityLabel(engine?.state)
   return (
     <button
       type="button"
+      data-overview-card={task.id}
       onClick={onOpen}
-      className="flex w-full flex-col gap-1.5 border border-line bg-surface p-3 text-left transition-colors hover:border-primary hover:bg-inset"
+      className={`flex w-full flex-col gap-1.5 border bg-surface p-3 text-left transition-colors hover:border-primary hover:bg-inset ${
+        highlighted ? "border-primary bg-inset" : "border-line"
+      }`}
     >
       <div className="flex items-center gap-2">
         <span
@@ -67,6 +83,7 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
+        <PrChip pr={task.prStatus} />
         {changes && (changes.added > 0 || changes.deleted > 0) && (
           <span className="shrink-0 font-mono text-[10px]">
             <span className="text-kobe-green">+{changes.added}</span>{" "}
@@ -74,6 +91,15 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
           </span>
         )}
       </div>
+      {preview && (
+        <div
+          className="flex items-baseline gap-1.5 text-[11px] text-muted"
+          title={preview}
+        >
+          <span className="shrink-0 font-mono text-subtle">❯</span>
+          <span className="min-w-0 truncate">{preview}</span>
+        </div>
+      )}
       <div className="flex items-center gap-2 text-[11px] text-subtle">
         <span className="min-w-0 truncate font-mono">
           {task.branch || task.repo}
@@ -90,32 +116,22 @@ function Card({ entry, onOpen }: { entry: TriagedTask; onOpen: () => void }) {
 export function Overview() {
   const { tasks, engineStates, worktreeChanges, hydrated } = useAppState()
   const navigate = useNavigate()
+  const previews = usePromptPreviews()
   const [query, setQuery] = useState("")
   const filterRef = useRef<HTMLInputElement>(null)
 
-  // Keyboard-first parity with the rail: `/` focuses the filter, Escape clears
-  // it. Suppressed while typing in another field.
+  // Refresh previews on task-list changes AND engine activity. The second
+  // trigger is load-bearing: a prompt/turn publishes only on the engine-state
+  // channel and never bumps the tasks identity, so without it the previews
+  // would freeze while Overview sits open. mtime-gated inside the store, so a
+  // re-run is one cheap sessions call per task, no message re-downloads.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: engineStates is a deliberate re-trigger, not a read — engine transitions mark "transcript advanced" without changing tasks identity.
   useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      const t = event.target as HTMLElement | null
-      const inField =
-        !!t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.tagName === "SELECT" ||
-          t.isContentEditable)
-      if (event.key === "/" && !inField) {
-        event.preventDefault()
-        filterRef.current?.focus()
-      } else if (event.key === "Escape" && t === filterRef.current && query) {
-        event.preventDefault()
-        setQuery("")
-      }
+    for (const task of tasks as Task[]) {
+      if (task.archived || task.kind === "main") continue
+      void loadPromptPreview(task)
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [query])
+  }, [tasks, engineStates])
 
   const triaged = useMemo<TriagedTask[]>(() => {
     return (tasks as Task[])
@@ -145,11 +161,76 @@ export function Overview() {
     return map
   }, [shown])
 
+  // The keyboard path through the grid: bucket by bucket, displayed order.
+  const order = useMemo(
+    () => BUCKETS.flatMap(({ key }) => byBucket[key].map((e) => e.task.id)),
+    [byBucket],
+  )
+  const [highlighted, setHighlighted] = useState<string | null>(null)
+
+  // Filtering or a bucket move can drop the highlighted card — clear the
+  // highlight then (reconcileHighlight returns the same value when shown,
+  // so this setState is a no-op render-wise in the common case).
+  useEffect(() => {
+    setHighlighted((current) => reconcileHighlight(order, current))
+  }, [order])
+
+  // Keep the highlighted card visible while j/k walks past the fold.
+  useEffect(() => {
+    if (!highlighted) return
+    document
+      .querySelector(`[data-overview-card="${CSS.escape(highlighted)}"]`)
+      ?.scrollIntoView({ block: "nearest" })
+  }, [highlighted])
+
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
+
+  // Keyboard-first parity with the rail: `/` focuses the filter, Escape clears
+  // it, j/k (or arrows) walk a highlight through the grid, Enter opens the
+  // highlighted card. Unlike the rail's j/k (which switches the active task
+  // live), the highlight is local — browsing never navigates mid-scan.
+  // Suppressed while typing in a field.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: open() closes only over stable refs (mirrors the rail's nav effect); query/order/highlighted are the real re-arm triggers.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const t = event.target as HTMLElement | null
+      const inField =
+        !!t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      const down = event.key === "j" || event.key === "ArrowDown"
+      const up = event.key === "k" || event.key === "ArrowUp"
+      if (event.key === "/" && !inField) {
+        event.preventDefault()
+        filterRef.current?.focus()
+      } else if (event.key === "Escape" && t === filterRef.current && query) {
+        event.preventDefault()
+        setQuery("")
+      } else if ((down || up) && !inField) {
+        if (order.length === 0) return
+        event.preventDefault()
+        setHighlighted((current) =>
+          moveHighlight(order, current, down ? 1 : -1),
+        )
+      } else if (event.key === "Enter" && !inField && highlighted) {
+        // A focused button/link keeps its native Enter activation (Tab to a
+        // card or the back button must work) — the highlight owns Enter only
+        // when nothing interactive has focus.
+        if (t?.closest("button,a,[role=button]")) return
+        event.preventDefault()
+        open(highlighted)
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [query, order, highlighted])
 
   const counts = {
     attention: byBucket.attention.length,
@@ -182,6 +263,16 @@ export function Overview() {
             ref={filterRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Keyboard-first parity with the rail's filter: Enter jumps to
+              // the top match (first card of the bucket walk — "needs you"
+              // first), then blurs so j/k resume on the grid.
+              if (event.key === "Enter" && order.length > 0) {
+                event.preventDefault()
+                open(order[0])
+                event.currentTarget.blur()
+              }
+            }}
             placeholder="Filter tasks  ( / )"
             className="w-44 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
           />
@@ -244,6 +335,8 @@ export function Overview() {
                         <Card
                           key={entry.task.id}
                           entry={entry}
+                          preview={previews[entry.task.id]}
+                          highlighted={entry.task.id === highlighted}
                           onOpen={() => open(entry.task.id)}
                         />
                       ))
