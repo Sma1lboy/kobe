@@ -268,7 +268,11 @@ describe("quickStartIssue", () => {
       Promise.resolve(
         new Response(
           JSON.stringify(
-            url === "/api/settings" ? { defaultEngine: "codex" } : {},
+            url === "/api/settings"
+              ? { defaultEngine: "codex" }
+              : url === "/api/cli-invocation"
+                ? { api: "bun ./src/cli/index.ts api" }
+                : {},
           ),
         ),
       ),
@@ -290,7 +294,7 @@ describe("quickStartIssue", () => {
     expect(sendPtyText).toHaveBeenCalledWith(
       "tab-1",
       "task-1",
-      quickStartPrompt(target),
+      quickStartPrompt(target, "bun ./src/cli/index.ts api"),
     )
     // The doing flip went through the issues POST route.
     expect(fetchMock).toHaveBeenCalledWith(
@@ -313,7 +317,9 @@ describe("quickStartIssue", () => {
       vi.fn((url: string) =>
         url === "/api/settings"
           ? Promise.resolve(new Response(JSON.stringify({ defaultEngine: "claude" })))
-          : Promise.reject(new Error("bridge down")),
+          : url === "/api/issues"
+            ? Promise.reject(new Error("bridge down"))
+            : Promise.resolve(new Response(JSON.stringify({ api: "kobe api" }))),
       ),
     )
 
@@ -336,6 +342,8 @@ describe("quickStartIssue", () => {
       vi.fn((url: string) =>
         url === "/api/settings"
           ? Promise.resolve(new Response("nope", { status: 500 }))
+          : url === "/api/cli-invocation"
+            ? Promise.resolve(new Response(JSON.stringify({ api: "kobe api" })))
           : Promise.resolve(new Response(JSON.stringify({}))),
       ),
     )

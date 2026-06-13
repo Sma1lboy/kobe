@@ -79,6 +79,15 @@ export async function updateIssue(
   return postOp(repoRoot, { type: "update", id, ...patch })
 }
 
+async function fetchKobeApiInvocation(): Promise<string> {
+  const res = await fetch("/api/cli-invocation")
+  if (!res.ok) return "kobe api"
+  const data = (await res.json()) as { api?: unknown }
+  return typeof data.api === "string" && data.api.trim().length > 0
+    ? data.api
+    : "kobe api"
+}
+
 /* ----- pure helpers ------------------------------------------------------- */
 
 /** Column order for the project view. */
@@ -215,12 +224,12 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
  * already flipped the issue to `doing`; the prompt asks the agent to report
  * completion through the daemon-owned issue API, not by editing repo files.
  */
-export function quickStartPrompt(issue: Issue): string {
+export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
   const lines = [`Work on kobe issue #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
   if (body) lines.push(body, "")
   lines.push(
-    `When the work lands, run: kobe api issue-set-status --repo . --id ${issue.id} --status done`,
+    `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
   )
   return lines.join("\n")
 }
@@ -250,7 +259,8 @@ export async function quickStartIssue(
   // /task/$taskId route effect won't fire it (selectTask runs first).
   void rpc("task.setActive", { taskId }).catch(() => {})
   await setIssueStatus(repoRoot, issue.id, "doing").catch(() => {})
+  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
   const tabId = ensureEngineTab(taskId)
-  await sendPtyText(tabId, taskId, quickStartPrompt(issue))
+  await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
   return { taskId }
 }

@@ -31,6 +31,7 @@ import {
   engineCommandKey,
   engineDisplayName,
   engineNameKey,
+  kobeApiInvocation,
 } from "../../kobe/src/engine/interactive-command.ts"
 import { AUTO_STATUS_KEY } from "../../kobe/src/state/auto-status.ts"
 import { DISPATCHER_KEY } from "../../kobe/src/state/dispatcher.ts"
@@ -179,6 +180,10 @@ async function enginesResponse(): Promise<Response> {
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
   }
+}
+
+function cliInvocationResponse(): Response {
+  return Response.json({ api: kobeApiInvocation() })
 }
 
 const FOCUS_ACCENTS = ["primary", "success", "info"] as const
@@ -369,6 +374,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (url.pathname === "/api/terminal-spec" && req.method === "GET")
       return specResponse(url, link, terminalSpec)
     if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
+    if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse()
     if (url.pathname === "/api/settings" && req.method === "GET") return settingsSnapshot()
     if (url.pathname === "/api/settings" && req.method === "PATCH") return settingsPatch(req)
     if (url.pathname === "/api/quick-prompts" && req.method === "GET") return quickPromptsGet()

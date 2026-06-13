@@ -186,6 +186,16 @@ describe("bridge request handler", () => {
     })
   })
 
+  describe("/api/cli-invocation", () => {
+    it("returns the environment-correct kobe api invocation", async () => {
+      const { handle } = build()
+      const res = await handle(new Request("http://localhost/api/cli-invocation"))
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as { api: string }
+      expect(body.api).toContain(" api")
+    })
+  })
+
   describe("/api/issues", () => {
     it("proxies issue reads to the daemon", async () => {
       const { handle, link } = build({
