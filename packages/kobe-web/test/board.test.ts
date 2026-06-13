@@ -32,13 +32,11 @@ import {
   resetBoardStateForTest,
   setBoardQuery,
   setBoardRepo,
-  setBoardStatusFilter,
   setPositionOverrides,
   setStatusOverride,
 } from "../src/lib/board-state.ts"
-import { matchesStatusFilter } from "../src/lib/triage.ts"
 import { matchesTask } from "../src/lib/task-list.ts"
-import type { EngineState, Issue, Task } from "../src/lib/types.ts"
+import type { Issue, Task } from "../src/lib/types.ts"
 
 /**
  * Kanban column math. The load-bearing rules: columns bind to the persisted
@@ -370,57 +368,33 @@ describe("board-state — module store filter", () => {
     resetBoardStateForTest()
     expect(getBoardState().query).toBe("")
   })
-
-  it("holds the attention-filter chip and resets it for test isolation", () => {
-    setBoardStatusFilter("attention")
-    expect(getBoardState().statusFilter).toBe("attention")
-    const before = getBoardState()
-    setBoardStatusFilter("attention") // no-op → same snapshot (React skip)
-    expect(getBoardState()).toBe(before)
-    resetBoardStateForTest()
-    expect(getBoardState().statusFilter).toBe("all")
-  })
 })
 
-describe("board display predicate — repo + query + statusFilter compose", () => {
+describe("board display predicate — repo + query compose", () => {
   afterEach(() => resetBoardStateForTest())
 
-  // The Board's rendered card set is the AND of three independent filters:
-  // the project chip, the text query, and the attention-filter chip. This
-  // reconstructs that predicate over a small fixture and asserts each filter
-  // narrows the set further — and that loosening any one widens it again.
-  const running: EngineState = { state: "running" } as EngineState
-  const idle: EngineState = { state: "idle" } as EngineState
+  // The Board's rendered card set is the AND of two independent filters:
+  // the project chip and the text query. This reconstructs that predicate
+  // over a small fixture and asserts each filter narrows the set further —
+  // and that loosening any one widens it again.
   const tasks = [
-    // kobe / matches "auth" / running
+    // kobe / matches "auth"
     task({ id: "k1", repo: "/u/kobe", title: "auth flow" }),
-    // kobe / matches "auth" / idle (no engine state, clean)
+    // kobe / matches "auth"
     task({ id: "k2", repo: "/u/kobe", title: "auth retry" }),
-    // kobe / no "auth" / running
+    // kobe / no "auth"
     task({ id: "k3", repo: "/u/kobe", title: "ui polish" }),
-    // other repo / matches "auth" / running
+    // other repo / matches "auth"
     task({ id: "o1", repo: "/u/web", title: "auth proxy" }),
   ]
-  const engines: Record<string, EngineState | undefined> = {
-    k1: running,
-    k2: idle,
-    k3: running,
-    o1: running,
-  }
-  // All clean (no worktree changes) so the only "working" signal is `running`.
   const visible = (): string[] => {
-    const { query, repo, statusFilter } = getBoardState()
+    const { query, repo } = getBoardState()
     return tasks
-      .filter(
-        (t) =>
-          (!repo || t.repo === repo) &&
-          matchesTask(t, query) &&
-          matchesStatusFilter(engines[t.id], undefined, statusFilter),
-      )
+      .filter((t) => (!repo || t.repo === repo) && matchesTask(t, query))
       .map((t) => t.id)
   }
 
-  it("ANDs all three filters; loosening any one widens the set", () => {
+  it("ANDs both filters; loosening either one widens the set", () => {
     // No filters → every board task.
     expect(visible()).toEqual(["k1", "k2", "k3", "o1"])
 
@@ -430,14 +404,6 @@ describe("board display predicate — repo + query + statusFilter compose", () =
 
     // + query → only kobe cards that also match "auth".
     setBoardQuery("auth")
-    expect(visible()).toEqual(["k1", "k2"])
-
-    // + status chip → only the running one survives all three.
-    setBoardStatusFilter("working")
-    expect(visible()).toEqual(["k1"])
-
-    // Loosen the status chip back to "all" → the idle "auth" card returns.
-    setBoardStatusFilter("all")
     expect(visible()).toEqual(["k1", "k2"])
 
     // Loosen the repo chip → the foreign-repo "auth" card returns too.
@@ -830,41 +796,5 @@ describe("buildProjectBoards — one board per project, deduped", () => {
       allTasks,
     )
     expect(boards.map((b) => b.label)).toEqual(["alpha", "zeta"])
-  })
-})
-
-describe("statusFilter composes with issue cards (matchesStatusFilter)", () => {
-  // An issue card has no engine state or worktree changes. matchesStatusFilter
-  // must not throw on the undefined inputs: "all" keeps it, every attention
-  // bucket except "quiet" drops it (a bodiless idle issue triages as quiet).
-  it('"all" shows issue cards; non-quiet attention chips hide them', () => {
-    expect(matchesStatusFilter(undefined, undefined, "all")).toBe(true)
-    expect(matchesStatusFilter(undefined, undefined, "attention")).toBe(false)
-    expect(matchesStatusFilter(undefined, undefined, "working")).toBe(false)
-    expect(matchesStatusFilter(undefined, undefined, "changes")).toBe(false)
-    expect(matchesStatusFilter(undefined, undefined, "quiet")).toBe(true)
-  })
-
-  it("a board predicate ANDs repo + status, keeping issues under 'all'", () => {
-    // Reconstruct the unified board's render predicate over a tiny fixture:
-    // task cards triage by their engine state, issue cards by (undefined,
-    // undefined). The "all" chip must leave issue cards visible.
-    const running: EngineState = { state: "running" } as EngineState
-    const fixture: BoardCard[] = [
-      tc(task({ id: "t1", repo: "/u/kobe", status: "in_progress" })),
-      ic("/u/kobe", issue({ id: 9 })),
-    ]
-    const engines: Record<string, EngineState | undefined> = { t1: running }
-    const visible = (filter: "all" | "working"): string[] =>
-      fixture
-        .filter((c) =>
-          c.kind === "task"
-            ? matchesStatusFilter(engines[c.id], undefined, filter)
-            : matchesStatusFilter(undefined, undefined, filter),
-        )
-        .map(cardId)
-
-    expect(visible("all")).toEqual(["t1", "#9"]) // both
-    expect(visible("working")).toEqual(["t1"]) // issue drops, task stays
   })
 })

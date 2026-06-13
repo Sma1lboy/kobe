@@ -10,7 +10,6 @@
 
 import { useSyncExternalStore } from "react"
 import { type BoardOverrides, reconcileOverrides } from "./board.ts"
-import type { Bucket } from "./triage.ts"
 import type { Task } from "./types.ts"
 
 interface BoardState {
@@ -18,8 +17,6 @@ interface BoardState {
   query: string
   /** Project chip filter: a repo key, or null = all projects. */
   repo: string | null
-  /** Attention-filter chip: a triage bucket, or "all" = every card. */
-  statusFilter: Bucket | "all"
   /** Pending optimistic drops: taskId → expected fields (board.ts R4). */
   overrides: BoardOverrides
 }
@@ -27,7 +24,6 @@ interface BoardState {
 let state: BoardState = {
   query: "",
   repo: null,
-  statusFilter: "all",
   overrides: {},
 }
 const listeners = new Set<() => void>()
@@ -64,12 +60,6 @@ export function setBoardQuery(query: string): void {
 /** Select a project chip (null = all). Composes with the text query. */
 export function setBoardRepo(repo: string | null): void {
   if (repo !== state.repo) set({ repo })
-}
-
-/** Select an attention-filter chip ("all" = every card). Composes with the
- *  text query and the project chip. In-memory only — never persisted. */
-export function setBoardStatusFilter(statusFilter: Bucket | "all"): void {
-  if (statusFilter !== state.statusFilter) set({ statusFilter })
 }
 
 /** Record an optimistic status drop — the card paints into its target
@@ -161,5 +151,5 @@ export function reconcileBoardOverrides(tasks: Task[]): void {
 
 /** Test-only reset so cases don't leak filter state into each other. */
 export function resetBoardStateForTest(): void {
-  state = { query: "", repo: null, statusFilter: "all", overrides: {} }
+  state = { query: "", repo: null, overrides: {} }
 }
