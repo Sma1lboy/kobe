@@ -11,6 +11,7 @@ describe("topLevelUsage", () => {
 
   it("lists every public subcommand, including api", () => {
     for (const cmd of [
+      "web",
       "add",
       "adopt",
       "repo",
