@@ -53,7 +53,7 @@
     {
       "id": 15,
       "title": "Glob/negation patterns in the Changes-pane file filter",
-      "status": "open",
+      "status": "done",
       "created": "2026-06-13",
       "body": "From the survey. diff-filter.ts matchesPath() is a plain substring match (tested in diff-filter.test.ts), so users can't narrow to *.test.ts or exclude !*.json. Scope: extend matchesPath() to detect glob (*.test.ts), negation (!*.json), and anchored (src/) patterns, falling back to substring when no glob chars; add cases to diff-filter.test.ts + a one-line hint in the ChangesList filter input. Small, fully unit-testable, daily-use pane. Effort S."
     },
