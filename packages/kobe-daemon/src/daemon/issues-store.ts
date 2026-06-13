@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process"
 import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
-import { basename, dirname, isAbsolute, join, resolve } from "node:path"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
@@ -84,8 +84,14 @@ async function gitTopLevel(path: string): Promise<string> {
   return stdout.trim()
 }
 
-async function canonicalRepoRoot(repoRoot: string, repoKey: string): Promise<string> {
-  return basename(repoKey) === ".git" ? realpath(dirname(repoKey)) : repoRoot
+async function gitMainWorktree(path: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", path, "worktree", "list", "--porcelain"])
+  const first = stdout
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("worktree "))
+    ?.slice("worktree ".length)
+    .trim()
+  return first ? realpath(first) : gitTopLevel(path)
 }
 
 async function resolveRepo(raw: unknown): Promise<{ repoRoot: string; repoKey: string }> {
@@ -93,8 +99,8 @@ async function resolveRepo(raw: unknown): Promise<{ repoRoot: string; repoKey: s
   const absolute = resolve(raw)
   const s = await stat(absolute).catch(() => null)
   if (!s?.isDirectory()) throw new Error("repoRoot does not exist")
-  const [worktreeRoot, repoKey] = await Promise.all([gitTopLevel(absolute), gitCommonDir(absolute)])
-  return { repoRoot: await canonicalRepoRoot(worktreeRoot, repoKey), repoKey }
+  const [repoRoot, repoKey] = await Promise.all([gitMainWorktree(absolute), gitCommonDir(absolute)])
+  return { repoRoot, repoKey }
 }
 
 async function readStore(path: string): Promise<IssuesStoreFile> {
@@ -160,7 +166,12 @@ export class IssuesStore {
     const { repoRoot, repoKey } = await resolveRepo(repo)
     return withLock(repoKey, async () => {
       const store = await readStore(this.path)
-      return response(repoRoot, store.repos[repoKey] ?? null)
+      const record = store.repos[repoKey] ?? null
+      if (record && record.repoRoot !== repoRoot) {
+        record.repoRoot = repoRoot
+        await writeStore(this.path, store)
+      }
+      return response(repoRoot, record)
     })
   }
 

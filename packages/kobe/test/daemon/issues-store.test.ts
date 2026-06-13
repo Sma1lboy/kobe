@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
@@ -65,5 +65,49 @@ describe("IssuesStore", () => {
       nextId: 2,
       issues: [{ id: 1, title: "Daemon issue", status: "done", body: "shared state" }],
     })
+  })
+
+  it("migrates a stored worktree repoRoot back to the main worktree on list", async () => {
+    const repo = await makeRepo()
+    const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-wt-"))
+    cleanups.push(parent)
+    const worktree = join(parent, "task")
+    execFileSync("git", ["worktree", "add", "--quiet", worktree, "-b", "task"], { cwd: repo })
+
+    const storePath = join(parent, "home", ".kobe", "issues.json")
+    const store = new IssuesStore(storePath)
+    const canonicalRepo = await realpath(repo)
+
+    await store.mutate(worktree, { type: "create", title: "From worktree" })
+    const before = JSON.parse(await readFile(storePath, "utf8")) as {
+      repos: Record<string, { repoRoot: string }>
+    }
+    expect(Object.values(before.repos)[0]?.repoRoot).toBe(canonicalRepo)
+
+    await writeFile(
+      storePath,
+      `${JSON.stringify(
+        {
+          version: 1,
+          repos: Object.fromEntries(
+            Object.entries(before.repos).map(([key, value]) => [key, { ...value, repoRoot: worktree }]),
+          ),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    )
+
+    await expect(store.list(worktree)).resolves.toMatchObject({
+      repoRoot: canonicalRepo,
+      exists: true,
+      issues: [{ id: 1, title: "From worktree" }],
+    })
+
+    const after = JSON.parse(await readFile(storePath, "utf8")) as {
+      repos: Record<string, { repoRoot: string }>
+    }
+    expect(Object.values(after.repos)[0]?.repoRoot).toBe(canonicalRepo)
   })
 })
