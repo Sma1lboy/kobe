@@ -329,7 +329,7 @@ const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "issue-list",
-    summary: "List daemon-owned issues for a repo. A repo's old docs/issues.json is imported on first read.",
+    summary: "List daemon-owned issues for a repo.",
     flags: [F.repo()],
     handler: (ctx) => simpleRpc(ctx, "issue.list", { repoRoot: ctx.args.requirePath("repo") }),
   },

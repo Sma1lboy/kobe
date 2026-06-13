@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
@@ -11,19 +11,7 @@ async function makeRepo(): Promise<string> {
   const repo = await mkdtemp(join(tmpdir(), "kobe-issues-store-"))
   cleanups.push(repo)
   execFileSync("git", ["init", "--quiet"], { cwd: repo })
-  await mkdir(join(repo, "docs"), { recursive: true })
-  await writeFile(
-    join(repo, "docs", "issues.json"),
-    `${JSON.stringify(
-      {
-        nextId: 9,
-        issues: [{ id: 8, title: "喵喵", status: "doing", created: "2026-06-13", body: "喵喵叫两下" }],
-      },
-      null,
-      2,
-    )}\n`,
-    "utf8",
-  )
+  await writeFile(join(repo, "README.md"), "fixture\n", "utf8")
   execFileSync("git", ["add", "."], { cwd: repo })
   execFileSync(
     "git",
@@ -42,7 +30,7 @@ afterEach(async () => {
 })
 
 describe("IssuesStore", () => {
-  it("imports docs/issues.json once, then shares state across git worktrees", async () => {
+  it("shares daemon issue state across git worktrees", async () => {
     const repo = await makeRepo()
     const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-wt-"))
     cleanups.push(parent)
@@ -55,16 +43,18 @@ describe("IssuesStore", () => {
 
     await expect(store.list(repo)).resolves.toMatchObject({
       repoRoot: canonicalRepo,
-      exists: true,
-      nextId: 9,
-      issues: [{ id: 8, title: "喵喵", status: "doing" }],
+      exists: false,
+      nextId: 1,
+      issues: [],
     })
-    await store.mutate(worktree, { type: "setStatus", id: 8, status: "done" })
+    await store.mutate(repo, { type: "create", title: "Daemon issue", body: "shared state" })
+    await store.mutate(worktree, { type: "setStatus", id: 1, status: "done" })
 
     await expect(store.list(repo)).resolves.toMatchObject({
-      issues: [{ id: 8, title: "喵喵", status: "done" }],
+      repoRoot: canonicalRepo,
+      exists: true,
+      nextId: 2,
+      issues: [{ id: 1, title: "Daemon issue", status: "done", body: "shared state" }],
     })
-    const sourceFile = await readFile(join(repo, "docs", "issues.json"), "utf8")
-    expect(JSON.parse(sourceFile).issues[0].status).toBe("doing")
   })
 })

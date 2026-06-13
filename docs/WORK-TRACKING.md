@@ -4,7 +4,7 @@ kobe work is tracked locally — there is no external issue tracker. Agents shou
 
 ## Sources of truth
 
-- **Backlog + open issues**: daemon-owned issue state, with the legacy [`issues.json`](./issues.json) imported on first read for compatibility.
+- **Backlog + open issues**: daemon-owned issue state.
 - **Current risks and follow-ups**: [`../HANDOFF.md`](../HANDOFF.md).
 - **User-facing shipped behavior**: [`../packages/kobe/CHANGELOG.md`](../packages/kobe/CHANGELOG.md).
 - **Durable product and architecture decisions**: `docs/*.md`.
@@ -14,8 +14,7 @@ kobe work is tracked locally — there is no external issue tracker. Agents shou
 
 The daemon owns active issue state so web edits and agent automation see the
 same data from every worktree. Deliberately low-ceremony: no type taxonomy,
-just a `status`. The legacy committed `docs/issues.json` shape is still
-imported once when a repo has no daemon record yet:
+just a `status`. The persisted daemon shape is:
 
 ```json
 {

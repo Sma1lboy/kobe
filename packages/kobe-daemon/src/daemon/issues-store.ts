@@ -124,25 +124,6 @@ async function writeStore(path: string, store: IssuesStoreFile): Promise<void> {
   await rename(tmp, path)
 }
 
-async function importDocsIssues(repoRoot: string): Promise<RepoIssueRecord | null> {
-  try {
-    const data = JSON.parse(await readFile(join(repoRoot, "docs", "issues.json"), "utf8")) as {
-      nextId?: unknown
-      issues?: unknown
-    }
-    return {
-      repoRoot,
-      nextId: typeof data.nextId === "number" ? data.nextId : 1,
-      issues: Array.isArray(data.issues)
-        ? data.issues.map(normalizeIssue).filter((issue): issue is Issue => issue !== null)
-        : [],
-    }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
-    throw err
-  }
-}
-
 function response(repoRoot: string, record: RepoIssueRecord | null): RepoIssues {
   return {
     repoRoot,
@@ -175,15 +156,7 @@ export class IssuesStore {
     const { repoRoot, repoKey } = await resolveRepo(repo)
     return withLock(repoKey, async () => {
       const store = await readStore(this.path)
-      let record: RepoIssueRecord | null = store.repos[repoKey] ?? null
-      if (!record) {
-        record = await importDocsIssues(repoRoot)
-        if (record) {
-          store.repos[repoKey] = record
-          await writeStore(this.path, store)
-        }
-      }
-      return response(repoRoot, record)
+      return response(repoRoot, store.repos[repoKey] ?? null)
     })
   }
 
@@ -196,7 +169,7 @@ export class IssuesStore {
       const store = await readStore(this.path)
       let record = store.repos[repoKey]
       if (!record) {
-        record = (await importDocsIssues(repoRoot)) ?? { repoRoot, nextId: 1, issues: [] }
+        record = { repoRoot, nextId: 1, issues: [] }
         store.repos[repoKey] = record
       }
       record.repoRoot = repoRoot

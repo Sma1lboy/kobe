@@ -144,7 +144,7 @@ flowchart TB
 | 列内排序无持久字段 | 同列卡片顺序不可拖 | **唯一必须的协议扩展**,M3 做(见 R2) |
 | 无 DnD 依赖 | 需选型引入 | R3;WorkspaceTabs 现用 HTML5 native draggable 可参照 |
 | store 无乐观更新 | 拖放后卡片要等 daemon 回推才落位,会"跳一下" | R4,可能仅看板局部做乐观层 |
-| 路由级 UI 状态易丢 | [issue #7](../issues.json):rail 筛选态在 `/` → `/task/$taskId` 导航时重置 | R5,看板筛选态进 module store 或 URL |
+| 路由级 UI 状态易丢 | issue #7: rail 筛选态在 `/` → `/task/$taskId` 导航时重置 | R5,看板筛选态进 module store 或 URL |
 | `kind: "main"` 任务定位 | 项目根任务不是工作流卡片 | R1 裁决(倾向不入板或单独泳道) |
 | 错误名不过桥 | daemon 会序列化 `name: "IllegalTransitionError"`,但 socket client 抛 `new Error(message)` 丢掉 name,bridge 对一切失败统一回 `{ error: message }` + 500([`bridge.ts`](../../packages/kobe-web/server/bridge.ts))——前端只能脆弱地 string-match | R4 裁决:转发 error name(bridge/client 小改)还是容忍 string-match |
 
@@ -156,7 +156,7 @@ flowchart TB
   本来就是图形面("not a faithful TUI mirror",web-dashboard.md)。看板定位为
   **web-only 增强**,不要求 TUI 对等。落地时需在 web-dashboard.md 补一节,并把这个
   定位写明,避免与 §2.3 表述打架。
-- 除此之外 docs/、issues.json 中无任何看板/board 规划——这是全新面,无历史包袱。
+- 除此之外 docs/、daemon issue tracker 中无任何看板/board 规划——这是全新面,无历史包袱。
   (注:`grep -i kanban docs/` 还会命中 **vibe-kanban**,那是 DESIGN.md §7.3 用作
   executor 接口参考的归档竞品,与 UI 看板无关,勿混淆。)
 
