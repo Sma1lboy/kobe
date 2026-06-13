@@ -34,6 +34,7 @@
  */
 
 import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
+import { maybeAutoStart } from "@/monitor/status-rules"
 import type { Orchestrator } from "@/orchestrator/core"
 import type { VendorId } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
@@ -306,6 +307,26 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "task.reorder",
+      async handle(payload, ctx) {
+        const moves = payload.moves
+        if (!Array.isArray(moves) || moves.length === 0) throw new Error("moves must be a non-empty array")
+        if (moves.length > 500) throw new Error("too many moves in one task.reorder batch (max 500)")
+        const parsed = moves.map((move) => {
+          if (typeof move !== "object" || move === null) throw new Error("each move needs taskId and position")
+          const entry = move as Record<string, unknown>
+          const taskId = requireString(entry, "taskId")
+          const position = entry.position
+          if (typeof position !== "number" || !Number.isFinite(position)) {
+            throw new Error("position must be a finite number")
+          }
+          return { taskId, position }
+        })
+        await ctx.orch.reorderTasks(parsed)
+        return {}
+      },
+    },
+    {
       name: "task.ensureMain",
       async handle(payload, ctx) {
         const repo = requireString(payload, "repo")
@@ -407,6 +428,58 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "session.deliver",
+      async handle(payload, ctx) {
+        // Dispatcher messenger (docs/design/dispatcher.md): `kobe api
+        // dispatch` routes text to a task's live engine session. The daemon
+        // only validates + broadcasts; the front-end hosting that session
+        // (the SPA via /pty/send) owns the actual paste.
+        const taskId = requireString(payload, "taskId")
+        const text = requireString(payload, "text")
+        const source = optionalString(payload, "source")
+        if (source !== undefined && source !== "note" && source !== "dispatcher") {
+          throw new Error('source must be "note" or "dispatcher"')
+        }
+        if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
+        ctx.bus.publish("session.deliver", {
+          taskId,
+          text,
+          at: Date.now(),
+          source: source ?? "dispatcher",
+        })
+        return { ok: true }
+      },
+    },
+    {
+      name: "note.file",
+      async handle(payload, ctx) {
+        // Field note (docs/design/dispatcher.md): a worktree session files a
+        // one-line resolved gotcha. The daemon's only intelligence is
+        // ADDRESSING — find the author's repo's dispatcher seat (the main
+        // session) and forward over session.deliver with provenance. WHO
+        // benefits from the note is the dispatcher agent's judgment, not
+        // daemon code.
+        const taskId = requireString(payload, "taskId")
+        const text = requireString(payload, "text")
+        const author = ctx.orch.getTask(taskId)
+        if (!author) throw new Error(`task not found: ${taskId}`)
+        const main = ctx.orch
+          .listTasks()
+          .find((t) => (t.kind ?? "task") === "main" && t.repo === author.repo && !t.archived)
+        // No dispatcher seat, or the dispatcher noting to itself: accepted
+        // but unrouted — filing must never error a working agent.
+        if (!main || main.id === author.id) return { ok: true, routed: false }
+        const label = author.title || author.branch || taskId
+        ctx.bus.publish("session.deliver", {
+          taskId: main.id,
+          text: `[KOBE FIELD NOTE] from "${label}" (task ${taskId}): ${text}`,
+          at: Date.now(),
+          source: "note",
+        })
+        return { ok: true, routed: true }
+      },
+    },
+    {
       name: "engine.reportEvent",
       async handle(payload, ctx) {
         // A `kobe hook <verb>` process reporting a NORMALIZED engine activity
@@ -442,6 +515,21 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         if (!taskId) return {} // unmatched cwd → drop
         const detail = optionalActivityDetail(payload)
         ctx.activity.report(taskId, kind, detail)
+        // Auto status flow (docs/design/web-kanban.md M5): an engine
+        // STARTING a turn on a backlog task means work began — a pure rule
+        // advances it to in_progress. (in_progress → in_review is the
+        // agent's own self-report via the injected status protocol, not a
+        // daemon rule.) Fire-and-forget; gated inside maybeAutoStart
+        // (opt-in state.json flag).
+        if (kind === "turn-start") {
+          maybeAutoStart(ctx.orch, taskId)
+            .then((result) => {
+              if (result === "moved") {
+                console.log(`[status-rules] task ${taskId} auto-moved backlog → in_progress`)
+              }
+            })
+            .catch((err) => logDaemonError("status-rules", err))
+        }
         return {}
       },
     },

@@ -711,6 +711,10 @@ export function DevSettingsSection(
     confirmRestartDaemon: () => void
     remoteProjectsEnabled: Accessor<boolean>
     toggleRemoteProjects: () => void
+    autoStatusEnabled: Accessor<boolean>
+    toggleAutoStatus: () => void
+    dispatcherEnabled: Accessor<boolean>
+    toggleDispatcher: () => void
   },
 ) {
   const { theme } = useTheme()
@@ -718,6 +722,10 @@ export function DevSettingsSection(
   const restartIsCursor = () => props.level() === "body" && props.bodyRow() === 1
   const experimentalRow = () => rowIndex(devRows(props.hasDaemon), "remote-projects")
   const remoteIsCursor = () => props.level() === "body" && props.bodyRow() === experimentalRow()
+  const autoStatusRow = () => rowIndex(devRows(props.hasDaemon), "auto-status")
+  const autoStatusIsCursor = () => props.level() === "body" && props.bodyRow() === autoStatusRow()
+  const dispatcherRow = () => rowIndex(devRows(props.hasDaemon), "dispatcher")
+  const dispatcherIsCursor = () => props.level() === "body" && props.bodyRow() === dispatcherRow()
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -799,6 +807,52 @@ export function DevSettingsSection(
             attributes={props.remoteProjectsEnabled() ? TextAttributes.BOLD : undefined}
           >
             {props.remoteProjectsEnabled() ? "[x] Remote projects (on)" : "[ ] Remote projects (off)"}
+          </text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="word">
+          Auto status flow: a backlog task moves to in_progress when its engine starts a turn, and new claude sessions
+          get a system-prompt note telling the agent to set in_review itself when the work is done. Never touches
+          done/canceled.
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={autoStatusIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(autoStatusRow())
+            props.toggleAutoStatus()
+          }}
+        >
+          <text
+            fg={autoStatusIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.autoStatusEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.autoStatusEnabled() ? "[x] Auto status flow (on)" : "[ ] Auto status flow (off)"}
+          </text>
+        </box>
+        <text fg={theme.textMuted} wrapMode="word">
+          Field-notes dispatcher: task sessions file one-line gotchas (`kobe api note`), the daemon forwards each to the
+          repo's main session, and that session relays them to the in-flight tasks that benefit (`kobe api dispatch`).
+          Web-hosted sessions receive the relays today.
+        </text>
+        <box
+          flexDirection="row"
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={dispatcherIsCursor() ? theme.primary : theme.backgroundElement}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(dispatcherRow())
+            props.toggleDispatcher()
+          }}
+        >
+          <text
+            fg={dispatcherIsCursor() ? theme.selectedListItemText : theme.text}
+            attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
+          >
+            {props.dispatcherEnabled() ? "[x] Field-notes dispatcher (on)" : "[ ] Field-notes dispatcher (off)"}
           </text>
         </box>
       </box>

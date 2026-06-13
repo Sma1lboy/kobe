@@ -18,7 +18,7 @@ import { matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
-import { PrChip } from "./PrChip.tsx"
+import { PrChip } from "./chips.tsx"
 
 interface TriagedTask {
   task: Task

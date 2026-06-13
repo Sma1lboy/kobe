@@ -49,7 +49,12 @@ async function copyWebUi(): Promise<void> {
   await rm(WEB_OUT_DIR, { recursive: true, force: true })
   await mkdir(WEB_OUT_DIR, { recursive: true })
   await cp(WEB_DIST_DIR, WEB_OUT_DIR, { recursive: true, force: true })
-  await cp(`${WEB_PACKAGE_DIR}/pty-server.mjs`, `${WEB_OUT_DIR}/pty-server.mjs`, { force: true })
+  // The PTY server runs unbundled under Node, so every sibling module it
+  // imports must ship next to it (missing one = ERR_MODULE_NOT_FOUND at
+  // `kobe web` startup in the packaged build).
+  for (const file of ["pty-server.mjs", "pty-scrollback.mjs"]) {
+    await cp(`${WEB_PACKAGE_DIR}/${file}`, `${WEB_OUT_DIR}/${file}`, { force: true })
+  }
 }
 
 await buildWebUi()

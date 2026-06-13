@@ -100,6 +100,10 @@ export type DaemonRequestName =
   | "task.pin"
   | "task.move"
   | "task.status"
+  // Web-board ordering (docs/design/web-kanban.md M3): batch-assign sparse
+  // fractional `position` keys for per-status column order. ONE snapshot
+  // push per batch; the TUI never reads `position`.
+  | "task.reorder"
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
@@ -114,6 +118,14 @@ export type DaemonRequestName =
   // normalized engine activity event for a task; the daemon folds it into
   // the task's transient activity state and broadcasts `engine-state`.
   | "engine.reportEvent"
+  // Dispatcher messenger (docs/design/dispatcher.md): publish a
+  // `session.deliver` channel event addressed to a task's live session.
+  // The daemon only routes; the front-end hosting that session delivers.
+  | "session.deliver"
+  // Field note (docs/design/dispatcher.md): a worktree session files a
+  // one-line resolved gotcha; the daemon forwards it to the repo's
+  // dispatcher seat (the main session) over `session.deliver`.
+  | "note.file"
 
 /**
  * Subscribe role (KOB) — distinguishes WHO is subscribing, so the daemon's
@@ -251,11 +263,56 @@ export interface ChannelPayloads {
   "worktree.changes": {
     changes: Record<string, { added: number; deleted: number }>
   }
+  /**
+   * Conflict radar (docs/design/conflict-radar.md): pairs of in-flight
+   * tasks whose branches touch the same files (`overlap`) or whose heads
+   * demonstrably conflict under a dry-run merge (`conflict`,
+   * `git merge-tree`). Daemon-collected on a guarded tick; the board draws
+   * yarn between `conflict` pairs and badges both cards. Full list,
+   * republished on change only.
+   */
+  "task.conflicts": { pairs: ConflictPair[] }
+  /**
+   * Text addressed INTO a task's live engine session (docs/design/
+   * dispatcher.md). The daemon never owns delivery — engines are hosted
+   * by front-ends (tmux panes, the web PTY sidecar), so this channel is
+   * the daemon-side half of the contract: producers publish "paste this
+   * into task X", and whichever front-end hosts that task's session
+   * delivers it (the SPA via /pty/send today). Producers: the `note.file`
+   * RPC (a worktree session's field note, forwarded to the repo's
+   * main-task dispatcher, `source: "note"`) and the `session.deliver` RPC
+   * (`kobe api dispatch` — the dispatcher relaying a note onward,
+   * `source: "dispatcher"`). EVENT channel, not state: last-value replay
+   * hands a late subscriber only the most recent item (the event-bus
+   * definition-time caveat) — consumers dedupe on `at`.
+   */
+  "session.deliver": SessionDeliverPayload
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
   // "pr-status": { taskId: string; state: "open" | "merged" | "closed" | "none" }
 }
+
+/** The `session.deliver` channel payload — one "paste this into task X". */
+export interface SessionDeliverPayload {
+  readonly taskId: string
+  readonly text: string
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+  readonly source: "note" | "dispatcher"
+}
+
+/** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and
+ *  the strongest proven signal level. */
+export interface ConflictPair {
+  readonly a: string
+  readonly b: string
+  readonly files: readonly string[]
+  readonly level: "overlap" | "conflict"
+}
+
+/** The `task.conflicts` channel payload. */
+export type ConflictsPayload = ChannelPayloads["task.conflicts"]
 
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
@@ -279,6 +336,8 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "keybindings",
   "task.jobs",
   "worktree.changes",
+  "task.conflicts",
+  "session.deliver",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)
@@ -330,6 +389,8 @@ export interface SerializedTask {
   readonly pinned: boolean
   readonly vendor?: Task["vendor"]
   readonly prStatus?: Task["prStatus"]
+  /** Web-board ordering key (sparse fractional; absent until first drop). */
+  readonly position?: number
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -347,6 +408,7 @@ export function serializeTask(task: Task): SerializedTask {
     pinned: task.pinned ?? false,
     vendor: task.vendor,
     prStatus: task.prStatus,
+    position: task.position,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

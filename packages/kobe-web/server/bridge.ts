@@ -25,6 +25,7 @@ import { join, normalize } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { availableEngineIds } from "../../kobe/src/engine/account-detect.ts"
 import { engineDisplayName } from "../../kobe/src/engine/interactive-command.ts"
+import { getPersistedString, setPersistedString } from "../../kobe/src/state/repos.ts"
 import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
 import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
@@ -130,7 +131,14 @@ async function rpcResponse(
     }
     return Response.json({ result })
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    // Forward the daemon's error NAME alongside the message so the SPA can
+    // branch on typed failures (e.g. IllegalTransitionError → board rollback
+    // toast) without string-matching.
+    const name = err instanceof Error && err.name !== "Error" ? err.name : undefined
+    return Response.json(
+      { error: err instanceof Error ? err.message : String(err), ...(name ? { name } : {}) },
+      { status: 500 },
+    )
   }
 }
 
@@ -200,6 +208,8 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (url.pathname === "/api/terminal-spec" && req.method === "GET")
       return specResponse(url, link, terminalSpec)
     if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
+    if (url.pathname === "/api/quick-prompts" && req.method === "GET") return quickPromptsGet()
+    if (url.pathname === "/api/quick-prompts" && req.method === "PUT") return quickPromptsPut(req)
     const notes = await handleNotesRequest(req, url)
     if (notes) return notes
     const diff = await handleDiffRequest(req, url)
@@ -210,6 +220,32 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (themes) return themes
     if (staticDir) return staticResponse(url.pathname, staticDir)
     return new Response("not found", { status: 404 })
+  }
+}
+
+/** state.json keys for the board quick-action prompt TEMPLATES (the
+ *  user-editable half — kobe's clauses are appended client-side and are
+ *  not stored). Host-side so the TUI and any future surface share them. */
+const QUICK_PROMPT_KEYS = {
+  review: "boardPrompt.review",
+  pr: "boardPrompt.pr",
+} as const
+
+function quickPromptsGet(): Response {
+  return Response.json({
+    review: getPersistedString(QUICK_PROMPT_KEYS.review) ?? null,
+    pr: getPersistedString(QUICK_PROMPT_KEYS.pr) ?? null,
+  })
+}
+
+async function quickPromptsPut(req: Request): Promise<Response> {
+  try {
+    const body = (await req.json()) as { review?: unknown; pr?: unknown }
+    if (typeof body.review === "string") setPersistedString(QUICK_PROMPT_KEYS.review, body.review)
+    if (typeof body.pr === "string") setPersistedString(QUICK_PROMPT_KEYS.pr, body.pr)
+    return quickPromptsGet()
+  } catch (err) {
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
   }
 }
 

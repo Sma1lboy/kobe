@@ -113,6 +113,13 @@ export interface Task {
    */
   readonly vendor?: VendorId
   readonly prStatus?: TaskPRStatus
+  /**
+   * Manual ordering key within a status column on the WEB BOARD only —
+   * a sparse fractional number assigned by `task.reorder` drops. The TUI
+   * sidebar never reads it (tasks.json array order stays the TUI's
+   * `default` sort). Cards without one sort by creation time on the board.
+   */
+  readonly position?: number
   readonly createdAt: string
   readonly updatedAt: string
 }

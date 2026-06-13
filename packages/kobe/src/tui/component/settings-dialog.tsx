@@ -24,6 +24,8 @@ import {
 } from "../../engine/account-detect"
 import { VENDOR_LABEL, defaultEngineCommand, engineCommandKey, engineNameKey } from "../../engine/interactive-command"
 import { submitFeedback } from "../../lib/feedback"
+import { AUTO_STATUS_KEY } from "../../state/auto-status"
+import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
@@ -208,6 +210,29 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleRemoteProjects(): void {
     props.kv.set("experimental.remoteProjects", !remoteProjectsEnabled())
+  }
+
+  // Experimental: auto status flow (off by default) — turn-start moves a
+  // backlog task to in_progress, and claude launches get the status
+  // self-report protocol injected. See docs/design/web-kanban.md M5.
+  function autoStatusOn(): boolean {
+    return props.kv.get(AUTO_STATUS_KEY, false) === true
+  }
+
+  function toggleAutoStatus(): void {
+    props.kv.set(AUTO_STATUS_KEY, !autoStatusOn())
+  }
+
+  // Experimental: field-notes dispatcher (off by default) — task sessions
+  // file one-line gotchas, the repo's main session (injected with the
+  // dispatcher protocol) relays them to the tasks that benefit. See
+  // docs/design/dispatcher.md.
+  function dispatcherOn(): boolean {
+    return props.kv.get(DISPATCHER_KEY, false) === true
+  }
+
+  function toggleDispatcher(): void {
+    props.kv.set(DISPATCHER_KEY, !dispatcherOn())
   }
 
   // Engines section: per-vendor launch command. Stored in the shared
@@ -462,6 +487,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     devReset: () => void confirmResetState(dialog, props.kv, renderer),
     devRestartDaemon: () => void confirmRestartDaemon(dialog, props.orchestrator, renderer),
     devRemoteProjects: () => toggleRemoteProjects(),
+    devAutoStatus: () => toggleAutoStatus(),
+    devDispatcher: () => toggleDispatcher(),
   }
 
   function activateBodyRow(): void {
@@ -619,6 +646,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
               confirmRestartDaemon={() => void confirmRestartDaemon(dialog, props.orchestrator, renderer)}
               remoteProjectsEnabled={remoteProjectsEnabled}
               toggleRemoteProjects={toggleRemoteProjects}
+              autoStatusEnabled={autoStatusOn}
+              toggleAutoStatus={toggleAutoStatus}
+              dispatcherEnabled={dispatcherOn}
+              toggleDispatcher={toggleDispatcher}
             />
           </Show>
         </box>

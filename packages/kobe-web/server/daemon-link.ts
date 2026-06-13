@@ -50,6 +50,11 @@ export interface BridgeSnapshotState {
   jobs: Record<string, TaskJobPayload>
   /** worktreePath → uncommitted +added/−deleted counts (daemon-collected). */
   worktreeChanges: WorktreeChangeCounts
+  /** Conflict-radar pairs (file overlap / proven merge conflict). */
+  conflicts: ChannelPayloads["task.conflicts"]["pairs"]
+  /** Most recent session.deliver event (dispatcher plumbing) — the SPA
+   *  dedupes on `at`, so replaying the last one to a late browser is safe. */
+  deliver: ChannelPayloads["session.deliver"] | null
   /** The user's persisted visual prefs (theme/sort) — null until replayed. */
   uiPrefs: UiPrefsPayload | null
   connected: boolean
@@ -88,6 +93,8 @@ export class DaemonLink {
   private update: ChannelPayloads["update"]["info"] = null
   private jobs: Record<string, TaskJobPayload> = {}
   private worktreeChanges: WorktreeChangeCounts = {}
+  private conflicts: ChannelPayloads["task.conflicts"]["pairs"] = []
+  private deliver: ChannelPayloads["session.deliver"] | null = null
   private uiPrefs: UiPrefsPayload | null = null
 
   /**
@@ -108,6 +115,8 @@ export class DaemonLink {
       update: this.update,
       jobs: this.jobs,
       worktreeChanges: this.worktreeChanges,
+      conflicts: this.conflicts,
+      deliver: this.deliver,
       uiPrefs: this.uiPrefs,
       connected: this.connected,
     }
@@ -247,6 +256,12 @@ export class DaemonLink {
       }
       case "worktree.changes":
         this.worktreeChanges = (payload as ChannelPayloads["worktree.changes"]).changes
+        break
+      case "task.conflicts":
+        this.conflicts = (payload as ChannelPayloads["task.conflicts"]).pairs
+        break
+      case "session.deliver":
+        this.deliver = payload as ChannelPayloads["session.deliver"]
         break
       case "ui-prefs":
         this.uiPrefs = payload as UiPrefsPayload

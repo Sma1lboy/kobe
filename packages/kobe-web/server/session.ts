@@ -10,7 +10,11 @@
  * daemon-side implementation could reach that this one can't.
  */
 
-import { interactiveEngineCommand } from "../../kobe/src/engine/interactive-command.ts"
+import {
+  interactiveEngineCommand,
+  withDispatcherProtocol,
+  withWorktreeProtocol,
+} from "../../kobe/src/engine/interactive-command.ts"
 import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
@@ -64,7 +68,22 @@ export function shellQuote(argv: readonly string[]): string {
 
 export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
-  const argv = [...interactiveEngineCommand(task.vendor)]
+  // Worktree protocol (status self-report + field-note filing) — same
+  // injection as the tmux launch path, so the web PTY's engine knows its
+  // task id too. Main project rows are excluded: they aren't board cards,
+  // and a stray in_review on one isn't covered by the load-time status heal.
+  const protocolTaskId = task.kind === "main" ? undefined : taskId
+  // Dispatcher protocol (docs/design/dispatcher.md): the exact complement —
+  // only the main session gets the dispatcher seat. Mutually exclusive with
+  // the status protocol by construction.
+  const dispatcherTaskId = task.kind === "main" ? taskId : undefined
+  const argv = [
+    ...withDispatcherProtocol(
+      withWorktreeProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId),
+      task.vendor,
+      dispatcherTaskId,
+    ),
+  ]
   const init = resolveRepoInit(task.repo ?? "", worktreePath)
   const quoted = shellQuote(argv)
   const script = init.initScript?.trim() ? `${init.initScript}\n${quoted}` : quoted
