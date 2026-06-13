@@ -36,3 +36,26 @@ export function PrChip({ pr }: { pr: TaskPRStatus | undefined }) {
     </span>
   )
 }
+
+/** Conflict-radar ⚠ badge — red for a proven merge conflict, yellow for a
+ *  file overlap, with a tooltip naming the counterpart(s). The simple
+ *  `title`-tooltip variant shared by the rail and the Overview (the board's
+ *  own ConflictBadge portals its tooltip to escape the column scroll-clip).
+ *  Pass the lib/board.ts conflictBadge summary + conflictTip text. */
+export function ConflictChip({
+  badge,
+}: {
+  badge: { level: "overlap" | "conflict"; count: number; tip: string } | null
+}) {
+  if (!badge) return null
+  return (
+    <span
+      className={`shrink-0 font-mono text-[10px] ${
+        badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
+      }`}
+      title={badge.tip}
+    >
+      ⚠{badge.count}
+    </span>
+  )
+}

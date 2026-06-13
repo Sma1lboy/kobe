@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
+import { conflictBadge, conflictTip } from "../lib/board.ts"
 import { useEngines } from "../lib/engines.ts"
 import {
   setNotificationsEnabled,
@@ -46,7 +47,7 @@ import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
-import { ChangesChip, PrChip } from "./chips.tsx"
+import { ChangesChip, ConflictChip, PrChip } from "./chips.tsx"
 import { KeyboardHelp } from "./KeyboardHelp.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { ThemePicker } from "./ThemePicker.tsx"
@@ -83,6 +84,7 @@ function TaskRow({
   engine,
   job,
   changes,
+  conflict,
   active,
   onClick,
 }: {
@@ -90,6 +92,7 @@ function TaskRow({
   engine?: EngineState
   job?: TaskJob
   changes?: { added: number; deleted: number }
+  conflict: { level: "overlap" | "conflict"; count: number; tip: string } | null
   active: boolean
   onClick: () => void
 }) {
@@ -124,6 +127,7 @@ function TaskRow({
         >
           {task.title || task.branch}
         </span>
+        <ConflictChip badge={conflict} />
         <PrChip pr={task.prStatus} />
         {task.pinned && (
           <span className="shrink-0 text-[10px] text-subtle">PIN</span>
@@ -178,11 +182,32 @@ function TaskRail({
     engineStates,
     jobs,
     worktreeChanges,
+    conflicts,
     uiPrefs,
     hydrated,
     streamConnected,
   } = useAppState()
   const { selectedTaskId } = useTabsState()
+
+  // Conflict-radar badges for the rail rows — the same ⚠ the board and the
+  // Overview show, so a merge collision is visible in the always-on task list
+  // too. Summary + tooltip from the shared lib/board.ts helpers (no drift).
+  const conflictByTask = useMemo(() => {
+    const titleOf = (id: string): string => {
+      const t = (tasks as Task[]).find((task) => task.id === id)
+      return t?.title || t?.branch || id
+    }
+    const map = new Map<
+      string,
+      { level: "overlap" | "conflict"; count: number; tip: string }
+    >()
+    for (const id of new Set(conflicts.flatMap((p) => [p.a, p.b]))) {
+      const summary = conflictBadge(conflicts, id)
+      if (summary)
+        map.set(id, { ...summary, tip: conflictTip(conflicts, id, titleOf) })
+    }
+    return map
+  }, [conflicts, tasks])
   // Module store, not useState — the `/` → /task/$taskId nav remounts AppShell
   // (different route trees), which used to wipe these on the first task open
   // (issue #7). In-memory only: survives route nav, resets on full reload.
@@ -463,6 +488,7 @@ function TaskRail({
                 engine={engineStates[t.id]}
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
+                conflict={conflictByTask.get(t.id) ?? null}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />
@@ -481,6 +507,7 @@ function TaskRail({
                 engine={engineStates[t.id]}
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
+                conflict={conflictByTask.get(t.id) ?? null}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />
