@@ -930,8 +930,10 @@ interface ApiRuntime {
   isTaskRunning(taskId: string): Promise<boolean>
   /** Deliver a prompt into a task's engine pane (building the session if needed). */
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
-  /** Canonical repo-root key for grouping tasks by repo. */
+  /** Canonical source repo for task creation and grouping. */
   resolveRepoRoot(absPath: string): Promise<string>
+  /** Settings default engine for new tasks; undefined delegates to daemon defaults. */
+  defaultVendor(): Promise<VendorId | undefined>
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
   /**
@@ -949,7 +951,12 @@ interface ApiRuntime {
 const defaultApiRuntime: ApiRuntime = {
   isTaskRunning: (taskId) => sessionExists(tmuxSessionName(taskId)),
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
-  resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveRepoRoot(absPath),
+  resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveMainRepoRoot(absPath),
+  defaultVendor: async () => {
+    const { getPersistedString } = await import("../state/repos.ts")
+    const value = getPersistedString("lastSelectedVendor")?.trim()
+    return value ? (value as VendorId) : undefined
+  },
   readWorktreeChanges: async (worktreePath) =>
     (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
   tearDownSession: async (taskId) => {
@@ -990,19 +997,21 @@ async function issueUpdate(ctx: VerbContext): Promise<unknown> {
 
 async function add(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
-  const { args } = ctx
-  const payload: Record<string, string> = { repo: args.requirePath("repo") }
+  const { args, runtime } = ctx
+  const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
+  const payload: Record<string, string> = { repo }
   const title = args.str("title")
   if (title) payload.title = title
   const branch = args.str("branch")
   if (branch) payload.branch = branch
   const baseRef = args.str("base-branch")
   if (baseRef) payload.baseRef = baseRef
-  const vendor = args.vendor()
+  const vendor = args.vendor() ?? (await runtime.defaultVendor())
   if (vendor) payload.vendor = vendor
 
   const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
   const taskId = res.taskId
+  await daemon.request("task.setActive", { taskId })
 
   // status / pin aren't create-time fields on the RPC — apply them as
   // follow-ups so `add` is the one-stop "make me a task exactly like this".
@@ -1023,6 +1032,7 @@ async function add(ctx: VerbContext): Promise<unknown> {
     { id: taskId, worktreePath: task.worktreePath, vendor: task.vendor as VendorId | undefined, repo: task.repo },
     prompt,
   )
+  task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
   return { taskId, task, started: delivered.started, engineReady: delivered.engineReady, session: delivered.session }
 }
 
@@ -1143,16 +1153,17 @@ async function adopt(ctx: VerbContext): Promise<unknown> {
 
 async function fanOut(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
-  const { args } = ctx
-  const repo = args.requirePath("repo")
+  const { args, runtime } = ctx
+  const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
   const prompt = args.require("prompt")
   const title = args.str("title")
   const baseRef = args.str("base-branch")
 
   const agentsSpec = args.str("agents")
+  const defaultVendor = await runtime.defaultVendor()
   const plan: VendorId[] = agentsSpec
     ? parseAgentsSpec(agentsSpec)
-    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? "claude")
+    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? defaultVendor ?? "claude")
 
   if (plan.length > FANOUT_CAP) {
     throw new ApiError(`fan-out of ${plan.length} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")
