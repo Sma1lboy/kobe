@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.27
+
+### Patch Changes
+
+- 61ff587: Recent sort no longer reshuffles the projects (repo) rows. Selecting a project bumps its recency timestamp, so "recent" mode was reordering the project list under the user every time they opened one; now projects keep a stable order (alphabetical by repo in the TUI, incoming order in the web rail) in both sort modes, and only the worktree-task groups reorder by recent use.
+- f30219c: The Changes pane's file filter now understands globs and exclusions, not just substrings: type `*.test.ts` to show only test files, `src/*` to scope to a directory, or `!*.json` to hide everything matching a pattern. A query with no `*` and no leading `!` keeps the old case-insensitive substring behavior, so nothing changes for plain text.
+- f77052a: Hardening from an adversarial review of the new Changes-pane glob filter: a pattern with several consecutive `*` (e.g. `**`, or `****` from key-autorepeat) no longer freezes the tab — runs of `*` are collapsed before building the match regex, removing the catastrophic-backtracking shape that the per-keystroke filter could hit. Negation now also works with surrounding whitespace (` !*.json`), and the transcript's per-message copy button reserves a gutter so it never paints over a turn timestamp and reveals on keyboard focus.
+- fe179ef: Desktop notifications can now be toggled per event type in Settings → Notifications: "Task attention" (a task needs input or errored) and "PR updates" (checks, ready to merge, merged) are independent checkboxes under the master switch, so you can keep the pings you want and mute the rest. Both default on, persist locally, and gate through one shared opt-in check alongside the existing permission + page-hidden rules.
+- e543d17: Hover any message in the Chat transcript to copy just that message as Markdown — a per-message copy button next to the existing whole-session copy, so you can grab one assistant answer or tool result without taking the entire transcript. It serializes the message the same way the full export does (role heading, tool call + resolved output, thinking blockquotes), respecting the hide-tools toggle.
+
 ## 0.7.26
 
 ### Patch Changes
