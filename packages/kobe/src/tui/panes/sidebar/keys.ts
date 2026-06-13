@@ -129,12 +129,6 @@ export type SidebarBindingsOpts = {
    */
   onSearchEnter?: () => void
   /**
-   * Fires when the user presses the Tasks-pane key-hint toggle (`?`, i.e.
-   * Shift+/ on US layouts). Registered beside `/` search so terminal-specific
-   * shifted-slash event shapes are resolved before search can consume them.
-   */
-  onToggleKeys?: () => void
-  /**
    * Fires when the user commits or cancels a search:
    *   - `select: true`  → user pressed `enter` on a filtered match.
    *     The parent should keep the new selection and exit search mode.
@@ -241,10 +235,6 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
         if (!evt.shift) return
         const id = cursorTaskId()
         if (id !== undefined) opts.onPinRequest?.(id)
-      },
-      "tasks.toggleKeys": () => {
-        if (moveModeAccessor()) return
-        opts.onToggleKeys?.()
       },
       "sidebar.search.enter": () => {
         if (moveModeAccessor()) return

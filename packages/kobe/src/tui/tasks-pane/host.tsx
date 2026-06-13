@@ -701,7 +701,6 @@ function TasksShell(props: {
           // the n/b/v gate above (KOB-244).
           focused={() => dialog.stack.length === 0}
           onSearchActiveChange={setSearchActive}
-          onToggleKeys={() => setKeysCollapsed(!keysCollapsed())}
         />
       </box>
       <ShortcutHints

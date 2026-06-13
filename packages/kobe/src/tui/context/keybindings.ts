@@ -424,16 +424,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "→", label: "engine", status: false },
   },
   {
-    // `?` (shift+/) folds the Tasks pane's `── keys ──` legend down to its
-    // header line and back. Terminals disagree on the event shape: many
-    // deliver the literal `?`, while Windows Terminal / WSL can deliver
-    // name="/" + shift=true, which the keymap normalizes as `shift+/`.
+    // `?` (shift+/ — terminals deliver the literal character) folds the
+    // Tasks pane's `── keys ──` legend down to its header line and back.
     // The legend is ~20 rows tall with the tmux session chords included;
     // on short terminals it crowds out the task list. The collapsed state
     // persists via KV so the preference survives pane respawns.
     id: "tasks.toggleKeys",
     scope: "sidebar",
-    keys: ["?", "shift+/"],
+    keys: ["?"],
     category: "Tasks pane",
     description: "Collapse / expand the keys legend",
     hint: { keys: "?", label: "fold keys", status: false },

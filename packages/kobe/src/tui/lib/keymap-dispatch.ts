@@ -11,10 +11,6 @@
 
 import type { KeyEvent } from "@opentui/core"
 
-const PRINTABLE_ALIASES: Readonly<Record<string, string>> = {
-  "？": "?",
-}
-
 export type Binding = {
   key: string
   /**
@@ -56,20 +52,10 @@ export function matchKey(evt: KeyEvent): string[] {
   // booleans. We build a few candidate strings so a binding registered as
   // either "return" or "enter" still fires; opencode dialogs use both names.
   const base: string[] = []
-  const pushBase = (key: string) => {
-    if (!base.includes(key)) base.push(key)
-    const alias = PRINTABLE_ALIASES[key]
-    if (alias && !base.includes(alias)) base.push(alias)
-  }
   const name = evt.name
-  if (name) pushBase(name)
+  if (name) base.push(name)
   if (name === "return") base.push("enter")
   if (name === "enter") base.push("return")
-  const seq = evt.sequence
-  if (seq && seq.length === 1) {
-    const code = seq.charCodeAt(0)
-    if (code >= 32 && code !== 127) pushBase(seq)
-  }
 
   // Modifier mapping rules (the *only* place chord prefixes are minted):
   //   - `evt.ctrl`   → `ctrl+`. Universal across terminals.
@@ -87,14 +73,12 @@ export function matchKey(evt: KeyEvent): string[] {
   //                    arrives as `ESC k` which opentui surfaces as
   //                    `option=true`, name=`k` → `alt+k`.
   //   - shift+letter is just uppercase, so we only emit `shift+` for
-  //     non-character keys (`shift+tab`, `shift+enter`, etc.) and shifted
-  //     punctuation (`shift+/`). Some terminals report `Shift+/` as literal
-  //     `?`; others report name="/" + shift=true, and both need a match path.
+  //     non-letter keys (`shift+tab`, `shift+enter`, etc.).
   const mods: string[] = []
   if (evt.ctrl) mods.push("ctrl")
   if (evt.meta) mods.push("cmd")
   if (evt.option) mods.push("alt")
-  if (evt.shift && name && (name.length > 1 || !/^[a-z0-9]$/i.test(name))) mods.push("shift")
+  if (evt.shift && name && name.length > 1) mods.push("shift")
 
   if (mods.length === 0) return base
   const prefix = `${mods.join("+")}+`
@@ -122,7 +106,6 @@ export function dispatchKeyEvent(
     meta?: boolean
     option?: boolean
     shift?: boolean
-    sequence?: string
   },
 ): boolean {
   if (evt.defaultPrevented) return false

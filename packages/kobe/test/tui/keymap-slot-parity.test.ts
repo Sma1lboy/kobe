@@ -34,15 +34,14 @@ import { KobeKeymap, bindByIds, findBinding, resetKeymapToDefaults } from "../..
 import { type Binding, type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 import { applyKeymapOverrides } from "../../src/tui/lib/keymap-overrides"
 
-function makeEvt(name: string | undefined, mods: Partial<{ shift: boolean; sequence: string }> = {}) {
+function makeEvt(name: string) {
   let defaultPrevented = false
   return {
     name,
     ctrl: false,
     meta: false,
     option: false,
-    shift: mods.shift ?? false,
-    sequence: mods.sequence,
+    shift: false,
     get defaultPrevented() {
       return defaultPrevented
     },
@@ -123,33 +122,6 @@ describe("slot dispatch parity with default keys", () => {
     }
     fire(handlers, ["down", "up"])
     expect(calls).toEqual(["down", "up"])
-  })
-
-  test("Tasks-pane shifted slash toggles keys before sidebar search can consume slash", () => {
-    const calls: string[] = []
-    const hostReg: RegisteredBinding = {
-      id: 1,
-      config: () => ({
-        bindings: bindByIds({
-          "tasks.toggleKeys": () => calls.push("host-toggle"),
-        }),
-      }),
-    }
-    const sidebarReg: RegisteredBinding = {
-      id: 2,
-      config: () => ({
-        bindings: bindByIds({
-          "tasks.toggleKeys": () => calls.push("sidebar-toggle"),
-          "sidebar.search.enter": () => calls.push("search"),
-        }),
-      }),
-    }
-
-    expect(dispatchKeyEvent([hostReg, sidebarReg], makeEvt("/", { shift: true }))).toBe(true)
-    expect(dispatchKeyEvent([hostReg, sidebarReg], makeEvt(undefined, { sequence: "?" }))).toBe(true)
-    expect(dispatchKeyEvent([hostReg, sidebarReg], makeEvt(undefined, { sequence: "？" }))).toBe(true)
-    expect(dispatchKeyEvent([hostReg, sidebarReg], makeEvt("/"))).toBe(true)
-    expect(calls).toEqual(["sidebar-toggle", "sidebar-toggle", "sidebar-toggle", "search"])
   })
 })
 
