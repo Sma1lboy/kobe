@@ -56,6 +56,35 @@ describe("sidebar task ordering", () => {
 
     expect(ids(rows)).toEqual(["pinned-new", "pinned-old", "new", "old"])
   })
+
+  it("projects sit tight in recent mode — alphabetised, not reshuffled by use", () => {
+    // alpha's repo basename is "alpha", zeta's is "zeta"; zeta was used more
+    // recently, but projects stay alphabetised in recent mode (no reshuffle).
+    const rows = buildRows(
+      [
+        task({
+          id: "z",
+          title: "zeta",
+          kind: "main",
+          repo: "/repo/zeta",
+          updatedAt: "2026-06-10T00:00:00.000Z",
+        }),
+        task({
+          id: "a",
+          title: "alpha",
+          kind: "main",
+          repo: "/repo/alpha",
+          updatedAt: "2020-01-01T00:00:00.000Z",
+        }),
+        task({ id: "reg", title: "reg" }),
+      ],
+      "active",
+      "",
+      "recent",
+    )
+    // alpha before zeta despite zeta being more recent.
+    expect(ids(rows)).toEqual(["a", "z", "reg"])
+  })
 })
 
 /**

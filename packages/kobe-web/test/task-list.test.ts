@@ -4,9 +4,10 @@ import type { Task } from "../src/lib/types.ts"
 
 /**
  * Task-rail ordering + filtering. The load-bearing rule is the GROUP order:
- * projects (main) > pinned > regular, in BOTH modes — `recent` only re-orders
- * within each group by update time, it never lets a recent regular task jump
- * above a project or a pinned one. matchesTask is the rail search.
+ * projects (main) > pinned > regular, in BOTH modes — `recent` re-orders the
+ * WORKTREE groups (pinned, regular) by update time but never lets a recent
+ * regular task jump above a project or a pinned one, and never reshuffles the
+ * projects themselves (projects "sit tight"). matchesTask is the rail search.
  */
 
 const task = (over: Partial<Task>): Task =>
@@ -79,6 +80,21 @@ describe("sortTasks — recent mode", () => {
     ]
     // Equal times → id tiebreak (localeCompare(b.id, a.id), so "b" before "a").
     expect(ids(sortTasks(t, "recent"))).toEqual(["b", "a"])
+  })
+
+  it("projects sit tight — recent does NOT reshuffle them by updatedAt", () => {
+    // projA is older than projB, but recent must keep their incoming order
+    // (selecting a project bumps its updatedAt; the project list must not
+    // jump around underneath the user).
+    const t = [
+      task({ id: "projA", kind: "main", updatedAt: "2020-01-01T00:00:00Z" }),
+      task({ id: "projB", kind: "main", updatedAt: "2026-06-10T00:00:00Z" }),
+      task({ id: "reg", updatedAt: "2026-06-09T00:00:00Z" }),
+    ]
+    // projA stays before projB despite being staler; only worktrees reorder.
+    expect(ids(sortTasks(t, "recent"))).toEqual(["projA", "projB", "reg"])
+    // And the order matches default mode for the projects.
+    expect(ids(sortTasks(t, "default")).slice(0, 2)).toEqual(["projA", "projB"])
   })
 })
 

@@ -4,9 +4,11 @@
  *
  * Ordering is grouped, not flat: projects (the `main` repo rows) always sit
  * above pinned tasks, which sit above regular tasks — that grouping holds in
- * BOTH sort modes. `recent` additionally orders WITHIN each group by last
- * update (newest first, id as a stable tiebreak); `default` leaves each group
- * in its incoming order.
+ * BOTH sort modes. `recent` orders the WORKTREE groups (pinned, regular) by
+ * last update (newest first, id as a stable tiebreak); `default` leaves them
+ * in incoming order. Projects "sit tight": they keep a stable order in both
+ * modes (selecting a project bumps its updatedAt, but recent must not reshuffle
+ * the project list under the user).
  */
 
 import type { Task } from "./types.ts"
@@ -29,7 +31,8 @@ export function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
   const pinned = tasks.filter((task) => task.kind !== "main" && task.pinned)
   const regular = tasks.filter((task) => task.kind !== "main" && !task.pinned)
   if (mode === "recent") {
-    projects.sort(compareRecent)
+    // Projects deliberately NOT sorted — they sit tight in both modes; only
+    // the worktree groups reorder by recency.
     pinned.sort(compareRecent)
     regular.sort(compareRecent)
   }

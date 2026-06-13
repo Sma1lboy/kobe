@@ -107,15 +107,14 @@ export function buildRows(
     else if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
+  // Projects "sit tight": always alphabetised by repo basename so two repos
+  // with the same prefix sit predictably (kobe < kobe-fork) and the project
+  // list never reshuffles when the user toggles recent sort. Only the worktree
+  // groups respond to `recent`.
+  main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
   if (sortMode === "recent") {
-    main.sort(compareRecent)
     pinnedRegular.sort(compareRecent)
     regular.sort(compareRecent)
-  } else {
-    // Pinned section is alphabetised by repo basename so two repos with
-    // the same prefix sit predictably (kobe < kobe-fork). Regular tasks
-    // keep their orchestrator-supplied order.
-    main.sort((a, b) => repoBasename(a.repo).localeCompare(repoBasename(b.repo)))
   }
   const rows: SidebarRow[] = []
   let flatIndex = 0
