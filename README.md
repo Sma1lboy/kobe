@@ -85,6 +85,17 @@ First task: press `n`, choose a repo/base branch/engine, then prompt the engine 
 
 More: [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md).
 
+## Browser dashboard
+
+Prefer a browser? The same tasks, sessions, and terminals are available in a local web UI:
+
+```bash
+kobe web                 # http://localhost:5173
+kobe web --port 5180
+```
+
+It talks to the same daemon as the TUI, so tasks created in either surface show up in both. Architecture lives in [`docs/design/web-dashboard.md`](./docs/design/web-dashboard.md).
+
 ## Fan out
 
 ```bash

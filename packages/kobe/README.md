@@ -118,6 +118,21 @@ export KOBE_OPEN_EDITOR=/Applications/Cursor.app/Contents/Resources/app/bin/curs
 
 For the full feature manifest, see [`CHANGELOG.md`](./CHANGELOG.md).
 
+## Browser dashboard
+
+kobe also ships a local web UI over the same tasks and sessions, for when you'd
+rather drive things from a browser than the TUI:
+
+```bash
+kobe web                 # serves http://localhost:5173
+kobe web --port 5180     # pick a different port
+kobe web --help          # all options (--bridge-only, --no-takeover, …)
+```
+
+It connects to the same daemon as the TUI, so tasks created in either surface
+appear in both. The process model, routes, and security posture are documented
+in [`docs/design/web-dashboard.md`](../../docs/design/web-dashboard.md).
+
 ## Custom themes
 
 kobe ships a handful of bundled themes (`claude` is the default), and any JSON
