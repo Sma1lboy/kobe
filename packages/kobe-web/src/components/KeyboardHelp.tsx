@@ -66,8 +66,18 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
     detail: "filter files by path, toggle line wrap on a file preview",
   },
   {
+    label: "Conflicts",
+    detail:
+      "a ⚠ on a task (rail / Overview / board) means its branch collides with another in-flight task — red = real merge conflict, yellow = file overlap; hover for who + which files",
+  },
+  {
     label: "Copy link",
     detail: "Task panel → Copy link — share a deep link to a task",
+  },
+  {
+    label: "Needs you",
+    detail:
+      'the tab title shows "(N) kobe" when N tasks are waiting; Cmd+K → "Go to next task needing you" jumps straight to them',
   },
   {
     label: "Notifications",
