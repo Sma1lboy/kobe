@@ -71,9 +71,26 @@ function post(body: unknown): Promise<Response | null> {
   return handleIssuesRequest(req, url)
 }
 
+function syncPost(body: unknown): Promise<Response | null> {
+  const url = new URL("http://localhost/api/issues/sync-worktree")
+  const req = new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  return handleIssuesRequest(req, url)
+}
+
 async function readDisk(repoRoot: string): Promise<{ text: string; data: { nextId: number; issues: Issue[] } }> {
   const text = await readFile(join(repoRoot, "docs", "issues.json"), "utf8")
   return { text, data: JSON.parse(text) }
+}
+
+function gitCommitAll(dir: string, message = "fixture"): void {
+  execFileSync("git", ["add", "."], { cwd: dir })
+  execFileSync("git", ["-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "--quiet", "-m", message], {
+    cwd: dir,
+  })
 }
 
 describe("GET /api/issues", () => {
@@ -297,6 +314,44 @@ describe("POST /api/issues update", () => {
     const repo = await makeRepo()
     const res = await post({ repoRoot: repo, op: { type: "update", id: 42, title: "ghost" } })
     expect(res?.status).toBe(404)
+  })
+})
+
+describe("POST /api/issues/sync-worktree", () => {
+  it("copies the source issue file into a sibling git worktree", async () => {
+    const repo = await makeRepo()
+    gitCommitAll(repo)
+    const parent = await mkdtemp(join(tmpdir(), "kobe-issues-wt-"))
+    cleanups.push(parent)
+    const worktree = join(parent, "task")
+    execFileSync("git", ["worktree", "add", "--quiet", worktree, "-b", "task"], { cwd: repo })
+
+    await writeFile(
+      join(repo, "docs", "issues.json"),
+      `${JSON.stringify(
+        {
+          nextId: 9,
+          issues: [{ id: 8, title: "喵喵", status: "doing", created: "2026-06-13", body: "喵喵叫两下" }],
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    )
+
+    const res = await syncPost({ repoRoot: repo, worktreePath: worktree })
+    expect(res?.status).toBe(200)
+    const synced = await readDisk(worktree)
+    expect(synced.data.issues[0]).toMatchObject({ id: 8, title: "喵喵", status: "doing" })
+    expect(synced.text.endsWith("\n")).toBe(true)
+  })
+
+  it("rejects a worktree from a different git repository", async () => {
+    const repo = await makeRepo()
+    const other = await makeRepo()
+    const res = await syncPost({ repoRoot: repo, worktreePath: other })
+    expect(res?.status).toBe(400)
+    expect(((await res?.json()) as { error: string }).error).toContain("does not belong")
   })
 })
 

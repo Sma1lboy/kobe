@@ -79,6 +79,18 @@ export async function updateIssue(
   return postOp(repoRoot, { type: "update", id, ...patch })
 }
 
+async function syncIssuesToWorktree(
+  repoRoot: string,
+  worktreePath: string,
+): Promise<void> {
+  const res = await fetch("/api/issues/sync-worktree", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ repoRoot, worktreePath }),
+  })
+  if (!res.ok) await failWith(res, "sync issues into worktree")
+}
+
 /* ----- pure helpers ------------------------------------------------------- */
 
 /** Column order for the project view. */
@@ -253,6 +265,11 @@ export async function quickStartIssue(
   // /task/$taskId route effect won't fire it (selectTask runs first).
   void rpc("task.setActive", { taskId }).catch(() => {})
   await setIssueStatus(repoRoot, issue.id, "doing").catch(() => {})
+  const { worktreePath } = await rpc<{ worktreePath: string }>(
+    "task.ensureWorktree",
+    { taskId },
+  )
+  await syncIssuesToWorktree(repoRoot, worktreePath)
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, quickStartPrompt(issue))
   return { taskId }

@@ -32,13 +32,14 @@
  */
 
 import { execFile } from "node:child_process"
-import { readFile, stat, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { readFile, realpath, stat, writeFile } from "node:fs/promises"
+import { isAbsolute, join, resolve } from "node:path"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
 
 const ISSUES_ROUTE = "/api/issues"
+const ISSUES_SYNC_ROUTE = "/api/issues/sync-worktree"
 
 export type IssueStatus = "open" | "doing" | "hold" | "done"
 
@@ -101,6 +102,36 @@ async function validateRepoRoot(raw: string | null | undefined): Promise<{ repoR
     return Response.json({ error: "repoRoot is not a git repository" }, { status: 400 })
   }
   return { repoRoot: raw }
+}
+
+async function gitCommonDir(path: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", path, "rev-parse", "--git-common-dir"])
+  const dir = stdout.trim()
+  return realpath(isAbsolute(dir) ? dir : resolve(path, dir))
+}
+
+async function validateWorktreePath(raw: unknown): Promise<{ worktreePath: string } | Response> {
+  if (typeof raw !== "string" || raw.length === 0) {
+    return Response.json({ error: "missing worktreePath" }, { status: 400 })
+  }
+  if (!raw.startsWith("/")) {
+    return Response.json({ error: "worktreePath must be an absolute path" }, { status: 400 })
+  }
+  try {
+    const s = await stat(raw)
+    if (!s.isDirectory()) {
+      return Response.json({ error: "worktreePath is not a directory" }, { status: 400 })
+    }
+  } catch {
+    return Response.json({ error: "worktreePath does not exist" }, { status: 400 })
+  }
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", raw, "rev-parse", "--is-inside-work-tree"])
+    if (stdout.trim() !== "true") throw new Error("not a work tree")
+  } catch {
+    return Response.json({ error: "worktreePath is not a git worktree" }, { status: 400 })
+  }
+  return { worktreePath: raw }
 }
 
 /**
@@ -315,11 +346,50 @@ async function handlePost(req: Request): Promise<Response> {
   }
 }
 
+async function handleSyncWorktree(req: Request): Promise<Response> {
+  let parsed: unknown
+  try {
+    parsed = await req.json()
+  } catch {
+    return Response.json({ error: "invalid JSON body" }, { status: 400 })
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return Response.json({ error: "body must be a JSON object" }, { status: 400 })
+  }
+  const body = parsed as { repoRoot?: unknown; worktreePath?: unknown }
+  const validatedRepo = await validateRepoRoot(typeof body.repoRoot === "string" ? body.repoRoot : null)
+  if (validatedRepo instanceof Response) return validatedRepo
+  const validatedWorktree = await validateWorktreePath(body.worktreePath)
+  if (validatedWorktree instanceof Response) return validatedWorktree
+  const { repoRoot } = validatedRepo
+  const { worktreePath } = validatedWorktree
+  try {
+    const [repoCommon, worktreeCommon] = await Promise.all([gitCommonDir(repoRoot), gitCommonDir(worktreePath)])
+    if (repoCommon !== worktreeCommon) {
+      return Response.json({ error: "worktreePath does not belong to repoRoot" }, { status: 400 })
+    }
+    return await withRepoLock(repoRoot, async () => {
+      const text = await readFile(issuesFilePath(repoRoot), "utf8")
+      await writeFile(issuesFilePath(worktreePath), text, "utf8")
+      return Response.json({ ok: true, repoRoot, worktreePath })
+    })
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return Response.json({ error: "source docs/issues.json does not exist" }, { status: 404 })
+    }
+    return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+  }
+}
+
 /**
  * Route handler for the issues API. Returns `null` when `url.pathname` is
  * not an issues route so the caller can fall through to other handlers.
  */
 export async function handleIssuesRequest(req: Request, url: URL): Promise<Response | null> {
+  if (url.pathname === ISSUES_SYNC_ROUTE) {
+    if (req.method === "POST") return handleSyncWorktree(req)
+    return Response.json({ error: "method not allowed" }, { status: 405 })
+  }
   if (url.pathname !== ISSUES_ROUTE) return null
   if (req.method === "GET") return handleGet(url)
   if (req.method === "POST") return handlePost(req)
