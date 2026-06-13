@@ -23,7 +23,9 @@ import { activityColor, activityLabel } from "../lib/activity.ts"
 import { conflictBadge, conflictTip } from "../lib/board.ts"
 import { useEngines } from "../lib/engines.ts"
 import {
+  type NotifyCategory,
   setNotificationsEnabled,
+  setNotifyCategory,
   setNotifyNavigate,
   useNotifyState,
 } from "../lib/notify.ts"
@@ -719,8 +721,17 @@ function EnginesCard() {
   )
 }
 
+const NOTIFY_CATEGORIES: Array<{
+  key: NotifyCategory
+  label: string
+  hint: string
+}> = [
+  { key: "engine", label: "Task attention", hint: "needs input or errored" },
+  { key: "pr", label: "PR updates", hint: "checks, ready, merged" },
+]
+
 function NotificationsCard() {
-  const { supported, permission, enabled } = useNotifyState()
+  const { supported, permission, enabled, categories } = useNotifyState()
   return (
     <div className="border border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-2">
@@ -749,6 +760,30 @@ function NotificationsCard() {
           ? "Browser notifications are blocked — allow them in your browser's site settings to enable."
           : "Get a desktop notification when a task needs your input or errors while this tab is in the background. Click it to jump to the task."}
       </p>
+      {supported && enabled && (
+        <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
+          {NOTIFY_CATEGORIES.map(({ key, label, hint }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setNotifyCategory(key, !categories[key])}
+              className="flex items-center gap-2 text-left"
+            >
+              <span
+                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center border text-[9px] ${
+                  categories[key]
+                    ? "border-primary bg-primary text-bg"
+                    : "border-line bg-bg text-transparent"
+                }`}
+              >
+                ✓
+              </span>
+              <span className="text-[11px] text-fg">{label}</span>
+              <span className="font-mono text-[10px] text-subtle">{hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -17,9 +17,21 @@ import type { ActivityState } from "./types.ts"
 
 const ENABLED_KEY = "kobe-web.notify"
 
+/** The notification categories a user can toggle independently. Both fire only
+ *  when the master switch is on; default ON so an upgrade keeps every ping. */
+export type NotifyCategory = "engine" | "pr"
+const CATEGORY_KEYS: Record<NotifyCategory, string> = {
+  engine: "kobe-web.notify.engine",
+  pr: "kobe-web.notify.pr",
+}
+
 type Navigate = (taskId: string) => void
 let navigate: Navigate | null = null
 let enabled = readEnabled()
+let categories: Record<NotifyCategory, boolean> = {
+  engine: readCategory("engine"),
+  pr: readCategory("pr"),
+}
 const listeners = new Set<() => void>()
 
 function readEnabled(): boolean {
@@ -27,6 +39,15 @@ function readEnabled(): boolean {
     return localStorage.getItem(ENABLED_KEY) === "1"
   } catch {
     return false
+  }
+}
+
+/** A category defaults ON when unset (an upgrade keeps current behavior). */
+function readCategory(category: NotifyCategory): boolean {
+  try {
+    return localStorage.getItem(CATEGORY_KEYS[category]) !== "0"
+  } catch {
+    return true
   }
 }
 
@@ -39,10 +60,29 @@ function isAttention(state: ActivityState | undefined): boolean {
 }
 
 /**
- * Pure decision: should a transition fire a notification? Fires only on the
- * RISING edge into an attention state, when enabled, permission is granted,
- * and the page is hidden. Extracted from {@link notifyEngineTransition} so the
- * edge logic is unit-tested without the Notification/DOM side effects.
+ * The shared opt-in gate for any notification: the feature is on, permission
+ * granted, the page is hidden, and this event's category is enabled. Pure so
+ * both the engine and PR paths gate identically and it's unit-testable.
+ */
+export function notifyGateOpen(opts: {
+  enabled: boolean
+  permission: NotificationPermission
+  hidden: boolean
+  categoryEnabled: boolean
+}): boolean {
+  return (
+    opts.enabled &&
+    opts.permission === "granted" &&
+    opts.hidden &&
+    opts.categoryEnabled
+  )
+}
+
+/**
+ * Pure decision: should an engine transition fire a notification? The shared
+ * gate (incl. the `engine` category) AND a RISING edge into an attention
+ * state. Extracted from {@link notifyEngineTransition} so the edge logic is
+ * unit-tested without the Notification/DOM side effects.
  */
 export function shouldNotify(opts: {
   prev: ActivityState | undefined
@@ -50,9 +90,17 @@ export function shouldNotify(opts: {
   enabled: boolean
   permission: NotificationPermission
   hidden: boolean
+  engineEnabled: boolean
 }): boolean {
-  if (!opts.enabled || opts.permission !== "granted") return false
-  if (!opts.hidden) return false
+  if (
+    !notifyGateOpen({
+      enabled: opts.enabled,
+      permission: opts.permission,
+      hidden: opts.hidden,
+      categoryEnabled: opts.engineEnabled,
+    })
+  )
+    return false
   // Rising edge only: was NOT attention, now IS.
   return !isAttention(opts.prev) && isAttention(opts.next)
 }
@@ -69,6 +117,8 @@ export interface NotifyState {
   permission: NotificationPermission
   /** The user has turned the feature on (and granted permission). */
   enabled: boolean
+  /** Per-event-type toggles (only meaningful while `enabled`). */
+  categories: Record<NotifyCategory, boolean>
 }
 
 function permission(): NotificationPermission {
@@ -82,6 +132,7 @@ function snapshot(): NotifyState {
     supported: typeof Notification !== "undefined",
     permission: permission(),
     enabled: enabled && permission() === "granted",
+    categories,
   }
 }
 
@@ -91,7 +142,8 @@ function getSnapshot(): NotifyState {
   if (
     next.supported !== cached.supported ||
     next.permission !== cached.permission ||
-    next.enabled !== cached.enabled
+    next.enabled !== cached.enabled ||
+    next.categories !== cached.categories
   ) {
     cached = next
   }
@@ -114,6 +166,19 @@ export async function setNotificationsEnabled(on: boolean): Promise<void> {
   enabled = on
   try {
     localStorage.setItem(ENABLED_KEY, on ? "1" : "0")
+  } catch {
+    /* ignore */
+  }
+  notify()
+}
+
+/** Toggle one event category (engine attention / PR updates). Persisted; the
+ *  master switch still gates everything. */
+export function setNotifyCategory(category: NotifyCategory, on: boolean): void {
+  // New object so getSnapshot's identity check sees the change.
+  categories = { ...categories, [category]: on }
+  try {
+    localStorage.setItem(CATEGORY_KEYS[category], on ? "1" : "0")
   } catch {
     /* ignore */
   }
@@ -144,7 +209,16 @@ export function notifyEngineTransition(
 ): void {
   const hidden =
     typeof document === "undefined" || document.visibilityState !== "visible"
-  if (!shouldNotify({ prev, next, enabled, permission: permission(), hidden }))
+  if (
+    !shouldNotify({
+      prev,
+      next,
+      enabled,
+      permission: permission(),
+      hidden,
+      engineEnabled: categories.engine,
+    })
+  )
     return
   const verb = next === "error" ? "errored" : "needs your input"
   fire(taskId, taskLabel, `Task ${verb}.`, `kobe-task-${taskId}`)
@@ -160,7 +234,15 @@ export function notifyPrTransitions(
 ): void {
   const hidden =
     typeof document === "undefined" || document.visibilityState !== "visible"
-  if (!enabled || permission() !== "granted" || !hidden) return
+  if (
+    !notifyGateOpen({
+      enabled,
+      permission: permission(),
+      hidden,
+      categoryEnabled: categories.pr,
+    })
+  )
+    return
   for (const t of transitions) {
     // Per-task tag: a newer PR state replaces a stale unread one.
     fire(t.taskId, t.taskLabel, prTransitionBody(t), `kobe-pr-${t.taskId}`)
