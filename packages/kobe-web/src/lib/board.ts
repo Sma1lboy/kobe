@@ -406,6 +406,22 @@ export function conflictBadge(
   }
 }
 
+/**
+ * How many of the given tasks have at least one PROVEN merge conflict — the
+ * urgent headline count for the Overview summary. Overlaps are advisory and
+ * stay per-card, so they don't inflate the red headline number.
+ */
+export function provenConflictCount(
+  pairs: readonly ConflictPair[],
+  taskIds: Iterable<string>,
+): number {
+  let count = 0
+  for (const id of taskIds) {
+    if (conflictBadge(pairs, id)?.level === "conflict") count++
+  }
+  return count
+}
+
 /** Max files named per counterpart before eliding with "…". */
 const CONFLICT_TIP_FILES = 4
 

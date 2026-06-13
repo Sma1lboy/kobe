@@ -9,6 +9,7 @@ import {
   conflictsForTask,
   conflictTip,
   effectivePosition,
+  provenConflictCount,
   isBoardTask,
   isDroppableColumn,
   planColumnDrop,
@@ -347,6 +348,20 @@ describe("conflict radar helpers", () => {
     expect(conflictTip(many, "a", (id) => id)).toBe(
       "CONFLICTS with b: 1.ts, 2.ts, 3.ts, 4.ts, …",
     )
+  })
+
+  it("provenConflictCount counts only tasks with a PROVEN conflict", () => {
+    // a↔b is a real conflict; a↔c and d↔e are overlaps only.
+    const mixed = [
+      { a: "a", b: "b", files: ["x.ts"], level: "conflict" as const },
+      { a: "a", b: "c", files: ["y.ts"], level: "overlap" as const },
+      { a: "d", b: "e", files: ["z.ts"], level: "overlap" as const },
+    ]
+    // a + b carry the proven conflict; c/d/e are overlap-only (not counted).
+    expect(provenConflictCount(mixed, ["a", "b", "c", "d", "e"])).toBe(2)
+    // Counts only the ids passed — scope it to the shown/filtered set.
+    expect(provenConflictCount(mixed, ["c", "d", "e"])).toBe(0)
+    expect(provenConflictCount([], ["a", "b"])).toBe(0)
   })
 
   it("yarnColor is stable per index and cycles the palette", () => {

@@ -10,7 +10,11 @@ import { useNavigate } from "@tanstack/react-router"
 import { ArrowLeft, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
-import { conflictBadge, conflictTip } from "../lib/board.ts"
+import {
+  conflictBadge,
+  conflictTip,
+  provenConflictCount,
+} from "../lib/board.ts"
 import { moveHighlight, reconcileHighlight } from "../lib/overview-nav.ts"
 import { loadPromptPreview, usePromptPreviews } from "../lib/prompt-preview.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -262,6 +266,11 @@ export function Overview() {
     attention: byBucket.attention.length,
     working: byBucket.working.length,
     changes: byBucket.changes.length,
+    // Proven merge conflicts among the shown tasks (overlaps stay per-card).
+    conflicts: provenConflictCount(
+      conflicts,
+      shown.map((e) => e.task.id),
+    ),
   }
 
   return (
@@ -318,6 +327,11 @@ export function Overview() {
           <span className="text-kobe-blue">{counts.attention} need input</span>
           <span className="text-kobe-orange">{counts.working} running</span>
           <span className="text-kobe-green">{counts.changes} dirty</span>
+          {counts.conflicts > 0 && (
+            <span className="text-kobe-red">
+              {counts.conflicts} conflicting
+            </span>
+          )}
         </div>
       </header>
 
