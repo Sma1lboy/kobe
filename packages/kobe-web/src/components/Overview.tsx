@@ -179,7 +179,7 @@ export function Overview() {
   useEffect(() => {
     if (!highlighted) return
     document
-      .querySelector(`[data-overview-card="${highlighted}"]`)
+      .querySelector(`[data-overview-card="${CSS.escape(highlighted)}"]`)
       ?.scrollIntoView({ block: "nearest" })
   }, [highlighted])
 
@@ -220,6 +220,10 @@ export function Overview() {
           moveHighlight(order, current, down ? 1 : -1),
         )
       } else if (event.key === "Enter" && !inField && highlighted) {
+        // A focused button/link keeps its native Enter activation (Tab to a
+        // card or the back button must work) — the highlight owns Enter only
+        // when nothing interactive has focus.
+        if (t?.closest("button,a,[role=button]")) return
         event.preventDefault()
         open(highlighted)
       }
