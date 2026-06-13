@@ -21,9 +21,13 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { activityColor } from "../lib/activity.ts"
 import { attentionTaskIds, nextAttentionTaskId } from "../lib/attention-nav.ts"
 import { fuzzyScore } from "../lib/fuzzy.ts"
-import { themeCommandEntries } from "../lib/palette-commands.ts"
+import {
+  orderTasksForPalette,
+  themeCommandEntries,
+} from "../lib/palette-commands.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import {
@@ -47,6 +51,10 @@ interface Command {
     | "board"
     | "theme"
     | "attention"
+  /** Set for task rows — lets the row render a LIVE engine-activity dot
+   *  (read at render, not baked into the memo, so it stays current without
+   *  rebuilding the command list on every engine-state push). */
+  taskId?: string
   run: () => void
 }
 
@@ -119,13 +127,13 @@ export function CommandPalette({
     // Closed palette renders null anyway — skip the whole build so an
     // engine-state re-render doesn't rebuild the list for a discarded result.
     if (!open) return []
-    const taskCmds: Command[] = (tasks as Task[])
-      .filter((t) => !t.archived)
-      .map((t) => ({
+    const taskCmds: Command[] = orderTasksForPalette(tasks as Task[]).map(
+      (t) => ({
         id: `task:${t.id}`,
         label: t.title || t.branch || t.id,
         hint: t.kind === "main" ? "project" : t.branch,
         icon: "task" as const,
+        taskId: t.id,
         run: () => {
           selectTask(t.id)
           void rpc("task.setActive", { taskId: t.id }).catch((err) =>
@@ -134,7 +142,8 @@ export function CommandPalette({
           void navigate({ to: "/task/$taskId", params: { taskId: t.id } })
           onClose()
         },
-      }))
+      }),
+    )
     // The attention-loop closer: only offered when a task actually needs you
     // (no point listing a no-op). Jumps to the next waiting task after the
     // active one, cycling — so it walks every waiting task on repeat use.
@@ -333,11 +342,21 @@ export function CommandPalette({
                   index === cursor ? "bg-inset" : "hover:bg-inset/50"
                 }`}
               >
-                <span
-                  className={`shrink-0 ${index === cursor ? "text-primary" : "text-subtle"}`}
-                >
-                  <CommandIcon kind={cmd.icon} />
-                </span>
+                {cmd.taskId ? (
+                  // Live engine-activity dot — read here (not in the memo) so
+                  // it tracks engine-state pushes without rebuilding the list.
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${activityColor(
+                      engineStates[cmd.taskId]?.state,
+                    )}`}
+                  />
+                ) : (
+                  <span
+                    className={`shrink-0 ${index === cursor ? "text-primary" : "text-subtle"}`}
+                  >
+                    <CommandIcon kind={cmd.icon} />
+                  </span>
+                )}
                 <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
                   {cmd.label}
                 </span>
