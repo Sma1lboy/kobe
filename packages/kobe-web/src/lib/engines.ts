@@ -14,6 +14,10 @@ import { useSyncExternalStore } from "react"
 export interface EngineOption {
   id: string
   label: string
+  /** Reasoning/effort levels this engine accepts (e.g. `["low","medium",
+   *  "high"]`), engine-owned and served per vendor. Absent when the engine
+   *  exposes no effort control — the issue drawer hides the effort picker. */
+  effortLevels?: readonly string[]
 }
 
 const FALLBACK: readonly EngineOption[] = [
@@ -33,10 +37,21 @@ function ensureFetched(): void {
       if (!res.ok) return
       const json = (await res.json()) as { engines?: EngineOption[] }
       if (!Array.isArray(json.engines) || json.engines.length === 0) return
-      engines = json.engines.filter(
-        (e): e is EngineOption =>
-          typeof e?.id === "string" && typeof e?.label === "string",
-      )
+      engines = json.engines
+        .filter(
+          (e): e is EngineOption =>
+            typeof e?.id === "string" && typeof e?.label === "string",
+        )
+        .map((e) => ({
+          id: e.id,
+          label: e.label,
+          // Keep only a clean string[] when the engine ships effort levels;
+          // drop the field entirely otherwise so callers can `?? []` cleanly.
+          ...(Array.isArray(e.effortLevels) &&
+          e.effortLevels.every((l) => typeof l === "string")
+            ? { effortLevels: e.effortLevels }
+            : {}),
+        }))
       for (const l of listeners) l()
     })
     .catch(() => {

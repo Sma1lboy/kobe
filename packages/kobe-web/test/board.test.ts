@@ -14,7 +14,7 @@ import {
   isDroppableColumn,
   isLiveTask,
   labelRepo,
-  liveLinkedIssueIds,
+  liveTaskIds,
   parseDroppableId,
   planColumnDrop,
   POSITION_STEP,
@@ -637,7 +637,7 @@ describe("labelRepo — shared basename/parent labeler", () => {
   })
 })
 
-describe("isLiveTask / liveLinkedIssueIds — issue↔task dedup", () => {
+describe("isLiveTask / liveTaskIds — issue↔task dedup", () => {
   it("a task is live unless archived or terminal (done/canceled/error)", () => {
     expect(isLiveTask(task({ status: "backlog" }))).toBe(true)
     expect(isLiveTask(task({ status: "in_progress" }))).toBe(true)
@@ -650,16 +650,19 @@ describe("isLiveTask / liveLinkedIssueIds — issue↔task dedup", () => {
     )
   })
 
-  it("keys live issue links by `${repo}:${issueId}` from the FULL task list", () => {
+  it("collects LIVE task ids from the FULL task list (link is now one-way)", () => {
+    // The link reversed: a task no longer carries issueId; dedup keys on the
+    // task's own id (Issue.taskId points AT these). Dead/archived/main rows
+    // drop out so their issue can resurface.
     const tasks = [
-      task({ id: "t1", repo: "/u/kobe", issueId: 7, status: "in_progress" }),
-      task({ id: "t2", repo: "/u/kobe", issueId: 8, status: "done" }), // dead → not live
-      task({ id: "t3", repo: "/u/kobe", issueId: 9, archived: true }), // archived → not live
-      task({ id: "t4", repo: "/u/web", issueId: 7, status: "backlog" }), // diff repo
-      task({ id: "t5", repo: "/u/kobe", status: "in_progress" }), // no issueId
+      task({ id: "t1", repo: "/u/kobe", status: "in_progress" }), // live
+      task({ id: "t2", repo: "/u/kobe", status: "done" }), // dead → not live
+      task({ id: "t3", repo: "/u/kobe", archived: true }), // archived → not live
+      task({ id: "t4", repo: "/u/web", status: "backlog" }), // live, other repo
+      task({ id: "m1", repo: "/u/kobe", kind: "main" }), // main row → skipped
     ]
-    const ids = liveLinkedIssueIds(tasks)
-    expect([...ids].sort()).toEqual(["/u/kobe:7", "/u/web:7"])
+    const ids = liveTaskIds(tasks)
+    expect([...ids].sort()).toEqual(["t1", "t4"])
   })
 })
 
@@ -729,14 +732,15 @@ describe("buildProjectBoards — one board per project, deduped", () => {
     expect(kobe?.columns.find((c) => c.key === "backlog")?.cards).toHaveLength(1)
   })
 
-  it("hides an issue linked to a LIVE task (its task card represents it)", () => {
+  it("hides an issue whose taskId points to a LIVE task (the task represents it)", () => {
+    // Dedup is one-way now: the ISSUE carries taskId, the task knows nothing.
     const allTasks = [
-      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "in_progress" }),
+      task({ id: "t1", repo: "/u/kobe", status: "in_progress" }),
     ]
     const boards = buildProjectBoards(
       [
         ...allTasks.map(tc),
-        ic("/u/kobe", issue({ id: 1 })), // linked + live → hidden
+        ic("/u/kobe", issue({ id: 1, taskId: "t1" })), // linked + live → hidden
         ic("/u/kobe", issue({ id: 2 })), // unlinked → shown in backlog
       ],
       allTasks,
@@ -751,15 +755,14 @@ describe("buildProjectBoards — one board per project, deduped", () => {
     ).toEqual(["t1"])
   })
 
-  it("resurfaces an issue whose linked task is dead/archived", () => {
-    const deadTasks = [
-      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "done" }),
-    ]
+  it("resurfaces an issue whose linked task is dead", () => {
+    // taskId still points at t1, but t1 reached `done` → not live → resurface.
+    const deadTasks = [task({ id: "t1", repo: "/u/kobe", status: "done" })]
     const boards = buildProjectBoards(
       [
         // the done task IS a board card (lands in done), issue resurfaces
         ...deadTasks.map(tc),
-        ic("/u/kobe", issue({ id: 1 })),
+        ic("/u/kobe", issue({ id: 1, taskId: "t1" })),
       ],
       deadTasks,
     )
@@ -770,18 +773,51 @@ describe("buildProjectBoards — one board per project, deduped", () => {
     ).toEqual(["#1"])
   })
 
+  it("resurfaces an issue whose linked task was archived", () => {
+    // An archived task is not live even mid-flight → its issue comes back. The
+    // archived task is not a board card (isBoardTask drops it), so Backlog is
+    // just the resurfaced issue.
+    const archivedTasks = [
+      task({ id: "t1", repo: "/u/kobe", status: "in_progress", archived: true }),
+    ]
+    const boards = buildProjectBoards(
+      [
+        ...archivedTasks.map(tc),
+        ic("/u/kobe", issue({ id: 1, taskId: "t1" })),
+      ],
+      archivedTasks,
+    )
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    expect(
+      kobe?.columns.find((c) => c.key === "backlog")?.cards.map(cardId),
+    ).toEqual(["#1"])
+  })
+
   it("dedups against the FULL task list even when the live task isn't a passed card", () => {
     // A project filter might exclude the live task card from `cards`, but the
     // issue must STILL hide (dedup reads allTasks, not the rendered cards).
     const allTasks = [
-      task({ id: "t1", repo: "/u/kobe", issueId: 1, status: "in_progress" }),
+      task({ id: "t1", repo: "/u/kobe", status: "in_progress" }),
     ]
     const boards = buildProjectBoards(
-      [ic("/u/kobe", issue({ id: 1 }))], // task card omitted from render set
+      [ic("/u/kobe", issue({ id: 1, taskId: "t1" }))], // task card omitted from render set
       allTasks,
     )
     const kobe = boards.find((b) => b.repo === "/u/kobe")
     expect(kobe).toBeUndefined() // no visible cards → no project board
+  })
+
+  it("keeps an issue whose taskId points to a NONEXISTENT task", () => {
+    // A stale link to a task that's gone from the list must not vanish the
+    // issue — only a LIVE task suppresses it.
+    const boards = buildProjectBoards(
+      [ic("/u/kobe", issue({ id: 1, taskId: "ghost" }))],
+      [],
+    )
+    const kobe = boards.find((b) => b.repo === "/u/kobe")
+    expect(
+      kobe?.columns.find((c) => c.key === "backlog")?.cards.map(cardId),
+    ).toEqual(["#1"])
   })
 
   it("sorts projects by label", () => {

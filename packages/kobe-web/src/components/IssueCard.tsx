@@ -1,36 +1,28 @@
 /**
  * IssueCard — a compact, clickable card for one daemon issue, in the Board's
- * kanban-card grammar (title, #id, created date, hover footer of status moves +
- * quick start). Extracted from IssuesPage so the unified Board can render the
- * repo's issues in its Backlog column without the IssuesPage shell.
+ * kanban-card grammar (title, #id, created date, hover quick-start). Extracted
+ * from IssuesPage so the unified Board can render the repo's issues in its
+ * Backlog column without the IssuesPage shell.
  *
  * Props in, callbacks out: the card owns no data fetching. `onOpen` is the
- * click handler that opens the issue drawer (IssuePeek). Issue cards are NOT
- * draggable — interaction is the drawer, not drag (unlike task cards).
+ * click handler that opens the issue detail drawer (IssuePeek); `onQuickStart`
+ * is the single one-click start (spawn a task on the default engine). The
+ * status-move hover buttons are gone — moving an issue is the drawer's job, or
+ * is implied by quick-starting it. Issue cards are NOT draggable.
  */
 
 import { Play } from "lucide-react"
-import {
-  canQuickStart,
-  type Issue,
-  type IssueStatus,
-  STATUS_META,
-  statusActions,
-} from "../lib/issues.ts"
+import { canQuickStart, type Issue } from "../lib/issues.ts"
 import { TIP_ABOVE } from "./chips.tsx"
 
 export function IssueCard({
   issue,
-  busy,
   quickStartBusy,
-  onSetStatus,
   onQuickStart,
   onOpen,
 }: {
   issue: Issue
-  busy: boolean
   quickStartBusy: boolean
-  onSetStatus: (to: IssueStatus) => void
   onQuickStart: () => void
   onOpen: () => void
 }) {
@@ -53,34 +45,20 @@ export function IssueCard({
           <span className="font-mono">{issue.created}</span>
         </div>
       </button>
-      {/* Hover bar: status moves + quick start. Overlays the card footer on
-          hover only (the Board card grammar). */}
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 border-t border-line bg-surface px-2 py-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
-        {statusActions(issue.status).map((action) => (
-          <button
-            key={action.to}
-            type="button"
-            disabled={busy}
-            onClick={() => onSetStatus(action.to)}
-            title={`Move to ${STATUS_META[action.to].title}`}
-            className="px-1 text-[10px] text-subtle transition-colors hover:text-fg disabled:opacity-40"
-          >
-            {action.label}
-          </button>
-        ))}
-        {canQuickStart(issue.status) && (
-          <button
-            type="button"
-            disabled={quickStartBusy}
-            onClick={onQuickStart}
-            aria-label={`Quick start issue #${issue.id}`}
-            data-tip="Quick start — spawn a kobe task"
-            className={`relative ml-auto flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg disabled:opacity-40 ${TIP_ABOVE}`}
-          >
-            <Play size={11} strokeWidth={1.8} />
-          </button>
-        )}
-      </div>
+      {/* One-click quick start, top-right, on hover (the Board card grammar).
+          Click the card body itself to open the detail drawer. */}
+      {canQuickStart(issue.status) && (
+        <button
+          type="button"
+          disabled={quickStartBusy}
+          onClick={onQuickStart}
+          aria-label={`Quick start issue #${issue.id}`}
+          data-tip="Quick start — spawn a kobe task"
+          className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 disabled:opacity-40 group-hover/card:opacity-100 ${TIP_ABOVE}`}
+        >
+          <Play size={11} strokeWidth={1.8} />
+        </button>
+      )}
     </div>
   )
 }

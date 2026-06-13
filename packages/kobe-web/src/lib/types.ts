@@ -39,10 +39,11 @@ export interface Task {
   prStatus?: TaskPRStatus
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   position?: number
-  /** Issue this task was spawned from (quick-start link) — the unified board
-   *  dedups the issue against this task and the task card shows a `#<id>`
-   *  back-link chip. */
-  issueId?: number
+  /** Selected reasoning/effort level for the task's engine (mirrors the
+   *  daemon's SerializedTask.modelEffort) — surfaced in the issue detail
+   *  drawer's engine+effort picker. The task no longer reverse-references its
+   *  issue; the issue→task link lives on {@link Issue.taskId}. */
+  modelEffort?: string
   createdAt: string
   updatedAt: string
 }

@@ -144,32 +144,6 @@ export const STATUS_META: Record<
   done: { title: "Done", accent: "text-kobe-green" },
 }
 
-/** The legal one-click moves from a status, with their action labels. */
-export function statusActions(
-  status: IssueStatus,
-): Array<{ label: string; to: IssueStatus }> {
-  switch (status) {
-    case "open":
-      return [
-        { label: "Start", to: "doing" },
-        { label: "Hold", to: "hold" },
-        { label: "Done", to: "done" },
-      ]
-    case "doing":
-      return [
-        { label: "Hold", to: "hold" },
-        { label: "Done", to: "done" },
-      ]
-    case "hold":
-      return [
-        { label: "Resume", to: "open" },
-        { label: "Done", to: "done" },
-      ]
-    case "done":
-      return [{ label: "Reopen", to: "open" }]
-  }
-}
-
 /** Quick start spawns a task to work the issue — done issues have nothing
  *  left to start. */
 export function canQuickStart(status: IssueStatus): boolean {
@@ -301,26 +275,34 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
 
 /**
  * Spawn a kobe task from an issue: create the task (branch derived later by
- * ensureWorktree — KOB-244), stamping `issueId` so the daemon can pair the
- * two; link the issue → new task (which also flips it `doing` and mirrors it
- * to `done` when the task finishes), then deliver the prompt through the pty
- * sidecar's spawn-on-send path, which materializes the worktree + engine.
+ * ensureWorktree — KOB-244), then link the issue → new task one-way via
+ * {@link linkIssue} (the daemon stamps `Issue.taskId`, flips the issue `doing`,
+ * and mirrors it to `done` when the task finishes), then deliver the prompt
+ * through the pty sidecar's spawn-on-send path, which materializes the worktree
+ * + engine.
+ *
+ * The task no longer reverse-references the issue: `Task.issueId` was dropped,
+ * so `task.create` carries no `issueId` — `Issue.taskId` (set by `linkIssue`)
+ * is the only link, and the daemon's done-mirror is a reverse lookup over it.
  *
  * `vendor` is the engine chosen in the drawer; when omitted it falls back to
- * the shared Settings default. The link is best-effort: the task already
- * exists, so a write failure must not strand it.
+ * the shared Settings default. `effort` is the engine's reasoning/effort level
+ * (engines that expose none pass `undefined`); it rides the create payload
+ * under the `effort` key. The link is best-effort: the task already exists, so
+ * a write failure must not strand it.
  */
 export async function quickStartIssue(
   repoRoot: string,
   issue: Issue,
   vendor?: string,
+  effort?: string,
 ): Promise<{ taskId: string }> {
   const engine = vendor?.trim() || (await fetchDefaultEngine())
   const { taskId } = await rpc<{ taskId: string }>("task.create", {
     repo: repoRoot,
     title: `#${issue.id} ${issue.title}`,
-    issueId: issue.id,
     ...(engine ? { vendor: engine } : {}),
+    ...(effort?.trim() ? { effort: effort.trim() } : {}),
   })
   // Move the daemon's active-task pointer too — every sibling open-task
   // path pairs selectTask with this (Board/NewTaskDialog), and the

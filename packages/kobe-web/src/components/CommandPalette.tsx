@@ -13,6 +13,7 @@ import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
   Columns3,
+  LayoutPanelLeft,
   Plus,
   Search,
   Settings as SettingsIcon,
@@ -20,7 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import { fuzzyScore } from "../lib/fuzzy.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { selectTask } from "../lib/tabs.ts"
+import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -29,7 +30,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "board"
+  icon: "task" | "new" | "settings" | "board" | "workspace"
   run: () => void
 }
 
@@ -37,6 +38,8 @@ function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
+  if (kind === "workspace")
+    return <LayoutPanelLeft size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -52,6 +55,7 @@ export function CommandPalette({
   onOpenSettings: () => void
 }) {
   const { tasks } = useAppState()
+  const { selectedTaskId } = useTabsState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
@@ -120,6 +124,23 @@ export function CommandPalette({
         },
       },
       {
+        id: "action:workspace",
+        label: "Open workspace",
+        hint: "workspace",
+        icon: "workspace",
+        run: () => {
+          if (selectedTaskId) {
+            void navigate({
+              to: "/task/$taskId",
+              params: { taskId: selectedTaskId },
+            })
+          } else {
+            void navigate({ to: "/" })
+          }
+          onClose()
+        },
+      },
+      {
         id: "action:settings",
         label: "Open settings",
         hint: "settings",
@@ -131,7 +152,7 @@ export function CommandPalette({
       },
     ]
     return [...actions, ...taskCmds]
-  }, [tasks, navigate, onClose, onNewTask, onOpenSettings])
+  }, [tasks, selectedTaskId, navigate, onClose, onNewTask, onOpenSettings])
 
   const matches = useMemo(() => {
     if (!query.trim()) return commands

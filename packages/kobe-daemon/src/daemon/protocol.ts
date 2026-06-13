@@ -384,8 +384,8 @@ export interface SerializedTask {
   readonly prStatus?: Task["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
-  /** Linked repo-scoped issue id — set when this task was spawned from an issue. */
-  readonly issueId?: number
+  /** Engine reasoning/effort level, when the vendor supports one. */
+  readonly modelEffort?: string
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -404,7 +404,7 @@ export function serializeTask(task: Task): SerializedTask {
     vendor: task.vendor,
     prStatus: task.prStatus,
     position: task.position,
-    issueId: task.issueId,
+    modelEffort: task.modelEffort,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

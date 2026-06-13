@@ -345,18 +345,20 @@ export function isLiveTask(task: Task): boolean {
 }
 
 /**
- * `${repo}:${issueId}` keys for every issue that's hidden because it's linked
- * to a LIVE task. Built from the FULL, unfiltered task list (a card hidden in
- * the rendered slice must still suppress its issue) — so a project filter or
- * the terminal-column cap never resurfaces a duplicate. `kind: "main"` rows
- * carry no issue link, so they're naturally absent.
+ * Set of task ids that are currently LIVE. The link is now one-way
+ * (`Issue.taskId` → a task; a task no longer reverse-references its issue), so
+ * dedup keys on the task id, not a `${repo}:${issueId}` pair. Built from the
+ * FULL, unfiltered task list — a task hidden in the rendered slice (project
+ * filter, terminal-column cap) must still suppress its issue, so reading the
+ * rendered cards would resurface a duplicate. `kind: "main"` rows are skipped
+ * the same way the board skips them everywhere else.
  */
-export function liveLinkedIssueIds(tasks: readonly Task[]): Set<string> {
+export function liveTaskIds(tasks: readonly Task[]): Set<string> {
   const ids = new Set<string>()
   for (const task of tasks) {
-    if (typeof task.issueId !== "number") continue
+    if (task.kind === "main") continue
     if (!isLiveTask(task)) continue
-    ids.add(`${task.repo}:${task.issueId}`)
+    ids.add(task.id)
   }
   return ids
 }
@@ -371,21 +373,23 @@ export interface ProjectBoard {
 /**
  * Partition every card into one board per project (= git repo), deriving the
  * project list from the UNION of issue-repos and task-repos so a project with
- * only issues (no task yet) still appears, and vice versa. Issue cards linked
- * to a live task are dropped here (deduped against the FULL task list passed
- * in `allTasks`, not just the cards the caller chose to render). Projects are
- * sorted by label so they don't reorder as counts shift.
+ * only issues (no task yet) still appears, and vice versa. An issue whose
+ * `issue.taskId` points to a LIVE task is dropped here (the task card
+ * represents it) — deduped against the FULL task list passed in `allTasks`,
+ * not just the cards the caller chose to render. Projects are sorted by label
+ * so they don't reorder as counts shift.
  */
 export function buildProjectBoards(
   cards: readonly BoardCard[],
   allTasks: readonly Task[],
 ): ProjectBoard[] {
-  const live = liveLinkedIssueIds(allTasks)
+  const live = liveTaskIds(allTasks)
   const byRepo = new Map<string, BoardCard[]>()
   for (const card of cards) {
     if (isIssueCard(card)) {
       // Linked to a live task → represented by that task card instead.
-      if (live.has(`${card.repo}:${card.issue.id}`)) continue
+      const { taskId } = card.issue
+      if (taskId !== undefined && live.has(taskId)) continue
     } else if (!isBoardTask(card)) {
       continue
     }

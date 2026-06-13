@@ -45,7 +45,7 @@ export async function ensureTaskSession(
     const ok = await ensureSession({
       name: session,
       cwd: worktreePath,
-      command: interactiveEngineCommand(task.vendor),
+      command: interactiveEngineCommand(task.vendor, task.modelEffort),
       taskId,
       vendor: task.vendor,
       initScript: init.initScript,
@@ -79,7 +79,7 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
   const dispatcherTaskId = task.kind === "main" ? taskId : undefined
   const argv = [
     ...withDispatcherProtocol(
-      withWorktreeProtocol(interactiveEngineCommand(task.vendor), task.vendor, protocolTaskId),
+      withWorktreeProtocol(interactiveEngineCommand(task.vendor, task.modelEffort), task.vendor, protocolTaskId),
       task.vendor,
       dispatcherTaskId,
     ),

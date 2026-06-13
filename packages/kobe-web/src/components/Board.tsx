@@ -46,7 +46,6 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
 import {
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
@@ -61,7 +60,6 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
   applyBoardOverrides,
-  BOARD_COLUMNS,
   type BoardCard as BoardCardData,
   type BoardColumn,
   boardCardCount,
@@ -90,12 +88,9 @@ import {
   useBoardState,
 } from "../lib/board-state.ts"
 import {
-  createIssue,
   type Issue,
-  type IssueStatus,
   issueRepoOptions,
   quickStartIssue,
-  setIssueStatus,
   updateIssue,
 } from "../lib/issues.ts"
 import { fetchQuickPrompts } from "../lib/quick-prompts.ts"
@@ -113,13 +108,9 @@ import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip, TIP_ABOVE, TIP_RIGHT } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { IssueCard } from "./IssueCard.tsx"
+import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
 import { IssuePeek } from "./IssuePeek.tsx"
-import { NewIssueDialog } from "./NewIssueDialog.tsx"
-
-/** The hover bar's jump targets: the four always-visible lifecycle columns.
- *  error/canceled stay drag-only — they're fold-away exception states, not
- *  everyday destinations. */
-const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
+import { ViewToggle } from "./ViewToggle.tsx"
 
 /** A peek target on the unified board is repo-scoped: a bare task id or issue
  *  number would be ambiguous across projects, and the two stores key
@@ -217,13 +208,6 @@ function CardBody({
           {task.branch || task.repo}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2">
-          {/* Back-link to the issue this task was quick-started from — the
-              other half of the dedup the unified board does. */}
-          {typeof task.issueId === "number" && (
-            <span className="font-mono text-subtle" title="Linked issue">
-              #{task.issueId}
-            </span>
-          )}
           {task.vendor && <span className="font-mono">{task.vendor}</span>}
           {label && <span className="text-muted">{label}</span>}
           {updated && <span>{updated}</span>}
@@ -239,7 +223,7 @@ function TaskBoardCard({
   engine,
   changes,
   canDrag,
-  onMoveTo,
+  fromIssue,
   onReview,
   onCreatePr,
   onOpen,
@@ -250,7 +234,9 @@ function TaskBoardCard({
   engine?: EngineState
   changes?: { added: number; deleted: number }
   canDrag: boolean
-  onMoveTo: (statusKey: string) => void
+  /** This card was quick-started from an issue (an Issue.taskId points to it).
+   *  When such a card has gone idle it earns a REVIEW nudge chip. */
+  fromIssue: boolean
   onReview?: () => void
   onCreatePr?: () => void
   onOpen: () => void
@@ -303,6 +289,15 @@ function TaskBoardCard({
       >
         <CardBody task={task} engine={engine} changes={changes} />
       </button>
+      {/* REVIEW nudge: an issue-originated card whose engine has gone idle (or
+          whose task reached done) is awaiting a verdict — surface it as a chip
+          so the user knows to review without opening the card. Static (not
+          hover-only) so it reads at a glance across the column. */}
+      {fromIssue && (engine?.state === "idle" || task.status === "done") && (
+        <span className="absolute right-1.5 top-1.5 border border-kobe-blue px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-kobe-blue">
+          review
+        </span>
+      )}
       {canDrag && (
         <button
           type="button"
@@ -316,61 +311,41 @@ function TaskBoardCard({
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
       )}
-      {/* Hover bar: one tag per primary status — click to jump the card
-          there without dragging. Overlays the card footer on hover only. */}
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 border-t border-line bg-surface px-2 py-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
-        {PRIMARY_COLUMNS.map((spec) => {
-          const current = spec.key === columnKey
-          return (
-            <button
-              key={spec.key}
-              type="button"
-              disabled={current || !canDrag}
-              onClick={() => onMoveTo(spec.key)}
-              title={current ? "Current column" : `Move to ${spec.title}`}
-              className={`px-1 text-[10px] transition-colors ${
-                current
-                  ? `font-bold ${spec.accent}`
-                  : "text-subtle hover:text-fg disabled:opacity-40 disabled:hover:text-subtle"
-              }`}
-            >
-              {spec.title}
-            </button>
-          )
-        })}
-        <div className="ml-auto flex gap-0.5">
-          {onReview && (
-            <button
-              type="button"
-              onClick={onReview}
-              aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
-              data-tip="Review → done if it passes"
-              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
-            >
-              <ClipboardCheck size={11} strokeWidth={1.8} />
-            </button>
-          )}
-          {onCreatePr && (
-            <button
-              type="button"
-              onClick={onCreatePr}
-              aria-label={`Open a PR for ${task.title || task.branch || task.id}`}
-              data-tip="Open a PR for this branch"
-              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
-            >
-              <GitPullRequest size={11} strokeWidth={1.8} />
-            </button>
-          )}
+      {/* Hover action bar: peek / PR / review. Status moves are drag-only now
+          (the per-status jump tags were redundant with drag). Overlays the
+          card footer on hover only. */}
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-0.5 border-t border-line bg-surface px-2 py-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+        {onReview && (
           <button
             type="button"
-            onClick={onPeek}
-            aria-label={`Peek ${task.title || task.branch || task.id}`}
-            data-tip="Peek session"
+            onClick={onReview}
+            aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
+            data-tip="Review → done if it passes"
             className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
           >
-            <Eye size={11} strokeWidth={1.8} />
+            <ClipboardCheck size={11} strokeWidth={1.8} />
           </button>
-        </div>
+        )}
+        {onCreatePr && (
+          <button
+            type="button"
+            onClick={onCreatePr}
+            aria-label={`Open a PR for ${task.title || task.branch || task.id}`}
+            data-tip="Open a PR for this branch"
+            className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+          >
+            <GitPullRequest size={11} strokeWidth={1.8} />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onPeek}
+          aria-label={`Peek ${task.title || task.branch || task.id}`}
+          data-tip="Peek session"
+          className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+        >
+          <Eye size={11} strokeWidth={1.8} />
+        </button>
       </div>
     </div>
   )
@@ -382,16 +357,14 @@ function ColumnView({
   engineStates,
   worktreeChanges,
   canDrag,
-  issueBusy,
+  issueTaskIds,
   quickStartingId,
   onNewIssue,
-  onMoveTo,
   onReview,
   onCreatePr,
   onOpen,
   onPeek,
   onPeekIssue,
-  onIssueSetStatus,
   onIssueQuickStart,
 }: {
   repo: string
@@ -399,17 +372,16 @@ function ColumnView({
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
-  issueBusy: boolean
+  /** Task ids an Issue.taskId points to — these cards earn the REVIEW chip. */
+  issueTaskIds: Set<string>
   quickStartingId: number | null
-  /** Backlog only — open the New-issue dialog scoped to this repo. */
+  /** Backlog only — open the issue-intake panel scoped to this repo. */
   onNewIssue?: () => void
-  onMoveTo: (task: Task, statusKey: string) => void
   onReview: (task: Task) => void
   onCreatePr: (task: Task) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
   onPeekIssue: (issue: Issue) => void
-  onIssueSetStatus: (issue: Issue, to: IssueStatus) => void
   onIssueQuickStart: (issue: Issue) => void
 }) {
   // The droppable id is composite (`${repo}:${columnKey}`) so two projects'
@@ -467,9 +439,7 @@ function ColumnView({
                 <IssueCard
                   key={`issue:${card.issue.id}`}
                   issue={card.issue}
-                  busy={issueBusy}
                   quickStartBusy={quickStartingId === card.issue.id}
-                  onSetStatus={(to) => onIssueSetStatus(card.issue, to)}
                   onQuickStart={() => onIssueQuickStart(card.issue)}
                   onOpen={() => onPeekIssue(card.issue)}
                 />
@@ -481,10 +451,14 @@ function ColumnView({
                   engine={engineStates[card.id]}
                   changes={worktreeChanges[card.worktreePath]}
                   canDrag={canDrag}
-                  onMoveTo={(statusKey) => onMoveTo(card, statusKey)}
-                  // Review only makes sense where work awaits a verdict.
+                  fromIssue={issueTaskIds.has(card.id)}
+                  // Review makes sense where work awaits a verdict: the in_review
+                  // column, OR an in_progress card whose engine has gone idle
+                  // (it ran, stopped, and is now waiting on the user).
                   onReview={
-                    column.key === "in_review"
+                    column.key === "in_review" ||
+                    (column.key === "in_progress" &&
+                      engineStates[card.id]?.state === "idle")
                       ? () => onReview(card)
                       : undefined
                   }
@@ -521,32 +495,28 @@ function ProjectColumns({
   engineStates,
   worktreeChanges,
   canDrag,
-  issueBusy,
+  issueTaskIds,
   quickStartingId,
   onNewIssue,
-  onMoveTo,
   onReview,
   onCreatePr,
   onOpen,
   onPeek,
   onPeekIssue,
-  onIssueSetStatus,
   onIssueQuickStart,
 }: {
   board: ProjectBoard
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
   canDrag: boolean
-  issueBusy: boolean
+  issueTaskIds: Set<string>
   quickStartingId: number | null
   onNewIssue: (repo: string) => void
-  onMoveTo: (task: Task, statusKey: string) => void
   onReview: (task: Task) => void
   onCreatePr: (task: Task) => void
   onOpen: (id: string) => void
   onPeek: (id: string) => void
   onPeekIssue: (issue: Issue) => void
-  onIssueSetStatus: (issue: Issue, to: IssueStatus) => void
   onIssueQuickStart: (issue: Issue) => void
 }) {
   return (
@@ -559,18 +529,16 @@ function ProjectColumns({
           engineStates={engineStates}
           worktreeChanges={worktreeChanges}
           canDrag={canDrag}
-          issueBusy={issueBusy}
+          issueTaskIds={issueTaskIds}
           quickStartingId={quickStartingId}
           onNewIssue={
             column.key === "backlog" ? () => onNewIssue(board.repo) : undefined
           }
-          onMoveTo={onMoveTo}
           onReview={onReview}
           onCreatePr={onCreatePr}
           onOpen={onOpen}
           onPeek={onPeek}
           onPeekIssue={onPeekIssue}
-          onIssueSetStatus={onIssueSetStatus}
           onIssueQuickStart={onIssueQuickStart}
         />
       ))}
@@ -595,7 +563,7 @@ export function Board() {
   const [peek, setPeek] = useState<PeekTarget | null>(null)
   // Projects the user has collapsed (repo key set). Default expanded.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  // New-issue dialog target repo (null = closed).
+  // Issue-intake panel target repo (null = closed).
   const [creatingRepo, setCreatingRepo] = useState<string | null>(null)
   const [issueBusy, setIssueBusy] = useState(false)
   const [quickStartingId, setQuickStartingId] = useState<number | null>(null)
@@ -645,6 +613,15 @@ export function Board() {
     }
     return out
   }, [issueRepos, issueData])
+
+  // Task ids an Issue.taskId points to — an "issue-originated" card. The link
+  // is one-way (Issue → Task), so the only way to know a task came from an
+  // issue is to scan the issue side. Drives the REVIEW chip on idle cards.
+  const issueTaskIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const { issue } of allIssues) if (issue.taskId) ids.add(issue.taskId)
+    return ids
+  }, [allIssues])
 
   // Drop a pending optimistic-link once the daemon confirms it: the issue now
   // carries a taskId, so the dedup in buildProjectBoards hides it for real.
@@ -951,48 +928,7 @@ export function Board() {
       .catch((err: unknown) => reportError("open PR", err))
   }
 
-  /** Hover-tag move: jump the card straight to a status, landing at the
-   *  TOP of the target — a deliberate move should stay under the eye. The
-   *  target column is the same repo's column (composite key). */
-  const moveToStatus = (task: Task, toKey: string): void => {
-    if (!canDrag || dragTaskId) return
-    const displayed = overrides[task.id]?.status ?? task.status
-    if (toKey === displayed || !isDroppableColumn(toKey)) return
-    const board = projectBoards.find((b) => b.repo === task.repo)
-    const target = board?.columns.find((c) => c.key === toKey)
-    const firstTask = target?.cards.find((card) => !isIssueCard(card))
-    commitColumnMove(task, toKey, undefined, firstTask)
-  }
-
   /* ----- issue side-effects ------------------------------------------------- */
-
-  const doIssueSetStatus = (
-    repo: string,
-    id: number,
-    to: IssueStatus,
-  ): void => {
-    setIssueBusy(true)
-    // No optimistic layer for issues — the daemon issue.snapshot push (via
-    // the use-repo-issues hook) is the only truth.
-    setIssueStatus(repo, id, to)
-      .catch((err: unknown) => reportError("move issue", err))
-      .finally(() => setIssueBusy(false))
-  }
-
-  const doCreateIssue = (repo: string, title: string, body: string): void => {
-    setIssueBusy(true)
-    createIssue(repo, body.trim() ? { title, body } : { title })
-      .then((state) => {
-        setCreatingRepo(null)
-        const created = state.issues[0]
-        pushToast(
-          "success",
-          created ? `Issue #${created.id} created` : "Issue created",
-        )
-      })
-      .catch((err: unknown) => reportError("create issue", err))
-      .finally(() => setIssueBusy(false))
-  }
 
   const doSaveIssue = async (
     repo: string,
@@ -1011,10 +947,15 @@ export function Board() {
     }
   }
 
-  const doQuickStart = (repo: string, issue: Issue, vendor?: string): void => {
+  const doQuickStart = (
+    repo: string,
+    issue: Issue,
+    vendor?: string,
+    effort?: string,
+  ): void => {
     if (quickStartingId !== null) return
     setQuickStartingId(issue.id)
-    quickStartIssue(repo, issue, vendor)
+    quickStartIssue(repo, issue, vendor, effort)
       .then(({ taskId }) => {
         // Optimistically hide the issue so we don't flash the issue card AND
         // its fresh task card for one snapshot round-trip; the effect over
@@ -1123,18 +1064,9 @@ export function Board() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/" })}
-          className="flex items-center gap-1.5 text-muted transition-colors hover:text-fg"
-          title="Back to workspace"
-        >
-          <ArrowLeft size={15} strokeWidth={1.8} />
-          <span className="text-[12px]">Workspace</span>
-        </button>
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
-          Board
-        </span>
+        {/* Workspace ↔ Board are peer views — the top-left toggle is the only
+            switch between them (no back link). */}
+        <ViewToggle />
         <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
           <Search
             size={13}
@@ -1332,10 +1264,9 @@ export function Board() {
                 engineStates={engineStates}
                 worktreeChanges={worktreeChanges}
                 canDrag={canDrag}
-                issueBusy={issueBusy}
+                issueTaskIds={issueTaskIds}
                 quickStartingId={quickStartingId}
                 onNewIssue={setCreatingRepo}
-                onMoveTo={moveToStatus}
                 onReview={sendReview}
                 onCreatePr={sendCreatePr}
                 onOpen={open}
@@ -1346,9 +1277,6 @@ export function Board() {
                     repo: projectBoards[0].repo,
                     id: issue.id,
                   })
-                }
-                onIssueSetStatus={(issue, to) =>
-                  doIssueSetStatus(projectBoards[0].repo, issue.id, to)
                 }
                 onIssueQuickStart={(issue) =>
                   doQuickStart(projectBoards[0].repo, issue)
@@ -1392,10 +1320,9 @@ export function Board() {
                             engineStates={engineStates}
                             worktreeChanges={worktreeChanges}
                             canDrag={canDrag}
-                            issueBusy={issueBusy}
+                            issueTaskIds={issueTaskIds}
                             quickStartingId={quickStartingId}
                             onNewIssue={setCreatingRepo}
-                            onMoveTo={moveToStatus}
                             onReview={sendReview}
                             onCreatePr={sendCreatePr}
                             onOpen={open}
@@ -1406,9 +1333,6 @@ export function Board() {
                                 repo: board.repo,
                                 id: issue.id,
                               })
-                            }
-                            onIssueSetStatus={(issue, to) =>
-                              doIssueSetStatus(board.repo, issue.id, to)
                             }
                             onIssueQuickStart={(issue) =>
                               doQuickStart(board.repo, issue)
@@ -1437,10 +1361,22 @@ export function Board() {
       </div>
 
       {creatingRepo && (
-        <NewIssueDialog
-          busy={issueBusy}
-          onCreate={(title, body) => doCreateIssue(creatingRepo, title, body)}
+        <IssueIntakePanel
+          repoRoot={creatingRepo}
+          open
           onClose={() => setCreatingRepo(null)}
+          onCreated={(issue, started) =>
+            // The panel owns create + (for Execute) the quick-start/link/active
+            // pointer; the board just confirms. The spawned task's card lands
+            // on the board via the next snapshot, and its issue dedups behind
+            // it once the link confirms.
+            pushToast(
+              "success",
+              started
+                ? `Issue #${issue.id} created — starting its task`
+                : `Issue #${issue.id} created`,
+            )
+          }
         />
       )}
 
@@ -1473,11 +1409,8 @@ export function Board() {
             busy={issueBusy}
             quickStartBusy={quickStartingId === entry.issue.id}
             onClose={() => setPeek(null)}
-            onSetStatus={(to) =>
-              doIssueSetStatus(entry.repo, entry.issue.id, to)
-            }
-            onQuickStart={(vendor) =>
-              doQuickStart(entry.repo, entry.issue, vendor)
+            onQuickStart={(vendor, effort) =>
+              doQuickStart(entry.repo, entry.issue, vendor, effort)
             }
             onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
           />

@@ -8,7 +8,6 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   CircleHelp,
-  Columns3,
   FolderInput,
   Loader2,
   PanelRight,
@@ -45,6 +44,7 @@ import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { SettingsPage } from "./SettingsPage.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
+import { ViewToggle } from "./ViewToggle.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
 
 function SectionHeader({
@@ -527,7 +527,6 @@ function TopBar({
 }) {
   const { daemonConnected, streamConnected, tasks } = useAppState()
   const { selectedTaskId } = useTabsState()
-  const navigate = useNavigate()
   const task = selectedTaskId
     ? tasks.find((item) => item.id === selectedTaskId)
     : null
@@ -537,6 +536,7 @@ function TopBar({
       <span className="font-mono text-[13px] font-bold text-primary">
         [kobe]
       </span>
+      <ViewToggle />
       {task ? (
         <div className="flex min-w-0 items-center gap-2">
           <span className="max-w-56 truncate rounded bg-inset px-2 py-0.5 text-[11px] text-fg">
@@ -571,15 +571,6 @@ function TopBar({
                 : "connecting…"}
           </span>
         </span>
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/board" })}
-          className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Board"
-          title="Board — tasks by status"
-        >
-          <Columns3 size={15} strokeWidth={1.8} />
-        </button>
         <button
           type="button"
           onClick={onShowHelp}

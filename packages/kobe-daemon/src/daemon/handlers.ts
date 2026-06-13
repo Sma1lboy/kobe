@@ -225,7 +225,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
           vendor: optionalVendor(payload, "vendor"),
-          issueId: optionalNumber(payload, "issueId"),
+          modelEffort: optionalString(payload, "effort"),
         })
         return { taskId: task.id, task: serializeTask(task) }
       },
@@ -306,32 +306,33 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         ) {
           throw new Error("status must be a TaskStatus")
         }
-        // Capture the linked issue (if any) AND its prior status BEFORE the
+        // Capture the task (for repo) AND its prior status BEFORE the
         // transition so we can mirror a real task→done transition into the
         // issue store below.
         const linked = status === "done" ? ctx.orch.getTask(taskId) : undefined
         const prevStatus = linked?.status
         await ctx.orch.setStatus(taskId, status)
-        // Done-mirroring: a task spawned from an issue (carries `issueId`)
-        // that reaches `done` flips the linked issue to `done` too, so a
-        // unified board stays consistent. Guarded to an ACTUAL →done
-        // transition (prevStatus !== "done", so re-firing done on an
-        // already-done task never re-clobbers a manually-reopened issue) and
-        // to tasks that actually carry an issueId; the issue write must never
-        // fail the task update (the status change already committed), so a
-        // missing/raced issue is logged + swallowed.
-        if (
-          status === "done" &&
-          prevStatus !== "done" &&
-          linked?.issueId !== undefined
-        ) {
+        // Done-mirroring: a task reaching `done` flips its source issue to
+        // `done` too, so a unified board stays consistent. The link is owned
+        // by the issue (`Issue.taskId`), so we REVERSE-LOOK-UP the issue whose
+        // `taskId` is this task rather than reading a task→issue field.
+        // Guarded to an ACTUAL →done transition (prevStatus !== "done", so
+        // re-firing done on an already-done task never re-clobbers a
+        // manually-reopened issue); the issue write must never fail the task
+        // update (the status change already committed), so a missing/raced
+        // issue is logged + swallowed.
+        if (status === "done" && prevStatus !== "done" && linked) {
           try {
-            const state = await ctx.issues.mutate(linked.repo, {
-              type: "setStatus",
-              id: linked.issueId,
-              status: "done",
-            })
-            ctx.bus.publish("issue.snapshot", state)
+            const state = await ctx.issues.list(linked.repo)
+            const found = state.issues.find((i) => i.taskId === taskId)
+            if (found && found.status !== "done") {
+              const next = await ctx.issues.mutate(linked.repo, {
+                type: "setStatus",
+                id: found.id,
+                status: "done",
+              })
+              ctx.bus.publish("issue.snapshot", next)
+            }
           } catch (err) {
             logDaemonError("issue-done-mirror", err)
           }
@@ -614,13 +615,6 @@ export function optionalBoolean(payload: Record<string, unknown>, key: string): 
   const value = payload[key]
   if (value === undefined || value === null) return undefined
   if (typeof value !== "boolean") throw new Error(`${key} must be a boolean`)
-  return value
-}
-
-export function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
-  const value = payload[key]
-  if (value === undefined || value === null) return undefined
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a number`)
   return value
 }
 

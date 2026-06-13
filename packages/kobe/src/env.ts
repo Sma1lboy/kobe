@@ -95,6 +95,18 @@ export function keybindingsConfigPath(): string {
 }
 
 /**
+ * Directory for issue-attachment uploads served by the web bridge —
+ * `<home>/.kobe/issue-assets/`. Scoped per-repo (by a hex hash of the repo
+ * root) one level down so an upload can happen before the issue exists. Not
+ * created eagerly — the upload route mkdir's at the write site, readers treat
+ * a missing dir as "no asset". Honours `KOBE_HOME_DIR` like every other state
+ * path via {@link kobeStateDir}.
+ */
+export function issueAssetsDir(): string {
+  return join(kobeStateDir(), "issue-assets")
+}
+
+/**
  * SSH ControlMaster socket for a remote project — one multiplexed connection
  * per host/user/port, reused by every `ssh` kobe runs against that remote (see
  * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket

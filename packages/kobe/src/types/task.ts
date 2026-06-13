@@ -121,13 +121,13 @@ export interface Task {
    */
   readonly position?: number
   /**
-   * The repo-scoped issue this task was spawned from, if any. Links a task
-   * back to its source issue so a future unified board can dedup the two.
-   * Scoped by the task's own `repo`. Optional + additive: missing records
-   * load unchanged. The reverse link (`Issue.taskId`) is owned by the
-   * daemon's issues store.
+   * Reasoning/effort level for the task's engine, when the vendor supports
+   * one (codex: `none`/`low`/`medium`/`high`/`xhigh`). Optional + additive:
+   * missing records load unchanged, and a vendor with no effort levels
+   * (claude today) leaves it undefined. The launch path maps it to the
+   * vendor-correct flag (see `interactive-command.ts`).
    */
-  readonly issueId?: number
+  readonly modelEffort?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

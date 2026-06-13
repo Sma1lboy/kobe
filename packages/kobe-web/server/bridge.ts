@@ -18,6 +18,7 @@
  *   GET  /api/engines         engine-owned vendor list (id + display label)
  *   GET/PATCH /api/settings   shared TUI/web settings backed by state.json
  *   *    /api/notes, /api/diff       bridge-local filesystem routes
+ *   *    /api/issue-assets           bridge-local issue-attachment store
  *   *    /api/issues                 daemon-owned issue tracker proxy
  *   *                         static SPA fallthrough when `staticDir` is set
  */
@@ -33,6 +34,7 @@ import {
   engineNameKey,
   kobeApiInvocation,
 } from "../../kobe/src/engine/interactive-command.ts"
+import { engineEntry } from "../../kobe/src/engine/registry.ts"
 import { AUTO_STATUS_KEY } from "../../kobe/src/state/auto-status.ts"
 import { DISPATCHER_KEY } from "../../kobe/src/state/dispatcher.ts"
 import { getPersistedString, setPersistedString } from "../../kobe/src/state/repos.ts"
@@ -56,6 +58,7 @@ import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { handleThemesRequest } from "../../kobe/src/web/themes.ts"
 import { DaemonLink } from "./daemon-link.ts"
+import { handleIssueAssetsRequest } from "./issue-assets-route.ts"
 import { handleIssuesRequest } from "./issues-route.ts"
 import { WEB_RPC_ALLOWSET } from "./rpc-allowlist.ts"
 import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./session.ts"
@@ -169,13 +172,19 @@ async function rpcResponse(
 }
 
 /** Engine-owned vendor list: detected built-ins + user-registered custom
- *  engines, labeled with their (possibly user-overridden) display names —
- *  so the SPA never hard-codes vendor strings (CLAUDE.md: engine-owned UI
- *  data). Falls back to the always-shippable claude entry on probe failure. */
+ *  engines, labeled with their (possibly user-overridden) display names and
+ *  carrying each engine's reasoning/effort levels from the registry — so the
+ *  SPA never hard-codes vendor strings or effort options (CLAUDE.md:
+ *  engine-owned UI data). Falls back to the always-shippable claude entry on
+ *  probe failure (claude has no kobe-driveable effort flag → no levels). */
 async function enginesResponse(): Promise<Response> {
   try {
     const ids = await availableEngineIds()
-    const engines = ids.map((id) => ({ id, label: engineDisplayName(id) }))
+    const engines = ids.map((id) => ({
+      id,
+      label: engineDisplayName(id),
+      effortLevels: engineEntry(id).effortLevels,
+    }))
     return Response.json({ engines: engines.length > 0 ? engines : [{ id: "claude", label: "Claude" }] })
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -387,6 +396,8 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (history) return history
     const issues = await handleIssuesRequest(req, url, link)
     if (issues) return issues
+    const issueAssets = await handleIssueAssetsRequest(req, url)
+    if (issueAssets) return issueAssets
     const themes = handleThemesRequest(req, url)
     if (themes) return themes
     if (staticDir) return staticResponse(url.pathname, staticDir)

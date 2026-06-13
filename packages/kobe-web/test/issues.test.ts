@@ -16,7 +16,6 @@ import {
   quickStartIssue,
   quickStartPrompt,
   type RepoIssues,
-  statusActions,
   unlinkIssue,
 } from "../src/lib/issues.ts"
 import { rpc } from "../src/lib/store.ts"
@@ -253,36 +252,6 @@ describe("issueRepoOptions", () => {
 
 })
 
-describe("statusActions", () => {
-  it("is the full transition table — every status has an exit path", () => {
-    expect(statusActions("open")).toEqual([
-      { label: "Start", to: "doing" },
-      { label: "Hold", to: "hold" },
-      { label: "Done", to: "done" },
-    ])
-    expect(statusActions("doing")).toEqual([
-      { label: "Hold", to: "hold" },
-      { label: "Done", to: "done" },
-    ])
-    expect(statusActions("hold")).toEqual([
-      { label: "Resume", to: "open" },
-      { label: "Done", to: "done" },
-    ])
-    expect(statusActions("done")).toEqual([{ label: "Reopen", to: "open" }])
-    for (const status of ISSUE_STATUSES) {
-      expect(statusActions(status).length).toBeGreaterThan(0)
-    }
-  })
-
-  it("never offers a self-move", () => {
-    for (const status of ISSUE_STATUSES) {
-      for (const action of statusActions(status)) {
-        expect(action.to).not.toBe(status)
-      }
-    }
-  })
-})
-
 describe("canQuickStart", () => {
   it("is true for everything except done", () => {
     for (const status of ISSUE_STATUSES) {
@@ -324,7 +293,7 @@ describe("quickStartIssue", () => {
     vi.mocked(sendPtyText).mockReset()
   })
 
-  it("creates the task (stamping issueId), links the issue, delivers the prompt", async () => {
+  it("creates the task (no issueId — link is one-way), links the issue, delivers the prompt", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-1" }
       return {}
@@ -348,12 +317,12 @@ describe("quickStartIssue", () => {
 
     const result = await quickStartIssue("/u/p/kobe", target)
     expect(result).toEqual({ taskId: "task-1" })
-    // No branch; vendor follows Settings' default engine; issueId is stamped
-    // so the daemon can pair the task back to the issue.
+    // No branch; vendor follows Settings' default engine. Task.issueId was
+    // dropped — the create payload no longer carries an issueId; Issue.taskId
+    // (set by the link op below) is the only link.
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
-      issueId: 3,
       vendor: "codex",
     })
     // The daemon's active-task pointer follows, like every open-task path.
@@ -407,8 +376,35 @@ describe("quickStartIssue", () => {
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
-      issueId: 3,
       vendor: "claude",
+    })
+    vi.unstubAllGlobals()
+  })
+
+  it("forwards the chosen effort under the create payload's effort key", async () => {
+    vi.mocked(rpc).mockImplementation(async (name) => {
+      if (name === "task.create") return { taskId: "task-e" }
+      return {}
+    })
+    vi.mocked(ensureEngineTab).mockReturnValue("tab-e")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/api/settings"
+          ? Promise.resolve(
+              new Response(JSON.stringify({ defaultEngine: "codex" })),
+            )
+          : Promise.resolve(new Response(JSON.stringify({ api: "kobe api" }))),
+      ),
+    )
+
+    await quickStartIssue("/u/p/kobe", target, "codex", "high")
+    expect(rpc).toHaveBeenCalledWith("task.create", {
+      repo: "/u/p/kobe",
+      title: "#3 Fix it",
+      vendor: "codex",
+      effort: "high",
     })
     vi.unstubAllGlobals()
   })
@@ -460,7 +456,6 @@ describe("quickStartIssue", () => {
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
-      issueId: 3,
     })
     vi.unstubAllGlobals()
   })
