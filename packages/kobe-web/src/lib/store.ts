@@ -112,6 +112,39 @@ export function applyJobEvent(
   return rest
 }
 
+function normalizedPath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path
+}
+
+export function issueSnapshotAliases(
+  tasks: readonly Task[],
+  repoRoot: string,
+): string[] {
+  const root = normalizedPath(repoRoot)
+  const aliases = new Set<string>([repoRoot])
+  for (const task of tasks) {
+    const taskRepo = normalizedPath(task.repo)
+    const taskWorktree = normalizedPath(task.worktreePath)
+    if (taskRepo === root || taskWorktree === root) {
+      if (task.repo) aliases.add(task.repo)
+      if (task.worktreePath) aliases.add(task.worktreePath)
+    }
+  }
+  return [...aliases]
+}
+
+function applyIssueSnapshotEvent(
+  snapshots: Record<string, RepoIssues>,
+  tasks: readonly Task[],
+  snapshot: RepoIssues,
+): Record<string, RepoIssues> {
+  const next = { ...snapshots }
+  for (const alias of issueSnapshotAliases(tasks, snapshot.repoRoot)) {
+    next[alias] = { ...snapshot, repoRoot: alias }
+  }
+  return next
+}
+
 /** A task.snapshot is the authoritative task list — sweep every per-task
  *  side table (engine badges, jobs, workspace tabs + their PTYs) for tasks
  *  that no longer exist, so a delete in ANY surface (TUI, api, another
@@ -168,10 +201,11 @@ function applyEvent(event: BridgeEvent): void {
       break
     case "issue.snapshot":
       set({
-        issueSnapshots: {
-          ...state.issueSnapshots,
-          [event.payload.repoRoot]: event.payload,
-        },
+        issueSnapshots: applyIssueSnapshotEvent(
+          state.issueSnapshots,
+          state.tasks,
+          event.payload,
+        ),
       })
       break
     case "session.deliver":

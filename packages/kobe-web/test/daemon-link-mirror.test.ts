@@ -97,6 +97,33 @@ describe("DaemonLink mirror — issue snapshots", () => {
     })
     expect(forwarded).toContain("issue.snapshot")
   })
+
+  it("aliases worktree issue pushes back to the source repo in snapshots", () => {
+    const link = new DaemonLink()
+    const f = drive(link)
+    f.onFrame("task.snapshot", {
+      tasks: [
+        {
+          id: "t1",
+          repo: "/Users/narwhal/proj/kobe/",
+          worktreePath: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+        },
+      ],
+    })
+    f.onFrame("issue.snapshot", {
+      repoRoot: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      exists: true,
+      nextId: 2,
+      issues: [{ id: 1, title: "fix", status: "done", created: "2026-06-13", body: "" }],
+    })
+
+    expect(link.snapshot().issueSnapshots["/Users/narwhal/proj/kobe/"]).toEqual(
+      expect.objectContaining({
+        repoRoot: "/Users/narwhal/proj/kobe/",
+        issues: [expect.objectContaining({ id: 1, status: "done" })],
+      }),
+    )
+  })
 })
 
 describe("DaemonLink — SSE forward filter", () => {

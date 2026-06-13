@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { applyJobEvent, isOrphanIdleEngineState } from "../src/lib/store.ts"
+import {
+  applyJobEvent,
+  isOrphanIdleEngineState,
+  issueSnapshotAliases,
+} from "../src/lib/store.ts"
 import type { Task, TaskJob } from "../src/lib/types.ts"
 
 /**
@@ -83,5 +87,41 @@ describe("applyJobEvent", () => {
     const snapshot = { ...before }
     applyJobEvent(before, job("t1", "done"))
     expect(before).toEqual(snapshot)
+  })
+})
+
+describe("issueSnapshotAliases", () => {
+  it("maps a worktree issue push back to its source repo key", () => {
+    const tasks = [
+      {
+        id: "t1",
+        repo: "/Users/narwhal/proj/kobe/",
+        worktreePath: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      },
+    ] as Task[]
+    expect(
+      issueSnapshotAliases(
+        tasks,
+        "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      ),
+    ).toEqual([
+      "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      "/Users/narwhal/proj/kobe/",
+    ])
+  })
+
+  it("maps a source repo issue push to known worktree keys too", () => {
+    const tasks = [
+      {
+        id: "t1",
+        repo: "/Users/narwhal/proj/kobe/",
+        worktreePath: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      },
+    ] as Task[]
+    expect(issueSnapshotAliases(tasks, "/Users/narwhal/proj/kobe")).toEqual([
+      "/Users/narwhal/proj/kobe",
+      "/Users/narwhal/proj/kobe/",
+      "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+    ])
   })
 })

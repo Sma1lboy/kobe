@@ -73,6 +73,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function normalizedPath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path
+}
+
+function issueSnapshotAliases(tasks: readonly SerializedTask[], repoRoot: string): string[] {
+  const root = normalizedPath(repoRoot)
+  const aliases = new Set<string>([repoRoot])
+  for (const task of tasks) {
+    const taskRepo = normalizedPath(task.repo)
+    const taskWorktree = normalizedPath(task.worktreePath)
+    if (taskRepo === root || taskWorktree === root) {
+      if (task.repo) aliases.add(task.repo)
+      if (task.worktreePath) aliases.add(task.worktreePath)
+    }
+  }
+  return [...aliases]
+}
+
 /**
  * The minimal link surface the bridge's session/spec routes need — just the
  * RPC call. Extracted so those helpers (and their tests) don't depend on the
@@ -267,10 +285,11 @@ export class DaemonLink {
         break
       case "issue.snapshot": {
         const state = payload as IssueSnapshotPayload
-        this.issueSnapshots = {
-          ...this.issueSnapshots,
-          [state.repoRoot]: state,
+        const next = { ...this.issueSnapshots }
+        for (const alias of issueSnapshotAliases(this.tasks, state.repoRoot)) {
+          next[alias] = { ...state, repoRoot: alias }
         }
+        this.issueSnapshots = next
         break
       }
       case "session.deliver":
