@@ -347,7 +347,8 @@ export function ChangesList({
                   setFilter("")
                 }
               }}
-              placeholder={`Filter ${files.length} files…`}
+              placeholder={`Filter ${files.length} files…  (*.ts, !*.json)`}
+              title="Match a substring, a *.glob, or !exclude"
               spellCheck={false}
               className="mx-3 mb-1 shrink-0 border border-line bg-bg px-2 py-1 font-mono text-[11px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
             />
