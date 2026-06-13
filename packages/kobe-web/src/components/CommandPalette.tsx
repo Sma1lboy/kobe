@@ -12,6 +12,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   ArrowRight,
+  Bell,
   Columns3,
   LayoutGrid,
   Palette,
@@ -20,6 +21,7 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { attentionTaskIds, nextAttentionTaskId } from "../lib/attention-nav.ts"
 import { fuzzyScore } from "../lib/fuzzy.ts"
 import { themeCommandEntries } from "../lib/palette-commands.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -37,7 +39,14 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "overview" | "board" | "theme"
+  icon:
+    | "task"
+    | "new"
+    | "settings"
+    | "overview"
+    | "board"
+    | "theme"
+    | "attention"
   run: () => void
 }
 
@@ -47,6 +56,7 @@ function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
   if (kind === "theme") return <Palette size={14} strokeWidth={1.8} />
+  if (kind === "attention") return <Bell size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -61,7 +71,7 @@ export function CommandPalette({
   onNewTask: () => void
   onOpenSettings: () => void
 }) {
-  const { tasks } = useAppState()
+  const { tasks, engineStates, activeTaskId } = useAppState()
   const {
     names: themeNames,
     active: activeTheme,
@@ -113,7 +123,31 @@ export function CommandPalette({
           onClose()
         },
       }))
-    const actions: Command[] = [
+    // The attention-loop closer: only offered when a task actually needs you
+    // (no point listing a no-op). Jumps to the next waiting task after the
+    // active one, cycling — so it walks every waiting task on repeat use.
+    const waiting = attentionTaskIds(tasks as Task[], engineStates)
+    const actions: Command[] = []
+    if (waiting.length > 0) {
+      actions.push({
+        id: "action:next-attention",
+        label: "Go to next task needing you",
+        hint: waiting.length > 1 ? `${waiting.length} waiting` : "1 waiting",
+        icon: "attention",
+        run: () => {
+          const next = nextAttentionTaskId(waiting, activeTaskId)
+          if (next) {
+            selectTask(next)
+            void rpc("task.setActive", { taskId: next }).catch((err) =>
+              reportError("switch task", err),
+            )
+            void navigate({ to: "/task/$taskId", params: { taskId: next } })
+          }
+          onClose()
+        },
+      })
+    }
+    actions.push(
       {
         id: "action:new",
         label: "New task",
@@ -154,7 +188,7 @@ export function CommandPalette({
           onClose()
         },
       },
-    ]
+    )
     const themeCmds: Command[] = themeCommandEntries(
       themeNames,
       activeTheme,
@@ -185,6 +219,8 @@ export function CommandPalette({
     return [...actions, ...themeCmds, ...taskCmds]
   }, [
     tasks,
+    engineStates,
+    activeTaskId,
     themeNames,
     activeTheme,
     themeOverridden,
