@@ -48,12 +48,19 @@ export function ConflictChip({
   badge: { level: "overlap" | "conflict"; count: number; tip: string } | null
 }) {
   if (!badge) return null
+  // The ⚠ glyph + color is the only visual signal; role=img + aria-label spell
+  // out the level and count for assistive tech (the title tooltip is announced
+  // inconsistently across screen readers).
+  const noun = badge.level === "conflict" ? "merge conflict" : "file overlap"
+  const ariaLabel = `${badge.count} ${noun}${badge.count > 1 ? "s" : ""}`
   return (
     <span
+      role="img"
       className={`shrink-0 font-mono text-[10px] ${
         badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
       }`}
       title={badge.tip}
+      aria-label={ariaLabel}
     >
       ⚠{badge.count}
     </span>

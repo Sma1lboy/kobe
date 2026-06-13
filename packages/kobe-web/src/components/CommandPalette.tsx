@@ -97,16 +97,28 @@ export function CommandPalette({
       ?.scrollIntoView({ block: "nearest" })
   }, [cursor])
 
+  // Waiting set is SNAPSHOTTED at open, not read live: the engine-state
+  // channel pushes far more often than the task list, and recomputing the
+  // command list on every tick (a) burns work while the always-mounted
+  // palette is closed and (b) would toggle the head-of-list attention command
+  // mid-session, drifting the keyboard cursor. Snapshotting freezes the list
+  // for the open window (a task that starts waiting mid-open shows on reopen).
+  const [waitingSnapshot, setWaitingSnapshot] = useState<string[]>([])
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tasks/engineStates are read once AT open by design (snapshot semantics); only `open` should re-arm this.
   useEffect(() => {
     if (open) {
       setQuery("")
       setCursor(0)
+      setWaitingSnapshot(attentionTaskIds(tasks as Task[], engineStates))
       // Focus after the overlay paints.
       requestAnimationFrame(() => inputRef.current?.focus())
     }
   }, [open])
 
   const commands = useMemo<Command[]>(() => {
+    // Closed palette renders null anyway — skip the whole build so an
+    // engine-state re-render doesn't rebuild the list for a discarded result.
+    if (!open) return []
     const taskCmds: Command[] = (tasks as Task[])
       .filter((t) => !t.archived)
       .map((t) => ({
@@ -126,7 +138,9 @@ export function CommandPalette({
     // The attention-loop closer: only offered when a task actually needs you
     // (no point listing a no-op). Jumps to the next waiting task after the
     // active one, cycling — so it walks every waiting task on repeat use.
-    const waiting = attentionTaskIds(tasks as Task[], engineStates)
+    // Uses the open-time snapshot so the command's presence is stable while
+    // the palette is open.
+    const waiting = waitingSnapshot
     const actions: Command[] = []
     if (waiting.length > 0) {
       actions.push({
@@ -218,8 +232,9 @@ export function CommandPalette({
     }
     return [...actions, ...themeCmds, ...taskCmds]
   }, [
+    open,
     tasks,
-    engineStates,
+    waitingSnapshot,
     activeTaskId,
     themeNames,
     activeTheme,
