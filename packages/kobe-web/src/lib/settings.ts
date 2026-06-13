@@ -60,6 +60,19 @@ export async function fetchSettings(): Promise<WebSettings> {
   return readJson<WebSettings>(res)
 }
 
+/** Best-effort default engine lookup for task creation entry points. */
+export async function fetchDefaultEngine(): Promise<string | null> {
+  try {
+    const settings = await fetchSettings()
+    return typeof settings.defaultEngine === "string" &&
+      settings.defaultEngine.trim()
+      ? settings.defaultEngine.trim()
+      : null
+  } catch {
+    return null
+  }
+}
+
 export async function saveSettings(
   patch: WebSettingsPatch,
 ): Promise<WebSettings> {

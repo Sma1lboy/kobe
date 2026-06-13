@@ -5,6 +5,7 @@
  * task from an issue via the existing task-creation + PTY plumbing.
  */
 
+import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
 import { ensureEngineTab } from "./tabs.ts"
 import { sendPtyText } from "./terminal.ts"
@@ -231,7 +232,7 @@ export function quickStartPrompt(issue: Issue): string {
 
 /**
  * Spawn a kobe task from an issue: create the task (branch derived later
- * by ensureWorktree — KOB-244; vendor = daemon default), mark the issue
+ * by ensureWorktree — KOB-244; vendor = shared Settings default), mark the issue
  * `doing`, then deliver the prompt through the pty sidecar's
  * spawn-on-send path, which materializes the worktree + engine. The
  * status flip is best-effort: the task already exists, so a write
@@ -241,9 +242,11 @@ export async function quickStartIssue(
   repoRoot: string,
   issue: Issue,
 ): Promise<{ taskId: string }> {
+  const vendor = await fetchDefaultEngine()
   const { taskId } = await rpc<{ taskId: string }>("task.create", {
     repo: repoRoot,
     title: `#${issue.id} ${issue.title}`,
+    ...(vendor ? { vendor } : {}),
   })
   // Move the daemon's active-task pointer too — every sibling open-task
   // path pairs selectTask with this (Board/NewTaskDialog), and the

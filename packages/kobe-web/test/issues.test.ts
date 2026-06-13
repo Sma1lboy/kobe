@@ -261,17 +261,24 @@ describe("quickStartIssue", () => {
     vi.mocked(rpc).mockResolvedValue({ taskId: "task-1" })
     vi.mocked(ensureEngineTab).mockReturnValue("tab-1")
     vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({})),
+    const fetchMock = vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            url === "/api/settings" ? { defaultEngine: "codex" } : {},
+          ),
+        ),
+      ),
     )
     vi.stubGlobal("fetch", fetchMock)
 
     const result = await quickStartIssue("/u/p/kobe", target)
     expect(result).toEqual({ taskId: "task-1" })
-    // No branch, no vendor — derived later / daemon default.
+    // No branch; vendor follows Settings' default engine.
     expect(rpc).toHaveBeenCalledWith("task.create", {
       repo: "/u/p/kobe",
       title: "#3 Fix it",
+      vendor: "codex",
     })
     // The daemon's active-task pointer follows, like every open-task path.
     expect(rpc).toHaveBeenCalledWith("task.setActive", { taskId: "task-1" })
@@ -295,13 +302,38 @@ describe("quickStartIssue", () => {
     vi.mocked(sendPtyText).mockResolvedValue({ spawned: false })
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValue(new Error("bridge down")),
+      vi.fn((url: string) =>
+        url === "/api/settings"
+          ? Promise.resolve(new Response(JSON.stringify({ defaultEngine: "claude" })))
+          : Promise.reject(new Error("bridge down")),
+      ),
     )
 
     await expect(quickStartIssue("/u/p/kobe", target)).resolves.toEqual({
       taskId: "task-2",
     })
     expect(sendPtyText).toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("falls back to daemon defaults when settings cannot be read", async () => {
+    vi.mocked(rpc).mockResolvedValue({ taskId: "task-3" })
+    vi.mocked(ensureEngineTab).mockReturnValue("tab-3")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: true })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        url === "/api/settings"
+          ? Promise.resolve(new Response("nope", { status: 500 }))
+          : Promise.resolve(new Response(JSON.stringify({}))),
+      ),
+    )
+
+    await quickStartIssue("/u/p/kobe", target)
+    expect(rpc).toHaveBeenCalledWith("task.create", {
+      repo: "/u/p/kobe",
+      title: "#3 Fix it",
+    })
     vi.unstubAllGlobals()
   })
 
