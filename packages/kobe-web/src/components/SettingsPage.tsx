@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { setNotificationsEnabled, useNotifyState } from "../lib/notify.ts"
 import { fetchQuickPrompts, saveQuickPrompts } from "../lib/quick-prompts.ts"
 import { DEFAULT_PR_TEMPLATE, defaultReviewTemplate } from "../lib/review.ts"
@@ -9,9 +9,7 @@ import {
   type WebSettings,
   type WebSettingsEngine,
 } from "../lib/settings.ts"
-import { useAppState } from "../lib/store.ts"
 import { resetLayout } from "../lib/tabs.ts"
-import { clearPreferredTheme, useThemeState } from "../lib/theme.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import { ThemePicker } from "./ThemePicker.tsx"
 
@@ -19,11 +17,8 @@ const SECTIONS = [
   ["general", "General"],
   ["engines", "Engines"],
   ["board", "Board"],
-  ["accounts", "Accounts"],
-  ["keys", "Keybindings"],
-  ["feedback", "Feedback"],
   ["dev", "Dev"],
-  ["status", "Status"],
+  ["notifications", "Notifications"],
 ] as const
 
 type SectionId = (typeof SECTIONS)[number][0]
@@ -81,49 +76,32 @@ function ToggleRow({
   )
 }
 
-function SelectButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean
-  children: React.ReactNode
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`border px-2 py-1 text-left text-[12px] transition-colors ${
-        active
-          ? "border-primary bg-inset text-fg"
-          : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
 function useSharedSettings() {
   const [settings, setSettings] = useState<WebSettings | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  // A failed load leaves `settings` null forever, so track the error
+  // separately to show a retryable empty state instead of a stuck spinner.
+  const seqRef = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
+  const load = useCallback(async () => {
+    const seq = ++seqRef.current
     setLoading(true)
-    void fetchSettings()
-      .then((next) => {
-        if (!cancelled) setSettings(next)
-      })
-      .catch((err: unknown) => reportError("load settings", err))
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+    setError(false)
+    try {
+      const next = await fetchSettings()
+      if (seq === seqRef.current) setSettings(next)
+    } catch (err) {
+      if (seq === seqRef.current) setError(true)
+      reportError("load settings", err)
+    } finally {
+      if (seq === seqRef.current) setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   const patch = async (delta: Parameters<typeof saveSettings>[0]) => {
     const next = await saveSettings(delta)
@@ -131,162 +109,18 @@ function useSharedSettings() {
     return next
   }
 
-  return { settings, loading, patch }
+  return { settings, loading, error, reload: load, patch }
 }
 
-function GeneralSection({
-  settings,
-  patch,
-}: {
-  settings: WebSettings
-  patch: (delta: Parameters<typeof saveSettings>[0]) => Promise<WebSettings>
-}) {
-  const themeState = useThemeState()
+function GeneralSection() {
   return (
     <div className="space-y-3">
-      <Card title="TUI appearance">
-        <div>
-          <div className="text-muted">Theme used by kobe-owned TUI panes</div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {themeState.names.length === 0 ? (
-              <span className="text-subtle">Loading themes...</span>
-            ) : (
-              themeState.names.map((name) => (
-                <SelectButton
-                  key={name}
-                  active={settings.activeTheme === name}
-                  onClick={() =>
-                    void patch({ activeTheme: name }).then(() =>
-                      pushToast("success", "TUI theme saved"),
-                    )
-                  }
-                >
-                  {name}
-                </SelectButton>
-              ))
-            )}
-          </div>
-        </div>
-        <ToggleRow
-          label="Transparent terminal background"
-          detail="Lets your host terminal background show through in TUI panes."
-          enabled={settings.transparentBackground}
-          onToggle={() =>
-            void patch({
-              transparentBackground: !settings.transparentBackground,
-            })
-          }
-        />
-        <div>
-          <div className="text-muted">Focus accent</div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {[
-              ["primary", "Primary"],
-              ["success", "Success"],
-              ["info", "Info"],
-            ].map(([value, label]) => (
-              <SelectButton
-                key={value}
-                active={settings.focusAccent === value}
-                onClick={() =>
-                  void patch({
-                    focusAccent: value as WebSettings["focusAccent"],
-                  })
-                }
-              >
-                {label}
-              </SelectButton>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      <Card title="Dashboard appearance">
+      <Card title="Dashboard theme">
+        <p className="text-[11px] leading-relaxed text-subtle">
+          Pick a theme for this browser, or follow the TUI's theme. This is a
+          browser-local override — it never changes the TUI.
+        </p>
         <ThemePicker />
-        {themeState.overridden ? (
-          <button
-            type="button"
-            onClick={clearPreferredTheme}
-            className="border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
-          >
-            Follow TUI theme
-          </button>
-        ) : (
-          <p className="text-[11px] text-subtle">
-            This browser is following the TUI theme unless you pick a local
-            dashboard override.
-          </p>
-        )}
-      </Card>
-
-      <Card title="TUI notifications">
-        <ToggleRow
-          label="Toast popups"
-          enabled={settings.notificationsToast}
-          onToggle={() =>
-            void patch({ notificationsToast: !settings.notificationsToast })
-          }
-        />
-        <ToggleRow
-          label="Sound"
-          detail="Terminal bell plus chime for background chat-tab events."
-          enabled={settings.notificationsSound}
-          onToggle={() =>
-            void patch({ notificationsSound: !settings.notificationsSound })
-          }
-        />
-      </Card>
-
-      <Card title="Editor and Settings surface">
-        <div>
-          <div className="text-muted">Settings page opens in</div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <SelectButton
-              active={settings.settingsSurface === "chattab"}
-              onClick={() => void patch({ settingsSurface: "chattab" })}
-            >
-              ChatTab page
-            </SelectButton>
-            <SelectButton
-              active={settings.settingsSurface === "taskpanel"}
-              onClick={() => void patch({ settingsSurface: "taskpanel" })}
-            >
-              Task panel overlay
-            </SelectButton>
-          </div>
-        </div>
-        <div>
-          <label className="block text-muted" htmlFor="editor-kind">
-            File-tree editor
-          </label>
-          <select
-            id="editor-kind"
-            value={settings.editorKind}
-            onChange={(event) =>
-              void patch({
-                editorKind: event.target.value as WebSettings["editorKind"],
-              })
-            }
-            className="mt-1 w-full border border-line bg-bg px-2 py-1 text-fg focus:border-line-active focus:outline-none"
-          >
-            {["auto", "vim", "nvim", "nano", "emacs", "custom"].map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label className="block">
-          <span className="text-muted">Custom editor command</span>
-          <input
-            value={settings.editorCustomCommand}
-            onChange={(event) =>
-              void patch({ editorCustomCommand: event.target.value })
-            }
-            placeholder="code -w {file}"
-            className="mt-1 w-full border border-line bg-bg px-2 py-1 font-mono text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-          />
-        </label>
       </Card>
     </div>
   )
@@ -604,87 +438,37 @@ function DevSection({
   )
 }
 
-function BrowserNotificationsCard() {
+function NotificationsSection() {
   const { supported, permission, enabled } = useNotifyState()
   return (
-    <Card title="Browser notifications">
-      {supported ? (
-        <button
-          type="button"
-          onClick={() => void setNotificationsEnabled(!enabled)}
-          disabled={permission === "denied" && !enabled}
-          className={`border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
-            enabled
-              ? "border-primary bg-inset text-fg"
-              : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
-          }`}
-        >
-          {enabled ? "Notifications on" : "Notifications off"}
-        </button>
-      ) : (
-        <span className="font-mono text-[10px] text-subtle">unsupported</span>
-      )}
-      <p className="text-[11px] leading-relaxed text-subtle">
-        {permission === "denied" && !enabled
-          ? "Browser notifications are blocked in site settings."
-          : "Get pinged when a task needs input or errors while this browser tab is in the background."}
-      </p>
-    </Card>
-  )
-}
-
-function StatusSection() {
-  const { daemonConnected, streamConnected, update } = useAppState()
-  return (
     <div className="space-y-3">
-      <Card title="Connection">
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted">Daemon</span>
-          <span
-            className={daemonConnected ? "text-kobe-green" : "text-kobe-yellow"}
-          >
-            {daemonConnected ? "connected" : "offline"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted">Event stream</span>
-          <span
-            className={streamConnected ? "text-kobe-green" : "text-kobe-yellow"}
-          >
-            {streamConnected ? "connected" : "connecting"}
-          </span>
-        </div>
+      <Card title="Notifications">
+        {supported ? (
+          <ToggleRow
+            label="Desktop notifications"
+            detail="Get pinged when a task needs input or errors while this browser tab is in the background."
+            enabled={enabled}
+            onToggle={() => void setNotificationsEnabled(!enabled)}
+          />
+        ) : (
+          <p className="text-[11px] leading-relaxed text-subtle">
+            This browser does not support desktop notifications.
+          </p>
+        )}
+        {permission === "denied" && !enabled ? (
+          <p className="text-[11px] leading-relaxed text-kobe-yellow">
+            Notifications are blocked for this site. Allow them in your browser's
+            site settings to turn this on.
+          </p>
+        ) : null}
       </Card>
-      <Card title="Version">
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted">Current</span>
-          <span className="text-fg">
-            {typeof update?.current === "string" ? update.current : "unknown"}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-4">
-          <span className="text-muted">Latest</span>
-          <span className="text-fg">
-            {typeof update?.latest === "string" ? update.latest : "unknown"}
-          </span>
-        </div>
-      </Card>
-      <BrowserNotificationsCard />
     </div>
-  )
-}
-
-function PlaceholderSection({ title, body }: { title: string; body: string }) {
-  return (
-    <Card title={title}>
-      <p className="text-[11px] leading-relaxed text-subtle">{body}</p>
-    </Card>
   )
 }
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const [section, setSection] = useState<SectionId>("general")
-  const { settings, loading, patch } = useSharedSettings()
+  const { settings, loading, error, reload, patch } = useSharedSettings()
   const sectionTitle = useMemo(
     () => SECTIONS.find(([id]) => id === section)?.[1] ?? "Settings",
     [section],
@@ -726,35 +510,33 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             <h1 className="mb-3 text-[13px] font-bold uppercase tracking-[0.12em] text-fg">
               {sectionTitle}
             </h1>
-            {loading || !settings ? (
+            {error ? (
+              <div className="border border-line bg-surface p-4 text-[12px]">
+                <p className="text-subtle">
+                  Couldn't load settings (daemon/bridge offline?)
+                </p>
+                <button
+                  type="button"
+                  onClick={reload}
+                  className="mt-3 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : loading || !settings ? (
               <div className="border border-line bg-surface p-4 text-[12px] text-subtle">
                 Loading settings...
               </div>
             ) : section === "general" ? (
-              <GeneralSection settings={settings} patch={patch} />
+              <GeneralSection />
             ) : section === "engines" ? (
               <EnginesSection settings={settings} patch={patch} />
             ) : section === "board" ? (
               <BoardSection />
-            ) : section === "accounts" ? (
-              <PlaceholderSection
-                title="Accounts"
-                body="The TUI shows local account detection for Claude, Codex, and Copilot. The web dashboard does not run those filesystem probes yet; engine availability still comes from the bridge's engine registry."
-              />
-            ) : section === "keys" ? (
-              <PlaceholderSection
-                title="Keybindings"
-                body="Keybinding overrides live in ~/.kobe/settings/keybindings.yaml and are applied when TUI panes start. Editing that YAML from the browser is intentionally not exposed yet."
-              />
-            ) : section === "feedback" ? (
-              <PlaceholderSection
-                title="Feedback"
-                body="Use `kobe feedback` or the TUI Settings feedback form to send GitHub Discussions through your authenticated gh session."
-              />
             ) : section === "dev" ? (
               <DevSection settings={settings} patch={patch} />
             ) : (
-              <StatusSection />
+              <NotificationsSection />
             )}
           </div>
         </main>

@@ -5,8 +5,6 @@ import {
   boardCardCount,
   buildBoard,
   compareCards,
-  conflictBadge,
-  conflictsForTask,
   effectivePosition,
   isBoardTask,
   isDroppableColumn,
@@ -17,8 +15,6 @@ import {
   renormalizedMoves,
   repoOptions,
   TERMINAL_COLUMN_CAP,
-  YARN_COLORS,
-  yarnColor,
 } from "../src/lib/board.ts"
 import {
   clearPositionOverride,
@@ -27,10 +23,14 @@ import {
   reconcileBoardOverrides,
   resetBoardStateForTest,
   setBoardQuery,
+  setBoardRepo,
+  setBoardStatusFilter,
   setPositionOverrides,
   setStatusOverride,
 } from "../src/lib/board-state.ts"
-import type { Task } from "../src/lib/types.ts"
+import { matchesStatusFilter } from "../src/lib/triage.ts"
+import { matchesTask } from "../src/lib/task-list.ts"
+import type { EngineState, Task } from "../src/lib/types.ts"
 
 /**
  * Kanban column math. The load-bearing rules: columns bind to the persisted
@@ -304,31 +304,6 @@ describe("buildBoard — terminal-column cap", () => {
   })
 })
 
-describe("conflict radar helpers", () => {
-  const pairs = [
-    { a: "a", b: "b", files: ["src/x.ts"], level: "conflict" as const },
-    { a: "a", b: "c", files: ["src/y.ts"], level: "overlap" as const },
-  ]
-
-  it("conflictsForTask returns pairs touching the task", () => {
-    expect(conflictsForTask(pairs, "a")).toHaveLength(2)
-    expect(conflictsForTask(pairs, "b")).toHaveLength(1)
-    expect(conflictsForTask(pairs, "zzz")).toHaveLength(0)
-  })
-
-  it("conflictBadge takes the strongest level and counts counterparts", () => {
-    expect(conflictBadge(pairs, "a")).toEqual({ level: "conflict", count: 2 })
-    expect(conflictBadge(pairs, "c")).toEqual({ level: "overlap", count: 1 })
-    expect(conflictBadge(pairs, "zzz")).toBeNull()
-  })
-
-  it("yarnColor is stable per index and cycles the palette", () => {
-    expect(yarnColor(0)).toBe(YARN_COLORS[0])
-    expect(yarnColor(YARN_COLORS.length)).toBe(YARN_COLORS[0])
-    expect(yarnColor(1)).not.toBe(yarnColor(2))
-  })
-})
-
 describe("effectivePosition", () => {
   it("prefers the explicit position and falls back to -createdMs", () => {
     expect(effectivePosition(task({ position: 7 }))).toBe(7)
@@ -359,6 +334,80 @@ describe("board-state — module store filter", () => {
     setBoardQuery("y")
     resetBoardStateForTest()
     expect(getBoardState().query).toBe("")
+  })
+
+  it("holds the attention-filter chip and resets it for test isolation", () => {
+    setBoardStatusFilter("attention")
+    expect(getBoardState().statusFilter).toBe("attention")
+    const before = getBoardState()
+    setBoardStatusFilter("attention") // no-op → same snapshot (React skip)
+    expect(getBoardState()).toBe(before)
+    resetBoardStateForTest()
+    expect(getBoardState().statusFilter).toBe("all")
+  })
+})
+
+describe("board display predicate — repo + query + statusFilter compose", () => {
+  afterEach(() => resetBoardStateForTest())
+
+  // The Board's rendered card set is the AND of three independent filters:
+  // the project chip, the text query, and the attention-filter chip. This
+  // reconstructs that predicate over a small fixture and asserts each filter
+  // narrows the set further — and that loosening any one widens it again.
+  const running: EngineState = { state: "running" } as EngineState
+  const idle: EngineState = { state: "idle" } as EngineState
+  const tasks = [
+    // kobe / matches "auth" / running
+    task({ id: "k1", repo: "/u/kobe", title: "auth flow" }),
+    // kobe / matches "auth" / idle (no engine state, clean)
+    task({ id: "k2", repo: "/u/kobe", title: "auth retry" }),
+    // kobe / no "auth" / running
+    task({ id: "k3", repo: "/u/kobe", title: "ui polish" }),
+    // other repo / matches "auth" / running
+    task({ id: "o1", repo: "/u/web", title: "auth proxy" }),
+  ]
+  const engines: Record<string, EngineState | undefined> = {
+    k1: running,
+    k2: idle,
+    k3: running,
+    o1: running,
+  }
+  // All clean (no worktree changes) so the only "working" signal is `running`.
+  const visible = (): string[] => {
+    const { query, repo, statusFilter } = getBoardState()
+    return tasks
+      .filter(
+        (t) =>
+          (!repo || t.repo === repo) &&
+          matchesTask(t, query) &&
+          matchesStatusFilter(engines[t.id], undefined, statusFilter),
+      )
+      .map((t) => t.id)
+  }
+
+  it("ANDs all three filters; loosening any one widens the set", () => {
+    // No filters → every board task.
+    expect(visible()).toEqual(["k1", "k2", "k3", "o1"])
+
+    // Repo chip alone → drop the foreign-repo card.
+    setBoardRepo("/u/kobe")
+    expect(visible()).toEqual(["k1", "k2", "k3"])
+
+    // + query → only kobe cards that also match "auth".
+    setBoardQuery("auth")
+    expect(visible()).toEqual(["k1", "k2"])
+
+    // + status chip → only the running one survives all three.
+    setBoardStatusFilter("working")
+    expect(visible()).toEqual(["k1"])
+
+    // Loosen the status chip back to "all" → the idle "auth" card returns.
+    setBoardStatusFilter("all")
+    expect(visible()).toEqual(["k1", "k2"])
+
+    // Loosen the repo chip → the foreign-repo "auth" card returns too.
+    setBoardRepo(null)
+    expect(visible()).toEqual(["k1", "k2", "o1"])
   })
 })
 

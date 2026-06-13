@@ -12,7 +12,15 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { ArrowLeft, Play, Plus, RefreshCw, Search, X } from "lucide-react"
+import {
+  ArrowLeft,
+  Columns3,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   canQuickStart,
@@ -37,6 +45,7 @@ import { selectTask } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
 import { TIP_ABOVE } from "./chips.tsx"
+import { DaemonBanner } from "./DaemonBanner.tsx"
 import { IssuePeek } from "./IssuePeek.tsx"
 
 function IssueCard({
@@ -205,8 +214,15 @@ function isNonGitRepoFailure(message: string | undefined): boolean {
 }
 
 export function IssuesPage() {
-  const { tasks, hydrated, issueSnapshots } = useAppState()
+  const { tasks, hydrated, issueSnapshots, daemonConnected, streamConnected } =
+    useAppState()
   const navigate = useNavigate()
+  // The daemon behind the bridge is down: per-repo `/api/issues` fetches all
+  // fail with the same root cause, so collapse the N "failed to load" rows
+  // into one message and lock the create/refresh controls. Only meaningful
+  // once hydrated and the SSE stream is up (a dropped stream is its own
+  // state) — mirrors DaemonBanner's own gate.
+  const daemonOffline = hydrated && streamConnected && !daemonConnected
   const [repo, setRepo] = useState<string | null>(null)
   const [data, setData] = useState<Record<string, RepoIssues>>({})
   const [failed, setFailed] = useState<Record<string, string>>({})
@@ -455,6 +471,16 @@ export function IssuesPage() {
         <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
           Issues
         </span>
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/board" })}
+          className="flex items-center gap-1 text-muted transition-colors hover:text-fg"
+          aria-label="Board"
+          title="Board — tasks by status"
+        >
+          <Columns3 size={14} strokeWidth={1.8} />
+          <span className="text-[12px]">Board</span>
+        </button>
         {repo && (
           <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
             <Search
@@ -534,8 +560,13 @@ export function IssuesPage() {
             <button
               type="button"
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
-              title="New issue in this repo"
+              disabled={daemonOffline}
+              className="flex items-center gap-1 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line disabled:hover:text-muted"
+              title={
+                daemonOffline
+                  ? "Daemon offline — can't create issues"
+                  : "New issue in this repo"
+              }
             >
               <Plus size={12} strokeWidth={2} />
               <span>New issue</span>
@@ -546,10 +577,14 @@ export function IssuesPage() {
             onClick={() =>
               refresh(repo ? [repo] : visibleRepos.map((o) => o.repo))
             }
-            disabled={loading}
+            disabled={loading || daemonOffline}
             className="flex items-center text-muted transition-colors hover:text-fg disabled:opacity-40"
             aria-label="Refresh issues"
-            title="Refresh issues"
+            title={
+              daemonOffline
+                ? "Daemon offline — can't refresh issues"
+                : "Refresh issues"
+            }
           >
             <RefreshCw
               size={14}
@@ -565,11 +600,17 @@ export function IssuesPage() {
         </div>
       </header>
 
+      <DaemonBanner />
+
       {repo === null ? (
         /* ----- overview: per-repo summary cards --------------------------- */
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {!hydrated ? (
             <p className="text-[12px] text-subtle">Loading…</p>
+          ) : daemonOffline ? (
+            <p className="text-[12px] text-kobe-yellow">
+              kobe daemon offline — issues unavailable until it reconnects.
+            </p>
           ) : visibleRepos.length === 0 ? (
             <p className="text-[12px] text-subtle">
               No git-backed projects with issues yet.
@@ -635,13 +676,37 @@ export function IssuesPage() {
                     </span>
                   </button>
                 ))}
+              {/* In-flight repos: the initial parallel fetch hasn't returned
+                  yet (no data, no failure). Show a loading placeholder rather
+                  than dropping the repo from the overview until it lands. */}
+              {visibleRepos
+                .filter(
+                  (option) =>
+                    !(option.repo in data) && !(option.repo in failed),
+                )
+                .map((option) => (
+                  <div
+                    key={option.repo}
+                    title={option.repo}
+                    className="flex w-full flex-col gap-2 border border-dashed border-line-subtle p-3 text-left"
+                  >
+                    <span className="min-w-0 truncate text-[13px] text-muted">
+                      {option.label}
+                    </span>
+                    <span className="text-[11px] text-subtle">loading…</span>
+                  </div>
+                ))}
             </div>
           )}
         </div>
       ) : (
         /* ----- project view: 4 status columns ------------------------------ */
         <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-4">
-          {failed[repo] ? (
+          {daemonOffline ? (
+            <p className="text-[12px] text-kobe-yellow">
+              kobe daemon offline — issues unavailable until it reconnects.
+            </p>
+          ) : failed[repo] ? (
             <p className="text-[12px] text-kobe-red">
               Failed to load issues: {failed[repo]}
             </p>
@@ -655,49 +720,68 @@ export function IssuesPage() {
                   creates the tracker entry.
                 </p>
               )}
-              <div className="flex min-h-0 flex-1 gap-4">
-                {ISSUE_STATUSES.map((status) => {
-                  const issues = columns?.[status] ?? []
-                  return (
-                    <section
-                      key={status}
-                      className="flex h-full w-72 shrink-0 flex-col"
-                    >
-                      <div className="mb-2 flex items-baseline gap-2">
-                        <h2
-                          className={`text-[11px] font-bold uppercase tracking-[0.12em] ${STATUS_META[status].accent}`}
-                        >
-                          {STATUS_META[status].title}
-                        </h2>
-                        <span className="font-mono text-[10px] text-subtle">
-                          {issues.length}
-                        </span>
-                      </div>
-                      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
-                        {issues.length === 0 ? (
-                          <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
-                            none
-                          </div>
-                        ) : (
-                          issues.map((issue) => (
-                            <IssueCard
-                              key={issue.id}
-                              issue={issue}
-                              busy={mutating}
-                              quickStartBusy={quickStartingId === issue.id}
-                              onSetStatus={(to) =>
-                                doSetStatus(repo, issue.id, to)
-                              }
-                              onQuickStart={() => doQuickStart(repo, issue)}
-                              onOpen={() => setPeek({ repo, id: issue.id })}
-                            />
-                          ))
-                        )}
-                      </div>
-                    </section>
-                  )
-                })}
-              </div>
+              {/* Filtered to nothing: the repo has issues but the active
+                  filter matched none. Offer a clear-filter escape hatch
+                  rather than four bare "none" column tiles. */}
+              {query.trim() &&
+              shownCount === 0 &&
+              selected.issues.length > 0 ? (
+                <div className="flex flex-col items-start gap-2 border border-dashed border-line-subtle p-3 text-[12px] text-subtle">
+                  <span>No issues match “{query.trim()}”.</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuery("")}
+                    className="flex items-center gap-1 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+                  >
+                    <X size={12} strokeWidth={2} />
+                    <span>Clear filter</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 gap-4">
+                  {ISSUE_STATUSES.map((status) => {
+                    const issues = columns?.[status] ?? []
+                    return (
+                      <section
+                        key={status}
+                        className="flex h-full w-72 shrink-0 flex-col"
+                      >
+                        <div className="mb-2 flex items-baseline gap-2">
+                          <h2
+                            className={`text-[11px] font-bold uppercase tracking-[0.12em] ${STATUS_META[status].accent}`}
+                          >
+                            {STATUS_META[status].title}
+                          </h2>
+                          <span className="font-mono text-[10px] text-subtle">
+                            {issues.length}
+                          </span>
+                        </div>
+                        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
+                          {issues.length === 0 ? (
+                            <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
+                              none
+                            </div>
+                          ) : (
+                            issues.map((issue) => (
+                              <IssueCard
+                                key={issue.id}
+                                issue={issue}
+                                busy={mutating}
+                                quickStartBusy={quickStartingId === issue.id}
+                                onSetStatus={(to) =>
+                                  doSetStatus(repo, issue.id, to)
+                                }
+                                onQuickStart={() => doQuickStart(repo, issue)}
+                                onOpen={() => setPeek({ repo, id: issue.id })}
+                              />
+                            ))
+                          )}
+                        </div>
+                      </section>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>

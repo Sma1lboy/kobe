@@ -14,6 +14,7 @@ import { relativeTimeAgo } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
+import { NewTaskDialog } from "./NewTaskDialog.tsx"
 
 interface AdoptableWorktree {
   path: string
@@ -52,6 +53,10 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
   const [worktrees, setWorktrees] = useState<AdoptableWorktree[] | null>(null)
   const [scanning, setScanning] = useState(false)
   const [adopting, setAdopting] = useState<string | null>(null)
+  // Zero-known-repos is a dead end for adoption (nothing to scan), so the
+  // button swaps this overlay for the real New Task dialog — its onClose closes
+  // the whole flow, same as adopting.
+  const [creating, setCreating] = useState(false)
 
   const scan = async (target: string): Promise<void> => {
     if (!target) return
@@ -89,6 +94,67 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
     } finally {
       setAdopting(null)
     }
+  }
+
+  // No repos known yet → adoption can't go anywhere. Hand off to the real New
+  // Task dialog so the user can create a task in a repo and come back.
+  if (creating) return <NewTaskDialog onClose={onClose} />
+
+  if (repos.length === 0) {
+    return (
+      // biome-ignore lint/a11y/noStaticElementInteractions: backdrop dismiss; Escape + Close are the keyboard paths.
+      <div
+        className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+        onClick={onClose}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") onClose()
+        }}
+        role="presentation"
+      >
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Adopt worktree"
+          className="flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col border border-line bg-surface shadow-xl"
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={() => {}}
+        >
+          <div className="flex items-center justify-between border-b border-line px-3 py-2">
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
+              Adopt worktree
+            </span>
+            <span className="font-mono text-[10px] text-subtle">
+              pull an existing worktree into kobe
+            </span>
+          </div>
+
+          <div className="px-3 py-6 text-center">
+            <p className="text-[12px] leading-relaxed text-subtle">
+              No repos known to kobe yet. Create a task in a repo first, then
+              come back to adopt its worktrees.
+            </p>
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="mt-4 border border-primary bg-inset px-3 py-1.5 text-[11px] text-fg transition-colors hover:bg-primary/10"
+            >
+              Create a task
+            </button>
+          </div>
+
+          <div className="flex justify-end border-t border-line px-3 py-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="border border-line bg-bg px-3 py-1.5 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -129,7 +195,6 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
               onChange={(event) => setRepo(event.target.value)}
               className="min-w-0 flex-1 border border-line bg-bg px-2 py-1.5 text-[12px] text-fg focus:border-line-active focus:outline-none"
             >
-              {repos.length === 0 && <option value="">No known repos</option>}
               {repos.map((path) => (
                 <option key={path} value={path}>
                   {path}

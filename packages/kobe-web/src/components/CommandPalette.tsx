@@ -14,22 +14,14 @@ import {
   ArrowRight,
   CircleDot,
   Columns3,
-  LayoutGrid,
-  Palette,
   Plus,
   Search,
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { fuzzyScore } from "../lib/fuzzy.ts"
-import { themeCommandEntries } from "../lib/palette-commands.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
-import {
-  clearPreferredTheme,
-  setPreferredTheme,
-  useThemeState,
-} from "../lib/theme.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
@@ -38,17 +30,15 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon: "task" | "new" | "settings" | "overview" | "board" | "issues" | "theme"
+  icon: "task" | "new" | "settings" | "board" | "issues"
   run: () => void
 }
 
 function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
-  if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
   if (kind === "issues") return <CircleDot size={14} strokeWidth={1.8} />
-  if (kind === "theme") return <Palette size={14} strokeWidth={1.8} />
   return <ArrowRight size={14} strokeWidth={1.8} />
 }
 
@@ -64,11 +54,6 @@ export function CommandPalette({
   onOpenSettings: () => void
 }) {
   const { tasks } = useAppState()
-  const {
-    names: themeNames,
-    active: activeTheme,
-    overridden: themeOverridden,
-  } = useThemeState()
   const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [cursor, setCursor] = useState(0)
@@ -127,16 +112,6 @@ export function CommandPalette({
         },
       },
       {
-        id: "action:overview",
-        label: "Open overview",
-        hint: "triage",
-        icon: "overview",
-        run: () => {
-          void navigate({ to: "/overview" })
-          onClose()
-        },
-      },
-      {
         id: "action:board",
         label: "Open board",
         hint: "kanban",
@@ -167,44 +142,8 @@ export function CommandPalette({
         },
       },
     ]
-    const themeCmds: Command[] = themeCommandEntries(
-      themeNames,
-      activeTheme,
-    ).map((e) => ({
-      id: e.id,
-      label: e.label,
-      hint: e.hint,
-      icon: "theme" as const,
-      run: () => {
-        setPreferredTheme(e.name)
-        onClose()
-      },
-    }))
-    // Only offer "Follow TUI" when a web-local override is active — it's the
-    // way back from a palette/Settings theme pick to tracking the TUI.
-    if (themeOverridden) {
-      themeCmds.unshift({
-        id: "theme:follow-tui",
-        label: "Theme: Follow TUI",
-        hint: "clear override",
-        icon: "theme",
-        run: () => {
-          clearPreferredTheme()
-          onClose()
-        },
-      })
-    }
-    return [...actions, ...themeCmds, ...taskCmds]
-  }, [
-    tasks,
-    themeNames,
-    activeTheme,
-    themeOverridden,
-    navigate,
-    onClose,
-    onNewTask,
-    onOpenSettings,
-  ])
+    return [...actions, ...taskCmds]
+  }, [tasks, navigate, onClose, onNewTask, onOpenSettings])
 
   const matches = useMemo(() => {
     if (!query.trim()) return commands

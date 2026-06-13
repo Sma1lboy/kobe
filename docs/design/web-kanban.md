@@ -98,8 +98,9 @@ message / completed / failed`)。
   (`worktree.changes`)、vendor 徽标。
 - 代理与人同构(多态 actor):kobe 单用户,无需 assignee,但"卡片上能看出引擎正在
   干活/等你"是同一诉求,由 engine-state 信号灯承担。
-- 看板/列表双视图共享同一数据与筛选——kobe 对应:看板与现有 rail/Overview 共用
-  `useAppState()`,不另建订阅。
+- 看板/列表双视图共享同一数据与筛选——kobe 对应:看板与现有 rail 共用
+  `useAppState()`,不另建订阅;triage 的注意力筛选 chip 现由看板自己承载
+  (Overview 视图已移除),与 rail 的 status chip 同一引擎(`lib/triage.ts`)。
 
 ## 2. kobe 现状
 
@@ -175,7 +176,7 @@ flowchart TB
 - **R1**:常驻列 = `backlog / in_progress / in_review / done` 四列;`error` 与
   `canceled` 列**仅在非空时出现**(空时整列隐藏,避免常驻噪音)。未知 status
   (更新的 daemon 加了新值)不丢卡——按原始字符串动态成列,排在已知列之后。
-  入板过滤:排除 `archived` 与 `kind: "main"`(与 Overview 同口径)。done 列
+  入板过滤:排除 `archived` 与 `kind: "main"`(与 rail/triage 同口径)。done 列
   M1 按 updatedAt 倒序;增长收纳政策(截断 + "+N more")到 M3 落地。
 - **R2**:M3 时定稿,倾向 `position?: number` 浮点 fractional + daemon 间隙过小时
   整列重归一化;`task.reorder { taskId, status, beforeId? }` 形状进 RFC。
@@ -194,7 +195,7 @@ flowchart TB
 - **R6**:卡片 = activity dot + 标题(fallback branch/id)+ PR chip + 脏行 ±计数
   + pinned 标记 + branch(mono)+ activity label + 相对时间。`PrChip`/`ChangesChip`
   从 AppShell 抽到共享组件文件复用,避免双份漂移。主点击跳 `/task/$taskId`
-  (与 Overview.open 同路径);次级动作推迟到 M4。
+  (与 rail 的打开任务同路径);次级动作推迟到 M4。
 - **R7**:position 仅 web 看板消费(M3 进协议时注释写明);TUI sidebar 不变。
   web 高频改 status 对 TUI 的扰动在 M2 验收时双端实测一次。`ui-prefs` 第一期
   不加看板偏好。
@@ -243,8 +244,9 @@ flowchart TB
   小改,daemon 协议不动)还是 string-match;同时留意 `ConcurrencyCapError` 等未来可能
   出现的第二种拒绝类型,回滚设计不要写死单一错误。方法:在 store.ts 之外做组件级实验,
   不动全局 store 语义。产出:乐观层归属(组件局部 vs store)+ 清除条件 + 错误转发裁决。
-- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/`、`/overview` 并列),入口加进
-  命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放 module store 或 URL search
+- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/`、`/issues` 并列;原 `/overview`
+  视图已移除),入口加进命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放
+  module store 或 URL search
   params。方法:复盘 issue #7 的修复方向,与之同构。产出:状态持有方案。
 - **R6 卡片信息密度。** 第一版卡片上放什么:标题、activity dot、vendor 徽标、PR chip
   (lifecycle + checkState)、脏行 ±计数、相对时间?主点击已拍板(跳 `/task/$taskId`),
@@ -359,6 +361,9 @@ sequenceDiagram
 - **multica 演进速度**:它日更且 0.2.0,本文档的对标语义以 2026-06-11 为准,不追新。
 - **web 定位**:web 仍是 "not the product center"(DESIGN.md §12)。看板是增强而非
   转向;若用户要把 web 升格为产品中心,需先回 DESIGN.md 层面重新立项。
+- **已移除:conflict-radar(yarn)**。早期设想过在卡片/看板上叠一层"分支冲突雷达"
+  (yarn 跨 worktree 探测潜在合并冲突)的增强,现已从计划中移除——不再属于看板范围,
+  R6 卡片字段不含该信号。
 
 ## 7. 参考
 

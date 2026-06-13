@@ -12,7 +12,6 @@
  */
 
 import { useSyncExternalStore } from "react"
-import { type PrTransition, prTransitionBody } from "./pr-notify.ts"
 import type { ActivityState } from "./types.ts"
 
 const ENABLED_KEY = "kobe-web.notify"
@@ -148,23 +147,6 @@ export function notifyEngineTransition(
     return
   const verb = next === "error" ? "errored" : "needs your input"
   fire(taskId, taskLabel, `Task ${verb}.`, `kobe-task-${taskId}`)
-}
-
-/**
- * Called from the store's task.snapshot reducer with the PR transitions the
- * snapshot diff produced (lib/pr-notify.ts). Same gates as engine
- * transitions: opt-in, permission granted, page hidden.
- */
-export function notifyPrTransitions(
-  transitions: readonly PrTransition[],
-): void {
-  const hidden =
-    typeof document === "undefined" || document.visibilityState !== "visible"
-  if (!enabled || permission() !== "granted" || !hidden) return
-  for (const t of transitions) {
-    // Per-task tag: a newer PR state replaces a stale unread one.
-    fire(t.taskId, t.taskLabel, prTransitionBody(t), `kobe-pr-${t.taskId}`)
-  }
 }
 
 function fire(

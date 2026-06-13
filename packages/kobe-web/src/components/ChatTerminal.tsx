@@ -22,6 +22,7 @@ import {
   navigateHistory,
   pushHistory,
 } from "../lib/composer-history.ts"
+import { useAppState } from "../lib/store.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
@@ -83,6 +84,11 @@ export function ChatTerminal({
   const ref = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<WsStatus>("connecting")
+  // A dropped PTY socket normally means "still running, just detached". But if
+  // the bridge/daemon is actually down, the PTY may be PAUSED — the reassuring
+  // "keeps running" copy would be wrong. Distinguish the two for the close UI.
+  const { daemonConnected, streamConnected } = useAppState()
+  const bridgeDown = !daemonConnected || !streamConnected
   // Bumping the epoch tears the terminal down and re-attaches to the
   // SAME server-side PTY (keyed by tab id) — its scrollback ring replays.
   const [epoch, setEpoch] = useState(0)
@@ -207,13 +213,15 @@ export function ChatTerminal({
       <div ref={ref} className="min-h-0 w-full flex-1 overflow-hidden" />
       {status === "closed" ? (
         <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line bg-surface px-2">
-          <span className="text-[11px] text-kobe-yellow">
-            detached — the session keeps running
+          <span className="min-w-0 flex-1 truncate text-[11px] text-kobe-yellow">
+            {bridgeDown
+              ? "Lost connection to the bridge — the session may be paused. Reattach will retry once it's back."
+              : "detached — the session keeps running"}
           </span>
           <button
             type="button"
             onClick={() => setEpoch((cur) => cur + 1)}
-            className="flex items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+            className="flex shrink-0 items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
           >
             <RotateCw size={11} strokeWidth={2} />
             Reattach

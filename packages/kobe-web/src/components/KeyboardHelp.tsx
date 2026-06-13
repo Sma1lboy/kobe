@@ -29,7 +29,6 @@ const SHORTCUTS: Shortcut[] = [
 const PALETTE: Shortcut[] = [
   { keys: ["↑", "↓"], label: "Move selection" },
   { keys: ["↵"], label: "Run the selected command" },
-  { keys: ["theme"], label: 'Type "theme" to switch theme (or Follow TUI)' },
 ]
 
 const COMPOSER: Shortcut[] = [
@@ -47,11 +46,6 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
     detail: "the folder-in icon next to + — pull an existing worktree in",
   },
   {
-    label: "Overview",
-    detail:
-      "the grid icon in the top bar — triage every task at once; j/k highlight, Enter opens",
-  },
-  {
     label: "Chat / Vendor / Terminal",
     detail:
       "tab kinds inside a task workspace; Chat has search, a hide-tools toggle, and copy-as-Markdown",
@@ -59,7 +53,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Triage",
     detail:
-      "rail status chips (All/Needs/Run/Dirty) + the Overview grid — filter by what needs you",
+      "task rail status chips (All/Needs/Run/Dirty) + the Board — filter by what needs you",
   },
   {
     label: "Changes / diff",

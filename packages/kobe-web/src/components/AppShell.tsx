@@ -11,7 +11,6 @@ import {
   CircleHelp,
   Columns3,
   FolderInput,
-  LayoutGrid,
   Loader2,
   PanelRight,
   Plus,
@@ -41,6 +40,7 @@ import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { ChangesChip, PrChip } from "./chips.tsx"
+import { DaemonBanner } from "./DaemonBanner.tsx"
 import { KeyboardHelp } from "./KeyboardHelp.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { SettingsPage } from "./SettingsPage.tsx"
@@ -553,7 +553,14 @@ function TopBar({
         </span>
       )}
       <div className="ml-auto flex items-center gap-3 text-[11px] text-subtle">
-        <span className="hidden items-center gap-1.5 sm:flex">
+        <span
+          className="hidden items-center gap-1.5 sm:flex"
+          title={
+            !ok && streamConnected
+              ? "Daemon offline — if it doesn't recover, run `kobe doctor` or `kobe reset` in a terminal."
+              : undefined
+          }
+        >
           <span
             className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
           />
@@ -565,15 +572,6 @@ function TopBar({
                 : "connecting…"}
           </span>
         </span>
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/overview" })}
-          className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Overview"
-          title="Overview — triage all tasks"
-        >
-          <LayoutGrid size={15} strokeWidth={1.8} />
-        </button>
         <button
           type="button"
           onClick={() => navigate({ to: "/board" })}
@@ -613,34 +611,6 @@ function TopBar({
         </button>
       </div>
     </header>
-  )
-}
-
-function DaemonBanner() {
-  const { daemonConnected, streamConnected, hydrated } = useAppState()
-  const [dismissed, setDismissed] = useState(false)
-  // Only meaningful once we've hydrated and the SSE stream is up but the
-  // daemon behind the bridge is down — panes go read-only / stale until it
-  // comes back. A dropped SSE stream is a different state (TopBar shows it).
-  const down = hydrated && streamConnected && !daemonConnected
-  if (!down || dismissed) return null
-  return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-kobe-yellow/40 bg-kobe-yellow/10 px-3 py-1.5 text-[11px] text-kobe-yellow">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-kobe-yellow" />
-      <span className="min-w-0 flex-1">
-        The kobe daemon is offline — task data is frozen and mutations will fail
-        until it reconnects (it auto-reconnects; the dashboard recovers on its
-        own).
-      </span>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        className="shrink-0 text-kobe-yellow/70 hover:text-kobe-yellow"
-        aria-label="dismiss"
-      >
-        <X size={13} strokeWidth={2} />
-      </button>
-    </div>
   )
 }
 

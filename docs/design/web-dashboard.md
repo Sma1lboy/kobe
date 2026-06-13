@@ -115,8 +115,12 @@ TanStack Router, file-based ([`src/routes/`](../../packages/kobe-web/src/routes)
 |---|---|
 | `/` | The workspace shell (rail + tabs + tools). |
 | `/task/$taskId` | Deep link — selects the task; back/forward walks task-switch history. |
-| `/overview` | Mission-control triage of every task (needs you / working / dirty / quiet). |
 | `/board` | Kanban over the persisted `Task.status` lifecycle (see below). |
+| `/issues` | The daemon-owned issue tracker. |
+
+The top nav is two buttons — **Board** and **Issues**. The former `/overview`
+mission-control route is gone; its triage now lives in the rail status chips and
+the Board's attention-filter chips (see "Search, filter & keyboard", below).
 
 ## Board (`/board`)
 
@@ -160,17 +164,24 @@ Beyond the rail/tabs/tools grammar, the dashboard carries:
   switching ("Theme: <name>" commands + "Follow TUI" to clear a web-local
   override); `?` opens a keyboard-help overlay. ([`CommandPalette.tsx`](../../packages/kobe-web/src/components/CommandPalette.tsx), [`KeyboardHelp.tsx`](../../packages/kobe-web/src/components/KeyboardHelp.tsx))
 - **Search, filter & keyboard** — the task rail has a text filter + status
-  chips (All/Needs/Run/Dirty, reusing the Overview `triage`), and is
-  keyboard-first: `/` focuses the filter, Enter jumps to the top match, Escape
-  clears, `j`/`k` move. The Overview and the Changes pane have their own filter
-  boxes (Overview also takes `/`); the Changes pane filters files by path.
-- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer. The Task panel can **Copy path** + **Copy link** (the `/task/$taskId` deep link, via a shared `lib/clipboard.ts` + `lib/share.ts`).
+  chips (All/Needs/Run/Dirty, from `lib/triage.ts`), and is keyboard-first: `/`
+  focuses the filter, Enter jumps to the top match, Escape clears, `j`/`k` move.
+  The Board surfaces the same `triage` buckets as **attention-filter chips**
+  (the rail chips and the Board chips share one engine), and the Changes pane has
+  its own filter box that filters files by path.
+- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer. The Task panel can **Copy path** (via a shared `lib/clipboard.ts`).
 - **Settings** — live theme picker (precedence: web-local override > TUI `ui-prefs` > claude, [`lib/theme.ts`](../../packages/kobe-web/src/lib/theme.ts)), engines, notifications, connection/version.
 - **Desktop notifications** ([`lib/notify.ts`](../../packages/kobe-web/src/lib/notify.ts)) — fire on the rising edge into `waiting_permission`/`error` while the tab is hidden.
 - **Notes** ([`NotesPanel.tsx`](../../packages/kobe-web/src/components/NotesPanel.tsx)) — a web-only per-task markdown scratchpad (the TUI has no equivalent), autosaved server-side under `<KOBE_HOME>/.kobe/notes/<taskId>.md` via `/api/notes`, with an Edit/Preview toggle. The preview renders through an escape-first markdown renderer ([`lib/markdown.ts`](../../packages/kobe-web/src/lib/markdown.ts)) — the one `dangerouslySetInnerHTML` sink in the app, so it escapes all input before composing its own tags and drops unsafe link schemes; the taskId→file path is traversal-guarded server-side (`isSafeTaskId`).
-- **Resilience** — a root error boundary (no white-screen) and a daemon-offline banner; failed mutations surface in a toast stack ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)).
+- **Resilience & empty states** — a root error boundary (no white-screen) and a
+  daemon-offline banner; failed mutations surface in a toast stack
+  ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)). The Board, Issues,
+  transcript, diff, Settings, and Adopt surfaces each carry their own
+  offline/empty-state hint instead of rendering blank — e.g. "no tasks yet",
+  "nothing to review", or a "daemon offline, reconnecting" line — so a fresh or
+  disconnected dashboard explains itself rather than looking broken.
 
-Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Overview drift guard), `lib/triage.ts` (Overview attention buckets + priority + `matchesStatusFilter` for the rail chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest), `lib/share.ts` (`taskDeepLink`). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Board drift guard), `lib/triage.ts` (attention buckets + priority + `matchesStatusFilter` for the rail + Board attention-filter chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
 
 ## Dev: production vs sandbox
 

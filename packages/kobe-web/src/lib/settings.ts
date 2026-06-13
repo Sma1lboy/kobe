@@ -30,18 +30,7 @@ export interface WebSettings {
 export type WebSettingsPatch = Partial<
   Pick<
     WebSettings,
-    | "activeTheme"
-    | "transparentBackground"
-    | "focusAccent"
-    | "notificationsToast"
-    | "notificationsSound"
-    | "settingsSurface"
-    | "editorKind"
-    | "editorCustomCommand"
-    | "remoteProjects"
-    | "autoStatus"
-    | "dispatcher"
-    | "defaultEngine"
+    "remoteProjects" | "autoStatus" | "dispatcher" | "defaultEngine"
   >
 > & {
   engineUpdates?: Array<{ id: string; command?: string; label?: string }>

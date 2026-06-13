@@ -13,6 +13,7 @@
  * ToolsPane region).
  */
 
+import { RotateCw } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { type DiffFile, type DiffResult, fetchDiff } from "../lib/diff.ts"
 import { rowClass, statusBadge } from "../lib/diff-display.ts"
@@ -41,6 +42,33 @@ function useChangesKey(worktreePath: string | null): string {
   return counts ? `${counts.added}:${counts.deleted}` : "none"
 }
 
+/** Diff fetch failed. If the bridge/daemon is down a retry can only fail, so
+ *  point at the outage; otherwise offer a Retry that re-runs the fetch. */
+function DiffError({ onRetry }: { onRetry: () => void }) {
+  const { daemonConnected, streamConnected } = useAppState()
+  const offline = !daemonConnected || !streamConnected
+  if (offline) {
+    return (
+      <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
+        The kobe daemon is offline — changes will reappear once it reconnects.
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col items-start gap-2 px-3 py-4">
+      <span className="text-[12px] text-kobe-red">Couldn't load changes.</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="flex items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+      >
+        <RotateCw size={11} strokeWidth={2} />
+        Retry
+      </button>
+    </div>
+  )
+}
+
 /** Render a parsed unified diff into the gutter+text row grid. `wrap` soft-wraps
  *  long lines instead of the default horizontal scroll. */
 export function DiffBody({ patch, wrap }: { patch: string; wrap?: boolean }) {
@@ -66,171 +94,6 @@ export function DiffBody({ patch, wrap }: { patch: string; wrap?: boolean }) {
           </span>
         </div>
       ))}
-    </div>
-  )
-}
-
-function FileList({
-  files,
-  selected,
-  onSelect,
-}: {
-  files: DiffFile[]
-  selected: string | null
-  onSelect: (path: string) => void
-}) {
-  return (
-    <div className="flex w-56 shrink-0 flex-col overflow-y-auto border-r border-line">
-      {files.map((f) => {
-        const badge = statusBadge(f.status)
-        const active = f.path === selected
-        return (
-          <button
-            key={f.path}
-            type="button"
-            onClick={() => onSelect(f.path)}
-            title={f.path}
-            className={`flex items-center gap-2 border-l-2 px-2 py-1.5 text-left transition-colors ${
-              active
-                ? "border-primary bg-inset"
-                : "border-transparent hover:bg-surface"
-            }`}
-          >
-            <span
-              className={`w-3 shrink-0 text-center font-mono text-[11px] font-bold ${badge.cls}`}
-            >
-              {badge.label}
-            </span>
-            <span
-              className={`truncate text-[12px] ${active ? "text-fg" : "text-fg/90"}`}
-            >
-              {tailPath(f.path, 28)}
-            </span>
-            {f.staged && (
-              <span className="ml-auto shrink-0 text-[9px] uppercase text-subtle">
-                staged
-              </span>
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export function DiffView({ worktreePath }: { worktreePath: string | null }) {
-  const [result, setResult] = useState<DiffResult | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const changesKey = useChangesKey(worktreePath)
-
-  const load = useCallback(async () => {
-    if (!worktreePath) {
-      setResult(null)
-      setSelected(null)
-      setError(null)
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await fetchDiff(worktreePath)
-      setResult(data)
-      // Keep the current selection if it still exists, else pick the first file.
-      setSelected((prev) => {
-        if (prev && data.files.some((f) => f.path === prev)) return prev
-        return data.files[0]?.path ?? null
-      })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-      setResult(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [worktreePath])
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey is the live-refresh trigger, not a read dependency.
-  useEffect(() => {
-    void load()
-  }, [load, changesKey])
-
-  const files = result?.files ?? []
-  const current = files.find((f) => f.path === selected) ?? null
-  const total = useMemo(() => {
-    let added = 0
-    let deleted = 0
-    for (const f of files) {
-      const s = diffStat(f.patch)
-      added += s.added
-      deleted += s.deleted
-    }
-    return { added, deleted }
-  }, [files])
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-          Changes{files.length > 0 ? ` · ${files.length}` : ""}
-        </span>
-        <StatChip added={total.added} deleted={total.deleted} />
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={!worktreePath || loading}
-          className="ml-auto rounded border border-line px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:bg-surface disabled:opacity-40"
-        >
-          {loading ? "…" : "↻ refresh"}
-        </button>
-      </div>
-
-      {!worktreePath ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center">
-          <div>
-            <div className="text-[12px] font-semibold text-fg">
-              No worktree selected
-            </div>
-            <div className="mt-1 max-w-56 text-[12px] leading-relaxed text-subtle">
-              Pick a task to inspect its current diff.
-            </div>
-          </div>
-        </div>
-      ) : error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
-          {error}
-        </div>
-      ) : files.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center px-4 text-center text-[12px] text-subtle">
-          {loading ? "Loading changes…" : "No changes in this worktree."}
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <FileList files={files} selected={selected} onSelect={setSelected} />
-          <div className="flex min-w-0 flex-1 flex-col">
-            {current && (
-              <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
-                <span
-                  className="truncate font-mono text-[11px] text-fg"
-                  title={current.path}
-                >
-                  {current.path}
-                </span>
-                <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-subtle">
-                  {current.status}
-                </span>
-              </div>
-            )}
-            {current ? (
-              <DiffBody patch={current.patch} />
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-[12px] text-subtle">
-                Select a file.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -326,9 +189,7 @@ export function ChangesList({
           </div>
         </div>
       ) : error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
-          {error}
-        </div>
+        <DiffError onRetry={() => void load()} />
       ) : files.length === 0 ? (
         <div className="flex flex-1 items-center justify-center px-4 text-center">
           <div className="text-[12px] text-subtle">
@@ -404,33 +265,35 @@ export function FilePreview({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const changesKey = useChangesKey(worktreePath)
+  // Out-of-order guard: a Retry / live refetch can overlap, so only the most
+  // recent fetch may write (mirrors ChangesList's seqRef).
+  const seqRef = useRef(0)
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey re-fetches the patch when the worktree's counts move.
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!worktreePath) {
       setFile(null)
       return
     }
-    let cancelled = false
+    const seq = ++seqRef.current
     setLoading(true)
     setError(null)
-    // Ask for just this file's patch instead of the whole worktree's diff set.
-    void fetchDiff(worktreePath, { path })
-      .then((result) => {
-        if (cancelled) return
-        setFile(result.files.find((item) => item.path === path) ?? null)
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
+    try {
+      // Ask for just this file's patch instead of the whole worktree's diff set.
+      const result = await fetchDiff(worktreePath, { path })
+      if (seq !== seqRef.current) return
+      setFile(result.files.find((item) => item.path === path) ?? null)
+    } catch (err) {
+      if (seq === seqRef.current)
+        setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (seq === seqRef.current) setLoading(false)
     }
-  }, [worktreePath, path, changesKey])
+  }, [worktreePath, path])
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: changesKey re-fetches the patch when the worktree's counts move.
+  useEffect(() => {
+    void load()
+  }, [load, changesKey])
 
   const stat = file ? diffStat(file.patch) : null
   return (
@@ -467,9 +330,7 @@ export function FilePreview({
         )}
       </div>
       {error ? (
-        <div className="px-3 py-4 text-[12px] leading-relaxed text-kobe-red">
-          {error}
-        </div>
+        <DiffError onRetry={() => void load()} />
       ) : file ? (
         // Keep the previous patch on screen during a live refetch — a count
         // tick must not flash the view back to a loading state.

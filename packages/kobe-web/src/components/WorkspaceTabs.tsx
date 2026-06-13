@@ -8,8 +8,7 @@
 import { Bot, MessagesSquare, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
 import { lazy, Suspense, useState } from "react"
-import { useEngines } from "../lib/engines.ts"
-import { rpc, useAppState } from "../lib/store.ts"
+import { useAppState } from "../lib/store.ts"
 import {
   addEmptyTab,
   clearSplitTab,
@@ -21,7 +20,6 @@ import {
   type WorkspaceTab,
 } from "../lib/tabs.ts"
 import { closePtyTab } from "../lib/terminal.ts"
-import { reportError } from "../lib/toast.ts"
 import { ChatTranscript } from "./ChatTranscript.tsx"
 import { FilePreview } from "./DiffView.tsx"
 
@@ -207,13 +205,11 @@ function PaneFrame({
 }
 
 export function WorkspaceTabs() {
-  const [vendorOpen, setVendorOpen] = useState(false)
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null)
   const [splitDropActive, setSplitDropActive] = useState(false)
   const { selectedTaskId, tabsByTask, activeByTask, splitByTask } =
     useTabsState()
-  const engines = useEngines()
-  const { tasks } = useAppState()
+  const { tasks, jobs } = useAppState()
   const task = selectedTaskId
     ? tasks.find((t) => t.id === selectedTaskId)
     : null
@@ -236,13 +232,13 @@ export function WorkspaceTabs() {
       : undefined
   const vendor = vendorLabel(task?.vendor)
   const taskTitle = task?.title || task?.branch || "Session"
-  const setVendor = (next: string): void => {
-    if (!selectedTaskId) return
-    setVendorOpen(false)
-    void rpc("task.setVendor", { taskId: selectedTaskId, vendor: next }).catch(
-      (err) => reportError("switch engine", err),
-    )
-  }
+  // A task whose worktree is still being created (or hasn't materialized yet)
+  // can't open a workspace — say so explicitly instead of the ambiguous
+  // "Opening workspace…".
+  const materializing =
+    !!task &&
+    ((selectedTaskId ? jobs[selectedTaskId]?.phase === "running" : false) ||
+      task.worktreePath === null)
   const onContentDragOver = (event: DragEvent<HTMLDivElement>): void => {
     if (!selectedTaskId || !draggingTabId) return
     event.preventDefault()
@@ -271,100 +267,72 @@ export function WorkspaceTabs() {
             No task selected
           </div>
         ) : (
-          <>
-            <div
-              className="flex min-w-0 flex-1 items-stretch overflow-x-auto"
-              role="tablist"
-            >
-              {tabs.map((t) => {
-                const isActive = t.id === activeTab?.id
-                const isSplit = t.id === splitTab?.id
-                return (
-                  <div
-                    key={t.id}
-                    role="tab"
-                    aria-selected={isActive}
-                    tabIndex={0}
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.effectAllowed = "move"
-                      event.dataTransfer.setData("text/plain", t.id)
-                      setDraggingTabId(t.id)
-                    }}
-                    onDragEnd={() => {
-                      setDraggingTabId(null)
-                      setSplitDropActive(false)
-                    }}
-                    className={`group flex h-9 select-none items-center gap-2 border-r border-b-2 border-r-line px-3 text-[12px] transition-colors ${
-                      isActive
-                        ? "border-b-primary bg-bg text-fg"
-                        : isSplit
-                          ? "border-b-kobe-blue bg-inset text-fg"
-                          : "border-b-transparent text-muted hover:bg-inset/50"
-                    }`}
+          <div
+            className="flex min-w-0 flex-1 items-stretch overflow-x-auto"
+            role="tablist"
+          >
+            {tabs.map((t) => {
+              const isActive = t.id === activeTab?.id
+              const isSplit = t.id === splitTab?.id
+              return (
+                <div
+                  key={t.id}
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={0}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move"
+                    event.dataTransfer.setData("text/plain", t.id)
+                    setDraggingTabId(t.id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggingTabId(null)
+                    setSplitDropActive(false)
+                  }}
+                  className={`group flex h-9 select-none items-center gap-2 border-r border-b-2 border-r-line px-3 text-[12px] transition-colors ${
+                    isActive
+                      ? "border-b-primary bg-bg text-fg"
+                      : isSplit
+                        ? "border-b-kobe-blue bg-inset text-fg"
+                        : "border-b-transparent text-muted hover:bg-inset/50"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(selectedTaskId, t.id)}
+                    className="max-w-40 cursor-grab truncate active:cursor-grabbing"
+                    title={isSplit ? `${t.title} (split)` : t.title}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab(selectedTaskId, t.id)}
-                      className="max-w-40 cursor-grab truncate active:cursor-grabbing"
-                      title={isSplit ? `${t.title} (split)` : t.title}
-                    >
-                      {t.title}
-                    </button>
-                    {isSplit && (
-                      <span className="text-[9px] font-bold uppercase text-kobe-blue">
-                        Split
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => onClose(t.id)}
-                      className="text-subtle opacity-0 transition-opacity hover:text-fg group-hover:opacity-100"
-                      aria-label="close tab"
-                      title="Close tab"
-                    >
-                      ×
-                    </button>
-                  </div>
-                )
-              })}
-              <button
-                type="button"
-                onClick={() => addEmptyTab(selectedTaskId)}
-                className="px-3 text-[13px] text-subtle hover:text-fg"
-                aria-label="new tab"
-                title="New tab"
-              >
-                +
-              </button>
-            </div>
-            <div className="relative flex shrink-0 items-center border-l border-line px-2">
-              <button
-                type="button"
-                onClick={() => setVendorOpen((open) => !open)}
-                className="rounded border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
-                title="Select vendor / model"
-              >
-                {vendor}
-              </button>
-              {vendorOpen && (
-                <div className="absolute right-2 top-8 z-10 w-40 border border-line bg-menu shadow-xl">
-                  {engines.map((engine) => (
-                    <button
-                      key={engine.id}
-                      type="button"
-                      onClick={() => setVendor(engine.id)}
-                      className={`block w-full px-3 py-2 text-left text-[12px] hover:bg-inset ${
-                        engine.id === vendor ? "text-primary" : "text-muted"
-                      }`}
-                    >
-                      {engine.label}
-                    </button>
-                  ))}
+                    {t.title}
+                  </button>
+                  {isSplit && (
+                    <span className="text-[9px] font-bold uppercase text-kobe-blue">
+                      Split
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onClose(t.id)}
+                    className="text-subtle opacity-0 transition-opacity hover:text-fg group-hover:opacity-100"
+                    aria-label="close tab"
+                    title="Close tab"
+                  >
+                    ×
+                  </button>
                 </div>
-              )}
-            </div>
-          </>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => addEmptyTab(selectedTaskId)}
+              className="px-3 text-[13px] text-subtle hover:text-fg"
+              aria-label="new tab"
+              title="New tab"
+            >
+              +
+            </button>
+          </div>
         )}
       </div>
 
@@ -414,9 +382,11 @@ export function WorkspaceTabs() {
                 [kobe web]
               </div>
               <h1 className="mt-4 text-[18px] font-semibold text-fg">
-                {task
-                  ? "Opening workspace…"
-                  : "Select a task to open its workspace."}
+                {!task
+                  ? "Select a task to open its workspace."
+                  : materializing
+                    ? "Setting up this task's worktree…"
+                    : "Opening workspace…"}
               </h1>
               <p className="mt-2 text-[12px] leading-relaxed text-subtle">
                 Web workspaces keep their own browser tabs, split panes, notes,
