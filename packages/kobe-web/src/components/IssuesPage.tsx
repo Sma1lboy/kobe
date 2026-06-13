@@ -238,13 +238,20 @@ export function IssuesPage() {
     return seq
   }
 
-  const applyState = (state: RepoIssues, seq: number): void => {
-    if (seq < (appliedSeqRef.current.get(state.repoRoot) ?? 0)) return
-    appliedSeqRef.current.set(state.repoRoot, seq)
-    setData((prev) => ({ ...prev, [state.repoRoot]: state }))
+  const applyState = (
+    state: RepoIssues,
+    seq: number,
+    cacheKey = state.repoRoot,
+  ): void => {
+    if (seq < (appliedSeqRef.current.get(cacheKey) ?? 0)) return
+    appliedSeqRef.current.set(cacheKey, seq)
+    setData((prev) => ({
+      ...prev,
+      [cacheKey]: { ...state, repoRoot: cacheKey },
+    }))
     setFailed((prev) => {
-      if (!(state.repoRoot in prev)) return prev
-      const { [state.repoRoot]: _gone, ...rest } = prev
+      if (!(cacheKey in prev)) return prev
+      const { [cacheKey]: _gone, ...rest } = prev
       return rest
     })
   }
@@ -256,7 +263,7 @@ export function IssuesPage() {
       roots.map(async (root) => {
         const seq = beginRequest(root)
         try {
-          applyState(await fetchIssues(root), seq)
+          applyState(await fetchIssues(root), seq, root)
         } catch (err) {
           setFailed((prev) => ({
             ...prev,
@@ -326,7 +333,7 @@ export function IssuesPage() {
     setMutating(true)
     const seq = beginRequest(root)
     setIssueStatus(root, id, to)
-      .then((state) => applyState(state, seq))
+      .then((state) => applyState(state, seq, root))
       .catch((err: unknown) => reportError("move issue", err))
       .finally(() => setMutating(false))
   }
@@ -336,7 +343,7 @@ export function IssuesPage() {
     const seq = beginRequest(root)
     createIssue(root, body.trim() ? { title, body } : { title })
       .then((state) => {
-        applyState(state, seq)
+        applyState(state, seq, root)
         setCreating(false)
         const created = state.issues[0]
         pushToast(
@@ -356,7 +363,7 @@ export function IssuesPage() {
     setMutating(true)
     const seq = beginRequest(root)
     try {
-      applyState(await updateIssue(root, id, patch), seq)
+      applyState(await updateIssue(root, id, patch), seq, root)
       return true
     } catch (err) {
       reportError("update issue", err)
