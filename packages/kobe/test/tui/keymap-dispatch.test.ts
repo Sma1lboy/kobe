@@ -13,7 +13,10 @@
 import { describe, expect, test } from "vitest"
 import { type RegisteredBinding, dispatchKeyEvent } from "../../src/tui/lib/keymap-dispatch"
 
-function makeEvt(name: string, mods: Partial<{ ctrl: boolean; meta: boolean; option: boolean; shift: boolean }> = {}) {
+function makeEvt(
+  name: string | undefined,
+  mods: Partial<{ ctrl: boolean; meta: boolean; option: boolean; shift: boolean; sequence: string }> = {},
+) {
   let defaultPrevented = false
   return {
     name,
@@ -21,6 +24,7 @@ function makeEvt(name: string, mods: Partial<{ ctrl: boolean; meta: boolean; opt
     meta: mods.meta ?? false,
     option: mods.option ?? false,
     shift: mods.shift ?? false,
+    sequence: mods.sequence,
     get defaultPrevented() {
       return defaultPrevented
     },
@@ -171,6 +175,65 @@ describe("dispatchKeyEvent", () => {
 
     expect(fired).toBe(true)
     expect(evt.defaultPrevented).toBe(true)
+  })
+
+  test("shifted punctuation can match without stealing the unshifted key", () => {
+    let fired = 0
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "shift+/", () => {
+        fired++
+      }),
+    ]
+
+    const shiftedSlash = makeEvt("/", { shift: true })
+    const plainSlash = makeEvt("/")
+
+    expect(dispatchKeyEvent(stack, shiftedSlash)).toBe(true)
+    expect(dispatchKeyEvent(stack, plainSlash)).toBe(false)
+    expect(fired).toBe(1)
+    expect(shiftedSlash.defaultPrevented).toBe(true)
+    expect(plainSlash.defaultPrevented).toBe(false)
+  })
+
+  test("printable sequence is a fallback when shifted punctuation has no key name", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "?", () => {
+        fired = true
+      }),
+    ]
+
+    const handled = dispatchKeyEvent(stack, makeEvt(undefined, { sequence: "?" }))
+
+    expect(handled).toBe(true)
+    expect(fired).toBe(true)
+  })
+
+  test("fullwidth question mark from IME matches ascii question bindings", () => {
+    let fired = 0
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "?", () => {
+        fired++
+      }),
+    ]
+
+    expect(dispatchKeyEvent(stack, makeEvt(undefined, { sequence: "？" }))).toBe(true)
+    expect(dispatchKeyEvent(stack, makeEvt("？"))).toBe(true)
+    expect(fired).toBe(2)
+  })
+
+  test("shifted letters still do not match shift-prefixed character bindings", () => {
+    let fired = false
+    const stack: RegisteredBinding[] = [
+      makeReg(1, "shift+k", () => {
+        fired = true
+      }),
+    ]
+
+    const handled = dispatchKeyEvent(stack, makeEvt("k", { shift: true }))
+
+    expect(handled).toBe(false)
+    expect(fired).toBe(false)
   })
 
   test("bare letter does not match modifier-prefixed binding", () => {

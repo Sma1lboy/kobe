@@ -176,6 +176,8 @@ export type SidebarProps = {
    * keystroke before it could reach the input.
    */
   onSearchActiveChange?: (active: boolean) => void
+  /** Collapse / expand the Tasks-pane key legend. Wired only by the tmux Tasks pane. */
+  onToggleKeys?: () => void
   /**
    * Optional width override. When omitted, falls back to {@link SIDEBAR_WIDTH}.
    * Wired by the Shell so the sidebar↔workspace splitter can resize the pane
@@ -604,6 +606,7 @@ export function Sidebar(props: SidebarProps) {
     searchMode,
     onSearchEnter: () => enterSearch(),
     onSearchExit: (select) => exitSearch(select),
+    onToggleKeys: () => props.onToggleKeys?.(),
   })
 
   // Small section header — a BOLD CAPS label + a trailing dim rule that

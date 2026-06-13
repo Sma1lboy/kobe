@@ -48,7 +48,7 @@ import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onMount, untrack } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
@@ -204,10 +204,14 @@ function TasksShell(props: {
   // too. Changed-only assignment makes the echo of our own write
   // (round-tripped through the watcher) a no-op. (Sort here; the
   // keys-legend effect lives next to its signal further down.)
-  createEffect(() => {
-    const payload = props.orch?.uiPrefsSignal()()
-    if (payload && payload.sortMode !== sortMode()) setSortMode(payload.sortMode)
-  })
+  createEffect(
+    on(
+      () => props.orch?.uiPrefsSignal()(),
+      (payload) => {
+        if (payload && payload.sortMode !== untrack(sortMode)) setSortMode(payload.sortMode)
+      },
+    ),
+  )
 
   // Update info comes from the daemon-owned `update` channel (the daemon polls
   // npm once and fans it out) rather than each pane hitting the registry. Keep
@@ -442,10 +446,14 @@ function TasksShell(props: {
   }
   // Follow the broadcast: a `?` toggle in another session re-folds this
   // legend too. Changed-only, so our own write's echo is a no-op.
-  createEffect(() => {
-    const payload = props.orch?.uiPrefsSignal()()
-    if (payload && payload.keysCollapsed !== keysCollapsed()) setKeysCollapsedSig(payload.keysCollapsed)
-  })
+  createEffect(
+    on(
+      () => props.orch?.uiPrefsSignal()(),
+      (payload) => {
+        if (payload && payload.keysCollapsed !== untrack(keysCollapsed)) setKeysCollapsedSig(payload.keysCollapsed)
+      },
+    ),
+  )
 
   // The sidebar's `/`-search lifts its active state here so the host-level
   // plain-letter chords below go quiet while the user is TYPING a query —
@@ -693,6 +701,7 @@ function TasksShell(props: {
           // the n/b/v gate above (KOB-244).
           focused={() => dialog.stack.length === 0}
           onSearchActiveChange={setSearchActive}
+          onToggleKeys={() => setKeysCollapsed(!keysCollapsed())}
         />
       </box>
       <ShortcutHints
