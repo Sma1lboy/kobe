@@ -263,6 +263,16 @@ export function Overview() {
             ref={filterRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Keyboard-first parity with the rail's filter: Enter jumps to
+              // the top match (first card of the bucket walk — "needs you"
+              // first), then blurs so j/k resume on the grid.
+              if (event.key === "Enter" && order.length > 0) {
+                event.preventDefault()
+                open(order[0])
+                event.currentTarget.blur()
+              }
+            }}
             placeholder="Filter tasks  ( / )"
             className="w-44 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
           />
