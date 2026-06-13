@@ -60,6 +60,8 @@ export const FANOUT_CAP = 10
 
 /** Allowed `--status` values, mirrored from {@link TaskStatus}. */
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
+const ISSUE_STATUSES = ["open", "doing", "hold", "done"] as const
+type IssueStatus = (typeof ISSUE_STATUSES)[number]
 
 type Flags = Map<string, string>
 
@@ -169,6 +171,7 @@ const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
+  issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   lifecycle: ["archive", "pin", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
   feedback: ["feedback"],
@@ -323,6 +326,51 @@ const VERBS: readonly VerbSpec[] = [
     ],
     offline: true,
     handler: feedback,
+  },
+  {
+    name: "issue-list",
+    summary: "List daemon-owned issues for a repo. A repo's old docs/issues.json is imported on first read.",
+    flags: [F.repo()],
+    handler: (ctx) => simpleRpc(ctx, "issue.list", { repoRoot: ctx.args.requirePath("repo") }),
+  },
+  {
+    name: "issue-create",
+    summary: "Create a daemon-owned issue for a repo.",
+    flags: [
+      F.repo(),
+      { name: "title", type: "string", required: true, placeholder: "T", description: "Issue title." },
+      { name: "body", type: "string", placeholder: "TEXT", description: "Issue body." },
+    ],
+    handler: (ctx) =>
+      simpleRpc(ctx, "issue.mutate", {
+        repoRoot: ctx.args.requirePath("repo"),
+        op: { type: "create", title: ctx.args.require("title"), body: ctx.args.str("body") },
+      }),
+  },
+  {
+    name: "issue-set-status",
+    summary: "Set a daemon-owned issue's status.",
+    flags: [
+      F.repo(),
+      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
+      { name: "status", type: "enum", required: true, values: ISSUE_STATUSES, description: "New issue status." },
+    ],
+    handler: (ctx) =>
+      simpleRpc(ctx, "issue.mutate", {
+        repoRoot: ctx.args.requirePath("repo"),
+        op: { type: "setStatus", id: ctx.args.int("id"), status: ctx.args.requireEnum<IssueStatus>("status") },
+      }),
+  },
+  {
+    name: "issue-update",
+    summary: "Update a daemon-owned issue's title and/or body.",
+    flags: [
+      F.repo(),
+      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
+      { name: "title", type: "string", placeholder: "T", description: "New title." },
+      { name: "body", type: "string", placeholder: "TEXT", description: "New body." },
+    ],
+    handler: issueUpdate,
   },
   {
     name: "collect",
@@ -926,6 +974,18 @@ function daemonOf(ctx: VerbContext): DaemonRpc {
 async function simpleRpc(ctx: VerbContext, name: string, payload: Record<string, unknown>): Promise<unknown> {
   // biome-ignore lint/suspicious/noExplicitAny: the protocol's request name is a finite union; this is the one generic call site.
   return daemonOf(ctx).request(name as any, payload)
+}
+
+async function issueUpdate(ctx: VerbContext): Promise<unknown> {
+  const title = ctx.args.str("title")
+  const body = ctx.args.str("body")
+  if (title === undefined && body === undefined) {
+    throw new ApiError("issue-update requires --title and/or --body", "MISSING_FLAG")
+  }
+  return simpleRpc(ctx, "issue.mutate", {
+    repoRoot: ctx.args.requirePath("repo"),
+    op: { type: "update", id: ctx.args.int("id"), title, body },
+  })
 }
 
 async function add(ctx: VerbContext): Promise<unknown> {

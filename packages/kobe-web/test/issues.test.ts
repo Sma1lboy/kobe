@@ -233,10 +233,10 @@ describe("quickStartPrompt", () => {
         body: "It needs 1.21 gigawatts.\nSee the schematic.",
       }),
     )
-    expect(prompt).toContain("docs/issues.json issue #42")
+    expect(prompt).toContain("kobe issue #42")
     expect(prompt).toContain("Wire the flux capacitor")
     expect(prompt).toContain("It needs 1.21 gigawatts.\nSee the schematic.")
-    expect(prompt).toContain('"status" to "done"')
+    expect(prompt).toContain("kobe api issue-set-status --repo . --id 42 --status done")
     // The caller flips to doing; the prompt must NOT tell the agent to.
     expect(prompt).not.toContain('"doing"')
   })
@@ -260,7 +260,6 @@ describe("quickStartIssue", () => {
   it("creates the task, flips to doing, and delivers the prompt", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-1" }
-      if (name === "task.ensureWorktree") return { worktreePath: "/u/w/task-1" }
       return {}
     })
     vi.mocked(ensureEngineTab).mockReturnValue("tab-1")
@@ -286,9 +285,7 @@ describe("quickStartIssue", () => {
     })
     // The daemon's active-task pointer follows, like every open-task path.
     expect(rpc).toHaveBeenCalledWith("task.setActive", { taskId: "task-1" })
-    expect(rpc).toHaveBeenCalledWith("task.ensureWorktree", {
-      taskId: "task-1",
-    })
+    expect(rpc).not.toHaveBeenCalledWith("task.ensureWorktree", expect.anything())
     expect(ensureEngineTab).toHaveBeenCalledWith("task-1")
     expect(sendPtyText).toHaveBeenCalledWith(
       "tab-1",
@@ -300,23 +297,13 @@ describe("quickStartIssue", () => {
       "/api/issues",
       expect.objectContaining({ method: "POST" }),
     )
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/issues/sync-worktree",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          repoRoot: "/u/p/kobe",
-          worktreePath: "/u/w/task-1",
-        }),
-      }),
-    )
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/issues/sync-worktree", expect.anything())
     vi.unstubAllGlobals()
   })
 
   it("survives a failed status flip (task already exists)", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-2" }
-      if (name === "task.ensureWorktree") return { worktreePath: "/u/w/task-2" }
       return {}
     })
     vi.mocked(ensureEngineTab).mockReturnValue("tab-2")
@@ -326,9 +313,7 @@ describe("quickStartIssue", () => {
       vi.fn((url: string) =>
         url === "/api/settings"
           ? Promise.resolve(new Response(JSON.stringify({ defaultEngine: "claude" })))
-          : url === "/api/issues"
-            ? Promise.reject(new Error("bridge down"))
-            : Promise.resolve(new Response(JSON.stringify({ ok: true }))),
+          : Promise.reject(new Error("bridge down")),
       ),
     )
 
@@ -342,7 +327,6 @@ describe("quickStartIssue", () => {
   it("falls back to daemon defaults when settings cannot be read", async () => {
     vi.mocked(rpc).mockImplementation(async (name) => {
       if (name === "task.create") return { taskId: "task-3" }
-      if (name === "task.ensureWorktree") return { worktreePath: "/u/w/task-3" }
       return {}
     })
     vi.mocked(ensureEngineTab).mockReturnValue("tab-3")

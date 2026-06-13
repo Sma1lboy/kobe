@@ -4,16 +4,18 @@ kobe work is tracked locally — there is no external issue tracker. Agents shou
 
 ## Sources of truth
 
-- **Backlog + open issues**: [`issues.json`](./issues.json) (resolved ones archived to [`issues-archive.json`](./issues-archive.json)).
+- **Backlog + open issues**: daemon-owned issue state, with the legacy [`issues.json`](./issues.json) imported on first read for compatibility.
 - **Current risks and follow-ups**: [`../HANDOFF.md`](../HANDOFF.md).
 - **User-facing shipped behavior**: [`../packages/kobe/CHANGELOG.md`](../packages/kobe/CHANGELOG.md).
 - **Durable product and architecture decisions**: `docs/*.md`.
 - **Proof of work**: git commits and test output.
 
-## Issues / backlog — `docs/issues.json`
+## Issues / backlog — daemon issue store
 
-A single committed JSON holds the active backlog. Deliberately low-ceremony: no
-type taxonomy, just a `status`. Shape:
+The daemon owns active issue state so web edits and agent automation see the
+same data from every worktree. Deliberately low-ceremony: no type taxonomy,
+just a `status`. The legacy committed `docs/issues.json` shape is still
+imported once when a repo has no daemon record yet:
 
 ```json
 {
@@ -25,13 +27,13 @@ type taxonomy, just a `status`. Shape:
 ```
 
 - **`status`**: `open` → `doing` → `done`, plus `hold` for issues parked on purpose (waiting on a decision, blocked, deliberately deferred). `hold` is a parking lot, not a lifecycle step — resume by flipping back to `open`. The archive sweep ignores it (only `done` moves), so held issues stay visible in the active file. Status is still the only dimension; don't add label/type fields.
-- **`id`**: take `nextId`, then increment `nextId`. Ids are never reused (the counter lives on the active file even after archiving).
-- **Adding**: append an object, bump `nextId`, commit. One JSON for everything — fine for a mostly-solo repo; if a parallel branch ever conflicts on the array, it's a trivial hand-merge.
-- **Closing**: flip `status` to `done`. Leave it in place until the next archive sweep.
-- **Archiving**: `bun run issues:archive` moves every `done` issue into `issues-archive.json` (newest first) and shrinks the active file. Run it periodically so `issues.json` stays small.
-- **Web panel**: the `kobe web` dashboard's Issues page reads and edits each repo's `docs/issues.json` (status flips incl. `hold`, new issues, one-click quick-start of a kobe task from an issue). It does whole-file read-modify-write through the bridge — same file, same last-write-wins contract as a hand edit.
+- **`id`**: take `nextId`, then increment `nextId`. Ids are never reused.
+- **Adding**: use the web Issues page or `kobe api issue-create --repo <path> --title ...`. The daemon stores the repo's issue record under the repo's git common-dir, so a source checkout and its task worktrees share the same issues.
+- **Closing**: flip `status` to `done`. Done issues stay visible in the Done column until a future archive/export flow exists.
+- **Agent automation**: use `kobe api issue-list`, `kobe api issue-create`, `kobe api issue-set-status`, and `kobe api issue-update`. From a task worktree, `--repo .` resolves to the same daemon issue record as the source checkout.
+- **Web panel**: the `kobe web` dashboard's Issues page proxies `/api/issues` to daemon `issue.*` RPCs (status flips incl. `hold`, new issues, one-click quick-start of a kobe task from an issue).
 
-Code changes still land their user-facing line as a **Changeset** (see [`RELEASING.md`](./RELEASING.md)) — `issues.json` is the *backlog of what to do*, the changelog is the *record of what shipped*. They're different things; an issue often closes by landing a change that carries its own changeset.
+Code changes still land their user-facing line as a **Changeset** (see [`RELEASING.md`](./RELEASING.md)) — issues are the *backlog of what to do*, the changelog is the *record of what shipped*. They're different things; an issue often closes by landing a change that carries its own changeset.
 
 ## Local workflow
 
@@ -46,7 +48,7 @@ Code changes still land their user-facing line as a **Changeset** (see [`RELEASI
 
 Use repo-local artifacts instead of external tickets:
 
-- Backlog / "we should do X" items go in `issues.json`.
+- Backlog / "we should do X" items go in the daemon issue tracker.
 - Immediate operational notes for the next session go in `HANDOFF.md`.
 - Durable design notes go in `docs/`.
 - Release-facing changes go in a Changeset → `CHANGELOG.md`.

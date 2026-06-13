@@ -578,7 +578,7 @@ function TopBar({
           onClick={() => navigate({ to: "/issues" })}
           className="flex items-center text-muted transition-colors hover:text-fg"
           aria-label="Issues"
-          title="Issues — repo docs/issues.json"
+          title="Issues — daemon tracker"
         >
           <CircleDot size={15} strokeWidth={1.8} />
         </button>

@@ -1,5 +1,5 @@
 /**
- * Issues — the web lens over each repo's committed `docs/issues.json`
+ * Issues — the web lens over the daemon-owned issue tracker
  * (docs/WORK-TRACKING.md): a project switcher with a cross-project
  * overview, four status columns (open / doing / hold / done) in the
  * Board's kanban grammar, inline create/edit, a detail peek drawer, and
@@ -8,8 +8,7 @@
  *
  * Data flow: every mutation returns the repo's full RepoIssues state, and
  * the page replaces its per-repo cache with it — no optimistic layer; the
- * file on disk is the only truth (last-write-wins, same as the archive
- * script).
+ * daemon store is the only truth.
  */
 
 import { useNavigate } from "@tanstack/react-router"
@@ -144,7 +143,7 @@ function NewIssueDialog({
             New Issue
           </span>
           <span className="font-mono text-[10px] text-subtle">
-            docs/issues.json
+            daemon store
           </span>
         </div>
         <form
@@ -510,7 +509,7 @@ export function IssuesPage() {
             disabled={loading}
             className="flex items-center text-muted transition-colors hover:text-fg disabled:opacity-40"
             aria-label="Refresh issues"
-            title="Refresh from docs/issues.json"
+            title="Refresh issues"
           >
             <RefreshCw
               size={14}
@@ -592,7 +591,7 @@ export function IssuesPage() {
                     <span className="text-[11px] text-subtle">
                       {failed[option.repo]
                         ? "failed to load issues"
-                        : "no issues file"}
+                        : "no issues yet"}
                     </span>
                   </button>
                 ))}
@@ -612,8 +611,8 @@ export function IssuesPage() {
             <div className="flex h-full min-w-max flex-col gap-2">
               {!selected.exists && (
                 <p className="text-[11px] text-subtle">
-                  This repo has no docs/issues.json yet — the first “New issue”
-                  creates it (docs/ must exist).
+                  This repo has no daemon issues yet — the first “New issue”
+                  creates the tracker entry.
                 </p>
               )}
               <div className="flex min-h-0 flex-1 gap-4">

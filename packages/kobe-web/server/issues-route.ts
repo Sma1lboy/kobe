@@ -1,0 +1,49 @@
+import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
+
+interface RpcLink {
+  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
+}
+
+const ISSUES_ROUTE = "/api/issues"
+
+function errorResponse(err: unknown, status = 500): Response {
+  return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status })
+}
+
+async function handleGet(link: RpcLink, url: URL): Promise<Response> {
+  const repoRoot = url.searchParams.get("repoRoot")
+  if (!repoRoot) return Response.json({ error: "missing repoRoot" }, { status: 400 })
+  try {
+    return Response.json(await link.request("issue.list", { repoRoot }))
+  } catch (err) {
+    return errorResponse(err)
+  }
+}
+
+async function handlePost(link: RpcLink, req: Request): Promise<Response> {
+  let parsed: unknown
+  try {
+    parsed = await req.json()
+  } catch {
+    return Response.json({ error: "invalid JSON body" }, { status: 400 })
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return Response.json({ error: "body must be a JSON object" }, { status: 400 })
+  }
+  const body = parsed as { repoRoot?: unknown; op?: unknown }
+  if (typeof body.repoRoot !== "string" || body.repoRoot.length === 0) {
+    return Response.json({ error: "missing repoRoot" }, { status: 400 })
+  }
+  try {
+    return Response.json(await link.request("issue.mutate", { repoRoot: body.repoRoot, op: body.op }))
+  } catch (err) {
+    return errorResponse(err)
+  }
+}
+
+export async function handleIssuesRequest(req: Request, url: URL, link: RpcLink): Promise<Response | null> {
+  if (url.pathname !== ISSUES_ROUTE) return null
+  if (req.method === "GET") return handleGet(link, url)
+  if (req.method === "POST") return handlePost(link, req)
+  return Response.json({ error: "method not allowed" }, { status: 405 })
+}

@@ -1,8 +1,8 @@
 /**
  * Issues API client + pure helpers — talks to the bridge's /api/issues
- * routes (packages/kobe/src/web/issues.ts), which read/write each repo's
- * committed `docs/issues.json`. Also owns quick-start: spawning a kobe
- * task from an issue via the existing task-creation + PTY plumbing.
+ * routes, which proxy to the daemon-owned issue store. Also owns quick-start:
+ * spawning a kobe task from an issue via the existing task-creation + PTY
+ * plumbing.
  */
 
 import { fetchDefaultEngine } from "./settings.ts"
@@ -77,18 +77,6 @@ export async function updateIssue(
   patch: { title?: string; body?: string },
 ): Promise<RepoIssues> {
   return postOp(repoRoot, { type: "update", id, ...patch })
-}
-
-async function syncIssuesToWorktree(
-  repoRoot: string,
-  worktreePath: string,
-): Promise<void> {
-  const res = await fetch("/api/issues/sync-worktree", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ repoRoot, worktreePath }),
-  })
-  if (!res.ok) await failWith(res, "sync issues into worktree")
 }
 
 /* ----- pure helpers ------------------------------------------------------- */
@@ -224,18 +212,15 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
 
 /**
  * The engine's first message for a quick-started issue. The caller has
- * already flipped the issue to `doing`; the prompt asks the agent to set
- * it to `done` in docs/issues.json when the work lands.
+ * already flipped the issue to `doing`; the prompt asks the agent to report
+ * completion through the daemon-owned issue API, not by editing repo files.
  */
 export function quickStartPrompt(issue: Issue): string {
-  const lines = [
-    `Work on docs/issues.json issue #${issue.id}: ${issue.title}`,
-    "",
-  ]
+  const lines = [`Work on kobe issue #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
   if (body) lines.push(body, "")
   lines.push(
-    `When the work lands, update docs/issues.json: set issue #${issue.id}'s "status" to "done". Keep the file's formatting (2-space indent, trailing newline) intact.`,
+    `When the work lands, run: kobe api issue-set-status --repo . --id ${issue.id} --status done`,
   )
   return lines.join("\n")
 }
@@ -265,11 +250,6 @@ export async function quickStartIssue(
   // /task/$taskId route effect won't fire it (selectTask runs first).
   void rpc("task.setActive", { taskId }).catch(() => {})
   await setIssueStatus(repoRoot, issue.id, "doing").catch(() => {})
-  const { worktreePath } = await rpc<{ worktreePath: string }>(
-    "task.ensureWorktree",
-    { taskId },
-  )
-  await syncIssuesToWorktree(repoRoot, worktreePath)
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, quickStartPrompt(issue))
   return { taskId }

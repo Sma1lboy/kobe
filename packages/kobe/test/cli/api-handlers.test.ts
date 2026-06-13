@@ -221,6 +221,26 @@ describe("add handler", () => {
   })
 })
 
+// ── issues: daemon-owned tracker ─────────────────────────────────────────────
+
+describe("issue handlers", () => {
+  it("issue-set-status sends a daemon-owned issue mutation", async () => {
+    const client = new FakeClient({
+      "issue.mutate": () => ({ repoRoot: "/repo/x", exists: true, nextId: 9, issues: [] }),
+    })
+    await invokeVerb("issue-set-status", ["--repo", "/repo/x", "--id", "8", "--status", "done"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      {
+        name: "issue.mutate",
+        payload: { repoRoot: "/repo/x", op: { type: "setStatus", id: 8, status: "done" } },
+      },
+    ])
+  })
+})
+
 // ── send: task resolution (explicit id vs active task) ──────────────────────
 
 describe("send handler task resolution", () => {

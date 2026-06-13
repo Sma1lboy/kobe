@@ -149,7 +149,7 @@ export function CommandPalette({
       {
         id: "action:issues",
         label: "Open issues",
-        hint: "docs/issues.json",
+        hint: "daemon tracker",
         icon: "issues",
         run: () => {
           void navigate({ to: "/issues" })

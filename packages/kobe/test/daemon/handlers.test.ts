@@ -1,5 +1,6 @@
 import type { DaemonActivityRegistry } from "@sma1lboy/kobe-daemon/daemon/activity-registry"
 import type { DaemonEventBus } from "@sma1lboy/kobe-daemon/daemon/event-bus"
+import type { IssuesStore } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import {
   type DaemonHandlerContext,
@@ -64,13 +65,14 @@ const SERIALIZED_TASK = {
 interface Recorded {
   readonly published: Array<{ channel: string; payload: unknown }>
   readonly reported: Array<{ taskId: string; kind: string; detail?: unknown }>
+  readonly issueCalls: Array<{ method: string; repo: unknown; op?: unknown }>
   readonly cleared: string[]
   stopped: number
 }
 
 /** Build a handler context around a partial fake Orchestrator — no socket. */
 function fakeCtx(orch: Record<string, unknown> = {}): { ctx: DaemonHandlerContext; rec: Recorded } {
-  const rec: Recorded = { published: [], reported: [], cleared: [], stopped: 0 }
+  const rec: Recorded = { published: [], reported: [], issueCalls: [], cleared: [], stopped: 0 }
   const ctx: DaemonHandlerContext = {
     orch: { listTasks: () => [], ...orch } as unknown as Orchestrator,
     bus: {
@@ -80,6 +82,16 @@ function fakeCtx(orch: Record<string, unknown> = {}): { ctx: DaemonHandlerContex
       report: (taskId: string, kind: string, detail?: unknown) => rec.reported.push({ taskId, kind, detail }),
       clearTask: (taskId: string) => rec.cleared.push(taskId),
     } as unknown as DaemonActivityRegistry,
+    issues: {
+      list: async (repo: unknown) => {
+        rec.issueCalls.push({ method: "list", repo })
+        return { repoRoot: String(repo), exists: false, nextId: 1, issues: [] }
+      },
+      mutate: async (repo: unknown, op: unknown) => {
+        rec.issueCalls.push({ method: "mutate", repo, op })
+        return { repoRoot: String(repo), exists: true, nextId: 2, issues: [] }
+      },
+    } as unknown as IssuesStore,
     daemon: {
       startedAt: new Date("2026-06-01T00:00:00.000Z"),
       socketPath: "/tmp/fake/daemon.sock",
@@ -121,6 +133,8 @@ describe("daemon handler registry", () => {
       "task.ensureMain",
       "task.ensureWorktree",
       "task.setActive",
+      "issue.list",
+      "issue.mutate",
       "worktree.discoverAdoptable",
       "worktree.adopt",
       "worktree.reconcile",
@@ -222,6 +236,25 @@ describe("daemon handler registry", () => {
       await expect(dispatch("task.move", { taskId: "t1", direction: "sideways" }, ctx)).rejects.toThrow(
         "direction must be up or down",
       )
+    })
+  })
+
+  describe("issues", () => {
+    it("issue.list and issue.mutate delegate to the daemon-owned issue store", async () => {
+      const { ctx, rec } = fakeCtx()
+      await expect(dispatch("issue.list", { repoRoot: "/repo" }, ctx)).resolves.toEqual({
+        repoRoot: "/repo",
+        exists: false,
+        nextId: 1,
+        issues: [],
+      })
+      await expect(
+        dispatch("issue.mutate", { repoRoot: "/repo", op: { type: "setStatus", id: 8, status: "done" } }, ctx),
+      ).resolves.toEqual({ repoRoot: "/repo", exists: true, nextId: 2, issues: [] })
+      expect(rec.issueCalls).toEqual([
+        { method: "list", repo: "/repo" },
+        { method: "mutate", repo: "/repo", op: { type: "setStatus", id: 8, status: "done" } },
+      ])
     })
   })
 

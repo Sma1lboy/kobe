@@ -186,6 +186,18 @@ describe("bridge request handler", () => {
     })
   })
 
+  describe("/api/issues", () => {
+    it("proxies issue reads to the daemon", async () => {
+      const { handle, link } = build({
+        onRequest: (name) => (name === "issue.list" ? { repoRoot: "/repo", exists: false, nextId: 1, issues: [] } : {}),
+      })
+      const res = await handle(new Request("http://localhost/api/issues?repoRoot=%2Frepo"))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ repoRoot: "/repo", exists: false, nextId: 1, issues: [] })
+      expect(link.calls).toEqual([{ name: "issue.list", payload: { repoRoot: "/repo" } }])
+    })
+  })
+
   describe("/api/themes", () => {
     it("returns the bundled theme palettes", async () => {
       const { handle } = build()

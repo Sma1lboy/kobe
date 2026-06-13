@@ -155,7 +155,7 @@ kobe work is maintained locally. Do not create Linear issues, update Linear stat
 
 Use local artifacts instead:
 
-- Backlog + open issues live in [`docs/issues.json`](./docs/issues.json) — one JSON, `status` only (`open`/`doing`/`done`), `done` swept to `issues-archive.json` via `bun run issues:archive`. See [`docs/WORK-TRACKING.md`](./docs/WORK-TRACKING.md).
+- Backlog + open issues live in the daemon-owned issue store, accessed through the web Issues page or `kobe api issue-*`; legacy [`docs/issues.json`](./docs/issues.json) is imported once for compatibility. See [`docs/WORK-TRACKING.md`](./docs/WORK-TRACKING.md).
 - Code changes are tracked by git commits.
 - User-facing shipped behavior is tracked in [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md) (one Changeset per change — see [`docs/RELEASING.md`](./docs/RELEASING.md)).
 - Current risks and follow-ups are tracked in [`HANDOFF.md`](./HANDOFF.md).

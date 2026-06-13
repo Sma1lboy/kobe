@@ -17,7 +17,8 @@
  *   GET  /api/terminal-spec   PTY launch spec for a task's shell tab
  *   GET  /api/engines         engine-owned vendor list (id + display label)
  *   GET/PATCH /api/settings   shared TUI/web settings backed by state.json
- *   *    /api/notes, /api/diff, /api/issues  bridge-local (filesystem) routes
+ *   *    /api/notes, /api/diff       bridge-local filesystem routes
+ *   *    /api/issues                 daemon-owned issue tracker proxy
  *   *                         static SPA fallthrough when `staticDir` is set
  */
 
@@ -51,10 +52,10 @@ import type { VendorId } from "../../kobe/src/types/task.ts"
 import { BUILTIN_VENDORS, isBuiltinVendor } from "../../kobe/src/types/vendor.ts"
 import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
 import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
-import { handleIssuesRequest } from "../../kobe/src/web/issues.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { handleThemesRequest } from "../../kobe/src/web/themes.ts"
 import { DaemonLink } from "./daemon-link.ts"
+import { handleIssuesRequest } from "./issues-route.ts"
 import { WEB_RPC_ALLOWSET } from "./rpc-allowlist.ts"
 import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./session.ts"
 
@@ -378,7 +379,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (diff) return diff
     const history = await handleHistoryRequest(req, url)
     if (history) return history
-    const issues = await handleIssuesRequest(req, url)
+    const issues = await handleIssuesRequest(req, url, link)
     if (issues) return issues
     const themes = handleThemesRequest(req, url)
     if (themes) return themes

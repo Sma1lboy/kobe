@@ -107,6 +107,8 @@ export type DaemonRequestName =
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
+  | "issue.list"
+  | "issue.mutate"
   | "worktree.discoverAdoptable"
   | "worktree.adopt"
   // Creation-time auto-adopt (KOB): a `kobe hook worktree-created` (global

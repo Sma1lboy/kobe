@@ -1,0 +1,243 @@
+import { execFile } from "node:child_process"
+import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises"
+import { homedir } from "node:os"
+import { dirname, isAbsolute, join, resolve } from "node:path"
+import { promisify } from "node:util"
+
+const execFileAsync = promisify(execFile)
+
+export type IssueStatus = "open" | "doing" | "hold" | "done"
+
+export const ISSUE_STATUSES: readonly IssueStatus[] = ["open", "doing", "hold", "done"]
+
+export interface Issue {
+  id: number
+  title: string
+  status: IssueStatus
+  created: string
+  body: string
+}
+
+export interface RepoIssues {
+  repoRoot: string
+  exists: boolean
+  nextId: number
+  issues: Issue[]
+}
+
+interface RepoIssueRecord {
+  repoRoot: string
+  nextId: number
+  issues: Issue[]
+}
+
+interface IssuesStoreFile {
+  version: 1
+  repos: Record<string, RepoIssueRecord>
+}
+
+type IssueOp =
+  | { type: "create"; title?: unknown; body?: unknown }
+  | { type: "setStatus"; id?: unknown; status?: unknown }
+  | { type: "update"; id?: unknown; title?: unknown; body?: unknown }
+
+export function defaultIssuesStorePath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
+  return join(homeDir, ".kobe", "issues.json")
+}
+
+function isValidStatus(value: unknown): value is IssueStatus {
+  return typeof value === "string" && (ISSUE_STATUSES as readonly string[]).includes(value)
+}
+
+function normalizeIssue(entry: unknown): Issue | null {
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return null
+  const raw = entry as Record<string, unknown>
+  if (typeof raw.id !== "number") return null
+  return {
+    id: raw.id,
+    title: typeof raw.title === "string" ? raw.title : "(untitled)",
+    status: isValidStatus(raw.status) ? raw.status : "open",
+    created: typeof raw.created === "string" ? raw.created : "",
+    body: typeof raw.body === "string" ? raw.body : "",
+  }
+}
+
+function emptyStore(): IssuesStoreFile {
+  return { version: 1, repos: {} }
+}
+
+function todayStamp(): string {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${d.getFullYear()}-${mm}-${dd}`
+}
+
+async function gitCommonDir(path: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", path, "rev-parse", "--git-common-dir"])
+  const dir = stdout.trim()
+  return realpath(isAbsolute(dir) ? dir : resolve(path, dir))
+}
+
+async function gitTopLevel(path: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", path, "rev-parse", "--show-toplevel"])
+  return stdout.trim()
+}
+
+async function resolveRepo(raw: unknown): Promise<{ repoRoot: string; repoKey: string }> {
+  if (typeof raw !== "string" || raw.length === 0) throw new Error("repoRoot is required")
+  const absolute = resolve(raw)
+  const s = await stat(absolute).catch(() => null)
+  if (!s?.isDirectory()) throw new Error("repoRoot does not exist")
+  const [repoRoot, repoKey] = await Promise.all([gitTopLevel(absolute), gitCommonDir(absolute)])
+  return { repoRoot, repoKey }
+}
+
+async function readStore(path: string): Promise<IssuesStoreFile> {
+  try {
+    const raw = JSON.parse(await readFile(path, "utf8")) as Partial<IssuesStoreFile>
+    const repos: Record<string, RepoIssueRecord> = {}
+    if (raw.repos && typeof raw.repos === "object") {
+      for (const [key, value] of Object.entries(raw.repos)) {
+        if (!value || typeof value !== "object") continue
+        const record = value as Partial<RepoIssueRecord>
+        repos[key] = {
+          repoRoot: typeof record.repoRoot === "string" ? record.repoRoot : "",
+          nextId: typeof record.nextId === "number" ? record.nextId : 1,
+          issues: Array.isArray(record.issues)
+            ? record.issues.map(normalizeIssue).filter((issue): issue is Issue => issue !== null)
+            : [],
+        }
+      }
+    }
+    return { version: 1, repos }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyStore()
+    throw err
+  }
+}
+
+async function writeStore(path: string, store: IssuesStoreFile): Promise<void> {
+  await mkdir(dirname(path), { recursive: true })
+  const tmp = `${path}.tmp`
+  await writeFile(tmp, `${JSON.stringify(store, null, 2)}\n`, "utf8")
+  await rename(tmp, path)
+}
+
+async function importDocsIssues(repoRoot: string): Promise<RepoIssueRecord | null> {
+  try {
+    const data = JSON.parse(await readFile(join(repoRoot, "docs", "issues.json"), "utf8")) as {
+      nextId?: unknown
+      issues?: unknown
+    }
+    return {
+      repoRoot,
+      nextId: typeof data.nextId === "number" ? data.nextId : 1,
+      issues: Array.isArray(data.issues)
+        ? data.issues.map(normalizeIssue).filter((issue): issue is Issue => issue !== null)
+        : [],
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw err
+  }
+}
+
+function response(repoRoot: string, record: RepoIssueRecord | null): RepoIssues {
+  return {
+    repoRoot,
+    exists: record !== null,
+    nextId: record?.nextId ?? 1,
+    issues: record?.issues ?? [],
+  }
+}
+
+const locks = new Map<string, Promise<unknown>>()
+
+async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const tail = locks.get(key) ?? Promise.resolve()
+  const run = tail.then(fn)
+  const settled = run.then(
+    () => undefined,
+    () => undefined,
+  )
+  locks.set(key, settled)
+  void settled.then(() => {
+    if (locks.get(key) === settled) locks.delete(key)
+  })
+  return run
+}
+
+export class IssuesStore {
+  constructor(private readonly path = defaultIssuesStorePath()) {}
+
+  async list(repo: unknown): Promise<RepoIssues> {
+    const { repoRoot, repoKey } = await resolveRepo(repo)
+    return withLock(repoKey, async () => {
+      const store = await readStore(this.path)
+      let record: RepoIssueRecord | null = store.repos[repoKey] ?? null
+      if (!record) {
+        record = await importDocsIssues(repoRoot)
+        if (record) {
+          store.repos[repoKey] = record
+          await writeStore(this.path, store)
+        }
+      }
+      return response(repoRoot, record)
+    })
+  }
+
+  async mutate(repo: unknown, op: unknown): Promise<RepoIssues> {
+    const { repoRoot, repoKey } = await resolveRepo(repo)
+    if (!op || typeof op !== "object" || Array.isArray(op) || typeof (op as { type?: unknown }).type !== "string") {
+      throw new Error("missing op")
+    }
+    return withLock(repoKey, async () => {
+      const store = await readStore(this.path)
+      let record = store.repos[repoKey]
+      if (!record) {
+        record = (await importDocsIssues(repoRoot)) ?? { repoRoot, nextId: 1, issues: [] }
+        store.repos[repoKey] = record
+      }
+      record.repoRoot = repoRoot
+      const typed = op as IssueOp
+      if (typed.type === "create") {
+        if (typeof typed.title !== "string" || typed.title.trim().length === 0) {
+          throw new Error("create requires a non-empty title")
+        }
+        if (typed.body !== undefined && typeof typed.body !== "string") throw new Error("body must be a string")
+        record.issues = [
+          {
+            id: record.nextId,
+            title: typed.title,
+            status: "open",
+            created: todayStamp(),
+            body: typeof typed.body === "string" ? typed.body : "",
+          },
+          ...record.issues,
+        ]
+        record.nextId += 1
+      } else if (typed.type === "setStatus") {
+        if (typeof typed.id !== "number") throw new Error("setStatus requires a numeric id")
+        if (!isValidStatus(typed.status)) throw new Error(`invalid status: must be one of ${ISSUE_STATUSES.join(", ")}`)
+        const issue = record.issues.find((i) => i.id === typed.id)
+        if (!issue) throw new Error(`no issue #${typed.id}`)
+        issue.status = typed.status
+      } else if (typed.type === "update") {
+        if (typeof typed.id !== "number") throw new Error("update requires a numeric id")
+        if (typed.title !== undefined && (typeof typed.title !== "string" || typed.title.trim().length === 0)) {
+          throw new Error("title must be a non-empty string")
+        }
+        if (typed.body !== undefined && typeof typed.body !== "string") throw new Error("body must be a string")
+        const issue = record.issues.find((i) => i.id === typed.id)
+        if (!issue) throw new Error(`no issue #${typed.id}`)
+        if (typeof typed.title === "string") issue.title = typed.title
+        if (typeof typed.body === "string") issue.body = typed.body
+      } else {
+        throw new Error(`unknown op type: ${(typed as { type: string }).type}`)
+      }
+      await writeStore(this.path, store)
+      return response(repoRoot, record)
+    })
+  }
+}
