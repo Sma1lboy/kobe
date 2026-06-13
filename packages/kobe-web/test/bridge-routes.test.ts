@@ -461,4 +461,34 @@ describe("/api/quick-prompts", () => {
     )
     expect(bad.status).toBe(400)
   })
+
+  it("keeps built-in engine display names separate from launch commands", async () => {
+    const { handle } = build()
+    const patched = (await (
+      await handle(
+        new Request("http://localhost/api/settings", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            engineUpdates: [
+              {
+                id: "codex",
+                command: "codex --dangerously-bypass-approvals-and-sandbox",
+                label: "Codex",
+              },
+            ],
+          }),
+        }),
+      )
+    ).json()) as {
+      engines: Array<{ id: string; label: string; command: string }>
+    }
+    expect(patched.engines).toContainEqual(
+      expect.objectContaining({
+        id: "codex",
+        label: "Codex",
+        command: "codex --dangerously-bypass-approvals-and-sandbox",
+      }),
+    )
+  })
 })

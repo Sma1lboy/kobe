@@ -305,6 +305,9 @@ function EngineRow({
 }) {
   const [command, setCommand] = useState(engine.command)
   const [label, setLabel] = useState(engine.label)
+  const labelLooksLikeCommand =
+    /\s--[A-Za-z0-9][\w-]*/.test(label) &&
+    !/\s--[A-Za-z0-9][\w-]*/.test(command)
 
   useEffect(() => {
     setCommand(engine.command)
@@ -337,7 +340,9 @@ function EngineRow({
         </button>
       </div>
       <label className="mt-3 block">
-        <span className="text-[11px] text-muted">Display name</span>
+        <span className="text-[11px] text-muted">
+          Display name (label only)
+        </span>
         <input
           value={label}
           onChange={(event) => setLabel(event.target.value)}
@@ -345,13 +350,21 @@ function EngineRow({
         />
       </label>
       <label className="mt-2 block">
-        <span className="text-[11px] text-muted">Launch command</span>
+        <span className="text-[11px] text-muted">
+          Launch command (argv that kobe runs)
+        </span>
         <input
           value={command}
           onChange={(event) => setCommand(event.target.value)}
           className="mt-1 w-full border border-line bg-surface px-2 py-1 font-mono text-fg focus:border-line-active focus:outline-none"
         />
       </label>
+      {labelLooksLikeCommand ? (
+        <div className="mt-2 border border-kobe-yellow/40 bg-kobe-yellow/10 px-2 py-1 text-[11px] leading-relaxed text-kobe-yellow">
+          This looks like a flag in the display name. Put permission/model flags
+          in Launch command; the label is never executed.
+        </div>
+      ) : null}
       <div className="mt-3 flex items-center gap-2">
         <button
           type="button"
@@ -398,7 +411,8 @@ function EnginesSection({
       <Card title="Launch commands">
         <p className="text-[11px] leading-relaxed text-subtle">
           Same shared engine settings as the TUI. Built-ins can be renamed or
-          pointed at a different command; custom engines are available in new
+          pointed at a different command. Permission/model flags must live in
+          Launch command, not Display name. Custom engines are available in new
           task and tab pickers.
         </p>
         <div className="space-y-2">
