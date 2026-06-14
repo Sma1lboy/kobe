@@ -10,7 +10,7 @@ import {
   CircleHelp,
   Columns3,
   FolderInput,
-  LayoutGrid,
+  Inbox,
   Loader2,
   PanelRight,
   Plus,
@@ -625,12 +625,12 @@ function TopBar({
         </span>
         <button
           type="button"
-          onClick={() => navigate({ to: "/overview" })}
+          onClick={() => navigate({ to: "/issues" })}
           className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Overview"
-          title="Overview — triage all tasks"
+          aria-label="Issues"
+          title="Issues — track and quick-start work"
         >
-          <LayoutGrid size={15} strokeWidth={1.8} />
+          <Inbox size={15} strokeWidth={1.8} />
         </button>
         <button
           type="button"

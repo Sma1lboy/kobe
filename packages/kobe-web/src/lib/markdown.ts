@@ -19,6 +19,21 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
+/**
+ * Image sources are far more restricted than links: ONLY the bridge's own
+ * issue-asset route (`/api/issue-assets/<16-hex hash>/<file>.<ext>`) may render
+ * as an `<img>`. Anything else (remote urls, data:, arbitrary paths) falls back
+ * to escaped text — never an image tag. This keeps the escape-first posture and
+ * blocks `![](javascript:…)` / tracking-pixel / off-site fetches outright.
+ */
+const ISSUE_ASSET_SRC =
+  /^\/api\/issue-assets\/[a-f0-9]{16}\/[A-Za-z0-9_-]+\.[a-z0-9]+$/
+
+function safeImageSrc(raw: string): string | null {
+  const url = raw.trim()
+  return ISSUE_ASSET_SRC.test(url) ? url : null
+}
+
 /** Allow only http(s) and true relative links; everything else renders as
  *  text. `//host` is protocol-relative (resolves off-site), not relative. */
 function safeHref(raw: string): string | null {
@@ -36,9 +51,24 @@ function safeHref(raw: string): string | null {
   return null
 }
 
-/** Link/bold/italic on a NON-code, already-escaped fragment. */
+/** Image/link/bold/italic on a NON-code, already-escaped fragment. */
 function transformSpans(s: string): string {
   let out = s
+  // ![alt](src): MUST run before the link rule (`![…]` is a superset of `[…]`),
+  // else the link pass would eat the `[…](…)` and leave a stray `!`. Only the
+  // bridge's own issue-asset route renders as an <img>; anything else falls
+  // back to escaped text. Gated on `]`/`)` for the same backtracking reason.
+  if (out.includes("]") && out.includes(")")) {
+    out = out.replace(
+      /!\[([^\]]*)\]\(([^)]+)\)/g,
+      (_m, alt: string, url: string) => {
+        // The url was HTML-escaped; unescape &amp; before the route check.
+        const src = safeImageSrc(url.replace(/&amp;/g, "&"))
+        if (!src) return `![${alt}](${url})`
+        return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" class="kobe-md-img">`
+      },
+    )
+  }
   // [text](url): url is from escaped text; validate scheme, drop unsafe.
   // Skip the link regex when there's no `]`/`(` to match: its `[^\]]+`/`[^)]+`
   // classes backtrack quadratically on a long run of unmatched `[`.

@@ -9,14 +9,14 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as OverviewRouteImport } from './routes/overview'
+import { Route as IssuesRouteImport } from './routes/issues'
 import { Route as BoardRouteImport } from './routes/board'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TaskTaskIdRouteImport } from './routes/task.$taskId'
 
-const OverviewRoute = OverviewRouteImport.update({
-  id: '/overview',
-  path: '/overview',
+const IssuesRoute = IssuesRouteImport.update({
+  id: '/issues',
+  path: '/issues',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BoardRoute = BoardRouteImport.update({
@@ -38,44 +38,44 @@ const TaskTaskIdRoute = TaskTaskIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/overview': typeof OverviewRoute
+  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/overview': typeof OverviewRoute
+  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/board': typeof BoardRoute
-  '/overview': typeof OverviewRoute
+  '/issues': typeof IssuesRoute
   '/task/$taskId': typeof TaskTaskIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/board' | '/overview' | '/task/$taskId'
+  fullPaths: '/' | '/board' | '/issues' | '/task/$taskId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/board' | '/overview' | '/task/$taskId'
-  id: '__root__' | '/' | '/board' | '/overview' | '/task/$taskId'
+  to: '/' | '/board' | '/issues' | '/task/$taskId'
+  id: '__root__' | '/' | '/board' | '/issues' | '/task/$taskId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BoardRoute: typeof BoardRoute
-  OverviewRoute: typeof OverviewRoute
+  IssuesRoute: typeof IssuesRoute
   TaskTaskIdRoute: typeof TaskTaskIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/overview': {
-      id: '/overview'
-      path: '/overview'
-      fullPath: '/overview'
-      preLoaderRoute: typeof OverviewRouteImport
+    '/issues': {
+      id: '/issues'
+      path: '/issues'
+      fullPath: '/issues'
+      preLoaderRoute: typeof IssuesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/board': {
@@ -105,7 +105,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BoardRoute: BoardRoute,
-  OverviewRoute: OverviewRoute,
+  IssuesRoute: IssuesRoute,
   TaskTaskIdRoute: TaskTaskIdRoute,
 }
 export const routeTree = rootRouteImport

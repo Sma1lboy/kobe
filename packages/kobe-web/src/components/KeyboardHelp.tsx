@@ -47,11 +47,6 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
     detail: "the folder-in icon next to + — pull an existing worktree in",
   },
   {
-    label: "Overview",
-    detail:
-      "the grid icon in the top bar — triage every task at once; j/k highlight, Enter opens",
-  },
-  {
     label: "Chat / Vendor / Terminal",
     detail:
       "tab kinds inside a task workspace; Chat has search, a hide-tools toggle, and copy-as-Markdown (whole session, or hover a message to copy just it)",
@@ -59,7 +54,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Triage",
     detail:
-      "rail status chips (All/Needs/Run/Dirty) + the Overview grid — filter by what needs you",
+      "rail status chips (All/Needs/Run/Dirty) — filter by what needs you",
   },
   {
     label: "Changes / diff",
@@ -68,7 +63,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Conflicts",
     detail:
-      "a ⚠ on a task (rail / Overview / board) means its branch collides with another in-flight task — red = real merge conflict, yellow = file overlap; hover for who + which files",
+      "a ⚠ on a task (rail / board) means its branch collides with another in-flight task — red = real merge conflict, yellow = file overlap; hover for who + which files",
   },
   {
     label: "Copy link",

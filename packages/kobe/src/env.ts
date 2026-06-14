@@ -95,6 +95,17 @@ export function keybindingsConfigPath(): string {
 }
 
 /**
+ * Directory for issue-attachment assets uploaded from the web Issues panel —
+ * `~/.kobe/issue-assets/` (or `$KOBE_HOME_DIR/.kobe/issue-assets/`). Honours
+ * `KOBE_HOME_DIR` via {@link kobeStateDir} like every other state path. Assets
+ * are stored per-repo under a hash subdir; the writer mkdir's at the write
+ * site (see kobe-web/server/issue-assets-route.ts), so this is path-only.
+ */
+export function issueAssetsDir(): string {
+  return join(kobeStateDir(), "issue-assets")
+}
+
+/**
  * SSH ControlMaster socket for a remote project — one multiplexed connection
  * per host/user/port, reused by every `ssh` kobe runs against that remote (see
  * `exec/exec-host.ts`). Lives under `<home>/.kobe/ssh/` like the daemon socket

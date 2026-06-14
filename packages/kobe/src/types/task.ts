@@ -120,6 +120,14 @@ export interface Task {
    * `default` sort). Cards without one sort by creation time on the board.
    */
   readonly position?: number
+  /**
+   * Engine reasoning/effort level for this task (e.g. Codex's
+   * `model_reasoning_effort`). Optional + engine-specific — the launch path
+   * ({@link import("@/engine/interactive-command").withEngineEffort}) only
+   * applies a value the task's engine actually understands and drops anything
+   * else, so an unset/unknown value is a no-op. Old records load unchanged.
+   */
+  readonly modelEffort?: string
   readonly createdAt: string
   readonly updatedAt: string
 }

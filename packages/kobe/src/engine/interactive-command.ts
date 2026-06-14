@@ -97,14 +97,39 @@ export function parseEngineCommand(command: string): string[] {
   return out
 }
 
-export function interactiveEngineCommand(vendor: VendorId | undefined): readonly string[] {
+export function interactiveEngineCommand(vendor: VendorId | undefined, effort?: string): readonly string[] {
   const v: VendorId = vendor ?? "claude"
   const override = getPersistedString(engineCommandKey(v))?.trim()
-  if (override) {
-    const argv = parseEngineCommand(override)
-    if (argv.length > 0) return argv
-  }
-  return defaultEngineCommand(v)
+  const base = (() => {
+    if (override) {
+      const argv = parseEngineCommand(override)
+      if (argv.length > 0) return argv
+    }
+    return defaultEngineCommand(v)
+  })()
+  return withEngineEffort(base, v, effort)
+}
+
+/**
+ * Append the vendor-correct reasoning/effort flag when `effort` is set AND
+ * valid for the vendor (per the registry's {@link EngineRegistryEntry.effortLevels}).
+ * Codex maps it to `-c model_reasoning_effort=<level>`; other vendors have no
+ * kobe-driveable flag yet, so an effort on them is silently ignored. An
+ * unknown / unsupported level is dropped rather than passed through (a bogus
+ * value would make the engine refuse to launch).
+ */
+export function withEngineEffort(
+  argv: readonly string[],
+  vendor: VendorId | undefined,
+  effort: string | undefined,
+): readonly string[] {
+  const trimmed = effort?.trim()
+  if (!trimmed) return argv
+  const v: VendorId = vendor ?? "claude"
+  const levels = engineEntry(v).effortLevels
+  if (!levels?.includes(trimmed)) return argv
+  if (v === "codex") return [...argv, "-c", `model_reasoning_effort=${trimmed}`]
+  return argv
 }
 
 /**

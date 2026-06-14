@@ -27,6 +27,7 @@ export const SPA_CHANNELS: readonly ChannelName[] = [
   "worktree.changes",
   "task.conflicts",
   "session.deliver",
+  "issue.snapshot",
   "ui-prefs",
 ]
 

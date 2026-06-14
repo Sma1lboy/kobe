@@ -37,6 +37,7 @@ type EngineStatePayload = ChannelPayloads["engine-state"]
 type TaskJobPayload = ChannelPayloads["task.jobs"]
 type WorktreeChangeCounts = ChannelPayloads["worktree.changes"]["changes"]
 type UiPrefsPayload = ChannelPayloads["ui-prefs"]
+type IssueSnapshotPayload = ChannelPayloads["issue.snapshot"]
 
 /** Full bootstrap state for the SSE `snapshot` event (mirrors the SPA's
  *  BridgeSnapshot in src/lib/types.ts). */
@@ -52,6 +53,10 @@ export interface BridgeSnapshotState {
   worktreeChanges: WorktreeChangeCounts
   /** Conflict-radar pairs (file overlap / proven merge conflict). */
   conflicts: ChannelPayloads["task.conflicts"]["pairs"]
+  /** repoRoot → daemon-owned issue state replayed by `issue.snapshot`.
+   *  Aliased across each repo's worktree paths so the SPA can look it up by
+   *  whichever path it knows. Sits alongside `conflicts` — both are kept. */
+  issueSnapshots: Record<string, IssueSnapshotPayload>
   /** Most recent session.deliver event (dispatcher plumbing) — the SPA
    *  dedupes on `at`, so replaying the last one to a late browser is safe. */
   deliver: ChannelPayloads["session.deliver"] | null
@@ -68,6 +73,32 @@ export interface ChannelEventOut {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Drop trailing slashes (but keep a lone `/`) so path comparisons are stable. */
+function normalizedPath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path
+}
+
+/**
+ * The set of paths a repo's `issue.snapshot` should be mirrored under. The
+ * daemon keys issues by the repo's main-worktree root, but the SPA may look up
+ * a snapshot by a task's `repo` OR its `worktreePath` — so alias the snapshot
+ * across every path that resolves to the same repo. Always includes the raw
+ * `repoRoot`.
+ */
+function issueSnapshotAliases(tasks: readonly SerializedTask[], repoRoot: string): string[] {
+  const root = normalizedPath(repoRoot)
+  const aliases = new Set<string>([repoRoot])
+  for (const task of tasks) {
+    const taskRepo = normalizedPath(task.repo)
+    const taskWorktree = normalizedPath(task.worktreePath)
+    if (taskRepo === root || taskWorktree === root) {
+      if (task.repo) aliases.add(task.repo)
+      if (task.worktreePath) aliases.add(task.worktreePath)
+    }
+  }
+  return [...aliases]
 }
 
 /**
@@ -94,6 +125,7 @@ export class DaemonLink {
   private jobs: Record<string, TaskJobPayload> = {}
   private worktreeChanges: WorktreeChangeCounts = {}
   private conflicts: ChannelPayloads["task.conflicts"]["pairs"] = []
+  private issueSnapshots: Record<string, IssueSnapshotPayload> = {}
   private deliver: ChannelPayloads["session.deliver"] | null = null
   private uiPrefs: UiPrefsPayload | null = null
 
@@ -116,6 +148,7 @@ export class DaemonLink {
       jobs: this.jobs,
       worktreeChanges: this.worktreeChanges,
       conflicts: this.conflicts,
+      issueSnapshots: this.issueSnapshots,
       deliver: this.deliver,
       uiPrefs: this.uiPrefs,
       connected: this.connected,
@@ -260,6 +293,15 @@ export class DaemonLink {
       case "task.conflicts":
         this.conflicts = (payload as ChannelPayloads["task.conflicts"]).pairs
         break
+      case "issue.snapshot": {
+        const state = payload as IssueSnapshotPayload
+        const next = { ...this.issueSnapshots }
+        for (const alias of issueSnapshotAliases(this.tasks, state.repoRoot)) {
+          next[alias] = { ...state, repoRoot: alias }
+        }
+        this.issueSnapshots = next
+        break
+      }
       case "session.deliver":
         this.deliver = payload as ChannelPayloads["session.deliver"]
         break

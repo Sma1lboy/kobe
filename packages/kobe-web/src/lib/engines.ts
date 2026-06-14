@@ -14,6 +14,11 @@ import { useSyncExternalStore } from "react"
 export interface EngineOption {
   id: string
   label: string
+  /** Discrete reasoning/effort levels this engine exposes (from the registry,
+   *  served on /api/engines). codex maps a level to
+   *  `-c model_reasoning_effort=<level>`; claude has none. Absent/empty means
+   *  the engine has no kobe-driveable effort control. */
+  effortLevels?: readonly string[]
 }
 
 const FALLBACK: readonly EngineOption[] = [
@@ -33,10 +38,22 @@ function ensureFetched(): void {
       if (!res.ok) return
       const json = (await res.json()) as { engines?: EngineOption[] }
       if (!Array.isArray(json.engines) || json.engines.length === 0) return
-      engines = json.engines.filter(
-        (e): e is EngineOption =>
-          typeof e?.id === "string" && typeof e?.label === "string",
-      )
+      engines = json.engines
+        .filter(
+          (e): e is EngineOption =>
+            typeof e?.id === "string" && typeof e?.label === "string",
+        )
+        .map((e) => ({
+          id: e.id,
+          label: e.label,
+          ...(Array.isArray(e.effortLevels)
+            ? {
+                effortLevels: e.effortLevels.filter(
+                  (l): l is string => typeof l === "string",
+                ),
+              }
+            : {}),
+        }))
       for (const l of listeners) l()
     })
     .catch(() => {

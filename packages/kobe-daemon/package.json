@@ -15,6 +15,7 @@
     "./daemon/crash-log": "./src/daemon/crash-log.ts",
     "./daemon/cwd-task": "./src/daemon/cwd-task.ts",
     "./daemon/event-bus": "./src/daemon/event-bus.ts",
+    "./daemon/issues-store": "./src/daemon/issues-store.ts",
     "./daemon/keybindings-watcher": "./src/daemon/keybindings-watcher.ts",
     "./daemon/lifecycle": "./src/daemon/lifecycle.ts",
     "./daemon/paths": "./src/daemon/paths.ts",

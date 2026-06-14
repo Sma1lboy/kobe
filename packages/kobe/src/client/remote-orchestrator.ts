@@ -513,8 +513,16 @@ export class RemoteOrchestrator {
     branch?: string
     baseRef?: string
     vendor?: VendorId
+    modelEffort?: string
   }): Promise<Task> {
-    const res = await this.client.request<{ task: SerializedTask }>("task.create", input)
+    // The daemon's `task.create` payload spells effort as `effort`; the task
+    // field is `modelEffort` — remap on the wire so both ends keep their own
+    // vocabulary.
+    const { modelEffort, ...rest } = input
+    const res = await this.client.request<{ task: SerializedTask }>("task.create", {
+      ...rest,
+      effort: modelEffort,
+    })
     return deserializeTask(res.task)
   }
 
@@ -731,6 +739,7 @@ function deserializeTask(s: SerializedTask): Task {
     pinned: s.pinned,
     vendor: s.vendor,
     prStatus: s.prStatus,
+    modelEffort: s.modelEffort,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   }

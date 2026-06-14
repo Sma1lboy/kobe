@@ -17,6 +17,7 @@ import type {
   BridgeSnapshot,
   ConflictPair,
   EngineState,
+  RepoIssues,
   SessionDeliver,
   Task,
   TaskJob,
@@ -36,6 +37,9 @@ export interface AppState {
   worktreeChanges: WorktreeChangeCounts
   /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
   conflicts: ConflictPair[]
+  /** repoRoot (+ worktree aliases) → daemon-owned issue state from live
+   *  `issue.snapshot` pushes (web Issues page). */
+  issueSnapshots: Record<string, RepoIssues>
   /** Most recent dispatcher delivery (display only; delivery itself is the
    *  dispatch-delivery forwarder's job). */
   deliver: SessionDeliver | null
@@ -57,6 +61,7 @@ const initial: AppState = {
   jobs: {},
   worktreeChanges: {},
   conflicts: [],
+  issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
   hydrated: false,
@@ -108,6 +113,45 @@ export function applyJobEvent(
   if (job.phase === "running") return { ...jobs, [job.taskId]: job }
   const { [job.taskId]: _done, ...rest } = jobs
   return rest
+}
+
+function normalizedPath(path: string): string {
+  return path.length > 1 ? path.replace(/\/+$/, "") : path
+}
+
+/** The repo keys a single `issue.snapshot` should be cached under. A snapshot's
+ *  `repoRoot` is the daemon's git common-dir for the source repo; a task may
+ *  reference that same repo by its worktree path (or a trailing-slash variant),
+ *  so we mirror the snapshot under every matching task repo/worktree alias —
+ *  this keeps `/repo` and `/repo/` (and a worktree checkout) from splitting the
+ *  UI cache. Exported for tests. */
+export function issueSnapshotAliases(
+  tasks: readonly Task[],
+  repoRoot: string,
+): string[] {
+  const root = normalizedPath(repoRoot)
+  const aliases = new Set<string>([repoRoot])
+  for (const task of tasks) {
+    const taskRepo = normalizedPath(task.repo)
+    const taskWorktree = normalizedPath(task.worktreePath)
+    if (taskRepo === root || taskWorktree === root) {
+      if (task.repo) aliases.add(task.repo)
+      if (task.worktreePath) aliases.add(task.worktreePath)
+    }
+  }
+  return [...aliases]
+}
+
+function applyIssueSnapshotEvent(
+  snapshots: Record<string, RepoIssues>,
+  tasks: readonly Task[],
+  snapshot: RepoIssues,
+): Record<string, RepoIssues> {
+  const next = { ...snapshots }
+  for (const alias of issueSnapshotAliases(tasks, snapshot.repoRoot)) {
+    next[alias] = { ...snapshot, repoRoot: alias }
+  }
+  return next
 }
 
 /** A task.snapshot is the authoritative task list — sweep every per-task
@@ -168,6 +212,15 @@ function applyEvent(event: BridgeEvent): void {
     case "task.conflicts":
       set({ conflicts: event.payload.pairs })
       break
+    case "issue.snapshot":
+      set({
+        issueSnapshots: applyIssueSnapshotEvent(
+          state.issueSnapshots,
+          state.tasks,
+          event.payload,
+        ),
+      })
+      break
     case "session.deliver":
       // This SPA hosts web sessions, so it owns the paste (dedupe inside).
       set({ deliver: event.payload })
@@ -196,6 +249,7 @@ function ensureStream(): void {
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
       conflicts: snap.conflicts ?? [],
+      issueSnapshots: snap.issueSnapshots ?? {},
       deliver: snap.deliver ?? null,
       uiPrefs: snap.uiPrefs ?? null,
       hydrated: true,

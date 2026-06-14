@@ -39,8 +39,38 @@ export interface Task {
   prStatus?: TaskPRStatus
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   position?: number
+  /** Selected reasoning/effort level for the task's engine (mirrors the
+   *  daemon's SerializedTask.modelEffort) — surfaced in the issue detail
+   *  drawer's engine+effort picker. The task does not reverse-reference its
+   *  issue; the issue→task link lives on {@link Issue.taskId}. */
+  modelEffort?: string
   createdAt: string
   updatedAt: string
+}
+
+export type IssueStatus = "open" | "doing" | "hold" | "done"
+
+/** One daemon-owned issue (mirror of the daemon issue store record). The web
+ *  Issues page reads/edits these via /api/issues; quick-start spawns a task
+ *  and stamps `taskId`. */
+export interface Issue {
+  id: number
+  title: string
+  status: IssueStatus
+  created: string
+  body: string
+  /** Task this issue was quick-started into (link) — a LIVE task here hides
+   *  the issue from a unified board (the task card represents it). */
+  taskId?: string
+}
+
+/** One repo's full issue state — the unit the daemon publishes per
+ *  `issue.snapshot` and the bridge returns from /api/issues. */
+export interface RepoIssues {
+  repoRoot: string
+  exists: boolean
+  nextId: number
+  issues: Issue[]
 }
 
 /** Transient engine activity (what the agent is doing right now). */
@@ -121,6 +151,7 @@ export type BridgeEvent =
   | { channel: "task.conflicts"; payload: { pairs: ConflictPair[] } }
   | { channel: "session.deliver"; payload: SessionDeliver }
   | { channel: "ui-prefs"; payload: UiPrefs }
+  | { channel: "issue.snapshot"; payload: RepoIssues }
 
 /** Full bootstrap state the bridge sends on connect. */
 export interface BridgeSnapshot {
@@ -133,6 +164,9 @@ export interface BridgeSnapshot {
   worktreeChanges?: WorktreeChangeCounts
   /** Conflict-radar pairs (file overlap / proven merge conflict). */
   conflicts?: ConflictPair[]
+  /** repoRoot → daemon-owned issue state replayed by `issue.snapshot` (web
+   *  Issues page). */
+  issueSnapshots?: Record<string, RepoIssues>
   /** Most recent session.deliver event — replayed to late browsers; the
    *  forwarder dedupes on `at`. */
   deliver?: SessionDeliver | null

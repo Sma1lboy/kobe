@@ -23,6 +23,7 @@ import { DEFAULT_CONFLICTS_TICK_MS, startConflictCollector } from "./conflict-co
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
+import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import {
   DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
   defaultKeybindingsPath,
@@ -43,6 +44,7 @@ export {
   type DaemonHandlerContext,
   type DaemonRequestHandler,
 } from "./handlers.ts"
+export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 
 /** How often the daemon re-checks npm for a newer kobe (6h — `latest` rarely moves). */
 const DEFAULT_UPDATE_POLL_MS = 6 * 60 * 60 * 1000
@@ -209,6 +211,11 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   })
 
   const activity = new DaemonActivityRegistry(bus)
+
+  // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
+  // git common-dir, sharing the server's homeDir so sandbox/test homes
+  // isolate. Handlers reach it through DaemonHandlerContext.issues.
+  const issues = new IssuesStore(defaultIssuesStorePath(options.homeDir))
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
@@ -447,6 +454,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       orch,
       bus,
       activity,
+      issues,
       daemon: { startedAt, socketPath, pid: process.pid, guiCount, stopSoon },
       clientId: client.id,
     })

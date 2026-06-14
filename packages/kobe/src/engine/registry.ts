@@ -83,6 +83,14 @@ export interface EngineRegistryEntry {
    * Custom engines fall back to a bare binary named after the id.
    */
   readonly defaultCommand: readonly string[]
+  /**
+   * Reasoning/effort levels this engine exposes to kobe, in ascending order
+   * (e.g. Codex's `model_reasoning_effort`). Undefined for engines with no
+   * kobe-driveable effort flag (claude, copilot, custom) — the launch path
+   * ({@link import("./interactive-command").withEngineEffort}) only applies a
+   * level present here and drops anything else.
+   */
+  readonly effortLevels?: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
   /**
@@ -165,6 +173,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     builtin: true,
     displayName: "Codex",
     defaultCommand: ["codex"],
+    effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("codex"),

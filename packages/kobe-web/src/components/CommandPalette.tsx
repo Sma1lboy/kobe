@@ -14,7 +14,6 @@ import {
   ArrowRight,
   Bell,
   Columns3,
-  LayoutGrid,
   Palette,
   Plus,
   Search,
@@ -43,14 +42,7 @@ interface Command {
   id: string
   label: string
   hint?: string
-  icon:
-    | "task"
-    | "new"
-    | "settings"
-    | "overview"
-    | "board"
-    | "theme"
-    | "attention"
+  icon: "task" | "new" | "settings" | "board" | "theme" | "attention"
   /** Set for task rows — lets the row render a LIVE engine-activity dot
    *  (read at render, not baked into the memo, so it stays current without
    *  rebuilding the command list on every engine-state push). */
@@ -61,7 +53,6 @@ interface Command {
 function CommandIcon({ kind }: { kind: Command["icon"] }) {
   if (kind === "new") return <Plus size={14} strokeWidth={2} />
   if (kind === "settings") return <SettingsIcon size={14} strokeWidth={1.8} />
-  if (kind === "overview") return <LayoutGrid size={14} strokeWidth={1.8} />
   if (kind === "board") return <Columns3 size={14} strokeWidth={1.8} />
   if (kind === "theme") return <Palette size={14} strokeWidth={1.8} />
   if (kind === "attention") return <Bell size={14} strokeWidth={1.8} />
@@ -178,16 +169,6 @@ export function CommandPalette({
         icon: "new",
         run: () => {
           onNewTask()
-          onClose()
-        },
-      },
-      {
-        id: "action:overview",
-        label: "Open overview",
-        hint: "triage",
-        icon: "overview",
-        run: () => {
-          void navigate({ to: "/overview" })
           onClose()
         },
       },
