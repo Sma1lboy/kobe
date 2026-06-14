@@ -146,6 +146,11 @@ async function deliverFirstPromptToTask(
 async function jumpToTask(orch: RemoteOrchestrator, task: Task, repo: string, vendor: VendorId): Promise<void> {
   await ensureTaskSession(orch, task, repo, vendor) // no-op if deliver already built it
   await orch.setActiveTask(task.id).catch(() => {})
+  // Fit + heal the target to THIS client before switching in, so it doesn't
+  // reflow on screen — the quick-task window's stdout is its own pane, not the
+  // full terminal (see prepareWindowForSwitch).
+  const { prepareWindowForSwitch } = await import("../panes/terminal/tmux.ts")
+  await prepareWindowForSwitch(tmuxSessionName(task.id))
   await runTmux(["switch-client", "-t", `=${tmuxSessionName(task.id)}`])
 }
 

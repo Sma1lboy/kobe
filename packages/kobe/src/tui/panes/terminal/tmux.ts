@@ -86,6 +86,7 @@ import {
   kobeStatusRight,
 } from "./chattab"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
+import { recordGen } from "./layout-coord"
 import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
@@ -123,6 +124,7 @@ export {
 export {
   PANE_VERSION_OPTION,
   captureGlobalLayout,
+  captureGlobalLayoutOnDrag,
   healSessionLayout,
   refreshKobeWorkspacePanes,
 } from "./pane-heal"
@@ -156,7 +158,59 @@ function positiveInt(value: unknown): number | undefined {
  * when the terminal dimensions are unknown (degrades to today's behaviour).
  */
 export async function prepareWindowForAttach(session: string): Promise<void> {
+  // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
+  // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
+  // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
+  recordGen(session, "resize")
   const sizeArgs = tmuxInitialSizeArgs()
+  if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
+  await healWorkspaceLayout(session)
+}
+
+/**
+ * Width/height args for the tmux client THIS process is attached inside, read
+ * from the current window's CONTENT size (`window_width`/`window_height` —
+ * already net of the status bar). The in-tmux counterpart to
+ * {@link tmuxInitialSizeArgs}: a pane host (the Tasks pane, the quick-task
+ * window) has its `process.stdout` sized to its OWN narrow pane, so stdout
+ * would fit the target window to the wrong (pane) size. The attached client's
+ * window dims are exactly the size tmux gives the target window when this same
+ * client `switch-client`s to it. Empty when not inside tmux / size unreadable.
+ */
+async function attachedWindowSizeArgs(): Promise<string[]> {
+  const { code, stdout } = await runTmuxCapturing(["display-message", "-p", "#{window_width}\t#{window_height}"])
+  if (code !== 0) return []
+  const [w, h] = stdout
+    .trim()
+    .split("\t")
+    .map((s) => Number.parseInt(s, 10))
+  return Number.isInteger(w) && w > 0 && Number.isInteger(h) && h > 0 ? ["-x", `${w}`, "-y", `${h}`] : []
+}
+
+/**
+ * Fit + heal a session's window to the CURRENTLY ATTACHED client BEFORE a
+ * `switch-client` lands on it — the switch counterpart to
+ * {@link prepareWindowForAttach}.
+ *
+ * `prepareWindowForAttach` fits to `process.stdout`, correct when attaching
+ * from OUTSIDE tmux (stdout is the real terminal — `direct.ts`). The Tasks-pane
+ * "open task" path is different: it runs INSIDE a tmux pane, so `process.stdout`
+ * is the host pane's narrow pty, and it never fit/healed the target at all
+ * before switching. The target session — built detached at that wrong pane size
+ * (its `new-session -x/-y` also read the narrow stdout), or sitting at a stale
+ * size — then reflows PROPORTIONALLY the instant the full-terminal client
+ * switches to it: the absolute Tasks rail blows up and the `window-resized` hook
+ * only snaps it back a beat later. That snap is the visible "first open jumps
+ * from a default size to the aligned size". Sizing the window to the attached
+ * client's dims and healing here — while the target is still detached, nothing
+ * on screen — makes the switch cause NO reflow. No-op size when not in tmux.
+ */
+export async function prepareWindowForSwitch(session: string): Promise<void> {
+  // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
+  // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
+  // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
+  recordGen(session, "resize")
+  const sizeArgs = await attachedWindowSizeArgs()
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)
 }
@@ -562,6 +616,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // can't re-trigger the hook. `heal-layout` is a no-op for role-less sessions.
   const healLayoutCommand = `${envStr}${invStr} heal-layout --session '#{session_name}'`
   const healLayoutTmuxCommand = `run-shell -b ${shellQuote(healLayoutCommand)}`
+  // Capture a manual rail / right-column drag the moment it happens, on
+  // `window-layout-changed` (which fires on a pane resize, unlike
+  // `window-resized`). Without this, a drag was only persisted into the global
+  // on switch-away, so dragging the rail and THEN resizing the terminal lost
+  // the drag — the resize's `window-resized` heal re-pinned every pane to the
+  // STALE global before the drag was ever captured. `capture-layout` is gated
+  // (resize-recency + not-zoomed + full role set) so it captures only genuine
+  // drags, never a resize reflow or a half-built layout. Both hooks coalesce
+  // their event bursts to one run (see layout-coord.ts).
+  const captureLayoutCommand = `${envStr}${invStr} capture-layout --session '#{session_name}'`
+  const captureLayoutTmuxCommand = `run-shell -b ${shellQuote(captureLayoutCommand)}`
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
   // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
@@ -630,6 +695,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ],
     ["set-option", "-g", "mouse", "on"],
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
+    ["set-hook", "-g", "window-layout-changed", captureLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
     // focus the current window's Tasks pane first. `#{@kobe_role}` is the
