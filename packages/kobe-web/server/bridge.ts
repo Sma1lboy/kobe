@@ -97,6 +97,40 @@ export interface RequestHandlerDeps {
   staticDir?: string
   /** tmux teardown after a committed archive/delete (default: real tmux). */
   tearDownSession?: (taskId: string) => void
+  /** The non-loopback host the server is deliberately bound to (KOBE_WEB_HOST),
+   *  if any. Requests whose Origin is this host are allowed through the
+   *  cross-origin guard so the documented LAN-exposure override keeps working;
+   *  undefined for the default loopback bind. */
+  allowedHost?: string
+}
+
+/**
+ * Cross-origin guard for the bridge — the same defense the PTY sidecar applies
+ * (see pty-server.mjs `LOCAL_ORIGIN`/`verifyClient`). The bridge's mutating
+ * routes (`/api/rpc` reaches task.create/delete/archive/rename, `/api/settings`,
+ * `/api/issues`, `/api/issue-assets`, `/api/session`) drive real side effects,
+ * so a page the user merely visits must not be able to invoke them. A browser
+ * always stamps `Origin` on a fetch/EventSource; only loopback pages (or the
+ * deliberately-configured LAN host) may pass. This also blunts DNS-rebinding:
+ * a rebound `attacker.com → 127.0.0.1` page still carries `Origin: attacker.com`
+ * and is rejected. Non-browser clients send no Origin — there's no browser to
+ * forge their request — so they're allowed (the daemon socket, `kobe api`, and
+ * the port-takeover health probe all hit it Origin-less).
+ */
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
+
+function originAllowed(req: Request, allowedHost?: string): boolean {
+  const origin = req.headers.get("origin")
+  if (!origin) return true
+  if (LOCAL_ORIGIN.test(origin)) return true
+  if (allowedHost) {
+    try {
+      if (new URL(origin).hostname === allowedHost) return true
+    } catch {
+      /* malformed Origin → reject */
+    }
+  }
+  return false
 }
 
 function sseResponse(register: (send: SseSend) => () => void): Response {
@@ -368,6 +402,9 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url)
     if (url.pathname === WEB_HEALTH_PATH) return new Response(WEB_HEALTH_MARKER)
+    if (!originAllowed(req, deps.allowedHost)) {
+      return new Response("forbidden: cross-origin request rejected", { status: 403 })
+    }
     if (url.pathname === "/events") {
       return sseResponse((send) => {
         send("snapshot", link.snapshot())
@@ -509,12 +546,16 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
     for (const send of sseSends) send("snapshot", link.snapshot())
   })
 
-  const handle = createRequestHandler({ link, sseSends, staticDir })
   // Bind loopback by default so the dashboard is never exposed on all
   // interfaces (Bun.serve defaults to 0.0.0.0). KOBE_WEB_HOST overrides for the
   // rare deliberate LAN case. localhost browsers + the Vite proxy reach
   // 127.0.0.1 fine, so this is invisible in normal use.
   const hostname = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
+  // When deliberately bound to a LAN host, that host's Origin must pass the
+  // cross-origin guard too (loopback is always allowed); a loopback bind needs
+  // no extra allowance.
+  const allowedHost = LOCAL_ORIGIN.test(`http://${hostname}`) ? undefined : hostname
+  const handle = createRequestHandler({ link, sseSends, staticDir, allowedHost })
   const server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: handle })
 
   return {

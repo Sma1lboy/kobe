@@ -285,9 +285,16 @@ wss.on("connection", (ws, req) => {
       return
     }
 
+    // Snapshot the scrollback BEFORE joining the live fan-out. If a chunk
+    // arrives between `sockets.add` and the replay it would be sent live (the
+    // socket is already in the set) AND included in the replay — the browser
+    // writes the same bytes twice, briefly garbling the screen on (re)attach.
+    // Capturing the replay first, then adding the socket, makes attach
+    // exactly-once: the snapshot is everything-so-far, and anything after it
+    // arrives only via the live path.
+    const replay = entry.scrollback.length() > 0 ? entry.scrollback.replay() : ""
     entry.sockets.add(ws)
-    // Replay recent output so a (re)attach shows current screen state.
-    if (entry.scrollback.length() > 0 && ws.readyState === ws.OPEN) ws.send(entry.scrollback.replay())
+    if (replay && ws.readyState === ws.OPEN) ws.send(replay)
     // The PTY can exit between spawn/attach and any op below; node-pty throws
     // on resize/write against a dead handle, and this sidecar has no
     // uncaughtException net (unlike the daemon) — an unguarded throw in a `ws`
