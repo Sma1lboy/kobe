@@ -629,24 +629,30 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
-    // Drag-select should behave like a normal GUI terminal: releasing the
-    // mouse leaves the text HIGHLIGHTED, the view does NOT snap to the live
-    // bottom, and the highlight does NOT keep growing when you then scroll or
-    // move the mouse. tmux's default `MouseDragEnd1Pane` runs
-    // `copy-selection-and-cancel` — `-and-cancel` exits copy-mode, which both
-    // drops the highlight and jumps the pane to the bottom. The fix is a
-    // two-step action: `copy-selection-no-clear` copies into the buffer AND
-    // keeps the highlight (no snap, since we stay in copy-mode), then
-    // `stop-selection` freezes it (`cursordrag=NONE`) so a later wheel-scroll
-    // or motion no longer extends the selection. (Plain `copy-selection`
-    // cleared the highlight; bare `-no-clear` left it live and growing — both
-    // wrong.) The two commands must ride in ONE bind action: passed as a
-    // single string so tmux re-lexes the `;` as an in-action separator —
-    // separate argv tokens make tmux treat `;`/`{` as a new top-level command.
-    // The user starts a fresh selection by dragging again, or leaves copy-mode
-    // with `q`. Both tables, since the active one depends on `mode-keys`.
-    ["bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys -X copy-selection-no-clear ; send-keys -X stop-selection"],
-    ["bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys -X copy-selection-no-clear ; send-keys -X stop-selection"],
+    // Copies from copy-mode (including mouse drag-select) reach the SYSTEM
+    // clipboard via OSC 52, not just tmux's internal paste buffer — so
+    // Ctrl/Cmd+V in another app works. The outer terminal must support OSC 52
+    // (Windows Terminal, iTerm2, kitty, GNOME Terminal all do).
+    ["set-option", "-g", "set-clipboard", "on"],
+    // Pin mouse drag-select to tmux's default `copy-selection-and-cancel`:
+    // copy, then EXIT copy-mode so the pane returns to LIVE output. This must
+    // be set explicitly, not merely omitted: the `-L kobe` server is
+    // long-lived, and an earlier kobe build bound this to a stay-in-copy-mode
+    // action (`copy-selection-no-clear ; stop-selection`). That kept the
+    // highlight and avoided the snap-to-bottom, but TRAPPED the user in the
+    // modal scrollback viewer — typing (esp. multi-byte IME input) went to
+    // copy-mode instead of the engine, the screen stopped refreshing, and only
+    // Ctrl+C (cancel) escaped. The trap is inherent: NOT snapping to the bottom
+    // requires staying in copy-mode, which by definition blocks input. So plain
+    // drag favors "never get stuck" (snap is acceptable). For
+    // select-without-snapping, use the terminal's native bypass: hold Shift
+    // while dragging (Option on macOS Terminal.app), which skips tmux's mouse
+    // handling entirely and selects straight to the system clipboard. Re-pinning
+    // here also corrects any stale stay-in-copy-mode binding left on the live
+    // server by an older build. Both tables, since the active one depends on
+    // `mode-keys`.
+    ["bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys", "-X", "copy-selection-and-cancel"],
+    ["bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys", "-X", "copy-selection-and-cancel"],
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
