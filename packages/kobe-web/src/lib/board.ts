@@ -13,7 +13,7 @@
  * affordance) but the task itself is NOT a card here (docs/design/web-kanban.md).
  */
 
-import type { Issue } from "./types.ts"
+import type { Issue, RepoIssues } from "./types.ts"
 
 /**
  * One card on the board: always an issue, carrying its source `repo` so
@@ -204,4 +204,133 @@ export function labelRepo(repo: string, repos: readonly string[]): string {
   const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
   if (!collides) return base
   return repo.replace(/\/+$/, "").split("/").slice(-2).join("/")
+}
+
+/* ----- board view-model --------------------------------------------------- */
+
+/**
+ * The Board's optimistic pending-link map: `${repo}:${issueId}` → the taskId a
+ * just-started issue should carry before its `issue.snapshot` link lands. Only
+ * `taskId` is read here; the component keeps the fuller record.
+ */
+export type PendingLinks = ReadonlyMap<string, { readonly taskId: string }>
+
+/** A project chip: a repo with its display label and UNfiltered issue count. */
+export interface RepoChip {
+  readonly repo: string
+  readonly label: string
+  readonly count: number
+}
+
+export interface BoardViewInput {
+  /** repo key → loaded issue state (from `useRepoIssues`). */
+  readonly issueData: Record<string, RepoIssues>
+  /** Canonical repo keys to read, in order. */
+  readonly issueRepos: readonly string[]
+  /** Optimistic links folded in (issue → In progress before the snapshot). */
+  readonly pendingLinks: PendingLinks
+  /** Text filter, matched against `#id title body`. */
+  readonly query: string
+  /** Project-chip filter, or null for all projects. */
+  readonly repoFilter: string | null
+}
+
+export interface BoardView {
+  /** Every issue across all repos, source-repo tagged, pending-links applied —
+   *  UNfiltered. Drives the chips, the peek lookups, and the empty check. */
+  readonly allIssues: BoardCard[]
+  /** Project chips from the UNfiltered set so they don't vanish under a
+   *  narrowing filter. Sorted by label. */
+  readonly repoChips: RepoChip[]
+  /** Filtered, project-grouped, column-bucketed boards. */
+  readonly projectBoards: ProjectBoard[]
+  /** Cards shown after filtering — the header count. */
+  readonly shownCount: number
+  /** Any issue exists pre-filter — distinguishes a narrowed-away board from a
+   *  genuinely empty one. */
+  readonly hasAnyCard: boolean
+}
+
+/**
+ * Flatten loaded issue state across repos into source-tagged cards, applying the
+ * optimistic pending-link so a just-started issue already carries its taskId
+ * (→ In progress) before the daemon snapshot lands. Only `exists` repos
+ * contribute; a missing issue file is empty, not an error.
+ */
+export function collectBoardIssues(
+  issueData: Record<string, RepoIssues>,
+  issueRepos: readonly string[],
+  pendingLinks: PendingLinks,
+): BoardCard[] {
+  const out: BoardCard[] = []
+  for (const repo of issueRepos) {
+    const state = issueData[repo]
+    if (!state || !state.exists) continue
+    for (const issue of state.issues) {
+      const pending = pendingLinks.get(`${repo}:${issue.id}`)
+      out.push(
+        pending && !issue.taskId
+          ? { repo, issue: { ...issue, taskId: pending.taskId } }
+          : { repo, issue },
+      )
+    }
+  }
+  return out
+}
+
+/** Project chips from the UNfiltered card set: distinct repos, disambiguated
+ *  labels, issue counts, sorted by label. */
+export function deriveRepoChips(cards: readonly BoardCard[]): RepoChip[] {
+  const counts = new Map<string, number>()
+  for (const { repo } of cards) counts.set(repo, (counts.get(repo) ?? 0) + 1)
+  const keys = [...counts.keys()]
+  return keys
+    .map((repo) => ({
+      repo,
+      label: labelRepo(repo, keys),
+      count: counts.get(repo) ?? 0,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
+}
+
+/** Apply the chip + text filter to the card set (text matches `#id title body`,
+ *  case-insensitive). */
+export function filterBoardCards(
+  cards: readonly BoardCard[],
+  query: string,
+  repoFilter: string | null,
+): BoardCard[] {
+  const q = query.trim().toLowerCase()
+  return cards.filter(({ repo, issue }) => {
+    if (repoFilter && repo !== repoFilter) return false
+    if (!q) return true
+    return `#${issue.id} ${issue.title} ${issue.body}`.toLowerCase().includes(q)
+  })
+}
+
+/**
+ * The whole Board view-model: one function from raw issue state + filters to
+ * everything the Board renders. The interface is the test surface — the Board
+ * component holds no derivation logic of its own, only React state + effects.
+ */
+export function buildBoardView(input: BoardViewInput): BoardView {
+  const allIssues = collectBoardIssues(
+    input.issueData,
+    input.issueRepos,
+    input.pendingLinks,
+  )
+  const repoChips = deriveRepoChips(allIssues)
+  const boardIssues = filterBoardCards(allIssues, input.query, input.repoFilter)
+  const projectBoards = buildProjectBoards(boardIssues)
+  const shownCount = projectBoards.reduce(
+    (sum, board) => sum + boardCardCount(board.columns),
+    0,
+  )
+  return {
+    allIssues,
+    repoChips,
+    projectBoards,
+    shownCount,
+    hasAnyCard: allIssues.length > 0,
+  }
 }

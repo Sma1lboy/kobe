@@ -32,12 +32,10 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
-  type BoardCard as BoardCardData,
   type BoardColumn,
   boardCardCount,
-  buildProjectBoards,
+  buildBoardView,
   isLinkedIssue,
-  labelRepo,
   type ProjectBoard,
 } from "../lib/board.ts"
 import {
@@ -230,26 +228,23 @@ export function Board() {
     refresh: refreshIssues,
   } = useRepoIssues(issueRepos)
 
-  // The flat issue list (across every repo), each tagged with its source repo,
-  // with the optimistic pending-link applied so a just-started issue already
-  // carries its taskId (→ In progress) before the daemon snapshot lands.
-  // Only `exists` repos contribute; a missing issue file is empty, not error.
-  const allIssues = useMemo(() => {
-    const out: Array<{ repo: string; issue: Issue }> = []
-    for (const repo of issueRepos) {
-      const state = issueData[repo]
-      if (!state || !state.exists) continue
-      for (const issue of state.issues) {
-        const pending = pendingLinks.get(`${repo}:${issue.id}`)
-        out.push(
-          pending && !issue.taskId
-            ? { repo, issue: { ...issue, taskId: pending.taskId } }
-            : { repo, issue },
-        )
-      }
-    }
-    return out
-  }, [issueRepos, issueData, pendingLinks])
+  // The whole derived view (flat issue list + chips + project boards + counts)
+  // is one pure call into lib/board — the component holds no board-derivation
+  // logic of its own, so that logic is unit-tested via buildBoardView, not the
+  // DOM. `allIssues` is UNfiltered (drives chips + peek lookups + the empty
+  // check); `projectBoards`/`shownCount` are post-filter.
+  const { allIssues, repoChips, projectBoards, shownCount, hasAnyCard } =
+    useMemo(
+      () =>
+        buildBoardView({
+          issueData,
+          issueRepos,
+          pendingLinks,
+          query,
+          repoFilter,
+        }),
+      [issueData, issueRepos, pendingLinks, query, repoFilter],
+    )
 
   // Drop a pending optimistic-link once the daemon confirms it: the issue now
   // carries a taskId from the snapshot, so the local hint is redundant.
@@ -307,61 +302,18 @@ export function Board() {
     return () => window.removeEventListener("keydown", onKey)
   }, [query, peek, creatingRepo, confirmDelete])
 
-  // Project chips: the distinct repos that have any issues. Computed from the
-  // UNfiltered list so chips (and their counts) don't vanish while one is
-  // selected or a text query narrows the view.
-  const repos = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const { repo } of allIssues) {
-      counts.set(repo, (counts.get(repo) ?? 0) + 1)
-    }
-    const keys = [...counts.keys()]
-    return keys
-      .map((repo) => ({
-        repo,
-        label: labelRepo(repo, keys),
-        count: counts.get(repo) ?? 0,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [allIssues])
   // A selected project can disappear entirely (last issue deleted) — snap back
-  // to All rather than showing a permanently empty board.
+  // to All rather than showing a permanently empty board. Chips are derived from
+  // the UNfiltered set (in buildBoardView), so they don't vanish under a filter.
   useEffect(() => {
-    if (repoFilter && !repos.some((option) => option.repo === repoFilter)) {
+    if (repoFilter && !repoChips.some((option) => option.repo === repoFilter)) {
       setBoardRepo(null)
     }
-  }, [repos, repoFilter])
+  }, [repoChips, repoFilter])
 
-  // The DISPLAY issue set: repo chip + text query.
-  const boardIssues = useMemo<BoardCardData[]>(() => {
-    const q = query.trim().toLowerCase()
-    return allIssues
-      .filter(({ repo, issue }) => {
-        if (repoFilter && repo !== repoFilter) return false
-        if (!q) return true
-        const haystack =
-          `#${issue.id} ${issue.title} ${issue.body}`.toLowerCase()
-        return haystack.includes(q)
-      })
-      .map(({ repo, issue }) => ({ repo, issue }))
-  }, [allIssues, query, repoFilter])
-
-  const projectBoards = useMemo(
-    () => buildProjectBoards(boardIssues),
-    [boardIssues],
-  )
   const single = projectBoards.length === 1
-  const shownCount = useMemo(
-    () =>
-      projectBoards.reduce(
-        (sum, board) => sum + boardCardCount(board.columns),
-        0,
-      ),
-    [projectBoards],
-  )
   // A no-match (chips/query narrowed every issue away) vs the genuinely-empty
   // board: the empty branch differs (clear-filters vs new-issue affordance).
-  const hasAnyCard = allIssues.length > 0
   const filtered = Boolean(query) || Boolean(repoFilter)
 
   // Open a linked issue's task workspace/session.
@@ -491,7 +443,7 @@ export function Board() {
         {/* Project chips: scope the board to one project. Hidden for a
             single-project board — no point paying header space for a
             filter with one value. Click the active chip to deselect. */}
-        {repos.length >= 2 && (
+        {repoChips.length >= 2 && (
           <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
             <button
               type="button"
@@ -504,7 +456,7 @@ export function Board() {
             >
               all
             </button>
-            {repos.map((option) => (
+            {repoChips.map((option) => (
               <button
                 key={option.repo}
                 type="button"
