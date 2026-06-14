@@ -543,6 +543,17 @@ export function Board() {
     return ids
   }, [allIssues])
 
+  // Reverse map task id → its originating issue. A started issue is deduped
+  // into a task card, but it's still a TICKET: clicking it must open the issue
+  // detail (title/description), not the engine session. peekCard routes by this.
+  const issueByTaskId = useMemo(() => {
+    const map = new Map<string, { repo: string; issue: Issue }>()
+    for (const { repo, issue } of allIssues) {
+      if (issue.taskId) map.set(issue.taskId, { repo, issue })
+    }
+    return map
+  }, [allIssues])
+
   // Drop a pending optimistic-link once the daemon confirms it: the issue now
   // carries a taskId, so the dedup in buildProjectBoards hides it for real.
   useEffect(() => {
@@ -695,6 +706,15 @@ export function Board() {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
+  }
+
+  // Peek a card by task id, routing issue-originated cards to the ISSUE detail
+  // (title/description) rather than the engine session — a started ticket is
+  // still a ticket. Pure tasks (no backing issue) open the session drawer.
+  const peekCard = (id: string): void => {
+    const linked = issueByTaskId.get(id)
+    if (linked) setPeek({ kind: "issue", repo: linked.repo, id: linked.issue.id })
+    else setPeek({ kind: "task", id })
   }
 
   const toggleCollapsed = (repo: string): void => {
@@ -1138,7 +1158,7 @@ export function Board() {
                 canDrag={canDrag}
                 issueTaskIds={issueTaskIds}
                 onNewIssue={setCreatingRepo}
-                onPeek={(id) => setPeek({ kind: "task", id })}
+                onPeek={peekCard}
                 onPeekIssue={(issue) =>
                   setPeek({
                     kind: "issue",
@@ -1187,7 +1207,7 @@ export function Board() {
                             canDrag={canDrag}
                             issueTaskIds={issueTaskIds}
                             onNewIssue={setCreatingRepo}
-                            onPeek={(id) => setPeek({ kind: "task", id })}
+                            onPeek={peekCard}
                             onPeekIssue={(issue) =>
                               setPeek({
                                 kind: "issue",
@@ -1273,6 +1293,15 @@ export function Board() {
               doQuickStart(entry.repo, entry.issue, vendor, effort)
             }
             onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
+            onOpenSession={
+              entry.issue.taskId
+                ? () => {
+                    const taskId = entry.issue.taskId
+                    setPeek(null)
+                    if (taskId) open(taskId)
+                  }
+                : undefined
+            }
           />
         )
       })()}

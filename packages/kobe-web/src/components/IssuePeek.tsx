@@ -13,7 +13,7 @@
  * issue-asset urls.
  */
 
-import { Pencil, Play } from "lucide-react"
+import { ExternalLink, Pencil, Play } from "lucide-react"
 import { useMemo, useState } from "react"
 import { engineLabel, useEngines } from "../lib/engines.ts"
 import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
@@ -29,6 +29,7 @@ export function IssuePeek({
   onClose,
   onQuickStart,
   onSave,
+  onOpenSession,
 }: {
   issue: Issue
   /** A mutation (update) is in flight — actions disable. */
@@ -39,6 +40,8 @@ export function IssuePeek({
    *  both into quickStartIssue(repoRoot, issue, vendor, effort). */
   onQuickStart: (vendor?: string, effort?: string) => void
   onSave: (patch: { title: string; body: string }) => Promise<boolean>
+  /** Open the running session/workspace for an already-started (linked) issue. */
+  onOpenSession?: () => void
 }) {
   const engines = useEngines()
   const [editing, setEditing] = useState(false)
@@ -92,7 +95,23 @@ export function IssuePeek({
     </span>
   )
 
-  const footer = !editing ? (
+  // A started (linked) issue is already running — the drawer's job there is to
+  // get you to the live session, not to re-pick an engine. An un-started issue
+  // shows the engine/effort picker + Start.
+  const footer = editing ? undefined : linked ? (
+    <div className="flex flex-col gap-2 px-3 py-2.5">
+      <button
+        type="button"
+        onClick={() => onOpenSession?.()}
+        disabled={!onOpenSession}
+        title="Open this issue's running session in the workspace"
+        className="flex h-8 items-center justify-center gap-1.5 border border-primary bg-inset px-3 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <ExternalLink size={12} strokeWidth={1.8} />
+        Open workspace
+      </button>
+    </div>
+  ) : (
     <div className="flex flex-col gap-2 px-3 py-2.5">
       <EngineEffortPicker
         vendor={vendor}
@@ -108,11 +127,9 @@ export function IssuePeek({
         disabled={startDisabled}
         onClick={() => onQuickStart(vendor, effort)}
         title={
-          linked
-            ? "This issue already has a running task"
-            : startable
-              ? `Start a kobe task on this issue (${engineLabel(engines, vendor)})`
-              : "Done issues have nothing left to start"
+          startable
+            ? `Start a kobe task on this issue (${engineLabel(engines, vendor)})`
+            : "Done issues have nothing left to start"
         }
         className="flex h-8 items-center justify-center gap-1.5 border border-primary bg-inset px-3 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
       >
@@ -120,7 +137,7 @@ export function IssuePeek({
         {startLabel}
       </button>
     </div>
-  ) : undefined
+  )
 
   return (
     <SlideOver open onClose={onClose} title={title} footer={footer}>
