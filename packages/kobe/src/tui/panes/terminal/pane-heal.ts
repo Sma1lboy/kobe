@@ -435,6 +435,57 @@ export async function captureGlobalLayout(session: string): Promise<void> {
 }
 
 /**
+ * Decide whether a `window-layout-changed` firing is a genuine USER drag we
+ * should capture, from a `#{@kobe_role}\t#{window_zoomed_flag}` listing of the
+ * active window. Pure so the gate is unit-testable without a tmux server.
+ *
+ * Capture only when the layout change is safe to read as the user's intended
+ * geometry:
+ *   - NOT zoomed — a zoomed pane reports the full-window grid, so the rail /
+ *     right-column widths read back as garbage; capturing them would poison
+ *     the global until the next real drag.
+ *   - the full kobe role set is present (`tasks` + `ops`) — excludes the
+ *     transient half-built layouts that pane splits emit during a session
+ *     build / respawn, where the geometry isn't the user's to keep.
+ *
+ * The resize-reflow case (where the rail is proportionally blown up and must
+ * NOT be captured) is excluded earlier by the caller's resize-recency guard
+ * ({@link genAgeMs}); this gate only covers what a stable-size layout change
+ * can still get wrong.
+ */
+export function shouldCaptureDrag(stdout: string): boolean {
+  const rows = stdout
+    .split("\n")
+    .map((line) => line.split("\t"))
+    .filter((cols) => (cols[0]?.trim() ?? "") !== "")
+  if (rows.length === 0) return false
+  if (rows.some((cols) => cols[1]?.trim() === "1")) return false // any pane zoomed
+  const roles = new Set(rows.map((cols) => cols[0]?.trim()))
+  return roles.has("tasks") && roles.has("ops")
+}
+
+/**
+ * Capture the active window's geometry as the new global layout ONLY when the
+ * `window-layout-changed` that triggered us is a genuine user drag — see
+ * {@link shouldCaptureDrag}. This is the live counterpart to the switch-away
+ * {@link captureGlobalLayout}: it persists a rail / right-column drag the
+ * MOMENT it happens, so a later terminal resize (whose `window-resized` heal
+ * re-pins every pane to the global) can't silently discard a drag the user
+ * made but hadn't yet "committed" by switching tasks.
+ */
+export async function captureGlobalLayoutOnDrag(session: string): Promise<void> {
+  const { code, stdout } = await runTmuxCapturing([
+    "list-panes",
+    "-t",
+    `=${session}`,
+    "-F",
+    "#{@kobe_role}\t#{window_zoomed_flag}",
+  ])
+  if (code !== 0 || !shouldCaptureDrag(stdout)) return
+  await captureGlobalLayout(session)
+}
+
+/**
  * Settings changes are read by each kobe-owned pane process at startup.
  * After the full-window Settings page exits, the existing Tasks/Ops panes
  * in sibling ChatTabs are still alive, so respawn only those helper panes

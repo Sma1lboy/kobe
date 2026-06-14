@@ -25,8 +25,8 @@
  *
  * Internal subcommands fired by tmux key bindings inside a task session
  * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
- * `focus-tasks`, `heal-layout`, `tasks`, `ops` — each takes the session/worktree
- * as flags.
+ * `focus-tasks`, `heal-layout`, `capture-layout`, `tasks`, `ops` — each takes
+ * the session/worktree as flags.
  * `hook` is fired by an engine's own hooks inside a worktree to report
  * activity events.
  *
@@ -484,6 +484,12 @@ async function main(): Promise<void> {
     // reflow (the first session is built before any client is attached, so tmux
     // reflows its panes when `attach` lands the real terminal size) and any live
     // terminal resize. No-op for the home/role-less session. Reads `--session`.
+    //
+    // A live resize fires this hook many times in a burst; `coalesceLayoutWork`
+    // trailing-debounces so the burst collapses to ONE heal (no concurrent
+    // `-b` thrash, no per-event tmux round-trip storm). The pre-attach heal in
+    // `prepareWindowForAttach` is a DIRECT call, so the first frame is still
+    // synchronous — the debounce only affects the live-resize hook path.
     const flags = parseOpsFlags(rest)
     const session = flags.session
     if (!session) {
@@ -491,7 +497,35 @@ async function main(): Promise<void> {
       process.exit(2)
     }
     const { healSessionLayout } = await import("../tui/panes/terminal/tmux.ts")
-    await healSessionLayout(session)
+    const { coalesceLayoutWork } = await import("../tui/panes/terminal/layout-coord.ts")
+    await coalesceLayoutWork(session, "heal", () => healSessionLayout(session))
+    return
+  }
+  if (subcommand === "capture-layout") {
+    // `window-layout-changed` tmux hook handler: persist a manual rail /
+    // right-column drag into the shared global the moment it happens, so a
+    // later terminal resize (whose `heal-layout` re-pins to the global) can't
+    // discard a drag the user hadn't yet committed by switching tasks.
+    //
+    // `window-layout-changed` ALSO fires on a terminal-resize reflow (and on
+    // the heal's own `resize-pane`), where the rail is proportionally blown up
+    // and must NOT be captured. The `genAgeMs(..., "heal")` guard skips capture
+    // while a resize is in flight (its `heal-layout` stamped the heal gen);
+    // `captureGlobalLayoutOnDrag`'s own gate excludes zoom / half-built layouts.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe capture-layout: --session <name> is required")
+      process.exit(2)
+    }
+    const { captureGlobalLayoutOnDrag } = await import("../tui/panes/terminal/tmux.ts")
+    const { coalesceLayoutWork, genAgeMs, RESIZE_GUARD_MS } = await import("../tui/panes/terminal/layout-coord.ts")
+    await coalesceLayoutWork(session, "capture", async () => {
+      // Re-check AFTER winning the debounce: a resize may have begun during the
+      // trailing wait, in which case its heal owns the geometry — not us.
+      if (genAgeMs(session, "heal") < RESIZE_GUARD_MS) return
+      await captureGlobalLayoutOnDrag(session)
+    })
     return
   }
   if (subcommand === "quick-task") {
