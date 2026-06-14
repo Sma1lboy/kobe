@@ -11,6 +11,7 @@
  * the project list under the user).
  */
 
+import { textMatchesQuery } from "./text-match.ts"
 import type { Task } from "./types.ts"
 
 export type TaskSortMode = "default" | "recent"
@@ -43,7 +44,6 @@ export function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
 // ./vendor.ts — they're vendor-identity rules, not list ordering/filtering.
 
 export function matchesTask(task: Task, query: string): boolean {
-  if (!query) return true
   const haystack = [
     task.title,
     task.branch,
@@ -54,6 +54,5 @@ export function matchesTask(task: Task, query: string): boolean {
   ]
     .filter(Boolean)
     .join(" ")
-    .toLowerCase()
-  return haystack.includes(query.toLowerCase())
+  return textMatchesQuery(haystack, query)
 }

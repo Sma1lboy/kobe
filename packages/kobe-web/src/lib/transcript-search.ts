@@ -7,6 +7,7 @@
  */
 
 import type { ContentBlock, HistoryMessage } from "./history.ts"
+import { textMatchesQuery } from "./text-match.ts"
 import { outputText, toolInputSummary } from "./tool-display.ts"
 
 function blockText(block: ContentBlock): string {
@@ -32,9 +33,7 @@ export function messageMatchesQuery(
   message: HistoryMessage,
   query: string,
 ): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  return messageSearchText(message).toLowerCase().includes(q)
+  return textMatchesQuery(messageSearchText(message), query)
 }
 
 /** Whether a block should render given the "hide tool calls" toggle — tool
