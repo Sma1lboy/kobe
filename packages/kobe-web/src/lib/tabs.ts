@@ -8,7 +8,12 @@
  */
 
 import { useSyncExternalStore } from "react"
-import { nextTabTitle, tabHasPty, type WorkspaceTabKind } from "./tab-kinds.ts"
+import {
+  nextTabTitle,
+  TAB_KINDS,
+  tabHasPty,
+  type WorkspaceTabKind,
+} from "./tab-kinds.ts"
 import { closePtyTab } from "./terminal.ts"
 
 const KEY = "kobe-web.tabs"
@@ -112,6 +117,14 @@ export function withTaskTab(next: TabsState, taskId: string): TabsState {
  * now an empty chooser) and `chat` (renamed to `vendor`); anything without a
  * recognized kind defaults to `vendor`. Pure (a `notes` migration mints a
  * fresh empty tab id); exported for tests.
+ *
+ * Any kind NOT in the {@link TAB_KINDS} registry (a forward-version entry a
+ * downgraded client wrote, a removed kind, a corrupted blob) degrades to
+ * `vendor` rather than passing through — an unrecognized kind would later
+ * crash `tabHasPty(kind)` (`TAB_KINDS[kind].hasPty` on `undefined`), and that
+ * path runs from the live SSE snapshot prune, so one stale tab could take down
+ * the whole store update. A `file` tab that lost its `path` likewise can't
+ * render, so it falls back to an empty chooser tab.
  */
 export function migrateStoredTab(tab: unknown): WorkspaceTab {
   const stored = tab as Partial<WorkspaceTab>
@@ -120,7 +133,15 @@ export function migrateStoredTab(tab: unknown): WorkspaceTab {
       ? (tab as { kind: string }).kind
       : undefined
   if (storedKind === "notes") return emptyTab()
-  const kind = storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
+  const remapped = storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
+  const kind: WorkspaceTabKind =
+    remapped in TAB_KINDS ? (remapped as WorkspaceTabKind) : "vendor"
+  if (
+    kind === "file" &&
+    typeof (stored as { path?: unknown }).path !== "string"
+  ) {
+    return emptyTab()
+  }
   return { ...stored, kind } as WorkspaceTab
 }
 

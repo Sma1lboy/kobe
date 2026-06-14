@@ -404,6 +404,12 @@ export async function healSessionLayout(session: string): Promise<void> {
  * width (cells) and the right column's width + file-tree height (each as a % of
  * the window, the unit {@link healWorkspaceLayout} re-applies with). Each axis is
  * skipped if unreadable; values are clamped before they are stored.
+ *
+ * Bails if any pane is zoomed: a zoomed pane reports the full-window grid, so
+ * the right-column width reads back as ~100% and would poison the global until
+ * the next real drag. The drag path gates on this via {@link shouldCaptureDrag},
+ * but the switch-away caller hits this function directly, so the guard lives
+ * here too.
  */
 export async function captureGlobalLayout(session: string): Promise<void> {
   // No `-s`: the active window's panes — the ones the user can see and drag.
@@ -412,7 +418,7 @@ export async function captureGlobalLayout(session: string): Promise<void> {
     "-t",
     `=${session}`,
     "-F",
-    "#{@kobe_role}\t#{pane_width}\t#{pane_height}\t#{window_width}\t#{window_height}",
+    "#{@kobe_role}\t#{pane_width}\t#{pane_height}\t#{window_width}\t#{window_height}\t#{window_zoomed_flag}",
   ])
   if (code !== 0) return
   const rows = stdout
@@ -420,6 +426,7 @@ export async function captureGlobalLayout(session: string): Promise<void> {
     .map((line) => line.split("\t"))
     .filter((cols) => (cols[0]?.trim() ?? "") !== "")
   if (rows.length === 0) return
+  if (rows.some((cols) => cols[5]?.trim() === "1")) return // zoomed → geometry is unreliable
   const winW = Number.parseInt(rows[0][3]?.trim() ?? "", 10)
   const winH = Number.parseInt(rows[0][4]?.trim() ?? "", 10)
   const sets: (readonly string[])[] = []

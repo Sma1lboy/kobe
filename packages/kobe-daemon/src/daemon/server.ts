@@ -15,6 +15,7 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
+import { StringDecoder } from "node:string_decoder"
 import type { Orchestrator } from "@/orchestrator/core"
 import { type UpdateInfo, checkLatestVersion } from "@/version"
 import { DaemonActivityRegistry } from "./activity-registry.ts"
@@ -230,8 +231,13 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     }
     clients.add(client)
 
+    // Per-connection decoder: holds a partial multibyte UTF-8 sequence (CJK,
+    // em-dash, emoji) across TCP chunk boundaries. Decoding each chunk with a
+    // bare `toString("utf8")` would emit U+FFFD for a codepoint split between
+    // two chunks, silently corrupting task titles / field notes / prompts.
+    const decoder = new StringDecoder("utf8")
     socket.on("data", (chunk) => {
-      client.buffer += chunk.toString("utf8")
+      client.buffer += decoder.write(chunk)
       drainClientBuffer(client)
     })
     socket.on("error", () => {})
