@@ -75,7 +75,7 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { Task } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
-import { TextAttributes } from "@opentui/core"
+import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js"
 import { useTheme as _useTheme } from "../../context/theme"
@@ -506,6 +506,52 @@ export function Sidebar(props: SidebarProps) {
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
+  // Renderable refs for the scroll machinery below.
+  let scrollRef: ScrollBoxRenderable | undefined
+  let outerBoxRef: BoxRenderable | undefined
+  const rowEls = new Map<number, BoxRenderable>()
+
+  // Apply the rail width imperatively, then restore flexShrink/minHeight in the
+  // SAME effect. opentui's width setter force-zeroes flexShrink, which would
+  // stop the rail shrinking to its bounded host parent and break list
+  // scrolling (see the outer box's ref/comment below). Doing both here
+  // guarantees flexShrink wins regardless of prop-application order, and the
+  // effect re-runs on live pane resizes so a resize can't re-zero it.
+  createEffect(() => {
+    const w = props.width ? props.width() : SIDEBAR_WIDTH
+    const el = outerBoxRef
+    if (!el) return
+    el.width = w
+    el.flexShrink = 1
+    el.minHeight = 0
+  })
+
+  // ---------- viewport follow ----------
+  // Without this, j/k moved the cursor index but the scrollbox never
+  // followed: once the list outgrew the pane height the highlight walked
+  // straight off the bottom edge and navigation *looked* dead — the
+  // selection was changing, just out of sight. FileTree solves the same
+  // problem by mapping cursorIndex → a y-offset, but it can assume each
+  // row is height-1; our rows vary (project cards are 2 lines, task cards
+  // 3, plus section headers), so index ≠ y. Instead we capture each
+  // rendered row body keyed by its `flatIndex` and lean on the
+  // scrollbox's own geometry-based `scrollChildIntoView`, which reads the
+  // laid-out child/viewport rects and scrolls the minimum needed to bring
+  // the cursor row back inside the window (a no-op when it's already
+  // visible). `rowEls` keys on `flatIndex` for the same reason the row
+  // closures capture it non-reactively: reconcileSidebarRows only reuses a
+  // row element when its flatIndex is unchanged, so the ref re-fires
+  // whenever a row's position actually moves.
+  createEffect(
+    on([cursorIndex, rows], ([i]) => {
+      if (!scrollRef) return
+      if (scrollRef.viewport.height <= 0) return
+      const el = rowEls.get(i)
+      if (!el) return
+      scrollRef.scrollChildIntoView(el.id)
+    }),
+  )
+
   // Sync cursor from external selectedId. Deps are *only* the selected
   // id and the flat id list — we read `cursorIndex()` inside via
   // `untrack` so cursor moves from j/k don't refire this effect (which
@@ -629,8 +675,23 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <box
-      width={props.width ? props.width() : SIDEBAR_WIDTH}
-      flexShrink={0}
+      // width + flexShrink are applied together via `outerBoxRef` below, NOT as
+      // props here. This is load-bearing and was the whole reason the task list
+      // wouldn't scroll: opentui's `width` setter force-zeroes flexShrink (it
+      // assumes an explicitly-sized box shouldn't flex). With flexShrink=0 this
+      // rail refuses to shrink to its height-bounded host parent and sizes to
+      // its FULL content height; the inner scrollbox inherits that height, so
+      // opentui sees no overflow and the list never scrolls — j/k just walks
+      // the cursor off the bottom edge. Setting width then restoring
+      // flexShrink={1} in one effect (so order is guaranteed) re-bounds the box
+      // to the pane, which lets the scrollbox clip + the viewport-follow effect
+      // scroll. FileTree's outer box has no explicit width, so it kept the
+      // shrink default and never hit this.
+      ref={(r: BoxRenderable) => {
+        outerBoxRef = r
+      }}
+      flexGrow={1}
+      minHeight={0}
       flexDirection="column"
       paddingTop={1}
       paddingBottom={1}
@@ -776,7 +837,11 @@ export function Sidebar(props: SidebarProps) {
       {/* Body: scrollable flat task list. Stretches with flexGrow so
          the footer always sits at the bottom. */}
       <scrollbox
+        ref={(r: ScrollBoxRenderable) => {
+          scrollRef = r
+        }}
         flexGrow={1}
+        minHeight={0}
         verticalScrollbarOptions={{
           trackOptions: {
             foregroundColor: "transparent",
@@ -923,6 +988,12 @@ export function Sidebar(props: SidebarProps) {
                       row reads even when the fill is suppressed. */}
                   {/* biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply. */}
                   <box
+                    ref={(r: BoxRenderable) => {
+                      rowEls.set(flatIndex, r)
+                      onCleanup(() => {
+                        if (rowEls.get(flatIndex) === r) rowEls.delete(flatIndex)
+                      })
+                    }}
                     flexDirection="column"
                     gap={0}
                     backgroundColor={isCursor() ? theme.backgroundElement : undefined}
