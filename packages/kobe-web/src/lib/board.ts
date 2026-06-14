@@ -6,8 +6,7 @@
  * Columns bind to the PERSISTED `Task.status` lifecycle, never the transient
  * engine activity — activity is a per-card signal lamp, not a drop target
  * (docs/design/web-kanban.md). Archived tasks and `kind: "main"` project rows
- * are not workflow cards, so they never enter the board (the Overview
- * precedent).
+ * are not workflow cards, so they never enter the board.
  */
 
 import type { ConflictPair, Task } from "./types.ts"
@@ -406,30 +405,14 @@ export function conflictBadge(
   }
 }
 
-/**
- * How many of the given tasks have at least one PROVEN merge conflict — the
- * urgent headline count for the Overview summary. Overlaps are advisory and
- * stay per-card, so they don't inflate the red headline number.
- */
-export function provenConflictCount(
-  pairs: readonly ConflictPair[],
-  taskIds: Iterable<string>,
-): number {
-  let count = 0
-  for (const id of taskIds) {
-    if (conflictBadge(pairs, id)?.level === "conflict") count++
-  }
-  return count
-}
-
 /** Max files named per counterpart before eliding with "…". */
 const CONFLICT_TIP_FILES = 4
 
 /**
  * Multi-line tooltip for a task's conflict badge — one line per counterpart
  * ("CONFLICTS with <title>: a.ts, b.ts" / "overlaps <title>: …"). Shared by
- * the board's portaled tooltip and the Overview card's title attribute so the
- * two never drift. `titleOf` resolves the other task's display label.
+ * the board's portaled tooltip and the rail's conflict chip so the two never
+ * drift. `titleOf` resolves the other task's display label.
  */
 export function conflictTip(
   pairs: readonly ConflictPair[],

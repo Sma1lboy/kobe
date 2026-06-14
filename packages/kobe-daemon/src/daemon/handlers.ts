@@ -42,6 +42,7 @@ import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchRepoByCwd, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
+import type { IssuesStore } from "./issues-store.ts"
 import {
   CHANNEL_NAMES,
   DAEMON_PROTOCOL_VERSION,
@@ -65,6 +66,8 @@ export interface DaemonHandlerContext {
   readonly bus: DaemonEventBus
   /** Transient engine-activity state (`engine.reportEvent`, `task.delete`). */
   readonly activity: DaemonActivityRegistry
+  /** Daemon-owned issue tracker store, keyed by git common-dir. */
+  readonly issues: IssuesStore
   /** Daemon-process facts + lifecycle controls handlers surface or drive. */
   readonly daemon: {
     readonly startedAt: Date
@@ -222,6 +225,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           branch: optionalString(payload, "branch"),
           baseRef: optionalString(payload, "baseRef"),
           vendor: optionalVendor(payload, "vendor"),
+          modelEffort: optionalString(payload, "effort"),
         })
         return { taskId: task.id, task: serializeTask(task) }
       },
@@ -302,7 +306,37 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         ) {
           throw new Error("status must be a TaskStatus")
         }
+        // Capture the task (for repo) AND its prior status BEFORE the
+        // transition so we can mirror a real task→done transition into the
+        // issue store below.
+        const linked = status === "done" ? ctx.orch.getTask(taskId) : undefined
+        const prevStatus = linked?.status
         await ctx.orch.setStatus(taskId, status)
+        // Done-mirroring: a task reaching `done` flips its source issue to
+        // `done` too, so a unified board stays consistent. The link is owned
+        // by the issue (`Issue.taskId`), so we REVERSE-LOOK-UP the issue whose
+        // `taskId` is this task rather than reading a task→issue field.
+        // Guarded to an ACTUAL →done transition (prevStatus !== "done", so
+        // re-firing done on an already-done task never re-clobbers a
+        // manually-reopened issue); the issue write must never fail the task
+        // update (the status change already committed), so a missing/raced
+        // issue is logged + swallowed.
+        if (status === "done" && prevStatus !== "done" && linked) {
+          try {
+            const state = await ctx.issues.list(linked.repo)
+            const found = state.issues.find((i) => i.taskId === taskId)
+            if (found && found.status !== "done") {
+              const next = await ctx.issues.mutate(linked.repo, {
+                type: "setStatus",
+                id: found.id,
+                status: "done",
+              })
+              ctx.bus.publish("issue.snapshot", next)
+            }
+          } catch (err) {
+            logDaemonError("issue-done-mirror", err)
+          }
+        }
         return {}
       },
     },
@@ -425,6 +459,20 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
         await ctx.orch.setActiveTask(taskId)
         ctx.bus.publish("active-task", { taskId })
         return {}
+      },
+    },
+    {
+      name: "issue.list",
+      async handle(payload, ctx) {
+        return ctx.issues.list(requireString(payload, "repoRoot"))
+      },
+    },
+    {
+      name: "issue.mutate",
+      async handle(payload, ctx) {
+        const state = await ctx.issues.mutate(requireString(payload, "repoRoot"), payload.op)
+        ctx.bus.publish("issue.snapshot", state)
+        return state
       },
     },
     {

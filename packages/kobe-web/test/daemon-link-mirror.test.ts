@@ -73,6 +73,68 @@ describe("DaemonLink mirror — task.jobs reducer", () => {
   })
 })
 
+describe("DaemonLink mirror — issue snapshots", () => {
+  it("stores the latest issue state by repo and forwards the channel", () => {
+    const link = new DaemonLink()
+    const f = drive(link)
+    const forwarded: string[] = []
+    link.onEvent((e) => forwarded.push(e.channel))
+
+    f.onFrame("issue.snapshot", {
+      repoRoot: "/repo",
+      exists: true,
+      nextId: 2,
+      issues: [{ id: 1, title: "fix", status: "open", created: "2026-06-13", body: "" }],
+    })
+
+    expect(link.snapshot().issueSnapshots).toEqual({
+      "/repo": {
+        repoRoot: "/repo",
+        exists: true,
+        nextId: 2,
+        issues: [{ id: 1, title: "fix", status: "open", created: "2026-06-13", body: "" }],
+      },
+    })
+    expect(forwarded).toContain("issue.snapshot")
+  })
+
+  it("aliases worktree issue pushes back to the source repo in snapshots", () => {
+    const link = new DaemonLink()
+    const f = drive(link)
+    f.onFrame("task.snapshot", {
+      tasks: [
+        {
+          id: "t1",
+          repo: "/Users/narwhal/proj/kobe/",
+          worktreePath: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+        },
+      ],
+    })
+    f.onFrame("issue.snapshot", {
+      repoRoot: "/Users/narwhal/.kobe/worktrees/kobe/bovid",
+      exists: true,
+      nextId: 2,
+      issues: [{ id: 1, title: "fix", status: "done", created: "2026-06-13", body: "" }],
+    })
+
+    expect(link.snapshot().issueSnapshots["/Users/narwhal/proj/kobe/"]).toEqual(
+      expect.objectContaining({
+        repoRoot: "/Users/narwhal/proj/kobe/",
+        issues: [expect.objectContaining({ id: 1, status: "done" })],
+      }),
+    )
+  })
+
+  it("keeps the conflict-radar mirror alongside issue snapshots", () => {
+    const link = new DaemonLink()
+    const f = drive(link)
+    f.onFrame("task.conflicts", { pairs: [{ a: "x", b: "y", files: ["f.ts"], level: "conflict" }] })
+    f.onFrame("issue.snapshot", { repoRoot: "/repo", exists: true, nextId: 1, issues: [] })
+    expect(link.snapshot().conflicts).toEqual([{ a: "x", b: "y", files: ["f.ts"], level: "conflict" }])
+    expect(link.snapshot().issueSnapshots["/repo"]).toMatchObject({ repoRoot: "/repo" })
+  })
+})
+
 describe("DaemonLink — SSE forward filter", () => {
   it("forwards SPA channels but never the daemon.stopping lifecycle signal", () => {
     const link = new DaemonLink()

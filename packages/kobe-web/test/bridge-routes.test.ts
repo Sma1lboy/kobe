@@ -186,6 +186,37 @@ describe("bridge request handler", () => {
     })
   })
 
+  describe("/api/issues", () => {
+    it("proxies issue reads to the daemon", async () => {
+      const { handle, link } = build({
+        onRequest: (name) => (name === "issue.list" ? { repoRoot: "/repo", exists: false, nextId: 1, issues: [] } : {}),
+      })
+      const res = await handle(new Request("http://localhost/api/issues?repoRoot=%2Frepo"))
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ repoRoot: "/repo", exists: false, nextId: 1, issues: [] })
+      expect(link.calls).toEqual([{ name: "issue.list", payload: { repoRoot: "/repo" } }])
+    })
+
+    it("proxies an issue mutation to the daemon", async () => {
+      const { handle, link } = build({
+        onRequest: (name) => (name === "issue.mutate" ? { repoRoot: "/repo", exists: true, nextId: 2, issues: [] } : {}),
+      })
+      const res = await handle(
+        post("/api/issues", { repoRoot: "/repo", op: { type: "create", title: "fix it" } }),
+      )
+      expect(res.status).toBe(200)
+      expect(link.calls).toEqual([
+        { name: "issue.mutate", payload: { repoRoot: "/repo", op: { type: "create", title: "fix it" } } },
+      ])
+    })
+
+    it("400s a missing repoRoot", async () => {
+      const { handle } = build()
+      const res = await handle(new Request("http://localhost/api/issues"))
+      expect(res.status).toBe(400)
+    })
+  })
+
   describe("/api/themes", () => {
     it("returns the bundled theme palettes", async () => {
       const { handle } = build()

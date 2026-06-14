@@ -12,6 +12,7 @@
 import type { EngineActivityDetail, TaskActivityState } from "@/engine/hook-events"
 import type { Task } from "@/types/task"
 import type { UpdateInfo } from "@/version"
+import type { RepoIssues } from "./issues-store.ts"
 
 /**
  * Bumped to 2 in v0.6 to signal the shape change. The handshake now
@@ -107,6 +108,11 @@ export type DaemonRequestName =
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
+  // Daemon-owned issue tracker (web Issues panel): list one repo's issues and
+  // mutate them (create/setStatus/update/link/unlink/delete). Keyed by the
+  // repo's git common-dir; a mutate republishes the repo's `issue.snapshot`.
+  | "issue.list"
+  | "issue.mutate"
   | "worktree.discoverAdoptable"
   | "worktree.adopt"
   // Creation-time auto-adopt (KOB): a `kobe hook worktree-created` (global
@@ -287,6 +293,18 @@ export interface ChannelPayloads {
    * definition-time caveat) — consumers dedupe on `at`.
    */
   "session.deliver": SessionDeliverPayload
+  /**
+   * Daemon-owned issue tracker snapshot for ONE repo (web Issues panel),
+   * republished on every `issue.mutate` (and when a task→done transition
+   * mirrors into its linked issue). The payload is the whole repo's issue
+   * state ({@link RepoIssues}); the SPA keys its mirror by `repoRoot`. Like
+   * `session.deliver` and `worktree.changes`, the bus caches only ONE
+   * last-value per channel — so with several repos open a late subscriber
+   * replays only the most-recently-mutated repo's snapshot and refetches the
+   * rest via `/api/issues`. Conflict radar (`task.conflicts`) is unchanged —
+   * this channel sits alongside it.
+   */
+  "issue.snapshot": RepoIssues
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -338,6 +356,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "worktree.changes",
   "task.conflicts",
   "session.deliver",
+  "issue.snapshot",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)
@@ -391,6 +410,8 @@ export interface SerializedTask {
   readonly prStatus?: Task["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
+  /** Engine reasoning/effort level applied at launch (e.g. Codex effort). */
+  readonly modelEffort?: string
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -409,6 +430,7 @@ export function serializeTask(task: Task): SerializedTask {
     vendor: task.vendor,
     prStatus: task.prStatus,
     position: task.position,
+    modelEffort: task.modelEffort,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

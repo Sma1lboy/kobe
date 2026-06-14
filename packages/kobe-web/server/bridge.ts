@@ -15,8 +15,10 @@
  *   POST /api/session         ensure a task's tmux session exists
  *   GET  /api/engine-spec     PTY launch spec for a task's engine tab
  *   GET  /api/terminal-spec   PTY launch spec for a task's shell tab
- *   GET  /api/engines         engine-owned vendor list (id + display label)
- *   *    /api/notes, /api/diff  bridge-local (filesystem) routes
+ *   GET  /api/engines         engine-owned vendor list (id + label + effort)
+ *   *    /api/notes, /api/diff      bridge-local (filesystem) routes
+ *   *    /api/issue-assets          bridge-local issue-attachment store
+ *   *    /api/issues                daemon-owned issue tracker proxy
  *   *                         static SPA fallthrough when `staticDir` is set
  */
 
@@ -25,12 +27,15 @@ import { join, normalize } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { availableEngineIds } from "../../kobe/src/engine/account-detect.ts"
 import { engineDisplayName } from "../../kobe/src/engine/interactive-command.ts"
+import { engineEntry } from "../../kobe/src/engine/registry.ts"
 import { getPersistedString, setPersistedString } from "../../kobe/src/state/repos.ts"
 import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
 import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { handleThemesRequest } from "../../kobe/src/web/themes.ts"
 import { DaemonLink } from "./daemon-link.ts"
+import { handleIssueAssetsRequest } from "./issue-assets-route.ts"
+import { handleIssuesRequest } from "./issues-route.ts"
 import { WEB_RPC_ALLOWSET } from "./rpc-allowlist.ts"
 import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./session.ts"
 
@@ -143,13 +148,19 @@ async function rpcResponse(
 }
 
 /** Engine-owned vendor list: detected built-ins + user-registered custom
- *  engines, labeled with their (possibly user-overridden) display names —
- *  so the SPA never hard-codes vendor strings (CLAUDE.md: engine-owned UI
- *  data). Falls back to the always-shippable claude entry on probe failure. */
+ *  engines, labeled with their (possibly user-overridden) display names and
+ *  carrying each engine's reasoning/effort levels from the registry — so the
+ *  SPA never hard-codes vendor strings or effort options (CLAUDE.md:
+ *  engine-owned UI data). Falls back to the always-shippable claude entry on
+ *  probe failure (claude has no kobe-driveable effort flag → no levels). */
 async function enginesResponse(): Promise<Response> {
   try {
     const ids = await availableEngineIds()
-    const engines = ids.map((id) => ({ id, label: engineDisplayName(id) }))
+    const engines = ids.map((id) => ({
+      id,
+      label: engineDisplayName(id),
+      effortLevels: engineEntry(id).effortLevels,
+    }))
     return Response.json({ engines: engines.length > 0 ? engines : [{ id: "claude", label: "Claude" }] })
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -216,6 +227,10 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
     if (diff) return diff
     const history = await handleHistoryRequest(req, url)
     if (history) return history
+    const issues = await handleIssuesRequest(req, url, link)
+    if (issues) return issues
+    const issueAssets = await handleIssueAssetsRequest(req, url)
+    if (issueAssets) return issueAssets
     const themes = handleThemesRequest(req, url)
     if (themes) return themes
     if (staticDir) return staticResponse(url.pathname, staticDir)

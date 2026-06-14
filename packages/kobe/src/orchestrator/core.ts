@@ -63,6 +63,8 @@ export interface CreateTaskInput {
   readonly baseRef?: string
   /** Engine vendor for the monitor's history-reader hint. */
   readonly vendor?: VendorId
+  /** Engine reasoning/effort level applied at launch (e.g. Codex effort). */
+  readonly modelEffort?: string
 }
 
 export type Unsubscribe = () => void
@@ -211,6 +213,7 @@ export class Orchestrator {
       status: "backlog",
       kind: "task",
       vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
+      ...(input.modelEffort ? { modelEffort: input.modelEffort } : {}),
     })
     // Remember the optional baseRef on a side-map so `ensureWorktree`
     // can use it. Not on the Task itself: base-ref is one-shot input
