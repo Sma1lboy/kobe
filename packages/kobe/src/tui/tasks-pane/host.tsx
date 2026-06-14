@@ -92,6 +92,7 @@ import {
   openNewTaskTab,
   openSettingsTab,
   openUpdateTab,
+  prepareWindowForSwitch,
   refreshKobeWorkspacePanes,
 } from "../panes/terminal/tmux.ts"
 import { useDialog } from "../ui/dialog"
@@ -551,6 +552,10 @@ function TasksShell(props: {
           initPrompt: init.initPrompt,
         })
       }
+      // Fit + heal the target to THIS client before switching in, so it doesn't
+      // reflow on screen (see prepareWindowForSwitch — this is the in-tmux
+      // counterpart to direct.ts's pre-attach fit).
+      await prepareWindowForSwitch(name)
       await runTmux(["switch-client", "-t", `=${name}`])
       void props.orch?.setActiveTask(id).catch(() => {})
       return
@@ -593,6 +598,10 @@ function TasksShell(props: {
       notifyError("Couldn't start this task's session")
       return
     }
+    // Fit + heal to THIS client before switching in (see prepareWindowForSwitch):
+    // the session was just built detached at the host pane's narrow stdout size,
+    // so without this the full-terminal switch reflows it on screen.
+    await prepareWindowForSwitch(name)
     await runTmux(["switch-client", "-t", `=${name}`])
     void props.orch?.setActiveTask(id).catch(() => {})
   }
