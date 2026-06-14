@@ -48,7 +48,6 @@ export function IssueIntakePanel({
   const [busy, setBusy] = useState(false)
   const [uploads, setUploads] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const [bodyTab, setBodyTab] = useState<"write" | "preview">("write")
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const canSubmit = title.trim().length > 0 && !busy
@@ -178,22 +177,6 @@ export function IssueIntakePanel({
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
               Description
             </span>
-            <div className="flex items-center gap-1">
-              {(["write", "preview"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setBodyTab(t)}
-                  className={`px-1.5 py-0.5 text-[10px] capitalize transition-colors ${
-                    bodyTab === t
-                      ? "border-b border-primary text-fg"
-                      : "text-subtle hover:text-fg"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
             <span className="text-[10px] text-subtle">paste or drop images</span>
             {uploads > 0 && (
               <span className="ml-auto text-[10px] text-subtle">
@@ -201,7 +184,9 @@ export function IssueIntakePanel({
               </span>
             )}
           </div>
-          {bodyTab === "write" ? (
+          {/* Edit + live preview, same view: type markdown on the left, the
+              rendered result (incl. pasted images) updates on the right. */}
+          <div className="flex gap-2">
             <textarea
               ref={bodyRef}
               value={body}
@@ -211,19 +196,20 @@ export function IssueIntakePanel({
               onDragOver={onDragOver}
               placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
               rows={14}
-              className="w-full resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+              className="min-h-[14rem] w-1/2 flex-1 resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
             />
-          ) : body.trim() ? (
-            <div
-              className="kobe-md min-h-[14rem] overflow-auto border border-line bg-bg px-2 py-1.5 text-[12px] leading-relaxed text-fg"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first + only emits images for resolved /api/issue-assets urls (lib/markdown.ts; tested).
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
-            />
-          ) : (
-            <div className="min-h-[14rem] border border-line bg-bg px-2 py-1.5 text-[12px] text-subtle">
-              Nothing to preview.
-            </div>
-          )}
+            {body.trim() ? (
+              <div
+                className="kobe-md min-h-[14rem] w-1/2 flex-1 overflow-auto border border-line bg-inset px-2 py-1.5 text-[12px] leading-relaxed text-fg"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first + only emits images for resolved /api/issue-assets urls (lib/markdown.ts; tested).
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+              />
+            ) : (
+              <div className="min-h-[14rem] w-1/2 flex-1 overflow-auto border border-line bg-inset px-2 py-1.5 text-[12px] text-subtle">
+                Live preview
+              </div>
+            )}
+          </div>
         </div>
 
         <EngineEffortPicker
