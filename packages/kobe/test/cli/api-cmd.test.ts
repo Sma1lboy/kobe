@@ -85,6 +85,13 @@ describe("parseAgentsSpec", () => {
     expect(() => parseAgentsSpec("claude")).toThrow(/vendor:count/)
   })
 
+  it("rejects an over-cap count before allocating (no OOM on a huge count)", () => {
+    // Guards against `--agents claude:1000000000` building a billion-element
+    // array before the post-build cap check rejects it.
+    expect(() => parseAgentsSpec("claude:1000000000")).toThrow(/exceeds the cap/)
+    expect(() => parseAgentsSpec("claude:6,codex:6")).toThrow(/exceeds the cap/)
+  })
+
   it("rejects a spec that expands to nothing", () => {
     expect(() => parseAgentsSpec(" , ")).toThrow(/no agents/)
   })

@@ -684,6 +684,12 @@ export function parseAgentsSpec(spec: string): VendorId[] {
     if (!Number.isInteger(count) || count <= 0) {
       throw new ApiError(`--agents count for "${vendor}" must be a positive integer`, "BAD_FLAG")
     }
+    // Reject against the fanout cap BEFORE materializing the array — otherwise
+    // `--agents claude:1000000000` allocates a billion-element array (OOM) only
+    // to be rejected by the post-build `plan.length > FANOUT_CAP` check.
+    if (out.length + count > FANOUT_CAP) {
+      throw new ApiError(`--agents requests ${out.length + count} agents, exceeds the cap of ${FANOUT_CAP}`, "BAD_FLAG")
+    }
     for (let i = 0; i < count; i++) out.push(vendor as VendorId)
   }
   if (out.length === 0) throw new ApiError('--agents specified no agents (e.g. "claude:2,codex:1")', "BAD_FLAG")
