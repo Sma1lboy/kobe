@@ -8,6 +8,12 @@
  * What it adds over the IssuePeek precedent is a slide-in: the panel mounts at
  * translate-x-full, then flips to translate-x-0 on the next layout tick so the
  * browser animates the transform. motion-reduce drops the animation entirely.
+ *
+ * `wide` opts a panel into a much wider shell (w-[920px] vs the default
+ * w-[640px]) so a two-column body — e.g. the redesigned issue detail's
+ * ticket/config split — has room without each surface feeling cramped. It only
+ * touches the panel width; every other behavior (slide-in, focus trap,
+ * Esc/backdrop close, title/footer) is unchanged.
  */
 
 import { X } from "lucide-react"
@@ -20,12 +26,15 @@ export function SlideOver({
   title,
   children,
   footer,
+  wide = false,
 }: {
   open: boolean
   onClose: () => void
   title?: ReactNode
   children: ReactNode
   footer?: ReactNode
+  /** Render a much wider panel (for a two-column body). Default narrow. */
+  wide?: boolean
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
   // Drives the slide: mount off-screen, then flip on the next tick so the
@@ -80,9 +89,9 @@ export function SlideOver({
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
-        className={`relative flex h-full w-[640px] max-w-[92vw] flex-col border-l border-line bg-bg shadow-2xl transition-transform duration-200 ease-out motion-reduce:transition-none focus:outline-none ${
-          shown ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`relative flex h-full flex-col border-l border-line bg-bg shadow-2xl transition-transform duration-200 ease-out motion-reduce:transition-none focus:outline-none ${
+          wide ? "w-[920px] max-w-[96vw]" : "w-[640px] max-w-[92vw]"
+        } ${shown ? "translate-x-0" : "translate-x-full"}`}
       >
         {title !== undefined && (
           <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">

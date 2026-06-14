@@ -101,7 +101,7 @@ import { pushToast, reportError } from "../lib/toast.ts"
 import type { EngineState, Task } from "../lib/types.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
-import { ChangesChip, PrChip, TIP_ABOVE, TIP_RIGHT } from "./chips.tsx"
+import { ChangesChip, PrChip, TIP_RIGHT } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { IssueCard } from "./IssueCard.tsx"
 import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
@@ -309,8 +309,8 @@ function TaskBoardCard({
         type="button"
         onClick={onPeek}
         aria-label={`Peek ${task.title || task.branch || task.id}`}
-        data-tip="Peek session"
-        className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100 ${TIP_ABOVE}`}
+        title="Peek session"
+        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
       >
         <Eye size={11} strokeWidth={1.8} />
       </button>
@@ -359,9 +359,9 @@ function ColumnView({
     <section
       ref={setNodeRef}
       data-column={dropId}
-      className={`flex h-full w-72 shrink-0 flex-col border border-transparent ${
-        isOver ? "border-line-active bg-inset/40" : ""
-      }`}
+      className={`flex h-full shrink-0 flex-col border border-transparent ${
+        column.key === "backlog" ? "w-96" : "w-72"
+      } ${isOver ? "border-line-active bg-inset/40" : ""}`}
     >
       <div className="mb-2 flex items-baseline gap-2">
         <h2
@@ -868,26 +868,31 @@ export function Board() {
     }
   }
 
-  const doQuickStart = (
+  // Spawn a task for the issue and RETURN its id so the caller decides whether
+  // to watch (open the live session) or stay on the board. The optimistic
+  // pending-link still happens here — it's a property of the spawn, not of how
+  // the caller reacts. Navigation/peek routing is the caller's job (onStart).
+  const doQuickStart = async (
     repo: string,
     issue: Issue,
     vendor?: string,
     effort?: string,
-  ): void => {
-    if (quickStartingId !== null) return
+  ): Promise<string | undefined> => {
+    if (quickStartingId !== null) return undefined
     setQuickStartingId(issue.id)
-    quickStartIssue(repo, issue, vendor, effort)
-      .then(({ taskId }) => {
-        // Optimistically hide the issue so we don't flash the issue card AND
-        // its fresh task card for one snapshot round-trip; the effect over
-        // allIssues clears this once the daemon confirms the link.
-        setPendingLinks((prev) => new Set(prev).add(`${repo}:${issue.id}`))
-        setPeek(null)
-        selectTask(taskId)
-        void navigate({ to: "/task/$taskId", params: { taskId } })
-      })
-      .catch((err: unknown) => reportError("quick start issue", err))
-      .finally(() => setQuickStartingId(null))
+    try {
+      const { taskId } = await quickStartIssue(repo, issue, vendor, effort)
+      // Optimistically hide the issue so we don't flash the issue card AND its
+      // fresh task card for one snapshot round-trip; the effect over allIssues
+      // clears this once the daemon confirms the link.
+      setPendingLinks((prev) => new Set(prev).add(`${repo}:${issue.id}`))
+      return taskId
+    } catch (err) {
+      reportError("quick start issue", err)
+      return undefined
+    } finally {
+      setQuickStartingId(null)
+    }
   }
 
   const onDragStart = (event: DragStartEvent): void => {
@@ -1238,6 +1243,25 @@ export function Board() {
         )}
       </div>
 
+      {/* Floating New-issue entry — the board is the ticket-intake surface, so
+          a always-reachable + FAB (bottom-right) opens the intake panel for the
+          active project chip, else the first project. */}
+      {(() => {
+        const target = repoFilter ?? projectBoards[0]?.repo
+        if (!target) return null
+        return (
+          <button
+            type="button"
+            onClick={() => setCreatingRepo(target)}
+            title="New issue"
+            aria-label="New issue"
+            className="fixed bottom-6 right-6 z-20 flex h-12 w-12 items-center justify-center rounded-full border border-primary bg-primary text-bg shadow-lg transition-transform hover:scale-105"
+          >
+            <Plus size={22} strokeWidth={2.2} />
+          </button>
+        )
+      })()}
+
       {creatingRepo && (
         <IssueIntakePanel
           repoRoot={creatingRepo}
@@ -1286,19 +1310,30 @@ export function Board() {
           <IssuePeek
             key={`${entry.repo}:${entry.issue.id}`}
             issue={entry.issue}
+            repoRoot={entry.repo}
             busy={issueBusy}
-            quickStartBusy={quickStartingId === entry.issue.id}
+            starting={quickStartingId === entry.issue.id}
             onClose={() => setPeek(null)}
-            onQuickStart={(vendor, effort) =>
-              doQuickStart(entry.repo, entry.issue, vendor, effort)
-            }
             onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
+            onStart={async ({ vendor, effort, watch }) => {
+              const taskId = await doQuickStart(
+                entry.repo,
+                entry.issue,
+                vendor,
+                effort,
+              )
+              // Watch = drop the user straight into the live session drawer
+              // (BoardPeek); otherwise spawn-and-stay closes the drawer back
+              // to the board.
+              if (watch && taskId) setPeek({ kind: "task", id: taskId })
+              else setPeek(null)
+            }}
             onOpenSession={
               entry.issue.taskId
                 ? () => {
-                    const taskId = entry.issue.taskId
+                    const t = entry.issue.taskId
                     setPeek(null)
-                    if (taskId) open(taskId)
+                    if (t) open(t)
                   }
                 : undefined
             }

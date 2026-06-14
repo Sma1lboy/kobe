@@ -13,7 +13,6 @@
 
 import { Eye } from "lucide-react"
 import type { Issue } from "../lib/issues.ts"
-import { TIP_ABOVE } from "./chips.tsx"
 
 export function IssueCard({
   issue,
@@ -48,8 +47,8 @@ export function IssueCard({
         type="button"
         onClick={onOpen}
         aria-label={`Open issue #${issue.id}`}
-        data-tip="Open issue detail"
-        className={`absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100 ${TIP_ABOVE}`}
+        title="Open issue detail"
+        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
       >
         <Eye size={11} strokeWidth={1.8} />
       </button>
