@@ -520,7 +520,7 @@ export function Board() {
     () => issueRepoOptions(tasks).map((option) => option.repo),
     [tasks],
   )
-  const { data: issueData } = useRepoIssues(issueRepos)
+  const { data: issueData, refresh: refreshIssues } = useRepoIssues(issueRepos)
 
   // The flat issue list (across every repo), each tagged with its source repo.
   // Only `exists` repos contribute; a missing issue file is empty, not error.
@@ -859,6 +859,10 @@ export function Board() {
     setIssueBusy(true)
     try {
       await updateIssue(repo, id, patch)
+      // The daemon also pushes issue.snapshot, but its repoRoot aliasing can
+      // miss the board's repo key — refresh the GET (which caches under the key
+      // the board reads) so the edited title/body lands in the list at once.
+      refreshIssues([repo])
       return true
     } catch (err) {
       reportError("update issue", err)
@@ -1267,18 +1271,17 @@ export function Board() {
           repoRoot={creatingRepo}
           open
           onClose={() => setCreatingRepo(null)}
-          onCreated={(issue, started) =>
-            // The panel owns create + (for Execute) the quick-start/link/active
-            // pointer; the board just confirms. The spawned task's card lands
-            // on the board via the next snapshot, and its issue dedups behind
-            // it once the link confirms.
+          onCreated={(issue, started) => {
+            // Refresh so the new issue lands in the Backlog at once (the
+            // issue.snapshot push can miss the board's repo key via aliasing).
+            if (creatingRepo) refreshIssues([creatingRepo])
             pushToast(
               "success",
               started
                 ? `Issue #${issue.id} created — starting its task`
                 : `Issue #${issue.id} created`,
             )
-          }
+          }}
         />
       )}
 
