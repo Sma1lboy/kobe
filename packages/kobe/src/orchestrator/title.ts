@@ -18,8 +18,12 @@ export function deriveTitleFromPrompt(prompt: string): string {
   if (typeof prompt !== "string") return ""
   const collapsed = prompt.replace(/\s+/g, " ").trim()
   if (collapsed.length === 0) return ""
-  if (collapsed.length <= TITLE_CHAR_CAP) return collapsed
-  return `${collapsed.slice(0, TITLE_CHAR_CAP)}…`
+  // Truncate on code-POINT boundaries, not UTF-16 code units: a bare
+  // `.slice(0, CAP)` can bisect a surrogate pair (emoji / astral char) and
+  // leave an orphaned half that renders as a replacement glyph in the sidebar.
+  const points = [...collapsed]
+  if (points.length <= TITLE_CHAR_CAP) return collapsed
+  return `${points.slice(0, TITLE_CHAR_CAP).join("")}…`
 }
 
 /**

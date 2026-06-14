@@ -46,4 +46,16 @@ describe("deriveTitleFromPrompt", () => {
     expect(out.endsWith("…")).toBe(true)
     expect([...out].length).toBe(TITLE_CHAR_CAP + 1) // capped chars + the ellipsis
   })
+
+  it("never splits a surrogate pair when truncating at the cap", () => {
+    // An emoji straddling the cut point must not be bisected into an orphaned
+    // half (which renders as a replacement glyph).
+    const prompt = `${"x".repeat(TITLE_CHAR_CAP - 1)}😀tail`
+    const out = deriveTitleFromPrompt(prompt)
+    expect(out.endsWith("…")).toBe(true)
+    expect(out).not.toContain("�")
+    // No lone surrogate: a UTF-8 round-trip is lossless only if every surrogate
+    // is paired.
+    expect(Buffer.from(out, "utf8").toString("utf8")).toBe(out)
+  })
 })

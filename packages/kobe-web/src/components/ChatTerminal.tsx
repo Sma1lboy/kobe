@@ -144,6 +144,10 @@ export function ChatTerminal({
         if (!disposed) setStatus("open")
       }
       ws.onmessage = (e) => {
+        // A WS close is async, so a frame already queued can fire after
+        // cleanup disposed the terminal — writing to a disposed xterm throws.
+        // onopen/onclose already guard on `disposed`; onmessage must too.
+        if (disposed) return
         const data =
           typeof e.data === "string"
             ? e.data

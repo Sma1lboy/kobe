@@ -169,6 +169,19 @@ describe("RemoteExecHost.wrapCommand", () => {
     expect(line).not.toContain("sshpass")
     expect(line).not.toContain("hunter2")
   })
+
+  it("quotes a key path containing a space so the local shell keeps it as one arg", () => {
+    const { spawn } = recordingSpawner()
+    const spec: RemoteSpec = {
+      ...KEY_SPEC,
+      auth: { kind: "key", keyPath: "/home/dev/my keys/id_ed25519" },
+    }
+    const line = new RemoteExecHost(spec, spawn).wrapCommand("claude", { tty: true, cwd: "/srv/wt" })
+    // The space-bearing path is single-quoted as a whole; bare flags stay bare.
+    expect(line).toContain("'/home/dev/my keys/id_ed25519'")
+    expect(line.startsWith("ssh ")).toBe(true)
+    expect(line).toContain("dev@box.example.com")
+  })
 })
 
 describe("RemoteExecHost fs helpers", () => {
