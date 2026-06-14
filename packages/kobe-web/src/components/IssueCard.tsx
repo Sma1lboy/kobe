@@ -1,25 +1,30 @@
 /**
  * IssueCard — a compact, clickable card for one daemon issue, in the Board's
- * kanban-card grammar (title, #id, created date, hover Eye). Extracted from
- * IssuesPage so the unified Board can render the repo's issues in its Backlog
- * column without the IssuesPage shell.
+ * kanban-card grammar (title, #id, created date, hover Eye + Trash). Extracted
+ * from IssuesPage so the unified Board can render the repo's issues in its
+ * Backlog column without the IssuesPage shell.
  *
  * Props in, callbacks out: the card owns no data fetching. `onOpen` is the
  * click handler that opens the issue detail drawer (IssuePeek). Clicking the
  * card body or the hover Eye both open that drawer — the card never starts a
- * task itself; starting an issue happens inside the detail drawer. Issue cards
- * are NOT draggable.
+ * task itself; starting an issue happens inside the detail drawer. `onDelete`
+ * raises a delete request (the Board gates it behind a ConfirmDialog before
+ * touching the daemon store). Issue cards are NOT draggable.
  */
 
-import { Eye } from "lucide-react"
+import { Eye, Trash2 } from "lucide-react"
 import type { Issue } from "../lib/issues.ts"
+import { TIP_ABOVE } from "./chips.tsx"
 
 export function IssueCard({
   issue,
   onOpen,
+  onDelete,
 }: {
   issue: Issue
   onOpen: () => void
+  /** Raise a delete request — the Board confirms before removing the record. */
+  onDelete: () => void
 }) {
   return (
     <div className="group/card relative">
@@ -40,18 +45,31 @@ export function IssueCard({
           <span className="font-mono">{issue.created}</span>
         </div>
       </button>
-      {/* Single hover Eye, top-right — opens the issue detail drawer (same as
-          clicking the card body). The Board card grammar: hover reveals one
-          peek affordance, never a start button. */}
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={`Open issue #${issue.id}`}
-        title="Open issue detail"
-        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
-      >
-        <Eye size={11} strokeWidth={1.8} />
-      </button>
+      {/* Hover affordances, top-right — an Eye that opens the issue detail
+          drawer (same as clicking the card body) and a Trash that raises a
+          delete request (the Board confirms before touching the daemon store).
+          The Board card grammar: hover reveals peek affordances, never a start
+          button. */}
+      <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open issue #${issue.id}`}
+          data-tip="Open issue detail"
+          className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
+        >
+          <Eye size={11} strokeWidth={1.8} />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete issue #${issue.id}`}
+          data-tip="Delete issue"
+          className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-kobe-red/50 hover:text-kobe-red ${TIP_ABOVE}`}
+        >
+          <Trash2 size={11} strokeWidth={1.8} />
+        </button>
+      </div>
     </div>
   )
 }

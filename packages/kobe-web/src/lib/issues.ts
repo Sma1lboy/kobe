@@ -114,6 +114,16 @@ export async function unlinkIssue(
   return postOp(repoRoot, { type: "unlink", id })
 }
 
+/** Remove an issue from the daemon-owned tracker. This deletes ONLY the issue
+ *  record — any task, branch, worktree, or engine session it was linked to is
+ *  left untouched. */
+export async function deleteIssue(
+  repoRoot: string,
+  id: number,
+): Promise<RepoIssues> {
+  return postOp(repoRoot, { type: "delete", id })
+}
+
 async function fetchKobeApiInvocation(): Promise<string> {
   const res = await fetch("/api/cli-invocation")
   if (!res.ok) return "kobe api"

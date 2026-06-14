@@ -44,6 +44,7 @@ type IssueOp =
   | { type: "update"; id?: unknown; title?: unknown; body?: unknown }
   | { type: "link"; id?: unknown; taskId?: unknown }
   | { type: "unlink"; id?: unknown }
+  | { type: "delete"; id?: unknown }
 
 function isGitNotRepositoryError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
@@ -249,6 +250,11 @@ export class IssuesStore {
         const issue = record.issues.find((i) => i.id === typed.id)
         if (!issue) throw new Error(`no issue #${typed.id}`)
         issue.taskId = undefined
+      } else if (typed.type === "delete") {
+        if (typeof typed.id !== "number") throw new Error("delete requires a numeric id")
+        const nextIssues = record.issues.filter((i) => i.id !== typed.id)
+        if (nextIssues.length === record.issues.length) throw new Error(`no issue #${typed.id}`)
+        record.issues = nextIssues
       } else {
         throw new Error(`unknown op type: ${(typed as { type: string }).type}`)
       }

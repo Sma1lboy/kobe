@@ -27,6 +27,7 @@ function statusForIssueError(err: unknown): number {
     message === "link requires a numeric id" ||
     message === "link requires a non-empty taskId" ||
     message === "unlink requires a numeric id" ||
+    message === "delete requires a numeric id" ||
     message.startsWith("unknown op type:")
   ) {
     return 400

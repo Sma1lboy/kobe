@@ -85,6 +85,7 @@ import {
   useBoardState,
 } from "../lib/board-state.ts"
 import {
+  deleteIssue,
   type Issue,
   issueRepoOptions,
   quickStartIssue,
@@ -102,6 +103,7 @@ import type { EngineState, Task } from "../lib/types.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
 import { ChangesChip, PrChip, TIP_RIGHT } from "./chips.tsx"
+import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { IssueCard } from "./IssueCard.tsx"
 import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
@@ -328,6 +330,7 @@ function ColumnView({
   onNewIssue,
   onPeek,
   onPeekIssue,
+  onDeleteIssue,
 }: {
   repo: string
   column: BoardColumn
@@ -340,6 +343,8 @@ function ColumnView({
   onNewIssue?: () => void
   onPeek: (id: string) => void
   onPeekIssue: (issue: Issue) => void
+  /** Raise a delete request for an issue card — the Board confirms first. */
+  onDeleteIssue: (issue: Issue) => void
 }) {
   // The droppable id is composite (`${repo}:${columnKey}`) so two projects'
   // "in_review" columns are distinct drop targets.
@@ -397,6 +402,7 @@ function ColumnView({
                   key={`issue:${card.issue.id}`}
                   issue={card.issue}
                   onOpen={() => onPeekIssue(card.issue)}
+                  onDelete={() => onDeleteIssue(card.issue)}
                 />
               ) : (
                 <TaskBoardCard
@@ -434,6 +440,7 @@ function ProjectColumns({
   onNewIssue,
   onPeek,
   onPeekIssue,
+  onDeleteIssue,
 }: {
   board: ProjectBoard
   engineStates: Record<string, EngineState>
@@ -443,6 +450,7 @@ function ProjectColumns({
   onNewIssue: (repo: string) => void
   onPeek: (id: string) => void
   onPeekIssue: (issue: Issue) => void
+  onDeleteIssue: (repo: string, issue: Issue) => void
 }) {
   return (
     <div className="flex h-full min-w-max gap-4">
@@ -460,6 +468,7 @@ function ProjectColumns({
           }
           onPeek={onPeek}
           onPeekIssue={onPeekIssue}
+          onDeleteIssue={(issue) => onDeleteIssue(board.repo, issue)}
         />
       ))}
     </div>
@@ -492,6 +501,12 @@ export function Board() {
   // Hiding them here avoids a flash of duplicate (the issue card AND its new
   // task card) for one round-trip. Cleared once the daemon confirms the link.
   const [pendingLinks, setPendingLinks] = useState<Set<string>>(new Set())
+  // Issue pending a delete confirmation (null = no dialog). Carries its source
+  // repo so the confirmed delete hits the right daemon store key.
+  const [confirmDelete, setConfirmDelete] = useState<{
+    repo: string
+    issue: Issue
+  } | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -587,7 +602,7 @@ export function Board() {
   // filter would punch through the drawer's focus trap.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (peek || creatingRepo) return
+      if (peek || creatingRepo || confirmDelete) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const t = event.target as HTMLElement | null
       const inField =
@@ -606,7 +621,7 @@ export function Board() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [query, peek, creatingRepo])
+  }, [query, peek, creatingRepo, confirmDelete])
 
   // Project chips: the distinct repos with board cards. Computed from the
   // UNfiltered list so chips (and their counts) don't vanish while one is
@@ -867,6 +882,27 @@ export function Board() {
     } catch (err) {
       reportError("update issue", err)
       return false
+    } finally {
+      setIssueBusy(false)
+    }
+  }
+
+  // Remove an issue from the daemon-owned tracker after the user confirms.
+  // This deletes ONLY the issue record — any task, branch, worktree, or engine
+  // session it was linked to is left untouched (the link is one-way). The
+  // daemon also pushes issue.snapshot, but its repoRoot aliasing can miss the
+  // board's repo key — refresh the GET so the card drops from the list at once.
+  const doDeleteIssue = async (repo: string, issue: Issue): Promise<void> => {
+    setIssueBusy(true)
+    try {
+      await deleteIssue(repo, issue.id)
+      refreshIssues([repo])
+      setConfirmDelete(null)
+      if (peek?.kind === "issue" && peek.repo === repo && peek.id === issue.id) {
+        setPeek(null)
+      }
+    } catch (err) {
+      reportError("delete issue", err)
     } finally {
       setIssueBusy(false)
     }
@@ -1175,6 +1211,9 @@ export function Board() {
                     id: issue.id,
                   })
                 }
+                onDeleteIssue={(repo, issue) =>
+                  setConfirmDelete({ repo, issue })
+                }
               />
             ) : (
               // Multiple projects — one collapsible section each.
@@ -1223,6 +1262,9 @@ export function Board() {
                                 repo: board.repo,
                                 id: issue.id,
                               })
+                            }
+                            onDeleteIssue={(repo, issue) =>
+                              setConfirmDelete({ repo, issue })
                             }
                           />
                         </div>
@@ -1343,6 +1385,20 @@ export function Board() {
           />
         )
       })()}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete issue"
+          body={`Delete issue #${confirmDelete.issue.id}: "${confirmDelete.issue.title}"? This removes it from the daemon issue tracker only; it does not delete any task, branch, worktree, or engine session.`}
+          confirmLabel="Delete"
+          danger
+          busy={issueBusy}
+          onConfirm={() =>
+            void doDeleteIssue(confirmDelete.repo, confirmDelete.issue)
+          }
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   )
 }
