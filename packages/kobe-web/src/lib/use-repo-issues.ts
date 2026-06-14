@@ -56,6 +56,14 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
   // the token too, so an in-flight refresh GET can't clobber a fresher state.
   const seqRef = useRef(new Map<string, number>())
   const appliedSeqRef = useRef(new Map<string, number>())
+  // The exact snapshot ref last applied per repo. The store preserves the ref
+  // of an UNCHANGED repo's snapshot when a DIFFERENT repo's snapshot updates
+  // (applyIssueSnapshotEvent spreads the map, replacing only the changed key),
+  // so we re-run the push effect on every `issueSnapshots` change but skip
+  // repos whose push didn't actually change. Without this, an unrelated repo's
+  // push re-applied this repo's stale snapshot with a fresh seq, briefly
+  // reverting a just-fetched newer state (and burning renders).
+  const lastPushedRef = useRef(new Map<string, RepoIssues>())
 
   const beginRequest = useCallback((root: string): number => {
     const seq = (seqRef.current.get(root) ?? 0) + 1
@@ -123,6 +131,10 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
     for (const repo of repoKey ? repoKey.split("\n") : []) {
       const pushed = byNormalized.get(normalizeRepoPath(repo))
       if (!pushed) continue
+      // Already applied this exact push → skip (an unrelated repo's change
+      // re-ran this effect). Only a genuinely new snapshot ref should win.
+      if (lastPushedRef.current.get(repo) === pushed) continue
+      lastPushedRef.current.set(repo, pushed)
       const seq = beginRequest(repo)
       applyState(pushed, seq, repo)
     }

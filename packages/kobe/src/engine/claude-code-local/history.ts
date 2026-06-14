@@ -41,6 +41,7 @@ import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
 import { normalizeClaudeContent } from "./normalize"
+import { isClaudeCommandBreadcrumb, isSyntheticClaudeRecord } from "./synthetic"
 
 /** Optional FS injection for tests. */
 export interface HistoryDeps {
@@ -251,6 +252,12 @@ function extractMessage(record: Record<string, unknown>, fallbackSessionId: stri
   // The on-disk shape commonly looks like:
   //   { type: "user"|"assistant", message: { role, content }, timestamp, sessionId }
   // but older records sometimes have role+content at the top level.
+  // Drop Claude-injected synthetic rows (local-command caveat, compaction
+  // summary) — the flags live on the OUTER record, and Claude's own
+  // human-turn/title paths skip exactly these. Without this, a session that
+  // opens with a slash/bash command auto-titles from the injected boilerplate.
+  if (isSyntheticClaudeRecord(record)) return null
+
   const inner = isObject(record.message) ? (record.message as Record<string, unknown>) : record
 
   const role = inner.role
@@ -262,6 +269,9 @@ function extractMessage(record: Record<string, unknown>, fallbackSessionId: stri
   // are kept so callers can distinguish "message with no renderable
   // content" from "no message" (extractMessage returns null for the latter).
   const blocks = normalizeClaudeContent(inner.content)
+  // A `<command-name>…` breadcrumb is a plain (un-flagged) user record Claude
+  // writes before the real prompt; drop it so it can't become the title.
+  if (role === "user" && isClaudeCommandBreadcrumb(blocks)) return null
 
   const ts = typeof record.timestamp === "string" ? (record.timestamp as string) : new Date().toISOString()
   const sid = typeof record.sessionId === "string" ? (record.sessionId as string) : fallbackSessionId

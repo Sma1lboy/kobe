@@ -73,4 +73,18 @@ rename to new.ts
     expect(rows.find((r) => r.kind === "del")).toMatchObject({ oldLn: 5 })
     expect(rows.find((r) => r.kind === "add")).toMatchObject({ newLn: 7 })
   })
+
+  it("treats a zero-length line inside a hunk as meta, not a context line", () => {
+    // A bare "" must NOT advance the gutters (real in-hunk context is " ").
+    // If a producer ever strips trailing whitespace from a blank context line,
+    // counting "" as context would offset every following line number.
+    const patch = ["@@ -1,3 +1,3 @@", " a", "", "-b", "+B", " c"].join("\n")
+    const rows = parseDiffRows(patch)
+    const blank = rows[2]
+    expect(blank).toMatchObject({ kind: "meta", oldLn: null, newLn: null })
+    // The deletion that follows the blank line is still line 2 (the blank did
+    // not advance the count off-by-one).
+    expect(rows.find((r) => r.kind === "del")).toMatchObject({ oldLn: 2 })
+    expect(rows.find((r) => r.kind === "add")).toMatchObject({ newLn: 2 })
+  })
 })
