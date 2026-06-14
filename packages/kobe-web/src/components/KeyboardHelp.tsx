@@ -53,7 +53,7 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Triage",
     detail:
-      "task rail status chips (All/Needs/Run/Dirty) + the Board — filter by what needs you",
+      "task rail status chips (All/Needs) + the Board — filter by what needs you",
   },
   {
     label: "Changes / diff",

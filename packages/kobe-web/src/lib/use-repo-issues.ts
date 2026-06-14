@@ -30,6 +30,13 @@ export interface RepoIssuesResult {
   readonly failed: Record<string, string>
   /** A `/api/issues` batch is in flight. */
   readonly loading: boolean
+  /** The FIRST result (GET/push or failure) hasn't landed yet for at least
+   *  one requested repo. Unlike `loading` — a refresh-batch flag set inside an
+   *  effect that only flips AFTER the initial paint — `pending` is derived from
+   *  data/failed presence, so it reads `true` on the very first render. Gate an
+   *  empty-state on this, not on row count, or the "no issues" copy flashes for
+   *  one frame before the initial GET resolves (the board's load twitch). */
+  readonly pending: boolean
   /** Re-fetch the given repos (e.g. a manual refresh button). */
   readonly refresh: (roots: readonly string[]) => void
 }
@@ -124,5 +131,14 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
     }
   }, [issueSnapshots, repoKey, beginRequest, applyState])
 
-  return { data, failed, loading, refresh }
+  // Derived first-paint loading signal: a requested repo with neither an
+  // applied state nor a recorded failure has no result yet. Computed from
+  // data/failed (not the `loading` flag) so it's already true before the fetch
+  // effect runs — that's what lets a consumer skip the misleading empty state.
+  const pending = useMemo(() => {
+    const list = repoKey ? repoKey.split("\n") : []
+    return list.some((root) => !(root in data) && !(root in failed))
+  }, [repoKey, data, failed])
+
+  return { data, failed, loading, pending, refresh }
 }

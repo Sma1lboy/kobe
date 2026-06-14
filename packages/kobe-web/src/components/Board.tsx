@@ -224,7 +224,11 @@ export function Board() {
     () => issueRepoOptions(tasks).map((option) => option.repo),
     [tasks],
   )
-  const { data: issueData, refresh: refreshIssues } = useRepoIssues(issueRepos)
+  const {
+    data: issueData,
+    pending: issuesPending,
+    refresh: refreshIssues,
+  } = useRepoIssues(issueRepos)
 
   // The flat issue list (across every repo), each tagged with its source repo,
   // with the optimistic pending-link applied so a just-started issue already
@@ -537,7 +541,13 @@ export function Board() {
       <DaemonBanner />
 
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-4">
-        {!hydrated ? (
+        {/* Hold the neutral "Loading…" until the issue GET has actually
+            resolved. `hydrated` only covers the task snapshot — the issues
+            arrive via a separate post-paint fetch, so gating on `hydrated`
+            alone flashed the "No issues yet" empty state for one frame before
+            the GET landed (the load twitch). `&& !hasAnyCard` keeps a later
+            new-repo fetch from blanking a board that already shows cards. */}
+        {!hydrated || (issuesPending && !hasAnyCard) ? (
           <p className="text-[12px] text-subtle">Loading…</p>
         ) : shownCount === 0 && filtered && hasAnyCard ? (
           // The project chip and/or text query narrowed every issue away —

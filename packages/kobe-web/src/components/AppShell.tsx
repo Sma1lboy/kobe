@@ -414,8 +414,11 @@ function TaskRail({
                 label: "Needs",
                 title: "Needs input / errored / rate-limited",
               },
-              { key: "working", label: "Run", title: "Engine running" },
-              { key: "changes", label: "Dirty", title: "Uncommitted changes" },
+              // Run (engine running) + Dirty (uncommitted changes) dropped as
+              // low-frequency clutter. All (see everything) + Needs (the
+              // attention spine wired to the tab badge + `n` nav) carry the
+              // value. The "working"/"changes" buckets still exist in triage for
+              // the Board; the rail just no longer offers them as quick filters.
             ] as Array<{ key: Bucket | "all"; label: string; title: string }>
           ).map((c) => (
             <button

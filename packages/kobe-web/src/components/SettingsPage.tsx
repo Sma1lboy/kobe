@@ -23,6 +23,11 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number][0]
 
+// A flat section: a BOLD CAPS header over its content, with NO enclosing
+// border/fill. The controls inside (EngineRow, ToggleRow, inputs, textareas)
+// already carry their own border, so wrapping them in a bordered card stacked a
+// third concentric box (card → row → field) and read as over-nested. Dropping
+// the card box leaves the header to group, the controls to delineate.
 function Card({
   title,
   children,
@@ -31,12 +36,12 @@ function Card({
   children: React.ReactNode
 }) {
   return (
-    <div className="border border-line bg-surface p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
+    <section>
+      <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
         {title}
-      </div>
-      <div className="mt-4 space-y-3 text-[12px]">{children}</div>
-    </div>
+      </h2>
+      <div className="mt-3 space-y-3 text-[12px]">{children}</div>
+    </section>
   )
 }
 
@@ -117,7 +122,7 @@ function useSharedSettings() {
 
 function GeneralSection() {
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card title="Dashboard theme">
         <p className="text-[11px] leading-relaxed text-subtle">
           Pick a theme for this browser, or follow the TUI's theme. This is a
@@ -244,7 +249,7 @@ function EnginesSection({
     }).then(() => pushToast("success", "engine saved"))
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card title="Launch commands">
         <p className="text-[11px] leading-relaxed text-subtle">
           Same shared engine settings as the TUI. Built-ins can be renamed or
@@ -388,7 +393,7 @@ function DevSection({
   const [armed, setArmed] = useState(false)
   const navigate = useNavigate()
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card title="Experimental gates">
         <ToggleRow
           label="Remote projects"
@@ -444,7 +449,7 @@ function DevSection({
 function NotificationsSection() {
   const { supported, permission, enabled } = useNotifyState()
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       <Card title="Notifications">
         {supported ? (
           <ToggleRow

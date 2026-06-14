@@ -61,7 +61,7 @@ export function IssuesPage() {
   }, [repos, repo])
 
   const repoKeys = useMemo(() => (repo ? [repo] : []), [repo])
-  const { data, failed, loading } = useRepoIssues(repoKeys)
+  const { data, failed, pending } = useRepoIssues(repoKeys)
   const repoState = repo ? data[repo] : undefined
 
   const [query, setQuery] = useState("")
@@ -226,7 +226,10 @@ export function IssuesPage() {
             No projects yet. Create a task from the workspace to track issues
             against its repo.
           </p>
-        ) : !hydrated || (loading && !repoState) ? (
+        ) : !hydrated || (pending && !repoState) ? (
+          // `pending` is derived from data presence, so it's true on the first
+          // paint — unlike the `loading` flag, which an effect only flips after
+          // the initial render, briefly flashing the "No issues yet" empty copy.
           <p className="text-[12px] text-subtle">Loading…</p>
         ) : repo && failed[repo] ? (
           <p className="text-[12px] text-kobe-red">{failed[repo]}</p>
