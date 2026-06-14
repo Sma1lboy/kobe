@@ -215,9 +215,15 @@ export function IssuePeek({
           </div>
         </div>
 
-        {/* RIGHT — execution config + metadata. */}
-        <div className="flex w-72 shrink-0 flex-col gap-3 p-3">
-          <div className="flex flex-col gap-1.5">
+        {/* RIGHT — execution config + metadata, split into labeled sections so
+            future settings/detail each get their own slot (add a sibling
+            <section> between Detail and Engine, or after Engine). */}
+        <div className="flex w-72 shrink-0 flex-col gap-4 p-3">
+          {/* DETAIL */}
+          <section className="flex flex-col gap-1.5">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Detail
+            </h3>
             <div className="flex items-center gap-2">
               <span
                 className={`text-[10px] font-bold uppercase tracking-[0.12em] ${meta.accent}`}
@@ -237,20 +243,27 @@ export function IssuePeek({
                 running
               </span>
             )}
-          </div>
+          </section>
 
-          <EngineEffortPicker
-            vendor={vendor}
-            effort={effort}
-            disabled={!startable}
-            onChange={(next) => {
-              setVendor(next.vendor)
-              setEffort(next.effort)
-            }}
-          />
+          {/* ENGINE — its own section; future settings/detail get sibling
+              sections beside it. */}
+          <section className="flex flex-col gap-1.5 border-t border-line pt-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Engine
+            </h3>
+            <EngineEffortPicker
+              vendor={vendor}
+              effort={effort}
+              disabled={!startable}
+              onChange={(next) => {
+                setVendor(next.vendor)
+                setEffort(next.effort)
+              }}
+            />
+          </section>
 
           {/* Actions pinned to the rail bottom. */}
-          <div className="mt-auto flex flex-col gap-2">
+          <div className="mt-auto flex flex-col gap-2 border-t border-line pt-3">
             {linked ? (
               <>
                 <button
