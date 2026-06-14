@@ -95,11 +95,12 @@ export function keybindingsConfigPath(): string {
 }
 
 /**
- * Directory for issue-attachment assets uploaded from the web Issues panel —
- * `~/.kobe/issue-assets/` (or `$KOBE_HOME_DIR/.kobe/issue-assets/`). Honours
- * `KOBE_HOME_DIR` via {@link kobeStateDir} like every other state path. Assets
- * are stored per-repo under a hash subdir; the writer mkdir's at the write
- * site (see kobe-web/server/issue-assets-route.ts), so this is path-only.
+ * Directory for issue-attachment uploads served by the web bridge —
+ * `<home>/.kobe/issue-assets/`. Scoped per-repo (by a hex hash of the repo
+ * root) one level down so an upload can happen before the issue exists. Not
+ * created eagerly — the upload route mkdir's at the write site, readers treat
+ * a missing dir as "no asset". Honours `KOBE_HOME_DIR` like every other state
+ * path via {@link kobeStateDir}.
  */
 export function issueAssetsDir(): string {
   return join(kobeStateDir(), "issue-assets")

@@ -121,11 +121,11 @@ export interface Task {
    */
   readonly position?: number
   /**
-   * Engine reasoning/effort level for this task (e.g. Codex's
-   * `model_reasoning_effort`). Optional + engine-specific — the launch path
-   * ({@link import("@/engine/interactive-command").withEngineEffort}) only
-   * applies a value the task's engine actually understands and drops anything
-   * else, so an unset/unknown value is a no-op. Old records load unchanged.
+   * Reasoning/effort level for the task's engine, when the vendor supports
+   * one (codex: `none`/`low`/`medium`/`high`/`xhigh`). Optional + additive:
+   * missing records load unchanged, and a vendor with no effort levels
+   * (claude today) leaves it undefined. The launch path maps it to the
+   * vendor-correct flag (see `interactive-command.ts`).
    */
   readonly modelEffort?: string
   readonly createdAt: string

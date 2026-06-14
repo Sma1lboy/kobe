@@ -21,7 +21,11 @@ interface BoardState {
   overrides: BoardOverrides
 }
 
-let state: BoardState = { query: "", repo: null, overrides: {} }
+let state: BoardState = {
+  query: "",
+  repo: null,
+  overrides: {},
+}
 const listeners = new Set<() => void>()
 
 function set(next: Partial<BoardState>): void {

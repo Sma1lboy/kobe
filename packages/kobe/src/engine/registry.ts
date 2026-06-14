@@ -84,11 +84,10 @@ export interface EngineRegistryEntry {
    */
   readonly defaultCommand: readonly string[]
   /**
-   * Reasoning/effort levels this engine exposes to kobe, in ascending order
-   * (e.g. Codex's `model_reasoning_effort`). Undefined for engines with no
-   * kobe-driveable effort flag (claude, copilot, custom) — the launch path
-   * ({@link import("./interactive-command").withEngineEffort}) only applies a
-   * level present here and drops anything else.
+   * Reasoning/effort levels this engine accepts, lowest→highest. Codex maps
+   * a selected level to `-c model_reasoning_effort=<level>` at launch (see
+   * `interactive-command.ts`). Undefined for engines with no kobe-driveable
+   * effort flag (claude picks reasoning at runtime; copilot/custom have none).
    */
   readonly effortLevels?: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
@@ -173,6 +172,8 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot", EngineRegistryEntr
     builtin: true,
     displayName: "Codex",
     defaultCommand: ["codex"],
+    // Effort levels real `codex exec` accepts (the broken `minimal` is
+    // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
     detectAccount: (deps) => detectCodexAccount(deps),

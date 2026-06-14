@@ -98,8 +98,9 @@ message / completed / failed`)。
   (`worktree.changes`)、vendor 徽标。
 - 代理与人同构(多态 actor):kobe 单用户,无需 assignee,但"卡片上能看出引擎正在
   干活/等你"是同一诉求,由 engine-state 信号灯承担。
-- 看板/列表双视图共享同一数据与筛选——kobe 对应:看板与现有 rail/Overview 共用
-  `useAppState()`,不另建订阅。
+- 看板/列表双视图共享同一数据与筛选——kobe 对应:看板与现有 rail 共用
+  `useAppState()`,不另建订阅;triage 的注意力筛选 chip 现由看板自己承载
+  (Overview 视图已移除),与 rail 的 status chip 同一引擎(`lib/triage.ts`)。
 
 ## 2. kobe 现状
 
@@ -144,7 +145,7 @@ flowchart TB
 | 列内排序无持久字段 | 同列卡片顺序不可拖 | **唯一必须的协议扩展**,M3 做(见 R2) |
 | 无 DnD 依赖 | 需选型引入 | R3;WorkspaceTabs 现用 HTML5 native draggable 可参照 |
 | store 无乐观更新 | 拖放后卡片要等 daemon 回推才落位,会"跳一下" | R4,可能仅看板局部做乐观层 |
-| 路由级 UI 状态易丢 | [issue #7](../issues.json):rail 筛选态在 `/` → `/task/$taskId` 导航时重置 | R5,看板筛选态进 module store 或 URL |
+| 路由级 UI 状态易丢 | issue #7: rail 筛选态在 `/` → `/task/$taskId` 导航时重置 | R5,看板筛选态进 module store 或 URL |
 | `kind: "main"` 任务定位 | 项目根任务不是工作流卡片 | R1 裁决(倾向不入板或单独泳道) |
 | 错误名不过桥 | daemon 会序列化 `name: "IllegalTransitionError"`,但 socket client 抛 `new Error(message)` 丢掉 name,bridge 对一切失败统一回 `{ error: message }` + 500([`bridge.ts`](../../packages/kobe-web/server/bridge.ts))——前端只能脆弱地 string-match | R4 裁决:转发 error name(bridge/client 小改)还是容忍 string-match |
 
@@ -156,7 +157,7 @@ flowchart TB
   本来就是图形面("not a faithful TUI mirror",web-dashboard.md)。看板定位为
   **web-only 增强**,不要求 TUI 对等。落地时需在 web-dashboard.md 补一节,并把这个
   定位写明,避免与 §2.3 表述打架。
-- 除此之外 docs/、issues.json 中无任何看板/board 规划——这是全新面,无历史包袱。
+- 除此之外 docs/、daemon issue tracker 中无任何看板/board 规划——这是全新面,无历史包袱。
   (注:`grep -i kanban docs/` 还会命中 **vibe-kanban**,那是 DESIGN.md §7.3 用作
   executor 接口参考的归档竞品,与 UI 看板无关,勿混淆。)
 
@@ -175,7 +176,7 @@ flowchart TB
 - **R1**:常驻列 = `backlog / in_progress / in_review / done` 四列;`error` 与
   `canceled` 列**仅在非空时出现**(空时整列隐藏,避免常驻噪音)。未知 status
   (更新的 daemon 加了新值)不丢卡——按原始字符串动态成列,排在已知列之后。
-  入板过滤:排除 `archived` 与 `kind: "main"`(与 Overview 同口径)。done 列
+  入板过滤:排除 `archived` 与 `kind: "main"`(与 rail/triage 同口径)。done 列
   M1 按 updatedAt 倒序;增长收纳政策(截断 + "+N more")到 M3 落地。
 - **R2**:M3 时定稿,倾向 `position?: number` 浮点 fractional + daemon 间隙过小时
   整列重归一化;`task.reorder { taskId, status, beforeId? }` 形状进 RFC。
@@ -194,7 +195,7 @@ flowchart TB
 - **R6**:卡片 = activity dot + 标题(fallback branch/id)+ PR chip + 脏行 ±计数
   + pinned 标记 + branch(mono)+ activity label + 相对时间。`PrChip`/`ChangesChip`
   从 AppShell 抽到共享组件文件复用,避免双份漂移。主点击跳 `/task/$taskId`
-  (与 Overview.open 同路径);次级动作推迟到 M4。
+  (与 rail 的打开任务同路径);次级动作推迟到 M4。
 - **R7**:position 仅 web 看板消费(M3 进协议时注释写明);TUI sidebar 不变。
   web 高频改 status 对 TUI 的扰动在 M2 验收时双端实测一次。`ui-prefs` 第一期
   不加看板偏好。
@@ -243,8 +244,10 @@ flowchart TB
   小改,daemon 协议不动)还是 string-match;同时留意 `ConcurrencyCapError` 等未来可能
   出现的第二种拒绝类型,回滚设计不要写死单一错误。方法:在 store.ts 之外做组件级实验,
   不动全局 store 语义。产出:乐观层归属(组件局部 vs store)+ 清除条件 + 错误转发裁决。
-- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/`、`/overview` 并列),入口加进
-  命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放 module store 或 URL search
+- **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/` 并列;原 `/overview`
+  与独立的 `/issues` 视图均已移除——issues 折进统一看板,见下文"M6 统一看板"),
+  入口加进命令面板与顶栏。看板的筛选/搜索态吸取 issue #7 教训,放
+  module store 或 URL search
   params。方法:复盘 issue #7 的修复方向,与之同构。产出:状态持有方案。
 - **R6 卡片信息密度。** 第一版卡片上放什么:标题、activity dot、vendor 徽标、PR chip
   (lifecycle + checkState)、脏行 ±计数、相对时间?主点击已拍板(跳 `/task/$taskId`),
@@ -307,6 +310,30 @@ sequenceDiagram
 | **M3 列内排序 + 打磨** | position 字段 + `task.reorder` RPC(协议 + allowlist + spa 契约测试三表同步);列内拖序;收尾(空列占位、列计数、筛选态持久、done 收纳政策落地) | 列内顺序跨刷新/跨端稳定;契约测试过 | **有**(唯一一次) |
 | **M4 板内 peek 抽屉** | 看板侧拉抽屉内嵌 engine PTY + transcript(R9);卡片次级动作(R6) | 不离开看板可查看/接管会话;关抽屉不杀会话;与工作区双 attach 无冲突 | 无(复用 `/pty` 与 `/api/history`) |
 | **M5 自动流转(opt-in)** | 开工:daemon 规则 turn-start → `backlog → in_progress`;收工:spawn 时注入 system prompt,agent 自报 `in_review` | 单向、绝不 done/canceled、人手最终裁决;默认关 | 无(daemon 规则 + 启动参数注入) |
+| **M6 统一看板** | 看板按 Project(= git repo)分组,统一收纳 daemon issues 与 tasks 两个 store(Path 1,两 store 各自独立);独立 `/issues` 路由折入看板并移除;顶栏改为 Workspace + Board | issue 与 task 在同一项目看板上去重正确;点 issue 出右侧抽屉可编辑 + 选引擎 + Start;issue 卡片不可拖,task 卡片可拖 | 无(后端已就位:`Task.issueId` / `Issue.taskId` + link/unlink op + linked-issue→done 镜像) |
+
+### M6 统一看板(Path 1:两 store 各自独立,看板做"连接"不"合并")
+
+owner 拍板把独立 `/issues` 路由折进看板(Option B),顶栏从 Board + Issues
+改为 **Workspace + Board**。一个看板按 **Project(= git repo)** 分组,Backlog
+列收纳该 repo 的 **issues**(外加仍处 `backlog` 状态的 tasks);
+`in_progress` / `in_review` 列收纳 **tasks**;Done 列两者都收。
+
+- **去重靠 link。** 链接到一个**活** task(status 非 `done`/`canceled`/`error`、
+  未 archived)的 issue 隐藏,由它的 task 卡片代表——task 卡片上挂一个
+  `#<issueId>` 回链 chip。删除/归档该 task 会让 issue 重新出现在 Backlog。
+- **issue 交互(owner 指定,非拖拽)。** 点 issue 卡片打开**右侧抽屉**(复用并
+  扩展 `IssuePeek`):可编辑标题 + 描述、选一个**引擎**、点 **Start**——Start 用
+  所选引擎经 `quickStartIssue` 拉起一个 task 并把二者 link。**issue 卡片不可拖**;
+  **task 卡片仍可跨状态列拖动**。
+- **乐观策略。** 保留 ULID 键的看板乐观 override 层(仅 task);issues 非乐观
+  (daemon `issue.snapshot` 为真值)——但 `quickStartIssue` 一旦带 `taskId`
+  resolve,就**乐观隐藏**该 issue,避免重复卡片闪一下。
+- **复用真组件。** 复用 `IssueCard` / `NewIssueDialog` / `IssuePeek`,不另起一个
+  简化版 issue 编辑器。后端已就位(daemon 已重启):`Task.issueId?:number`、
+  `Issue.taskId?:string`、`/api/issues` 的 `{type:"link",id,taskId}` /
+  `{type:"unlink",id}` op,以及 linked issue 在其 task 到 `done` 时自动镜像
+  到 `done`。
 
 ### M5 自动流转(2026-06-11 二次拍板:规则开工 + agent 自报收工;小模型 judge 已移除)
 
@@ -359,6 +386,9 @@ sequenceDiagram
 - **multica 演进速度**:它日更且 0.2.0,本文档的对标语义以 2026-06-11 为准,不追新。
 - **web 定位**:web 仍是 "not the product center"(DESIGN.md §12)。看板是增强而非
   转向;若用户要把 web 升格为产品中心,需先回 DESIGN.md 层面重新立项。
+- **已移除:conflict-radar(yarn)**。早期设想过在卡片/看板上叠一层"分支冲突雷达"
+  (yarn 跨 worktree 探测潜在合并冲突)的增强,现已从计划中移除——不再属于看板范围,
+  R6 卡片字段不含该信号。
 
 ## 7. 参考
 

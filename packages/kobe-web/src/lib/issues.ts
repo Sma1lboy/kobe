@@ -5,12 +5,33 @@
  * plumbing.
  */
 
+import { labelRepo } from "./board.ts"
+import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
 import { ensureEngineTab } from "./tabs.ts"
 import { sendPtyText } from "./terminal.ts"
-import type { Issue, IssueStatus, RepoIssues, Task } from "./types.ts"
+import type { Task } from "./types.ts"
 
-export type { Issue, IssueStatus, RepoIssues } from "./types.ts"
+export type IssueStatus = "open" | "doing" | "hold" | "done"
+
+export interface Issue {
+  id: number
+  title: string
+  status: IssueStatus
+  created: string
+  body: string
+  /** Task this issue was quick-started into — kept in sync with the web
+   *  Task interface (lib/types.ts). A live task here hides the issue from the
+   *  unified board. */
+  taskId?: string
+}
+
+export interface RepoIssues {
+  repoRoot: string
+  exists: boolean
+  nextId: number
+  issues: Issue[]
+}
 
 export interface IssueRepoOption {
   /** Canonical source repo path; worktree checkouts fold into this key. */
@@ -74,7 +95,8 @@ export async function updateIssue(
 }
 
 /** Link an issue to the task spawned from it — the daemon stamps the issue's
- *  `taskId` (and mirrors the issue to `done` when the task hits done). */
+ *  `taskId` (and mirrors the issue to `done` when the task hits done). The
+ *  unified board uses this link to dedup the issue against its task card. */
 export async function linkIssue(
   repoRoot: string,
   id: number,
@@ -83,8 +105,8 @@ export async function linkIssue(
   return postOp(repoRoot, { type: "link", id, taskId })
 }
 
-/** Drop an issue↔task link — resurfaces the issue (e.g. its task was
- *  deleted). */
+/** Drop an issue↔task link — resurfaces the issue on the board (e.g. its task
+ *  was deleted). */
 export async function unlinkIssue(
   repoRoot: string,
   id: number,
@@ -183,19 +205,44 @@ export function groupByStatus(
   return groups
 }
 
-function repoBasename(repo: string): string {
-  const trimmed = repo.replace(/\/+$/, "")
-  return trimmed.split("/").pop() || trimmed
+/**
+ * Cross-project overview rows. `openish` (open+doing+hold) is the
+ * "still needs attention" count; rows with the most of it float first.
+ */
+export function overviewRows(repos: readonly RepoIssues[]): Array<{
+  repoRoot: string
+  counts: Record<IssueStatus, number>
+  total: number
+  openish: number
+}> {
+  return repos
+    .map((repo) => {
+      const counts: Record<IssueStatus, number> = {
+        open: 0,
+        doing: 0,
+        hold: 0,
+        done: 0,
+      }
+      for (const issue of repo.issues) {
+        if (counts[issue.status] !== undefined) counts[issue.status] += 1
+      }
+      return {
+        repoRoot: repo.repoRoot,
+        counts,
+        total: repo.issues.length,
+        openish: counts.open + counts.doing + counts.hold,
+      }
+    })
+    .sort(
+      (a, b) => b.openish - a.openish || a.repoRoot.localeCompare(b.repoRoot),
+    )
 }
 
 /**
  * Distinct source repos for the Issues lens. Unlike the Board, Issues are
  * keyed by the repository's shared daemon store, so task worktrees must fold
- * back into `task.repo` instead of appearing as separate projects.
- *
- * Labels are path basenames; two repos sharing a basename are disambiguated to
- * `parent/basename`. (Re-authored locally rather than importing board.ts's
- * `repoOptions`/`labelRepo` so this page never touches the Board-owned slice.)
+ * back into `task.repo` instead of appearing as separate projects. Labels
+ * come from the shared {@link labelRepo} helper (board.ts).
  */
 export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
   const counts = new Map<string, number>()
@@ -210,16 +257,10 @@ export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
     counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
   }
   const repos = [...counts.keys()]
-  const label = (repo: string): string => {
-    const base = repoBasename(repo)
-    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
-    if (!collides) return base
-    return repo.replace(/\/+$/, "").split("/").slice(-2).join("/")
-  }
   return repos
     .map((repo) => ({
       repo,
-      label: label(repo),
+      label: labelRepo(repo, repos),
       count: counts.get(repo) ?? 0,
     }))
     .sort((a, b) => a.label.localeCompare(b.label))
@@ -250,10 +291,12 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
  * through the pty sidecar's spawn-on-send path, which materializes the worktree
  * + engine.
  *
- * `vendor` is the engine chosen in the drawer; when omitted the daemon's own
- * default engine applies (we don't thread the Settings default here — the
- * standalone Issues page always carries an explicit picked vendor via
- * EngineEffortPicker). `effort` is the engine's reasoning/effort level
+ * The task no longer reverse-references the issue: `Task.issueId` was dropped,
+ * so `task.create` carries no `issueId` — `Issue.taskId` (set by `linkIssue`)
+ * is the only link, and the daemon's done-mirror is a reverse lookup over it.
+ *
+ * `vendor` is the engine chosen in the drawer; when omitted it falls back to
+ * the shared Settings default. `effort` is the engine's reasoning/effort level
  * (engines that expose none pass `undefined`); it rides the create payload
  * under the `effort` key. The link is best-effort: the task already exists, so
  * a write failure must not strand it.
@@ -264,7 +307,7 @@ export async function quickStartIssue(
   vendor?: string,
   effort?: string,
 ): Promise<{ taskId: string }> {
-  const engine = vendor?.trim()
+  const engine = vendor?.trim() || (await fetchDefaultEngine())
   const { taskId } = await rpc<{ taskId: string }>("task.create", {
     repo: repoRoot,
     title: `#${issue.id} ${issue.title}`,

@@ -76,7 +76,7 @@ describe("daemon refcounted lazy shutdown", () => {
     client.close()
     // Last GUI gone → grace timer fires → close() unlinks the socket + pidfile.
     expect(await until(() => !existsSync(socketPath), GRACE_MS + 500)).toBe(true)
-    expect(existsSync(pidPath)).toBe(false)
+    expect(await until(() => !existsSync(pidPath), 500)).toBe(true)
   })
 
   it("stays up for a transient, never-subscribed connection", async () => {

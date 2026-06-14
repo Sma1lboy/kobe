@@ -96,6 +96,7 @@ function stubRuntime(overrides: Partial<ApiRuntime> = {}): ApiRuntime {
       throw new Error("deliverPrompt should not run in this test")
     },
     resolveRepoRoot: async (p) => p,
+    defaultVendor: async () => undefined,
     readWorktreeChanges: async () => ({ added: 0, deleted: 0 }),
     tearDownSession: async () => {},
     ...overrides,
@@ -138,23 +139,55 @@ async function expectApiError(run: () => Promise<unknown>, code: string, message
 describe("add handler", () => {
   it("minimal create: one task.create, no follow-ups, started:false", async () => {
     const task = taskFixture()
-    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task }) })
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task }),
+      "task.setActive": () => ({}),
+    })
     const result = await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
-    expect(client.requestNames).toEqual(["task.create"])
+    expect(client.requestNames).toEqual(["task.create", "task.setActive"])
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
+    expect(client.requests[1].payload).toEqual({ taskId: "t1" })
     expect(result).toEqual({ taskId: "t1", task, started: false })
   })
 
   it("resolves a relative --repo against $PWD", async () => {
-    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
+      "task.setActive": () => ({}),
+    })
     await invokeVerb("add", ["--repo", "some/rel"], { client, runtime: stubRuntime() })
     expect((client.requests[0].payload as { repo: string }).repo).toBe(`${process.cwd()}/some/rel`)
+  })
+
+  it("canonicalizes --repo through the runtime before task.create", async () => {
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task: taskFixture({ repo: "/repo/main" }) }),
+      "task.setActive": () => ({}),
+    })
+    await invokeVerb("add", ["--repo", "/repo/main/.kobe/worktrees/task"], {
+      client,
+      runtime: stubRuntime({ resolveRepoRoot: async () => "/repo/main" }),
+    })
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/main" })
+  })
+
+  it("uses the settings default vendor when --vendor is omitted", async () => {
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task: taskFixture({ vendor: "codex" }) }),
+      "task.setActive": () => ({}),
+    })
+    await invokeVerb("add", ["--repo", "/repo/x"], {
+      client,
+      runtime: stubRuntime({ defaultVendor: async () => "codex" }),
+    })
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", vendor: "codex" })
   })
 
   it("applies --status and --pin as follow-up RPCs, then re-reads the task", async () => {
     const fresh = taskFixture({ status: "in_progress", pinned: true })
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
+      "task.setActive": () => ({}),
       "task.status": () => ({}),
       "task.pin": () => ({}),
       "task.get": () => ({ task: fresh }),
@@ -164,10 +197,11 @@ describe("add handler", () => {
       ["--repo", "/repo/x", "--status", "in_progress", "--pin", "--title", "My task"],
       { client, runtime: stubRuntime() },
     )) as { task: unknown; started: boolean }
-    expect(client.requestNames).toEqual(["task.create", "task.status", "task.pin", "task.get"])
+    expect(client.requestNames).toEqual(["task.create", "task.setActive", "task.status", "task.pin", "task.get"])
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x", title: "My task" })
-    expect(client.requests[1].payload).toEqual({ taskId: "t1", status: "in_progress" })
-    expect(client.requests[2].payload).toEqual({ taskId: "t1", pinned: true })
+    expect(client.requests[1].payload).toEqual({ taskId: "t1" })
+    expect(client.requests[2].payload).toEqual({ taskId: "t1", status: "in_progress" })
+    expect(client.requests[3].payload).toEqual({ taskId: "t1", pinned: true })
     // The returned task is the REFRESHED one, not the create-time snapshot.
     expect(result.task).toEqual(fresh)
   })
@@ -175,16 +209,20 @@ describe("add handler", () => {
   it("--pin=false still fires the follow-up (explicit unpin) and refetches", async () => {
     const client = new FakeClient({
       "task.create": () => ({ taskId: "t1", task: taskFixture() }),
+      "task.setActive": () => ({}),
       "task.pin": () => ({}),
       "task.get": () => ({ task: taskFixture() }),
     })
     await invokeVerb("add", ["--repo", "/repo/x", "--pin=false"], { client, runtime: stubRuntime() })
-    expect(client.requestNames).toEqual(["task.create", "task.pin", "task.get"])
-    expect(client.requests[1].payload).toEqual({ taskId: "t1", pinned: false })
+    expect(client.requestNames).toEqual(["task.create", "task.setActive", "task.pin", "task.get"])
+    expect(client.requests[2].payload).toEqual({ taskId: "t1", pinned: false })
   })
 
   it("passes branch/base-branch/vendor through to task.create (baseRef key)", async () => {
-    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
+      "task.setActive": () => ({}),
+    })
     await invokeVerb("add", ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--vendor", "codex"], {
       client,
       runtime: stubRuntime(),
@@ -194,7 +232,12 @@ describe("add handler", () => {
 
   it("with --prompt it delivers exactly the explicit prompt to the created task", async () => {
     const task = taskFixture({ worktreePath: "/wt/t1", vendor: "codex", repo: "/repo/x" })
-    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task }) })
+    const refreshed = { ...task, worktreePath: "/wt/t1-materialized" }
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task }),
+      "task.setActive": () => ({}),
+      "task.get": () => ({ task: refreshed }),
+    })
     const { calls, deliver } = recordingDelivery()
     const result = (await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "do the thing"], {
       client,
@@ -209,15 +252,39 @@ describe("add handler", () => {
     expect(result.started).toBe(true)
     expect(result.engineReady).toBe(true)
     expect(result.session).toBe(tmuxSessionName("t1"))
+    expect(result.task).toEqual(refreshed)
   })
 
   it("spawn-task alias dispatches to add", async () => {
-    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    const client = new FakeClient({
+      "task.create": () => ({ taskId: "t1", task: taskFixture() }),
+      "task.setActive": () => ({}),
+    })
     const result = (await invokeVerb("spawn-task", ["--repo", "/repo/x"], {
       client,
       runtime: stubRuntime(),
     })) as { taskId: string }
     expect(result.taskId).toBe("t1")
+  })
+})
+
+// ── issues: daemon-owned tracker ─────────────────────────────────────────────
+
+describe("issue handlers", () => {
+  it("issue-set-status sends a daemon-owned issue mutation", async () => {
+    const client = new FakeClient({
+      "issue.mutate": () => ({ repoRoot: "/repo/x", exists: true, nextId: 9, issues: [] }),
+    })
+    await invokeVerb("issue-set-status", ["--repo", "/repo/x", "--id", "8", "--status", "done"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      {
+        name: "issue.mutate",
+        payload: { repoRoot: "/repo/x", op: { type: "setStatus", id: 8, status: "done" } },
+      },
+    ])
   })
 })
 

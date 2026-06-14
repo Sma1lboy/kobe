@@ -63,7 +63,7 @@ export interface CreateTaskInput {
   readonly baseRef?: string
   /** Engine vendor for the monitor's history-reader hint. */
   readonly vendor?: VendorId
-  /** Engine reasoning/effort level applied at launch (e.g. Codex effort). */
+  /** Reasoning/effort level for the engine, when the vendor supports one. */
   readonly modelEffort?: string
 }
 

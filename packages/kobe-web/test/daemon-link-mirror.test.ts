@@ -124,15 +124,6 @@ describe("DaemonLink mirror — issue snapshots", () => {
       }),
     )
   })
-
-  it("keeps the conflict-radar mirror alongside issue snapshots", () => {
-    const link = new DaemonLink()
-    const f = drive(link)
-    f.onFrame("task.conflicts", { pairs: [{ a: "x", b: "y", files: ["f.ts"], level: "conflict" }] })
-    f.onFrame("issue.snapshot", { repoRoot: "/repo", exists: true, nextId: 1, issues: [] })
-    expect(link.snapshot().conflicts).toEqual([{ a: "x", b: "y", files: ["f.ts"], level: "conflict" }])
-    expect(link.snapshot().issueSnapshots["/repo"]).toMatchObject({ repoRoot: "/repo" })
-  })
 })
 
 describe("DaemonLink — SSE forward filter", () => {

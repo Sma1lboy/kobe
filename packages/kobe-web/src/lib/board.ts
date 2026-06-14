@@ -9,7 +9,41 @@
  * are not workflow cards, so they never enter the board.
  */
 
-import type { ConflictPair, Task } from "./types.ts"
+import type { Issue, Task } from "./types.ts"
+
+/**
+ * One card on the unified board. A task card flows across the status columns
+ * (its bucket is the persisted `Task.status`); an issue card always sits in
+ * Backlog, carrying its source `repo` so project-grouping can key it. The two
+ * stores stay separate — the board just renders them side by side and dedups
+ * a linked pair down to the task card.
+ */
+export type BoardCard =
+  | ({ kind: "task" } & Task)
+  | { kind: "issue"; repo: string; issue: Issue }
+
+/**
+ * Discriminate on the ISSUE side, not `kind === "task"`: a task card's `kind`
+ * comes from `Task.kind` ("main" | "task"), so a defensively-passed main row
+ * would slip past a `=== "task"` check. Everything that isn't an issue card is
+ * a task card (then filtered by {@link isBoardTask}).
+ */
+export function isIssueCard(
+  card: BoardCard,
+): card is Extract<BoardCard, { kind: "issue" }> {
+  return card.kind === "issue"
+}
+export function isTaskCard(
+  card: BoardCard,
+): card is Extract<BoardCard, { kind: "task" }> {
+  return card.kind !== "issue"
+}
+
+/** A card's repo: `task.repo` for a task card, the explicit `repo` for an
+ *  issue card — both shapes expose `.repo`, so this is just a typed accessor. */
+export function cardRepo(card: BoardCard): string {
+  return card.repo
+}
 
 export interface BoardColumnSpec {
   key: string
@@ -63,7 +97,7 @@ export const BOARD_COLUMNS: readonly BoardColumnSpec[] = [
 ]
 
 export interface BoardColumn extends BoardColumnSpec {
-  tasks: Task[]
+  cards: BoardCard[]
   /** Cards beyond the terminal-column cap — rendered as a "+N more" note. */
   hiddenCount: number
 }
@@ -100,12 +134,33 @@ export function effectivePosition(task: Task): number {
 }
 
 /** Within a column: pinned cards float, then ascending effective position
- *  (id as a stable tiebreak). */
+ *  (id as a stable tiebreak). Tasks-only — the drag math reorders tasks. */
 export function compareCards(a: Task, b: Task): number {
   if ((a.pinned ?? false) !== (b.pinned ?? false)) return a.pinned ? -1 : 1
   const byPosition = effectivePosition(a) - effectivePosition(b)
   if (byPosition !== 0) return byPosition
   return b.id.localeCompare(a.id)
+}
+
+/**
+ * Backlog is the only mixed column (tasks + their repo's unstarted issues).
+ * Task cards float to the top in their usual compareCards order (live work
+ * outranks an idea), then issue cards sort newest-created first, id desc as
+ * the day-granular tiebreak (the groupByStatus precedent). Two cards of the
+ * same kind delegate to their kind's comparator; cross-kind, tasks win.
+ */
+export function compareBacklogCards(a: BoardCard, b: BoardCard): number {
+  const aIssue = isIssueCard(a)
+  const bIssue = isIssueCard(b)
+  if (aIssue !== bIssue) return aIssue ? 1 : -1 // tasks float above issues
+  if (!aIssue && !bIssue) return compareCards(a, b)
+  if (aIssue && bIssue) {
+    if (a.issue.created !== b.issue.created) {
+      return a.issue.created < b.issue.created ? 1 : -1
+    }
+    return b.issue.id - a.issue.id
+  }
+  return 0
 }
 
 /**
@@ -202,31 +257,42 @@ export function planColumnDrop(opts: {
 }
 
 /**
- * Bucket tasks into render-ready columns. A status outside the canonical
- * enum (a newer daemon) must not drop cards — it becomes a trailing dynamic
- * column titled by the raw status string.
+ * Bucket cards into render-ready columns. Task cards bucket by their persisted
+ * `Task.status` (a status outside the canonical enum becomes a trailing
+ * dynamic column titled by the raw key — a newer daemon must never drop a
+ * card); issue cards ALWAYS sit in Backlog. Backlog mixes both kinds and
+ * sorts with {@link compareBacklogCards}; every other column is tasks-only
+ * and sorts with {@link compareCards}.
  */
-export function buildBoard(tasks: Task[]): BoardColumn[] {
-  const byStatus = new Map<string, Task[]>()
-  for (const task of tasks) {
-    if (!isBoardTask(task)) continue
-    const key = task.status || "backlog"
+export function buildBoard(cards: BoardCard[]): BoardColumn[] {
+  const byStatus = new Map<string, BoardCard[]>()
+  const push = (key: string, card: BoardCard): void => {
     const bucket = byStatus.get(key)
-    if (bucket) bucket.push(task)
-    else byStatus.set(key, [task])
+    if (bucket) bucket.push(card)
+    else byStatus.set(key, [card])
   }
-  for (const bucket of byStatus.values()) bucket.sort(compareCards)
+  for (const card of cards) {
+    if (isIssueCard(card)) {
+      push("backlog", card)
+    } else {
+      if (!isBoardTask(card)) continue
+      push(card.status || "backlog", card)
+    }
+  }
+  for (const [key, bucket] of byStatus) {
+    bucket.sort(key === "backlog" ? compareBacklogCards : compareTaskCards)
+  }
 
   const capped = (
     key: string,
-    tasks: Task[],
-  ): { tasks: Task[]; hiddenCount: number } => {
-    if (!TERMINAL_KEYS.has(key) || tasks.length <= TERMINAL_COLUMN_CAP) {
-      return { tasks, hiddenCount: 0 }
+    bucket: BoardCard[],
+  ): { cards: BoardCard[]; hiddenCount: number } => {
+    if (!TERMINAL_KEYS.has(key) || bucket.length <= TERMINAL_COLUMN_CAP) {
+      return { cards: bucket, hiddenCount: 0 }
     }
     return {
-      tasks: tasks.slice(0, TERMINAL_COLUMN_CAP),
-      hiddenCount: tasks.length - TERMINAL_COLUMN_CAP,
+      cards: bucket.slice(0, TERMINAL_COLUMN_CAP),
+      hiddenCount: bucket.length - TERMINAL_COLUMN_CAP,
     }
   }
 
@@ -234,7 +300,7 @@ export function buildBoard(tasks: Task[]): BoardColumn[] {
     ...spec,
     ...capped(spec.key, byStatus.get(spec.key) ?? []),
   })).filter(
-    (col) => col.alwaysVisible || col.tasks.length + col.hiddenCount > 0,
+    (col) => col.alwaysVisible || col.cards.length + col.hiddenCount > 0,
   )
 
   const knownKeys = new Set(BOARD_COLUMNS.map((spec) => spec.key))
@@ -246,16 +312,99 @@ export function buildBoard(tasks: Task[]): BoardColumn[] {
       title: key,
       accent: "text-muted",
       alwaysVisible: false,
-      tasks: byStatus.get(key) ?? [],
+      cards: byStatus.get(key) ?? [],
       hiddenCount: 0,
     }))
 
   return [...known, ...extras]
 }
 
+/** compareCards over BoardCard for the tasks-only columns — issue cards never
+ *  reach a non-Backlog column, so a defensive task-first order is enough. */
+function compareTaskCards(a: BoardCard, b: BoardCard): number {
+  if (!isIssueCard(a) && !isIssueCard(b)) return compareCards(a, b)
+  if (isIssueCard(a) !== isIssueCard(b)) return isIssueCard(a) ? 1 : -1
+  return 0
+}
+
 /** Total cards on the board (post-filter), for the header count. */
 export function boardCardCount(columns: readonly BoardColumn[]): number {
-  return columns.reduce((sum, col) => sum + col.tasks.length, 0)
+  return columns.reduce((sum, col) => sum + col.cards.length, 0)
+}
+
+/* ----- unified board: dedup + per-project partition ----------------------- */
+
+/** A task is "live" — it actively represents its linked issue, so the issue
+ *  hides behind it — while it isn't archived and hasn't reached a terminal
+ *  status (done/canceled/error). A deleted/archived/finished task lets its
+ *  issue resurface in Backlog. */
+const DEAD_TASK_STATUSES = new Set(["done", "canceled", "error"])
+export function isLiveTask(task: Task): boolean {
+  return !task.archived && !DEAD_TASK_STATUSES.has(task.status)
+}
+
+/**
+ * Set of task ids that are currently LIVE. The link is now one-way
+ * (`Issue.taskId` → a task; a task no longer reverse-references its issue), so
+ * dedup keys on the task id, not a `${repo}:${issueId}` pair. Built from the
+ * FULL, unfiltered task list — a task hidden in the rendered slice (project
+ * filter, terminal-column cap) must still suppress its issue, so reading the
+ * rendered cards would resurface a duplicate. `kind: "main"` rows are skipped
+ * the same way the board skips them everywhere else.
+ */
+export function liveTaskIds(tasks: readonly Task[]): Set<string> {
+  const ids = new Set<string>()
+  for (const task of tasks) {
+    if (task.kind === "main") continue
+    if (!isLiveTask(task)) continue
+    ids.add(task.id)
+  }
+  return ids
+}
+
+/** One project's board: its repo key, display label, and rendered columns. */
+export interface ProjectBoard {
+  readonly repo: string
+  readonly label: string
+  readonly columns: BoardColumn[]
+}
+
+/**
+ * Partition every card into one board per project (= git repo), deriving the
+ * project list from the UNION of issue-repos and task-repos so a project with
+ * only issues (no task yet) still appears, and vice versa. An issue whose
+ * `issue.taskId` points to a LIVE task is dropped here (the task card
+ * represents it) — deduped against the FULL task list passed in `allTasks`,
+ * not just the cards the caller chose to render. Projects are sorted by label
+ * so they don't reorder as counts shift.
+ */
+export function buildProjectBoards(
+  cards: readonly BoardCard[],
+  allTasks: readonly Task[],
+): ProjectBoard[] {
+  const live = liveTaskIds(allTasks)
+  const byRepo = new Map<string, BoardCard[]>()
+  for (const card of cards) {
+    if (isIssueCard(card)) {
+      // Linked to a live task → represented by that task card instead.
+      const { taskId } = card.issue
+      if (taskId !== undefined && live.has(taskId)) continue
+    } else if (!isBoardTask(card)) {
+      continue
+    }
+    const repo = card.repo
+    const bucket = byRepo.get(repo)
+    if (bucket) bucket.push(card)
+    else byRepo.set(repo, [card])
+  }
+  const repos = [...byRepo.keys()]
+  return repos
+    .map((repo) => ({
+      repo,
+      label: labelRepo(repo, repos),
+      columns: buildBoard(byRepo.get(repo) ?? []),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 }
 
 /* ----- optimistic drag overrides (M2 status, M3 position) ----------------
@@ -333,10 +482,35 @@ export function reconcileOverrides(
   return changed ? next : overrides
 }
 
+/**
+ * Droppable id for a column in a project's board: `${repo}:${columnKey}`.
+ * The unified board renders one column set per project, so a bare column key
+ * would collide across projects (two "in_review" drop targets) — the repo
+ * prefix keeps each project's columns distinct.
+ */
+export function droppableId(repo: string, columnKey: string): string {
+  return `${repo}:${columnKey}`
+}
+
+/**
+ * Split a composite droppable id back into its `{ repo, columnKey }`. The
+ * column key is the segment after the LAST colon (repos can contain colons —
+ * `ssh://host/...`), so we split from the right.
+ */
+export function parseDroppableId(
+  id: string,
+): { repo: string; columnKey: string } | null {
+  const idx = id.lastIndexOf(":")
+  if (idx <= 0 || idx === id.length - 1) return null
+  return { repo: id.slice(0, idx), columnKey: id.slice(idx + 1) }
+}
+
 /** Only canonical lifecycle columns accept drops — a dynamic unknown-status
- *  column renders cards but is not a drag target. */
+ *  column renders cards but is not a drag target. Accepts either a bare
+ *  column key or a composite `${repo}:${columnKey}` droppable id. */
 export function isDroppableColumn(key: string): boolean {
-  return BOARD_COLUMNS.some((spec) => spec.key === key)
+  const columnKey = parseDroppableId(key)?.columnKey ?? key
+  return BOARD_COLUMNS.some((spec) => spec.key === columnKey)
 }
 
 /* ----- project (repo) filter --------------------------------------------- */
@@ -356,6 +530,19 @@ function repoBasename(repo: string): string {
 }
 
 /**
+ * Short display name for a repo within a known set: the path basename, or
+ * `parent/basename` when two repos in the set share a basename. Shared by the
+ * Board's project chips and the issue repo options (was duplicated in both —
+ * board.ts + issues.ts). `repos` is the disambiguation universe.
+ */
+export function labelRepo(repo: string, repos: readonly string[]): string {
+  const base = repoBasename(repo)
+  const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
+  if (!collides) return base
+  return repo.replace(/\/+$/, "").split("/").slice(-2).join("/")
+}
+
+/**
  * Distinct projects among the board's cards, for the filter-chip row.
  * Labels are path basenames; two repos sharing a basename are
  * disambiguated to `parent/basename`. Sorted by label so chips don't
@@ -368,80 +555,11 @@ export function repoOptions(tasks: readonly Task[]): RepoOption[] {
     counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
   }
   const repos = [...counts.keys()]
-  const label = (repo: string): string => {
-    const base = repoBasename(repo)
-    const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
-    if (!collides) return base
-    const parts = repo.replace(/\/+$/, "").split("/")
-    return parts.slice(-2).join("/")
-  }
   return repos
-    .map((repo) => ({ repo, label: label(repo), count: counts.get(repo) ?? 0 }))
+    .map((repo) => ({
+      repo,
+      label: labelRepo(repo, repos),
+      count: counts.get(repo) ?? 0,
+    }))
     .sort((a, b) => a.label.localeCompare(b.label))
-}
-
-/* ----- conflict radar (docs/design/conflict-radar.md) -------------------- */
-
-/** The radar pairs touching one task. */
-export function conflictsForTask(
-  pairs: readonly ConflictPair[],
-  taskId: string,
-): ConflictPair[] {
-  return pairs.filter((pair) => pair.a === taskId || pair.b === taskId)
-}
-
-/** Card badge summary: the strongest level + how many counterparts. */
-export function conflictBadge(
-  pairs: readonly ConflictPair[],
-  taskId: string,
-): { level: "overlap" | "conflict"; count: number } | null {
-  const mine = conflictsForTask(pairs, taskId)
-  if (mine.length === 0) return null
-  return {
-    level: mine.some((pair) => pair.level === "conflict")
-      ? "conflict"
-      : "overlap",
-    count: mine.length,
-  }
-}
-
-/** Max files named per counterpart before eliding with "…". */
-const CONFLICT_TIP_FILES = 4
-
-/**
- * Multi-line tooltip for a task's conflict badge — one line per counterpart
- * ("CONFLICTS with <title>: a.ts, b.ts" / "overlaps <title>: …"). Shared by
- * the board's portaled tooltip and the rail's conflict chip so the two never
- * drift. `titleOf` resolves the other task's display label.
- */
-export function conflictTip(
-  pairs: readonly ConflictPair[],
-  taskId: string,
-  titleOf: (id: string) => string,
-): string {
-  return conflictsForTask(pairs, taskId)
-    .map((pair) => {
-      const other = pair.a === taskId ? pair.b : pair.a
-      const verb = pair.level === "conflict" ? "CONFLICTS with" : "overlaps"
-      const files = pair.files.slice(0, CONFLICT_TIP_FILES).join(", ")
-      const more = pair.files.length > CONFLICT_TIP_FILES ? ", …" : ""
-      return `${verb} ${titleOf(other)}: ${files}${more}`
-    })
-    .join("\n")
-}
-
-/** Yarn palette — one distinct kobe hue per conflict pair, cycling. The
- *  pair's index in the (sorted, stable) pair list picks the color, so a
- *  pair keeps its yarn color as long as the pair exists. */
-export const YARN_COLORS: readonly string[] = [
-  "var(--color-kobe-orange)",
-  "var(--color-kobe-blue)",
-  "var(--color-kobe-violet)",
-  "var(--color-kobe-yellow)",
-  "var(--color-kobe-green)",
-  "var(--color-kobe-red)",
-]
-
-export function yarnColor(index: number): string {
-  return YARN_COLORS[index % YARN_COLORS.length] as string
 }

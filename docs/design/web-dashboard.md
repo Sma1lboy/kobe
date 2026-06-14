@@ -115,26 +115,50 @@ TanStack Router, file-based ([`src/routes/`](../../packages/kobe-web/src/routes)
 |---|---|
 | `/` | The workspace shell (rail + tabs + tools). |
 | `/task/$taskId` | Deep link — selects the task; back/forward walks task-switch history. |
-| `/overview` | Mission-control triage of every task (needs you / working / dirty / quiet). |
-| `/board` | Kanban over the persisted `Task.status` lifecycle (see below). |
+| `/board` | The unified kanban — the daemon-owned issues AND the persisted `Task.status` lifecycle in one board (see below). |
+
+The top nav is two buttons — **Workspace** and **Board**. The standalone
+`/issues` route folded into the Board (issues are now the Backlog column), and
+the former `/overview` mission-control route is gone; its triage lives in the
+rail status chips and the Board's attention-filter chips (see "Search, filter &
+keyboard", below).
 
 ## Board (`/board`)
 
-The kanban lens over the same task list (full plan + decisions:
-[`web-kanban.md`](./web-kanban.md)). One column per `TaskStatus`
+The unified kanban over BOTH stores — the daemon-owned issues and the task
+list — grouped by **Project (= git repo)** (full plan + decisions:
+[`web-kanban.md`](./web-kanban.md)). The two stores stay separate (Path 1);
+the board is a join, not a merge. One column per `TaskStatus`
 (`error`/`canceled` fold away when empty; unknown statuses become trailing
 read-only columns rather than dropping cards). Columns bind ONLY to the
 persisted status — transient engine activity stays a per-card signal lamp,
-never a column. Cards drag across columns (`task.status`) and within a column
-(`task.reorder`, a web-only sparse fractional `position` that never bumps
-`updatedAt` and is invisible to the TUI). Drops paint through an optimistic
-override layer in [`src/lib/board-state.ts`](../../packages/kobe-web/src/lib/board-state.ts)
-whose clear rule is snapshot-confirmation per field; dragging disables while
-the daemon/stream is down. The card's eye button opens a **peek drawer** —
-the task's live engine PTY + transcript without leaving the board. The drawer
-attaches by the task's WORKSPACE vendor-tab id (`ensureEngineTab`), because
-PTYs are keyed by tab id: a drawer-private id would spawn a second engine
-instance. Closing the drawer never calls `/pty/close`; the sidecar fans
+never a column.
+
+**What lands in each column.** Backlog shows the repo's **issues** plus any
+tasks still in `backlog` status; `in_progress` / `in_review` show **tasks**;
+Done shows both. **Dedup is by link:** an issue linked to a LIVE task (status
+not `done`/`canceled`/`error`, not archived) is hidden — it's represented by
+its task card, which carries a `#<issueId>` back-link chip. Deleting or
+archiving that task resurfaces its issue in Backlog. Issues are non-optimistic
+(the daemon `issue.snapshot` push is truth), but an issue is optimistically
+hidden the moment `quickStartIssue` resolves with a `taskId`, so there's no
+flash of a duplicate card before the snapshot catches up.
+
+**Interaction split.** Task cards are draggable across status columns
+(`task.status`) and within a column (`task.reorder`, a web-only sparse
+fractional `position` that never bumps `updatedAt` and is invisible to the TUI);
+drops paint through an optimistic override layer in
+[`src/lib/board-state.ts`](../../packages/kobe-web/src/lib/board-state.ts)
+(ULID-keyed, tasks only) whose clear rule is snapshot-confirmation per field,
+and dragging disables while the daemon/stream is down. **Issue cards are NOT
+draggable.** Clicking an issue card opens a **right-side drawer** (the extended
+`IssuePeek`) where you can edit title + description, pick an **engine**, and
+click **Start** — Start spawns a task with the chosen engine via
+`quickStartIssue` and links the two. A task card's eye button opens a **peek
+drawer** — the task's live engine PTY + transcript without leaving the board.
+The drawer attaches by the task's WORKSPACE vendor-tab id (`ensureEngineTab`),
+because PTYs are keyed by tab id: a drawer-private id would spawn a second
+engine instance. Closing the drawer never calls `/pty/close`; the sidecar fans
 output to every attached socket, so peek and workspace coexist.
 
 ## Workspace tabs
@@ -160,17 +184,24 @@ Beyond the rail/tabs/tools grammar, the dashboard carries:
   switching ("Theme: <name>" commands + "Follow TUI" to clear a web-local
   override); `?` opens a keyboard-help overlay. ([`CommandPalette.tsx`](../../packages/kobe-web/src/components/CommandPalette.tsx), [`KeyboardHelp.tsx`](../../packages/kobe-web/src/components/KeyboardHelp.tsx))
 - **Search, filter & keyboard** — the task rail has a text filter + status
-  chips (All/Needs/Run/Dirty, reusing the Overview `triage`), and is
-  keyboard-first: `/` focuses the filter, Enter jumps to the top match, Escape
-  clears, `j`/`k` move. The Overview and the Changes pane have their own filter
-  boxes (Overview also takes `/`); the Changes pane filters files by path.
-- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer. The Task panel can **Copy path** + **Copy link** (the `/task/$taskId` deep link, via a shared `lib/clipboard.ts` + `lib/share.ts`).
+  chips (All/Needs/Run/Dirty, from `lib/triage.ts`), and is keyboard-first: `/`
+  focuses the filter, Enter jumps to the top match, Escape clears, `j`/`k` move.
+  The Board surfaces the same `triage` buckets as **attention-filter chips**
+  (the rail chips and the Board chips share one engine), and the Changes pane has
+  its own filter box that filters files by path.
+- **New Task / Adopt** dialogs (`task.create` / `worktree.discoverAdoptable`+`adopt`); New Task can seed a first prompt into the engine composer. The Task panel can **Copy path** (via a shared `lib/clipboard.ts`).
 - **Settings** — live theme picker (precedence: web-local override > TUI `ui-prefs` > claude, [`lib/theme.ts`](../../packages/kobe-web/src/lib/theme.ts)), engines, notifications, connection/version.
 - **Desktop notifications** ([`lib/notify.ts`](../../packages/kobe-web/src/lib/notify.ts)) — fire on the rising edge into `waiting_permission`/`error` while the tab is hidden.
 - **Notes** ([`NotesPanel.tsx`](../../packages/kobe-web/src/components/NotesPanel.tsx)) — a web-only per-task markdown scratchpad (the TUI has no equivalent), autosaved server-side under `<KOBE_HOME>/.kobe/notes/<taskId>.md` via `/api/notes`, with an Edit/Preview toggle. The preview renders through an escape-first markdown renderer ([`lib/markdown.ts`](../../packages/kobe-web/src/lib/markdown.ts)) — the one `dangerouslySetInnerHTML` sink in the app, so it escapes all input before composing its own tags and drops unsafe link schemes; the taskId→file path is traversal-guarded server-side (`isSafeTaskId`).
-- **Resilience** — a root error boundary (no white-screen) and a daemon-offline banner; failed mutations surface in a toast stack ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)).
+- **Resilience & empty states** — a root error boundary (no white-screen) and a
+  daemon-offline banner; failed mutations surface in a toast stack
+  ([`lib/toast.ts`](../../packages/kobe-web/src/lib/toast.ts)). The Board,
+  transcript, diff, Settings, and Adopt surfaces each carry their own
+  offline/empty-state hint instead of rendering blank — e.g. "no tasks yet",
+  "nothing to review", or a "daemon offline, reconnecting" line — so a fresh or
+  disconnected dashboard explains itself rather than looking broken.
 
-Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Overview drift guard), `lib/triage.ts` (Overview attention buckets + priority + `matchesStatusFilter` for the rail chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest), `lib/share.ts` (`taskDeepLink`). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Board drift guard), `lib/triage.ts` (attention buckets + priority + `matchesStatusFilter` for the rail + Board attention-filter chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
 
 ## Dev: production vs sandbox
 

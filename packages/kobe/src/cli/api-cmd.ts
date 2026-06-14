@@ -60,6 +60,8 @@ export const FANOUT_CAP = 10
 
 /** Allowed `--status` values, mirrored from {@link TaskStatus}. */
 const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
+const ISSUE_STATUSES = ["open", "doing", "hold", "done"] as const
+type IssueStatus = (typeof ISSUE_STATUSES)[number]
 
 type Flags = Map<string, string>
 
@@ -169,6 +171,7 @@ const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "set-active"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
+  issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   lifecycle: ["archive", "pin", "delete"],
   worktree: ["ensure-worktree", "adopt", "discover-adoptable"],
   feedback: ["feedback"],
@@ -323,6 +326,51 @@ const VERBS: readonly VerbSpec[] = [
     ],
     offline: true,
     handler: feedback,
+  },
+  {
+    name: "issue-list",
+    summary: "List daemon-owned issues for a repo.",
+    flags: [F.repo()],
+    handler: (ctx) => simpleRpc(ctx, "issue.list", { repoRoot: ctx.args.requirePath("repo") }),
+  },
+  {
+    name: "issue-create",
+    summary: "Create a daemon-owned issue for a repo.",
+    flags: [
+      F.repo(),
+      { name: "title", type: "string", required: true, placeholder: "T", description: "Issue title." },
+      { name: "body", type: "string", placeholder: "TEXT", description: "Issue body." },
+    ],
+    handler: (ctx) =>
+      simpleRpc(ctx, "issue.mutate", {
+        repoRoot: ctx.args.requirePath("repo"),
+        op: { type: "create", title: ctx.args.require("title"), body: ctx.args.str("body") },
+      }),
+  },
+  {
+    name: "issue-set-status",
+    summary: "Set a daemon-owned issue's status.",
+    flags: [
+      F.repo(),
+      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
+      { name: "status", type: "enum", required: true, values: ISSUE_STATUSES, description: "New issue status." },
+    ],
+    handler: (ctx) =>
+      simpleRpc(ctx, "issue.mutate", {
+        repoRoot: ctx.args.requirePath("repo"),
+        op: { type: "setStatus", id: ctx.args.int("id"), status: ctx.args.requireEnum<IssueStatus>("status") },
+      }),
+  },
+  {
+    name: "issue-update",
+    summary: "Update a daemon-owned issue's title and/or body.",
+    flags: [
+      F.repo(),
+      { name: "id", type: "int", required: true, placeholder: "N", description: "Issue id." },
+      { name: "title", type: "string", placeholder: "T", description: "New title." },
+      { name: "body", type: "string", placeholder: "TEXT", description: "New body." },
+    ],
+    handler: issueUpdate,
   },
   {
     name: "collect",
@@ -882,8 +930,10 @@ interface ApiRuntime {
   isTaskRunning(taskId: string): Promise<boolean>
   /** Deliver a prompt into a task's engine pane (building the session if needed). */
   deliverPrompt(client: DaemonRpc, target: PromptTarget, prompt: string): Promise<DeliveredPrompt>
-  /** Canonical repo-root key for grouping tasks by repo. */
+  /** Canonical source repo for task creation and grouping. */
   resolveRepoRoot(absPath: string): Promise<string>
+  /** Settings default engine for new tasks; undefined delegates to daemon defaults. */
+  defaultVendor(): Promise<VendorId | undefined>
   /** Uncommitted +/− counts for a worktree. */
   readWorktreeChanges(worktreePath: string): Promise<{ added: number; deleted: number }>
   /**
@@ -901,7 +951,12 @@ interface ApiRuntime {
 const defaultApiRuntime: ApiRuntime = {
   isTaskRunning: (taskId) => sessionExists(tmuxSessionName(taskId)),
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),
-  resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveRepoRoot(absPath),
+  resolveRepoRoot: async (absPath) => (await import("../state/repos.ts")).resolveMainRepoRoot(absPath),
+  defaultVendor: async () => {
+    const { getPersistedString } = await import("../state/repos.ts")
+    const value = getPersistedString("lastSelectedVendor")?.trim()
+    return value ? (value as VendorId) : undefined
+  },
   readWorktreeChanges: async (worktreePath) =>
     (await import("../tui/panes/sidebar/worktree-changes.ts")).readWorktreeChanges(worktreePath),
   tearDownSession: async (taskId) => {
@@ -928,21 +983,35 @@ async function simpleRpc(ctx: VerbContext, name: string, payload: Record<string,
   return daemonOf(ctx).request(name as any, payload)
 }
 
+async function issueUpdate(ctx: VerbContext): Promise<unknown> {
+  const title = ctx.args.str("title")
+  const body = ctx.args.str("body")
+  if (title === undefined && body === undefined) {
+    throw new ApiError("issue-update requires --title and/or --body", "MISSING_FLAG")
+  }
+  return simpleRpc(ctx, "issue.mutate", {
+    repoRoot: ctx.args.requirePath("repo"),
+    op: { type: "update", id: ctx.args.int("id"), title, body },
+  })
+}
+
 async function add(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
-  const { args } = ctx
-  const payload: Record<string, string> = { repo: args.requirePath("repo") }
+  const { args, runtime } = ctx
+  const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
+  const payload: Record<string, string> = { repo }
   const title = args.str("title")
   if (title) payload.title = title
   const branch = args.str("branch")
   if (branch) payload.branch = branch
   const baseRef = args.str("base-branch")
   if (baseRef) payload.baseRef = baseRef
-  const vendor = args.vendor()
+  const vendor = args.vendor() ?? (await runtime.defaultVendor())
   if (vendor) payload.vendor = vendor
 
   const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
   const taskId = res.taskId
+  await daemon.request("task.setActive", { taskId })
 
   // status / pin aren't create-time fields on the RPC — apply them as
   // follow-ups so `add` is the one-stop "make me a task exactly like this".
@@ -963,6 +1032,7 @@ async function add(ctx: VerbContext): Promise<unknown> {
     { id: taskId, worktreePath: task.worktreePath, vendor: task.vendor as VendorId | undefined, repo: task.repo },
     prompt,
   )
+  task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
   return { taskId, task, started: delivered.started, engineReady: delivered.engineReady, session: delivered.session }
 }
 
@@ -1083,16 +1153,17 @@ async function adopt(ctx: VerbContext): Promise<unknown> {
 
 async function fanOut(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
-  const { args } = ctx
-  const repo = args.requirePath("repo")
+  const { args, runtime } = ctx
+  const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
   const prompt = args.require("prompt")
   const title = args.str("title")
   const baseRef = args.str("base-branch")
 
   const agentsSpec = args.str("agents")
+  const defaultVendor = await runtime.defaultVendor()
   const plan: VendorId[] = agentsSpec
     ? parseAgentsSpec(agentsSpec)
-    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? "claude")
+    : new Array<VendorId>(args.int("count") ?? 1).fill(args.vendor() ?? defaultVendor ?? "claude")
 
   if (plan.length > FANOUT_CAP) {
     throw new ApiError(`fan-out of ${plan.length} exceeds the cap of ${FANOUT_CAP} — spawn in batches`, "BAD_FLAG")

@@ -14,10 +14,11 @@ import { useSyncExternalStore } from "react"
 export interface EngineOption {
   id: string
   label: string
-  /** Discrete reasoning/effort levels this engine exposes (from the registry,
-   *  served on /api/engines). codex maps a level to
-   *  `-c model_reasoning_effort=<level>`; claude has none. Absent/empty means
-   *  the engine has no kobe-driveable effort control. */
+  /** Reasoning/effort levels this engine accepts (e.g. `["low","medium",
+   *  "high"]`), engine-owned and served per vendor. codex maps a level to
+   *  `-c model_reasoning_effort=<level>`; claude has none. Absent/empty when
+   *  the engine exposes no effort control — the issue drawer hides the effort
+   *  picker. */
   effortLevels?: readonly string[]
 }
 
@@ -46,12 +47,11 @@ function ensureFetched(): void {
         .map((e) => ({
           id: e.id,
           label: e.label,
-          ...(Array.isArray(e.effortLevels)
-            ? {
-                effortLevels: e.effortLevels.filter(
-                  (l): l is string => typeof l === "string",
-                ),
-              }
+          // Keep only a clean string[] when the engine ships effort levels;
+          // drop the field entirely otherwise so callers can `?? []` cleanly.
+          ...(Array.isArray(e.effortLevels) &&
+          e.effortLevels.every((l) => typeof l === "string")
+            ? { effortLevels: e.effortLevels }
             : {}),
         }))
       for (const l of listeners) l()

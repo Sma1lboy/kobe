@@ -29,7 +29,6 @@ const SHORTCUTS: Shortcut[] = [
 const PALETTE: Shortcut[] = [
   { keys: ["↑", "↓"], label: "Move selection" },
   { keys: ["↵"], label: "Run the selected command" },
-  { keys: ["theme"], label: 'Type "theme" to switch theme (or Follow TUI)' },
 ]
 
 const COMPOSER: Shortcut[] = [
@@ -49,30 +48,16 @@ const AFFORDANCES: Array<{ label: string; detail: string }> = [
   {
     label: "Chat / Vendor / Terminal",
     detail:
-      "tab kinds inside a task workspace; Chat has search, a hide-tools toggle, and copy-as-Markdown (whole session, or hover a message to copy just it)",
+      "tab kinds inside a task workspace; Chat has search and a hide-tools toggle",
   },
   {
     label: "Triage",
     detail:
-      "rail status chips (All/Needs/Run/Dirty) — filter by what needs you",
+      "task rail status chips (All/Needs/Run/Dirty) + the Board — filter by what needs you",
   },
   {
     label: "Changes / diff",
     detail: "filter files by path, toggle line wrap on a file preview",
-  },
-  {
-    label: "Conflicts",
-    detail:
-      "a ⚠ on a task (rail / board) means its branch collides with another in-flight task — red = real merge conflict, yellow = file overlap; hover for who + which files",
-  },
-  {
-    label: "Copy link",
-    detail: "Task panel → Copy link — share a deep link to a task",
-  },
-  {
-    label: "Needs you",
-    detail:
-      'the tab title shows "(N) kobe" when N tasks are waiting; Cmd+K → "Go to next task needing you" jumps straight to them',
   },
   {
     label: "Notifications",

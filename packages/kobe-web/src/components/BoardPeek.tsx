@@ -14,7 +14,7 @@
  * (docs/design/web-kanban.md R9/M4).
  */
 
-import { ExternalLink, X } from "lucide-react"
+import { ClipboardCheck, ExternalLink, GitPullRequest, X } from "lucide-react"
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { ensureEngineTab } from "../lib/tabs.ts"
@@ -35,11 +35,15 @@ export function BoardPeek({
   engine,
   onClose,
   onOpenWorkspace,
+  onReview,
+  onCreatePr,
 }: {
   task: Task
   engine?: EngineState
   onClose: () => void
   onOpenWorkspace: () => void
+  onReview?: () => void
+  onCreatePr?: () => void
 }) {
   const [view, setView] = useState<PeekView>("engine")
   // Resolved once per drawer open; reopening resolves the same id again, so
@@ -101,6 +105,28 @@ export function BoardPeek({
             <span className="shrink-0 text-[11px] text-muted">{label}</span>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {onReview && (
+              <button
+                type="button"
+                onClick={onReview}
+                className="flex items-center gap-1 text-muted transition-colors hover:text-fg"
+                title="Review → done if it passes"
+              >
+                <ClipboardCheck size={13} strokeWidth={1.8} />
+                <span className="text-[11px]">Review</span>
+              </button>
+            )}
+            {onCreatePr && (
+              <button
+                type="button"
+                onClick={onCreatePr}
+                className="flex items-center gap-1 text-muted transition-colors hover:text-fg"
+                title="Open a PR for this branch"
+              >
+                <GitPullRequest size={13} strokeWidth={1.8} />
+                <span className="text-[11px]">PR</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenWorkspace}

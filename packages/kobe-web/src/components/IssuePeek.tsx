@@ -1,8 +1,8 @@
 /**
- * IssuePeek — the Issues page's wide ticket-detail drawer onto one issue, and
- * the START surface for turning an issue into a task. It rides the shared
- * {@link SlideOver} chrome in its `wide` two-column shell (right-docked,
- * slide-in, focus-trapped, Esc/backdrop close) and splits into:
+ * IssuePeek — the unified Board's wide ticket-detail drawer onto one issue, and
+ * the owner-specified START surface for turning an issue into a task. It rides
+ * the shared {@link SlideOver} chrome in its `wide` two-column shell
+ * (right-docked, slide-in, focus-trapped, Esc/backdrop close) and splits into:
  *
  *   - LEFT (primary): the ticket itself — an always-editable title <input> and a
  *     single-surface {@link RichEditor} description. That one Notion-like surface
@@ -14,10 +14,10 @@
  *     created date, a "running" line for a linked issue, and the engine-owned
  *     {@link EngineEffortPicker}. Its bottom holds the start actions.
  *
- * Start actions: an un-started, startable issue gets TWO buttons — "Start in
- * background" (spawn + stay on the page) and "Start & watch" (spawn + open the
- * live session). A linked issue swaps both for a single "Open workspace". A done
- * issue has nothing to start.
+ * Start actions (owner-explicit): an un-started, startable issue gets TWO
+ * buttons — "Start in background" (spawn + stay on the board) and "Start &
+ * watch" (spawn + open the live session). A linked issue swaps both for a single
+ * "Open workspace". A done issue has nothing to start.
  *
  * RichEditor only inserts images uploaded through the issue-asset endpoint, and
  * markdown.ts only renders those resolved `/api/issue-assets/<hash>/<file>` urls
@@ -42,7 +42,7 @@ export function IssuePeek({
   onOpenSession,
 }: {
   issue: Issue
-  /** Source repo for asset uploads — the same key the page peeks under. */
+  /** Source repo for asset uploads — the same key the Board peeks under. */
   repoRoot: string
   /** A save mutation is in flight — the Save affordance disables. */
   busy: boolean
@@ -63,8 +63,8 @@ export function IssuePeek({
   const [effort, setEffort] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
-  // The issue is already represented by a live task, so there is nothing left
-  // to start. Done issues likewise have nothing to do.
+  // The issue is already represented by a live task card on the board, so there
+  // is nothing left to start. Done issues likewise have nothing to do.
   const linked = Boolean(issue.taskId)
   const startable = canQuickStart(issue.status) && !linked
   const dirty = draftTitle !== issue.title || draftBody !== issue.body
@@ -149,7 +149,8 @@ export function IssuePeek({
         </div>
 
         {/* RIGHT — execution config + metadata, split into labeled sections so
-            future settings/detail each get their own slot. */}
+            future settings/detail each get their own slot (add a sibling
+            <section> between Detail and Engine, or after Engine). */}
         <div className="flex w-72 shrink-0 flex-col gap-4 p-3">
           {/* DETAIL */}
           <section className="flex flex-col gap-1.5">
@@ -218,7 +219,7 @@ export function IssuePeek({
                   type="button"
                   disabled={starting}
                   onClick={() => onStart({ vendor, effort, watch: false })}
-                  title="Spawn a kobe task on this issue and stay on the page"
+                  title="Spawn a kobe task on this issue and stay on the board"
                   className="flex h-8 items-center justify-center gap-1.5 border border-line bg-bg px-3 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={12} strokeWidth={1.8} />

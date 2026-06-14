@@ -62,6 +62,28 @@ export function resolveRepoRoot(absPath: string): string {
 }
 
 /**
+ * Resolve a local path to the repository's PRIMARY checkout. `git rev-parse
+ * --show-toplevel` returns the linked worktree when called from a task
+ * worktree; scripted task creation wants the source repo instead so new tasks
+ * do not nest under another task's worktree.
+ */
+export function resolveMainRepoRoot(absPath: string): string {
+  if (isRemoteRepoKey(absPath)) return absPath
+  const r = spawnSync("git", ["worktree", "list", "--porcelain"], {
+    cwd: absPath,
+    encoding: "utf8",
+    shell: false,
+  })
+  if (r.status !== 0) return resolveRepoRoot(absPath)
+  const first = (r.stdout ?? "")
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("worktree "))
+    ?.slice("worktree ".length)
+    .trim()
+  return first || resolveRepoRoot(absPath)
+}
+
+/**
  * Where the shared KV blob lives. Resolved on each access so a test's
  * `KOBE_HOME_DIR` override works without module-init reload tricks.
  */

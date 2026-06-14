@@ -1,0 +1,5 @@
+---
+"@sma1lboy/kobe": patch
+---
+
+**Web dashboard: Issues panel** — `kobe web` gets an `/issues` page backed by the daemon-owned issue store, shared by a repo's source checkout and task worktrees. Switch projects with chips (or stay on the all-projects overview with per-repo status counts), browse a four-column board (`open` / `doing` / `hold` / `done`), search, create and edit issues in a detail drawer with markdown rendering, and one-click **quick start** an issue: kobe creates a task in that repo, flips the issue to `doing`, and pastes the issue as the engine's first prompt via the existing PTY delivery path. Reach it from the top bar (`CircleDot`) or the command palette. The bridge serves `GET/POST /api/issues` by proxying daemon `issue.*` RPCs, returning 400/404 for issue validation misses instead of surfacing them as server errors. Issue mutations now also broadcast daemon `issue.snapshot` pushes, so every open Issues pane updates live when web, TUI, or an agent changes the tracker.

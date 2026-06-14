@@ -14,14 +14,13 @@ import { SPA_CHANNEL_SET, SPA_CHANNELS } from "../server/spa-channels.ts"
 // switch cases + the snapshot event's fields).
 const SPA_CONSUMED = [
   "task.snapshot",
+  "issue.snapshot",
   "active-task",
   "engine-state",
   "update",
   "task.jobs",
   "worktree.changes",
-  "task.conflicts",
   "session.deliver",
-  "issue.snapshot",
   "ui-prefs",
 ] as const
 

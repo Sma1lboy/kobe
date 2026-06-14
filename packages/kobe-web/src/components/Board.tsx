@@ -1,16 +1,27 @@
 /**
- * Board — the kanban lens over the same tasks the rail and Overview show:
- * one column per persisted Task.status. Cards are live sessions, not
- * tickets — the dot is the engine's transient activity, and opening a card
- * lands on the task's real workspace (PTY/transcript).
+ * Board — the UNIFIED kanban lens over two stores at once: kobe's worktree
+ * Tasks AND the daemon-owned Issues, grouped into one board per Project (=
+ * git repo). The Backlog column shows a repo's open Issues (plus any tasks
+ * still in backlog status); In progress / In review show Tasks; Done shows
+ * both. A linked pair dedups down to the task card — an Issue linked to a
+ * LIVE task (not done/canceled/error, not archived) is hidden and represented
+ * by its task card, which carries a `#<issueId>` back-link chip. Deleting or
+ * archiving the task resurfaces its issue in Backlog.
  *
- * Two ways to move a card's lifecycle status: drag it (anywhere with the
- * pointer; keyboard from the grip handle) onto a column / slot, or use the
- * hover bar's status tags to jump it straight to a primary column without
- * dragging. Both paths share commitColumnMove: optimistic paint via the
- * board-state override layer, daemon task.snapshot confirmation, and a
- * typed-error rollback + toast. Moves are disabled while the daemon/stream
- * is down — they'd silently vanish (docs/design/web-kanban.md R4).
+ * Two interaction grammars, deliberately different:
+ *   - Task cards are DRAGGABLE across status columns (within their project),
+ *     and carry the hover-bar status tags / review / PR / peek actions. Drops
+ *     share commitColumnMove: optimistic paint via the board-state override
+ *     layer, daemon task.snapshot confirmation, typed-error rollback + toast.
+ *     Moves are disabled while the daemon/stream is down.
+ *   - Issue cards are NOT draggable. Clicking one opens the right-side
+ *     IssuePeek drawer (edit title/body, pick an engine, Start) — Start spawns
+ *     a task on the chosen engine via quickStartIssue and links the two.
+ *
+ * Issues are non-optimistic (the daemon issue.snapshot is truth), with ONE
+ * exception: once a quickStart resolves with a taskId we optimistically hide
+ * that issue (a local pending-link set) so the board doesn't flash a duplicate
+ * before the snapshot's `taskId` link lands.
  */
 
 import {
@@ -35,31 +46,31 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { useNavigate } from "@tanstack/react-router"
 import {
-  ArrowLeft,
-  ClipboardCheck,
+  ChevronDown,
+  ChevronRight,
   Eye,
-  GitPullRequest,
   GripVertical,
+  Plus,
   Search,
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import {
   applyBoardOverrides,
-  BOARD_COLUMNS,
+  type BoardCard as BoardCardData,
   type BoardColumn,
   boardCardCount,
-  buildBoard,
+  buildProjectBoards,
   compareCards,
-  conflictBadge,
-  conflictTip,
+  droppableId,
   isBoardTask,
   isDroppableColumn,
+  isIssueCard,
+  type ProjectBoard,
+  parseDroppableId,
   planColumnDrop,
   repoOptions,
-  yarnColor,
 } from "../lib/board.ts"
 import {
   clearPositionOverride,
@@ -73,6 +84,13 @@ import {
   setStatusOverride,
   useBoardState,
 } from "../lib/board-state.ts"
+import {
+  deleteIssue,
+  type Issue,
+  issueRepoOptions,
+  quickStartIssue,
+  updateIssue,
+} from "../lib/issues.ts"
 import { fetchQuickPrompts } from "../lib/quick-prompts.ts"
 import { createPrPrompt, reviewPrompt } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -81,134 +99,23 @@ import { matchesTask } from "../lib/task-list.ts"
 import { sendPtyText } from "../lib/terminal.ts"
 import { relativeTime } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
-import type { ConflictPair, EngineState, Task } from "../lib/types.ts"
+import type { EngineState, Task } from "../lib/types.ts"
+import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { BoardPeek } from "./BoardPeek.tsx"
-import { ChangesChip, PrChip } from "./chips.tsx"
+import { ChangesChip, PrChip, TIP_RIGHT } from "./chips.tsx"
+import { ConfirmDialog } from "./ConfirmDialog.tsx"
+import { DaemonBanner } from "./DaemonBanner.tsx"
+import { IssueCard } from "./IssueCard.tsx"
+import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
+import { IssuePeek } from "./IssuePeek.tsx"
+import { ViewToggle } from "./ViewToggle.tsx"
 
-/**
- * Conflict yarn — one sagging colored thread per PROVEN conflict pair,
- * strung between the two cards (the detective-board look). Lines live in
- * an SVG overlay inside the horizontally-scrolling column wrapper, so they
- * scroll with the columns. Endpoints are ANCHORED by a per-frame rAF loop
- * (alive only while proven pairs exist): re-measuring every frame is the
- * one approach that tracks dnd-kit's mid-drag transforms, the post-drop
- * settle transition, and inner column scrolls without enumerating event
- * sources. Cost is a couple of rect reads per pair per frame, the state
- * update is equality-guarded, and rAF pauses in background tabs. The
- * overlay never intercepts the pointer except on the thread itself
- * (2px stroke), which exists only to carry the tooltip.
- */
-function ConflictYarn({
-  pairs,
-  titles,
-  containerRef,
-}: {
-  pairs: ConflictPair[]
-  titles: ReadonlyMap<string, string>
-  containerRef: React.RefObject<HTMLDivElement | null>
-}) {
-  const [lines, setLines] = useState<
-    Array<{ id: string; d: string; color: string; tip: string }>
-  >([])
-
-  useEffect(() => {
-    const container = containerRef.current
-    const conflictPairs = pairs.filter((pair) => pair.level === "conflict")
-    if (!container || conflictPairs.length === 0) {
-      setLines((prev) => (prev.length === 0 ? prev : []))
-      return
-    }
-    let raf = 0
-    const measure = (): void => {
-      const base = container.getBoundingClientRect()
-      const next: Array<{ id: string; d: string; color: string; tip: string }> =
-        []
-      // window.CSS, not the bare identifier — the dnd-kit `CSS` transform
-      // helper imported above shadows the global and has no .escape.
-      // A card being dragged is anchored at its DragOverlay clone (portaled
-      // to <body>, riding the pointer) so the yarn follows the drag live;
-      // viewport-rect math stays valid across the portal boundary.
-      const anchor = (id: string): Element | null =>
-        document.querySelector(
-          `[data-yarn-anchor="${window.CSS.escape(id)}"]`,
-        ) ??
-        container.querySelector(`[data-task-id="${window.CSS.escape(id)}"]`)
-      conflictPairs.forEach((pair, index) => {
-        const ea = anchor(pair.a)
-        const eb = anchor(pair.b)
-        if (!ea || !eb) return // a hidden endpoint (filter/cap/fold) = no yarn
-        const ra = ea.getBoundingClientRect()
-        const rb = eb.getBoundingClientRect()
-        const x1 = ra.left + ra.width / 2 - base.left
-        const y1 = ra.bottom - 4 - base.top
-        const x2 = rb.left + rb.width / 2 - base.left
-        const y2 = rb.bottom - 4 - base.top
-        // Quadratic droop — yarn, not a laser.
-        const sag = Math.min(120, Math.abs(x2 - x1) / 4 + 28)
-        const d = `M ${x1} ${y1} Q ${(x1 + x2) / 2} ${Math.max(y1, y2) + sag} ${x2} ${y2}`
-        const names = `${titles.get(pair.a) ?? pair.a} ⇄ ${titles.get(pair.b) ?? pair.b}`
-        const files = pair.files.slice(0, 6).join(", ")
-        next.push({
-          id: `${pair.a}|${pair.b}`,
-          d,
-          color: yarnColor(index),
-          tip: `${names}\nconflicts: ${files}${pair.files.length > 6 ? ", …" : ""}`,
-        })
-      })
-      setLines((prev) =>
-        JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
-      )
-      raf = requestAnimationFrame(measure)
-    }
-    raf = requestAnimationFrame(measure)
-    return () => cancelAnimationFrame(raf)
-  }, [pairs, titles, containerRef])
-
-  if (lines.length === 0) return null
-  return (
-    // biome-ignore lint/a11y/noSvgWithoutTitle: decorative overlay (aria-hidden); the per-path <title> elements carry the hover tooltips.
-    <svg
-      aria-hidden
-      className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible"
-    >
-      {lines.map((line) => (
-        <g key={line.id}>
-          <path
-            d={line.d}
-            fill="none"
-            stroke={line.color}
-            strokeWidth={2}
-            strokeOpacity={0.65}
-            strokeLinecap="round"
-          />
-          {/* Invisible fat twin — a 14px hit corridor so the tooltip
-              doesn't demand pixel-perfect aim at a 2px thread. */}
-          <path
-            d={line.d}
-            fill="none"
-            stroke="transparent"
-            strokeWidth={14}
-            style={{ pointerEvents: "stroke" }}
-          >
-            <title>{line.tip}</title>
-          </path>
-        </g>
-      ))}
-    </svg>
-  )
-}
-
-/** The hover bar's jump targets: the four always-visible lifecycle columns.
- *  error/canceled stay drag-only — they're fold-away exception states, not
- *  everyday destinations. */
-const PRIMARY_COLUMNS = BOARD_COLUMNS.filter((spec) => spec.alwaysVisible)
-
-/** Instant hover tooltip rendered from the data-tip attribute — the native
- *  `title` takes a beat to appear, and one-glyph buttons need names. */
-const TIP_ABOVE =
-  "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
-const TIP_RIGHT =
-  "after:pointer-events-none after:absolute after:left-full after:top-2 after:z-10 after:ml-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+/** A peek target on the unified board is repo-scoped: a bare task id or issue
+ *  number would be ambiguous across projects, and the two stores key
+ *  differently. */
+type PeekTarget =
+  | { kind: "task"; id: string }
+  | { kind: "issue"; repo: string; id: number }
 
 /**
  * Column-aware keyboard moves: ↑/↓ step between cards of the SAME column
@@ -268,76 +175,14 @@ const boardKeyboardCoordinates: KeyboardCoordinateGetter = (
   return target ? { x: target.left, y: target.top } : undefined
 }
 
-/**
- * ⚠N conflict badge with an instant tooltip PORTALED to <body> — the column
- * lists are overflow-y scrollers, which forces overflow-x to clip too, so an
- * absolutely-positioned tooltip inside the card gets cut at the column edge.
- * Fixed positioning at body level escapes every scroll container; any scroll
- * while open just dismisses it (the anchor rect went stale).
- */
-function ConflictBadge({
-  badge,
-}: {
-  badge: { level: "overlap" | "conflict"; count: number; tip: string }
-}) {
-  const ref = useRef<HTMLSpanElement>(null)
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null)
-  useEffect(() => {
-    if (!pos) return
-    const close = (): void => setPos(null)
-    window.addEventListener("scroll", close, true)
-    return () => window.removeEventListener("scroll", close, true)
-  }, [pos])
-  const show = (): void => {
-    const rect = ref.current?.getBoundingClientRect()
-    if (rect)
-      setPos({
-        top: rect.bottom + 2,
-        right: Math.max(8, window.innerWidth - rect.right),
-      })
-  }
-  return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover-only tooltip trigger inside the card's open button — not an action of its own.
-    <span
-      ref={ref}
-      onMouseEnter={show}
-      onMouseLeave={() => setPos(null)}
-      className={`-my-1.5 relative shrink-0 cursor-help px-1.5 py-1.5 font-mono text-[10px] ${
-        badge.level === "conflict" ? "text-kobe-red" : "text-kobe-yellow"
-      }`}
-    >
-      ⚠{badge.count}
-      {pos &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              top: pos.top,
-              right: pos.right,
-              maxWidth: 380,
-              overflowWrap: "anywhere",
-            }}
-            className="pointer-events-none z-50 whitespace-pre-line border border-line bg-menu px-2 py-1 text-left font-mono text-[10px] text-fg"
-          >
-            {badge.tip}
-          </div>,
-          document.body,
-        )}
-    </span>
-  )
-}
-
 function CardBody({
   task,
   engine,
   changes,
-  badge,
 }: {
   task: Task
   engine?: EngineState
   changes?: { added: number; deleted: number }
-  /** Conflict-radar summary: ⚠ overlap (yellow) / proven conflict (red). */
-  badge?: { level: "overlap" | "conflict"; count: number; tip: string }
 }) {
   const label = activityLabel(engine?.state)
   const updated = relativeTime(task.updatedAt || task.createdAt)
@@ -350,7 +195,6 @@ function CardBody({
         <span className="min-w-0 flex-1 truncate text-[13px] text-fg">
           {task.title || task.branch || task.id}
         </span>
-        {badge && <ConflictBadge badge={badge} />}
         <PrChip pr={task.prStatus} />
         {task.pinned && (
           <span className="shrink-0 text-[10px] text-subtle">PIN</span>
@@ -371,29 +215,23 @@ function CardBody({
   )
 }
 
-function BoardCard({
+function TaskBoardCard({
   task,
   columnKey,
   engine,
   changes,
-  badge,
   canDrag,
-  onMoveTo,
-  onReview,
-  onCreatePr,
-  onOpen,
+  fromIssue,
   onPeek,
 }: {
   task: Task
   columnKey: string
   engine?: EngineState
   changes?: { added: number; deleted: number }
-  badge?: { level: "overlap" | "conflict"; count: number; tip: string }
   canDrag: boolean
-  onMoveTo: (statusKey: string) => void
-  onReview?: () => void
-  onCreatePr?: () => void
-  onOpen: () => void
+  /** This card was quick-started from an issue (an Issue.taskId points to it).
+   *  When such a card has gone idle it earns a REVIEW nudge chip. */
+  fromIssue: boolean
   onPeek: () => void
 }) {
   const {
@@ -426,7 +264,7 @@ function BoardCard({
   }, [isDragging])
   const open = (): void => {
     if (Date.now() - lastDragEndRef.current < 250) return
-    onOpen()
+    onPeek()
   }
   return (
     <div
@@ -441,8 +279,17 @@ function BoardCard({
         onClick={open}
         className="flex w-full cursor-pointer flex-col gap-1.5 border border-line bg-surface p-3 pl-6 text-left transition-colors hover:border-primary hover:bg-inset"
       >
-        <CardBody task={task} engine={engine} changes={changes} badge={badge} />
+        <CardBody task={task} engine={engine} changes={changes} />
       </button>
+      {/* REVIEW nudge: an issue-originated card whose engine has gone idle (or
+          whose task reached done) is awaiting a verdict — surface it as a chip
+          so the user knows to review without opening the card. Static (not
+          hover-only) so it reads at a glance across the column. */}
+      {fromIssue && (engine?.state === "idle" || task.status === "done") && (
+        <span className="absolute right-1.5 top-1.5 border border-kobe-blue px-1 text-[9px] font-bold uppercase tracking-[0.1em] text-kobe-blue transition-opacity group-hover/card:opacity-0">
+          review
+        </span>
+      )}
       {canDrag && (
         <button
           type="button"
@@ -456,105 +303,70 @@ function BoardCard({
           <GripVertical size={12} strokeWidth={1.8} />
         </button>
       )}
-      {/* Hover bar: one tag per primary status — click to jump the card
-          there without dragging. Overlays the card footer on hover only. */}
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1 border-t border-line bg-surface px-2 py-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
-        {PRIMARY_COLUMNS.map((spec) => {
-          const current = spec.key === columnKey
-          return (
-            <button
-              key={spec.key}
-              type="button"
-              disabled={current || !canDrag}
-              onClick={() => onMoveTo(spec.key)}
-              title={current ? "Current column" : `Move to ${spec.title}`}
-              className={`px-1 text-[10px] transition-colors ${
-                current
-                  ? `font-bold ${spec.accent}`
-                  : "text-subtle hover:text-fg disabled:opacity-40 disabled:hover:text-subtle"
-              }`}
-            >
-              {spec.title}
-            </button>
-          )
-        })}
-        <div className="ml-auto flex gap-0.5">
-          {onReview && (
-            <button
-              type="button"
-              onClick={onReview}
-              aria-label={`Send review instruction to ${task.title || task.branch || task.id}`}
-              data-tip="Review → done if it passes"
-              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
-            >
-              <ClipboardCheck size={11} strokeWidth={1.8} />
-            </button>
-          )}
-          {onCreatePr && (
-            <button
-              type="button"
-              onClick={onCreatePr}
-              aria-label={`Open a PR for ${task.title || task.branch || task.id}`}
-              data-tip="Open a PR for this branch"
-              className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
-            >
-              <GitPullRequest size={11} strokeWidth={1.8} />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={onPeek}
-            aria-label={`Peek ${task.title || task.branch || task.id}`}
-            data-tip="Peek session"
-            className={`relative flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle hover:border-primary hover:text-fg ${TIP_ABOVE}`}
-          >
-            <Eye size={11} strokeWidth={1.8} />
-          </button>
-        </div>
-      </div>
+      {/* Single hover Eye, top-right — opens the task's session drawer
+          (BoardPeek), same as clicking the card body. Review / PR / workspace
+          all live inside that drawer now; the card hover offers only this one
+          peek affordance. Mirrors the IssueCard grammar. */}
+      <button
+        type="button"
+        onClick={onPeek}
+        aria-label={`Peek ${task.title || task.branch || task.id}`}
+        title="Peek session"
+        className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center border border-line bg-surface text-subtle opacity-0 transition-opacity hover:border-primary hover:text-fg focus-visible:opacity-100 group-hover/card:opacity-100"
+      >
+        <Eye size={11} strokeWidth={1.8} />
+      </button>
     </div>
   )
 }
 
 function ColumnView({
+  repo,
   column,
   engineStates,
   worktreeChanges,
-  badges,
   canDrag,
-  onMoveTo,
-  onReview,
-  onCreatePr,
-  onOpen,
+  issueTaskIds,
+  onNewIssue,
   onPeek,
+  onPeekIssue,
+  onDeleteIssue,
 }: {
+  repo: string
   column: BoardColumn
   engineStates: Record<string, EngineState>
   worktreeChanges: Record<string, { added: number; deleted: number }>
-  badges: ReadonlyMap<
-    string,
-    { level: "overlap" | "conflict"; count: number; tip: string }
-  >
   canDrag: boolean
-  onMoveTo: (task: Task, statusKey: string) => void
-  onReview: (task: Task) => void
-  onCreatePr: (task: Task) => void
-  onOpen: (id: string) => void
+  /** Task ids an Issue.taskId points to — these cards earn the REVIEW chip. */
+  issueTaskIds: Set<string>
+  /** Backlog only — open the issue-intake panel scoped to this repo. */
+  onNewIssue?: () => void
   onPeek: (id: string) => void
+  onPeekIssue: (issue: Issue) => void
+  /** Raise a delete request for an issue card — the Board confirms first. */
+  onDeleteIssue: (issue: Issue) => void
 }) {
+  // The droppable id is composite (`${repo}:${columnKey}`) so two projects'
+  // "in_review" columns are distinct drop targets.
+  const dropId = droppableId(repo, column.key)
   const droppable = isDroppableColumn(column.key)
   const { setNodeRef, isOver } = useDroppable({
-    id: column.key,
+    id: dropId,
     disabled: !droppable,
-    data: { type: "column" },
+    data: { type: "column", repo, columnKey: column.key },
   })
+  // Sortable items must be the draggable task-card ids only; issue cards are
+  // not part of the sortable list.
+  const taskIds = column.cards
+    .filter((card) => !isIssueCard(card))
+    .map((card) => card.id)
   return (
     <section
       ref={setNodeRef}
-      data-column={column.key}
-      className={`flex h-full w-72 shrink-0 flex-col border border-transparent ${
-        isOver ? "border-line-active bg-inset/40" : ""
-      }`}
+      data-column={dropId}
+      className={`flex h-full shrink-0 flex-col border border-transparent ${
+        column.key === "backlog" ? "w-96" : "w-72"
+      } ${isOver ? "border-line-active bg-inset/40" : ""}`}
     >
       <div className="mb-2 flex items-baseline gap-2">
         <h2
@@ -563,46 +375,48 @@ function ColumnView({
           {column.title}
         </h2>
         <span className="font-mono text-[10px] text-subtle">
-          {column.tasks.length + column.hiddenCount}
+          {column.cards.length + column.hiddenCount}
         </span>
+        {onNewIssue && (
+          <button
+            type="button"
+            onClick={onNewIssue}
+            className="ml-auto flex items-center gap-0.5 text-[10px] text-subtle transition-colors hover:text-fg"
+            title="New issue in this project"
+          >
+            <Plus size={11} strokeWidth={2} />
+            <span>New issue</span>
+          </button>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pb-2">
-        <SortableContext
-          items={column.tasks.map((task) => task.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {column.tasks.length === 0 ? (
+        <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
+          {column.cards.length === 0 ? (
             <div className="border border-dashed border-line-subtle p-3 text-center text-[11px] text-subtle">
               none
             </div>
           ) : (
-            column.tasks.map((task) => (
-              <BoardCard
-                key={task.id}
-                task={task}
-                columnKey={column.key}
-                engine={engineStates[task.id]}
-                changes={worktreeChanges[task.worktreePath]}
-                badge={badges.get(task.id)}
-                canDrag={canDrag}
-                onMoveTo={(statusKey) => onMoveTo(task, statusKey)}
-                // Review only makes sense where work awaits a verdict.
-                onReview={
-                  column.key === "in_review" ? () => onReview(task) : undefined
-                }
-                // PR only for finished work that doesn't already have one
-                // (the PrChip covers the has-a-PR case).
-                onCreatePr={
-                  column.key === "done" &&
-                  (!task.prStatus?.lifecycle ||
-                    task.prStatus.lifecycle === "unknown")
-                    ? () => onCreatePr(task)
-                    : undefined
-                }
-                onOpen={() => onOpen(task.id)}
-                onPeek={() => onPeek(task.id)}
-              />
-            ))
+            column.cards.map((card) =>
+              isIssueCard(card) ? (
+                <IssueCard
+                  key={`issue:${card.issue.id}`}
+                  issue={card.issue}
+                  onOpen={() => onPeekIssue(card.issue)}
+                  onDelete={() => onDeleteIssue(card.issue)}
+                />
+              ) : (
+                <TaskBoardCard
+                  key={card.id}
+                  task={card}
+                  columnKey={column.key}
+                  engine={engineStates[card.id]}
+                  changes={worktreeChanges[card.worktreePath]}
+                  canDrag={canDrag}
+                  fromIssue={issueTaskIds.has(card.id)}
+                  onPeek={() => onPeek(card.id)}
+                />
+              ),
+            )
           )}
         </SortableContext>
         {column.hiddenCount > 0 && (
@@ -615,12 +429,57 @@ function ColumnView({
   )
 }
 
+/** One project's column row. The columns themselves carry repo-scoped
+ *  droppable ids, so the whole row drags within its own project. */
+function ProjectColumns({
+  board,
+  engineStates,
+  worktreeChanges,
+  canDrag,
+  issueTaskIds,
+  onNewIssue,
+  onPeek,
+  onPeekIssue,
+  onDeleteIssue,
+}: {
+  board: ProjectBoard
+  engineStates: Record<string, EngineState>
+  worktreeChanges: Record<string, { added: number; deleted: number }>
+  canDrag: boolean
+  issueTaskIds: Set<string>
+  onNewIssue: (repo: string) => void
+  onPeek: (id: string) => void
+  onPeekIssue: (issue: Issue) => void
+  onDeleteIssue: (repo: string, issue: Issue) => void
+}) {
+  return (
+    <div className="flex h-full min-w-max gap-4">
+      {board.columns.map((column) => (
+        <ColumnView
+          key={column.key}
+          repo={board.repo}
+          column={column}
+          engineStates={engineStates}
+          worktreeChanges={worktreeChanges}
+          canDrag={canDrag}
+          issueTaskIds={issueTaskIds}
+          onNewIssue={
+            column.key === "backlog" ? () => onNewIssue(board.repo) : undefined
+          }
+          onPeek={onPeek}
+          onPeekIssue={onPeekIssue}
+          onDeleteIssue={(issue) => onDeleteIssue(board.repo, issue)}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function Board() {
   const {
     tasks,
     engineStates,
     worktreeChanges,
-    conflicts,
     deliver,
     hydrated,
     daemonConnected,
@@ -628,10 +487,26 @@ export function Board() {
   } = useAppState()
   const { query, repo: repoFilter, overrides } = useBoardState()
   const navigate = useNavigate()
-  const yarnContainerRef = useRef<HTMLDivElement>(null)
   const filterRef = useRef<HTMLInputElement>(null)
   const [dragTaskId, setDragTaskId] = useState<string | null>(null)
-  const [peekTaskId, setPeekTaskId] = useState<string | null>(null)
+  const [peek, setPeek] = useState<PeekTarget | null>(null)
+  // Projects the user has collapsed (repo key set). Default expanded.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // Issue-intake panel target repo (null = closed).
+  const [creatingRepo, setCreatingRepo] = useState<string | null>(null)
+  const [issueBusy, setIssueBusy] = useState(false)
+  const [quickStartingId, setQuickStartingId] = useState<number | null>(null)
+  // Optimistic dedup: `${repo}:${issueId}` for issues whose quickStart has
+  // resolved with a taskId but whose issue.snapshot link hasn't landed yet.
+  // Hiding them here avoids a flash of duplicate (the issue card AND its new
+  // task card) for one round-trip. Cleared once the daemon confirms the link.
+  const [pendingLinks, setPendingLinks] = useState<Set<string>>(new Set())
+  // Issue pending a delete confirmation (null = no dialog). Carries its source
+  // repo so the confirmed delete hits the right daemon store key.
+  const [confirmDelete, setConfirmDelete] = useState<{
+    repo: string
+    issue: Issue
+  } | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -653,21 +528,81 @@ export function Board() {
     reconcileBoardOverrides(tasks)
   }, [tasks])
 
-  // Close the peek when its task vanishes (deleted/archived elsewhere) —
-  // a drawer onto a dead session would just error confusingly.
-  useEffect(() => {
-    if (peekTaskId && !tasks.some((t) => t.id === peekTaskId)) {
-      setPeekTaskId(null)
+  // Issue-snapshot plumbing for every source repo on the board. issueRepoOptions
+  // folds worktree tasks into their canonical source repo (the daemon issue
+  // store is keyed there), so a task card and its repo's issues share a key.
+  const issueRepos = useMemo(
+    () => issueRepoOptions(tasks).map((option) => option.repo),
+    [tasks],
+  )
+  const { data: issueData, refresh: refreshIssues } = useRepoIssues(issueRepos)
+
+  // The flat issue list (across every repo), each tagged with its source repo.
+  // Only `exists` repos contribute; a missing issue file is empty, not error.
+  const allIssues = useMemo(() => {
+    const out: Array<{ repo: string; issue: Issue }> = []
+    for (const repo of issueRepos) {
+      const state = issueData[repo]
+      if (!state || !state.exists) continue
+      for (const issue of state.issues) out.push({ repo, issue })
     }
-  }, [tasks, peekTaskId])
+    return out
+  }, [issueRepos, issueData])
+
+  // Task ids an Issue.taskId points to — an "issue-originated" card. The link
+  // is one-way (Issue → Task), so the only way to know a task came from an
+  // issue is to scan the issue side. Drives the REVIEW chip on idle cards.
+  const issueTaskIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const { issue } of allIssues) if (issue.taskId) ids.add(issue.taskId)
+    return ids
+  }, [allIssues])
+
+  // Reverse map task id → its originating issue. A started issue is deduped
+  // into a task card, but it's still a TICKET: clicking it must open the issue
+  // detail (title/description), not the engine session. peekCard routes by this.
+  const issueByTaskId = useMemo(() => {
+    const map = new Map<string, { repo: string; issue: Issue }>()
+    for (const { repo, issue } of allIssues) {
+      if (issue.taskId) map.set(issue.taskId, { repo, issue })
+    }
+    return map
+  }, [allIssues])
+
+  // Drop a pending optimistic-link once the daemon confirms it: the issue now
+  // carries a taskId, so the dedup in buildProjectBoards hides it for real.
+  useEffect(() => {
+    setPendingLinks((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set(prev)
+      for (const { repo, issue } of allIssues) {
+        if (issue.taskId) next.delete(`${repo}:${issue.id}`)
+      }
+      return next.size === prev.size ? prev : next
+    })
+  }, [allIssues])
+
+  // Close the peek when its target vanishes (task deleted/archived, or an
+  // issue removed/linked away) — a drawer onto a dead target would error.
+  useEffect(() => {
+    if (!peek) return
+    if (peek.kind === "task" && !tasks.some((t) => t.id === peek.id)) {
+      setPeek(null)
+    } else if (
+      peek.kind === "issue" &&
+      !allIssues.some((e) => e.repo === peek.repo && e.issue.id === peek.id)
+    ) {
+      setPeek(null)
+    }
+  }, [tasks, allIssues, peek])
 
   // Keyboard-first parity with Overview: `/` focuses the filter, Escape
   // clears it. Suppressed while typing in another field, and dormant while
-  // the peek drawer is open — `/` yanking focus to the background filter
-  // would punch through the drawer's focus trap.
+  // a drawer/dialog owns the keyboard — `/` yanking focus to the background
+  // filter would punch through the drawer's focus trap.
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (peekTaskId) return
+      if (peek || creatingRepo || confirmDelete) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       const t = event.target as HTMLElement | null
       const inField =
@@ -686,7 +621,7 @@ export function Board() {
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [query, peekTaskId])
+  }, [query, peek, creatingRepo, confirmDelete])
 
   // Project chips: the distinct repos with board cards. Computed from the
   // UNfiltered list so chips (and their counts) don't vanish while one is
@@ -714,6 +649,9 @@ export function Board() {
     }
   }, [repos, repoFilter])
 
+  // The DISPLAY task set: repo chip + text query. Drag math (commitColumnMove)
+  // recomputes the FULL column from applyBoardOverrides(tasks) so a filtered
+  // drop never strands hidden cards on the wrong side of the move.
   const boardTasks = useMemo(
     () =>
       applyBoardOverrides(tasks, overrides).filter(
@@ -722,38 +660,85 @@ export function Board() {
       ),
     [tasks, overrides, query, repoFilter],
   )
-  const columns = useMemo(() => buildBoard(boardTasks), [boardTasks])
-  const shownCount = boardCardCount(columns)
+
+  // The DISPLAY issue set: repo chip + text query. A pending-link or a
+  // confirmed live-task link hides the issue (the dedup happens against the
+  // FULL task list in buildProjectBoards for the confirmed case; pendingLinks
+  // covers the just-resolved gap).
+  const boardIssues = useMemo<BoardCardData[]>(() => {
+    const q = query.trim().toLowerCase()
+    return allIssues
+      .filter(({ repo, issue }) => {
+        if (repoFilter && repo !== repoFilter) return false
+        if (pendingLinks.has(`${repo}:${issue.id}`)) return false
+        if (!q) return true
+        const haystack =
+          `#${issue.id} ${issue.title} ${issue.body}`.toLowerCase()
+        return haystack.includes(q)
+      })
+      .map(({ repo, issue }) => ({ kind: "issue", repo, issue }) as const)
+  }, [allIssues, query, repoFilter, pendingLinks])
+
+  const cards = useMemo<BoardCardData[]>(
+    () => [
+      // Preserve the task's real `kind` (so isBoardTask still filters main
+      // rows); the BoardCard task variant just narrows the union by NOT being
+      // an issue card. Spreading `kind: "task"` first would clobber it.
+      ...boardTasks.map(
+        (task) => ({ ...task, kind: task.kind }) as BoardCardData,
+      ),
+      ...boardIssues,
+    ],
+    [boardTasks, boardIssues],
+  )
+  // Dedup runs against the FULL, unfiltered task list so a card hidden by a
+  // chip/query/cap still suppresses its issue.
+  const projectBoards = useMemo(
+    () => buildProjectBoards(cards, tasks),
+    [cards, tasks],
+  )
+  const single = projectBoards.length === 1
+  const shownCount = useMemo(
+    () =>
+      projectBoards.reduce(
+        (sum, board) => sum + boardCardCount(board.columns),
+        0,
+      ),
+    [projectBoards],
+  )
+  // A no-match (chips/query narrowed every card away) vs the genuinely-empty
+  // board: the empty branch differs (clear-filters vs new-task affordance).
+  const hasAnyCard = useMemo(
+    () => tasks.some(isBoardTask) || allIssues.length > 0,
+    [tasks, allIssues],
+  )
+  const filtered = Boolean(query) || Boolean(repoFilter)
   const dragTask = dragTaskId
     ? boardTasks.find((t) => t.id === dragTaskId)
     : undefined
 
-  // Conflict radar: per-card badge summaries + display titles for the yarn
-  // tooltips, plus a layout fingerprint that re-measures the yarn whenever
-  // card membership/order shifts.
-  const taskTitles = useMemo(
-    () =>
-      new Map(tasks.map((t) => [t.id, t.title || t.branch || t.id] as const)),
-    [tasks],
-  )
-  const conflictBadges = useMemo(() => {
-    const badges = new Map<
-      string,
-      { level: "overlap" | "conflict"; count: number; tip: string }
-    >()
-    const ids = new Set(conflicts.flatMap((pair) => [pair.a, pair.b]))
-    const titleOf = (id: string): string => taskTitles.get(id) ?? id
-    for (const id of ids) {
-      const summary = conflictBadge(conflicts, id)
-      if (!summary) continue
-      badges.set(id, { ...summary, tip: conflictTip(conflicts, id, titleOf) })
-    }
-    return badges
-  }, [conflicts, taskTitles])
   const open = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
+  }
+
+  // Peek a card by task id, routing issue-originated cards to the ISSUE detail
+  // (title/description) rather than the engine session — a started ticket is
+  // still a ticket. Pure tasks (no backing issue) open the session drawer.
+  const peekCard = (id: string): void => {
+    const linked = issueByTaskId.get(id)
+    if (linked) setPeek({ kind: "issue", repo: linked.repo, id: linked.issue.id })
+    else setPeek({ kind: "task", id })
+  }
+
+  const toggleCollapsed = (repo: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(repo)) next.delete(repo)
+      else next.add(repo)
+      return next
+    })
   }
 
   /**
@@ -771,11 +756,13 @@ export function Board() {
     const statusChanged = toKey !== displayedStatus
     // Persistence math runs over the FULL column membership — uncapped and
     // unfiltered — so hidden cards never end up on the wrong side of a move
-    // (planColumnDrop). The rendered neighbors only anchor the slot.
+    // (planColumnDrop). The rendered neighbors only anchor the slot. Scoped
+    // to the task's own repo: the move stays inside its project.
     const fullColumn = applyBoardOverrides(tasks, overrides)
       .filter(
         (t) =>
           t.id !== task.id &&
+          t.repo === task.repo &&
           isBoardTask(t) &&
           (t.status || "backlog") === toKey,
       )
@@ -877,14 +864,75 @@ export function Board() {
       .catch((err: unknown) => reportError("open PR", err))
   }
 
-  /** Hover-tag move: jump the card straight to a status, landing at the
-   *  TOP of the target — a deliberate move should stay under the eye. */
-  const moveToStatus = (task: Task, toKey: string): void => {
-    if (!canDrag || dragTaskId) return
-    const displayed = overrides[task.id]?.status ?? task.status
-    if (toKey === displayed || !isDroppableColumn(toKey)) return
-    const target = columns.find((c) => c.key === toKey)
-    commitColumnMove(task, toKey, undefined, target?.tasks[0])
+  /* ----- issue side-effects ------------------------------------------------- */
+
+  const doSaveIssue = async (
+    repo: string,
+    id: number,
+    patch: { title: string; body: string },
+  ): Promise<boolean> => {
+    setIssueBusy(true)
+    try {
+      await updateIssue(repo, id, patch)
+      // The daemon also pushes issue.snapshot, but its repoRoot aliasing can
+      // miss the board's repo key — refresh the GET (which caches under the key
+      // the board reads) so the edited title/body lands in the list at once.
+      refreshIssues([repo])
+      return true
+    } catch (err) {
+      reportError("update issue", err)
+      return false
+    } finally {
+      setIssueBusy(false)
+    }
+  }
+
+  // Remove an issue from the daemon-owned tracker after the user confirms.
+  // This deletes ONLY the issue record — any task, branch, worktree, or engine
+  // session it was linked to is left untouched (the link is one-way). The
+  // daemon also pushes issue.snapshot, but its repoRoot aliasing can miss the
+  // board's repo key — refresh the GET so the card drops from the list at once.
+  const doDeleteIssue = async (repo: string, issue: Issue): Promise<void> => {
+    setIssueBusy(true)
+    try {
+      await deleteIssue(repo, issue.id)
+      refreshIssues([repo])
+      setConfirmDelete(null)
+      if (peek?.kind === "issue" && peek.repo === repo && peek.id === issue.id) {
+        setPeek(null)
+      }
+    } catch (err) {
+      reportError("delete issue", err)
+    } finally {
+      setIssueBusy(false)
+    }
+  }
+
+  // Spawn a task for the issue and RETURN its id so the caller decides whether
+  // to watch (open the live session) or stay on the board. The optimistic
+  // pending-link still happens here — it's a property of the spawn, not of how
+  // the caller reacts. Navigation/peek routing is the caller's job (onStart).
+  const doQuickStart = async (
+    repo: string,
+    issue: Issue,
+    vendor?: string,
+    effort?: string,
+  ): Promise<string | undefined> => {
+    if (quickStartingId !== null) return undefined
+    setQuickStartingId(issue.id)
+    try {
+      const { taskId } = await quickStartIssue(repo, issue, vendor, effort)
+      // Optimistically hide the issue so we don't flash the issue card AND its
+      // fresh task card for one snapshot round-trip; the effect over allIssues
+      // clears this once the daemon confirms the link.
+      setPendingLinks((prev) => new Set(prev).add(`${repo}:${issue.id}`))
+      return taskId
+    } catch (err) {
+      reportError("quick start issue", err)
+      return undefined
+    } finally {
+      setQuickStartingId(null)
+    }
   }
 
   const onDragStart = (event: DragStartEvent): void => {
@@ -900,22 +948,42 @@ export function Board() {
     if (!task) return
 
     // Where the card lands: a card target contributes its column + slot, a
-    // column target means "append at the end of that column".
+    // column target means "append at the end of that column". Both ids are
+    // composite (`${repo}:${columnKey}`); a card's data carries the bare
+    // column key plus we anchor it to the task's repo.
     const overData = over.data.current as
-      | { type?: string; columnKey?: string }
+      | { type?: string; repo?: string; columnKey?: string }
       | undefined
     const overId = String(over.id)
     const displayedStatus = overrides[activeId]?.status ?? task.status
-    const toKey =
-      overData?.type === "card"
-        ? (overData.columnKey ?? displayedStatus)
-        : overId
+    // Resolve the target column key + repo. A card-over carries its column
+    // key in data; a column-over's id parses to `{ repo, columnKey }`.
+    let toKey = displayedStatus
+    let toRepo = task.repo
+    if (overData?.type === "card") {
+      toKey = overData.columnKey ?? displayedStatus
+      toRepo = overData.repo ?? task.repo
+    } else {
+      const parsed = parseDroppableId(overId)
+      if (parsed) {
+        toKey = parsed.columnKey
+        toRepo = parsed.repo
+      }
+    }
+    // Cross-PROJECT drops are not a thing — a task belongs to its repo. Ignore
+    // a drop that somehow targeted another project's column.
+    if (toRepo !== task.repo) return
     if (!isDroppableColumn(toKey)) return
-    const toColumn = columns.find((c) => c.key === toKey)
+    const board = projectBoards.find((b) => b.repo === task.repo)
+    const toColumn = board?.columns.find((c) => c.key === toKey)
     if (!toColumn) return
 
-    // The visible drop slot (rendered slice, without the moving card).
-    const others = toColumn.tasks.filter((t) => t.id !== activeId)
+    // The visible drop slot among this column's TASK cards (issue cards never
+    // participate in drag math), without the moving card.
+    const others = toColumn.cards.filter(
+      (card): card is Extract<BoardCardData, { kind: "task" }> =>
+        !isIssueCard(card) && card.id !== activeId,
+    )
     let insertAt = others.length
     if (overData?.type === "card" && overId !== activeId) {
       const overIndex = others.findIndex((t) => t.id === overId)
@@ -924,8 +992,12 @@ export function Board() {
         if (toKey === displayedStatus) {
           // Same-column arrayMove semantics: dropping on a card below the
           // origin lands AFTER it, on a card above lands BEFORE it.
-          const oldIndex = toColumn.tasks.findIndex((t) => t.id === activeId)
-          const overFull = toColumn.tasks.findIndex((t) => t.id === overId)
+          const onlyTasks = toColumn.cards.filter(
+            (card): card is Extract<BoardCardData, { kind: "task" }> =>
+              !isIssueCard(card),
+          )
+          const oldIndex = onlyTasks.findIndex((t) => t.id === activeId)
+          const overFull = onlyTasks.findIndex((t) => t.id === overId)
           if (oldIndex >= 0 && overFull > oldIndex) insertAt = overIndex + 1
         }
       }
@@ -948,7 +1020,7 @@ export function Board() {
     ) {
       insertAt = 0
     }
-    if (!statusChanged && toColumn.tasks[insertAt]?.id === activeId) {
+    if (!statusChanged && others[insertAt]?.id === activeId) {
       return // same column, same slot — nothing to persist
     }
 
@@ -958,18 +1030,13 @@ export function Board() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
       <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/" })}
-          className="flex items-center gap-1.5 text-muted transition-colors hover:text-fg"
-          title="Back to workspace"
-        >
-          <ArrowLeft size={15} strokeWidth={1.8} />
-          <span className="text-[12px]">Workspace</span>
-        </button>
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
-          Board
+        {/* Workspace ↔ Board are peer views — the top-left toggle is the only
+            switch between them (no back link). The [kobe] brand mirrors the
+            Workspace header so the logo + toggle sit identically in both. */}
+        <span className="font-mono text-[13px] font-bold text-primary">
+          [kobe]
         </span>
+        <ViewToggle />
         <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
           <Search
             size={13}
@@ -995,7 +1062,7 @@ export function Board() {
             </button>
           )}
         </label>
-        {/* Project chips: partition the board by repo. Hidden for a
+        {/* Project chips: scope the board to one project. Hidden for a
             single-project board — no point paying header space for a
             filter with one value. Click the active chip to deselect. */}
         {repos.length >= 2 && (
@@ -1040,12 +1107,12 @@ export function Board() {
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           {/* Dispatcher seat — repo-scoped boards only. Expands the repo's
-              main session (where the dispatcher protocol + radar feed land)
+              main session (where the dispatcher protocol's field notes land)
               in the right-side peek drawer; the board stays put. */}
           {dispatcherTask && (
             <button
               type="button"
-              onClick={() => setPeekTaskId(dispatcherTask.id)}
+              onClick={() => setPeek({ kind: "task", id: dispatcherTask.id })}
               title={
                 deliver?.source === "note" &&
                 deliver.taskId === dispatcherTask.id
@@ -1069,13 +1136,56 @@ export function Board() {
         </div>
       </header>
 
+      <DaemonBanner />
+
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-4">
         {!hydrated ? (
           <p className="text-[12px] text-subtle">Loading…</p>
-        ) : shownCount === 0 && !query ? (
+        ) : shownCount === 0 && filtered && hasAnyCard ? (
+          // The project chip and/or text query narrowed every card away —
+          // offer to clear BOTH (the rail's clear-filters move).
+          <div className="text-[12px] leading-relaxed text-subtle">
+            <p>No cards match.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setBoardRepo(null)
+                setBoardQuery("")
+              }}
+              className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : shownCount === 0 && !daemonConnected ? (
+          // The daemon is down, so the task list the board paints may be
+          // partial/stale — say so rather than implying an empty board.
           <p className="text-[12px] text-subtle">
-            No worktree tasks yet. Create one from the workspace.
+            Can't reach the daemon — task list may be incomplete.
           </p>
+        ) : shownCount === 0 ? (
+          // Connected, genuinely no cards — offer the ways out.
+          <div className="text-[12px] leading-relaxed text-subtle">
+            <p>
+              No worktree tasks or issues yet. Create one from the workspace.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/" })}
+                className="border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+              >
+                + New task
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/" })}
+                className="border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+              >
+                Back to workspace
+              </button>
+            </div>
+          </div>
         ) : (
           <DndContext
             sensors={sensors}
@@ -1084,37 +1194,89 @@ export function Board() {
             onDragEnd={onDragEnd}
             onDragCancel={() => setDragTaskId(null)}
           >
-            <div
-              ref={yarnContainerRef}
-              className="relative flex h-full min-w-max gap-4"
-            >
-              {columns.map((column) => (
-                <ColumnView
-                  key={column.key}
-                  column={column}
-                  engineStates={engineStates}
-                  worktreeChanges={worktreeChanges}
-                  badges={conflictBadges}
-                  canDrag={canDrag}
-                  onMoveTo={moveToStatus}
-                  onReview={sendReview}
-                  onCreatePr={sendCreatePr}
-                  onOpen={open}
-                  onPeek={setPeekTaskId}
-                />
-              ))}
-              <ConflictYarn
-                pairs={conflicts}
-                titles={taskTitles}
-                containerRef={yarnContainerRef}
+            {single ? (
+              // One project — render ungrouped (no section header).
+              <ProjectColumns
+                board={projectBoards[0]}
+                engineStates={engineStates}
+                worktreeChanges={worktreeChanges}
+                canDrag={canDrag}
+                issueTaskIds={issueTaskIds}
+                onNewIssue={setCreatingRepo}
+                onPeek={peekCard}
+                onPeekIssue={(issue) =>
+                  setPeek({
+                    kind: "issue",
+                    repo: projectBoards[0].repo,
+                    id: issue.id,
+                  })
+                }
+                onDeleteIssue={(repo, issue) =>
+                  setConfirmDelete({ repo, issue })
+                }
               />
-            </div>
+            ) : (
+              // Multiple projects — one collapsible section each.
+              <div className="flex h-full flex-col gap-4">
+                {projectBoards.map((board) => {
+                  const isCollapsed = collapsed.has(board.repo)
+                  const count = boardCardCount(board.columns)
+                  return (
+                    <section
+                      key={board.repo}
+                      className={`flex flex-col ${
+                        isCollapsed ? "shrink-0" : "min-h-0 flex-1"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapsed(board.repo)}
+                        title={board.repo}
+                        className="mb-2 flex shrink-0 items-center gap-1.5 text-left text-muted transition-colors hover:text-fg"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight size={13} strokeWidth={2} />
+                        ) : (
+                          <ChevronDown size={13} strokeWidth={2} />
+                        )}
+                        <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">
+                          {board.label}
+                        </span>
+                        <span className="font-mono text-[10px] text-subtle">
+                          {count}
+                        </span>
+                      </button>
+                      {!isCollapsed && (
+                        <div className="min-h-0 flex-1 overflow-x-auto">
+                          <ProjectColumns
+                            board={board}
+                            engineStates={engineStates}
+                            worktreeChanges={worktreeChanges}
+                            canDrag={canDrag}
+                            issueTaskIds={issueTaskIds}
+                            onNewIssue={setCreatingRepo}
+                            onPeek={peekCard}
+                            onPeekIssue={(issue) =>
+                              setPeek({
+                                kind: "issue",
+                                repo: board.repo,
+                                id: issue.id,
+                              })
+                            }
+                            onDeleteIssue={(repo, issue) =>
+                              setConfirmDelete({ repo, issue })
+                            }
+                          />
+                        </div>
+                      )}
+                    </section>
+                  )
+                })}
+              </div>
+            )}
             <DragOverlay>
               {dragTask ? (
-                <div
-                  data-yarn-anchor={dragTask.id}
-                  className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg"
-                >
+                <div className="flex w-72 flex-col gap-1.5 border border-line-active bg-inset p-3 pl-6 shadow-lg">
                   <CardBody
                     task={dragTask}
                     engine={engineStates[dragTask.id]}
@@ -1127,24 +1289,116 @@ export function Board() {
         )}
       </div>
 
+      {/* Floating New-issue entry — the board is the ticket-intake surface, so
+          a always-reachable + FAB (bottom-right) opens the intake panel for the
+          active project chip, else the first project. */}
       {(() => {
-        const peekTask = peekTaskId
-          ? tasks.find((t) => t.id === peekTaskId)
-          : undefined
-        if (!peekTask) return null
+        const target = repoFilter ?? projectBoards[0]?.repo
+        if (!target) return null
         return (
-          <BoardPeek
-            key={peekTask.id}
-            task={peekTask}
-            engine={engineStates[peekTask.id]}
-            onClose={() => setPeekTaskId(null)}
-            onOpenWorkspace={() => {
-              setPeekTaskId(null)
-              open(peekTask.id)
+          <button
+            type="button"
+            onClick={() => setCreatingRepo(target)}
+            title="New issue"
+            aria-label="New issue"
+            className="fixed bottom-6 right-6 z-20 flex h-12 w-12 items-center justify-center rounded-full border border-primary bg-primary text-bg shadow-lg transition-transform hover:scale-105"
+          >
+            <Plus size={22} strokeWidth={2.2} />
+          </button>
+        )
+      })()}
+
+      {creatingRepo && (
+        <IssueIntakePanel
+          repoRoot={creatingRepo}
+          open
+          onClose={() => setCreatingRepo(null)}
+          onCreated={(issue, started) => {
+            // Refresh so the new issue lands in the Backlog at once (the
+            // issue.snapshot push can miss the board's repo key via aliasing).
+            if (creatingRepo) refreshIssues([creatingRepo])
+            pushToast(
+              "success",
+              started
+                ? `Issue #${issue.id} created — starting its task`
+                : `Issue #${issue.id} created`,
+            )
+          }}
+        />
+      )}
+
+      {(() => {
+        if (!peek) return null
+        if (peek.kind === "task") {
+          const peekTask = tasks.find((t) => t.id === peek.id)
+          if (!peekTask) return null
+          return (
+            <BoardPeek
+              key={peekTask.id}
+              task={peekTask}
+              engine={engineStates[peekTask.id]}
+              onClose={() => setPeek(null)}
+              onOpenWorkspace={() => {
+                setPeek(null)
+                open(peekTask.id)
+              }}
+              onReview={() => sendReview(peekTask)}
+              onCreatePr={() => sendCreatePr(peekTask)}
+            />
+          )
+        }
+        const entry = allIssues.find(
+          (e) => e.repo === peek.repo && e.issue.id === peek.id,
+        )
+        if (!entry) return null
+        return (
+          <IssuePeek
+            key={`${entry.repo}:${entry.issue.id}`}
+            issue={entry.issue}
+            repoRoot={entry.repo}
+            busy={issueBusy}
+            starting={quickStartingId === entry.issue.id}
+            onClose={() => setPeek(null)}
+            onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
+            onStart={async ({ vendor, effort, watch }) => {
+              const taskId = await doQuickStart(
+                entry.repo,
+                entry.issue,
+                vendor,
+                effort,
+              )
+              // Watch = drop the user straight into the live session drawer
+              // (BoardPeek); otherwise spawn-and-stay closes the drawer back
+              // to the board.
+              if (watch && taskId) setPeek({ kind: "task", id: taskId })
+              else setPeek(null)
             }}
+            onOpenSession={
+              entry.issue.taskId
+                ? () => {
+                    const t = entry.issue.taskId
+                    setPeek(null)
+                    if (t) open(t)
+                  }
+                : undefined
+            }
           />
         )
       })()}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete issue"
+          body={`Delete issue #${confirmDelete.issue.id}: "${confirmDelete.issue.title}"? This removes it from the daemon issue tracker only; it does not delete any task, branch, worktree, or engine session.`}
+          confirmLabel="Delete"
+          danger
+          busy={issueBusy}
+          onConfirm={() =>
+            void doDeleteIssue(confirmDelete.repo, confirmDelete.issue)
+          }
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
     </div>
   )
 }

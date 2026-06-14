@@ -14,11 +14,11 @@ import { useRenderer } from "@opentui/solid"
 import { For, Show, createMemo, createSignal, onMount } from "solid-js"
 import {
   CURRENT_VERSION,
-  type ReleaseNotes,
+  type ReleaseNotesRangeItem,
   UPDATE_COMMAND,
   type UpdateInfo,
   checkLatestVersion,
-  fetchReleaseNotes,
+  fetchReleaseNotesRange,
   releasePageUrl,
 } from "../../version.ts"
 import { useTheme } from "../context/theme"
@@ -51,7 +51,6 @@ function releaseBodyLines(body: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(0, 40)
 }
 
 function waitForKeypress(): Promise<void> {
@@ -74,14 +73,13 @@ function UpdatePage() {
   const { theme } = useTheme()
   const renderer = useRenderer()
   const [info, setInfo] = createSignal<UpdateInfo | null>(null)
-  const [notes, setNotes] = createSignal<ReleaseNotes | null>(null)
+  const [releaseNotes, setReleaseNotes] = createSignal<ReleaseNotesRangeItem[]>([])
   const [loadingNotes, setLoadingNotes] = createSignal(true)
   const [selected, setSelected] = createSignal<ActionId>("update")
   const [status, setStatus] = createSignal<string | null>(null)
 
   const latest = createMemo(() => info()?.latest ?? CURRENT_VERSION)
-  const releaseUrl = createMemo(() => notes()?.url ?? releasePageUrl(latest()))
-  const lines = createMemo(() => releaseBodyLines(notes()?.body ?? ""))
+  const releaseUrl = createMemo(() => releaseNotes()[0]?.url ?? releasePageUrl(latest()))
   const actions = createMemo<ReadonlyArray<{ id: ActionId; key: string; label: string; detail: string }>>(() => [
     { id: "update", key: "U", label: "Update now", detail: UPDATE_COMMAND },
     { id: "release", key: "R", label: "Open release", detail: releaseUrl() ?? "release URL unavailable" },
@@ -95,9 +93,9 @@ function UpdatePage() {
   async function load(): Promise<void> {
     const next = await checkLatestVersion({ force: true })
     setInfo(next)
-    const version = next?.latest ?? CURRENT_VERSION
-    const fetched = await fetchReleaseNotes(version)
-    setNotes(fetched)
+    const latestVersion = next?.latest ?? CURRENT_VERSION
+    const fetched = await fetchReleaseNotesRange({ current: CURRENT_VERSION, latest: latestVersion })
+    setReleaseNotes(fetched)
     setLoadingNotes(false)
   }
 
@@ -225,7 +223,7 @@ function UpdatePage() {
 
       <box flexShrink={0} paddingTop={1}>
         <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-          ── release notes ──
+          ── changes from v{CURRENT_VERSION} to v{latest()} ──
         </text>
       </box>
       <scrollbox
@@ -240,16 +238,25 @@ function UpdatePage() {
           <Show when={loadingNotes()}>
             <text fg={theme.textMuted}>Loading release notes...</text>
           </Show>
-          <Show when={!loadingNotes() && lines().length === 0}>
+          <Show when={!loadingNotes() && releaseNotes().length === 0}>
             <text fg={theme.textMuted} wrapMode="word">
               Release notes are unavailable. Use Open release to view the GitHub release page.
             </text>
           </Show>
-          <For each={lines()}>
-            {(line) => (
-              <text fg={theme.textMuted} wrapMode="word">
-                {line}
-              </text>
+          <For each={releaseNotes()}>
+            {(release) => (
+              <box flexDirection="column" paddingBottom={1} gap={0}>
+                <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
+                  v{release.version}
+                </text>
+                <For each={releaseBodyLines(release.body)}>
+                  {(line) => (
+                    <text fg={theme.textMuted} wrapMode="word">
+                      {line}
+                    </text>
+                  )}
+                </For>
+              </box>
             )}
           </For>
         </box>

@@ -8,7 +8,7 @@ kobe runs many agent sessions on one repo in parallel, and each one rediscovers 
 
 Design decisions (2026-06-13):
 
-- **The dispatcher does NOTHING about merge conflicts.** The conflict radar ([conflict-radar.md](./conflict-radar.md)) stays display-only: a true conflict only matters at integration time, the colliding branch might be a throwaway, and early forced merges pollute branches with content that may never land. Awareness is the radar's whole job; resolution timing belongs to humans and the tasks themselves.
+- **The dispatcher does NOTHING about merge conflicts.** A true conflict only matters at integration time, the colliding branch might be a throwaway, and early forced merges pollute branches with content that may never land — resolution timing belongs to humans and the tasks themselves, not to the dispatcher.
 - **Dispatcher = the repo's `kind: "main"` task.** No new task kind, no designation state. On the web board it surfaces only when the board is scoped to a single project (chip opens the peek drawer).
 - **Full autonomy, no approval gate** — bounded by effectors instead: the dispatcher can *read* (`kobe api collect`) and *message sessions* (`kobe api dispatch`); it has no verb that mutates tasks, statuses, or worktrees. Worst case is a stray FYI.
 - **Rules where unambiguous, agent where ambiguous.** Addressing (author → that repo's main task) is daemon code; *who benefits from a note* is the dispatcher agent's judgment.

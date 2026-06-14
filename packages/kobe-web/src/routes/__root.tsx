@@ -1,6 +1,4 @@
-import { TanStackDevtools } from "@tanstack/react-devtools"
 import { createRootRoute, Outlet } from "@tanstack/react-router"
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 import { useEffect } from "react"
 import { ErrorBoundary } from "../components/ErrorBoundary.tsx"
 import { attentionCount, documentTitle } from "../lib/document-title.ts"
@@ -26,17 +24,6 @@ function RootComponent() {
   return (
     <ErrorBoundary>
       <Outlet />
-      <TanStackDevtools
-        config={{
-          position: "bottom-right",
-        }}
-        plugins={[
-          {
-            name: "TanStack Router",
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-        ]}
-      />
     </ErrorBoundary>
   )
 }

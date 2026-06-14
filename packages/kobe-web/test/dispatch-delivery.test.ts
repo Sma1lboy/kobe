@@ -11,9 +11,9 @@ import type { SessionDeliver } from "../src/lib/types.ts"
 
 const event = (over: Partial<SessionDeliver> = {}): SessionDeliver => ({
   taskId: "t1",
-  text: "[KOBE CONFLICT RADAR] hello",
+  text: "hello from dispatcher",
   at: 100,
-  source: "radar",
+  source: "dispatcher",
   ...over,
 })
 
@@ -63,7 +63,7 @@ describe("deliverToSession", () => {
   it("delivers through the injected tab + send path", async () => {
     const { calls, deps } = spies()
     expect(await deliverToSession(event(), deps)).toBe(true)
-    expect(calls).toEqual([{ tabId: "tab-t1", taskId: "t1", text: "[KOBE CONFLICT RADAR] hello" }])
+    expect(calls).toEqual([{ tabId: "tab-t1", taskId: "t1", text: "hello from dispatcher" }])
   })
 
   it("the same `at` never delivers twice (reconnect replay is a no-op)", async () => {

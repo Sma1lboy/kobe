@@ -20,14 +20,13 @@ import type { ChannelName } from "@sma1lboy/kobe-daemon/daemon/protocol"
  */
 export const SPA_CHANNELS: readonly ChannelName[] = [
   "task.snapshot",
+  "issue.snapshot",
   "active-task",
   "engine-state",
   "update",
   "task.jobs",
   "worktree.changes",
-  "task.conflicts",
   "session.deliver",
-  "issue.snapshot",
   "ui-prefs",
 ]
 

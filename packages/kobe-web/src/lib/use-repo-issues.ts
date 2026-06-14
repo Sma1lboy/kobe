@@ -1,7 +1,7 @@
 /**
- * use-repo-issues — the issue-snapshot data plumbing for the standalone Issues
- * page: it fetches + live-syncs a set of source repos' issues without the
- * caller re-deriving the fetch/seq/live-push machinery.
+ * use-repo-issues — the issue-snapshot data plumbing extracted from the old
+ * IssuesPage so the unified Board can render a repo's issues without
+ * re-deriving the fetch/seq/live-push machinery.
  *
  * Two truth sources, merged per repo into one cache:
  *   1. an initial `/api/issues` GET per repo (and on demand via `refresh`);
@@ -11,13 +11,13 @@
  * An out-of-order guard (the DiffView seqRef pattern, per repo) stamps every
  * request and drops a stale response, so an in-flight GET can never overwrite
  * a fresher mutation/push. There is NO optimistic layer — the daemon issue
- * store is the only truth.
+ * store is the only truth (the board optimistically HIDES a just-started issue
+ * by a separate task-side mechanism, not here).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { fetchIssues } from "./issues.ts"
+import { fetchIssues, type RepoIssues } from "./issues.ts"
 import { useAppState } from "./store.ts"
-import type { RepoIssues } from "./types.ts"
 
 function normalize(root: string): string {
   return root.length > 1 ? root.replace(/\/+$/, "") : root

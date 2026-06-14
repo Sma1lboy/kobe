@@ -8,8 +8,9 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { engineLabel, useEngines } from "../lib/engines.ts"
+import { fetchDefaultEngine } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { addTab, selectTask, setPendingPrompt } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
@@ -52,10 +53,22 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
   const [branch, setBranch] = useState("")
   const [baseRef, setBaseRef] = useState("")
   const [vendor, setVendor] = useState<string>(engines[0]?.id ?? "claude")
+  const [vendorTouched, setVendorTouched] = useState(false)
   const [firstPrompt, setFirstPrompt] = useState("")
   const [busy, setBusy] = useState(false)
 
   const canCreate = repo.trim().length > 0 && !busy
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchDefaultEngine().then((id) => {
+      if (cancelled || !id || vendorTouched) return
+      setVendor(id)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [vendorTouched])
 
   const create = async (): Promise<void> => {
     if (!canCreate) return
@@ -217,7 +230,10 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
                 <button
                   key={engine.id}
                   type="button"
-                  onClick={() => setVendor(engine.id)}
+                  onClick={() => {
+                    setVendorTouched(true)
+                    setVendor(engine.id)
+                  }}
                   className={`border px-2 py-1 text-[11px] transition-colors ${
                     vendor === engine.id
                       ? "border-primary bg-inset text-fg"

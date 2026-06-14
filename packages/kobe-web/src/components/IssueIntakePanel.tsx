@@ -1,7 +1,7 @@
 /**
- * IssueIntakePanel — the Issues page's "New issue" intake, a SlideOver-based
- * panel for capturing an issue (title + WYSIWYG markdown description) and
- * either banking it or starting it on the spot. Two actions:
+ * IssueIntakePanel — the Board's Backlog "New" intake, a SlideOver-based panel
+ * for capturing an issue (title + WYSIWYG markdown description) and either
+ * banking it or starting it on the spot. Two actions:
  *
  *   - "Save"                creates the issue only (status `open`).
  *   - "Execute immediately" creates the issue, then quick-starts it on the

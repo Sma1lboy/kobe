@@ -12,17 +12,18 @@
  */
 
 import { useSyncExternalStore } from "react"
-import { type PrTransition, prTransitionBody } from "./pr-notify.ts"
 import type { ActivityState } from "./types.ts"
 
 const ENABLED_KEY = "kobe-web.notify"
 
-/** The notification categories a user can toggle independently. Both fire only
- *  when the master switch is on; default ON so an upgrade keeps every ping. */
-export type NotifyCategory = "engine" | "pr"
+/** The notification categories a user can toggle independently. They fire only
+ *  when the master switch is on; default ON so an upgrade keeps every ping.
+ *  (PR-transition notifications were removed in the web redesign, leaving the
+ *  engine-attention category — the per-event-toggle machinery stays so adding
+ *  another category later is a one-line change.) */
+export type NotifyCategory = "engine"
 const CATEGORY_KEYS: Record<NotifyCategory, string> = {
   engine: "kobe-web.notify.engine",
-  pr: "kobe-web.notify.pr",
 }
 
 type Navigate = (taskId: string) => void
@@ -30,7 +31,6 @@ let navigate: Navigate | null = null
 let enabled = readEnabled()
 let categories: Record<NotifyCategory, boolean> = {
   engine: readCategory("engine"),
-  pr: readCategory("pr"),
 }
 const listeners = new Set<() => void>()
 
@@ -222,31 +222,6 @@ export function notifyEngineTransition(
     return
   const verb = next === "error" ? "errored" : "needs your input"
   fire(taskId, taskLabel, `Task ${verb}.`, `kobe-task-${taskId}`)
-}
-
-/**
- * Called from the store's task.snapshot reducer with the PR transitions the
- * snapshot diff produced (lib/pr-notify.ts). Same gates as engine
- * transitions: opt-in, permission granted, page hidden.
- */
-export function notifyPrTransitions(
-  transitions: readonly PrTransition[],
-): void {
-  const hidden =
-    typeof document === "undefined" || document.visibilityState !== "visible"
-  if (
-    !notifyGateOpen({
-      enabled,
-      permission: permission(),
-      hidden,
-      categoryEnabled: categories.pr,
-    })
-  )
-    return
-  for (const t of transitions) {
-    // Per-task tag: a newer PR state replaces a stale unread one.
-    fire(t.taskId, t.taskLabel, prTransitionBody(t), `kobe-pr-${t.taskId}`)
-  }
 }
 
 function fire(

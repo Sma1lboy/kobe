@@ -101,21 +101,25 @@ async function fetchLatestFromRegistry(packageName: string): Promise<string | nu
  * by bumping past the released version.
  */
 export function isNewerSemver(latest: string, current: string): boolean {
+  return compareSemver(latest, current) > 0
+}
+
+export function compareSemver(aVersion: string, bVersion: string): number {
   const norm = (v: string) => v.split("-")[0] ?? v
-  const a = norm(latest)
+  const a = norm(aVersion)
     .split(".")
     .map((s) => Number.parseInt(s, 10))
-  const b = norm(current)
+  const b = norm(bVersion)
     .split(".")
     .map((s) => Number.parseInt(s, 10))
   for (let i = 0; i < 3; i++) {
     const av = a[i] ?? 0
     const bv = b[i] ?? 0
-    if (Number.isNaN(av) || Number.isNaN(bv)) return false
-    if (av > bv) return true
-    if (av < bv) return false
+    if (Number.isNaN(av) || Number.isNaN(bv)) return 0
+    if (av > bv) return 1
+    if (av < bv) return -1
   }
-  return false
+  return 0
 }
 
 /**
@@ -167,6 +171,8 @@ export type ReleaseNotes = {
   version: string
 }
 
+export type ReleaseNotesRangeItem = ReleaseNotes
+
 export type ReleaseSummary = {
   /** Version without the leading `v` tag prefix. */
   version: string
@@ -210,6 +216,49 @@ export async function fetchReleaseNotes(version: string): Promise<ReleaseNotes |
     return { body: body.body, url: body.html_url, version }
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Fetch release notes for every published version newer than `current`
+ * through `latest`, newest first. This powers the update page's from→to
+ * changelog; a user several versions behind should see every skipped
+ * release, not just the latest one.
+ */
+export async function fetchReleaseNotesRange(args: {
+  current: string
+  latest: string
+  limit?: number
+}): Promise<ReleaseNotesRangeItem[]> {
+  const slug = repoSlug()
+  if (!slug) return []
+  const limit = args.limit ?? 100
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://api.github.com/repos/${slug}/releases?per_page=${limit}`, {
+      signal: ctrl.signal,
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+      },
+    })
+    if (!res.ok) return []
+    const body = (await res.json()) as { tag_name?: unknown; html_url?: unknown; body?: unknown }[]
+    if (!Array.isArray(body)) return []
+    return body
+      .map((release) => {
+        const version = versionFromTagName(release.tag_name)
+        if (!version || typeof release.html_url !== "string" || typeof release.body !== "string") return null
+        if (compareSemver(version, args.current) <= 0) return null
+        if (compareSemver(version, args.latest) > 0) return null
+        return { version, url: release.html_url, body: release.body }
+      })
+      .filter((release): release is ReleaseNotesRangeItem => release !== null)
+  } catch {
+    return []
   } finally {
     clearTimeout(timer)
   }

@@ -516,8 +516,8 @@ export class RemoteOrchestrator {
     modelEffort?: string
   }): Promise<Task> {
     // The daemon's `task.create` payload spells effort as `effort`; the task
-    // field is `modelEffort` — remap on the wire so both ends keep their own
-    // vocabulary.
+    // field is `modelEffort` — remap on the wire so the daemon's
+    // `optionalString(payload, "effort")` picks it up.
     const { modelEffort, ...rest } = input
     const res = await this.client.request<{ task: SerializedTask }>("task.create", {
       ...rest,

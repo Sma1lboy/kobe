@@ -8,9 +8,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import {
   CircleHelp,
-  Columns3,
   FolderInput,
-  Inbox,
   Loader2,
   PanelRight,
   Plus,
@@ -20,17 +18,9 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
-import { conflictBadge, conflictTip } from "../lib/board.ts"
 import { engineLabel, useEngines } from "../lib/engines.ts"
-import {
-  type NotifyCategory,
-  setNotificationsEnabled,
-  setNotifyCategory,
-  setNotifyNavigate,
-  useNotifyState,
-} from "../lib/notify.ts"
+import { setNotifyNavigate } from "../lib/notify.ts"
 import { tailPath } from "../lib/path-format.ts"
-import { fetchQuickPrompts, saveQuickPrompts } from "../lib/quick-prompts.ts"
 import {
   applyPrefSort,
   setRailQuery,
@@ -39,26 +29,27 @@ import {
   setRailStatusFilter,
   useRailState,
 } from "../lib/rail-state.ts"
-import { DEFAULT_PR_TEMPLATE, defaultReviewTemplate } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
-import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
+import { selectTask, useTabsState } from "../lib/tabs.ts"
 import {
   isMixedEngineWorkspace,
   matchesTask,
   sortTasks,
 } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
-import { pushToast, reportError } from "../lib/toast.ts"
+import { reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
-import { ChangesChip, ConflictChip, EngineChip, PrChip } from "./chips.tsx"
+import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
+import { DaemonBanner } from "./DaemonBanner.tsx"
 import { KeyboardHelp } from "./KeyboardHelp.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
-import { ThemePicker } from "./ThemePicker.tsx"
+import { SettingsPage } from "./SettingsPage.tsx"
 import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
+import { ViewToggle } from "./ViewToggle.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
 
 function SectionHeader({
@@ -90,7 +81,6 @@ function TaskRow({
   engine,
   job,
   changes,
-  conflict,
   engineName,
   active,
   onClick,
@@ -99,7 +89,6 @@ function TaskRow({
   engine?: EngineState
   job?: TaskJob
   changes?: { added: number; deleted: number }
-  conflict: { level: "overlap" | "conflict"; count: number; tip: string } | null
   /** Engine label to show (mixed-engine workspaces only); null hides it. */
   engineName: string | null
   active: boolean
@@ -136,7 +125,6 @@ function TaskRow({
         >
           {task.title || task.branch}
         </span>
-        <ConflictChip badge={conflict} />
         <PrChip pr={task.prStatus} />
         {task.pinned && (
           <span className="shrink-0 text-[10px] text-subtle">PIN</span>
@@ -192,7 +180,6 @@ function TaskRail({
     engineStates,
     jobs,
     worktreeChanges,
-    conflicts,
     uiPrefs,
     hydrated,
     streamConnected,
@@ -212,25 +199,6 @@ function TaskRail({
       ? engineLabel(engines, task.vendor)
       : null
 
-  // Conflict-radar badges for the rail rows — the same ⚠ the board and the
-  // Overview show, so a merge collision is visible in the always-on task list
-  // too. Summary + tooltip from the shared lib/board.ts helpers (no drift).
-  const conflictByTask = useMemo(() => {
-    const titleOf = (id: string): string => {
-      const t = (tasks as Task[]).find((task) => task.id === id)
-      return t?.title || t?.branch || id
-    }
-    const map = new Map<
-      string,
-      { level: "overlap" | "conflict"; count: number; tip: string }
-    >()
-    for (const id of new Set(conflicts.flatMap((p) => [p.a, p.b]))) {
-      const summary = conflictBadge(conflicts, id)
-      if (summary)
-        map.set(id, { ...summary, tip: conflictTip(conflicts, id, titleOf) })
-    }
-    return map
-  }, [conflicts, tasks])
   // Module store, not useState — the `/` → /task/$taskId nav remounts AppShell
   // (different route trees), which used to wipe these on the first task open
   // (issue #7). In-memory only: survives route nav, resets on full reload.
@@ -511,7 +479,6 @@ function TaskRail({
                 engine={engineStates[t.id]}
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
-                conflict={conflictByTask.get(t.id) ?? null}
                 engineName={engineNameFor(t)}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
@@ -531,7 +498,6 @@ function TaskRail({
                 engine={engineStates[t.id]}
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
-                conflict={conflictByTask.get(t.id) ?? null}
                 engineName={engineNameFor(t)}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
@@ -586,7 +552,6 @@ function TopBar({
 }) {
   const { daemonConnected, streamConnected, tasks } = useAppState()
   const { selectedTaskId } = useTabsState()
-  const navigate = useNavigate()
   const task = selectedTaskId
     ? tasks.find((item) => item.id === selectedTaskId)
     : null
@@ -596,6 +561,7 @@ function TopBar({
       <span className="font-mono text-[13px] font-bold text-primary">
         [kobe]
       </span>
+      <ViewToggle />
       {task ? (
         <div className="flex min-w-0 items-center gap-2">
           <span className="max-w-56 truncate rounded bg-inset px-2 py-0.5 text-[11px] text-fg">
@@ -611,7 +577,14 @@ function TopBar({
         </span>
       )}
       <div className="ml-auto flex items-center gap-3 text-[11px] text-subtle">
-        <span className="hidden items-center gap-1.5 sm:flex">
+        <span
+          className="hidden items-center gap-1.5 sm:flex"
+          title={
+            !ok && streamConnected
+              ? "Daemon offline — if it doesn't recover, run `kobe doctor` or `kobe reset` in a terminal."
+              : undefined
+          }
+        >
           <span
             className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
           />
@@ -623,24 +596,6 @@ function TopBar({
                 : "connecting…"}
           </span>
         </span>
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/issues" })}
-          className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Issues"
-          title="Issues — track and quick-start work"
-        >
-          <Inbox size={15} strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate({ to: "/board" })}
-          className="flex items-center text-muted transition-colors hover:text-fg"
-          aria-label="Board"
-          title="Board — tasks by status"
-        >
-          <Columns3 size={15} strokeWidth={1.8} />
-        </button>
         <button
           type="button"
           onClick={onShowHelp}
@@ -662,34 +617,6 @@ function TopBar({
         </button>
       </div>
     </header>
-  )
-}
-
-function DaemonBanner() {
-  const { daemonConnected, streamConnected, hydrated } = useAppState()
-  const [dismissed, setDismissed] = useState(false)
-  // Only meaningful once we've hydrated and the SSE stream is up but the
-  // daemon behind the bridge is down — panes go read-only / stale until it
-  // comes back. A dropped SSE stream is a different state (TopBar shows it).
-  const down = hydrated && streamConnected && !daemonConnected
-  if (!down || dismissed) return null
-  return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-kobe-yellow/40 bg-kobe-yellow/10 px-3 py-1.5 text-[11px] text-kobe-yellow">
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-kobe-yellow" />
-      <span className="min-w-0 flex-1">
-        The kobe daemon is offline — task data is frozen and mutations will fail
-        until it reconnects (it auto-reconnects; the dashboard recovers on its
-        own).
-      </span>
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        className="shrink-0 text-kobe-yellow/70 hover:text-kobe-yellow"
-        aria-label="dismiss"
-      >
-        <X size={13} strokeWidth={2} />
-      </button>
-    </div>
   )
 }
 
@@ -715,302 +642,6 @@ function StatusBar() {
         {update?.latest ? `update ${update.latest} available` : "kobe web"}
       </span>
     </footer>
-  )
-}
-
-function EnginesCard() {
-  const engines = useEngines()
-  return (
-    <div className="border border-line bg-surface p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-        Engines
-      </div>
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {engines.map((engine) => (
-          <span
-            key={engine.id}
-            className="border border-line bg-bg px-2 py-1 font-mono text-[11px] text-muted"
-            title={engine.id}
-          >
-            {engine.label}
-          </span>
-        ))}
-      </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
-        Detected engine CLIs plus any custom engines you've registered. Switch a
-        task's engine from its Task panel or the workspace tab dropdown.
-      </p>
-    </div>
-  )
-}
-
-const NOTIFY_CATEGORIES: Array<{
-  key: NotifyCategory
-  label: string
-  hint: string
-}> = [
-  { key: "engine", label: "Task attention", hint: "needs input or errored" },
-  { key: "pr", label: "PR updates", hint: "checks, ready, merged" },
-]
-
-function NotificationsCard() {
-  const { supported, permission, enabled, categories } = useNotifyState()
-  return (
-    <div className="border border-line bg-surface p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-          Notifications
-        </div>
-        {supported ? (
-          <button
-            type="button"
-            onClick={() => void setNotificationsEnabled(!enabled)}
-            disabled={permission === "denied" && !enabled}
-            className={`border px-2 py-0.5 text-[10px] transition-colors disabled:opacity-40 ${
-              enabled
-                ? "border-primary bg-inset text-fg"
-                : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
-            }`}
-          >
-            {enabled ? "On" : "Off"}
-          </button>
-        ) : (
-          <span className="font-mono text-[10px] text-subtle">unsupported</span>
-        )}
-      </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
-        {permission === "denied" && !enabled
-          ? "Browser notifications are blocked — allow them in your browser's site settings to enable."
-          : "Get a desktop notification when a task needs your input or errors while this tab is in the background. Click it to jump to the task."}
-      </p>
-      {supported && enabled && (
-        <div className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3">
-          {NOTIFY_CATEGORIES.map(({ key, label, hint }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setNotifyCategory(key, !categories[key])}
-              className="flex items-center gap-2 text-left"
-            >
-              <span
-                className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center border text-[9px] ${
-                  categories[key]
-                    ? "border-primary bg-primary text-bg"
-                    : "border-line bg-bg text-transparent"
-                }`}
-              >
-                ✓
-              </span>
-              <span className="text-[11px] text-fg">{label}</span>
-              <span className="font-mono text-[10px] text-subtle">{hint}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ResetLayoutCard() {
-  const [armed, setArmed] = useState(false)
-  const navigate = useNavigate()
-  return (
-    <div className="border border-line bg-surface p-4">
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-        Workspace
-      </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-subtle">
-        Reset the per-task tab layout (open tabs, splits, selection) if it ever
-        gets wedged or cluttered. Pure browser state — your tasks, worktrees,
-        and notes are untouched.
-      </p>
-      <button
-        type="button"
-        onClick={() => {
-          if (!armed) {
-            setArmed(true)
-            return
-          }
-          resetLayout()
-          // Leave the deep-link route so the /task/$taskId effect can't
-          // immediately re-select the task we just cleared.
-          void navigate({ to: "/" })
-          setArmed(false)
-        }}
-        onBlur={() => setArmed(false)}
-        className={`mt-3 border px-3 py-1.5 text-[11px] transition-colors ${
-          armed
-            ? "border-kobe-red/50 bg-kobe-red/10 text-kobe-red"
-            : "border-line bg-bg text-muted hover:border-primary hover:text-fg"
-        }`}
-      >
-        {armed ? "Click again to reset layout" : "Reset layout"}
-      </button>
-    </div>
-  )
-}
-
-/**
- * Board quick-action prompt templates (review / open-PR). The textarea is
- * the user-editable HALF of each instruction — kobe appends its own clause
- * (review's one-time `done` authorization, PR's reply-with-URL) after it at
- * send time, so the guardrails can't be edited away. Empty = built-in
- * default (shown as the placeholder). Stored host-side via the bridge.
- */
-function QuickPromptsCard() {
-  const [review, setReview] = useState("")
-  const [pr, setPr] = useState("")
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchQuickPrompts().then((prompts) => {
-      if (cancelled) return
-      setReview(prompts.review ?? "")
-      setPr(prompts.pr ?? "")
-      setLoaded(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const save = (): void => {
-    saveQuickPrompts({ review, pr })
-      .then(() => pushToast("success", "quick-action templates saved"))
-      .catch((err: unknown) => reportError("save templates", err))
-  }
-
-  return (
-    <div className="border border-line bg-surface p-4 md:col-span-2">
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-        Board quick actions
-      </div>
-      <div className="mt-4 space-y-3 text-[12px]">
-        <label className="block">
-          <span className="text-muted">Review template</span>
-          <textarea
-            value={review}
-            onChange={(event) => setReview(event.target.value)}
-            placeholder={`default: ${defaultReviewTemplate("claude")}`}
-            rows={2}
-            disabled={!loaded}
-            className="mt-1 w-full resize-y border border-line bg-bg p-2 font-mono text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-          />
-        </label>
-        <label className="block">
-          <span className="text-muted">Open-PR template</span>
-          <textarea
-            value={pr}
-            onChange={(event) => setPr(event.target.value)}
-            placeholder={`default:\n${DEFAULT_PR_TEMPLATE}`}
-            rows={4}
-            disabled={!loaded}
-            className="mt-1 w-full resize-y border border-line bg-bg p-2 font-mono text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-          />
-        </label>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] text-subtle">
-            Empty = built-in default. kobe appends its status/URL clause after
-            your template — the guardrails stay regardless.
-          </span>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!loaded}
-            className="shrink-0 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function SettingsPage({ onClose }: { onClose: () => void }) {
-  const { daemonConnected, streamConnected, update } = useAppState()
-
-  return (
-    // data-settings-open lets the rail's j/k handler suppress nav while this
-    // overlay is up (it's an inline section, not a role=dialog).
-    <section data-settings-open className="flex min-w-0 flex-1 flex-col bg-bg">
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-line bg-surface px-3">
-        <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-fg">
-          Settings
-        </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
-        >
-          Close
-        </button>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="grid max-w-3xl grid-cols-1 gap-3 md:grid-cols-2">
-          <QuickPromptsCard />
-          <div className="border border-line bg-surface p-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-              Connection
-            </div>
-            <div className="mt-4 space-y-3 text-[12px]">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted">Daemon</span>
-                <span
-                  className={
-                    daemonConnected ? "text-kobe-green" : "text-kobe-yellow"
-                  }
-                >
-                  {daemonConnected ? "connected" : "offline"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted">Event stream</span>
-                <span
-                  className={
-                    streamConnected ? "text-kobe-green" : "text-kobe-yellow"
-                  }
-                >
-                  {streamConnected ? "connected" : "connecting"}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="border border-line bg-surface p-4">
-            <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-subtle">
-              Version
-            </div>
-            <div className="mt-4 space-y-3 text-[12px]">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted">Current</span>
-                <span className="text-fg">
-                  {typeof update?.current === "string"
-                    ? update.current
-                    : "unknown"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted">Latest</span>
-                <span className="text-fg">
-                  {typeof update?.latest === "string"
-                    ? update.latest
-                    : "unknown"}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="md:col-span-2">
-            <ThemePicker />
-          </div>
-          <NotificationsCard />
-          <ResetLayoutCard />
-          <div className="md:col-span-2">
-            <EnginesCard />
-          </div>
-        </div>
-      </div>
-    </section>
   )
 }
 

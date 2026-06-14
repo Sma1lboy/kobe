@@ -108,9 +108,6 @@ export type DaemonRequestName =
   | "task.ensureMain"
   | "task.ensureWorktree"
   | "task.setActive"
-  // Daemon-owned issue tracker (web Issues panel): list one repo's issues and
-  // mutate them (create/setStatus/update/link/unlink/delete). Keyed by the
-  // repo's git common-dir; a mutate republishes the repo's `issue.snapshot`.
   | "issue.list"
   | "issue.mutate"
   | "worktree.discoverAdoptable"
@@ -167,6 +164,17 @@ export type SubscribeRole = "gui" | "pane"
  */
 export interface ChannelPayloads {
   "task.snapshot": { tasks: SerializedTask[] }
+  /**
+   * Daemon-owned issue tracker snapshot for ONE repo. Published after every
+   * `issue.mutate`, so every attached web Issues pane updates from the same
+   * source of truth whether the edit came from web, TUI, or `kobe api`.
+   * The payload is the repo's full issue state, not a delta, matching the
+   * `/api/issues` route and keeping clients stateless. Last-value replay only
+   * carries the most recently changed repo; browsers still do their normal
+   * initial `/api/issues` load for every visible repo, then use this channel
+   * for live updates.
+   */
+  "issue.snapshot": RepoIssues
   /**
    * The currently-active task (the session last switched/entered into).
    * Shared so EVERY Tasks pane + the outer monitor highlight the SAME
@@ -270,15 +278,6 @@ export interface ChannelPayloads {
     changes: Record<string, { added: number; deleted: number }>
   }
   /**
-   * Conflict radar (docs/design/conflict-radar.md): pairs of in-flight
-   * tasks whose branches touch the same files (`overlap`) or whose heads
-   * demonstrably conflict under a dry-run merge (`conflict`,
-   * `git merge-tree`). Daemon-collected on a guarded tick; the board draws
-   * yarn between `conflict` pairs and badges both cards. Full list,
-   * republished on change only.
-   */
-  "task.conflicts": { pairs: ConflictPair[] }
-  /**
    * Text addressed INTO a task's live engine session (docs/design/
    * dispatcher.md). The daemon never owns delivery — engines are hosted
    * by front-ends (tmux panes, the web PTY sidecar), so this channel is
@@ -293,18 +292,6 @@ export interface ChannelPayloads {
    * definition-time caveat) — consumers dedupe on `at`.
    */
   "session.deliver": SessionDeliverPayload
-  /**
-   * Daemon-owned issue tracker snapshot for ONE repo (web Issues panel),
-   * republished on every `issue.mutate` (and when a task→done transition
-   * mirrors into its linked issue). The payload is the whole repo's issue
-   * state ({@link RepoIssues}); the SPA keys its mirror by `repoRoot`. Like
-   * `session.deliver` and `worktree.changes`, the bus caches only ONE
-   * last-value per channel — so with several repos open a late subscriber
-   * replays only the most-recently-mutated repo's snapshot and refetches the
-   * rest via `/api/issues`. Conflict radar (`task.conflicts`) is unchanged —
-   * this channel sits alongside it.
-   */
-  "issue.snapshot": RepoIssues
   // Add a channel ↓ then `bus.publish(name, payload)` in the daemon and
   // `client.onChannel(name, …)` in a consumer — that's the whole recipe:
   // "cost": { taskId: string; usd: number; tokens: number }
@@ -319,18 +306,6 @@ export interface SessionDeliverPayload {
   readonly at: number
   readonly source: "note" | "dispatcher"
 }
-
-/** One radar pair: `a` < `b` (sorted task ids), the overlapping files, and
- *  the strongest proven signal level. */
-export interface ConflictPair {
-  readonly a: string
-  readonly b: string
-  readonly files: readonly string[]
-  readonly level: "overlap" | "conflict"
-}
-
-/** The `task.conflicts` channel payload. */
-export type ConflictsPayload = ChannelPayloads["task.conflicts"]
 
 /** The `ui-prefs` channel payload — the persisted visual prefs snapshot. */
 export type UiPrefsPayload = ChannelPayloads["ui-prefs"]
@@ -347,6 +322,7 @@ export type ChannelName = keyof ChannelPayloads
 /** Runtime channel list — defaults subscribe-to-all + validates a filter. */
 export const CHANNEL_NAMES: readonly ChannelName[] = [
   "task.snapshot",
+  "issue.snapshot",
   "active-task",
   "update",
   "engine-state",
@@ -354,9 +330,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "keybindings",
   "task.jobs",
   "worktree.changes",
-  "task.conflicts",
   "session.deliver",
-  "issue.snapshot",
 ]
 
 const CHANNEL_NAME_SET: ReadonlySet<string> = new Set<string>(CHANNEL_NAMES)
@@ -410,7 +384,7 @@ export interface SerializedTask {
   readonly prStatus?: Task["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
-  /** Engine reasoning/effort level applied at launch (e.g. Codex effort). */
+  /** Engine reasoning/effort level, when the vendor supports one. */
   readonly modelEffort?: string
   readonly createdAt: string
   readonly updatedAt: string

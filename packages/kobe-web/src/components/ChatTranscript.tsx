@@ -12,16 +12,8 @@
  *  - thinking and tool output bodies are collapsed by default.
  */
 
-import {
-  ChevronDown,
-  ChevronRight,
-  ClipboardCopy,
-  RotateCw,
-  Search,
-  X,
-} from "lucide-react"
+import { ChevronDown, ChevronRight, RotateCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { copyText } from "../lib/clipboard.ts"
 import {
   type ContentBlock,
   fetchMessages,
@@ -31,13 +23,9 @@ import {
   summarizeUsage,
 } from "../lib/history.ts"
 import { isNearBottom } from "../lib/scroll.ts"
+import { useAppState } from "../lib/store.ts"
 import { relativeTime } from "../lib/time.ts"
-import { pushToast } from "../lib/toast.ts"
 import { outputText, toolInputSummary } from "../lib/tool-display.ts"
-import {
-  messageMarkdown,
-  transcriptToMarkdown,
-} from "../lib/transcript-markdown.ts"
 import {
   blockVisible,
   messageRendersAnything,
@@ -208,42 +196,23 @@ function MessageRow({
     // tool_result: rendered inline under its tool_call row — never standalone.
   })
   if (rows.length === 0) return null
-  const copyMessage = async (): Promise<void> => {
-    const md = messageMarkdown(message, results, hideTools)
-    if (!md) return
-    const ok = await copyText(md)
-    pushToast(
-      ok ? "success" : "error",
-      ok ? "Copied message as Markdown" : "Couldn't copy to the clipboard",
-    )
-  }
-  return (
-    // pr-6 reserves a right gutter so the absolute copy button never paints
-    // over a user-turn timestamp or the trailing chars of an assistant line.
-    <div className="group/msg relative pr-6">
-      {rows}
-      <button
-        type="button"
-        onClick={copyMessage}
-        title="Copy this message as Markdown"
-        aria-label="Copy message as Markdown"
-        className="absolute right-0 top-1 border border-line bg-surface p-0.5 text-subtle opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/msg:opacity-100"
-      >
-        <ClipboardCopy size={12} strokeWidth={1.8} />
-      </button>
-    </div>
-  )
+  return <>{rows}</>
 }
 
 export function ChatTranscript({
   worktreePath,
   vendor,
-  title = "Session",
 }: {
   worktreePath: string | null
   vendor: string
+  /** Accepted for caller compatibility; not rendered in this pane. */
   title?: string
 }) {
+  // The transcript is served by the bridge → daemon; if either is down a fetch
+  // can only fail, so the error view points at the outage instead of offering a
+  // Retry that can't succeed.
+  const { daemonConnected, streamConnected } = useAppState()
+  const offline = !daemonConnected || !streamConnected
   const [sessions, setSessions] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [followLatest, setFollowLatest] = useState(true)
@@ -415,26 +384,6 @@ export function ChatTranscript({
     )
   }, [messages, searchIndex, search, hideTools])
 
-  // Copy the transcript you're looking at (search-filtered, hide-tools-aware)
-  // as Markdown — the "take this session with you" path. `results` spans the
-  // whole session so a tool call still resolves its output when the message
-  // holding the result was filtered out.
-  const copyMarkdown = async (): Promise<void> => {
-    if (shown.length === 0) return
-    const md = transcriptToMarkdown(shown, results, hideTools, {
-      title,
-      vendor,
-      total: messages.length,
-    })
-    const ok = await copyText(md)
-    pushToast(
-      ok ? "success" : "error",
-      ok
-        ? `Copied transcript as Markdown (${shown.length} messages)`
-        : "Couldn't copy to the clipboard",
-    )
-  }
-
   if (!worktreePath) {
     return (
       <div className="flex h-full items-center justify-center text-[12px] text-subtle">
@@ -475,17 +424,6 @@ export function ChatTranscript({
               ⇡{formatTokens(usage.inputTokens)} ⇣
               {formatTokens(usage.outputTokens)}
             </span>
-          )}
-          {shown.length > 0 && (
-            <button
-              type="button"
-              onClick={() => void copyMarkdown()}
-              className="text-subtle transition-colors hover:text-fg"
-              title="Copy transcript as Markdown (respects search + hide-tools)"
-              aria-label="Copy transcript as Markdown"
-            >
-              <ClipboardCopy size={11} strokeWidth={2} />
-            </button>
           )}
           <button
             type="button"
@@ -555,7 +493,26 @@ export function ChatTranscript({
           className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
         >
           {error ? (
-            <div className="py-4 text-[12px] text-kobe-red">{error}</div>
+            offline ? (
+              <div className="py-4 text-[12px] leading-relaxed text-subtle">
+                The kobe daemon is offline — the transcript will reappear once it
+                reconnects.
+              </div>
+            ) : (
+              <div className="flex flex-col items-start gap-2 py-4">
+                <span className="text-[12px] text-kobe-red">
+                  Couldn't load the transcript.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void refresh(true)}
+                  className="flex items-center gap-1.5 border border-line bg-bg px-2 py-1 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg"
+                >
+                  <RotateCw size={11} strokeWidth={2} />
+                  Retry
+                </button>
+              </div>
+            )
           ) : !loaded ? (
             <div className="py-4 text-[12px] text-subtle">
               Loading transcript…

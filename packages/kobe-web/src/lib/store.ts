@@ -7,15 +7,12 @@
 
 import { useSyncExternalStore } from "react"
 import { deliverToSession } from "./dispatch-delivery.ts"
-import { notifyEngineTransition, notifyPrTransitions } from "./notify.ts"
-import { prTransitions } from "./pr-notify.ts"
-import { prunePromptPreviews } from "./prompt-preview.ts"
+import { notifyEngineTransition } from "./notify.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
   BridgeEvent,
   BridgeSnapshot,
-  ConflictPair,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -35,8 +32,6 @@ export interface AppState {
   jobs: Record<string, TaskJob>
   /** worktreePath → uncommitted +added/−deleted counts. */
   worktreeChanges: WorktreeChangeCounts
-  /** Conflict-radar pairs (daemon-collected; board yarn + badges). */
-  conflicts: ConflictPair[]
   /** repoRoot (+ worktree aliases) → daemon-owned issue state from live
    *  `issue.snapshot` pushes (web Issues page). */
   issueSnapshots: Record<string, RepoIssues>
@@ -60,7 +55,6 @@ const initial: AppState = {
   update: null,
   jobs: {},
   worktreeChanges: {},
-  conflicts: [],
   issueSnapshots: {},
   deliver: null,
   uiPrefs: null,
@@ -159,9 +153,6 @@ function applyIssueSnapshotEvent(
  *  that no longer exist, so a delete in ANY surface (TUI, api, another
  *  browser) cleans this one up too. */
 function applyTaskList(tasks: Task[]): void {
-  // Diff BEFORE replacing state: PR check/lifecycle flips (CI red/green,
-  // ready to merge, merged) ping like engine attention states do.
-  notifyPrTransitions(prTransitions(state.tasks, tasks))
   const live = new Set(tasks.map((t) => t.id))
   set({
     tasks,
@@ -169,7 +160,6 @@ function applyTaskList(tasks: Task[]): void {
     jobs: pruneByTask(state.jobs, live),
   })
   pruneMissingTasks(live)
-  prunePromptPreviews(live)
 }
 
 function applyEvent(event: BridgeEvent): void {
@@ -209,9 +199,6 @@ function applyEvent(event: BridgeEvent): void {
     case "worktree.changes":
       set({ worktreeChanges: event.payload.changes })
       break
-    case "task.conflicts":
-      set({ conflicts: event.payload.pairs })
-      break
     case "issue.snapshot":
       set({
         issueSnapshots: applyIssueSnapshotEvent(
@@ -248,7 +235,6 @@ function ensureStream(): void {
       update: snap.update,
       jobs: snap.jobs ?? {},
       worktreeChanges: snap.worktreeChanges ?? {},
-      conflicts: snap.conflicts ?? [],
       issueSnapshots: snap.issueSnapshots ?? {},
       deliver: snap.deliver ?? null,
       uiPrefs: snap.uiPrefs ?? null,
@@ -267,7 +253,6 @@ function ensureStream(): void {
     if (snap.connected) {
       const live = new Set(snap.tasks.map((t) => t.id))
       pruneMissingTasks(live)
-      prunePromptPreviews(live)
     }
   })
   source.addEventListener("channel", (e) => {

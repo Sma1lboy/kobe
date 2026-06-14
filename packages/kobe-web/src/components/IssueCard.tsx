@@ -1,24 +1,20 @@
 /**
  * IssueCard — a compact, clickable card for one daemon issue, in the Board's
- * kanban-card grammar (title, #id, created date, hover Eye + Trash).
+ * kanban-card grammar (title, #id, created date, hover Eye + Trash). Extracted
+ * from IssuesPage so the unified Board can render the repo's issues in its
+ * Backlog column without the IssuesPage shell.
  *
  * Props in, callbacks out: the card owns no data fetching. `onOpen` is the
  * click handler that opens the issue detail drawer (IssuePeek). Clicking the
  * card body or the hover Eye both open that drawer — the card never starts a
  * task itself; starting an issue happens inside the detail drawer. `onDelete`
- * raises a delete request (the page gates it behind a ConfirmDialog before
+ * raises a delete request (the Board gates it behind a ConfirmDialog before
  * touching the daemon store). Issue cards are NOT draggable.
  */
 
 import { Eye, Trash2 } from "lucide-react"
 import type { Issue } from "../lib/issues.ts"
-
-/** Instant hover tooltip rendered from the data-tip attribute — the native
- *  `title` takes a beat to appear, and one-glyph buttons need names. Defined
- *  locally (not imported from the shared chips.tsx) so this additive page never
- *  edits the cross-slice chips module. */
-const TIP_ABOVE =
-  "after:pointer-events-none after:absolute after:right-0 after:bottom-full after:z-10 after:mb-1 after:hidden after:whitespace-nowrap after:border after:border-line after:bg-menu after:px-1.5 after:py-0.5 after:text-[10px] after:text-fg after:content-[attr(data-tip)] hover:after:block"
+import { TIP_ABOVE } from "./chips.tsx"
 
 export function IssueCard({
   issue,
@@ -27,7 +23,7 @@ export function IssueCard({
 }: {
   issue: Issue
   onOpen: () => void
-  /** Raise a delete request — the page confirms before removing the record. */
+  /** Raise a delete request — the Board confirms before removing the record. */
   onDelete: () => void
 }) {
   return (
@@ -51,7 +47,9 @@ export function IssueCard({
       </button>
       {/* Hover affordances, top-right — an Eye that opens the issue detail
           drawer (same as clicking the card body) and a Trash that raises a
-          delete request (the page confirms before touching the daemon store). */}
+          delete request (the Board confirms before touching the daemon store).
+          The Board card grammar: hover reveals peek affordances, never a start
+          button. */}
       <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
         <button
           type="button"

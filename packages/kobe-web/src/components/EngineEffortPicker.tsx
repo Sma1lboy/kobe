@@ -1,8 +1,8 @@
 /**
  * EngineEffortPicker — the engine-owned vendor picker plus a reasoning/effort
- * control, shared by the Issues page's start surfaces. The engine chip grid
- * reads the same useEngines list every vendor picker does (CLAUDE.md:
- * engine-owned UI data, never hard-coded vendor strings).
+ * control, shared by the Board's issue-start surfaces. The engine chip grid is
+ * lifted from IssuePeek's footer (the same useEngines list every vendor picker
+ * reads — CLAUDE.md: engine-owned UI data, never hard-coded vendor strings).
  *
  * Some engines expose discrete effort levels (`/api/engines` carries
  * `effortLevels` from the registry — codex maps a level to
@@ -13,8 +13,9 @@
 
 import { useEffect, useState } from "react"
 import { type EngineOption, engineLabel, useEngines } from "../lib/engines.ts"
+import { fetchDefaultEngine } from "../lib/settings.ts"
 
-/** The engine's effort levels off the shared EngineOption (now carries them
+/** The engine's effort levels off the shared EngineOption (it carries them
  *  natively from /api/engines), defaulting to an empty list. */
 function effortLevelsOf(engine: EngineOption | undefined): readonly string[] {
   const levels = engine?.effortLevels
@@ -43,18 +44,26 @@ export function EngineEffortPicker({
   const engines = useEngines()
   const [seeded, setSeeded] = useState(false)
 
-  // Seed the vendor from the first engine the bridge reports once, unless the
-  // caller already picked one. (The standalone Issues page has no Settings
-  // default route — the first /api/engines entry is the detected default.)
+  // Seed the vendor from the user's detected default (same source as
+  // NewTaskDialog / IssuePeek) once, unless the caller already picked one.
   useEffect(() => {
-    if (vendor || seeded || engines.length === 0) return
-    const next = engines[0]?.id
-    if (!next) return
-    setSeeded(true)
-    onChange({
-      vendor: next,
-      effort: defaultEffort(effortLevelsOf(engines.find((e) => e.id === next))),
+    if (vendor || seeded) return
+    let cancelled = false
+    void fetchDefaultEngine().then((id) => {
+      if (cancelled) return
+      setSeeded(true)
+      const next = id ?? engines[0]?.id
+      if (next)
+        onChange({
+          vendor: next,
+          effort: defaultEffort(
+            effortLevelsOf(engines.find((e) => e.id === next)),
+          ),
+        })
     })
+    return () => {
+      cancelled = true
+    }
   }, [vendor, seeded, engines, onChange])
 
   const selected = engines.find((e) => e.id === vendor)

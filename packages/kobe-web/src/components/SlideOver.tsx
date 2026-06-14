@@ -1,19 +1,19 @@
 /**
  * SlideOver — a reusable right-docked drawer, the shared chrome behind the
- * Issues page's surfaces (intake panel, issue detail). A fixed full-screen
- * backdrop, a right-edge panel with a focus trap, and Escape/backdrop close
- * (Escape leaves text fields alone so it doesn't yank you out of the title
- * input mid-edit).
+ * Board's issue surfaces (intake panel, issue detail). The structure is lifted
+ * from IssuePeek's drawer: a fixed full-screen backdrop, a right-edge panel
+ * with a focus trap, and Escape/backdrop close (Escape leaves text fields
+ * alone so it doesn't yank you out of the title input mid-edit).
  *
- * The panel mounts at translate-x-full, then flips to translate-x-0 on the next
- * layout tick so the browser animates the transform. motion-reduce drops the
- * animation entirely.
+ * What it adds over the IssuePeek precedent is a slide-in: the panel mounts at
+ * translate-x-full, then flips to translate-x-0 on the next layout tick so the
+ * browser animates the transform. motion-reduce drops the animation entirely.
  *
  * `wide` opts a panel into a much wider shell (w-[920px] vs the default
- * w-[640px]) so a two-column body — e.g. the issue detail's ticket/config split
- * — has room without each surface feeling cramped. It only touches the panel
- * width; every other behavior (slide-in, focus trap, Esc/backdrop close,
- * title/footer) is unchanged.
+ * w-[640px]) so a two-column body — e.g. the redesigned issue detail's
+ * ticket/config split — has room without each surface feeling cramped. It only
+ * touches the panel width; every other behavior (slide-in, focus trap,
+ * Esc/backdrop close, title/footer) is unchanged.
  */
 
 import { X } from "lucide-react"
@@ -59,7 +59,7 @@ export function SlideOver({
   }, [open])
 
   // Esc closes — except while typing in a field, where Esc should leave the
-  // field alone.
+  // field alone (the IssuePeek/BoardPeek pattern).
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent): void => {
