@@ -629,6 +629,24 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
+    // Drag-select should behave like a normal GUI terminal: releasing the
+    // mouse leaves the text HIGHLIGHTED, the view does NOT snap to the live
+    // bottom, and the highlight does NOT keep growing when you then scroll or
+    // move the mouse. tmux's default `MouseDragEnd1Pane` runs
+    // `copy-selection-and-cancel` — `-and-cancel` exits copy-mode, which both
+    // drops the highlight and jumps the pane to the bottom. The fix is a
+    // two-step action: `copy-selection-no-clear` copies into the buffer AND
+    // keeps the highlight (no snap, since we stay in copy-mode), then
+    // `stop-selection` freezes it (`cursordrag=NONE`) so a later wheel-scroll
+    // or motion no longer extends the selection. (Plain `copy-selection`
+    // cleared the highlight; bare `-no-clear` left it live and growing — both
+    // wrong.) The two commands must ride in ONE bind action: passed as a
+    // single string so tmux re-lexes the `;` as an in-action separator —
+    // separate argv tokens make tmux treat `;`/`{` as a new top-level command.
+    // The user starts a fresh selection by dragging again, or leaves copy-mode
+    // with `q`. Both tables, since the active one depends on `mode-keys`.
+    ["bind-key", "-T", "copy-mode", "MouseDragEnd1Pane", "send-keys -X copy-selection-no-clear ; send-keys -X stop-selection"],
+    ["bind-key", "-T", "copy-mode-vi", "MouseDragEnd1Pane", "send-keys -X copy-selection-no-clear ; send-keys -X stop-selection"],
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
