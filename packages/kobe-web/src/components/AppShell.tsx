@@ -21,7 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { conflictBadge, conflictTip } from "../lib/board.ts"
-import { useEngines } from "../lib/engines.ts"
+import { engineLabel, useEngines } from "../lib/engines.ts"
 import {
   type NotifyCategory,
   setNotificationsEnabled,
@@ -42,14 +42,18 @@ import {
 import { DEFAULT_PR_TEMPLATE, defaultReviewTemplate } from "../lib/review.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { resetLayout, selectTask, useTabsState } from "../lib/tabs.ts"
-import { matchesTask, sortTasks } from "../lib/task-list.ts"
+import {
+  isMixedEngineWorkspace,
+  matchesTask,
+  sortTasks,
+} from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
-import { ChangesChip, ConflictChip, PrChip } from "./chips.tsx"
+import { ChangesChip, ConflictChip, EngineChip, PrChip } from "./chips.tsx"
 import { KeyboardHelp } from "./KeyboardHelp.tsx"
 import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { ThemePicker } from "./ThemePicker.tsx"
@@ -87,6 +91,7 @@ function TaskRow({
   job,
   changes,
   conflict,
+  engineName,
   active,
   onClick,
 }: {
@@ -95,6 +100,8 @@ function TaskRow({
   job?: TaskJob
   changes?: { added: number; deleted: number }
   conflict: { level: "overlap" | "conflict"; count: number; tip: string } | null
+  /** Engine label to show (mixed-engine workspaces only); null hides it. */
+  engineName: string | null
   active: boolean
   onClick: () => void
 }) {
@@ -139,6 +146,7 @@ function TaskRow({
       <div className="mt-0.5 flex items-center gap-2 pl-3.5 text-[11px] text-subtle">
         <span className="min-w-0 truncate">{task.branch || "—"}</span>
         <span className="ml-auto flex shrink-0 items-center gap-2">
+          <EngineChip label={engineName} />
           {label && <span className="text-muted">{label}</span>}
           {updated && <span className="text-subtle">{updated}</span>}
         </span>
@@ -190,6 +198,19 @@ function TaskRail({
     streamConnected,
   } = useAppState()
   const { selectedTaskId } = useTabsState()
+
+  // Engine label per row — but ONLY when the workspace runs mixed engines,
+  // else every row would just repeat the same word. Engine-owned label via
+  // the registry (useEngines), gated on the pure isMixedEngineWorkspace.
+  const engines = useEngines()
+  const mixedEngines = useMemo(
+    () => isMixedEngineWorkspace(tasks as Task[]),
+    [tasks],
+  )
+  const engineNameFor = (task: Task): string | null =>
+    mixedEngines && task.kind !== "main"
+      ? engineLabel(engines, task.vendor)
+      : null
 
   // Conflict-radar badges for the rail rows — the same ⚠ the board and the
   // Overview show, so a merge collision is visible in the always-on task list
@@ -491,6 +512,7 @@ function TaskRail({
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
                 conflict={conflictByTask.get(t.id) ?? null}
+                engineName={engineNameFor(t)}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />
@@ -510,6 +532,7 @@ function TaskRail({
                 job={jobs[t.id]}
                 changes={worktreeChanges[t.worktreePath]}
                 conflict={conflictByTask.get(t.id) ?? null}
+                engineName={engineNameFor(t)}
                 active={t.id === selectedTaskId}
                 onClick={() => open(t.id)}
               />

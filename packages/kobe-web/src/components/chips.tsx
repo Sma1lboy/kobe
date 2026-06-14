@@ -37,6 +37,22 @@ export function PrChip({ pr }: { pr: TaskPRStatus | undefined }) {
   )
 }
 
+/** Engine label chip — which engine (Claude / Codex / …) a task runs. The
+ *  label is engine-owned (resolve via lib/engines.ts engineLabel); this is
+ *  presentational only. Rendered by the rail + Overview ONLY when the
+ *  workspace runs mixed engines (else it's the same word on every row). */
+export function EngineChip({ label }: { label: string | null }) {
+  if (!label) return null
+  return (
+    <span
+      className="shrink-0 rounded-sm border border-line px-1 font-mono text-[9px] uppercase tracking-wide text-subtle"
+      title={`engine: ${label}`}
+    >
+      {label}
+    </span>
+  )
+}
+
 /** Conflict-radar ⚠ badge — red for a proven merge conflict, yellow for a
  *  file overlap, with a tooltip naming the counterpart(s). The simple
  *  `title`-tooltip variant shared by the rail and the Overview (the board's

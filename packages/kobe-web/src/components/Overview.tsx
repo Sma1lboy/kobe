@@ -15,15 +15,16 @@ import {
   conflictTip,
   provenConflictCount,
 } from "../lib/board.ts"
+import { engineLabel, useEngines } from "../lib/engines.ts"
 import { moveHighlight, reconcileHighlight } from "../lib/overview-nav.ts"
 import { loadPromptPreview, usePromptPreviews } from "../lib/prompt-preview.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
-import { matchesTask } from "../lib/task-list.ts"
+import { isMixedEngineWorkspace, matchesTask } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { type Bucket, triage } from "../lib/triage.ts"
 import type { EngineState, Task, WorktreeChangeCounts } from "../lib/types.ts"
-import { ConflictChip, PrChip } from "./chips.tsx"
+import { ConflictChip, EngineChip, PrChip } from "./chips.tsx"
 
 interface TriagedTask {
   task: Task
@@ -63,12 +64,15 @@ function Card({
   entry,
   preview,
   conflict,
+  engineName,
   highlighted,
   onOpen,
 }: {
   entry: TriagedTask
   preview: string | null | undefined
   conflict: { level: "overlap" | "conflict"; count: number; tip: string } | null
+  /** Engine label to show (mixed-engine workspaces only); null hides it. */
+  engineName: string | null
   highlighted: boolean
   onOpen: () => void
 }) {
@@ -113,6 +117,7 @@ function Card({
           {task.branch || task.repo}
         </span>
         <span className="ml-auto flex shrink-0 items-center gap-2">
+          <EngineChip label={engineName} />
           {label && <span className="text-muted">{label}</span>}
           <span>{relativeTime(task.updatedAt || task.createdAt)}</span>
         </span>
@@ -126,6 +131,13 @@ export function Overview() {
     useAppState()
   const navigate = useNavigate()
   const previews = usePromptPreviews()
+  // Engine label per card — only when the workspace runs mixed engines (else
+  // it's the same word on every card). Engine-owned label, pure mixed check.
+  const engines = useEngines()
+  const mixedEngines = useMemo(
+    () => isMixedEngineWorkspace(tasks as Task[]),
+    [tasks],
+  )
   const [query, setQuery] = useState("")
   const filterRef = useRef<HTMLInputElement>(null)
 
@@ -377,6 +389,11 @@ export function Overview() {
                           entry={entry}
                           preview={previews[entry.task.id]}
                           conflict={conflictByTask.get(entry.task.id) ?? null}
+                          engineName={
+                            mixedEngines
+                              ? engineLabel(engines, entry.task.vendor)
+                              : null
+                          }
                           highlighted={entry.task.id === highlighted}
                           onOpen={() => open(entry.task.id)}
                         />
