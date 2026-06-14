@@ -5,11 +5,11 @@
  * (right-docked, slide-in, focus-trapped, Esc/backdrop close) and splits into:
  *
  *   - LEFT (primary): the ticket itself — an always-editable title <input> and a
- *     markdown description <textarea>. The description accepts pasted/dragged
- *     images through {@link uploadIssueAsset} (the IssueIntakePanel pattern): a
- *     transient `![](uploading…)` placeholder is spliced at the caret, then
- *     swapped for `![](<url>)` once the content-addressed url resolves. A "Save"
- *     affordance lights up when the draft differs from the issue.
+ *     single-surface {@link RichEditor} description. That one Notion-like surface
+ *     edits AND renders at once: typing styles inline and pasted/dropped images
+ *     upload and appear inline in the same editor. It loads from and emits
+ *     markdown, so the issue body stays stored as markdown (issues.json). A
+ *     "Save" affordance lights up when the draft differs from the issue.
  *   - RIGHT (a w-72 detail rail): execution config + metadata — the status chip,
  *     created date, a "running" line for a linked issue, and the engine-owned
  *     {@link EngineEffortPicker}. Its bottom holds the start actions.
@@ -19,23 +19,17 @@
  * watch" (spawn + open the live session). A linked issue swaps both for a single
  * "Open workspace". A done issue has nothing to start.
  *
- * markdown.ts only renders the resolved `/api/issue-assets/<hash>/<file>` urls
+ * RichEditor only inserts images uploaded through the issue-asset endpoint, and
+ * markdown.ts only renders those resolved `/api/issue-assets/<hash>/<file>` urls
  * as images, so the paste/upload + render paths stay XSS-safe by construction.
  */
 
 import { ExternalLink, Play } from "lucide-react"
-import { type ClipboardEvent, type DragEvent, useRef, useState } from "react"
-import { uploadIssueAsset } from "../lib/issue-assets.ts"
+import { useState } from "react"
 import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
-import { renderMarkdown } from "../lib/markdown.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
+import { RichEditor } from "./RichEditor.tsx"
 import { SlideOver } from "./SlideOver.tsx"
-import "./notes-markdown.css"
-
-/** A unique-ish placeholder token so concurrent uploads don't clobber each
- *  other when their urls resolve out of order (lifted from IssueIntakePanel). */
-let uploadSeq = 0
-const placeholderFor = (id: number): string => `![](uploading…#${id})`
 
 export function IssuePeek({
   issue,
@@ -67,9 +61,7 @@ export function IssuePeek({
   const [draftBody, setDraftBody] = useState(issue.body)
   const [vendor, setVendor] = useState<string | undefined>(undefined)
   const [effort, setEffort] = useState<string | undefined>(undefined)
-  const [uploads, setUploads] = useState(0)
   const [error, setError] = useState<string | null>(null)
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   // The issue is already represented by a live task card on the board, so there
   // is nothing left to start. Done issues likewise have nothing to do.
@@ -79,62 +71,6 @@ export function IssuePeek({
   const canSave = dirty && draftTitle.trim().length > 0 && !busy
 
   const meta = STATUS_META[issue.status]
-
-  /* ----- image paste/drop (IssueIntakePanel pattern) --------------------- */
-
-  // Splice `text` into the body at the caret, re-placing the caret after it so a
-  // follow-up replacement can target the same placeholder token.
-  const spliceAtCaret = (text: string): void => {
-    const el = bodyRef.current
-    setDraftBody((prev) => {
-      const at = el ? (el.selectionStart ?? prev.length) : prev.length
-      const next = prev.slice(0, at) + text + prev.slice(at)
-      requestAnimationFrame(() => {
-        if (!el) return
-        const pos = at + text.length
-        el.selectionStart = pos
-        el.selectionEnd = pos
-      })
-      return next
-    })
-  }
-
-  // Upload one image file: drop a placeholder at the caret, then swap it for the
-  // resolved markdown (or strip it on failure).
-  const uploadFile = (file: File): void => {
-    const id = ++uploadSeq
-    const placeholder = placeholderFor(id)
-    spliceAtCaret(placeholder)
-    setUploads((n) => n + 1)
-    void uploadIssueAsset(repoRoot, file)
-      .then(({ url }) => {
-        setDraftBody((prev) => prev.replace(placeholder, `![](${url})`))
-      })
-      .catch((err: unknown) => {
-        setDraftBody((prev) => prev.replace(placeholder, ""))
-        setError(err instanceof Error ? err.message : "image upload failed")
-      })
-      .finally(() => setUploads((n) => n - 1))
-  }
-
-  const ingestFiles = (files: FileList | null | undefined): boolean => {
-    if (!files || files.length === 0) return false
-    const images = [...files].filter((f) => f.type.startsWith("image/"))
-    if (images.length === 0) return false
-    for (const file of images) uploadFile(file)
-    return true
-  }
-
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
-    if (ingestFiles(event.clipboardData?.files)) event.preventDefault()
-  }
-  const onDrop = (event: DragEvent<HTMLTextAreaElement>): void => {
-    if (ingestFiles(event.dataTransfer?.files)) event.preventDefault()
-  }
-  const onDragOver = (event: DragEvent<HTMLTextAreaElement>): void => {
-    // Let the textarea accept the drop instead of the browser navigating to it.
-    if (event.dataTransfer?.types?.includes("Files")) event.preventDefault()
-  }
 
   const save = (): void => {
     if (!canSave) return
@@ -177,38 +113,20 @@ export function IssuePeek({
               <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
                 Description
               </span>
-              <span className="text-[10px] text-subtle">paste or drop images</span>
-              {uploads > 0 && (
-                <span className="ml-auto text-[10px] text-subtle">
-                  uploading {uploads}…
-                </span>
-              )}
+              <span className="text-[10px] text-subtle">
+                paste or drop images
+              </span>
             </div>
-            {/* Edit + live preview, same view: type markdown on the left, the
-                rendered result (incl. pasted images) updates on the right. */}
-            <div className="flex min-h-0 flex-1 gap-2">
-              <textarea
-                ref={bodyRef}
-                value={draftBody}
-                onChange={(event) => setDraftBody(event.target.value)}
-                onPaste={onPaste}
-                onDrop={onDrop}
-                onDragOver={onDragOver}
-                placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
-                className="min-h-[200px] w-1/2 flex-1 resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-              />
-              {draftBody.trim() ? (
-                <div
-                  className="kobe-md min-h-[200px] w-1/2 flex-1 overflow-auto border border-line bg-inset px-2 py-1.5 text-[12px] leading-relaxed text-fg"
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first + only emits images for resolved /api/issue-assets urls (lib/markdown.ts; tested).
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(draftBody) }}
-                />
-              ) : (
-                <div className="min-h-[200px] w-1/2 flex-1 overflow-auto border border-line bg-inset px-2 py-1.5 text-[12px] text-subtle">
-                  Live preview
-                </div>
-              )}
-            </div>
+            {/* Single Notion-like surface: edits AND renders at once, with
+                pasted/dropped images inline. Remounts per issue so it seeds from
+                this issue's markdown without fighting the cursor mid-edit. */}
+            <RichEditor
+              key={issue.id}
+              value={draftBody}
+              onChange={setDraftBody}
+              repoRoot={repoRoot}
+              placeholder="context, repro, acceptance — paste a screenshot to attach it"
+            />
           </div>
 
           {error && (
