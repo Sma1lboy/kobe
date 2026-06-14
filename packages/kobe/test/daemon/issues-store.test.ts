@@ -76,6 +76,33 @@ describe("IssuesStore", () => {
     })
   })
 
+  it("does not drop mutations when two different repos write concurrently", async () => {
+    // The store holds ALL repos in one file, read/written whole. Two repos'
+    // read-modify-write cycles must serialize on the FILE, not the repoKey —
+    // otherwise one cycle reads the file before the other's rename lands, and
+    // its own write clobbers the other repo's just-created issue. Fire many
+    // interleaved creates per repo so the read/write windows reliably overlap;
+    // every create must survive.
+    const repoA = await makeRepo()
+    const repoB = await makeRepo()
+    const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-conc-"))
+    cleanups.push(parent)
+    const store = new IssuesStore(join(parent, "home", ".kobe", "issues.json"))
+
+    const N = 15
+    const ops: Promise<unknown>[] = []
+    for (let i = 0; i < N; i++) {
+      ops.push(store.mutate(repoA, { type: "create", title: `A${i}` }))
+      ops.push(store.mutate(repoB, { type: "create", title: `B${i}` }))
+    }
+    await Promise.all(ops)
+
+    await expect(store.list(repoA)).resolves.toMatchObject({ exists: true, nextId: N + 1 })
+    await expect(store.list(repoB)).resolves.toMatchObject({ exists: true, nextId: N + 1 })
+    expect((await store.list(repoA)).issues).toHaveLength(N)
+    expect((await store.list(repoB)).issues).toHaveLength(N)
+  })
+
   it("migrates a stored worktree repoRoot back to the main worktree on list", async () => {
     const repo = await makeRepo()
     const parent = await mkdtemp(join(tmpdir(), "kobe-issues-store-wt-"))

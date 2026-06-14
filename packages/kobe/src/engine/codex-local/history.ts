@@ -94,9 +94,14 @@ export async function listRolloutFiles(deps: HistoryDeps = defaultDeps): Promise
  * recent sessions resolve in a couple of stat calls.
  */
 export async function findRolloutFile(sessionId: string, deps: HistoryDeps = defaultDeps): Promise<string | undefined> {
+  if (!sessionId) return undefined
+  const want = sessionId.toLowerCase()
   const all = await listRolloutFiles(deps)
   for (const p of all) {
-    if (path.basename(p).endsWith(`-${sessionId}.jsonl`)) return p
+    // Match the FULL embedded UUID, not an `endsWith(`-${sessionId}`)` suffix:
+    // a partial/truncated id can align to an internal UUID `-` boundary and
+    // resolve an unrelated session's transcript.
+    if (path.basename(p).match(UUID_AT_END)?.[1]?.toLowerCase() === want) return p
   }
   return undefined
 }
@@ -498,7 +503,12 @@ export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | unde
     if (timestampMs !== null && (latestUsageTimestampMs === null || timestampMs > latestUsageTimestampMs)) {
       latestUsageTimestampMs = timestampMs
       latestUsage = snapshot
-    } else if (latestUsage === undefined) {
+    } else if (latestUsageTimestampMs === null) {
+      // No timestamped record has won yet — keep advancing to the latest in
+      // FILE order. Gating on `latestUsage === undefined` (the old check) froze
+      // on the FIRST snapshot when turn.completed lines carry no timestamp, so
+      // every later turn's usage was silently discarded and the session
+      // reported stale first-turn tokens.
       latestUsage = snapshot
     }
   }

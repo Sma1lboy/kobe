@@ -161,6 +161,14 @@ function response(repoRoot: string, record: RepoIssueRecord | null): RepoIssues 
 
 const locks = new Map<string, Promise<unknown>>()
 
+/**
+ * Serialize async sections that share a resource named by `key`. The issue
+ * store keeps ALL repos in one file (read/written whole), so the unit of
+ * contention is the file path, NOT the repoKey — locking per-repo lets two
+ * different repos' read-modify-write cycles interleave and the second
+ * `writeStore` rename silently drops the first repo's mutation. Callers pass
+ * `this.path` so every mutation against the file is serialized.
+ */
 async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const tail = locks.get(key) ?? Promise.resolve()
   const run = tail.then(fn)
@@ -180,7 +188,7 @@ export class IssuesStore {
 
   async list(repo: unknown): Promise<RepoIssues> {
     const { repoRoot, repoKey } = await resolveRepo(repo)
-    return withLock(repoKey, async () => {
+    return withLock(this.path, async () => {
       const store = await readStore(this.path)
       const record = store.repos[repoKey] ?? null
       if (record && record.repoRoot !== repoRoot) {
@@ -196,7 +204,7 @@ export class IssuesStore {
     if (!op || typeof op !== "object" || Array.isArray(op) || typeof (op as { type?: unknown }).type !== "string") {
       throw new Error("missing op")
     }
-    return withLock(repoKey, async () => {
+    return withLock(this.path, async () => {
       const store = await readStore(this.path)
       let record = store.repos[repoKey]
       if (!record) {
