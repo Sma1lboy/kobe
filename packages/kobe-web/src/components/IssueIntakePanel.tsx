@@ -18,8 +18,10 @@
 import { type ClipboardEvent, type DragEvent, useRef, useState } from "react"
 import { uploadIssueAsset } from "../lib/issue-assets.ts"
 import { createIssue, type Issue, quickStartIssue } from "../lib/issues.ts"
+import { renderMarkdown } from "../lib/markdown.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
 import { SlideOver } from "./SlideOver.tsx"
+import "./notes-markdown.css"
 
 /** A unique-ish placeholder token so concurrent uploads don't clobber each
  *  other when their urls resolve out of order. */
@@ -46,6 +48,7 @@ export function IssueIntakePanel({
   const [busy, setBusy] = useState(false)
   const [uploads, setUploads] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [bodyTab, setBodyTab] = useState<"write" | "preview">("write")
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   const canSubmit = title.trim().length > 0 && !busy
@@ -175,26 +178,52 @@ export function IssueIntakePanel({
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
               Description
             </span>
-            <span className="text-[10px] text-subtle">
-              paste or drop images
-            </span>
+            <div className="flex items-center gap-1">
+              {(["write", "preview"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setBodyTab(t)}
+                  className={`px-1.5 py-0.5 text-[10px] capitalize transition-colors ${
+                    bodyTab === t
+                      ? "border-b border-primary text-fg"
+                      : "text-subtle hover:text-fg"
+                  }`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <span className="text-[10px] text-subtle">paste or drop images</span>
             {uploads > 0 && (
               <span className="ml-auto text-[10px] text-subtle">
                 uploading {uploads}…
               </span>
             )}
           </div>
-          <textarea
-            ref={bodyRef}
-            value={body}
-            onChange={(event) => setBody(event.target.value)}
-            onPaste={onPaste}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
-            rows={14}
-            className="w-full resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-          />
+          {bodyTab === "write" ? (
+            <textarea
+              ref={bodyRef}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              onPaste={onPaste}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
+              rows={14}
+              className="w-full resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+            />
+          ) : body.trim() ? (
+            <div
+              className="kobe-md min-h-[14rem] overflow-auto border border-line bg-bg px-2 py-1.5 text-[12px] leading-relaxed text-fg"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first + only emits images for resolved /api/issue-assets urls (lib/markdown.ts; tested).
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+            />
+          ) : (
+            <div className="min-h-[14rem] border border-line bg-bg px-2 py-1.5 text-[12px] text-subtle">
+              Nothing to preview.
+            </div>
+          )}
         </div>
 
         <EngineEffortPicker

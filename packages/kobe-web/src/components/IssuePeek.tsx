@@ -27,8 +27,10 @@ import { ExternalLink, Play } from "lucide-react"
 import { type ClipboardEvent, type DragEvent, useRef, useState } from "react"
 import { uploadIssueAsset } from "../lib/issue-assets.ts"
 import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
+import { renderMarkdown } from "../lib/markdown.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
 import { SlideOver } from "./SlideOver.tsx"
+import "./notes-markdown.css"
 
 /** A unique-ish placeholder token so concurrent uploads don't clobber each
  *  other when their urls resolve out of order (lifted from IssueIntakePanel). */
@@ -67,6 +69,7 @@ export function IssuePeek({
   const [effort, setEffort] = useState<string | undefined>(undefined)
   const [uploads, setUploads] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [bodyTab, setBodyTab] = useState<"write" | "preview">("write")
   const bodyRef = useRef<HTMLTextAreaElement>(null)
 
   // The issue is already represented by a live task card on the board, so there
@@ -175,25 +178,51 @@ export function IssuePeek({
               <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
                 Description
               </span>
-              <span className="text-[10px] text-subtle">
-                paste or drop images
-              </span>
+              <div className="flex items-center gap-1">
+                {(["write", "preview"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setBodyTab(t)}
+                    className={`px-1.5 py-0.5 text-[10px] capitalize transition-colors ${
+                      bodyTab === t
+                        ? "border-b border-primary text-fg"
+                        : "text-subtle hover:text-fg"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <span className="text-[10px] text-subtle">paste or drop images</span>
               {uploads > 0 && (
                 <span className="ml-auto text-[10px] text-subtle">
                   uploading {uploads}…
                 </span>
               )}
             </div>
-            <textarea
-              ref={bodyRef}
-              value={draftBody}
-              onChange={(event) => setDraftBody(event.target.value)}
-              onPaste={onPaste}
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
-              className="min-h-[200px] w-full flex-1 resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
-            />
+            {bodyTab === "write" ? (
+              <textarea
+                ref={bodyRef}
+                value={draftBody}
+                onChange={(event) => setDraftBody(event.target.value)}
+                onPaste={onPaste}
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                placeholder="context, repro, acceptance (markdown) — paste a screenshot to attach it"
+                className="min-h-[200px] w-full flex-1 resize-none border border-line bg-bg px-2 py-1.5 font-mono text-[12px] leading-relaxed text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
+              />
+            ) : draftBody.trim() ? (
+              <div
+                className="kobe-md min-h-[200px] flex-1 overflow-auto border border-line bg-bg px-2 py-1.5 text-[12px] leading-relaxed text-fg"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: renderMarkdown escapes all input first + only emits images for resolved /api/issue-assets urls (lib/markdown.ts; tested).
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(draftBody) }}
+              />
+            ) : (
+              <div className="min-h-[200px] flex-1 border border-line bg-bg px-2 py-1.5 text-[12px] text-subtle">
+                Nothing to preview.
+              </div>
+            )}
           </div>
 
           {error && (
