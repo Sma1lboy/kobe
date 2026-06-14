@@ -1,5 +1,0 @@
----
-"@sma1lboy/kobe": patch
----
-
-Web dashboard polish. The kanban board and the `/issues` page no longer flash the empty "no issues yet" state for a frame on load: both now wait for the initial issue fetch to actually resolve before deciding the board is empty, so a populated board renders straight away instead of twitching from empty to full (the gate is derived from whether the fetch has landed, not from a loading flag that only flips after the first paint). The Settings page is a level flatter — each section is now a bold-caps header over its controls instead of a bordered card wrapping already-bordered rows, which drops a redundant box-in-box-in-box nesting that was most visible on the Engines list. The task rail's status chips are trimmed to **All** and **Needs**: the low-traffic **Run** (engine running) and **Dirty** (uncommitted changes) quick-filters are removed, keeping the see-everything and attention-triage filters that carry the value, while the underlying buckets still drive the Board and the tab badge.
