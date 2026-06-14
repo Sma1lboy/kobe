@@ -800,19 +800,9 @@ function ShortcutHints(props: {
     } else if (focusChords.length > 0) {
       out.push({ k: focusChords[0] as string, label: "move panes" })
     }
-    const prev = b["tmux.tab.prev"]
-    const next = b["tmux.tab.next"]
-    if (prev?.chord === "ctrl+[" && next?.chord === "ctrl+]") {
-      out.push({ k: "ctrl+[/]", label: "switch tabs" })
-    } else {
-      if (prev) out.push({ k: prev.chord, label: "prev tab" })
-      if (next) out.push({ k: next.chord, label: "next tab" })
-    }
-    if (b["tmux.tab.new"]) out.push({ k: b["tmux.tab.new"].chord, label: "new tab" })
-    if (b["tmux.tab.chooseEngine"]) out.push({ k: b["tmux.tab.chooseEngine"].chord, label: "engine tab" })
-    out.push({ k: "prefix t", label: "engine tab" }, { k: "prefix f", label: "new task" })
-    if (b["tmux.tab.rename"]) out.push({ k: b["tmux.tab.rename"].chord, label: "rename tab" })
-    if (b["tmux.tab.close"]) out.push({ k: b["tmux.tab.close"].chord, label: "close tab" })
+    // Trimmed legend: only the two always-relevant tmux rows survive —
+    // pane movement and the tasks→detach chord. The per-tab rows (switch /
+    // new / engine / rename / close) live in F1 full help, not the footer.
     if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
     return out
   }
@@ -826,39 +816,30 @@ function ShortcutHints(props: {
   // Each in-pane row's keycap is DERIVED from KobeKeymap (legendRowCap) so a
   // user override / unbind in ~/.kobe/settings/keybindings.yaml is reflected
   // here — the footer is the only always-visible legend, and the doc promises
-  // it follows the keymap (docs/KEYBINDINGS.md). The ids mirror the pane's own
-  // bindByIds block plus the Sidebar-owned sidebar.* rows it delegates to
-  // (Enter→sidebar.select, [/]→sidebar.view, sort→sidebar.sort, the a/d/r and
-  // M rows). `keymapVersion()` is read at the top so a live reload re-renders
-  // the legend with the freshly-resolved chords — same pattern as tmuxHints().
+  // it follows the keymap (docs/KEYBINDINGS.md). The ids mirror a curated
+  // subset of the pane's bindings plus the Sidebar-owned sidebar.* rows it
+  // delegates to (Enter→sidebar.select, [/]→sidebar.view, d→sidebar.delete).
+  // `keymapVersion()` is read at the top so a live reload re-renders the
+  // legend with the freshly-resolved chords — same pattern as tmuxHints().
   // Each row is conditional: an id that resolved to no chord (unbound) drops
-  // its row rather than advertising a dead key. Composite rows (a/d, r/b/v)
-  // keep the surviving caps joined.
+  // its row rather than advertising a dead key.
   const defaultHints = (): ReadonlyArray<Hint> => {
     keymapVersion()
+    // Trimmed legend (KOB request): the footer carries only the high-traffic
+    // rows; everything else (sort, move/merge, archive, rename/branch/engine,
+    // per-tab tmux chords) is reachable via F1 full help. Order here is the
+    // exact order the rows render in.
     const rows: Array<{ ids: readonly string[]; label: string; dimWhenMain?: boolean }> = [
+      { ids: ["help.open"], label: "full help" },
+      { ids: ["task.new"], label: "new task" },
+      { ids: ["settings.open.sidebar"], label: "settings" },
       { ids: ["sidebar.select"], label: "open" },
       // Right arrow re-focuses the current window's engine pane
       // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
       { ids: ["tasks.focusEngine"], label: "focus engine" },
-      { ids: ["task.new"], label: "new task" },
-      { ids: ["settings.open.sidebar"], label: "settings" },
       { ids: ["tasks.openWorktree"], label: "open wt" },
+      { ids: ["sidebar.delete"], label: "delete" },
       { ids: ["sidebar.view"], label: "views" },
-      { ids: ["sidebar.sort"], label: "sort" },
-      // Move/merge (`M`) early-returns on a main row — dim it there.
-      { ids: ["sidebar.localMerge"], label: "move task", dimWhenMain: true },
-      // `a` is a TOGGLE — archive AND unarchive — so the label says both.
-      { ids: ["sidebar.archive", "sidebar.delete"], label: "un/archive·delete" },
-      // Rename title (`r`) and cycle engine (`v`) work on a main row; only
-      // rename branch (`b`) early-returns there, so the row dims as a whole
-      // on main to signal the branch action is unavailable.
-      {
-        ids: ["sidebar.rename", "tasks.renameBranch", "tasks.cycleEngine"],
-        label: "name/branch/engine",
-        dimWhenMain: true,
-      },
-      { ids: ["help.open"], label: "help" },
     ]
     const out: Hint[] = []
     for (const row of rows) {
