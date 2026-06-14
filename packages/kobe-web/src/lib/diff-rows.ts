@@ -70,9 +70,12 @@ export function parseDiffRows(patch: string): DiffRow[] {
     // del/add rows (wrong gutter + over-counted diffStat).
     if (line.startsWith("diff --git")) inHunk = false
     // Meta lines (file headers) only appear OUTSIDE a hunk body; a "---"/"+++"
-    // inside a hunk would be content, so gate on inHunk to avoid mis-tagging a
-    // real "+++" content line.
-    if (!inHunk && (isMeta(line) || line === "")) {
+    // inside a hunk would be content, so gate isMeta on inHunk to avoid
+    // mis-tagging a real "+++" content line. A bare "" is always meta, even
+    // inside a hunk: real in-hunk context is " " (space-prefixed), so a
+    // zero-length line is never legitimate hunk content — counting it as a
+    // context line would advance both gutters and offset every following line.
+    if (line === "" || (!inHunk && isMeta(line))) {
       rows.push({ kind: "meta", oldLn: null, newLn: null, text: line })
       continue
     }

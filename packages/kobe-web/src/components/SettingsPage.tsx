@@ -326,12 +326,20 @@ function BoardSection() {
 
   useEffect(() => {
     let cancelled = false
-    void fetchQuickPrompts().then((prompts) => {
-      if (cancelled) return
-      setReview(prompts.review ?? "")
-      setPr(prompts.pr ?? "")
-      setLoaded(true)
-    })
+    void fetchQuickPrompts()
+      .then((prompts) => {
+        if (cancelled) return
+        setReview(prompts.review ?? "")
+        setPr(prompts.pr ?? "")
+        setLoaded(true)
+      })
+      .catch((err: unknown) => {
+        // Surface the failure instead of leaving the form silently disabled
+        // forever. Stay !loaded (disabled) on purpose: enabling with empty
+        // values would let a Save overwrite the user's saved templates with
+        // blanks on a transient load failure.
+        if (!cancelled) reportError("load quick-action templates", err)
+      })
     return () => {
       cancelled = true
     }
@@ -466,8 +474,8 @@ function NotificationsSection() {
         )}
         {permission === "denied" && !enabled ? (
           <p className="text-[11px] leading-relaxed text-kobe-yellow">
-            Notifications are blocked for this site. Allow them in your browser's
-            site settings to turn this on.
+            Notifications are blocked for this site. Allow them in your
+            browser's site settings to turn this on.
           </p>
         ) : null}
       </Card>

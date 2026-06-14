@@ -569,7 +569,16 @@ export function Sidebar(props: SidebarProps) {
           return
         }
         const idx = ids.indexOf(id)
-        if (idx >= 0 && idx !== cur) setCursorIndex(idx)
+        if (idx >= 0) {
+          if (idx !== cur) setCursorIndex(idx)
+        } else if (ids.length === 0) {
+          setCursorIndex(-1)
+        } else if (cur < 0 || cur >= ids.length) {
+          // The selected task vanished (deleted/archived from another surface)
+          // and the list shrank — clamp the cursor back into range so a row
+          // re-highlights instead of pointing past the shortened list.
+          setCursorIndex(ids.length - 1)
+        }
       },
     ),
   )

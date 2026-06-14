@@ -83,6 +83,35 @@ function closeTab(tabId) {
   return true
 }
 
+// In-flight spawns, keyed by tabId. `fetchSpec` is async, so a naive
+// check-then-`spawnTab` lets two concurrent attaches for the SAME tab (React
+// StrictMode double-mount, a fast reconnect racing the first attach, or a
+// board /pty/send racing a WS open) both pass the `!entry` check and both
+// spawn — the second `tabs.set` orphans the first PTY (no longer in `tabs`, so
+// /pty/close and shutdown can never kill it, and its onExit deletes the live
+// entry's mapping). Coalescing onto one promise per tabId makes spawn
+// single-flight, so concurrent attaches share exactly one PTY.
+const pendingSpawns = new Map()
+
+async function ensureTab(tabId, taskId, mode, cols, rows) {
+  const existing = tabs.get(tabId)
+  if (existing) return existing
+  const inflight = pendingSpawns.get(tabId)
+  if (inflight) return inflight
+  const p = (async () => {
+    const spec = await fetchSpec(taskId, mode)
+    // A prior spawn may have completed (and not yet been closed) while we
+    // awaited the spec — reuse it rather than spawning a duplicate.
+    return tabs.get(tabId) ?? spawnTab(tabId, spec, cols, rows)
+  })()
+  pendingSpawns.set(tabId, p)
+  try {
+    return await p
+  } finally {
+    pendingSpawns.delete(tabId)
+  }
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
   if (url.pathname === HEALTH_PATH) {
@@ -138,9 +167,9 @@ const server = createServer((req, res) => {
       if (!entry && typeof taskId === "string" && taskId) {
         // Spawn-on-send: a board action can fire without the terminal ever
         // opening — output lands in the scrollback ring for the next attach.
+        // ensureTab coalesces with any concurrent WS attach for the same tab.
         try {
-          const spec = await fetchSpec(taskId, "engine")
-          entry = spawnTab(tab, spec, 80, 24)
+          entry = await ensureTab(tab, taskId, "engine", 80, 24)
           spawned = true
         } catch (err) {
           respond(500, { sent: false, error: `failed to start engine: ${err?.message ?? err}` })
@@ -184,6 +213,16 @@ const server = createServer((req, res) => {
     return
   }
   if (req.method === "POST" && url.pathname === "/pty/close") {
+    // Killing a tab is a side effect a cross-origin local page could abuse to
+    // DoS the session (tab ids are client-generated/observable), so hold the
+    // same origin policy as /pty/send and the WS attach: localhost pages or
+    // non-browser clients (no Origin) only.
+    const origin = req.headers.origin
+    if (origin && !LOCAL_ORIGIN.test(origin)) {
+      res.writeHead(403)
+      res.end()
+      return
+    }
     let body = ""
     req.on("data", (c) => {
       body += c
@@ -234,24 +273,41 @@ wss.on("connection", (ws, req) => {
   }
 
   void (async () => {
-    let entry = tabs.get(tabId)
-    if (!entry) {
-      try {
-        const spec = await fetchSpec(taskId, mode)
-        entry = spawnTab(tabId, spec, cols, rows)
-      } catch (err) {
-        if (ws.readyState === ws.OPEN) {
-          ws.send(`\r\nfailed to start ${mode}: ${err?.message ?? err}\r\n`)
-          ws.close(1011, "spawn failed")
-        }
-        return
+    let entry
+    try {
+      // Single-flight spawn: concurrent attaches for this tab share one PTY.
+      entry = await ensureTab(tabId, taskId, mode, cols, rows)
+    } catch (err) {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(`\r\nfailed to start ${mode}: ${err?.message ?? err}\r\n`)
+        ws.close(1011, "spawn failed")
       }
+      return
     }
 
+    // Snapshot the scrollback BEFORE joining the live fan-out. If a chunk
+    // arrives between `sockets.add` and the replay it would be sent live (the
+    // socket is already in the set) AND included in the replay — the browser
+    // writes the same bytes twice, briefly garbling the screen on (re)attach.
+    // Capturing the replay first, then adding the socket, makes attach
+    // exactly-once: the snapshot is everything-so-far, and anything after it
+    // arrives only via the live path.
+    const replay = entry.scrollback.length() > 0 ? entry.scrollback.replay() : ""
     entry.sockets.add(ws)
-    // Replay recent output so a (re)attach shows current screen state.
-    if (entry.scrollback.length() > 0 && ws.readyState === ws.OPEN) ws.send(entry.scrollback.replay())
-    entry.pty.resize(cols, rows)
+    if (replay && ws.readyState === ws.OPEN) ws.send(replay)
+    // The PTY can exit between spawn/attach and any op below; node-pty throws
+    // on resize/write against a dead handle, and this sidecar has no
+    // uncaughtException net (unlike the daemon) — an unguarded throw in a `ws`
+    // callback kills the whole pty-server process. Guard every pty op.
+    const safePty = (fn) => {
+      if (!tabs.has(tabId)) return
+      try {
+        fn(entry.pty)
+      } catch {
+        /* engine died — its onExit already closed the sockets */
+      }
+    }
+    safePty((pty) => pty.resize(cols, rows))
 
     ws.on("message", (raw) => {
       const text = raw.toString()
@@ -259,14 +315,14 @@ wss.on("connection", (ws, req) => {
         try {
           const msg = JSON.parse(text)
           if (msg && msg.type === "resize" && Number.isFinite(msg.cols) && Number.isFinite(msg.rows)) {
-            entry.pty.resize(Math.max(1, msg.cols | 0), Math.max(1, msg.rows | 0))
+            safePty((pty) => pty.resize(Math.max(1, msg.cols | 0), Math.max(1, msg.rows | 0)))
             return
           }
         } catch {
           /* fall through to raw write */
         }
       }
-      entry.pty.write(text)
+      safePty((pty) => pty.write(text))
     })
 
     ws.on("close", () => {

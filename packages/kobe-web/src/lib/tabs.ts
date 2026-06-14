@@ -8,16 +8,17 @@
  */
 
 import { useSyncExternalStore } from "react"
+import {
+  nextTabTitle,
+  TAB_KINDS,
+  tabHasPty,
+  type WorkspaceTabKind,
+} from "./tab-kinds.ts"
 import { closePtyTab } from "./terminal.ts"
 
 const KEY = "kobe-web.tabs"
 
-export type WorkspaceTabKind =
-  | "empty"
-  | "vendor"
-  | "terminal"
-  | "transcript"
-  | "file"
+export type { WorkspaceTabKind }
 
 export interface EmptyTab {
   id: string
@@ -76,7 +77,7 @@ const EMPTY: TabsState = {
 }
 
 function emptyTab(): EmptyTab {
-  return { id: newId(), kind: "empty", title: "New tab" }
+  return { id: newId(), kind: "empty", title: nextTabTitle("empty", []) }
 }
 
 /**
@@ -116,6 +117,14 @@ export function withTaskTab(next: TabsState, taskId: string): TabsState {
  * now an empty chooser) and `chat` (renamed to `vendor`); anything without a
  * recognized kind defaults to `vendor`. Pure (a `notes` migration mints a
  * fresh empty tab id); exported for tests.
+ *
+ * Any kind NOT in the {@link TAB_KINDS} registry (a forward-version entry a
+ * downgraded client wrote, a removed kind, a corrupted blob) degrades to
+ * `vendor` rather than passing through — an unrecognized kind would later
+ * crash `tabHasPty(kind)` (`TAB_KINDS[kind].hasPty` on `undefined`), and that
+ * path runs from the live SSE snapshot prune, so one stale tab could take down
+ * the whole store update. A `file` tab that lost its `path` likewise can't
+ * render, so it falls back to an empty chooser tab.
  */
 export function migrateStoredTab(tab: unknown): WorkspaceTab {
   const stored = tab as Partial<WorkspaceTab>
@@ -124,7 +133,15 @@ export function migrateStoredTab(tab: unknown): WorkspaceTab {
       ? (tab as { kind: string }).kind
       : undefined
   if (storedKind === "notes") return emptyTab()
-  const kind = storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
+  const remapped = storedKind === "chat" ? "vendor" : (storedKind ?? "vendor")
+  const kind: WorkspaceTabKind =
+    remapped in TAB_KINDS ? (remapped as WorkspaceTabKind) : "vendor"
+  if (
+    kind === "file" &&
+    typeof (stored as { path?: unknown }).path !== "string"
+  ) {
+    return emptyTab()
+  }
   return { ...stored, kind } as WorkspaceTab
 }
 
@@ -211,8 +228,7 @@ export function consumePendingPrompt(taskId: string): string | null {
 export function resetLayout(): void {
   for (const tabs of Object.values(state.tabsByTask)) {
     for (const tab of tabs) {
-      if (tab.kind === "vendor" || tab.kind === "terminal")
-        void closePtyTab(tab.id)
+      if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
     }
   }
   set({ ...EMPTY })
@@ -234,8 +250,7 @@ export function pruneMissingTasks(liveTaskIds: ReadonlySet<string>): void {
   if (dead.length === 0 && !selectionDead) return
   for (const taskId of dead) {
     for (const tab of state.tabsByTask[taskId] ?? []) {
-      if (tab.kind === "vendor" || tab.kind === "terminal")
-        void closePtyTab(tab.id)
+      if (tabHasPty(tab.kind)) void closePtyTab(tab.id)
     }
   }
   const tabsByTask = { ...state.tabsByTask }
@@ -262,11 +277,10 @@ export function clearSelectedTask(): void {
 export function addTab(taskId: string): string {
   const list = state.tabsByTask[taskId] ?? []
   const id = newId()
-  const vendorCount = list.filter((tab) => tab.kind === "vendor").length
   const tab: VendorTab = {
     id,
     kind: "vendor",
-    title: `Vendor ${vendorCount + 1}`,
+    title: nextTabTitle("vendor", list),
   }
   set({
     ...state,
@@ -292,11 +306,10 @@ export function ensureEngineTab(taskId: string): string {
   const existing = list.find((tab) => tab.kind === "vendor")
   if (existing) return existing.id
   const id = newId()
-  const vendorCount = list.filter((tab) => tab.kind === "vendor").length
   const tab: VendorTab = {
     id,
     kind: "vendor",
-    title: `Vendor ${vendorCount + 1}`,
+    title: nextTabTitle("vendor", list),
   }
   set({
     ...state,
@@ -326,21 +339,23 @@ export function configureTab(
   const next = list.map((tab) => {
     if (tab.id !== tabId) return tab
     if (kind === "vendor") {
-      const vendorCount = list.filter((item) => item.kind === "vendor").length
       return {
         id: tabId,
         kind,
-        title: `Vendor ${vendorCount + 1}`,
+        title: nextTabTitle("vendor", list),
       } satisfies VendorTab
     }
     if (kind === "transcript") {
-      return { id: tabId, kind, title: "Chat" } satisfies TranscriptTab
+      return {
+        id: tabId,
+        kind,
+        title: nextTabTitle("transcript", list),
+      } satisfies TranscriptTab
     }
-    const terminalCount = list.filter((item) => item.kind === "terminal").length
     return {
       id: tabId,
       kind,
-      title: `Terminal ${terminalCount + 1}`,
+      title: nextTabTitle("terminal", list),
     } satisfies TerminalTab
   })
   set({

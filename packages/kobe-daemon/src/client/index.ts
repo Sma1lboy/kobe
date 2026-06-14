@@ -1,4 +1,5 @@
 import { type Socket, connect } from "node:net"
+import { StringDecoder } from "node:string_decoder"
 import {
   type ChannelName,
   type ChannelPayloads,
@@ -200,7 +201,14 @@ export class KobeDaemonClient {
       }
       socket.once("connect", onConnect)
       socket.once("error", onError)
-      socket.on("data", (chunk) => this.onData(chunk.toString("utf8")))
+      // A fresh decoder + line buffer per socket: `StringDecoder` holds a
+      // partial multibyte UTF-8 sequence (CJK, em-dash, emoji) across chunk
+      // boundaries instead of emitting U+FFFD for the split halves, and a
+      // dropped connection's leftover partial line must not bleed into the
+      // reconnected socket's first frame.
+      const decoder = new StringDecoder("utf8")
+      this.buffer = ""
+      socket.on("data", (chunk) => this.onData(decoder.write(chunk)))
       socket.on("close", () => this.onSocketClose(socket))
     })
   }

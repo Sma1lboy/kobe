@@ -8,6 +8,7 @@
 import { useSyncExternalStore } from "react"
 import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
+import { repoSnapshotAliases } from "./repo-key.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
@@ -109,40 +110,14 @@ export function applyJobEvent(
   return rest
 }
 
-function normalizedPath(path: string): string {
-  return path.length > 1 ? path.replace(/\/+$/, "") : path
-}
-
-/** The repo keys a single `issue.snapshot` should be cached under. A snapshot's
- *  `repoRoot` is the daemon's git common-dir for the source repo; a task may
- *  reference that same repo by its worktree path (or a trailing-slash variant),
- *  so we mirror the snapshot under every matching task repo/worktree alias —
- *  this keeps `/repo` and `/repo/` (and a worktree checkout) from splitting the
- *  UI cache. Exported for tests. */
-export function issueSnapshotAliases(
-  tasks: readonly Task[],
-  repoRoot: string,
-): string[] {
-  const root = normalizedPath(repoRoot)
-  const aliases = new Set<string>([repoRoot])
-  for (const task of tasks) {
-    const taskRepo = normalizedPath(task.repo)
-    const taskWorktree = normalizedPath(task.worktreePath)
-    if (taskRepo === root || taskWorktree === root) {
-      if (task.repo) aliases.add(task.repo)
-      if (task.worktreePath) aliases.add(task.worktreePath)
-    }
-  }
-  return [...aliases]
-}
-
 function applyIssueSnapshotEvent(
   snapshots: Record<string, RepoIssues>,
   tasks: readonly Task[],
   snapshot: RepoIssues,
 ): Record<string, RepoIssues> {
   const next = { ...snapshots }
-  for (const alias of issueSnapshotAliases(tasks, snapshot.repoRoot)) {
+  // repo-key owns the aliasing contract (shared with the bridge + the hook).
+  for (const alias of repoSnapshotAliases(tasks, snapshot.repoRoot)) {
     next[alias] = { ...snapshot, repoRoot: alias }
   }
   return next

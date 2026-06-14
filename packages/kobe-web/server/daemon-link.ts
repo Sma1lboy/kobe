@@ -27,6 +27,7 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { repoSnapshotAliases } from "../src/lib/repo-key.ts"
 import { SPA_CHANNEL_SET, SPA_CHANNELS } from "./spa-channels.ts"
 
 const RECONNECT_INTERVAL_MS = 500
@@ -71,32 +72,6 @@ export interface ChannelEventOut {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-/** Drop trailing slashes (but keep a lone `/`) so path comparisons are stable. */
-function normalizedPath(path: string): string {
-  return path.length > 1 ? path.replace(/\/+$/, "") : path
-}
-
-/**
- * The set of paths a repo's `issue.snapshot` should be mirrored under. The
- * daemon keys issues by the repo's main-worktree root, but the SPA may look up
- * a snapshot by a task's `repo` OR its `worktreePath` — so alias the snapshot
- * across every path that resolves to the same repo. Always includes the raw
- * `repoRoot`.
- */
-function issueSnapshotAliases(tasks: readonly SerializedTask[], repoRoot: string): string[] {
-  const root = normalizedPath(repoRoot)
-  const aliases = new Set<string>([repoRoot])
-  for (const task of tasks) {
-    const taskRepo = normalizedPath(task.repo)
-    const taskWorktree = normalizedPath(task.worktreePath)
-    if (taskRepo === root || taskWorktree === root) {
-      if (task.repo) aliases.add(task.repo)
-      if (task.worktreePath) aliases.add(task.worktreePath)
-    }
-  }
-  return [...aliases]
 }
 
 /**
@@ -289,7 +264,7 @@ export class DaemonLink {
       case "issue.snapshot": {
         const state = payload as IssueSnapshotPayload
         const next = { ...this.issueSnapshots }
-        for (const alias of issueSnapshotAliases(this.tasks, state.repoRoot)) {
+        for (const alias of repoSnapshotAliases(this.tasks, state.repoRoot)) {
           next[alias] = { ...state, repoRoot: alias }
         }
         this.issueSnapshots = next

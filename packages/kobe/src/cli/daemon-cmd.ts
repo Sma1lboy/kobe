@@ -61,6 +61,12 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     try {
       await client.request("daemon.stop")
       console.log("kobe daemon: stop requested")
+    } catch {
+      // No daemon answering the socket → "stop" is already satisfied. Report
+      // it cleanly and exit 0 (a defensive `daemon stop` in a teardown script
+      // must not fail just because nothing was running) rather than letting
+      // the connection error bubble to the top-level "failed to start" catch.
+      console.log(`kobe daemon: no daemon running at ${socketPath}`)
     } finally {
       client.close()
     }

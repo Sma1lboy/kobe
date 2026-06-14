@@ -131,6 +131,13 @@ export function shQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`
 }
 
+/** Single-quote a token only if it contains characters that aren't safe to
+ *  leave bare in a POSIX shell word. Keeps flags / `user@host` readable while
+ *  still protecting paths with spaces or metachars. */
+export function shToken(s: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(s) ? s : shQuote(s)
+}
+
 /** Quote each argv element and join — a safe command line for a POSIX shell. */
 export function shJoin(argv: readonly string[]): string {
   return argv.map(shQuote).join(" ")
@@ -355,6 +362,13 @@ export class RemoteExecHost implements ExecHost {
     // master) + the remote command, single-quoted so the local shell hands it
     // to ssh as one arg and the REMOTE shell parses it. No sshpass → no secret.
     const remote = opts.cwd ? `cd ${shQuote(opts.cwd)} && ${command}` : command
-    return `${sshConnectArgs(this.spec, { tty: opts.tty }).join(" ")} ${shQuote(remote)}`
+    // Quote each connection arg that needs it before joining: this string is
+    // parsed by the local shell (tmux's pane launch), and the argv carries
+    // paths (ControlPath, `-i` keyPath) and `user@host` that can contain spaces
+    // or metachars. Shell-safe tokens (ssh, -tt, user@host) stay bare for
+    // readability; anything else is single-quoted. Every other caller hands the
+    // argv straight to spawn (no shell), so only this string-join path needs it.
+    const connect = sshConnectArgs(this.spec, { tty: opts.tty }).map(shToken).join(" ")
+    return `${connect} ${shQuote(remote)}`
   }
 }

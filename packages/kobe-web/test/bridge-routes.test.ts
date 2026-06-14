@@ -66,6 +66,55 @@ describe("bridge request handler", () => {
     expect(res.status).toBe(404)
   })
 
+  describe("cross-origin guard", () => {
+    it("rejects a request whose Origin is a non-loopback host", async () => {
+      const { handle, link } = build()
+      const res = await handle(
+        new Request("http://localhost/api/rpc", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: "http://attacker.example" },
+          body: JSON.stringify({ name: "task.delete", payload: { taskId: "t1" } }),
+        }),
+      )
+      expect(res.status).toBe(403)
+      // The dangerous RPC never reached the daemon link.
+      expect(link.calls).toHaveLength(0)
+    })
+
+    it("allows a loopback Origin through", async () => {
+      const { handle, link } = build()
+      const res = await handle(
+        new Request("http://localhost/api/rpc", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: "http://localhost:5173" },
+          body: JSON.stringify({ name: "task.list", payload: {} }),
+        }),
+      )
+      expect(res.status).toBe(200)
+      expect(link.calls.map((c) => c.name)).toContain("task.list")
+    })
+
+    it("allows an Origin-less (non-browser) request through", async () => {
+      const { handle } = build()
+      const res = await handle(new Request(`http://localhost${WEB_HEALTH_PATH}`))
+      expect(await res.text()).toBe(WEB_HEALTH_MARKER)
+    })
+
+    it("allows the deliberately-configured LAN host through allowedHost", async () => {
+      const link = fakeLink()
+      const sseSends = new Set<(type: string, data: unknown) => void>()
+      const handle = createRequestHandler({ link, sseSends, allowedHost: "192.168.1.5" })
+      const res = await handle(
+        new Request("http://192.168.1.5:5173/api/rpc", {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: "http://192.168.1.5:5173" },
+          body: JSON.stringify({ name: "task.list", payload: {} }),
+        }),
+      )
+      expect(res.status).toBe(200)
+    })
+  })
+
   describe("/api/rpc", () => {
     it("forwards an allowlisted verb and returns its result", async () => {
       const { handle, link } = build({

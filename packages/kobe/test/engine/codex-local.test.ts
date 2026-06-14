@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
   type HistoryDeps,
+  deriveCodexUsageMetrics,
   findLatestRolloutForWorktree,
+  findRolloutFile,
   latestTranscriptMtimeForWorktree,
   listSessionIdsForWorktree,
 } from "../../src/engine/codex-local/history.ts"
@@ -203,5 +205,57 @@ describe("codexUsageToSnapshot", () => {
       input_tokens: 0,
       output_tokens: 10,
     })
+  })
+})
+
+describe("deriveCodexUsageMetrics", () => {
+  const turn = (output: number, timestamp?: string) =>
+    JSON.stringify({ type: "turn.completed", ...(timestamp ? { timestamp } : {}), usage: { output_tokens: output } })
+
+  it("takes the latest (file-order) turn when records carry no timestamp", () => {
+    // Regression: the old `else if (latestUsage === undefined)` froze on the
+    // FIRST timestamp-less turn, reporting stale first-turn usage.
+    const raw = [turn(10), turn(20), turn(30)].join("\n")
+    expect(deriveCodexUsageMetrics(raw)).toEqual({ input_tokens: 0, output_tokens: 30 })
+  })
+
+  it("prefers the max-timestamp turn when timestamps are present", () => {
+    const raw = [turn(10, "2026-06-10T03:00:00Z"), turn(99, "2026-06-10T01:00:00Z")].join("\n")
+    expect(deriveCodexUsageMetrics(raw)).toEqual({ input_tokens: 0, output_tokens: 10 })
+  })
+
+  it("ignores blank / non-JSON / non-turn lines", () => {
+    const raw = ["", "{not json", JSON.stringify({ type: "response_item" }), turn(42)].join("\n")
+    expect(deriveCodexUsageMetrics(raw)).toEqual({ input_tokens: 0, output_tokens: 42 })
+  })
+})
+
+describe("findRolloutFile", () => {
+  const ROLLOUT = "rollout-2026-06-10T01-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl"
+  const deps: HistoryDeps = {
+    sessionsDir: () => "/sessions",
+    readdir: async (p) => {
+      if (p === "/sessions") return ["2026"]
+      if (p === "/sessions/2026") return ["06"]
+      if (p === "/sessions/2026/06") return ["10"]
+      if (p === "/sessions/2026/06/10") return [ROLLOUT]
+      return []
+    },
+    readFile: async () => "",
+    stat: async () => ({ mtimeMs: 1 }),
+  }
+
+  it("matches the full embedded UUID", async () => {
+    expect(await findRolloutFile("aaaaaaaa-1111-2222-3333-444444444444", deps)).toBe(`/sessions/2026/06/10/${ROLLOUT}`)
+  })
+
+  it("returns undefined for an empty session id (never resolves an arbitrary session)", async () => {
+    expect(await findRolloutFile("", deps)).toBeUndefined()
+  })
+
+  it("does not match a partial id that aligns to an internal UUID '-' boundary", async () => {
+    // The old endsWith(`-${sessionId}.jsonl`) matched a tail like
+    // "3333-444444444444"; the strict full-UUID compare must not.
+    expect(await findRolloutFile("3333-444444444444", deps)).toBeUndefined()
   })
 })

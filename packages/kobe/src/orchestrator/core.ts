@@ -160,15 +160,17 @@ export class Orchestrator {
   }
 
   /**
-   * Subscribe to task-list updates. Fires once eagerly with the current
-   * snapshot, then again after every mutation.
+   * Subscribe to task-list updates. Fires once with the current snapshot as
+   * soon as it's available — eagerly here if the store is already loaded, else
+   * from the store's own `load()` notification — then again after every
+   * mutation.
+   *
+   * We must NOT also fire the listener directly: the store already delivers
+   * that first snapshot (eagerly on subscribe when loaded, via load() otherwise).
+   * A direct fire on top double-published `task.snapshot` on daemon boot, and on
+   * the not-yet-loaded path it threw (the store's `list()` asserts loaded).
    */
   subscribeTasks(listener: TaskListListener): Unsubscribe {
-    try {
-      listener(this.store.list())
-    } catch (err) {
-      console.error("[kobe Orchestrator] task listener threw on subscribe:", err)
-    }
     return this.store.subscribe(listener)
   }
 

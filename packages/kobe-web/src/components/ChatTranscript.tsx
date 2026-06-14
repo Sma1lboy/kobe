@@ -495,8 +495,8 @@ export function ChatTranscript({
           {error ? (
             offline ? (
               <div className="py-4 text-[12px] leading-relaxed text-subtle">
-                The kobe daemon is offline — the transcript will reappear once it
-                reconnects.
+                The kobe daemon is offline — the transcript will reappear once
+                it reconnects.
               </div>
             ) : (
               <div className="flex flex-col items-start gap-2 py-4">
