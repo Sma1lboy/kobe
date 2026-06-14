@@ -42,6 +42,30 @@ export const DEFAULT_TASK_VENDOR: VendorId = "claude"
  */
 export type TaskStatus = "backlog" | "in_progress" | "in_review" | "done" | "canceled" | "error"
 
+/**
+ * The runtime list of every {@link TaskStatus} — the single source of truth a
+ * wire-boundary validator checks against, so an inbound `status` string is
+ * confirmed with `isTaskStatus(x)` instead of a hand-maintained `!==` chain
+ * that silently drifts when a status is added. The `satisfies` clause makes the
+ * compiler reject this list if it ever falls out of sync with the union.
+ */
+export const TASK_STATUSES = [
+  "backlog",
+  "in_progress",
+  "in_review",
+  "done",
+  "canceled",
+  "error",
+] as const satisfies readonly TaskStatus[]
+
+// Exhaustiveness: if a member is added to TaskStatus but not to TASK_STATUSES,
+// `Exclude` is non-`never` and this `satisfies` fails to compile.
+true satisfies Exclude<TaskStatus, (typeof TASK_STATUSES)[number]> extends never ? true : false
+
+export function isTaskStatus(value: unknown): value is TaskStatus {
+  return typeof value === "string" && (TASK_STATUSES as readonly string[]).includes(value)
+}
+
 export type PRProviderId = "github" | "gitlab" | "bitbucket" | "unknown"
 export type PRCheckState = "none" | "pending" | "passing" | "failing" | "unknown"
 export type PRLifecycleState = "creating" | "open" | "ready_to_merge" | "merged" | "closed" | "unknown"
