@@ -55,6 +55,7 @@ import {
 import { applyTmuxPaneBorderTheme } from "@/tui/lib/tmux-border-theme"
 import { CURRENT_VERSION } from "@/version"
 import { inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
+import { recordGen } from "./layout-coord"
 
 /** Pane user-option tagging which kobe version spawned a kobe-owned pane. */
 export const PANE_VERSION_OPTION = "@kobe_pane_version"
@@ -337,6 +338,12 @@ export async function healWorkspaceLayout(
   session: string,
   versions?: { cwd: string; taskId: string | undefined; vendor: string | undefined; vendorChanged?: boolean },
 ): Promise<void> {
+  // Stamp the `resize` recency marker before this heal's `resize-pane` fires
+  // `window-layout-changed`: the capture hook's guard (genAgeMs(session,
+  // "resize")) then sees a fresh stamp and skips, so a reflow this heal is
+  // fixing is never mis-captured as a manual drag. This is the single choke
+  // point every heal path funnels through (hook, reuse, pre-switch/attach).
+  recordGen(session, "resize")
   const { tasksWidth, rcArgs } = await globalLayoutPrefs()
   const rows = await listKobePanes(session)
   if (!rows) return

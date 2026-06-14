@@ -509,9 +509,11 @@ async function main(): Promise<void> {
     //
     // `window-layout-changed` ALSO fires on a terminal-resize reflow (and on
     // the heal's own `resize-pane`), where the rail is proportionally blown up
-    // and must NOT be captured. The `genAgeMs(..., "heal")` guard skips capture
-    // while a resize is in flight (its `heal-layout` stamped the heal gen);
-    // `captureGlobalLayoutOnDrag`'s own gate excludes zoom / half-built layouts.
+    // and must NOT be captured. The `genAgeMs(..., "resize")` guard skips
+    // capture while a resize/heal is in flight — every heal path stamps the
+    // `resize` recency marker (healWorkspaceLayout + the pre-switch/attach
+    // resizes), not just the coalesced hook. `captureGlobalLayoutOnDrag`'s own
+    // gate excludes zoom / half-built layouts.
     const flags = parseOpsFlags(rest)
     const session = flags.session
     if (!session) {
@@ -523,7 +525,7 @@ async function main(): Promise<void> {
     await coalesceLayoutWork(session, "capture", async () => {
       // Re-check AFTER winning the debounce: a resize may have begun during the
       // trailing wait, in which case its heal owns the geometry — not us.
-      if (genAgeMs(session, "heal") < RESIZE_GUARD_MS) return
+      if (genAgeMs(session, "resize") < RESIZE_GUARD_MS) return
       await captureGlobalLayoutOnDrag(session)
     })
     return

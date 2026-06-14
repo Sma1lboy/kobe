@@ -86,6 +86,7 @@ import {
   kobeStatusRight,
 } from "./chattab"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
+import { recordGen } from "./layout-coord"
 import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
@@ -157,6 +158,10 @@ function positiveInt(value: unknown): number | undefined {
  * when the terminal dimensions are unknown (degrades to today's behaviour).
  */
 export async function prepareWindowForAttach(session: string): Promise<void> {
+  // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
+  // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
+  // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
+  recordGen(session, "resize")
   const sizeArgs = tmuxInitialSizeArgs()
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)
@@ -201,6 +206,10 @@ async function attachedWindowSizeArgs(): Promise<string[]> {
  * on screen — makes the switch cause NO reflow. No-op size when not in tmux.
  */
 export async function prepareWindowForSwitch(session: string): Promise<void> {
+  // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
+  // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
+  // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
+  recordGen(session, "resize")
   const sizeArgs = await attachedWindowSizeArgs()
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)

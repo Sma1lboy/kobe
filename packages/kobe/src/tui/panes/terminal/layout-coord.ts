@@ -25,21 +25,30 @@
  *
  * Exactly one firing of a burst survives to do the work (the last one), so
  * there is never a concurrent heal, and the work lands once the geometry has
- * settled. The gen file's timestamp doubles as a "when did the last resize
- * happen" signal that the capture hook reads ({@link genAgeMs}) to keep a
- * terminal-resize reflow from being mis-captured as a manual drag.
+ * settled. A separate `resize` recency stamp (bumped by every heal path) lets
+ * the capture hook read "did a resize/heal just happen" ({@link genAgeMs}) to
+ * keep a terminal-resize reflow from being mis-captured as a manual drag.
  *
  * All fs failures degrade to "proceed" (run the work), i.e. to the
  * pre-coordination always-run behaviour — never to a silent no-op.
  */
 
 import { createHash, randomUUID } from "node:crypto"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { kobeStateDir } from "@/env"
 
-/** The two coordinated geometry operations, used as the gen-file suffix. */
-export type LayoutCoordKind = "heal" | "capture"
+/**
+ * Gen-file suffixes. `heal` / `capture` are coalesce-nonce protocols (one per
+ * trailing-debounce). `resize` is a pure recency timestamp — stamped by EVERY
+ * heal path (the `healWorkspaceLayout` choke point + the direct pre-switch /
+ * pre-attach resizes), read by the capture guard ({@link genAgeMs}) so a
+ * terminal-resize reflow is never mis-captured as a manual drag. Keeping it a
+ * SEPARATE kind from `heal` is deliberate: the `heal` nonce file is rewritten by
+ * the coalesce protocol, so reusing it for recency would let a re-stamp clobber
+ * an in-flight coalesce decision.
+ */
+export type LayoutCoordKind = "heal" | "capture" | "resize"
 
 /**
  * Trailing-debounce window. A hook firing waits this long for a quieter
@@ -49,7 +58,7 @@ export type LayoutCoordKind = "heal" | "capture"
 export const LAYOUT_COALESCE_MS = 120
 
 /**
- * How long after the last `window-resized` stamp a `window-layout-changed`
+ * How long after the last `resize` recency stamp a `window-layout-changed`
  * capture treats the geometry as "owned by an in-flight resize" and skips.
  * Must exceed {@link LAYOUT_COALESCE_MS} plus a heal's run time so the brief
  * post-settle / pre-heal window (where the rail is still reflow-corrupted) is
@@ -69,12 +78,20 @@ function genPath(session: string, kind: LayoutCoordKind): string {
   return join(coordDir(), `${hash}.${kind}`)
 }
 
-/** Stamp a fresh `<ms>\n<nonce>` into the gen file and return the nonce. */
+/**
+ * Stamp a fresh `<ms>\n<nonce>` into the gen file and return the nonce. Written
+ * atomically (temp + rename) so a concurrent reader — many `kobe` hook
+ * processes write the same file under `-b` — never observes a torn (truncated /
+ * interleaved) file; rename on the same fs is atomic.
+ */
 export function recordGen(session: string, kind: LayoutCoordKind): string {
   const nonce = randomUUID()
   try {
     mkdirSync(coordDir(), { recursive: true })
-    writeFileSync(genPath(session, kind), `${Date.now()}\n${nonce}`)
+    const path = genPath(session, kind)
+    const tmp = `${path}.${nonce}.tmp`
+    writeFileSync(tmp, `${Date.now()}\n${nonce}`)
+    renameSync(tmp, path)
   } catch {
     // fs unavailable → caller still proceeds (isLatestGen degrades to true).
   }
