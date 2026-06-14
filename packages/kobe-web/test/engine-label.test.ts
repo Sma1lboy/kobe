@@ -23,8 +23,12 @@ describe("engineLabel", () => {
     expect(engineLabel(LIST, "ghost")).toBe("ghost")
   })
 
-  it("defaults to claude when no id is given", () => {
-    expect(engineLabel(LIST, undefined)).toBe("claude")
+  it("defaults to the registry's claude label when no id is given", () => {
+    // Unset coalesces to "claude" and resolves through the registry — so it
+    // matches an explicit vendor:"claude" exactly (same label, same override).
+    expect(engineLabel(LIST, undefined)).toBe("Claude")
+    expect(engineLabel(LIST, undefined)).toBe(engineLabel(LIST, "claude"))
+    // With no registry yet, it degrades to the raw "claude" id.
     expect(engineLabel([], undefined)).toBe("claude")
   })
 
