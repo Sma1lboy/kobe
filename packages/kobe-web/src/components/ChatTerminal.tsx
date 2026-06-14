@@ -203,7 +203,16 @@ export function ChatTerminal({
     // prompt delivery (`paste-buffer -p` + Enter), so multi-line prompts
     // arrive as ONE paste instead of line-by-line keystrokes.
     ws.send(`\x1b[200~${text}\x1b[201~`)
-    ws.send("\r")
+    // Defer the Enter so it lands as a SEPARATE tty read. Sent back-to-back the
+    // paste and the CR coalesce into one chunk and the engine treats the CR as
+    // paste *content* — the prompt sits in the composer, unsent. This mirrors
+    // the ~150ms split the sidecar's /pty/send path already uses for the same
+    // reason. Re-read wsRef at fire time so a reconnect mid-defer still targets
+    // the live socket (same tab → same PTY), and skip if it's gone.
+    setTimeout(() => {
+      const live = wsRef.current
+      if (live?.readyState === WebSocket.OPEN) live.send("\r")
+    }, 150)
     setHistory(pushHistory(taskId, text))
     histCursorRef.current = -1
     liveDraftRef.current = ""

@@ -64,6 +64,15 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
   // push re-applied this repo's stale snapshot with a fresh seq, briefly
   // reverting a just-fetched newer state (and burning renders).
   const lastPushedRef = useRef(new Map<string, RepoIssues>())
+  // Board key → the daemon's CANONICAL repoRoot (its realpath'd git main
+  // worktree), learned from a GET/push response. A live `issue.snapshot` is
+  // keyed by that canonical path, which can differ from the board's raw
+  // task.repo key by MORE than a trailing slash — e.g. a symlinked repo path
+  // (`/tmp/...` → `/private/tmp/...` on macOS) — so `normalizeRepoPath` alone
+  // won't fold them together and a cross-surface push (TUI / `kobe api` /
+  // another browser) would land under a key the board never reads. Recording
+  // the canonical alias lets the live-push matcher find it.
+  const canonicalRef = useRef(new Map<string, string>())
 
   const beginRequest = useCallback((root: string): number => {
     const seq = (seqRef.current.get(root) ?? 0) + 1
@@ -75,6 +84,12 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
     (state: RepoIssues, seq: number, cacheKey = state.repoRoot): void => {
       if (seq < (appliedSeqRef.current.get(cacheKey) ?? 0)) return
       appliedSeqRef.current.set(cacheKey, seq)
+      // The daemon's canonical repoRoot for this board key (before we rewrite
+      // the stored repoRoot to the board key below). Lets a later live push —
+      // which arrives keyed by that canonical path — match this board column.
+      if (state.repoRoot && state.repoRoot !== cacheKey) {
+        canonicalRef.current.set(cacheKey, state.repoRoot)
+      }
       setData((prev) => ({
         ...prev,
         [cacheKey]: { ...state, repoRoot: cacheKey },
@@ -129,7 +144,13 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
       ]),
     )
     for (const repo of repoKey ? repoKey.split("\n") : []) {
-      const pushed = byNormalized.get(normalizeRepoPath(repo))
+      // Match by the board key's normalized path first; fall back to the
+      // canonical repoRoot a prior GET resolved for it, so a push keyed by a
+      // realpath'd/symlink-resolved path still finds this column.
+      const canonical = canonicalRef.current.get(repo)
+      const pushed =
+        byNormalized.get(normalizeRepoPath(repo)) ??
+        (canonical ? byNormalized.get(normalizeRepoPath(canonical)) : undefined)
       if (!pushed) continue
       // Already applied this exact push → skip (an unrelated repo's change
       // re-ran this effect). Only a genuinely new snapshot ref should win.

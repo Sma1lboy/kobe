@@ -146,4 +146,33 @@ describe("IssuesStore", () => {
     }
     expect(Object.values(after.repos)[0]?.repoRoot).toBe(canonicalRepo)
   })
+
+  describe("mirrorTaskDone", () => {
+    async function linkedStore(): Promise<{ repo: string; store: IssuesStore }> {
+      const repo = await makeRepo()
+      const home = await mkdtemp(join(tmpdir(), "kobe-issues-store-mirror-"))
+      cleanups.push(home)
+      const store = new IssuesStore(join(home, ".kobe", "issues.json"))
+      await store.mutate(repo, { type: "create", title: "Linked" })
+      await store.mutate(repo, { type: "link", id: 1, taskId: "task-abc" })
+      return { repo, store }
+    }
+
+    it("flips the issue linked to a task to done and returns the new state", async () => {
+      const { repo, store } = await linkedStore()
+      const next = await store.mirrorTaskDone(repo, "task-abc")
+      expect(next?.issues.find((i) => i.id === 1)?.status).toBe("done")
+    })
+
+    it("returns null when the linked issue is already done (no re-clobber)", async () => {
+      const { repo, store } = await linkedStore()
+      await store.mutate(repo, { type: "setStatus", id: 1, status: "done" })
+      expect(await store.mirrorTaskDone(repo, "task-abc")).toBeNull()
+    })
+
+    it("returns null when no issue is linked to the task", async () => {
+      const { repo, store } = await linkedStore()
+      expect(await store.mirrorTaskDone(repo, "task-nope")).toBeNull()
+    })
+  })
 })

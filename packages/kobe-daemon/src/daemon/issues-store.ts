@@ -199,6 +199,32 @@ export class IssuesStore {
     })
   }
 
+  /**
+   * Mirror a task→done transition onto its linked issue, atomically. The link
+   * is owned by the issue (`Issue.taskId`), so we reverse-look-up the issue
+   * whose `taskId` is this task and flip it to `done` — all inside ONE lock, so
+   * a concurrent reopen (another surface flipping the same issue back to
+   * open/doing between a separate read and write) can't be clobbered by a stale
+   * decision. Returns the updated state when a not-already-done linked issue was
+   * found and flipped, else `null` (nothing to mirror — no record, no linked
+   * issue, or it's already done).
+   */
+  async mirrorTaskDone(repo: unknown, taskId: string): Promise<RepoIssues | null> {
+    const { repoRoot, repoKey } = await resolveRepo(repo)
+    if (!taskId) return null
+    return withLock(this.path, async () => {
+      const store = await readStore(this.path)
+      const record = store.repos[repoKey]
+      if (!record) return null
+      const issue = record.issues.find((i) => i.taskId === taskId)
+      if (!issue || issue.status === "done") return null
+      issue.status = "done"
+      record.repoRoot = repoRoot
+      await writeStore(this.path, store)
+      return response(repoRoot, record)
+    })
+  }
+
   async mutate(repo: unknown, op: unknown): Promise<RepoIssues> {
     const { repoRoot, repoKey } = await resolveRepo(repo)
     if (!op || typeof op !== "object" || Array.isArray(op) || typeof (op as { type?: unknown }).type !== "string") {
