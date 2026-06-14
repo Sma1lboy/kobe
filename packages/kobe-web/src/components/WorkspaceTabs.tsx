@@ -9,6 +9,7 @@ import { Bot, MessagesSquare, Terminal } from "lucide-react"
 import type { DragEvent, ReactNode } from "react"
 import { lazy, Suspense, useState } from "react"
 import { useAppState } from "../lib/store.ts"
+import { tabHasPty } from "../lib/tab-kinds.ts"
 import {
   addEmptyTab,
   clearSplitTab,
@@ -221,8 +222,7 @@ export function WorkspaceTabs() {
     if (!selectedTaskId) return
     const tab = tabs.find((t) => t.id === tabId)
     closeTab(selectedTaskId, tabId)
-    if (tab?.kind === "vendor" || tab?.kind === "terminal")
-      void closePtyTab(tabId)
+    if (tab && tabHasPty(tab.kind)) void closePtyTab(tabId)
   }
 
   const activeTab = tabs.find((t) => t.id === active) ?? tabs[0]

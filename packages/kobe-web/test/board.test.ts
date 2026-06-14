@@ -4,11 +4,16 @@ import {
   type BoardCard,
   boardCardCount,
   buildBoard,
+  buildBoardView,
   buildProjectBoards,
+  collectBoardIssues,
   compareCards,
+  deriveRepoChips,
+  filterBoardCards,
   isLinkedIssue,
   issueColumnKey,
   labelRepo,
+  type PendingLinks,
   TERMINAL_COLUMN_CAP,
 } from "../src/lib/board.ts"
 import {
@@ -17,7 +22,7 @@ import {
   setBoardQuery,
   setBoardRepo,
 } from "../src/lib/board-state.ts"
-import type { Issue } from "../src/lib/types.ts"
+import type { Issue, RepoIssues } from "../src/lib/types.ts"
 
 /**
  * Issues-only kanban column math. The load-bearing rules: the board renders
@@ -218,6 +223,167 @@ describe("labelRepo — shared basename/parent labeler", () => {
     expect(
       labelRepo("ssh://host/srv/repos/widget", ["ssh://host/srv/repos/widget"]),
     ).toBe("widget")
+  })
+})
+
+/** A loaded RepoIssues state for a repo. */
+const repoState = (
+  issues: Issue[],
+  over: Partial<RepoIssues> = {},
+): RepoIssues => ({
+  repoRoot: "/u/kobe",
+  exists: true,
+  nextId: issues.length + 1,
+  issues,
+  ...over,
+})
+const noPending: PendingLinks = new Map()
+
+describe("collectBoardIssues — flatten + optimistic pending-link", () => {
+  it("flattens every exists repo's issues, source-repo tagged", () => {
+    const data: Record<string, RepoIssues> = {
+      "/u/kobe": repoState([issue({ id: 1 })], { repoRoot: "/u/kobe" }),
+      "/u/web": repoState([issue({ id: 2 })], { repoRoot: "/u/web" }),
+    }
+    const cards = collectBoardIssues(data, ["/u/kobe", "/u/web"], noPending)
+    expect(cards.map((c) => `${c.repo}#${c.issue.id}`)).toEqual([
+      "/u/kobe#1",
+      "/u/web#2",
+    ])
+  })
+
+  it("skips a repo with no state or exists:false (missing file = empty)", () => {
+    const data: Record<string, RepoIssues> = {
+      "/u/kobe": repoState([issue({ id: 1 })]),
+      "/u/gone": repoState([issue({ id: 9 })], { exists: false }),
+    }
+    const cards = collectBoardIssues(data, ["/u/kobe", "/u/gone", "/u/never"], noPending)
+    expect(cards.map((c) => c.issue.id)).toEqual([1])
+  })
+
+  it("applies a pending link → the issue carries the optimistic taskId", () => {
+    const data = { "/u/kobe": repoState([issue({ id: 1, status: "open" })]) }
+    const pending: PendingLinks = new Map([["/u/kobe:1", { taskId: "t9" }]])
+    const [card] = collectBoardIssues(data, ["/u/kobe"], pending)
+    expect(card.issue.taskId).toBe("t9")
+    expect(issueColumnKey(card.issue)).toBe("in_progress")
+  })
+
+  it("never overrides an issue that already carries a real taskId", () => {
+    const data = { "/u/kobe": repoState([issue({ id: 1, taskId: "real" })]) }
+    const pending: PendingLinks = new Map([["/u/kobe:1", { taskId: "stale" }]])
+    const [card] = collectBoardIssues(data, ["/u/kobe"], pending)
+    expect(card.issue.taskId).toBe("real")
+  })
+})
+
+describe("deriveRepoChips — unfiltered project chips", () => {
+  it("counts issues per repo and sorts by label", () => {
+    const chips = deriveRepoChips([
+      ic("/u/proj/zeta", issue({ id: 1 })),
+      ic("/u/proj/alpha", issue({ id: 2 })),
+      ic("/u/proj/alpha", issue({ id: 3 })),
+    ])
+    expect(chips).toEqual([
+      { repo: "/u/proj/alpha", label: "alpha", count: 2 },
+      { repo: "/u/proj/zeta", label: "zeta", count: 1 },
+    ])
+  })
+})
+
+describe("filterBoardCards — chip + text filter (AND)", () => {
+  const cards = [
+    ic("/u/kobe", issue({ id: 1, title: "fix auth bug" })),
+    ic("/u/kobe", issue({ id: 2, title: "docs", body: "auth notes" })),
+    ic("/u/web", issue({ id: 3, title: "layout" })),
+  ]
+
+  it("with no filters returns everything", () => {
+    expect(filterBoardCards(cards, "", null).map((c) => c.issue.id)).toEqual([
+      1, 2, 3,
+    ])
+  })
+
+  it("repoFilter scopes to one project", () => {
+    expect(
+      filterBoardCards(cards, "", "/u/web").map((c) => c.issue.id),
+    ).toEqual([3])
+  })
+
+  it("text query matches #id, title, and body", () => {
+    expect(filterBoardCards(cards, "auth", null).map((c) => c.issue.id)).toEqual(
+      [1, 2],
+    )
+    expect(filterBoardCards(cards, "#3", null).map((c) => c.issue.id)).toEqual([
+      3,
+    ])
+  })
+
+  it("ANDs the chip and the query", () => {
+    expect(
+      filterBoardCards(cards, "auth", "/u/kobe").map((c) => c.issue.id),
+    ).toEqual([1, 2])
+  })
+})
+
+describe("buildBoardView — the whole board view-model", () => {
+  const data: Record<string, RepoIssues> = {
+    "/u/kobe": repoState(
+      [
+        issue({ id: 1, status: "open", title: "auth" }),
+        issue({ id: 2, status: "done" }),
+      ],
+      { repoRoot: "/u/kobe" },
+    ),
+    "/u/web": repoState([issue({ id: 3, status: "open" })], {
+      repoRoot: "/u/web",
+    }),
+  }
+  const repos = ["/u/kobe", "/u/web"]
+
+  it("chips come from the UNfiltered set; boards + count are post-filter", () => {
+    const view = buildBoardView({
+      issueData: data,
+      issueRepos: repos,
+      pendingLinks: noPending,
+      query: "auth",
+      repoFilter: null,
+    })
+    // Chips never shrink under a query — both projects still listed.
+    expect(view.repoChips.map((c) => c.repo).sort()).toEqual([
+      "/u/kobe",
+      "/u/web",
+    ])
+    // Only issue #1 matches "auth", so one shown card, one project board.
+    expect(view.shownCount).toBe(1)
+    expect(view.projectBoards.map((b) => b.repo)).toEqual(["/u/kobe"])
+    expect(view.hasAnyCard).toBe(true)
+  })
+
+  it("a pending link promotes an issue into In progress in the built board", () => {
+    const view = buildBoardView({
+      issueData: { "/u/kobe": repoState([issue({ id: 1, status: "open" })]) },
+      issueRepos: ["/u/kobe"],
+      pendingLinks: new Map([["/u/kobe:1", { taskId: "t9" }]]),
+      query: "",
+      repoFilter: null,
+    })
+    const board = view.projectBoards[0]
+    expect(
+      board.columns.find((c) => c.key === "in_progress")?.cards,
+    ).toHaveLength(1)
+  })
+
+  it("hasAnyCard is false for an empty / non-exists board", () => {
+    const view = buildBoardView({
+      issueData: { "/u/kobe": repoState([], { exists: false }) },
+      issueRepos: ["/u/kobe"],
+      pendingLinks: noPending,
+      query: "",
+      repoFilter: null,
+    })
+    expect(view.hasAnyCard).toBe(false)
+    expect(view.shownCount).toBe(0)
   })
 })
 

@@ -17,11 +17,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchIssues, type RepoIssues } from "./issues.ts"
+import { normalizeRepoPath } from "./repo-key.ts"
 import { useAppState } from "./store.ts"
-
-function normalize(root: string): string {
-  return root.length > 1 ? root.replace(/\/+$/, "") : root
-}
 
 export interface RepoIssuesResult {
   /** repoRoot → loaded issue state (GET + live pushes, seq-guarded). */
@@ -119,12 +116,12 @@ export function useRepoIssues(repos: readonly string[]): RepoIssuesResult {
   useEffect(() => {
     const byNormalized = new Map(
       Object.values(issueSnapshots).map((state) => [
-        normalize(state.repoRoot),
+        normalizeRepoPath(state.repoRoot),
         state,
       ]),
     )
     for (const repo of repoKey ? repoKey.split("\n") : []) {
-      const pushed = byNormalized.get(normalize(repo))
+      const pushed = byNormalized.get(normalizeRepoPath(repo))
       if (!pushed) continue
       const seq = beginRequest(repo)
       applyState(pushed, seq, repo)
