@@ -18,7 +18,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { activityColor, activityLabel } from "../lib/activity.ts"
-import { engineLabel, useEngines } from "../lib/engines.ts"
+import { useEngines } from "../lib/engines.ts"
 import { setNotifyNavigate } from "../lib/notify.ts"
 import { tailPath } from "../lib/path-format.ts"
 import {
@@ -31,15 +31,12 @@ import {
 } from "../lib/rail-state.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
-import {
-  isMixedEngineWorkspace,
-  matchesTask,
-  sortTasks,
-} from "../lib/task-list.ts"
+import { matchesTask, sortTasks } from "../lib/task-list.ts"
 import { relativeTime } from "../lib/time.ts"
 import { reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
+import { isMixedEngineWorkspace, perRowEngineLabel } from "../lib/vendor.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { CommandPalette } from "./CommandPalette.tsx"
 import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
@@ -195,9 +192,7 @@ function TaskRail({
     [tasks],
   )
   const engineNameFor = (task: Task): string | null =>
-    mixedEngines && task.kind !== "main"
-      ? engineLabel(engines, task.vendor)
-      : null
+    perRowEngineLabel(engines, task, mixedEngines)
 
   // Module store, not useState — the `/` → /task/$taskId nav remounts AppShell
   // (different route trees), which used to wipe these on the first task open

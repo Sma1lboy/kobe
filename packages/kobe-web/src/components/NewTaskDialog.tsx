@@ -9,13 +9,14 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { engineLabel, useEngines } from "../lib/engines.ts"
+import { useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { addTab, selectTask, setPendingPrompt } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
 import { useFocusTrap } from "../lib/use-focus-trap.ts"
+import { engineLabel } from "../lib/vendor.ts"
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (

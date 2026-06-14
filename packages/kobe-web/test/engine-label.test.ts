@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { type EngineOption, engineLabel } from "../src/lib/engines.ts"
+import type { EngineOption } from "../src/lib/engines.ts"
+import { engineLabel } from "../src/lib/vendor.ts"
 
 /**
  * engineLabel maps a vendor id to its display label across the New Task,

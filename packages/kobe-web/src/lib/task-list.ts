@@ -39,24 +39,8 @@ export function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
   return [...projects, ...pinned, ...regular]
 }
 
-/** Distinct engine vendors among the live worktree tasks (undefined → the
- *  default "claude", matching engineLabel's fallback; project/archived rows
- *  excluded — they aren't sessions). */
-export function distinctTaskVendors(tasks: readonly Task[]): string[] {
-  const set = new Set<string>()
-  for (const task of tasks) {
-    if (task.archived || task.kind === "main") continue
-    set.add(task.vendor ?? "claude")
-  }
-  return [...set]
-}
-
-/** True when the workspace runs more than one engine — only then is a
- *  per-task engine chip worth the visual noise (a single-engine workspace
- *  would just repeat the same label on every row). */
-export function isMixedEngineWorkspace(tasks: readonly Task[]): boolean {
-  return distinctTaskVendors(tasks).length > 1
-}
+// Vendor aggregations (distinctTaskVendors / isMixedEngineWorkspace) moved to
+// ./vendor.ts — they're vendor-identity rules, not list ordering/filtering.
 
 export function matchesTask(task: Task, query: string): boolean {
   if (!query) return true

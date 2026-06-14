@@ -12,13 +12,15 @@
  * one-line prose ask instead.
  */
 
+import { DEFAULT_VENDOR, resolveVendor } from "./vendor.ts"
+
 const doneClause = (taskId: string): string =>
   `if it passes, run \`kobe api set-status --task-id ${taskId} --status done\`; otherwise report the problems and leave the status unchanged.`
 
 /** Built-in review template when the user hasn't set one (vendor-aware:
  *  claude has a native /review command, others get a prose ask). */
 export function defaultReviewTemplate(vendor?: string): string {
-  return (vendor ?? "claude") === "claude"
+  return resolveVendor(vendor) === DEFAULT_VENDOR
     ? "/review"
     : "Review the current changes in this worktree critically."
 }
