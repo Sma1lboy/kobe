@@ -36,7 +36,7 @@
 import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
 import { maybeAutoStart } from "@/monitor/status-rules"
 import type { Orchestrator } from "@/orchestrator/core"
-import { isTaskStatus, type VendorId } from "@/types/task"
+import { type VendorId, isTaskStatus } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { logDaemonError } from "./crash-log.ts"
