@@ -385,6 +385,26 @@ describe("buildBoardView — the whole board view-model", () => {
     expect(view.hasAnyCard).toBe(false)
     expect(view.shownCount).toBe(0)
   })
+
+  it("returns an empty board for the selected project even when it has no issues", () => {
+    const view = buildBoardView({
+      issueData: { "/u/empty": repoState([], { repoRoot: "/u/empty" }) },
+      issueRepos: ["/u/empty"],
+      pendingLinks: noPending,
+      query: "",
+      repoFilter: "/u/empty",
+    })
+
+    expect(view.projectBoards).toHaveLength(1)
+    expect(view.projectBoards[0].repo).toBe("/u/empty")
+    expect(view.projectBoards[0].columns.map((column) => column.key)).toEqual([
+      "backlog",
+      "in_progress",
+      "done",
+    ])
+    expect(view.shownCount).toBe(0)
+    expect(view.hasAnyCard).toBe(false)
+  })
 })
 
 describe("board-state — module store filter", () => {

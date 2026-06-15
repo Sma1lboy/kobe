@@ -321,6 +321,17 @@ export function buildBoardView(input: BoardViewInput): BoardView {
   const repoChips = deriveRepoChips(allIssues)
   const boardIssues = filterBoardCards(allIssues, input.query, input.repoFilter)
   const projectBoards = buildProjectBoards(boardIssues)
+  if (
+    input.repoFilter &&
+    projectBoards.length === 0 &&
+    input.issueRepos.includes(input.repoFilter)
+  ) {
+    projectBoards.push({
+      repo: input.repoFilter,
+      label: labelRepo(input.repoFilter, input.issueRepos),
+      columns: buildBoard([]),
+    })
+  }
   const shownCount = projectBoards.reduce(
     (sum, board) => sum + boardCardCount(board.columns),
     0,

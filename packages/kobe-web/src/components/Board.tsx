@@ -512,24 +512,6 @@ export function Board() {
           <p className="text-[12px] text-subtle">
             Can't reach the daemon — issue list may be incomplete.
           </p>
-        ) : shownCount === 0 ? (
-          // Connected, genuinely no issues — offer the ways out.
-          <div className="text-[12px] leading-relaxed text-subtle">
-            <p>
-              {currentRepo
-                ? "No issues yet for the selected project. Create one to start tracking work."
-                : "No projects yet. Create a task from the workspace to track issues against its repo."}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => navigate({ to: "/" })}
-                className="border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
-              >
-                Back to workspace
-              </button>
-            </div>
-          </div>
         ) : projectBoards[0] ? (
           <ProjectColumns
             board={projectBoards[0]}
@@ -541,7 +523,21 @@ export function Board() {
             onDeleteIssue={(repo, issue) => setConfirmDelete({ repo, issue })}
           />
         ) : (
-          <p className="text-[12px] text-subtle">No issues match.</p>
+          <div className="text-[12px] leading-relaxed text-subtle">
+            <p>
+              No projects yet. Create a task from the workspace to track issues
+              against its repo.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => navigate({ to: "/" })}
+                className="border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
+              >
+                Back to workspace
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
