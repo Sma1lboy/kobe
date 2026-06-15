@@ -73,15 +73,6 @@ export function useEngines(): readonly EngineOption[] {
   )
 }
 
-/** Display label for a vendor id (falls back to the raw id). An unset id
- *  coalesces to the default "claude" and resolves through the registry just
- *  like an explicit "claude" — so an undefined-vendor task and an explicit
- *  vendor:"claude" task render the SAME label (and respect a user override),
- *  matching how distinctTaskVendors groups them. */
-export function engineLabel(
-  list: readonly EngineOption[],
-  id: string | undefined,
-): string {
-  const resolved = id || "claude"
-  return list.find((e) => e.id === resolved)?.label ?? resolved
-}
+// Vendor-identity rules (engineLabel, the unset-vendor default, the mixed-
+// workspace aggregations, the per-row label rule) live in ./vendor.ts — this
+// module's only job is fetching the engine-owned list from the bridge.

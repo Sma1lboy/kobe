@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest"
-import {
-  distinctTaskVendors,
-  isMixedEngineWorkspace,
-  matchesTask,
-  sortTasks,
-} from "../src/lib/task-list.ts"
+import { matchesTask, sortTasks } from "../src/lib/task-list.ts"
 import type { Task } from "../src/lib/types.ts"
 
 /**
@@ -100,47 +95,6 @@ describe("sortTasks — recent mode", () => {
     expect(ids(sortTasks(t, "recent"))).toEqual(["projA", "projB", "reg"])
     // And the order matches default mode for the projects.
     expect(ids(sortTasks(t, "default")).slice(0, 2)).toEqual(["projA", "projB"])
-  })
-})
-
-describe("isMixedEngineWorkspace / distinctTaskVendors", () => {
-  it("is false when every worktree task runs the same engine", () => {
-    const t = [
-      task({ id: "a", vendor: "claude" }),
-      task({ id: "b", vendor: "claude" }),
-    ]
-    expect(isMixedEngineWorkspace(t)).toBe(false)
-    expect(distinctTaskVendors(t)).toEqual(["claude"])
-  })
-
-  it("is true when worktree tasks run different engines", () => {
-    const t = [
-      task({ id: "a", vendor: "claude" }),
-      task({ id: "b", vendor: "codex" }),
-    ]
-    expect(isMixedEngineWorkspace(t)).toBe(true)
-    expect(distinctTaskVendors(t).sort()).toEqual(["claude", "codex"])
-  })
-
-  it("treats an unset vendor as the default 'claude'", () => {
-    const t = [
-      task({ id: "a", vendor: undefined }),
-      task({ id: "b", vendor: "codex" }),
-    ]
-    // undefined → claude, so this counts as mixed (claude + codex).
-    expect(isMixedEngineWorkspace(t)).toBe(true)
-    const t2 = [task({ id: "a", vendor: undefined })]
-    expect(distinctTaskVendors(t2)).toEqual(["claude"])
-  })
-
-  it("ignores project (main) and archived rows", () => {
-    const t = [
-      task({ id: "a", vendor: "claude" }),
-      task({ id: "m", kind: "main", vendor: "codex" }),
-      task({ id: "z", archived: true, vendor: "codex" }),
-    ]
-    // Only the one claude worktree task counts → not mixed.
-    expect(isMixedEngineWorkspace(t)).toBe(false)
   })
 })
 

@@ -18,6 +18,7 @@
     "./daemon/issues-store": "./src/daemon/issues-store.ts",
     "./daemon/keybindings-watcher": "./src/daemon/keybindings-watcher.ts",
     "./daemon/lifecycle": "./src/daemon/lifecycle.ts",
+    "./daemon/lifetime": "./src/daemon/lifetime.ts",
     "./daemon/paths": "./src/daemon/paths.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/server": "./src/daemon/server.ts",

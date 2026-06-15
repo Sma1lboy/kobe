@@ -36,7 +36,7 @@
 import { type EngineActivityDetail, isEngineActivityKind } from "@/engine/hook-events"
 import { maybeAutoStart } from "@/monitor/status-rules"
 import type { Orchestrator } from "@/orchestrator/core"
-import type { VendorId } from "@/types/task"
+import { isTaskStatus, type VendorId } from "@/types/task"
 import { CURRENT_VERSION } from "@/version"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { logDaemonError } from "./crash-log.ts"
@@ -296,16 +296,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")
         const status = requireString(payload, "status")
-        if (
-          status !== "backlog" &&
-          status !== "in_progress" &&
-          status !== "in_review" &&
-          status !== "done" &&
-          status !== "canceled" &&
-          status !== "error"
-        ) {
-          throw new Error("status must be a TaskStatus")
-        }
+        if (!isTaskStatus(status)) throw new Error("status must be a TaskStatus")
         // Capture the task (for repo) AND its prior status BEFORE the
         // transition so we can mirror a real task→done transition into the
         // issue store below.

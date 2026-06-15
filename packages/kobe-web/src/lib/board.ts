@@ -13,6 +13,7 @@
  * affordance) but the task itself is NOT a card here (docs/design/web-kanban.md).
  */
 
+import { textMatchesQuery } from "./text-match.ts"
 import type { Issue, RepoIssues } from "./types.ts"
 
 /**
@@ -300,11 +301,9 @@ export function filterBoardCards(
   query: string,
   repoFilter: string | null,
 ): BoardCard[] {
-  const q = query.trim().toLowerCase()
   return cards.filter(({ repo, issue }) => {
     if (repoFilter && repo !== repoFilter) return false
-    if (!q) return true
-    return `#${issue.id} ${issue.title} ${issue.body}`.toLowerCase().includes(q)
+    return textMatchesQuery(`#${issue.id} ${issue.title} ${issue.body}`, query)
   })
 }
 

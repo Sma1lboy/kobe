@@ -84,6 +84,10 @@ _Avoid_: frontend, UI process.
 The **TUI Client**-side facade satisfying the slim **Orchestrator** surface by talking to the **Daemon** over the wire. Hydrates a local task mirror on attach, maintained forward via `task.snapshot` events.
 _Avoid_: client, proxy, daemon-client.
 
+**DaemonLifetime**:
+The policy deciding whether the **Daemon** keeps running and whether its background collectors run (`src/daemon/lifetime.ts`). Owns the gui refcount (only `role: "gui"` subscribers hold the daemon's lifetime — panes don't), the collector gate (`hasSubscribers`), and the idle-shutdown grace timer + `stopping` flag. The server's live client set stays its source of truth (scanned on demand, no drift); the policy is unit-tested in isolation via an injected clock. Distinct from `lifecycle.ts`, which kills an EXTERNAL daemon process (restart/reset).
+_Avoid_: lifecycle (that's the external-kill path), refcount, shutdown manager.
+
 ### Panes
 
 **Pane**:

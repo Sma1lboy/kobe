@@ -11,6 +11,7 @@
  * the project list under the user).
  */
 
+import { textMatchesQuery } from "./text-match.ts"
 import type { Task } from "./types.ts"
 
 export type TaskSortMode = "default" | "recent"
@@ -39,27 +40,10 @@ export function sortTasks(tasks: Task[], mode: TaskSortMode): Task[] {
   return [...projects, ...pinned, ...regular]
 }
 
-/** Distinct engine vendors among the live worktree tasks (undefined → the
- *  default "claude", matching engineLabel's fallback; project/archived rows
- *  excluded — they aren't sessions). */
-export function distinctTaskVendors(tasks: readonly Task[]): string[] {
-  const set = new Set<string>()
-  for (const task of tasks) {
-    if (task.archived || task.kind === "main") continue
-    set.add(task.vendor ?? "claude")
-  }
-  return [...set]
-}
-
-/** True when the workspace runs more than one engine — only then is a
- *  per-task engine chip worth the visual noise (a single-engine workspace
- *  would just repeat the same label on every row). */
-export function isMixedEngineWorkspace(tasks: readonly Task[]): boolean {
-  return distinctTaskVendors(tasks).length > 1
-}
+// Vendor aggregations (distinctTaskVendors / isMixedEngineWorkspace) moved to
+// ./vendor.ts — they're vendor-identity rules, not list ordering/filtering.
 
 export function matchesTask(task: Task, query: string): boolean {
-  if (!query) return true
   const haystack = [
     task.title,
     task.branch,
@@ -70,6 +54,5 @@ export function matchesTask(task: Task, query: string): boolean {
   ]
     .filter(Boolean)
     .join(" ")
-    .toLowerCase()
-  return haystack.includes(query.toLowerCase())
+  return textMatchesQuery(haystack, query)
 }

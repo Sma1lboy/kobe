@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { activityColor, activityLabel } from "../src/lib/activity.ts"
+import { activityColor, activityLabel, activityMeta } from "../src/lib/activity.ts"
 import type { ActivityState } from "../src/lib/types.ts"
 
 /**
@@ -55,5 +55,15 @@ describe("activityLabel", () => {
 
   it("returns an empty label for an unknown state string", () => {
     expect(activityLabel("compacting")).toBe("")
+  })
+})
+
+describe("activityMeta", () => {
+  it("derives color and label together, and the accessors delegate to it", () => {
+    for (const s of [...KNOWN, undefined]) {
+      const meta = activityMeta(s)
+      expect(meta.color).toBe(activityColor(s))
+      expect(meta.label).toBe(activityLabel(s))
+    }
   })
 })

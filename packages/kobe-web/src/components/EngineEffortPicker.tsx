@@ -12,8 +12,9 @@
  */
 
 import { useEffect, useState } from "react"
-import { type EngineOption, engineLabel, useEngines } from "../lib/engines.ts"
+import { type EngineOption, useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
+import { engineLabel } from "../lib/vendor.ts"
 
 /** The engine's effort levels off the shared EngineOption (it carries them
  *  natively from /api/engines), defaulting to an empty list. */
