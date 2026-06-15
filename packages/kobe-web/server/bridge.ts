@@ -16,6 +16,7 @@
  *   GET  /api/engine-spec     PTY launch spec for a task's engine tab
  *   GET  /api/terminal-spec   PTY launch spec for a task's shell tab
  *   GET  /api/engines         engine-owned vendor list (id + label + effort)
+ *   GET  /api/projects        saved project repos from state.json
  *   GET/PATCH /api/settings   shared TUI/web settings backed by state.json
  *   *    /api/notes, /api/diff       bridge-local filesystem routes
  *   *    /api/issue-assets           bridge-local issue-attachment store
@@ -37,7 +38,7 @@ import {
 import { engineEntry } from "../../kobe/src/engine/registry.ts"
 import { AUTO_STATUS_KEY } from "../../kobe/src/state/auto-status.ts"
 import { DISPATCHER_KEY } from "../../kobe/src/state/dispatcher.ts"
-import { getPersistedString, setPersistedString } from "../../kobe/src/state/repos.ts"
+import { getPersistedString, getSavedRepos, setPersistedString } from "../../kobe/src/state/repos.ts"
 import { loadStateFile, patchStateFile } from "../../kobe/src/state/store.ts"
 import {
   DEFAULT_EDITOR_KIND,
@@ -227,6 +228,10 @@ async function enginesResponse(): Promise<Response> {
 
 function cliInvocationResponse(): Response {
   return Response.json({ api: kobeApiInvocation() })
+}
+
+function projectsResponse(): Response {
+  return Response.json({ projects: getSavedRepos() })
 }
 
 const FOCUS_ACCENTS = ["primary", "success", "info"] as const
@@ -421,6 +426,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
       return specResponse(url, link, terminalSpec)
     if (url.pathname === "/api/engines" && req.method === "GET") return enginesResponse()
     if (url.pathname === "/api/cli-invocation" && req.method === "GET") return cliInvocationResponse()
+    if (url.pathname === "/api/projects" && req.method === "GET") return projectsResponse()
     if (url.pathname === "/api/settings" && req.method === "GET") return settingsSnapshot()
     if (url.pathname === "/api/settings" && req.method === "PATCH") return settingsPatch(req)
     if (url.pathname === "/api/quick-prompts" && req.method === "GET") return quickPromptsGet()

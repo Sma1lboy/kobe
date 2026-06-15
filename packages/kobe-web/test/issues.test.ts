@@ -6,16 +6,20 @@ vi.mock("../src/lib/terminal.ts", () => ({ sendPtyText: vi.fn() }))
 
 import {
   canQuickStart,
+  fetchProjects,
   filterIssues,
   groupByStatus,
   type Issue,
   ISSUE_STATUSES,
+  issueMergePrompt,
   issueRepoOptions,
   linkIssue,
   overviewRows,
+  promptIssueMerge,
   quickStartIssue,
   quickStartPrompt,
   type RepoIssues,
+  resolveIssueRepoSelection,
   unlinkIssue,
 } from "../src/lib/issues.ts"
 import { rpc } from "../src/lib/store.ts"
@@ -190,6 +194,12 @@ describe("overviewRows", () => {
 })
 
 describe("issueRepoOptions", () => {
+  it("includes saved project repos even before they have tasks or issues", () => {
+    expect(issueRepoOptions([], ["/Users/narwhal/proj/kobe"])).toEqual([
+      { repo: "/Users/narwhal/proj/kobe", label: "kobe", count: 0 },
+    ])
+  })
+
   it("folds worktree tasks into their source repo instead of listing the worktree path", () => {
     const tasks = [
       {
@@ -250,6 +260,66 @@ describe("issueRepoOptions", () => {
     ])
   })
 
+  it("bounds task counts to saved projects when saved projects are present", () => {
+    const tasks = [
+      {
+        id: "good",
+        repo: "/repo/known",
+        worktreePath: "/repo/known/.kobe/worktrees/one",
+        kind: "task",
+        archived: false,
+      },
+      {
+        id: "stray",
+        repo: "/repo/stray",
+        worktreePath: "/repo/stray/.kobe/worktrees/two",
+        kind: "task",
+        archived: false,
+      },
+    ] as Task[]
+
+    expect(issueRepoOptions(tasks, ["/repo/known"])).toEqual([
+      { repo: "/repo/known", label: "known", count: 1 },
+    ])
+  })
+})
+
+describe("fetchProjects", () => {
+  it("loads saved project repos from the bridge", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ projects: ["/repo/kobe", 42, "/repo/web"] }),
+          ),
+        ),
+      ),
+    )
+
+    await expect(fetchProjects()).resolves.toEqual(["/repo/kobe", "/repo/web"])
+    vi.unstubAllGlobals()
+  })
+})
+
+describe("resolveIssueRepoSelection", () => {
+  const options = [
+    { repo: "/u/p/kobe", label: "kobe", count: 2 },
+    { repo: "/u/p/web", label: "web", count: 1 },
+  ]
+
+  it("keeps a valid current project", () => {
+    expect(resolveIssueRepoSelection(options, "/u/p/web")).toBe("/u/p/web")
+  })
+
+  it("falls back to the first project when current is empty or stale", () => {
+    expect(resolveIssueRepoSelection(options, null)).toBe("/u/p/kobe")
+    expect(resolveIssueRepoSelection(options, "/u/p/gone")).toBe("/u/p/kobe")
+  })
+
+  it("returns null when there are no projects", () => {
+    expect(resolveIssueRepoSelection([], "/u/p/kobe")).toBeNull()
+  })
 })
 
 describe("canQuickStart", () => {
@@ -272,7 +342,13 @@ describe("quickStartPrompt", () => {
     expect(prompt).toContain("kobe issue #42")
     expect(prompt).toContain("Wire the flux capacitor")
     expect(prompt).toContain("It needs 1.21 gigawatts.\nSee the schematic.")
-    expect(prompt).toContain("kobe api issue-set-status --repo . --id 42 --status done")
+    expect(prompt).toContain("insert a final prompt/comment")
+    expect(prompt).toContain(
+      "merge the task branch back into the current project's main branch",
+    )
+    expect(prompt).toContain(
+      "kobe api issue-set-status --repo . --id 42 --status done",
+    )
     // The caller flips to doing; the prompt must NOT tell the agent to.
     expect(prompt).not.toContain('"doing"')
   })
@@ -281,6 +357,20 @@ describe("quickStartPrompt", () => {
     const prompt = quickStartPrompt(issue({ id: 7, title: "T", body: "  " }))
     expect(prompt).toContain("issue #7")
     expect(prompt).not.toContain("\n\n\n")
+  })
+})
+
+describe("issueMergePrompt", () => {
+  it("asks the linked task to summarize, merge to project main, and mark the issue done", () => {
+    const prompt = issueMergePrompt(issue({ id: 9, title: "Ship it" }))
+    expect(prompt).toContain("Finish kobe issue #9")
+    expect(prompt).toContain("Summarize what changed")
+    expect(prompt).toContain(
+      "merge this task branch back into the current project's main branch",
+    )
+    expect(prompt).toContain(
+      "kobe api issue-set-status --repo . --id 9 --status done",
+    )
   })
 })
 
@@ -474,6 +564,29 @@ describe("quickStartIssue", () => {
     )
     expect(ensureEngineTab).not.toHaveBeenCalled()
     expect(sendPtyText).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("inserts the finish/merge prompt into an existing linked task", async () => {
+    vi.mocked(ensureEngineTab).mockReturnValue("tab-merge")
+    vi.mocked(sendPtyText).mockResolvedValue({ spawned: false })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ api: "bun ./src/cli/index.ts api" })),
+        ),
+      ),
+    )
+
+    await promptIssueMerge("task-9", target)
+
+    expect(ensureEngineTab).toHaveBeenCalledWith("task-9")
+    expect(sendPtyText).toHaveBeenCalledWith(
+      "tab-merge",
+      "task-9",
+      issueMergePrompt(target, "bun ./src/cli/index.ts api"),
+    )
     vi.unstubAllGlobals()
   })
 })

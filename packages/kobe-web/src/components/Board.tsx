@@ -22,18 +22,10 @@
  */
 
 import { useNavigate } from "@tanstack/react-router"
-import {
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
-  Plus,
-  Search,
-  X,
-} from "lucide-react"
+import { ExternalLink, Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   type BoardColumn,
-  boardCardCount,
   buildBoardView,
   isLinkedIssue,
   type ProjectBoard,
@@ -45,9 +37,12 @@ import {
 } from "../lib/board-state.ts"
 import {
   deleteIssue,
+  fetchProjects,
   type Issue,
   issueRepoOptions,
+  promptIssueMerge,
   quickStartIssue,
+  resolveIssueRepoSelection,
   updateIssue,
 } from "../lib/issues.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -195,8 +190,6 @@ export function Board() {
   const navigate = useNavigate()
   const filterRef = useRef<HTMLInputElement>(null)
   const [peek, setPeek] = useState<PeekTarget | null>(null)
-  // Projects the user has collapsed (repo key set). Default expanded.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   // Issue-intake panel target repo (null = closed).
   const [creatingRepo, setCreatingRepo] = useState<string | null>(null)
   const [issueBusy, setIssueBusy] = useState(false)
@@ -214,13 +207,34 @@ export function Board() {
     repo: string
     issue: Issue
   } | null>(null)
+  const [projectRepos, setProjectRepos] = useState<string[]>([])
 
-  // Issue-snapshot plumbing for every source repo on the board. issueRepoOptions
-  // folds worktree tasks into their canonical source repo (the daemon issue
-  // store is keyed there), so a repo's issues all share one key.
+  useEffect(() => {
+    let cancelled = false
+    void fetchProjects()
+      .then((repos) => {
+        if (!cancelled) setProjectRepos(repos)
+      })
+      .catch((err: unknown) => reportError("load projects", err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Issue-snapshot plumbing for every source repo on the board. Project
+  // options come from tasks/main rows, not existing issues, so an empty project
+  // can still be selected and receive its first issue.
+  const repoOptions = useMemo(
+    () => issueRepoOptions(tasks, projectRepos),
+    [tasks, projectRepos],
+  )
   const issueRepos = useMemo(
-    () => issueRepoOptions(tasks).map((option) => option.repo),
-    [tasks],
+    () => repoOptions.map((option) => option.repo),
+    [repoOptions],
+  )
+  const currentRepo = useMemo(
+    () => resolveIssueRepoSelection(repoOptions, repoFilter),
+    [repoOptions, repoFilter],
   )
   const {
     data: issueData,
@@ -241,9 +255,9 @@ export function Board() {
           issueRepos,
           pendingLinks,
           query,
-          repoFilter,
+          repoFilter: currentRepo,
         }),
-      [issueData, issueRepos, pendingLinks, query, repoFilter],
+      [issueData, issueRepos, pendingLinks, query, currentRepo],
     )
 
   // Drop a pending optimistic-link once the daemon confirms it: the issue now
@@ -302,34 +316,22 @@ export function Board() {
     return () => window.removeEventListener("keydown", onKey)
   }, [query, peek, creatingRepo, confirmDelete])
 
-  // A selected project can disappear entirely (last issue deleted) — snap back
-  // to All rather than showing a permanently empty board. Chips are derived from
-  // the UNfiltered set (in buildBoardView), so they don't vanish under a filter.
+  // A project selection is required for the kanban. If the current project
+  // disappeared (or the page opened before one was chosen), snap to the first
+  // available project from the task snapshot.
   useEffect(() => {
-    if (repoFilter && !repoChips.some((option) => option.repo === repoFilter)) {
-      setBoardRepo(null)
-    }
-  }, [repoChips, repoFilter])
+    if (repoFilter !== currentRepo) setBoardRepo(currentRepo)
+  }, [currentRepo, repoFilter])
 
-  const single = projectBoards.length === 1
   // A no-match (chips/query narrowed every issue away) vs the genuinely-empty
   // board: the empty branch differs (clear-filters vs new-issue affordance).
-  const filtered = Boolean(query) || Boolean(repoFilter)
+  const filtered = Boolean(query)
 
   // Open a linked issue's task workspace/session.
   const openTask = (id: string): void => {
     selectTask(id)
     void rpc("task.setActive", { taskId: id }).catch(() => {})
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
-  }
-
-  const toggleCollapsed = (repo: string): void => {
-    setCollapsed((prev) => {
-      const next = new Set(prev)
-      if (next.has(repo)) next.delete(repo)
-      else next.add(repo)
-      return next
-    })
   }
 
   /* ----- issue side-effects ------------------------------------------------- */
@@ -440,48 +442,37 @@ export function Board() {
             </button>
           )}
         </label>
-        {/* Project chips: scope the board to one project. Hidden for a
-            single-project board — no point paying header space for a
-            filter with one value. Click the active chip to deselect. */}
-        {repoChips.length >= 2 && (
-          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
-            <button
-              type="button"
-              onClick={() => setBoardRepo(null)}
-              className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                repoFilter === null
-                  ? "border-line-active bg-inset text-fg"
-                  : "border-line text-subtle hover:text-fg"
-              }`}
+        {/* Project selector: issue execution creates a task worktree under the
+            selected project, so there is deliberately no "all projects" mode.
+            Use a select, not chip tabs: workspaces can have many projects. */}
+        {repoOptions.length > 0 && (
+          <label className="flex h-7 min-w-0 max-w-[24rem] items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Project
+            </span>
+            <select
+              value={currentRepo ?? ""}
+              onChange={(event) => setBoardRepo(event.target.value)}
+              title={currentRepo ?? "Select project"}
+              className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-fg focus:outline-none"
             >
-              all
-            </button>
-            {repoChips.map((option) => (
-              <button
-                key={option.repo}
-                type="button"
-                title={option.repo}
-                onClick={() =>
-                  setBoardRepo(repoFilter === option.repo ? null : option.repo)
-                }
-                className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                  repoFilter === option.repo
-                    ? "border-line-active bg-inset text-fg"
-                    : "border-line text-subtle hover:text-fg"
-                }`}
-              >
-                {option.label}
-                <span
-                  className={
-                    repoFilter === option.repo ? "text-muted" : "text-subtle"
-                  }
-                >
-                  {" "}
-                  {option.count}
-                </span>
-              </button>
-            ))}
-          </div>
+              {repoOptions.map((option) => {
+                const issueCount =
+                  repoChips.find((chip) => chip.repo === option.repo)?.count ??
+                  0
+                return (
+                  <option
+                    key={option.repo}
+                    value={option.repo}
+                    title={option.repo}
+                    className="bg-surface text-fg"
+                  >
+                    {option.label} · {issueCount} · {option.repo}
+                  </option>
+                )
+              })}
+            </select>
+          </label>
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           <span>
@@ -502,14 +493,12 @@ export function Board() {
         {!hydrated || (issuesPending && !hasAnyCard) ? (
           <p className="text-[12px] text-subtle">Loading…</p>
         ) : shownCount === 0 && filtered && hasAnyCard ? (
-          // The project chip and/or text query narrowed every issue away —
-          // offer to clear BOTH (the rail's clear-filters move).
+          // The text query narrowed every issue away — offer to clear it.
           <div className="text-[12px] leading-relaxed text-subtle">
             <p>No issues match.</p>
             <button
               type="button"
               onClick={() => {
-                setBoardRepo(null)
                 setBoardQuery("")
               }}
               className="mt-3 border border-line bg-surface px-2 py-1 text-[11px] text-muted hover:border-primary hover:text-fg"
@@ -526,7 +515,11 @@ export function Board() {
         ) : shownCount === 0 ? (
           // Connected, genuinely no issues — offer the ways out.
           <div className="text-[12px] leading-relaxed text-subtle">
-            <p>No issues yet. Create one to start tracking work.</p>
+            <p>
+              {currentRepo
+                ? "No issues yet for the selected project. Create one to start tracking work."
+                : "No projects yet. Create a task from the workspace to track issues against its repo."}
+            </p>
             <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
@@ -537,8 +530,7 @@ export function Board() {
               </button>
             </div>
           </div>
-        ) : single ? (
-          // One project — render ungrouped (no section header).
+        ) : projectBoards[0] ? (
           <ProjectColumns
             board={projectBoards[0]}
             onNewIssue={setCreatingRepo}
@@ -549,63 +541,15 @@ export function Board() {
             onDeleteIssue={(repo, issue) => setConfirmDelete({ repo, issue })}
           />
         ) : (
-          // Multiple projects — one collapsible section each.
-          <div className="flex h-full flex-col gap-4">
-            {projectBoards.map((board) => {
-              const isCollapsed = collapsed.has(board.repo)
-              const count = boardCardCount(board.columns)
-              return (
-                <section
-                  key={board.repo}
-                  className={`flex flex-col ${
-                    isCollapsed ? "shrink-0" : "min-h-0 flex-1"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleCollapsed(board.repo)}
-                    title={board.repo}
-                    className="mb-2 flex shrink-0 items-center gap-1.5 text-left text-muted transition-colors hover:text-fg"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight size={13} strokeWidth={2} />
-                    ) : (
-                      <ChevronDown size={13} strokeWidth={2} />
-                    )}
-                    <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-fg">
-                      {board.label}
-                    </span>
-                    <span className="font-mono text-[10px] text-subtle">
-                      {count}
-                    </span>
-                  </button>
-                  {!isCollapsed && (
-                    <div className="min-h-0 flex-1 overflow-x-auto">
-                      <ProjectColumns
-                        board={board}
-                        onNewIssue={setCreatingRepo}
-                        onPeekIssue={(issue) =>
-                          setPeek({ repo: board.repo, id: issue.id })
-                        }
-                        onOpenTask={openTask}
-                        onDeleteIssue={(repo, issue) =>
-                          setConfirmDelete({ repo, issue })
-                        }
-                      />
-                    </div>
-                  )}
-                </section>
-              )
-            })}
-          </div>
+          <p className="text-[12px] text-subtle">No issues match.</p>
         )}
       </div>
 
       {/* Floating New-issue entry — the board is the ticket-intake surface, so
-          a always-reachable + FAB (bottom-right) opens the intake panel for the
-          active project chip, else the first project. */}
+          an always-reachable + FAB opens the intake panel for the current
+          project. */}
       {(() => {
-        const target = repoFilter ?? projectBoards[0]?.repo ?? issueRepos[0]
+        const target = currentRepo ?? projectBoards[0]?.repo ?? issueRepos[0]
         if (!target) return null
         return (
           <button
@@ -676,6 +620,24 @@ export function Board() {
                     const t = entry.issue.taskId
                     setPeek(null)
                     if (t) openTask(t)
+                  }
+                : undefined
+            }
+            onPromptMerge={
+              entry.issue.taskId
+                ? () => {
+                    const t = entry.issue.taskId
+                    if (!t) return
+                    void promptIssueMerge(t, entry.issue)
+                      .then(() =>
+                        pushToast(
+                          "success",
+                          `Prompt inserted for issue #${entry.issue.id}`,
+                        ),
+                      )
+                      .catch((err: unknown) =>
+                        reportError("prompt issue merge", err),
+                      )
                   }
                 : undefined
             }

@@ -25,10 +25,12 @@ import { ArrowLeft, Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import {
   deleteIssue as deleteIssueOp,
+  fetchProjects,
   filterIssues,
   groupByStatus,
   ISSUE_STATUSES,
   issueRepoOptions,
+  promptIssueMerge,
   quickStartIssue,
   STATUS_META,
   updateIssue,
@@ -45,8 +47,24 @@ import { IssuePeek } from "./IssuePeek.tsx"
 export function IssuesPage() {
   const { tasks, hydrated } = useAppState()
   const navigate = useNavigate()
+  const [projectRepos, setProjectRepos] = useState<string[]>([])
 
-  const repos = useMemo(() => issueRepoOptions(tasks), [tasks])
+  useEffect(() => {
+    let cancelled = false
+    void fetchProjects()
+      .then((repos) => {
+        if (!cancelled) setProjectRepos(repos)
+      })
+      .catch((err: unknown) => reportError("load projects", err))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const repos = useMemo(
+    () => issueRepoOptions(tasks, projectRepos),
+    [tasks, projectRepos],
+  )
   const [repo, setRepo] = useState<string | null>(null)
   // Settle the selected repo onto the first available one (and snap back if the
   // selection disappears, e.g. its last task is deleted).
@@ -182,26 +200,32 @@ export function IssuesPage() {
             </button>
           )}
         </label>
-        {/* Project chips: pick which repo's issue store to view. Hidden for a
-            single-project workspace — one value isn't worth the header space. */}
-        {repos.length >= 2 && (
-          <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
-            {repos.map((option) => (
-              <button
-                key={option.repo}
-                type="button"
-                title={option.repo}
-                onClick={() => setRepo(option.repo)}
-                className={`shrink-0 border px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                  repo === option.repo
-                    ? "border-line-active bg-inset text-fg"
-                    : "border-line text-subtle hover:text-fg"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+        {/* Project selector: always shown when any project exists so the
+            current repo is explicit. Use a select, not chip tabs: workspaces
+            can have many projects. */}
+        {repos.length > 0 && (
+          <label className="flex h-7 min-w-0 max-w-[24rem] items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
+              Project
+            </span>
+            <select
+              value={repo ?? ""}
+              onChange={(event) => setRepo(event.target.value)}
+              title={repo ?? "Select project"}
+              className="min-w-0 flex-1 bg-transparent font-mono text-[11px] text-fg focus:outline-none"
+            >
+              {repos.map((option) => (
+                <option
+                  key={option.repo}
+                  value={option.repo}
+                  title={option.repo}
+                  className="bg-surface text-fg"
+                >
+                  {option.label} · {option.count} · {option.repo}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           <span>
@@ -305,6 +329,17 @@ export function IssuesPage() {
                   // session rather than an empty pane.
                   ensureEngineTab(taskId)
                   openTaskWorkspace(taskId)
+                }
+              : undefined
+          }
+          onPromptMerge={
+            peekIssue.taskId
+              ? () => {
+                  const taskId = peekIssue.taskId
+                  if (!taskId) return
+                  void promptIssueMerge(taskId, peekIssue).catch(
+                    (err: unknown) => reportError("prompt issue merge", err),
+                  )
                 }
               : undefined
           }

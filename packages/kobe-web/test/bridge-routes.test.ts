@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { patchStateFile } from "../../kobe/src/state/store.ts"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import {
   type BridgeLink,
@@ -360,6 +361,16 @@ describe("/api/quick-prompts", () => {
       await handle(new Request("http://localhost/api/quick-prompts"))
     ).json()
     expect(got).toEqual({ review: "/review --deep", pr: "open a DRAFT pr" })
+  })
+
+  it("returns saved project repos from state.json", async () => {
+    patchStateFile({ savedRepos: ["/repo/kobe", "/repo/web"] })
+    const { handle } = build()
+    const res = await handle(new Request("http://localhost/api/projects"))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({
+      projects: ["/repo/kobe", "/repo/web"],
+    })
   })
 
   it("400s malformed JSON and ignores non-string fields", async () => {

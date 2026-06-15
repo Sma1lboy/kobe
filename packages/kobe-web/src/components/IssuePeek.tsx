@@ -24,7 +24,7 @@
  * as images, so the paste/upload + render paths stay XSS-safe by construction.
  */
 
-import { ExternalLink, Play } from "lucide-react"
+import { ExternalLink, GitMerge, Play } from "lucide-react"
 import { useState } from "react"
 import { canQuickStart, type Issue, STATUS_META } from "../lib/issues.ts"
 import { EngineEffortPicker } from "./EngineEffortPicker.tsx"
@@ -40,6 +40,7 @@ export function IssuePeek({
   onSave,
   onStart,
   onOpenSession,
+  onPromptMerge,
 }: {
   issue: Issue
   /** Source repo for asset uploads — the same key the Board peeks under. */
@@ -56,6 +57,8 @@ export function IssuePeek({
   onStart: (opts: { vendor?: string; effort?: string; watch: boolean }) => void
   /** Open the running session/workspace for an already-started (linked) issue. */
   onOpenSession?: () => void
+  /** Insert the finish/merge prompt into the linked issue task. */
+  onPromptMerge?: () => void
 }) {
   const [draftTitle, setDraftTitle] = useState(issue.title)
   const [draftBody, setDraftBody] = useState(issue.body)
@@ -208,6 +211,16 @@ export function IssuePeek({
                 >
                   <ExternalLink size={12} strokeWidth={1.8} />
                   Open workspace
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onPromptMerge?.()}
+                  disabled={!onPromptMerge || starting}
+                  title="Insert the finish and merge prompt into this issue's task"
+                  className="flex h-8 items-center justify-center gap-1.5 border border-line bg-bg px-3 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <GitMerge size={12} strokeWidth={1.8} />
+                  Prompt merge
                 </button>
                 <span className="text-center text-[10px] text-subtle">
                   Started

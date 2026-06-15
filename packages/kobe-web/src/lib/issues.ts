@@ -33,6 +33,15 @@ export interface RepoIssues {
   issues: Issue[]
 }
 
+export async function fetchProjects(): Promise<string[]> {
+  const res = await fetch("/api/projects")
+  if (!res.ok) await failWith(res, "load projects")
+  const data = (await res.json()) as { projects?: unknown }
+  return Array.isArray(data.projects)
+    ? data.projects.filter((repo): repo is string => typeof repo === "string")
+    : []
+}
+
 export interface IssueRepoOption {
   /** Canonical source repo path; worktree checkouts fold into this key. */
   readonly repo: string
@@ -244,16 +253,24 @@ export function overviewRows(repos: readonly RepoIssues[]): Array<{
  * back into `task.repo` instead of appearing as separate projects. Labels
  * come from the shared {@link labelRepo} helper (board.ts).
  */
-export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
+export function issueRepoOptions(
+  tasks: readonly Task[],
+  projectRepos: readonly string[] = [],
+): IssueRepoOption[] {
   const counts = new Map<string, number>()
+  for (const repo of projectRepos) {
+    if (repo.trim().length > 0) counts.set(repo, 0)
+  }
   const mainRepos = new Set(
     tasks
       .filter((task) => !task.archived && task.kind === "main" && task.repo)
       .map((task) => task.repo),
   )
+  for (const repo of mainRepos) counts.set(repo, counts.get(repo) ?? 0)
+  const knownProjects = new Set(counts.keys())
   for (const task of tasks) {
     if (task.archived || !task.repo) continue
-    if (mainRepos.size > 0 && !mainRepos.has(task.repo)) continue
+    if (knownProjects.size > 0 && !knownProjects.has(task.repo)) continue
     counts.set(task.repo, (counts.get(task.repo) ?? 0) + 1)
   }
   const repos = [...counts.keys()]
@@ -267,6 +284,22 @@ export function issueRepoOptions(tasks: readonly Task[]): IssueRepoOption[] {
 }
 
 /**
+ * Resolve the current project for issue/board surfaces. A project selection is
+ * mandatory whenever projects exist: issue execution creates a worktree under
+ * this repo, and follow-up merge instructions target this repo's main branch.
+ */
+export function resolveIssueRepoSelection(
+  options: readonly IssueRepoOption[],
+  current: string | null,
+): string | null {
+  if (options.length === 0) return null
+  if (current && options.some((option) => option.repo === current)) {
+    return current
+  }
+  return options[0]?.repo ?? null
+}
+
+/**
  * The engine's first message for a quick-started issue. The caller has
  * already flipped the issue to `doing`; the prompt asks the agent to report
  * completion through the daemon-owned issue API, not by editing repo files.
@@ -276,9 +309,26 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
   const body = issue.body.trim()
   if (body) lines.push(body, "")
   lines.push(
+    "Work in this issue task's worktree. When implementation is ready, insert a final prompt/comment that summarizes what changed and any verification still needed.",
+    "Then merge the task branch back into the current project's main branch after the worktree is clean and checks pass.",
     `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
   )
   return lines.join("\n")
+}
+
+/**
+ * Follow-up prompt for a linked issue after implementation has run in its task
+ * worktree. This is intentionally delivered to the task session instead of
+ * merging in the web UI: the engine owns the final code/check/conflict work.
+ */
+export function issueMergePrompt(issue: Issue, api = "kobe api"): string {
+  return [
+    `Finish kobe issue #${issue.id}: ${issue.title}`,
+    "",
+    "Summarize what changed and any verification still needed.",
+    "Then merge this task branch back into the current project's main branch after the worktree is clean and checks pass. Resolve conflicts if needed.",
+    `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
+  ].join("\n")
 }
 
 /* ----- quick start (side-effectful) --------------------------------------- */
@@ -325,4 +375,14 @@ export async function quickStartIssue(
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
   return { taskId }
+}
+
+/** Insert the merge/finish follow-up prompt into an issue's linked task. */
+export async function promptIssueMerge(
+  taskId: string,
+  issue: Issue,
+): Promise<void> {
+  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
+  const tabId = ensureEngineTab(taskId)
+  await sendPtyText(tabId, taskId, issueMergePrompt(issue, api))
 }
