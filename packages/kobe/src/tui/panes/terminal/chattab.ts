@@ -7,7 +7,7 @@
  * "a window in the session" rather than "the session build itself":
  *
  *   - the window-list presentation (`CHAT_TAB_STATUS_*` formats, the
- *     `@kobe_tab_state` activity tag, the muted `status-right` hint), and
+ *     `@kobe_tab_state` activity tag, the themed `status-right` hint), and
  *     the chat-tab key-binding builders the `ensureSession` applier
  *     installs (`chatTab*Binding(s)` — KEY halves come from the
  *     user-resolvable tmux key set, COMMAND halves are fixed here);
@@ -114,9 +114,9 @@ function tmuxKeyCap(key: string): string {
  * escape-hatch chords, so we surface the three most useful ones. `^h` (the
  * focus-left key) returns to or restores the Tasks pane, `^q` is detach,
  * `^t` opens a new chat tab. Built from the RESOLVED key set so user overrides
- * show their own chords; an unbound key drops its segment. Dimmed with
- * `fg=brightblack` so it reads as a muted hint rather than fighting the user's
- * theme; the trailing space keeps it off the terminal's right edge.
+ * show their own chords; an unbound key drops its segment. The themed
+ * `status-right-style` supplies the muted foreground; the trailing space keeps
+ * it off the terminal's right edge.
  */
 export function kobeStatusRight(keys: {
   focusLeft: string | null
@@ -132,7 +132,7 @@ export function kobeStatusRight(keys: {
     keys.layoutSplits ? `prefix ${keys.layoutSplits} splits` : null,
     keys.layoutPanes ? `prefix ${keys.layoutPanes} panes` : null,
   ].filter((s): s is string => s !== null)
-  return `#[fg=brightblack]${segments.join("  ")} `
+  return `${segments.join("  ")} `
 }
 
 export const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"

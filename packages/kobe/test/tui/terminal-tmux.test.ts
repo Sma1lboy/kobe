@@ -251,12 +251,12 @@ describe("kobeStatusRight", () => {
         layoutSplits: "s/x/r",
         layoutPanes: "a/o/z",
       }),
-    ).toBe("#[fg=brightblack]^h tasks  ^q detach  ^t tab  prefix s/x/r splits  prefix a/o/z panes ")
+    ).toBe("^h tasks  ^q detach  ^t tab  prefix s/x/r splits  prefix a/o/z panes ")
   })
 
   test("shows overridden chords and drops unbound segments", () => {
     expect(kobeStatusRight({ focusLeft: null, detach: "M-d", newTab: "C-y", layoutSplits: null })).toBe(
-      "#[fg=brightblack]M-d detach  ^y tab ",
+      "M-d detach  ^y tab ",
     )
   })
 })

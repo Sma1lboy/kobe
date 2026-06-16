@@ -76,7 +76,7 @@ import {
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
 import { HIDDEN_TASKS_PANE_OPTION, engineLaunchLine, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
-import { applyTmuxPaneBorderTheme } from "@/tui/lib/tmux-border-theme"
+import { applyTmuxChromeTheme } from "@/tui/lib/tmux-border-theme"
 import {
   CHAT_TAB_STATUS_CURRENT_FORMAT,
   CHAT_TAB_STATUS_FORMAT,
@@ -537,18 +537,18 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // set `on` (not just "leave default") so a server that an older
   // kobe turned OFF flips back.
   //
-  // We deliberately do NOT set status-style / status-left: the `-L
-  // kobe` socket still loads the user's `~/.tmux.conf` (the `-L` flag
-  // only changes the socket path, not the config file), so the user's
-  // own status-bar theme applies. The session name (`kobe-<task-id>`,
-  // shown via the user's default `#S` in status-left) is the only
-  // identity we impose on the left.
+  // The status/window bar content is set here, while its theme is applied
+  // below by applyTmuxChromeTheme(). The `-L kobe` socket still loads the
+  // user's `~/.tmux.conf`, but kobe owns visual chrome on its own isolated
+  // socket so the bottom ChatTab switcher matches the active kobe theme.
+  // The session name (`kobe-<task-id>`, shown via the user's default `#S`
+  // in status-left) remains the only identity we impose on the left.
   //
-  // status-right IS set — but minimally: from inside the engine/shell
+  // status-right is set minimally: from inside the engine/shell
   // pane the user otherwise has zero on-screen hint for kobe's
   // escape-hatch chords (get back to Tasks, detach, new tab). We show
-  // the three most useful ones, dimmed (`fg=brightblack`) so they read
-  // as a muted hint and don't fight the user's theme. Server-scoped on
+  // the most useful ones; `status-right-style` supplies the themed muted
+  // foreground. Server-scoped on
   // the isolated `-L kobe` socket, so the user's real tmux status-right
   // is never touched.
   // Window-status format: a compact activity icon in each ChatTab label.
@@ -765,11 +765,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
   ])
 
-  // Theme-matched pane borders. The border tmux would otherwise use
-  // (stock default, or a user tmux.conf gray) disappears against dark
-  // kobe themes; derive both border styles from the active theme
-  // instead. Precedence + the off-switch live in tmux-border-theme.ts.
-  await applyTmuxPaneBorderTheme()
+  // Theme-matched tmux chrome. The tmux defaults (stock green status
+  // bar, green active pane border, or a user's tmux.conf gray) clash
+  // with kobe themes; derive the status/window bar, prompts, mode
+  // selection, pane picker, and borders from the active theme instead.
+  // Precedence + the off-switch live in tmux-border-theme.ts.
+  await applyTmuxChromeTheme()
 
   // Focus the claude pane on first attach. Subsequent attaches keep
   // whatever pane tmux remembered — so a user who detached from Ops

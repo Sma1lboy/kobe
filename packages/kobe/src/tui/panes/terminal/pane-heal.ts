@@ -54,7 +54,7 @@ import {
   shellQuoteArgv,
   tasksPaneCommand,
 } from "@/tmux/session-layout"
-import { applyTmuxPaneBorderTheme } from "@/tui/lib/tmux-border-theme"
+import { applyTmuxChromeTheme } from "@/tui/lib/tmux-border-theme"
 import { CURRENT_VERSION } from "@/version"
 import { inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
 import { recordGen } from "./layout-coord"
@@ -527,10 +527,10 @@ export async function captureGlobalLayoutOnDrag(session: string): Promise<void> 
  * because it still serves everything else: NON-visual prefs each pane's
  * KVProvider snapshotted at boot (notification toggles, settings surface,
  * editor kind, …) and the no-daemon degraded mode. It also remains the
- * single owner of the tmux border re-style below — the two border options
- * are server-global, so this one call after a Settings exit covers every
- * session; applying them from each pane's live-prefs hook would just race
- * the same `set-option`s.
+ * single owner of the tmux chrome re-style below — the tmux status/window
+ * bar and border options are server-global, so this one call after a Settings
+ * exit covers every session; applying them from each pane's live-prefs hook
+ * would just race the same `set-option`s.
  */
 export async function refreshKobeWorkspacePanes(session: string): Promise<void> {
   const sessionOptions = await getSessionOptions(session, ["@kobe_worktree", "@kobe_task", "@kobe_vendor"])
@@ -546,8 +546,8 @@ export async function refreshKobeWorkspacePanes(session: string): Promise<void> 
   })
   if (commands.length > 0) await runTmuxSequence(commands)
 
-  // The Appearance prefs the respawned panes just re-read also drive the
-  // tmux border colors — re-derive those in the same pass so a theme
-  // switch restyles the pane separators without a new session build.
-  await applyTmuxPaneBorderTheme()
+  // The Appearance prefs the respawned panes just re-read also drive tmux
+  // chrome — re-derive those in the same pass so a theme switch restyles
+  // the status/window bar and pane separators without a new session build.
+  await applyTmuxChromeTheme()
 }

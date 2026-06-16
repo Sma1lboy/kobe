@@ -23,7 +23,7 @@ import {
 } from "../state/repos.ts"
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
-import { applyTmuxPaneBorderTheme } from "./lib/tmux-border-theme.ts"
+import { applyTmuxChromeTheme } from "./lib/tmux-border-theme.ts"
 import {
   attachArgv,
   ensureSession,
@@ -125,8 +125,8 @@ export async function startDirectTmux(): Promise<void> {
       // auto-title pass, so we attach and return directly.
       const home = await ensureFallbackSession()
       // Fallback sessions skip ensureSession's server-nicety block, so
-      // apply the theme-matched borders here before attaching.
-      await applyTmuxPaneBorderTheme()
+      // apply the theme-matched tmux chrome here before attaching.
+      await applyTmuxChromeTheme()
       // Fit + heal the window before attaching so the first frame is correct
       // (no reflow flash on attach — see prepareWindowForAttach).
       await prepareWindowForAttach(home)
@@ -159,9 +159,9 @@ export async function startDirectTmux(): Promise<void> {
     }
 
     // ensureSession's reuse path skips the server-nicety block where the
-    // create path applies border styling, and the user may have switched
+    // create path applies tmux chrome styling, and the user may have switched
     // themes since the server last saw an apply — refresh before attach.
-    await applyTmuxPaneBorderTheme()
+    await applyTmuxChromeTheme()
 
     // Fit the window to this terminal and heal the layout BEFORE attaching, so
     // the first painted frame is already correct — no reflow "flash" where the
