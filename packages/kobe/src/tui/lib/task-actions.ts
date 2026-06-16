@@ -146,6 +146,14 @@ export interface CreateTaskContext extends TaskActionContext {
   readonly openCreateSurface?: (defaultRepo: string) => Promise<boolean>
   /** Land the host's cursor/selection on the created (or last adopted) task. */
   readonly selectTask?: (id: string) => void
+  /**
+   * Enter (switch into) the created (or last adopted) task right after
+   * creation — so `n` drops the user in the engine pane ready to type the
+   * first prompt, instead of just landing the cursor. The Tasks pane wires
+   * this to its `switchTo`; the chattab surface does its own jump and never
+   * reaches here.
+   */
+  readonly enterTask?: (id: string) => void | Promise<void>
 }
 
 export function nextActiveTask(tasks: readonly Task[], excludeId: string): Task | undefined {
@@ -461,6 +469,11 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
     return
   }
   await ctx.reload?.()
-  // Land the cursor on the new task so Enter / click enters it next.
-  if (createdId) ctx.selectTask?.(createdId)
+  // Land the cursor on the new task, then enter it — `n` should drop the user
+  // straight into the engine pane ready to type, not just move the selection.
+  // (Hosts without `enterTask` fall back to cursor-only.)
+  if (createdId) {
+    ctx.selectTask?.(createdId)
+    await ctx.enterTask?.(createdId)
+  }
 }
