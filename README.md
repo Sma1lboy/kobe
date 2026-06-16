@@ -11,12 +11,18 @@
   <a href="https://www.npmjs.com/package/@sma1lboy/kobe"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Fkobe.svg" alt="npm version" /></a>
   <a href="./packages/kobe/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-latest-blue" alt="changelog" /></a>
 </p>
+<img width="2559" height="1510" alt="image" src="https://github.com/user-attachments/assets/f8dab7ca-43a1-4f76-adad-f19239f5f503" />
+
 
 ## A quick look
 
 
 
-https://github.com/user-attachments/assets/b37c5199-9a16-4a31-8ac6-79e968658867
+
+
+https://github.com/user-attachments/assets/17947cf2-bd90-41d8-9e56-2b30050f6d08
+
+
 
 
 
