@@ -3,12 +3,14 @@
  * (`src/tmux/keybindings.ts`) — the `tmux.*` half of
  * `~/.kobe/settings/keybindings.yaml`.
  *
- * Why these matter: the resolver feeds REAL no-prefix tmux root-table
- * bindings (`bind-key -n`) live in every pane of a task session. A
+ * Why these matter: the resolver feeds REAL tmux bindings into every task
+ * session: no-prefix root-table binds (`bind-key -n`) for navigation and
+ * prefix-table binds (`bind-key`) for layout controls. A
  * translation bug here doesn't crash — it either installs a dead key
  * (chord → wrong tmux name) or, far worse, binds a bare letter that
- * shadows typing in the engine/shell panes. The bare-key rejection and
- * the chord→tmux-syntax mapping are the load-bearing invariants.
+ * shadows typing in the engine/shell panes. The root bare-key rejection,
+ * prefix bare-key allowance, and chord→tmux-syntax mapping are the
+ * load-bearing invariants.
  *
  * Only the pure half is tested; `resolveUserTmuxKeys` (file read +
  * Bun.YAML) is Bun-runtime-only and exercised by the smoke path.
@@ -18,8 +20,11 @@ import { describe, expect, test } from "vitest"
 import {
   TMUX_FOCUS_DEFAULTS,
   TMUX_FOCUS_ID,
+  TMUX_LEGACY_LAYOUT_ROOT_KEYS,
+  TMUX_PREFIX_BINDING_DEFAULTS,
   TMUX_SINGLE_BINDING_DEFAULTS,
   chordToTmuxKey,
+  isTmuxPrefixBindingId,
   resolveTmuxKeyEntries,
 } from "../../src/tmux/keybindings"
 
@@ -57,6 +62,11 @@ describe("chordToTmuxKey", () => {
     expect(keyOf("f5")).toBe("F5")
   })
 
+  test("allows bare keys for prefix-table bindings", () => {
+    expect(chordToTmuxKey("s", { allowBare: true })).toEqual({ key: "s" })
+    expect(chordToTmuxKey("escape", { allowBare: true })).toEqual({ key: "Escape" })
+  })
+
   test("rejects key names tmux can't bind", () => {
     expect("error" in chordToTmuxKey("ctrl+banana")).toBe(true)
   })
@@ -68,7 +78,21 @@ describe("resolveTmuxKeyEntries", () => {
     expect(res.warnings).toEqual([])
     expect(res.overridden.size).toBe(0)
     expect(res.binds["tmux.tab.new"]).toEqual({ chord: "ctrl+t", key: "C-t" })
+    expect(res.binds["tmux.layout.workspaceSplit"]).toEqual({ chord: "s", key: "s" })
+    expect(res.binds["tmux.layout.terminalToggle"]).toEqual({ chord: "z", key: "z" })
     expect(res.focus.map((f) => f?.key)).toEqual(["C-h", "C-j", "C-k", "C-l"])
+  })
+
+  test("layout ids are prefix-table bindings and accept bare-key overrides", () => {
+    expect(isTmuxPrefixBindingId("tmux.layout.workspaceSplit")).toBe(true)
+    expect(TMUX_PREFIX_BINDING_DEFAULTS["tmux.layout.workspaceSplit"]).toBe("s")
+    const res = resolveTmuxKeyEntries([{ id: "tmux.layout.workspaceSplit", keys: ["g"] }])
+    expect(res.binds["tmux.layout.workspaceSplit"]).toEqual({ chord: "g", key: "g" })
+    expect(res.overridden.has("tmux.layout.workspaceSplit")).toBe(true)
+  })
+
+  test("tracks the old F6-F11 root layout keys for stale tmux-server cleanup", () => {
+    expect(TMUX_LEGACY_LAYOUT_ROOT_KEYS).toEqual(["F6", "F7", "F8", "F9", "F10", "F11"])
   })
 
   test("override + unbind: new key recorded, default key flagged for unbinding", () => {
@@ -104,6 +128,13 @@ describe("resolveTmuxKeyEntries", () => {
     expect(res.binds["tmux.detach"]).toEqual({ chord: TMUX_SINGLE_BINDING_DEFAULTS["tmux.detach"], key: "C-q" })
     expect(res.warnings.some((w) => w.includes("Command key"))).toBe(true)
     expect(res.overridden.has("tmux.detach")).toBe(false)
+  })
+
+  test("root-table ids still reject bare-key overrides", () => {
+    const res = resolveTmuxKeyEntries([{ id: "tmux.tab.new", keys: ["n"] }])
+    expect(res.binds["tmux.tab.new"]).toEqual({ chord: TMUX_SINGLE_BINDING_DEFAULTS["tmux.tab.new"], key: "C-t" })
+    expect(res.warnings.some((w) => w.includes("bare key would shadow typing"))).toBe(true)
+    expect(res.overridden.has("tmux.tab.new")).toBe(false)
   })
 
   test("unknown tmux ids warn; non-tmux ids are silently ignored (other layer)", () => {

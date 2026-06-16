@@ -101,7 +101,10 @@ export function formatChord(chord: string, prefixGlyph = "⌃B"): string {
   const s = chord.trim()
   if (!s) return s
   const pm = /^prefix\s+(.+)$/i.exec(s)
-  if (pm) return `${prefixGlyph} ${formatKey(pm[1] ?? "", true)}`
+  if (pm) {
+    const suffix = pm[1] ?? ""
+    return `${prefixGlyph} ${suffix.includes("+") ? formatChord(suffix, prefixGlyph) : formatKey(suffix, true)}`
+  }
   const parts = s.split("+")
   if (parts.length === 1) return formatKey(parts[0] ?? "", false) // bare key — keep its case
   const key = parts[parts.length - 1] ?? ""

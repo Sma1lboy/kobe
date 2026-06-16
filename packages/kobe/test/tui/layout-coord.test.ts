@@ -118,6 +118,14 @@ describe("shouldCaptureDrag", () => {
     expect(shouldCaptureDrag("tasks\t0\nclaude\t0\n")).toBe(false)
   })
 
+  test("skips while the terminal is hidden in a background window", () => {
+    expect(shouldCaptureDrag("tasks\t0\t%9\nclaude\t0\t%9\nops\t0\t%9\n")).toBe(false)
+  })
+
+  test("skips while the Tasks pane is hidden in a background window", () => {
+    expect(shouldCaptureDrag("claude\t0\t\t%8\nops\t0\t\t%8\nshell\t0\t\t%8\n")).toBe(false)
+  })
+
   test("skips an empty / role-less listing", () => {
     expect(shouldCaptureDrag("")).toBe(false)
     expect(shouldCaptureDrag("\t0\n\t0\n")).toBe(false)

@@ -110,6 +110,19 @@ describe("focusBindCommand", () => {
       "select-pane -L",
     ])
   })
+
+  test("can run a no-wrap edge command for hidden Tasks restore", () => {
+    expect(focusBindCommand("C-h", "-L", "run-shell restore")).toEqual([
+      "bind-key",
+      "-n",
+      "C-h",
+      "if-shell",
+      "-F",
+      "#{?window_zoomed_flag,1,#{?pane_at_left,,1}}",
+      "select-pane -L",
+      "run-shell restore",
+    ])
+  })
 })
 
 describe("chatTabCloseBinding", () => {
@@ -122,6 +135,19 @@ describe("chatTabCloseBinding", () => {
       "-F",
       "#{>:#{session_windows},1}",
       "kill-window",
+      "display-message 'Cannot close the only ChatTab'",
+    ])
+  })
+
+  test("can route close through the kobe cleanup command before killing the window", () => {
+    expect(chatTabCloseBinding("C-w", "run-shell 'kobe layout --action chat-tab-close'")).toEqual([
+      "bind-key",
+      "-n",
+      "C-w",
+      "if-shell",
+      "-F",
+      "#{>:#{session_windows},1}",
+      "run-shell 'kobe layout --action chat-tab-close'",
       "display-message 'Cannot close the only ChatTab'",
     ])
   })
@@ -217,13 +243,19 @@ describe("parseObservedSession", () => {
 
 describe("kobeStatusRight", () => {
   test("renders the three escape-hatch hints from the resolved keys", () => {
-    expect(kobeStatusRight({ focusLeft: "C-h", detach: "C-q", newTab: "C-t" })).toBe(
-      "#[fg=brightblack]^h tasks  ^q detach  ^t tab ",
-    )
+    expect(
+      kobeStatusRight({
+        focusLeft: "C-h",
+        detach: "C-q",
+        newTab: "C-t",
+        layoutSplits: "s/x/r",
+        layoutPanes: "a/o/z",
+      }),
+    ).toBe("#[fg=brightblack]^h tasks  ^q detach  ^t tab  prefix s/x/r splits  prefix a/o/z panes ")
   })
 
   test("shows overridden chords and drops unbound segments", () => {
-    expect(kobeStatusRight({ focusLeft: null, detach: "M-d", newTab: "C-y" })).toBe(
+    expect(kobeStatusRight({ focusLeft: null, detach: "M-d", newTab: "C-y", layoutSplits: null })).toBe(
       "#[fg=brightblack]M-d detach  ^y tab ",
     )
   })

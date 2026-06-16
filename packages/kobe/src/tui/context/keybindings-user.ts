@@ -32,6 +32,7 @@ import {
   TMUX_FOCUS_DEFAULTS,
   TMUX_FOCUS_ID,
   TMUX_SINGLE_BINDING_DEFAULTS,
+  isTmuxPrefixBindingId,
   resetTmuxKeysCache,
   resolveTmuxKeyEntries,
   tmuxChordOptsFor,
@@ -101,6 +102,10 @@ export function applyUserKeybindings(): UserKeybindingsReport {
         keys: bind ? [bind.chord] : [],
         defaultKeys: [TMUX_SINGLE_BINDING_DEFAULTS[id as keyof typeof TMUX_SINGLE_BINDING_DEFAULTS]],
       })
+      const displayRow = KobeKeymap.find((row) => row.id === id)
+      if (displayRow?.hint) {
+        displayRow.hint.keys = bind ? `${isTmuxPrefixBindingId(id) ? "prefix " : ""}${bind.chord}` : "—"
+      }
     }
   }
 

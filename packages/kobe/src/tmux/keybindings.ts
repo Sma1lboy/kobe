@@ -3,7 +3,7 @@
  * `~/.kobe/settings/keybindings.yaml`).
  *
  * The direct-tmux handover chords (ctrl+t / ctrl+[ / ctrl+] / ctrl+w /
- * ctrl+q / ctrl+hjkl, F2) are NOT opentui bindings — they're real tmux
+ * ctrl+q / ctrl+hjkl, F2, and prefix-scoped layout keys) are NOT opentui bindings — they're real tmux
  * server bindings installed by `ensureSession` on the `-L kobe` socket
  * (`src/tui/panes/terminal/tmux.ts`). This module gives them the same
  * YAML override path as `KobeKeymap` ids, sharing the file reader
@@ -24,9 +24,9 @@
  *
  * Validation beyond the shared chord grammar:
  *   - `cmd+` chords are rejected — the macOS Command key never reaches tmux.
- *   - bare keys (no modifier) are rejected unless they're F-keys: these are
- *     no-prefix ROOT-table bindings live in every pane, so a bare letter
- *     would shadow typing in the engine/shell panes.
+ *   - bare keys (no modifier) are rejected unless they're F-keys for
+ *     no-prefix ROOT-table bindings because they live in every pane and would
+ *     shadow typed input. Prefix-table bindings may use bare keys.
  *   - tmux can't express every named key; unsupported names are rejected.
  *
  * Stale-bind hygiene: tmux servers are long-lived, so when an id is
@@ -38,8 +38,8 @@
 import { readKeybindingsFile } from "../state/keybindings-file"
 import { type KeymapOverrideEntry, extractKeybindingOverrides, normalizeChord } from "../tui/lib/keymap-overrides"
 
-/** Single-chord tmux binding ids. `tmux.focus` (the 4-chord group) is separate. */
-export const TMUX_SINGLE_BINDING_DEFAULTS = {
+/** No-prefix single-chord tmux binding ids. `tmux.focus` (the 4-chord group) is separate. */
+export const TMUX_ROOT_BINDING_DEFAULTS = {
   /** Two-stage: focus the Tasks pane, then detach on a second press from there. */
   "tmux.detach": "ctrl+q",
   /** New same-engine ChatTab window. */
@@ -56,7 +56,41 @@ export const TMUX_SINGLE_BINDING_DEFAULTS = {
   "tmux.tab.rename": "f2",
 } as const
 
+/** Prefix-table layout bindings. These do not steal input from engine/shell panes. */
+export const TMUX_PREFIX_BINDING_DEFAULTS = {
+  /** Add a temporary shell split in the middle workspace area (max 4 panes). */
+  "tmux.layout.workspaceSplit": "s",
+  /** Close the focused workspace split, or the most recent split. */
+  "tmux.layout.workspaceClose": "x",
+  /** Close all temporary workspace splits in the current ChatTab. */
+  "tmux.layout.workspaceReset": "r",
+  /** Hide/restore the Tasks rail while preserving its pane process. */
+  "tmux.layout.tasksToggle": "a",
+  /** Toggle the file/Ops pane in the current ChatTab. */
+  "tmux.layout.opsToggle": "o",
+  /** Hide/restore the terminal pane while preserving its shell process. */
+  "tmux.layout.terminalToggle": "z",
+} as const
+
+/**
+ * 0.7.30 briefly shipped layout controls as no-prefix F6-F11 root bindings.
+ * Always unbind these during session setup so a long-lived tmux server does not
+ * keep stale root keys after the defaults move to prefix-table bindings.
+ */
+export const TMUX_LEGACY_LAYOUT_ROOT_KEYS = ["F6", "F7", "F8", "F9", "F10", "F11"] as const
+
+/** Single-chord tmux binding ids. `tmux.focus` (the 4-chord group) is separate. */
+export const TMUX_SINGLE_BINDING_DEFAULTS = {
+  ...TMUX_ROOT_BINDING_DEFAULTS,
+  ...TMUX_PREFIX_BINDING_DEFAULTS,
+} as const
+
 export type TmuxSingleBindingId = keyof typeof TMUX_SINGLE_BINDING_DEFAULTS
+export type TmuxPrefixBindingId = keyof typeof TMUX_PREFIX_BINDING_DEFAULTS
+
+export function isTmuxPrefixBindingId(id: string): id is TmuxPrefixBindingId {
+  return id in TMUX_PREFIX_BINDING_DEFAULTS
+}
 
 /** Directional pane-focus group: POSITIONAL, order left / down / up / right. */
 export const TMUX_FOCUS_ID = "tmux.focus"
@@ -89,7 +123,7 @@ export type TmuxKeyResult = { key: string } | { error: string }
  * `alt+pageup`) into tmux bind-key syntax (`C-t`, `C-S-T`, `F2`,
  * `M-PgUp`), or explain why tmux can't bind it.
  */
-export function chordToTmuxKey(chord: string): TmuxKeyResult {
+export function chordToTmuxKey(chord: string, opts?: { allowBare?: boolean }): TmuxKeyResult {
   const parts = chord.split("+")
   let key = parts.pop() ?? ""
   if (key === "" && parts.length > 0) {
@@ -114,7 +148,7 @@ export function chordToTmuxKey(chord: string): TmuxKeyResult {
   }
 
   const isFKey = /^f\d+$/.test(key)
-  if (mods.size === 0 && !isFKey) {
+  if (mods.size === 0 && !isFKey && !opts?.allowBare) {
     return {
       error: `"${chord}": tmux session keys are no-prefix root bindings live in every pane — a bare key would shadow typing (add a modifier, or use an F-key)`,
     }
@@ -145,7 +179,7 @@ export type TmuxKeyResolution = {
 function defaultResolution(): TmuxKeyResolution {
   const binds = {} as Record<TmuxSingleBindingId, TmuxResolvedBind | null>
   for (const [id, chord] of Object.entries(TMUX_SINGLE_BINDING_DEFAULTS)) {
-    const t = chordToTmuxKey(chord)
+    const t = chordToTmuxKey(chord, { allowBare: isTmuxPrefixBindingId(id) })
     if ("error" in t) throw new Error(`default tmux chord for ${id} failed to translate: ${t.error}`)
     binds[id as TmuxSingleBindingId] = { chord, key: t.key }
   }
@@ -211,7 +245,7 @@ export function resolveTmuxKeyEntries(entries: readonly KeymapOverrideEntry[]): 
       res.warnings.push(`${id}: tmux bindings take ONE chord — using "${entry.keys[0]}", ignoring the rest`)
     }
     const chord = entry.keys[0] as string
-    const t = chordToTmuxKey(chord)
+    const t = chordToTmuxKey(chord, { allowBare: isTmuxPrefixBindingId(id) })
     if ("error" in t) {
       res.warnings.push(`${id}: ${t.error} — keeping the default`)
       continue

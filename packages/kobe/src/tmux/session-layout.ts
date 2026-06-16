@@ -24,6 +24,26 @@
  * shortcut legend without clipped text.
  */
 export const TASKS_PANE_WIDTH = 32
+export const TASKS_PANE_ROLE = "tasks"
+export const ENGINE_PANE_ROLE = "claude"
+export const OPS_PANE_ROLE = "ops"
+export const SHELL_PANE_ROLE = "shell"
+export const WORKSPACE_AUX_PANE_ROLE = "workspace_aux"
+export const WORKSPACE_SPLIT_MAX_PANES = 4
+export const HIDDEN_TERMINAL_PANE_OPTION = "@kobe_hidden_shell_pane"
+export const HIDDEN_TASKS_PANE_OPTION = "@kobe_hidden_tasks_pane"
+
+/** Hidden helper session that holds panes broken out of one task session. */
+export function hiddenTerminalSessionName(session: string): string {
+  const safe = session.replace(/[^A-Za-z0-9_-]/g, "")
+  return `kobe-hidden-${safe || "session"}`
+}
+
+/** Stable hidden-window slot for a ChatTab's active window id. */
+export function hiddenTerminalWindowIndex(windowId: string): number {
+  const n = Number.parseInt(windowId.replace(/^@/, ""), 10)
+  return Number.isFinite(n) && n >= 0 ? 1000 + n : 1000
+}
 
 /**
  * Server-scoped tmux user option holding the user's GLOBAL Tasks-rail width in
