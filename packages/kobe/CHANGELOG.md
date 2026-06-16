@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.33
+
+### Patch Changes
+
+- dda80e9: Creating a task with `n` now drops you straight into the new task's engine pane, ready to type the first prompt — instead of just landing the cursor on it in the Tasks list. The full new-task flow now mirrors the prompt-first `f` quick-create's jump on both surfaces (the dedicated `kobe new-task` tab and the in-pane overlay), and the repo's `init-prompt.md` fires as the engine's first message just as it does on a normal enter. Adopting existing worktrees enters the last one. The proven "build session + switch-client" jump is now a shared helper reused by quick-task, new-task, and the Tasks pane.
+- 9653cd7: TUI task sessions now expose tmux-native layout controls: temporary middle workspace shell splits capped at four panes, Tasks pane hide/restore, file/Ops pane hide/show, and terminal hide/restore by moving panes to a background tmux window without killing their processes.
+
 ## 0.7.32
 
 ### Patch Changes
