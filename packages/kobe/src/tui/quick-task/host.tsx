@@ -29,9 +29,9 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
-import { engineDisplayName, interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { engineDisplayName } from "../../engine/interactive-command.ts"
 import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
-import { getSessionOptions, runTmux, sessionExists, tmuxSessionName } from "../../tmux/client.ts"
+import { getSessionOptions, tmuxSessionName } from "../../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
@@ -39,6 +39,7 @@ import { useTheme } from "../context/theme"
 import { DEFAULT_BASE_REF, getCurrentBranch } from "../lib/git-snapshot.ts"
 import { bootPaneHost } from "../lib/host-boot"
 import { expandHome } from "../lib/path-helpers.ts"
+import { ensureTaskSession, jumpToTask } from "../lib/task-enter.ts"
 import { NewTaskPage } from "../new-task/host.tsx"
 import { repoBasename } from "../panes/sidebar/groups"
 import { useDialog } from "../ui/dialog"
@@ -92,37 +93,10 @@ async function resolveQuickTaskContext(
 
 /**
  * Deliver a freshly-created task's first prompt. Mirrors `kobe api add`'s
- * deliver path: ensure the worktree, build the session with the init SCRIPT
- * only (no init-prompt, so this typed prompt isn't double-pasted), wait for
- * the engine pane, then bracketed-paste + submit. Best-effort on the pane.
+ * deliver path: build the session with the init SCRIPT only (no init-prompt,
+ * so this typed prompt isn't double-pasted — `ensureTaskSession`'s default),
+ * wait for the engine pane, then bracketed-paste + submit. Best-effort.
  */
-async function ensureTaskSession(
-  orch: RemoteOrchestrator,
-  task: Task,
-  repo: string,
-  vendor: VendorId,
-): Promise<boolean> {
-  const session = tmuxSessionName(task.id)
-  if (await sessionExists(session)) return true
-  let worktree = task.worktreePath
-  if (!worktree) worktree = await orch.ensureWorktree(task.id)
-  if (!worktree) throw new Error(`task ${task.id} has no worktree`)
-  const { ensureSession } = await import("../panes/terminal/tmux.ts")
-  const { resolveRepoInit } = await import("../../state/repo-init.ts")
-  const init = resolveRepoInit(repo, worktree)
-  const ok = await ensureSession({
-    name: session,
-    cwd: worktree,
-    command: interactiveEngineCommand(vendor),
-    taskId: task.id,
-    vendor,
-    repo,
-    initScript: init.initScript,
-  })
-  if (!ok) throw new Error(`failed to start tmux session for ${task.id}`)
-  return false // freshly built
-}
-
 async function deliverFirstPromptToTask(
   orch: RemoteOrchestrator,
   task: Task,
@@ -134,24 +108,6 @@ async function deliverFirstPromptToTask(
   const session = tmuxSessionName(task.id)
   const { pane } = await waitForEnginePane(session, !existed)
   if (pane) await pasteAndSubmit(pane, prompt)
-}
-
-/**
- * Jump the attached client to the freshly-created task: mark it active and
- * `switch-client` to its tmux session (the session already exists — deliver
- * built it). Mirrors the Tasks pane's `switchTo`. The quick-task window then
- * exits; the client is already on the new task's session, so closing the old
- * window doesn't disturb it.
- */
-async function jumpToTask(orch: RemoteOrchestrator, task: Task, repo: string, vendor: VendorId): Promise<void> {
-  await ensureTaskSession(orch, task, repo, vendor) // no-op if deliver already built it
-  await orch.setActiveTask(task.id).catch(() => {})
-  // Fit + heal the target to THIS client before switching in, so it doesn't
-  // reflow on screen — the quick-task window's stdout is its own pane, not the
-  // full terminal (see prepareWindowForSwitch).
-  const { prepareWindowForSwitch } = await import("../panes/terminal/tmux.ts")
-  await prepareWindowForSwitch(tmuxSessionName(task.id))
-  await runTmux(["switch-client", "-t", `=${tmuxSessionName(task.id)}`])
 }
 
 function QuickTaskPage(props: { ctx: QuickTaskContext; orchestrator: RemoteOrchestrator | null }) {

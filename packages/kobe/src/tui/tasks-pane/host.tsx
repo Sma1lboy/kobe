@@ -281,6 +281,10 @@ function TasksShell(props: {
     // Land the cursor on the new task so Enter / click enters it next.
     // (The daemon subscribe pushes the new task into the list momentarily.)
     selectTask: (id) => setSelectedId(id),
+    // Then enter it: `n` drops the user straight into the new task's engine
+    // pane (the same enter loop Enter/click runs), ready to type the first
+    // prompt — not just a moved cursor.
+    enterTask: (id) => switchTo(id),
   }
 
   // `n` creates a new task using the SAME NewTaskDialog (and now the same
