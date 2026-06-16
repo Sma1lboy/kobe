@@ -28,6 +28,7 @@ import {
   TASKS_PANE_WIDTH,
   TASKS_WIDTH_OPTION,
   clampTasksPaneWidth,
+  hiddenTerminalSessionName,
   homeWelcomeCommand,
   keepAlive,
   tasksPaneCommand,
@@ -448,6 +449,10 @@ export async function currentSessionName(): Promise<string | null> {
 
 /** Kill a session (if any). */
 export async function killSession(name: string): Promise<void> {
+  if (!name.startsWith("kobe-hidden-")) {
+    const hidden = hiddenTerminalSessionName(name)
+    if (await sessionExists(hidden)) await runTmux(["kill-session", "-t", `=${hidden}`])
+  }
   if (await sessionExists(name)) await runTmux(["kill-session", "-t", `=${name}`])
 }
 

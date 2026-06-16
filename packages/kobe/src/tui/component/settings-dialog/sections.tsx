@@ -902,6 +902,7 @@ export function KeybindingsSettingsSection() {
           <text fg={theme.textMuted}>{"  sidebar.select: [enter]    # list = several chords"}</text>
           <text fg={theme.textMuted}>{"  files.createPR: null       # null = unbind"}</text>
           <text fg={theme.textMuted}>{"  tmux.tab.new: ctrl+y       # tmux session key (see below)"}</text>
+          <text fg={theme.textMuted}>{"  tmux.layout.workspaceSplit: g  # prefix g"}</text>
           <text fg={theme.textMuted}>{"darwin:                      # platform overlay (also: linux)"}</text>
           <text fg={theme.textMuted}>{"  bindings:"}</text>
           <text fg={theme.textMuted}>{"    palette.open: [cmd+p, ctrl+p]"}</text>
@@ -940,7 +941,7 @@ export function KeybindingsSettingsSection() {
       </Show>
       <text fg={theme.textMuted} wrapMode="word">
         {
-          "tmux session keys use the same file: tmux.tab.new (ctrl+t), tmux.tab.prev/next (ctrl+[/]), tmux.tab.close (ctrl+w), tmux.tab.rename (f2), tmux.tab.chooseEngine (ctrl+shift+t), tmux.detach (ctrl+q), tmux.focus (4 chords, left/down/up/right). They apply when a session is (re)built."
+          "tmux session keys use the same file: tmux.tab.new (ctrl+t), tmux.tab.prev/next (ctrl+[/]), tmux.tab.close (ctrl+w), tmux.tab.rename (f2), tmux.tab.chooseEngine (ctrl+shift+t), tmux.detach (ctrl+q), tmux.focus (4 chords, left/down/up/right), and prefix layout keys: workspaceSplit (s), workspaceClose (x), workspaceReset (r), tasksToggle (a), opsToggle (o), terminalToggle (z). They apply when a session is (re)built."
         }
       </text>
       <text fg={theme.textMuted} wrapMode="word">

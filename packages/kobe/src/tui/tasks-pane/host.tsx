@@ -809,10 +809,16 @@ function ShortcutHints(props: {
     } else if (focusChords.length > 0) {
       out.push({ k: focusChords[0] as string, label: "move panes" })
     }
-    // Trimmed legend: only the two always-relevant tmux rows survive —
-    // pane movement and the tasks→detach chord. The per-tab rows (switch /
-    // new / engine / rename / close) live in F1 full help, not the footer.
+    const layoutGroup = (label: string, ids: readonly (keyof typeof b)[]): void => {
+      const chords = ids.map((id) => b[id]?.chord).filter((chord): chord is string => !!chord)
+      if (chords.length > 0) out.push({ k: `prefix ${chords.join("/")}`, label })
+    }
+    // Trimmed legend: keep pane movement, the tasks→detach chord, and the two
+    // tmux-prefix layout groups. Per-tab rows (switch / new / engine / rename /
+    // close) live in F1 full help, not the footer.
     if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
+    layoutGroup("splits", ["tmux.layout.workspaceSplit", "tmux.layout.workspaceClose", "tmux.layout.workspaceReset"])
+    layoutGroup("panes", ["tmux.layout.tasksToggle", "tmux.layout.opsToggle", "tmux.layout.terminalToggle"])
     return out
   }
   // Fixed-width key column so labels line up — a terminal-grammar legend

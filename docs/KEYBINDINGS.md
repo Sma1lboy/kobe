@@ -106,6 +106,12 @@ Normal startup opens directly into the task's tmux session. These keys are insta
 | `ctrl+[` / `ctrl+]` | no-prefix tmux | Previous / next ChatTab window. |
 | `ctrl+w` | no-prefix tmux | Close the current ChatTab window if another window remains. |
 | `F2` | no-prefix tmux | Rename the current ChatTab window. |
+| tmux `prefix s` | tmux prefix | Add a temporary shell split in the middle workspace area. The current ChatTab caps at four middle panes: engine + up to three aux shells. |
+| tmux `prefix x` | tmux prefix | Close the focused workspace aux split, or the most recent aux split when focus is elsewhere. The engine pane is never closed by this binding. |
+| tmux `prefix r` | tmux prefix | Reset the middle workspace area by closing every temporary aux split in the current ChatTab. |
+| tmux `prefix a` | tmux prefix | Hide/restore the Tasks pane by moving it to a background tmux window, preserving the Tasks process. |
+| tmux `prefix o` | tmux prefix | Toggle the file/Ops pane in the current ChatTab. Hiding it closes only the kobe-owned Ops pane; showing it rebuilds that pane against the current engine pane. |
+| tmux `prefix z` | tmux prefix | Hide/restore the terminal pane by moving it to a background tmux window, preserving its shell process and scrollback. |
 | tmux `prefix f` | tmux prefix | Open the prompt-only quick-task page (asks for just a prompt; repo / engine / base branch default from the current task). |
 
 Inside the Tasks pane itself, plain-letter task actions are pane-local: `n` new task, `s` Settings, `u` update page when an update is available, `o` open worktree, `t` toggle task sort (default/manual vs recent), `a` archive/unarchive, `d` delete, `r` title, `b` branch, `v` engine, `?` collapse/expand the keys legend (KV-persisted; clicking the `── keys ──` header does the same), and `[` / `]` Working session vs Archives. `Right` (`tasks.focusEngine`) re-focuses the current window's engine pane — the role-tagged `@kobe_role=claude` pane via `claudePaneIdStrict`, the inverse of the ctrl+h jump to the rail — and no-ops outside tmux (no `$TMUX_PANE`). These host-level letters (and Right) gate on BOTH an empty dialog stack and the sidebar's `/`-search being inactive — while a query is being typed they fall through as literal text (Right keeps moving the search input's cursor); move-mode is unaffected, since it only owns `j`/`k`/`enter`/`esc`. Archive/delete also kill the task's cached tmux session when present, because the legacy outer monitor no longer owns that cleanup path.
@@ -167,13 +173,17 @@ Semantics and guard rails:
   `tmux.tab.chooseEngine` (ctrl+shift+t — shift+letter IS allowed here, tmux
   binds `C-S-…` on extended-keys terminals), `tmux.tab.prev`/`tmux.tab.next`
   (ctrl+[ / ctrl+]), `tmux.tab.close` (ctrl+w), `tmux.tab.rename` (f2),
-  `tmux.detach` (ctrl+q two-stage), and `tmux.focus` — a POSITIONAL group of
-  exactly 4 chords in order left/down/up/right (default ctrl+h/j/k/l). One
-  chord per single id; `null` skips installing the binding. Extra guard rails:
-  `cmd+` chords are rejected (Command never reaches tmux) and bare keys are
-  rejected unless they're F-keys (no-prefix root bindings live in every pane —
-  a bare letter would shadow typing). The Tasks-pane footer legend and the
-  tmux `status-right` hint render from the resolved set, so overrides show
+  `tmux.detach` (ctrl+q two-stage), prefix-scoped layout controls
+  (`tmux.layout.workspaceSplit` = `s`, `tmux.layout.workspaceClose` = `x`,
+  `tmux.layout.workspaceReset` = `r`, `tmux.layout.tasksToggle` = `a`,
+  `tmux.layout.opsToggle` = `o`, `tmux.layout.terminalToggle` = `z`), and
+  `tmux.focus` — a POSITIONAL group of exactly 4 chords in order
+  left/down/up/right (default ctrl+h/j/k/l). One chord per single id; `null`
+  skips installing the binding. Extra guard rails: `cmd+` chords are rejected
+  (Command never reaches tmux). Bare keys are rejected for no-prefix root ids
+  unless they're F-keys because root bindings live in every pane and would
+  shadow typing; prefix-scoped layout ids may use bare keys. The Tasks-pane
+  footer legend and the tmux `status-right` hint render from the resolved set, so overrides show
   their own chords. Overrides apply when a session is (re)built, not to a
   session that's already running. The `prefix T` / `prefix f` rows stay fixed.
 - **Positional (slot-layout) ids are rebindable via slot dispatch**: the

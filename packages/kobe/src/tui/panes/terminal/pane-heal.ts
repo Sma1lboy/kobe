@@ -41,6 +41,8 @@ import {
   sessionExists,
 } from "@/tmux/client"
 import {
+  HIDDEN_TASKS_PANE_OPTION,
+  HIDDEN_TERMINAL_PANE_OPTION,
   OPS_HEIGHT_OPTION,
   RIGHT_COLUMN_WIDTH_OPTION,
   TASKS_PANE_WIDTH,
@@ -418,7 +420,7 @@ export async function captureGlobalLayout(session: string): Promise<void> {
     "-t",
     `=${session}`,
     "-F",
-    "#{@kobe_role}\t#{pane_width}\t#{pane_height}\t#{window_width}\t#{window_height}\t#{window_zoomed_flag}",
+    `#{@kobe_role}\t#{pane_width}\t#{pane_height}\t#{window_width}\t#{window_height}\t#{window_zoomed_flag}\t#{${HIDDEN_TERMINAL_PANE_OPTION}}\t#{${HIDDEN_TASKS_PANE_OPTION}}`,
   ])
   if (code !== 0) return
   const rows = stdout
@@ -427,6 +429,8 @@ export async function captureGlobalLayout(session: string): Promise<void> {
     .filter((cols) => (cols[0]?.trim() ?? "") !== "")
   if (rows.length === 0) return
   if (rows.some((cols) => cols[5]?.trim() === "1")) return // zoomed → geometry is unreliable
+  if (rows.some((cols) => (cols[6]?.trim() ?? "") !== "")) return // hidden shell → Ops is temporarily full-height
+  if (rows.some((cols) => (cols[7]?.trim() ?? "") !== "")) return // hidden Tasks → remaining panes are temporarily full-width
   const winW = Number.parseInt(rows[0][3]?.trim() ?? "", 10)
   const winH = Number.parseInt(rows[0][4]?.trim() ?? "", 10)
   const sets: (readonly string[])[] = []
@@ -450,8 +454,10 @@ export async function captureGlobalLayout(session: string): Promise<void> {
 
 /**
  * Decide whether a `window-layout-changed` firing is a genuine USER drag we
- * should capture, from a `#{@kobe_role}\t#{window_zoomed_flag}` listing of the
- * active window. Pure so the gate is unit-testable without a tmux server.
+ * should capture, from a
+ * `#{@kobe_role}\t#{window_zoomed_flag}\t#{@kobe_hidden_shell_pane}\t#{@kobe_hidden_tasks_pane}`
+ * listing of the active window. Pure so the gate is unit-testable without a
+ * tmux server. The hidden-state columns are optional for older tests/callers.
  *
  * Capture only when the layout change is safe to read as the user's intended
  * geometry:
@@ -461,6 +467,12 @@ export async function captureGlobalLayout(session: string): Promise<void> {
  *   - the full kobe role set is present (`tasks` + `ops`) — excludes the
  *     transient half-built layouts that pane splits emit during a session
  *     build / respawn, where the geometry isn't the user's to keep.
+ *   - terminal is not hidden in a background tmux window — when hidden, the
+ *     Ops pane temporarily fills the right column and would poison the saved
+ *     Ops height.
+ *   - Tasks is not hidden in a background tmux window — when hidden, the
+ *     remaining workspace panes temporarily fill the full width and would
+ *     poison the saved Tasks/right-column geometry.
  *
  * The resize-reflow case (where the rail is proportionally blown up and must
  * NOT be captured) is excluded earlier by the caller's resize-recency guard
@@ -474,6 +486,8 @@ export function shouldCaptureDrag(stdout: string): boolean {
     .filter((cols) => (cols[0]?.trim() ?? "") !== "")
   if (rows.length === 0) return false
   if (rows.some((cols) => cols[1]?.trim() === "1")) return false // any pane zoomed
+  if (rows.some((cols) => (cols[2]?.trim() ?? "") !== "")) return false
+  if (rows.some((cols) => (cols[3]?.trim() ?? "") !== "")) return false
   const roles = new Set(rows.map((cols) => cols[0]?.trim()))
   return roles.has("tasks") && roles.has("ops")
 }
@@ -493,7 +507,7 @@ export async function captureGlobalLayoutOnDrag(session: string): Promise<void> 
     "-t",
     `=${session}`,
     "-F",
-    "#{@kobe_role}\t#{window_zoomed_flag}",
+    `#{@kobe_role}\t#{window_zoomed_flag}\t#{${HIDDEN_TERMINAL_PANE_OPTION}}\t#{${HIDDEN_TASKS_PANE_OPTION}}`,
   ])
   if (code !== 0 || !shouldCaptureDrag(stdout)) return
   await captureGlobalLayout(session)

@@ -31,6 +31,8 @@ describe("formatChord", () => {
   it("renders a tmux prefix chord as two steps", () => {
     expect(formatChord("prefix f")).toBe("⌃B F")
     expect(formatChord("prefix t", "⌃A")).toBe("⌃A T")
+    expect(formatChord("prefix s/x/r", "⌃A")).toBe("⌃A S/X/R")
+    expect(formatChord("prefix ctrl+x", "⌃A")).toBe("⌃A ⌃ X")
   })
 
   it("handles `/` compound keys, casing each side by context", () => {

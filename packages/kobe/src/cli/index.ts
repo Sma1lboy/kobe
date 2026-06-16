@@ -25,8 +25,8 @@
  *
  * Internal subcommands fired by tmux key bindings inside a task session
  * (not meant for direct use): `new-chattab`, `quick-create`, `quick-task`,
- * `focus-tasks`, `heal-layout`, `capture-layout`, `tasks`, `ops` — each takes
- * the session/worktree as flags.
+ * `focus-tasks`, `heal-layout`, `capture-layout`, `layout`, `tasks`, `ops` —
+ * each takes the session/worktree as flags.
  * `hook` is fired by an engine's own hooks inside a worktree to report
  * activity events.
  *
@@ -262,6 +262,10 @@ interface OpsFlags {
   repo?: string
   /** Initial task row to select when a tmux Tasks pane starts. */
   initialTaskId?: string
+  /** Internal layout action, used by `kobe layout`. */
+  action?: string
+  /** tmux window id, used by `kobe layout --action chat-tab-close`. */
+  windowId?: string
 }
 
 /** Parse `kobe ops` / `kobe new-chattab` flags. */
@@ -294,6 +298,12 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--initial-task-id") {
       flags.initialTaskId = value
+      i++
+    } else if (flag === "--action") {
+      flags.action = value
+      i++
+    } else if (flag === "--window") {
+      flags.windowId = value
       i++
     }
   }
@@ -464,10 +474,9 @@ async function main(): Promise<void> {
   }
   if (subcommand === "focus-tasks") {
     // First stage of two-stage Ctrl+Q from inside a task's tmux session:
-    // focus the current window's Tasks pane. The if-shell binding only
-    // invokes this when the active pane is NOT already the Tasks pane (it
-    // detaches there instead), so this is an unconditional select. Reads
-    // `--session`.
+    // focus the current window's Tasks pane, restoring it first if the rail is
+    // hidden. The if-shell binding invokes this only when it should not detach
+    // directly. Reads `--session` plus the source `--window` when fired by tmux.
     const flags = parseOpsFlags(rest)
     const session = flags.session
     if (!session) {
@@ -475,7 +484,7 @@ async function main(): Promise<void> {
       process.exit(2)
     }
     const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
-    await selectTasksPane(session)
+    await selectTasksPane(session, { windowId: flags.windowId })
     return
   }
   if (subcommand === "heal-layout") {
@@ -527,6 +536,39 @@ async function main(): Promise<void> {
       // trailing wait, in which case its heal owns the geometry — not us.
       if (genAgeMs(session, "resize") < RESIZE_GUARD_MS) return
       await captureGlobalLayoutOnDrag(session)
+    })
+    return
+  }
+  if (subcommand === "layout") {
+    // Internal tmux session layout controls fired by prefix layout bindings.
+    // Reads `--session`, source `--window`, and a narrow `--action` enum so
+    // async run-shell handlers act on the ChatTab where the key was pressed.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe layout: --session <name> is required")
+      process.exit(2)
+    }
+    const action = flags.action
+    const valid = new Set([
+      "workspace-split",
+      "workspace-close",
+      "workspace-reset",
+      "tasks-toggle",
+      "tasks-restore",
+      "ops-toggle",
+      "terminal-toggle",
+      "chat-tab-close",
+    ])
+    if (!action || !valid.has(action)) {
+      console.error(
+        "kobe layout: --action must be one of workspace-split, workspace-close, workspace-reset, tasks-toggle, tasks-restore, ops-toggle, terminal-toggle, chat-tab-close",
+      )
+      process.exit(2)
+    }
+    const { runLayoutAction } = await import("../tui/panes/terminal/tmux.ts")
+    await runLayoutAction(session, action as import("../tui/panes/terminal/tmux.ts").LayoutAction, {
+      windowId: flags.windowId,
     })
     return
   }

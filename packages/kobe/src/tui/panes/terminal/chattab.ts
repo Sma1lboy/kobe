@@ -43,6 +43,9 @@ import {
 import {
   CLAUDE_PANE_PERCENT,
   OPS_PANE_PERCENT,
+  OPS_PANE_ROLE,
+  SHELL_PANE_ROLE,
+  TASKS_PANE_ROLE,
   keepAlive,
   opsPaneCommand,
   shellQuote,
@@ -67,7 +70,7 @@ export function chatTabSwitchBindings(prevKey: string, nextKey: string) {
   ] as const
 }
 
-export function chatTabCloseBinding(key: string) {
+export function chatTabCloseBinding(key: string, closeCommand = "kill-window") {
   return [
     "bind-key",
     "-n",
@@ -75,7 +78,7 @@ export function chatTabCloseBinding(key: string) {
     "if-shell",
     "-F",
     "#{>:#{session_windows},1}",
-    "kill-window",
+    closeCommand,
     "display-message 'Cannot close the only ChatTab'",
   ] as const
 }
@@ -109,22 +112,25 @@ function tmuxKeyCap(key: string): string {
  * Minimal, muted `status-right` shown on the `-L kobe` socket. From inside the
  * engine/shell pane the user has no other on-screen hint for kobe's
  * escape-hatch chords, so we surface the three most useful ones. `^h` (the
- * focus-left key) returns to the Tasks pane (the two-stage Ctrl+Q first stage
- * is reachable from there), `^q` is the two-stage detach, `^t` opens a new
- * chat tab. Built from the RESOLVED key set so user overrides show their own
- * chords; an unbound key drops its segment. Dimmed with `fg=brightblack` so it
- * reads as a muted hint rather than fighting the user's theme; the trailing
- * space keeps it off the terminal's right edge.
+ * focus-left key) returns to or restores the Tasks pane, `^q` is detach,
+ * `^t` opens a new chat tab. Built from the RESOLVED key set so user overrides
+ * show their own chords; an unbound key drops its segment. Dimmed with
+ * `fg=brightblack` so it reads as a muted hint rather than fighting the user's
+ * theme; the trailing space keeps it off the terminal's right edge.
  */
 export function kobeStatusRight(keys: {
   focusLeft: string | null
   detach: string | null
   newTab: string | null
+  layoutSplits?: string | null
+  layoutPanes?: string | null
 }): string {
   const segments = [
     keys.focusLeft ? `${tmuxKeyCap(keys.focusLeft)} tasks` : null,
     keys.detach ? `${tmuxKeyCap(keys.detach)} detach` : null,
     keys.newTab ? `${tmuxKeyCap(keys.newTab)} tab` : null,
+    keys.layoutSplits ? `prefix ${keys.layoutSplits} splits` : null,
+    keys.layoutPanes ? `prefix ${keys.layoutPanes} panes` : null,
   ].filter((s): s is string => s !== null)
   return `#[fg=brightblack]${segments.join("  ")} `
 }
@@ -206,7 +212,17 @@ export async function buildPanesAround(
       "ops=#{pane_id}",
       opsCmd,
     ],
-    ["split-window", "-v", "-l", `${100 - OPS_PANE_PERCENT}%`, "-c", localSpawnCwd(args.cwd)],
+    [
+      "split-window",
+      "-v",
+      "-l",
+      `${100 - OPS_PANE_PERCENT}%`,
+      "-c",
+      localSpawnCwd(args.cwd),
+      "-P",
+      "-F",
+      "shell=#{pane_id}",
+    ],
     ["select-pane", "-t", claudePane],
   ])
   const ids = Object.fromEntries(
@@ -217,10 +233,11 @@ export async function buildPanesAround(
       .map((line) => line.split("=", 2)),
   )
   await runTmuxSequence([
-    ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, "@kobe_role", "tasks"]] as const) : []),
+    ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, "@kobe_role", TASKS_PANE_ROLE]] as const) : []),
     ...(ids.tasks ? ([["set-option", "-p", "-t", ids.tasks, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
-    ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", "ops"]] as const) : []),
+    ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, "@kobe_role", OPS_PANE_ROLE]] as const) : []),
     ...(ids.ops ? ([["set-option", "-p", "-t", ids.ops, PANE_VERSION_OPTION, CURRENT_VERSION]] as const) : []),
+    ...(ids.shell ? ([["set-option", "-p", "-t", ids.shell, "@kobe_role", SHELL_PANE_ROLE]] as const) : []),
   ])
 
   // Override the default %-split with the user's global right-column geometry

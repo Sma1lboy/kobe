@@ -56,7 +56,7 @@ import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
-  paneIdByRole,
+  killSession,
   runTmux,
   runTmuxCapturing,
   runTmuxSequence,
@@ -67,13 +67,15 @@ import {
 import {
   TMUX_FOCUS_DEFAULTS,
   TMUX_FOCUS_ID,
+  TMUX_LEGACY_LAYOUT_ROOT_KEYS,
   TMUX_SINGLE_BINDING_DEFAULTS,
   chordToTmuxKey,
+  isTmuxPrefixBindingId,
   resolveUserTmuxKeys,
 } from "@/tmux/keybindings"
 import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
 import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
-import { engineLaunchLine, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
+import { HIDDEN_TASKS_PANE_OPTION, engineLaunchLine, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
 import { applyTmuxPaneBorderTheme } from "@/tui/lib/tmux-border-theme"
 import {
   CHAT_TAB_STATUS_CURRENT_FORMAT,
@@ -86,6 +88,7 @@ import {
   kobeStatusRight,
 } from "./chattab"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
+import { runLayoutAction } from "./layout-actions"
 import { recordGen } from "./layout-coord"
 import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
 
@@ -128,6 +131,7 @@ export {
   healSessionLayout,
   refreshKobeWorkspacePanes,
 } from "./pane-heal"
+export { runLayoutAction, type LayoutAction } from "./layout-actions"
 
 export function tmuxInitialSizeArgs(
   stdout: { columns?: number; rows?: number } = process.stdout,
@@ -248,16 +252,12 @@ export type FocusDirection = keyof typeof FOCUS_EDGE_VARS
  * pre-guard behavior (also verified live: zoomed %1 + ctrl+h → %0,
  * zoom released).
  */
-export function focusBindCommand(key: string, dir: FocusDirection): readonly string[] {
-  return [
-    "bind-key",
-    "-n",
-    key,
-    "if-shell",
-    "-F",
-    `#{?window_zoomed_flag,1,#{?${FOCUS_EDGE_VARS[dir]},,1}}`,
-    `select-pane ${dir}`,
-  ]
+export function focusBindCommand(key: string, dir: FocusDirection, edgeCommand?: string): readonly string[] {
+  const condition = `#{?window_zoomed_flag,1,#{?${FOCUS_EDGE_VARS[dir]},,1}}`
+  if (edgeCommand) {
+    return ["bind-key", "-n", key, "if-shell", "-F", condition, `select-pane ${dir}`, edgeCommand]
+  }
+  return ["bind-key", "-n", key, "if-shell", "-F", condition, `select-pane ${dir}`]
 }
 
 export interface EnsureSessionOpts {
@@ -446,7 +446,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // Rebuild (or a respawn that found no engine pane): kill, then fall
   // through to the shared create path below.
   if (action.kind === "rebuild" || action.kind === "respawn-engine") {
-    await runTmux(["kill-session", "-t", `=${opts.name}`])
+    await killSession(opts.name)
   }
 
   // Create the session's first window with the claude pane, then build
@@ -559,8 +559,10 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // click/scroll only work if tmux forwards mouse events to the pane's
   // app. Most configs already set this, but we force it on the `-L
   // kobe` socket so the feature doesn't depend on the user's config.
-  // No-prefix Ctrl+Q is two-stage: focus the current window's Tasks pane,
-  // then detach back to the launching shell on a second press from there.
+  // No-prefix Ctrl+Q is two-stage while the Tasks pane is visible: focus the
+  // current window's Tasks pane, then detach back to the launching shell on a
+  // second press from there. If Tasks is hidden, Ctrl+Q detaches directly since
+  // there is no rail stage to land on.
   // No-prefix Ctrl+h/j/k/l move between panes directionally — the
   // vim-tmux-navigator convention — and are edge-guarded so they never
   // wrap (see focusBindCommand). (Ctrl+1/2/3 was tried first but
@@ -593,12 +595,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const newChatTabCommand = `${envStr}${invStr} new-chattab --session '#{session_name}'`
   const chooseEngineCommand = `${newChatTabCommand} --vendor '%%'`
   const chooseEngineTmuxCommand = `run-shell ${shellQuote(chooseEngineCommand)}`
-  // Two-stage Ctrl+Q: `kobe focus-tasks` selects the current window's Tasks
-  // pane (the else branch of the if-shell below). The "are we already on the
-  // Tasks pane?" test is the native `@kobe_role` pane tag, so only the
-  // detach branch is reached once focus is on Tasks.
-  const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}'`
+  // Two-stage Ctrl+Q: `kobe focus-tasks` selects/restores the current window's
+  // Tasks pane (the else branch of the if-shell below). The detach branch is
+  // reached when focus is already on Tasks, or immediately when Tasks is hidden.
+  const focusTasksCommand = `${envStr}${invStr} focus-tasks --session '#{session_name}' --window '#{window_id}'`
   const focusTasksTmuxCommand = `run-shell ${shellQuote(focusTasksCommand)}`
+  const layoutCommand = (action: string): string =>
+    `${envStr}${invStr} layout --session '#{session_name}' --window '#{window_id}' --action ${action}`
+  const restoreTasksCommand = layoutCommand("tasks-restore")
+  const restoreTasksTmuxCommand = `run-shell ${shellQuote(restoreTasksCommand)}`
+  const closeChatTabCommand = layoutCommand("chat-tab-close")
+  const closeChatTabTmuxCommand = `run-shell ${shellQuote(closeChatTabCommand)}`
   // Re-pin the layout whenever a window settles to a new size. The FIRST task
   // session is built before any client is attached, so tmux sizes its window to
   // a stale default and reflows every pane PROPORTIONALLY once `attach` lands
@@ -649,15 +656,18 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // the larger one is letterboxed — that case can't be fixed without per-client
   // sessions (a larger refactor, deferred).
   // Session keys come from the user-resolvable tmux key set (defaults
-  // C-q / C-hjkl / C-t / C-S-T / C-[ / C-] / C-w / F2; overridable via
-  // `~/.kobe/settings/keybindings.yaml`, `tmux.*` ids). For every
+  // C-q / C-hjkl / C-t / C-S-T / C-[ / C-] / C-w / F2 plus prefix-scoped
+  // layout keys; overridable via `~/.kobe/settings/keybindings.yaml`,
+  // `tmux.*` ids). For every
   // OVERRIDDEN id we first unbind its DEFAULT key: the tmux server is
   // long-lived, so a previous run (or an older kobe) may have bound it —
-  // without the unbind both the old and new chord would fire. Unbinding
-  // a never-bound root key exits 0 silently, so this is safe on a fresh
+  // without the unbind both the old and new chord would fire. We also always
+  // unbind the short-lived F6-F11 layout defaults from 0.7.30 so an upgraded,
+  // long-lived tmux server drops those root-table conflicts. Unbinding a
+  // never-bound root/prefix key exits 0 silently, so this is safe on a fresh
   // server too. An id resolved to null installs nothing (user unbind).
   const userKeys = resolveUserTmuxKeys()
-  const unbinds: (readonly string[])[] = []
+  const unbinds: (readonly string[])[] = TMUX_LEGACY_LAYOUT_ROOT_KEYS.map((key) => ["unbind-key", "-n", key])
   if (userKeys.overridden.has(TMUX_FOCUS_ID)) {
     for (const chord of TMUX_FOCUS_DEFAULTS) {
       const t = chordToTmuxKey(chord)
@@ -667,15 +677,25 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   for (const id of userKeys.overridden) {
     if (id === TMUX_FOCUS_ID) continue
     const def = TMUX_SINGLE_BINDING_DEFAULTS[id as keyof typeof TMUX_SINGLE_BINDING_DEFAULTS]
-    const t = chordToTmuxKey(def)
-    if ("key" in t) unbinds.push(["unbind-key", "-n", t.key])
+    const isPrefix = isTmuxPrefixBindingId(id)
+    const t = chordToTmuxKey(def, { allowBare: isPrefix })
+    if ("key" in t) unbinds.push(isPrefix ? ["unbind-key", t.key] : ["unbind-key", "-n", t.key])
   }
   const focusDirections: readonly FocusDirection[] = ["-L", "-D", "-U", "-R"]
   const focusBinds = userKeys.focus.flatMap((bind, i) => {
     const dir = focusDirections[i]
-    return bind && dir ? [focusBindCommand(bind.key, dir)] : []
+    const edgeCommand = dir === "-L" ? restoreTasksTmuxCommand : undefined
+    return bind && dir ? [focusBindCommand(bind.key, dir, edgeCommand)] : []
   })
   const b = userKeys.binds
+  const layoutBind = (id: keyof typeof b, action: string): (readonly string[])[] => {
+    const bind = b[id]
+    return bind ? ([["bind-key", bind.key, "run-shell", layoutCommand(action)]] as const) : []
+  }
+  const layoutChordGroup = (...ids: (keyof typeof b)[]): string | null => {
+    const chords = ids.map((id) => b[id]?.chord).filter((chord): chord is string => !!chord)
+    return chords.length > 0 ? chords.join("/") : null
+  }
   await runTmuxSequence([
     ["set-option", "-g", "status", "on"],
     ["set-window-option", "-g", "aggressive-resize", "on"],
@@ -691,6 +711,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
         focusLeft: userKeys.focus[0]?.key ?? null,
         detach: b["tmux.detach"]?.key ?? null,
         newTab: b["tmux.tab.new"]?.key ?? null,
+        layoutSplits: layoutChordGroup(
+          "tmux.layout.workspaceSplit",
+          "tmux.layout.workspaceClose",
+          "tmux.layout.workspaceReset",
+        ),
+        layoutPanes: layoutChordGroup("tmux.layout.tasksToggle", "tmux.layout.opsToggle", "tmux.layout.terminalToggle"),
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
@@ -708,7 +734,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
             b["tmux.detach"].key,
             "if-shell",
             "-F",
-            "#{==:#{@kobe_role},tasks}",
+            `#{?#{${HIDDEN_TASKS_PANE_OPTION}},1,#{==:#{@kobe_role},tasks}}`,
             "detach-client",
             focusTasksTmuxCommand,
           ] as const,
@@ -728,8 +754,14 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
         : b["tmux.tab.next"]
           ? [["bind-key", "-n", b["tmux.tab.next"].key, "next-window"] as const]
           : []),
-    ...(b["tmux.tab.close"] ? [chatTabCloseBinding(b["tmux.tab.close"].key)] : []),
+    ...(b["tmux.tab.close"] ? [chatTabCloseBinding(b["tmux.tab.close"].key, closeChatTabTmuxCommand)] : []),
     ...(b["tmux.tab.rename"] ? [chatTabRenameBinding(b["tmux.tab.rename"].key)] : []),
+    ...layoutBind("tmux.layout.workspaceSplit", "workspace-split"),
+    ...layoutBind("tmux.layout.workspaceClose", "workspace-close"),
+    ...layoutBind("tmux.layout.workspaceReset", "workspace-reset"),
+    ...layoutBind("tmux.layout.tasksToggle", "tasks-toggle"),
+    ...layoutBind("tmux.layout.opsToggle", "ops-toggle"),
+    ...layoutBind("tmux.layout.terminalToggle", "terminal-toggle"),
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
   ])
 
@@ -758,16 +790,31 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
 }
 
 /**
- * Focus the active window's Tasks pane. The first stage of two-stage
- * Ctrl+Q (`kobe focus-tasks`): the if-shell binding only reaches this when
- * the active pane is NOT already the Tasks pane, so this is an
- * unconditional select. No-op when the session is gone or the active window
- * has no tagged Tasks pane (legacy session). Returns the pane id it
- * selected, or `""`.
+ * Focus the source window's Tasks pane, restoring it first if the rail is
+ * hidden. This is the first stage of two-stage Ctrl+Q (`kobe focus-tasks`) and
+ * the recovery path for focus-left when the rail is hidden. If no source window
+ * is provided, it falls back to the session's active window for manual CLI use.
+ * No-op when the session is gone or the target window cannot restore a Tasks
+ * pane. Returns the pane id it selected, or `""`.
  */
-export async function selectTasksPane(session: string): Promise<string> {
+async function paneIdByRoleInWindow(session: string, role: string, windowId?: string): Promise<string> {
+  const target = windowId?.trim() || `=${session}`
+  const { code, stdout } = await runTmuxCapturing(["list-panes", "-t", target, "-F", "#{pane_id}\t#{@kobe_role}"])
+  if (code !== 0) return ""
+  for (const line of stdout.split("\n")) {
+    const [paneId, paneRole] = line.split("\t")
+    if (paneId?.trim() && paneRole?.trim() === role) return paneId.trim()
+  }
+  return ""
+}
+
+export async function selectTasksPane(session: string, opts: { readonly windowId?: string } = {}): Promise<string> {
   if (!(await sessionExists(session))) return ""
-  const tasksPane = await paneIdByRole(session, "tasks")
+  let tasksPane = await paneIdByRoleInWindow(session, "tasks", opts.windowId)
+  if (!tasksPane) {
+    await runLayoutAction(session, "tasks-restore", { windowId: opts.windowId })
+    tasksPane = await paneIdByRoleInWindow(session, "tasks", opts.windowId)
+  }
   if (!tasksPane) return ""
   await runTmux(["select-pane", "-t", tasksPane])
   return tasksPane
