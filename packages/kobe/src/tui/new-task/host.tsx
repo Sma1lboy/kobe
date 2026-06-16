@@ -29,7 +29,7 @@ import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
-import { ensureTaskSession, jumpToTask } from "../lib/task-enter.ts"
+import { jumpToTask } from "../lib/task-enter.ts"
 import { useDialog } from "../ui/dialog"
 
 export interface NewTaskHostArgs {
@@ -98,17 +98,19 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
       process.exit(1)
     }
 
-    // Auto-enter the new (or last-adopted) task: build its session — letting
-    // the repo's init-prompt fire as the engine's first message — and jump the
+    // Auto-enter the new (or last-adopted) task: build its session and jump the
     // attached client into it, landing the user in the engine pane ready to
-    // type. Then exit; the client is already on the new session, so closing
+    // type. A create lets the repo's init-prompt fire as the engine's first
+    // message; an adopt imports existing work, so it doesn't paste a first-run
+    // prompt. Then exit; the client is already on the new session, so closing
     // this window doesn't disturb it. Non-fatal: the task is already created,
     // so a jump failure (e.g. run outside a kobe tmux session) still exits 0 —
     // the user can enter it from any Tasks pane.
     if (entered) {
       try {
-        await ensureTaskSession(orch, entered, result.repo, result.vendor, { includeInitPrompt: true })
-        await jumpToTask(orch, entered, result.repo, result.vendor)
+        await jumpToTask(orch, entered, result.repo, result.vendor, {
+          includeInitPrompt: result.mode !== "adopt",
+        })
       } catch (err) {
         console.error("[kobe new-task] auto-enter failed:", err)
       }

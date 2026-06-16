@@ -4,13 +4,15 @@
  * can auto-enter the task it just created (drop the user in the engine pane,
  * ready to type the first prompt) without duplicating the proven jump.
  *
- * Two consumers, two prompt policies:
- *   - quick-task (`f`): the user typed a prompt, so it builds with the init
- *     SCRIPT only and delivers the typed prompt itself — `includeInitPrompt`
- *     stays false so the repo's init-prompt isn't ALSO pasted.
- *   - new-task (`n`): no typed prompt, so it builds with `includeInitPrompt`
- *     true and lets the repo's init-prompt fire as the engine's first message
- *     (the same fire-and-forget delivery `ensureSession`'s create path runs).
+ * `includeInitPrompt` controls whether the repo's init-prompt fires as the
+ * engine's first message on a freshly-built session:
+ *   - quick-task (`f`): false — the user typed a prompt, delivered separately,
+ *     so the repo's init-prompt isn't ALSO pasted.
+ *   - new-task create (`n`): true — no typed prompt, so let the repo's
+ *     init-prompt fire (the same fire-and-forget `ensureSession`'s create path
+ *     runs).
+ *   - new-task adopt: false — an adopted worktree is existing work being
+ *     imported, not a fresh start, so don't paste a first-run prompt into it.
  */
 
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
@@ -56,12 +58,21 @@ export async function ensureTaskSession(
 
 /**
  * Jump the attached client to the task: mark it active and `switch-client` to
- * its tmux session (building the session first if a caller hasn't already).
- * The calling page then exits; the client is already on the new task's
- * session, so closing the old window doesn't disturb it.
+ * its tmux session, building the session first if a caller hasn't already.
+ * Pass `includeInitPrompt` through to that build for the common case where the
+ * caller hasn't pre-built the session (e.g. `n` new-task); when the session
+ * already exists (quick-task pre-built it to deliver a typed prompt) the option
+ * is a harmless no-op. The calling page then exits; the client is already on
+ * the new task's session, so closing the old window doesn't disturb it.
  */
-export async function jumpToTask(orch: RemoteOrchestrator, task: Task, repo: string, vendor: VendorId): Promise<void> {
-  await ensureTaskSession(orch, task, repo, vendor) // no-op if already built
+export async function jumpToTask(
+  orch: RemoteOrchestrator,
+  task: Task,
+  repo: string,
+  vendor: VendorId,
+  opts: { includeInitPrompt?: boolean } = {},
+): Promise<void> {
+  await ensureTaskSession(orch, task, repo, vendor, opts) // builds if needed; no-op if already built
   await orch.setActiveTask(task.id).catch(() => {})
   // Fit + heal the target to THIS client before switching in, so it doesn't
   // reflow on screen — the calling window's stdout is its own pane, not the
