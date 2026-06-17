@@ -4,8 +4,8 @@
  * can auto-enter the task it just created (drop the user in the engine pane,
  * ready to type the first prompt) without duplicating the proven jump.
  *
- * `includeInitPrompt` controls whether the repo's init-prompt fires as the
- * engine's first message on a freshly-built session:
+ * `includeInitPrompt` controls the prompt-delivery intent for a freshly-built
+ * session:
  *   - quick-task (`f`): false — the user typed a prompt, delivered separately,
  *     so the repo's init-prompt isn't ALSO pasted.
  *   - new-task create (`n`): true — no typed prompt, so let the repo's
@@ -40,8 +40,10 @@ export async function ensureTaskSession(
   if (!worktree) worktree = await orch.ensureWorktree(task.id)
   if (!worktree) throw new Error(`task ${task.id} has no worktree`)
   const { ensureSession } = await import("../panes/terminal/tmux.ts")
-  const { resolveRepoInit } = await import("../../state/repo-init.ts")
-  const init = resolveRepoInit(repo, worktree)
+  const { resolveEngineLaunchInit } = await import("../../state/repo-init.ts")
+  const launchInit = resolveEngineLaunchInit(repo, worktree, {
+    kind: opts.includeInitPrompt ? "repo-init" : "none",
+  })
   const ok = await ensureSession({
     name: session,
     cwd: worktree,
@@ -49,8 +51,7 @@ export async function ensureTaskSession(
     taskId: task.id,
     vendor,
     repo,
-    initScript: init.initScript,
-    initPrompt: opts.includeInitPrompt ? init.initPrompt : undefined,
+    launchInit,
   })
   if (!ok) throw new Error(`failed to start tmux session for ${task.id}`)
   return false // freshly built

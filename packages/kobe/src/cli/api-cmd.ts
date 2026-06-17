@@ -43,7 +43,7 @@ import { resolve } from "node:path"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../lib/feedback.ts"
-import type { ResolvedRepoInit } from "../state/repo-init.ts"
+import type { EngineLaunchInit, PromptDeliveryIntent } from "../state/repo-init.ts"
 import { killSession, sessionExists, switchClientBeforeKill, tmuxSessionName } from "../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../tmux/prompt-delivery.ts"
 import type { EnsureSessionOpts } from "../tui/panes/terminal/tmux.ts"
@@ -858,7 +858,11 @@ interface PromptDeliveryOps {
   ensureSession(opts: EnsureSessionOpts): Promise<boolean>
   waitForEnginePane(session: string, fresh: boolean): Promise<{ pane: string; ready: boolean }>
   pasteAndSubmit(pane: string, text: string): Promise<void>
-  resolveRepoInit(repoRoot: string, worktreePath: string): Promise<ResolvedRepoInit>
+  resolveEngineLaunchInit(
+    repoRoot: string,
+    worktreePath: string,
+    intent: PromptDeliveryIntent,
+  ): Promise<EngineLaunchInit>
   engineCommand(vendor: VendorId | undefined): readonly string[]
 }
 
@@ -867,8 +871,8 @@ const realPromptDeliveryOps: PromptDeliveryOps = {
   ensureSession: async (opts) => (await import("../tui/panes/terminal/tmux.ts")).ensureSession(opts),
   waitForEnginePane,
   pasteAndSubmit,
-  resolveRepoInit: async (repoRoot, worktreePath) =>
-    (await import("../state/repo-init.ts")).resolveRepoInit(repoRoot, worktreePath),
+  resolveEngineLaunchInit: async (repoRoot, worktreePath, intent) =>
+    (await import("../state/repo-init.ts")).resolveEngineLaunchInit(repoRoot, worktreePath, intent),
   engineCommand: interactiveEngineCommand,
 }
 
@@ -888,7 +892,7 @@ async function deliverPrompt(
   const session = tmuxSessionName(target.id)
   const existed = await ops.sessionExists(session)
   if (!existed) {
-    const init = await ops.resolveRepoInit(target.repo ?? "", worktree)
+    const launchInit = await ops.resolveEngineLaunchInit(target.repo ?? "", worktree, { kind: "none" })
     const ok = await ops.ensureSession({
       name: session,
       cwd: worktree,
@@ -896,9 +900,9 @@ async function deliverPrompt(
       taskId: target.id,
       vendor: target.vendor,
       repo: target.repo,
-      // The EXPLICIT prompt is what gets delivered below — never pass the
-      // repo's initPrompt here, or a fresh session would get both pastes.
-      initScript: init.initScript,
+      // The EXPLICIT prompt is delivered below; this contract intentionally
+      // keeps only the init script so a fresh session never gets both pastes.
+      launchInit,
     })
     if (!ok) throw new ApiError(`failed to start tmux session for ${target.id}`, "SESSION_FAILED")
   }

@@ -5,7 +5,7 @@
  * — the daemon stays the single writer for the task index). The tmux session
  * + engine launch line are then built locally, with the SAME client-side
  * modules every other kobe host uses (`direct.ts`, the Tasks pane,
- * `kobe api`): `ensureSession`, `resolveRepoInit`, `interactiveEngineCommand`.
+ * `kobe api`): `ensureSession`, repo-init resolution, `interactiveEngineCommand`.
  * The bridge runs on the user's machine next to tmux, so there is nothing a
  * daemon-side implementation could reach that this one can't.
  */
@@ -15,7 +15,7 @@ import {
   withDispatcherProtocol,
   withWorktreeProtocol,
 } from "../../kobe/src/engine/interactive-command.ts"
-import { resolveRepoInit } from "../../kobe/src/state/repo-init.ts"
+import { resolveEngineLaunchInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
@@ -41,14 +41,14 @@ export async function ensureTaskSession(
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   const session = tmuxSessionName(taskId)
   if (!(await sessionExists(session))) {
-    const init = resolveRepoInit(task.repo ?? "", worktreePath)
+    const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "none" })
     const ok = await ensureSession({
       name: session,
       cwd: worktreePath,
       command: interactiveEngineCommand(task.vendor, task.modelEffort),
       taskId,
       vendor: task.vendor,
-      initScript: init.initScript,
+      launchInit,
     })
     if (!ok) throw new Error(`failed to start tmux session for ${taskId}`)
   }
@@ -84,9 +84,9 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
       dispatcherTaskId,
     ),
   ]
-  const init = resolveRepoInit(task.repo ?? "", worktreePath)
+  const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "none" })
   const quoted = shellQuote(argv)
-  const script = init.initScript?.trim() ? `${init.initScript}\n${quoted}` : quoted
+  const script = launchInit.initScript?.trim() ? `${launchInit.initScript}\n${quoted}` : quoted
   const shell = process.env.SHELL?.trim() || "/bin/zsh"
   return { cwd: worktreePath, command: [shell, "-ilc", script] }
 }

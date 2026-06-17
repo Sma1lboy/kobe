@@ -8,6 +8,7 @@
  * paste instead of duplicating it.
  */
 
+import type { FirstEngineMessage } from "../state/repo-init.ts"
 import { capturePaneById, claudePaneId, claudePaneIdStrict, runTmux, sendKeyName } from "./client.ts"
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
@@ -57,13 +58,13 @@ export async function pasteAndSubmit(pane: string, text: string): Promise<void> 
 }
 
 /**
- * Deliver a per-repo init prompt as a freshly-built session's first
- * prompt. Best-effort and fire-and-forget: it waits for the engine to be
+ * Deliver a launch contract's first engine message into a freshly-built
+ * session. Best-effort and fire-and-forget: it waits for the engine to be
  * ready (treating the session as fresh) and pastes. A missing pane is a
  * no-op — the user can still type — so this never throws into the caller.
  */
-export async function deliverFirstPrompt(session: string, prompt: string): Promise<void> {
+export async function deliverFirstEngineMessage(session: string, message: FirstEngineMessage): Promise<void> {
   const { pane } = await waitForEnginePane(session, true)
   if (!pane) return
-  await pasteAndSubmit(pane, prompt)
+  await pasteAndSubmit(pane, message.text)
 }

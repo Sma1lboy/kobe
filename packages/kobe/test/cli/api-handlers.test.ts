@@ -635,7 +635,7 @@ describe("deliverPrompt", () => {
       pasteAndSubmit: async (pane, text) => {
         pasted.push({ pane, text })
       },
-      resolveRepoInit: async () => ({}),
+      resolveEngineLaunchInit: async () => ({}),
       engineCommand: () => ["claude", "--continue"],
       ...overrides,
     }
@@ -674,11 +674,13 @@ describe("deliverPrompt", () => {
     // delivers the explicit prompt INSTEAD of the repo's init-prompt — a
     // fresh session must never get both pastes.
     const { ops, ensured, pasted } = fakeOps({
-      resolveRepoInit: async () => ({ initScript: "./setup.sh", initPrompt: "REPO FIRST PROMPT" }),
+      resolveEngineLaunchInit: async () => ({
+        initScript: "./setup.sh",
+        firstMessage: undefined,
+      }),
     })
     await deliverPrompt(new FakeClient(), target, "explicit prompt", ops)
-    expect(ensured[0].initScript).toBe("./setup.sh")
-    expect(ensured[0].initPrompt).toBeUndefined()
+    expect(ensured[0].launchInit).toEqual({ initScript: "./setup.sh", firstMessage: undefined })
     expect(pasted).toEqual([{ pane: "%9", text: "explicit prompt" }])
   })
 

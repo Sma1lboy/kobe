@@ -12,7 +12,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { resolveRepoInit } from "../../src/state/repo-init.ts"
+import { resolveEngineLaunchInit, resolveRepoInit } from "../../src/state/repo-init.ts"
 import { getRepoInitOverride, setRepoInitOverride } from "../../src/state/repos.ts"
 
 let tmpHome: string
@@ -100,5 +100,27 @@ describe("resolveRepoInit (files win over override, per field)", () => {
     const wt = makeWorktree({ ".kobe/init-prompt.md": "   \n  " })
     setRepoInitOverride(wt, { initPrompt: "fallback" })
     expect(resolveRepoInit(wt, wt).initPrompt).toBe("fallback")
+  })
+})
+
+describe("resolveEngineLaunchInit", () => {
+  test("repo-init intent turns the resolved init prompt into the first engine message", () => {
+    const wt = makeWorktree({ ".kobe/init-prompt.md": "  read the repo docs\n" })
+    expect(resolveEngineLaunchInit(wt, wt, { kind: "repo-init" })).toEqual({
+      firstMessage: { source: "repo-init", text: "read the repo docs" },
+    })
+  })
+
+  test("explicit intent carries the explicit prompt and still includes the init script", () => {
+    const wt = makeWorktree({ ".kobe/init.sh": "echo hi", ".kobe/init-prompt.md": "repo prompt" })
+    expect(resolveEngineLaunchInit(wt, wt, { kind: "explicit", prompt: "user prompt\n\nkeep spacing" })).toEqual({
+      initScript: "sh .kobe/init.sh",
+      firstMessage: { source: "explicit", text: "user prompt\n\nkeep spacing" },
+    })
+  })
+
+  test("none intent suppresses any first message but keeps the init script", () => {
+    const wt = makeWorktree({ ".kobe/init.sh": "echo hi", ".kobe/init-prompt.md": "repo prompt" })
+    expect(resolveEngineLaunchInit(wt, wt, { kind: "none" })).toEqual({ initScript: "sh .kobe/init.sh" })
   })
 })

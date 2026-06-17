@@ -54,7 +54,7 @@ import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
 import { worktreeUsable } from "../../exec/resolve.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
-import { resolveRepoInit } from "../../state/repo-init.ts"
+import { resolveEngineLaunchInit } from "../../state/repo-init.ts"
 import { getPersistedString, setPersistedString } from "../../state/repos.ts"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
 import type { Task, VendorId } from "../../types/task.ts"
@@ -544,7 +544,7 @@ function TasksShell(props: {
         // Passing on a pure REUSE is harmless: only the create path applies
         // these (EnsureSessionOpts), and the first prompt is create-branch-only
         // so there's no double paste.
-        const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
+        const launchInit = task?.repo ? resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" }) : undefined
         await ensureSession({
           name,
           cwd,
@@ -552,8 +552,7 @@ function TasksShell(props: {
           taskId: id,
           vendor: task?.vendor,
           repo: task?.repo,
-          initScript: init.initScript,
-          initPrompt: init.initPrompt,
+          launchInit,
         })
       }
       // Fit + heal the target to THIS client before switching in, so it doesn't
@@ -586,7 +585,7 @@ function TasksShell(props: {
       await props.reload()
     }
     if (!worktreeCwdUsable(cwd)) return
-    const init = task?.repo ? resolveRepoInit(task.repo, cwd) : {}
+    const launchInit = task?.repo ? resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" }) : undefined
     const ready = await ensureSession({
       name,
       cwd,
@@ -594,8 +593,7 @@ function TasksShell(props: {
       taskId: id,
       vendor: task?.vendor,
       repo: task?.repo,
-      initScript: init.initScript,
-      initPrompt: init.initPrompt,
+      launchInit,
     })
     if (!ready) {
       console.error(`[kobe tasks] failed to start session ${name}`)

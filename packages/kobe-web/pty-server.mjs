@@ -17,15 +17,13 @@ import { createServer } from "node:http"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
 import { createScrollback } from "./pty-scrollback.mjs"
+import { createPtySessionManager } from "./pty-session-lifecycle.mjs"
 
 const PORT = Number.parseInt(process.env.KOBE_PTY_PORT ?? "5175", 10)
 const BRIDGE_PORT = Number.parseInt(process.env.KOBE_BRIDGE_PORT ?? "5174", 10)
 const SCROLLBACK_CAP = 256 * 1024 // bytes of recent output replayed on (re)attach
 const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
-
-/** tabId → { pty, buffer, sockets } */
-const tabs = new Map()
 
 function ptyEnv() {
   const { NO_COLOR: _noColor, ...env } = process.env
@@ -45,72 +43,13 @@ async function fetchSpec(taskId, mode) {
   return json // { cwd, command: string[] }
 }
 
-function spawnTab(tabId, spec, cols, rows) {
-  const [cmd, ...args] = spec.command
-  const pty = spawn(cmd, args, {
-    name: "xterm-256color",
-    cols,
-    rows,
-    cwd: spec.cwd,
-    env: ptyEnv(),
-  })
-  // Scrollback is a bounded ring of chunks, not a single growing string: the
-  // old `(buffer + data).slice(-CAP)` re-flattened ~256KB on EVERY chunk once
-  // the cap was reached (quadratic during heavy streaming). `push` is O(chunk);
-  // the string is materialized only on (re)attach replay.
-  const entry = { pty, scrollback: createScrollback(SCROLLBACK_CAP), sockets: new Set() }
-  pty.onData((data) => {
-    entry.scrollback.push(data)
-    for (const ws of entry.sockets) if (ws.readyState === ws.OPEN) ws.send(data)
-  })
-  pty.onExit(() => {
-    for (const ws of entry.sockets) if (ws.readyState === ws.OPEN) ws.close(1000, "engine exited")
-    tabs.delete(tabId)
-  })
-  tabs.set(tabId, entry)
-  return entry
-}
-
-function closeTab(tabId) {
-  const entry = tabs.get(tabId)
-  if (!entry) return false
-  try {
-    entry.pty.kill()
-  } catch {
-    /* already gone */
-  }
-  tabs.delete(tabId)
-  return true
-}
-
-// In-flight spawns, keyed by tabId. `fetchSpec` is async, so a naive
-// check-then-`spawnTab` lets two concurrent attaches for the SAME tab (React
-// StrictMode double-mount, a fast reconnect racing the first attach, or a
-// board /pty/send racing a WS open) both pass the `!entry` check and both
-// spawn — the second `tabs.set` orphans the first PTY (no longer in `tabs`, so
-// /pty/close and shutdown can never kill it, and its onExit deletes the live
-// entry's mapping). Coalescing onto one promise per tabId makes spawn
-// single-flight, so concurrent attaches share exactly one PTY.
-const pendingSpawns = new Map()
-
-async function ensureTab(tabId, taskId, mode, cols, rows) {
-  const existing = tabs.get(tabId)
-  if (existing) return existing
-  const inflight = pendingSpawns.get(tabId)
-  if (inflight) return inflight
-  const p = (async () => {
-    const spec = await fetchSpec(taskId, mode)
-    // A prior spawn may have completed (and not yet been closed) while we
-    // awaited the spec — reuse it rather than spawning a duplicate.
-    return tabs.get(tabId) ?? spawnTab(tabId, spec, cols, rows)
-  })()
-  pendingSpawns.set(tabId, p)
-  try {
-    return await p
-  } finally {
-    pendingSpawns.delete(tabId)
-  }
-}
+const ptySessions = createPtySessionManager({
+  fetchSpec,
+  spawnPty: spawn,
+  createScrollback,
+  scrollbackCap: SCROLLBACK_CAP,
+  env: ptyEnv,
+})
 
 const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
@@ -162,53 +101,24 @@ const server = createServer((req, res) => {
         respond(400, { sent: false, error: "tab and text are required" })
         return
       }
-      let entry = tabs.get(tab)
-      let spawned = false
-      if (!entry && typeof taskId === "string" && taskId) {
+      let result
+      try {
         // Spawn-on-send: a board action can fire without the terminal ever
         // opening — output lands in the scrollback ring for the next attach.
-        // ensureTab coalesces with any concurrent WS attach for the same tab.
-        try {
-          entry = await ensureTab(tab, taskId, "engine", 80, 24)
-          spawned = true
-        } catch (err) {
-          respond(500, { sent: false, error: `failed to start engine: ${err?.message ?? err}` })
-          return
-        }
+        result = await ptySessions.sendText({
+          tabId: tab,
+          taskId: typeof taskId === "string" && taskId ? taskId : null,
+          text,
+        })
+      } catch (err) {
+        respond(500, { sent: false, error: `failed to start engine: ${err?.message ?? err}` })
+        return
       }
-      if (!entry) {
+      if (!result.sent) {
         respond(404, { sent: false, error: "no such tab" })
         return
       }
-      // Same submit contract as the composer / tmux pasteAndSubmit:
-      // bracketed paste so a multi-line prompt arrives as ONE paste, then
-      // Enter. A freshly spawned engine gets a grace delay so the paste
-      // isn't eaten by its startup. The Enter MUST land in a separate,
-      // later write: written back-to-back it coalesces into the same tty
-      // chunk as the paste and claude treats it as paste content — the
-      // text sits in the composer and never submits. (tmux pasteAndSubmit
-      // gets this separation for free from its two commands; the web
-      // composer from its two WS messages.)
-      const target = entry
-      setTimeout(
-        () => {
-          try {
-            target.pty.write(`\x1b[200~${text}\x1b[201~`)
-          } catch {
-            /* engine died between spawn and paste — next attach shows why */
-            return
-          }
-          setTimeout(() => {
-            try {
-              target.pty.write("\r")
-            } catch {
-              /* same: best-effort */
-            }
-          }, 150)
-        },
-        spawned ? 2500 : 0,
-      )
-      respond(200, { sent: true, spawned })
+      respond(200, { sent: true, spawned: result.spawned })
     })
     return
   }
@@ -234,7 +144,7 @@ const server = createServer((req, res) => {
       } catch {
         /* ignore */
       }
-      const ok = tab ? closeTab(tab) : false
+      const ok = tab ? ptySessions.closeSession(tab) : false
       res.writeHead(200, {
         "content-type": "application/json",
         "access-control-allow-origin": "*",
@@ -273,10 +183,9 @@ wss.on("connection", (ws, req) => {
   }
 
   void (async () => {
-    let entry
     try {
       // Single-flight spawn: concurrent attaches for this tab share one PTY.
-      entry = await ensureTab(tabId, taskId, mode, cols, rows)
+      await ptySessions.attachSocket({ ws, tabId, taskId, mode, cols, rows })
     } catch (err) {
       if (ws.readyState === ws.OPEN) {
         ws.send(`\r\nfailed to start ${mode}: ${err?.message ?? err}\r\n`)
@@ -284,51 +193,6 @@ wss.on("connection", (ws, req) => {
       }
       return
     }
-
-    // Snapshot the scrollback BEFORE joining the live fan-out. If a chunk
-    // arrives between `sockets.add` and the replay it would be sent live (the
-    // socket is already in the set) AND included in the replay — the browser
-    // writes the same bytes twice, briefly garbling the screen on (re)attach.
-    // Capturing the replay first, then adding the socket, makes attach
-    // exactly-once: the snapshot is everything-so-far, and anything after it
-    // arrives only via the live path.
-    const replay = entry.scrollback.length() > 0 ? entry.scrollback.replay() : ""
-    entry.sockets.add(ws)
-    if (replay && ws.readyState === ws.OPEN) ws.send(replay)
-    // The PTY can exit between spawn/attach and any op below; node-pty throws
-    // on resize/write against a dead handle, and this sidecar has no
-    // uncaughtException net (unlike the daemon) — an unguarded throw in a `ws`
-    // callback kills the whole pty-server process. Guard every pty op.
-    const safePty = (fn) => {
-      if (!tabs.has(tabId)) return
-      try {
-        fn(entry.pty)
-      } catch {
-        /* engine died — its onExit already closed the sockets */
-      }
-    }
-    safePty((pty) => pty.resize(cols, rows))
-
-    ws.on("message", (raw) => {
-      const text = raw.toString()
-      if (text.startsWith("{")) {
-        try {
-          const msg = JSON.parse(text)
-          if (msg && msg.type === "resize" && Number.isFinite(msg.cols) && Number.isFinite(msg.rows)) {
-            safePty((pty) => pty.resize(Math.max(1, msg.cols | 0), Math.max(1, msg.rows | 0)))
-            return
-          }
-        } catch {
-          /* fall through to raw write */
-        }
-      }
-      safePty((pty) => pty.write(text))
-    })
-
-    ws.on("close", () => {
-      entry.sockets.delete(ws)
-      // Keep the PTY alive for reconnects; it's killed only via /pty/close.
-    })
   })()
 })
 
@@ -340,13 +204,7 @@ server.listen(PORT, HOST, () => {
 })
 
 const shutdown = () => {
-  for (const [, entry] of tabs) {
-    try {
-      entry.pty.kill()
-    } catch {
-      /* ignore */
-    }
-  }
+  ptySessions.shutdown()
   wss.close()
   server.close()
   process.exit(0)

@@ -93,9 +93,9 @@ async function resolveQuickTaskContext(
 
 /**
  * Deliver a freshly-created task's first prompt. Mirrors `kobe api add`'s
- * deliver path: build the session with the init SCRIPT only (no init-prompt,
- * so this typed prompt isn't double-pasted — `ensureTaskSession`'s default),
- * wait for the engine pane, then bracketed-paste + submit. Best-effort.
+ * deliver path: build the session with the "none" prompt-delivery intent
+ * (`ensureTaskSession`'s default), wait for the engine pane, then
+ * bracketed-paste + submit. Best-effort.
  */
 async function deliverFirstPromptToTask(
   orch: RemoteOrchestrator,

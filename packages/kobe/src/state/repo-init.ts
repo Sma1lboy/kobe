@@ -30,6 +30,27 @@ export interface ResolvedRepoInit {
   readonly initPrompt?: string
 }
 
+export type FirstEngineMessageSource = "repo-init" | "explicit"
+
+export interface FirstEngineMessage {
+  /** Text to paste into the engine composer as the first submitted message. */
+  readonly text: string
+  /** Why this first message exists; used to keep priority rules explicit. */
+  readonly source: FirstEngineMessageSource
+}
+
+export interface EngineLaunchInit {
+  /** Shell snippet to weave before the engine process on fresh session create. */
+  readonly initScript?: string
+  /** Optional first message for ensureSession's fresh-create path to deliver. */
+  readonly firstMessage?: FirstEngineMessage
+}
+
+export type PromptDeliveryIntent =
+  | { readonly kind: "repo-init" }
+  | { readonly kind: "explicit"; readonly prompt: string }
+  | { readonly kind: "none" }
+
 const INIT_SCRIPT_REL = join(".kobe", "init.sh")
 const INIT_PROMPT_REL = join(".kobe", "init-prompt.md")
 
@@ -61,5 +82,29 @@ export function resolveRepoInit(repoRoot: string, worktreePath: string): Resolve
   return {
     initScript: initScript && initScript.trim().length > 0 ? initScript : undefined,
     initPrompt: initPrompt && initPrompt.trim().length > 0 ? initPrompt : undefined,
+  }
+}
+
+function firstMessageFor(intent: PromptDeliveryIntent, init: ResolvedRepoInit): FirstEngineMessage | undefined {
+  if (intent.kind === "none") return undefined
+  if (intent.kind === "explicit") return { source: "explicit", text: intent.prompt }
+  const text = init.initPrompt?.trim()
+  return text ? { source: "repo-init", text } : undefined
+}
+
+/**
+ * Resolve the complete launch-time prompt contract for a worktree. Callers
+ * choose the intent; this module owns the source priority and first-message
+ * shape so engine launch paths don't hand-roll initPrompt suppression.
+ */
+export function resolveEngineLaunchInit(
+  repoRoot: string,
+  worktreePath: string,
+  intent: PromptDeliveryIntent = { kind: "repo-init" },
+): EngineLaunchInit {
+  const init = resolveRepoInit(repoRoot, worktreePath)
+  return {
+    initScript: init.initScript,
+    firstMessage: firstMessageFor(intent, init),
   }
 }

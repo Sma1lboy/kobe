@@ -13,7 +13,7 @@ import { type KobeOrchestrator, RemoteOrchestrator } from "../client/remote-orch
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { deriveTitleFromSession } from "../monitor/auto-title.ts"
 import { PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.ts"
-import { resolveRepoInit } from "../state/repo-init.ts"
+import { resolveEngineLaunchInit } from "../state/repo-init.ts"
 import {
   addSavedRepo,
   getPersistedString,
@@ -141,7 +141,7 @@ export async function startDirectTmux(): Promise<void> {
     const name = tmuxSessionName(task.id)
     await orchestrator.setActiveTask(task.id).catch(() => {})
     setPersistedString("lastSelectedTaskId", task.id)
-    const init = resolveRepoInit(task.repo, cwd)
+    const launchInit = resolveEngineLaunchInit(task.repo, cwd, { kind: "repo-init" })
     const ready = await ensureSession({
       name,
       cwd,
@@ -149,8 +149,7 @@ export async function startDirectTmux(): Promise<void> {
       taskId: task.id,
       vendor: task.vendor,
       repo: task.repo,
-      initScript: init.initScript,
-      initPrompt: init.initPrompt,
+      launchInit,
     })
     if (!ready) {
       console.error(`kobe: tmux session ${name} failed to start (check the daemon log)`)

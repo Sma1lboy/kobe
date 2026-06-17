@@ -54,6 +54,7 @@ import { kobeCliInvocation } from "@/cli/invocation"
 import { withClaudeSessionId, withDispatcherProtocol, withWorktreeProtocol } from "@/engine/interactive-command"
 import { worktreeInitMarkerPath } from "@/env"
 import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
+import type { EngineLaunchInit } from "@/state/repo-init"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
   killSession,
@@ -73,7 +74,7 @@ import {
   isTmuxPrefixBindingId,
   resolveUserTmuxKeys,
 } from "@/tmux/keybindings"
-import { deliverFirstPrompt } from "@/tmux/prompt-delivery"
+import { deliverFirstEngineMessage } from "@/tmux/prompt-delivery"
 import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
 import { HIDDEN_TASKS_PANE_OPTION, engineLaunchLine, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
 import { applyTmuxChromeTheme } from "@/tui/lib/tmux-border-theme"
@@ -294,18 +295,12 @@ export interface EnsureSessionOpts {
    */
   readonly repo?: string
   /**
-   * Per-repo init script woven before the engine on a FRESH session (runs
-   * in the same shell so `export`s reach the engine; once-per-worktree via
-   * a marker under `<home>/.kobe/`). No-op on reuse — only the create path
-   * applies it. Resolve via {@link resolveRepoInit}.
+   * Launch-time init/prompt contract for a FRESH session. The script is
+   * woven before the engine in the same shell; the first message is pasted
+   * after the engine is ready. No-op on pure reuse — only the create path
+   * applies it. Resolve via {@link resolveEngineLaunchInit}.
    */
-  readonly initScript?: string
-  /**
-   * Per-repo first prompt — pasted as the engine's first message right
-   * after a FRESH session's engine is ready. Fire-and-forget; never sent
-   * on reuse/re-attach. Resolve via {@link resolveRepoInit}.
-   */
-  readonly initPrompt?: string
+  readonly launchInit?: EngineLaunchInit
 }
 
 /** Per-session-name in-flight lock — concurrent enters coalesce. */
@@ -392,6 +387,7 @@ async function observeSession(name: string): Promise<ObservedSession | null> {
 }
 
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
+  const launchInit = opts.launchInit
   // (Engine activity hooks are NOT installed here — they live in the user's
   // global ~/.claude/settings.json, installed once on launch by
   // `ensureGlobalKobeHooks`, and report their cwd so the daemon maps each event
@@ -498,8 +494,8 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     // Weave the per-repo init script before the engine (once-per-worktree
     // via a marker under <home>/.kobe/). Plain keepAlive when there's none.
     engineLaunchLine(engineCmd, {
-      initScript: remoteKey ? undefined : opts.initScript,
-      markerPath: !remoteKey && opts.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+      initScript: remoteKey ? undefined : launchInit?.initScript,
+      markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
     }),
   ])
   const pane0 = r0.stdout.trim()
@@ -777,14 +773,14 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // lands back in Ops.
   await runTmux(["select-pane", "-t", pane0])
 
-  // Per-repo first prompt: deliver it AFTER the engine wakes, on this
+  // First engine message: deliver it AFTER the engine wakes, on this
   // FRESH session only (this is the create path — reuse/respawn never
   // reach here). Fire-and-forget so building the session doesn't block on
   // the engine's boot; the helper waits for readiness then pastes.
-  const initPrompt = opts.initPrompt?.trim()
-  if (initPrompt) {
-    void deliverFirstPrompt(opts.name, initPrompt).catch((err) =>
-      console.error("[kobe tmux] init prompt delivery failed:", err),
+  const firstMessage = launchInit?.firstMessage
+  if (firstMessage) {
+    void deliverFirstEngineMessage(opts.name, firstMessage).catch((err) =>
+      console.error("[kobe tmux] first message delivery failed:", err),
     )
   }
   return true
