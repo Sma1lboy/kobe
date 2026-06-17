@@ -75,8 +75,10 @@ export interface ExecResult {
 export interface ExecOpts {
   /** Working directory the command runs in (a LOCAL path locally, a REMOTE path remotely). */
   readonly cwd?: string
-  /** Extra environment merged onto the inherited env (local only; remote ignores it for now). */
+  /** Extra environment for the command. Local merges it into process env; remote prefixes safe keys into the shell command. */
   readonly env?: Readonly<Record<string, string>>
+  /** Optional cancellation signal. Local and remote async subprocesses receive it. */
+  readonly signal?: AbortSignal
 }
 
 /**
@@ -149,6 +151,13 @@ export function remoteShellCommand(argv: readonly string[], cwd?: string): strin
   return cwd ? `cd ${shQuote(cwd)} && ${cmd}` : cmd
 }
 
+function remoteEnvPrefix(env: Readonly<Record<string, string>> | undefined): string {
+  if (!env) return ""
+  const pairs = Object.entries(env).filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+  if (pairs.length === 0) return ""
+  return `${pairs.map(([key, value]) => `${key}=${shQuote(value)}`).join(" ")} `
+}
+
 /**
  * The `ssh` connection argv (program + flags + `user@host`), WITHOUT the
  * remote command and WITHOUT any sshpass prefix. `tty` adds `-tt` (force a
@@ -178,7 +187,7 @@ export function sshConnectArgs(spec: RemoteSpec, opts: { tty?: boolean; batch?: 
  */
 function spawnCollect(
   argv: readonly string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {},
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
     const [cmd, ...rest] = argv
@@ -192,7 +201,12 @@ function spawnCollect(
     }
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(cmd ?? "", rest, { cwd: opts.cwd, env: opts.env, shell: false })
+      child = spawn(cmd ?? "", rest, {
+        cwd: opts.cwd,
+        env: opts.env,
+        shell: false,
+        signal: opts.signal,
+      })
     } catch {
       finish(-1)
       return
@@ -221,6 +235,7 @@ export class LocalExecHost implements ExecHost {
     return spawnCollect(argv, {
       cwd: opts.cwd,
       env: opts.env ? { ...process.env, ...opts.env } : process.env,
+      signal: opts.signal,
     })
   }
 
@@ -262,7 +277,11 @@ export class LocalExecHost implements ExecHost {
 export type Spawner = (argv: readonly string[], env?: Record<string, string>) => ExecResult
 
 /** ASYNC spawn seam — used by `run` (and everything built on it). */
-export type AsyncSpawner = (argv: readonly string[], env?: Record<string, string>) => Promise<ExecResult>
+export type AsyncSpawner = (
+  argv: readonly string[],
+  env?: Record<string, string>,
+  opts?: { signal?: AbortSignal },
+) => Promise<ExecResult>
 
 const defaultSpawner: Spawner = (argv, env) => {
   const [cmd, ...rest] = argv
@@ -274,8 +293,11 @@ const defaultSpawner: Spawner = (argv, env) => {
   return { stdout: proc.stdout ?? "", stderr: proc.stderr ?? "", exitCode: proc.status ?? -1 }
 }
 
-const defaultAsyncSpawner: AsyncSpawner = (argv, env) =>
-  spawnCollect(argv, { env: env ? { ...process.env, ...env } : process.env })
+const defaultAsyncSpawner: AsyncSpawner = (argv, env, opts) =>
+  spawnCollect(argv, {
+    env: env ? { ...process.env, ...env } : process.env,
+    signal: opts?.signal,
+  })
 
 /**
  * Run things on a remote host over SSH. Every `run`/fs call becomes
@@ -332,7 +354,9 @@ export class RemoteExecHost implements ExecHost {
     this.ensureReady()
     // No sshpass here — the multiplexed master carries the channel with no
     // re-auth, so no secret ever reaches a per-call command.
-    return this.spawnAsync([...sshConnectArgs(this.spec, { batch: true }), remoteShellCommand(argv, opts.cwd)])
+    const command = `${remoteEnvPrefix(opts.env)}${shJoin(argv)}`
+    const remote = opts.cwd ? `cd ${shQuote(opts.cwd)} && ${command}` : command
+    return this.spawnAsync([...sshConnectArgs(this.spec, { batch: true }), remote], undefined, { signal: opts.signal })
   }
 
   async exists(path: string): Promise<boolean> {

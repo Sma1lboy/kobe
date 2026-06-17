@@ -24,13 +24,17 @@
  *   { files: DiffFile[], raw: string }   // raw = concatenated unstaged+staged diff
  *
  * Implementation notes:
- * - Uses `Bun.spawn` to run git in the worktree dir (matches server.ts's
- *   `pidsOnPort` helper style). All git invocations pass `--no-color`.
+ * - Uses the Worktree content module to run git through ExecHost, so local and
+ *   remote Worktrees share one path. All git invocations pass `--no-color`.
  * - `status --porcelain=v1 -z` enumerates files (NUL-delimited so paths with
  *   spaces/newlines survive); we then slice per-file patches out of the full
  *   `git diff` / `git diff --staged` text so we run git a bounded number of
  *   times rather than once per file.
  */
+
+import { statSync } from "node:fs"
+import { execHostForWorktreePath, worktreeUsable } from "../exec/resolve.ts"
+import { runWorktreeGit } from "../worktree/content.ts"
 
 const GIT_TIMEOUT_MS = 15_000
 
@@ -50,28 +54,9 @@ interface SpawnResult {
 
 /** Run `git <args>` in `cwd`. Captures stdout/stderr; never throws. */
 async function runGit(cwd: string, args: string[]): Promise<SpawnResult> {
-  try {
-    const proc = Bun.spawn(["git", "-C", cwd, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const timer = setTimeout(() => {
-      try {
-        proc.kill()
-      } catch {
-        /* already gone */
-      }
-    }, GIT_TIMEOUT_MS)
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-    clearTimeout(timer)
-    return { ok: code === 0, stdout, stderr, code }
-  } catch (err) {
-    return { ok: false, stdout: "", stderr: err instanceof Error ? err.message : String(err), code: -1 }
-  }
+  const res = await runWorktreeGit(cwd, args, { timeoutMs: GIT_TIMEOUT_MS })
+  const code = res.status ?? -1
+  return { ok: code === 0, stdout: res.stdout, stderr: res.stderr, code }
 }
 
 export interface DiffFile {
@@ -201,14 +186,21 @@ export async function handleDiffRequest(req: Request, url: URL): Promise<Respons
     return Response.json({ error: "worktreePath must be an absolute path" }, { status: 400 })
   }
 
-  // Validate the path exists and is a directory.
-  try {
-    const stat = await Bun.file(worktreePath).stat()
-    if (!stat.isDirectory()) {
-      return Response.json({ error: "worktreePath is not a directory" }, { status: 400 })
-    }
-  } catch {
+  // Validate the path exists locally, or is a registered remote Worktree path.
+  // Remote paths cannot be stat'd from the bridge process; worktreeUsable
+  // centralizes the "local stat vs trusted remote path" rule.
+  if (!worktreeUsable(worktreePath)) {
     return Response.json({ error: "worktreePath does not exist" }, { status: 400 })
+  }
+  const host = execHostForWorktreePath(worktreePath)
+  if (!host.isRemote) {
+    try {
+      if (!statSync(worktreePath).isDirectory()) {
+        return Response.json({ error: "worktreePath is not a directory" }, { status: 400 })
+      }
+    } catch {
+      return Response.json({ error: "worktreePath does not exist" }, { status: 400 })
+    }
   }
 
   // Confirm it's inside a git work tree.

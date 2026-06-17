@@ -124,6 +124,18 @@ describe("RemoteExecHost.run", () => {
     const checks = calls.filter((c) => c.argv.includes("check"))
     expect(checks).toHaveLength(1)
   })
+
+  it("prefixes safe env vars into the remote command", async () => {
+    const { spawn, calls } = recordingSpawner()
+    const host = new RemoteExecHost(KEY_SPEC, spawn)
+
+    await host.run(["git", "status"], {
+      cwd: "/srv/wt",
+      env: { GIT_OPTIONAL_LOCKS: "0", "bad-key": "ignored" },
+    })
+
+    expect(calls[1]?.argv.at(-1)).toBe("cd '/srv/wt' && GIT_OPTIONAL_LOCKS='0' 'git' 'status'")
+  })
 })
 
 describe("RemoteExecHost master bring-up (password)", () => {

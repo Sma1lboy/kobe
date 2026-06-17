@@ -16,32 +16,18 @@
  * that matches Stream B's pattern but lives in the pane's slice.
  *
  * Implementation notes:
- *   - We use Node's async `child_process.spawn`, not `spawnSync`. The
- *     pane sits on the TUI process' event loop; a large repository can
- *     make `git ls-files` / `git status` take long enough that sync
- *     spawn freezes typing and rendering.
- *   - Args always pass as an array. Never a shell string. `shell: false`
- *     defends against any upstream layer that might flip the default.
+ *   - Git runs through `src/worktree/content.ts`, so local and remote
+ *     Worktrees share one async ExecHost-backed read path.
+ *   - Args always pass as an array. Never a shell string.
  *   - `cwd` is required on every call. The pane never relies on
  *     `process.cwd()` because tasks run in different worktrees
  *     concurrently.
  *   - On non-zero exit we throw — the pane shows an error empty-state.
  *     This mirrors the orchestrator's behaviour and avoids silently
  *     rendering stale data.
- *   - We export `gitWrapper.spawn` as a named seam so unit tests can
- *     mock it via `vi.spyOn` (vitest cannot stub a top-level `import`
- *     directly, but it can stub a property of an exported object).
  */
 
-import { spawn as nodeSpawn } from "node:child_process"
-import type { Readable } from "node:stream"
-
-type EventedGitProcess = {
-  readonly stdout: Readable
-  readonly stderr: Readable
-  on(event: "error", listener: (err: Error) => void): void
-  on(event: "close", listener: (status: number | null, signal: NodeJS.Signals | null) => void): void
-}
+import { runWorktreeGit } from "../../../worktree/content.ts"
 
 /** Status code our pane displays. Mirrors `git status` two-char codes
  * collapsed to a single-char headline. */
@@ -69,54 +55,10 @@ export type NumstatEntry = {
   deleted: number | null
 }
 
-export type GitRunResult = {
-  stdout: string
-  stderr: string
-  status: number | null
-  signal: NodeJS.Signals | null
-}
-
-/**
- * Wrapper around `child_process.spawn` that we expose as a named
- * export so tests can replace it. Production callers should prefer
- * {@link listFiles} and {@link statusFiles}; this is the seam.
- */
-export const gitWrapper = {
-  spawn(args: readonly string[], cwd: string): Promise<GitRunResult> {
-    return new Promise((resolve, reject) => {
-      const child = nodeSpawn("git", [...args], {
-        cwd,
-        shell: false,
-        stdio: ["ignore", "pipe", "pipe"],
-        // All callers here are read-only inspection (`status`, `diff`,
-        // `ls-files`). `git status`/`diff` would otherwise rewrite
-        // `.git/index`'s stat cache and take `.git/index.lock`, racing
-        // the worktree's engine commits and the sidebar poll for the
-        // lock. `GIT_OPTIONAL_LOCKS=0` suppresses that optional write.
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-      }) as unknown as EventedGitProcess
-      let stdout = ""
-      let stderr = ""
-      child.stdout.setEncoding("utf8")
-      child.stderr.setEncoding("utf8")
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk
-      })
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk
-      })
-      child.on("error", reject)
-      child.on("close", (status: number | null, signal: NodeJS.Signals | null) => {
-        resolve({ stdout, stderr, status, signal })
-      })
-    })
-  },
-}
-
-/** Internal helper — drives gitWrapper.spawn, throws on non-zero. */
+/** Internal helper — drives Worktree content git, throws on non-zero. */
 async function runGit(args: readonly string[], cwd: string): Promise<string> {
   if (!cwd) throw new Error("git(): cwd is required")
-  const result = await gitWrapper.spawn(args, cwd)
+  const result = await runWorktreeGit(cwd, args)
   const exitCode = result.status ?? -1
   if (exitCode !== 0) {
     const stderr = (result.stderr ?? "").trim()

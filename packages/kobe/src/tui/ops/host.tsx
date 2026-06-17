@@ -29,6 +29,7 @@ import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmu
 import { openInEditor } from "@/tmux/editor-launch"
 import { previewWindowCommand } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
+import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 import { SyntaxStyle } from "@opentui/core"
 import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
@@ -346,32 +347,12 @@ function filetypeOf(relPath: string): string | undefined {
 }
 
 async function gitDiff(worktree: string, relPath: string): Promise<string> {
-  try {
-    const proc = Bun.spawn(["git", "diff", "HEAD", "--", relPath], {
-      cwd: worktree,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "ignore",
-      // Read-only diff for the preview. `git diff` would otherwise
-      // rewrite `.git/index`'s stat cache and take `.git/index.lock`,
-      // racing the worktree's engine commits for the lock.
-      // `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
-    })
-    const text = await new Response(proc.stdout).text()
-    await proc.exited
-    return text
-  } catch {
-    return ""
-  }
+  const res = await runWorktreeGit(worktree, ["diff", "HEAD", "--", relPath])
+  return res.status === 0 ? res.stdout : ""
 }
 
 async function readFileText(worktree: string, relPath: string): Promise<string> {
-  try {
-    return await Bun.file(`${worktree}/${relPath}`).text()
-  } catch {
-    return ""
-  }
+  return (await readWorktreeFile(worktree, relPath)) ?? ""
 }
 
 /**

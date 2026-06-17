@@ -17,7 +17,6 @@ export { FILETREE_WIDTH, FileTree, type FileTreeProps } from "./FileTree"
 export {
   type FileStatus,
   type StatusEntry,
-  gitWrapper,
   listFiles,
   parsePorcelain,
   statusFiles,
