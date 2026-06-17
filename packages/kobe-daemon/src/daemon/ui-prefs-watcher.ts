@@ -17,6 +17,10 @@
  *     tmp + rename, which swaps the file's inode — an `fs.watch` on the
  *     file itself goes dead after the first atomic write. Watching the
  *     parent dir and filtering on the filename survives every rename.
+ *   - **Poll as a safety net.** Bun/macOS can miss that tmp+rename edge in
+ *     a long-lived daemon even when the directory watch is alive. The state
+ *     file is tiny and publishes are changed-only, so a low-frequency poll
+ *     turns the live theme path from best-effort into reliable fan-out.
  *   - **Debounce.** A write burst (KVProvider flush + a `setPersisted*`
  *     call) collapses into one read ~{@link DEFAULT_UI_PREFS_DEBOUNCE_MS}
  *     later.
@@ -42,6 +46,9 @@ import type { UiPrefsPayload } from "./protocol.ts"
 
 /** Default debounce between a state-file event and the read+publish. */
 export const DEFAULT_UI_PREFS_DEBOUNCE_MS = 200
+
+/** Safety-net poll cadence for missed fs.watch events. */
+export const DEFAULT_UI_PREFS_POLL_MS = 250
 
 /**
  * Focus-accent slots the TUI understands — mirror of `FOCUS_ACCENT_SLOTS`
@@ -115,17 +122,24 @@ export interface UiPrefsWatcherOptions {
    * same disable convention as the server's other pollers.
    */
   readonly debounceMs?: number
+  /**
+   * Poll fallback cadence in ms. `<= 0` disables only the fallback poll;
+   * the directory watcher still runs. Defaults to
+   * {@link DEFAULT_UI_PREFS_POLL_MS}.
+   */
+  readonly pollMs?: number
 }
 
 /**
  * Start the watcher: publish the current prefs immediately (replay seed),
- * then re-read + publish-on-change after every debounced state-file
- * event. Returns a `stop()` that closes the fs watcher and clears any
- * pending debounce.
+ * then re-read + publish-on-change after every debounced state-file event
+ * and on a small polling fallback. Returns a `stop()` that closes the fs
+ * watcher and clears pending timers.
  */
 export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcherOptions = {}): () => void {
   const debounceMs = options.debounceMs ?? DEFAULT_UI_PREFS_DEBOUNCE_MS
   if (debounceMs <= 0) return () => {}
+  const pollMs = options.pollMs ?? DEFAULT_UI_PREFS_POLL_MS
   const statePath = options.statePath ?? defaultUiPrefsStatePath()
   const stateDir = dirname(statePath)
   const stateFile = basename(statePath)
@@ -134,8 +148,7 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
   bus.publish("ui-prefs", last)
 
   let timer: ReturnType<typeof setTimeout> | null = null
-  const readAndPublish = (): void => {
-    timer = null
+  const publishIfChanged = (): void => {
     try {
       const next = readUiPrefsFromStateFile(statePath)
       if (samePrefs(last, next)) return
@@ -145,8 +158,17 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
       logDaemonError("ui-prefs-watcher", err)
     }
   }
+  const schedulePublish = (): void => {
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      publishIfChanged()
+    }, debounceMs)
+    timer.unref?.()
+  }
 
   let watcher: FSWatcher | null = null
+  let poll: ReturnType<typeof setInterval> | null = null
   try {
     // The dir may not exist yet on a fresh home (the State Store mkdirs at
     // its first write); create it so `watch` has something to attach to.
@@ -157,9 +179,7 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
       // filename (platforms that omit it) conservatively counts as a match
       // — the debounce + changed-only publish make the extra read cheap.
       if (filename !== null && filename !== stateFile) return
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(readAndPublish, debounceMs)
-      timer.unref?.()
+      schedulePublish()
     })
     watcher.on("error", (err) => logDaemonError("ui-prefs-watcher", err))
   } catch (err) {
@@ -168,11 +188,19 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
     // serves the at-start value to subscribers.
     logDaemonError("ui-prefs-watcher", err)
   }
+  if (pollMs > 0) {
+    poll = setInterval(publishIfChanged, pollMs)
+    poll.unref?.()
+  }
 
   return () => {
     if (timer) {
       clearTimeout(timer)
       timer = null
+    }
+    if (poll) {
+      clearInterval(poll)
+      poll = null
     }
     watcher?.close()
     watcher = null

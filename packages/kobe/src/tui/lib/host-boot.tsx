@@ -201,11 +201,10 @@ function HostProviders(props: {
  * back; `applyUiPrefs` compares before every set, so identical values are
  * a no-op.
  *
- * tmux borders are deliberately NOT re-applied here — the two border
- * options are server-global, so the settings-exit flow's single
- * `refreshKobeWorkspacePanes` → `applyTmuxPaneBorderTheme` call already
- * covers every session; doing it from N panes would just race the same
- * `set-option`s.
+ * tmux chrome is deliberately NOT re-applied here — the status/window bar
+ * and border options are server-global, so the settings-exit flow's single
+ * `refreshKobeWorkspacePanes` → `applyTmuxChromeTheme` call already covers
+ * every session; doing it from N panes would just race the same `set-option`s.
  */
 function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   const themeCtx = useTheme()
