@@ -1,11 +1,12 @@
 /**
  * Dev launcher — one `bun run dev` brings up the whole web UI:
- *   - the bridge server (bun, ./server) on KOBE_BRIDGE_PORT (5174)
+ *   - the transitional bridge adapter (bun, ./server) on KOBE_BRIDGE_PORT (5174)
  *   - the Vite dev server (node) on 5173, proxying /api + /events to it
  *
- * The bridge is a standalone process that talks to the daemon over the
+ * The bridge is a transitional process that talks to the daemon over the
  * socket protocol — it runs under `bun --watch`, so editing server/ code
- * hot-restarts the bridge WITHOUT touching the daemon (or your tasks).
+ * hot-restarts it during migration. ADR 0003 moves the target web seam into
+ * daemon-hosted local HTTP/SSE routes.
  * Ctrl-C tears everything down.
  *
  * Daemon isolation: `bun run dev` connects to whatever the default socket
@@ -41,7 +42,7 @@ console.log(
   `  web :${WEB_PORT}  bridge :${BRIDGE_PORT}  pty :${PTY_PORT}${process.env.KOBE_TMUX_SOCKET ? `  tmux: ${process.env.KOBE_TMUX_SOCKET}` : ""}`,
 )
 
-// bun: bridge server (SSE/RPC/notes/diff/session) — daemon client, not daemon-hosted.
+// bun: transitional bridge adapter (SSE/RPC/notes/diff/session) — target is daemon-hosted.
 const bridge = Bun.spawn(["bun", "--watch", "server/main.ts"], {
   stdio: ["inherit", "inherit", "inherit"],
   env: { ...childEnv, KOBE_BRIDGE_PORT: BRIDGE_PORT },

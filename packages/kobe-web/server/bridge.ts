@@ -1,12 +1,11 @@
 /**
- * kobe web bridge — a standalone HTTP/SSE server in front of the daemon.
+ * kobe web bridge — transitional HTTP/SSE adapter in front of the daemon.
  *
- * This process is the web UI's backend: it owns the browser-facing port and
- * talks to the kobe daemon purely over the socket protocol (see
- * daemon-link.ts). It is deliberately NOT daemon-hosted: the dashboard is
- * experimental and iterates fast, so its code must be restartable without
- * touching the daemon that holds every task — and a bridge crash must never
- * take the daemon down with it.
+ * This process currently owns the browser-facing port and talks to the kobe
+ * daemon over the socket protocol (see daemon-link.ts). ADR 0003 makes this a
+ * migration layer: daemon-backed browser routes should move into a daemon
+ * hosted local HTTP/SSE interface, leaving this adapter only for compatibility
+ * until each route is deleted.
  *
  * Routes:
  *   GET  /__kobe_web          health marker (port-takeover handshake)

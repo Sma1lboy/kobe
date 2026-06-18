@@ -2,11 +2,12 @@
  * `kobe web` — launch the local web UI.
  *
  * Serves the kobe web dashboard on http://localhost:<port> (default 5173).
- * The HTTP/SSE server (the "bridge", kobe-web/server) runs IN THIS process
- * and talks to the daemon purely over the socket protocol — the daemon no
- * longer hosts web routes, so a web bug can't hurt the daemon and the bridge
- * restarts without touching it. If a prior kobe-web already holds the port
- * it is replaced; a foreign service on the port is reported, not killed.
+ * The transitional HTTP/SSE adapter (kobe-web/server) runs in this process
+ * and talks to the daemon over the socket protocol. ADR 0003 moves the target
+ * seam into the daemon: browser routes backed by daemon state should come from
+ * daemon-hosted local HTTP/SSE, not a long-lived bridge. If a prior kobe-web
+ * already holds the port it is replaced; a foreign service on the port is
+ * reported, not killed.
  *
  *   kobe web                 serve the built SPA on :5173
  *   kobe web --port 5180     bind a different port

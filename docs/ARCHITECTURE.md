@@ -110,19 +110,23 @@ The seams matter:
 | Daemon socket/integration tests | `test/daemon/*.test.ts` |
 | Unit-test type assertions | `test/types/*.test-d.ts` |
 
-### Web bridge (kobe-web/server)
+### Web transport (daemon target; bridge transitional)
 
-The browser dashboard's backend is a STANDALONE bridge server in
+The current browser dashboard backend is a standalone bridge server in
 `packages/kobe-web/server/`, exported as `kobe-web/server`. `kobe web`
 (`src/cli/web-cmd.ts`) runs it in-process; web dev (`kobe-web/dev.ts`) runs
-it under `bun --watch`. The daemon hosts NO web code — the bridge talks to
-it purely over the socket protocol (`server/daemon-link.ts`).
+it under `bun --watch`. This bridge is now a transitional adapter, not the
+target seam. ADR 0003 reverses the old "daemon hosts no web routes" decision:
+daemon-backed browser data and mutations should move to a daemon-hosted local
+HTTP/SSE interface, so the web/desktop chain becomes direct and easier to
+debug.
 
-That boundary is deliberate (it replaced the daemon-hosted web transport):
+Current bridge responsibilities during migration:
 
-- The dashboard is experimental and iterates fast; the bridge restarts
-  without touching the daemon that holds every task, and a web bug can
-  never take the daemon down.
+- The dashboard is experimental and iterates fast; today the bridge restarts
+  without touching the daemon that holds every task. This remains a dev
+  convenience, not an architectural reason to add new daemon-backed routes
+  outside the daemon.
 - Browser state hydrates over the wire: `hello` + `subscribe` channel
   replay feed a bridge-local mirror that becomes the SSE `snapshot`;
   channel pushes are forwarded as SSE `channel` events. The link
@@ -142,6 +146,10 @@ That boundary is deliberate (it replaced the daemon-hosted web transport):
 - The bridge subscribes with `role: "gui"`, so an open dashboard holds the
   daemon alive through the normal refcount; stopping `kobe web` releases
   that hold and the normal lazy-shutdown rules apply.
+
+Migration rule: add new daemon-backed browser behaviour to the daemon web
+interface first. Keep the bridge only as compatibility glue until each route
+moves; then delete the adapter.
 
 ---
 
@@ -303,10 +311,11 @@ in-memory UI data, not task lifecycle and not persisted.
 ### Web transport
 
 `kobe web` is an early experimental front-end over the same daemon. The web
-UI owns browser-local workspace tabs; the kobe-web bridge provides task
-snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs —
-all sourced from the daemon protocol. Do not reintroduce daemon-hosted web
-routes, a separate web task cache, or a second daemon.
+UI owns browser-local workspace tabs. The current kobe-web bridge provides task
+snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs, but
+ADR 0003 makes that bridge transitional: daemon-backed browser routes should
+come directly from the daemon's local web interface. Do not introduce a
+separate web task cache or a second daemon.
 
 ---
 

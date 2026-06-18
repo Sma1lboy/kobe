@@ -7,17 +7,17 @@
 > HTTP route table. For the running feature set read the CHANGELOG; for the
 > daemon protocol read [`daemon.md`](./daemon.md).
 
-## Why three processes
+## Current dev process split
 
-`node-pty` does not work under Bun, and the bridge must not be able to take the
-daemon down — so the web UI is split into three cooperating processes, never
-hosted inside the daemon:
+`node-pty` does not work under Bun, and the current bridge predates the
+daemon-owned web transport decision — so the dev web UI currently starts three
+cooperating processes:
 
 ```mermaid
 flowchart LR
   Browser["Browser SPA<br/>(React + TanStack Router)<br/>:5173"]
   Vite["Vite dev server<br/>:5173 (dev only)"]
-  Bridge["Bridge (Bun)<br/>kobe-web/server<br/>:5174"]
+  Bridge["Bridge (Bun, transitional)<br/>kobe-web/server<br/>:5174"]
   PTY["PTY sidecar (node)<br/>pty-server.mjs<br/>:5175"]
   Daemon["kobe daemon<br/>(unix socket)"]
   Engine["claude / codex<br/>(in the worktree)"]
@@ -25,7 +25,7 @@ flowchart LR
   Browser -->|"/events SSE, /api/* fetch"| Bridge
   Browser -->|"/pty WebSocket"| PTY
   Vite -.->|"dev: proxies /api,/events,/pty"| Bridge
-  Bridge -->|"role:gui subscribe + RPC"| Daemon
+  Bridge -->|"role:gui subscribe + RPC<br/>(to be replaced by daemon HTTP/SSE)"| Daemon
   PTY -->|"fetch engine/terminal spec"| Bridge
   PTY -->|"spawn"| Engine
 ```
@@ -34,11 +34,13 @@ flowchart LR
   store ([`src/lib/store.ts`](../../packages/kobe-web/src/lib/store.ts)); every
   mutation is a `POST /api/rpc`. No optimistic updates — the daemon's
   `task.snapshot` push is the round-trip.
-- **Bridge** ([`server/`](../../packages/kobe-web/server)) — a standalone Bun
-  HTTP/SSE server. Holds exactly ONE daemon socket
+- **Bridge** ([`server/`](../../packages/kobe-web/server)) — a transitional Bun
+  HTTP/SSE adapter. Holds exactly ONE daemon socket
   ([`daemon-link.ts`](../../packages/kobe-web/server/daemon-link.ts)),
   subscribing with `role: "gui"` so an open browser holds the daemon alive
-  like an attached TUI. Restartable without touching the daemon.
+  like an attached TUI. ADR 0003 moves the target seam into the daemon:
+  browser and desktop hosts should eventually talk directly to daemon-hosted
+  local HTTP/SSE routes.
 - **PTY sidecar** ([`pty-server.mjs`](../../packages/kobe-web/pty-server.mjs)) —
   a node process (node-pty needs node). Each engine/terminal tab is a
   WebSocket-attached PTY keyed by a client tab id, kept alive across reconnects
@@ -51,7 +53,9 @@ assets. A future web-enabled distribution can still run `kobe web`; then
 runs the bridge in-process serving the built SPA from `dist/web-ui`, and spawns
 the PTY sidecar on `port + 2`. In dev,
 [`dev.ts`](../../packages/kobe-web/dev.ts) spawns all three and Vite proxies
-`/api`, `/events`, `/pty`.
+`/api`, `/events`, `/pty`. As the daemon web interface lands, this should shrink
+to Vite plus the daemon interface, with the PTY sidecar remaining only while
+`node-pty` requires a Node adapter.
 
 ## Daemon channels the SPA consumes
 
@@ -226,10 +230,7 @@ is arbitrary command exec in the worktree, so the upgrade enforces a
 cross-origin upgrade is rejected; a non-browser client (no `Origin`) is allowed
 since there's no ambient browser session to ride.
 
-Remaining gap: there is still **no bridge auth token**, and the HTTP routes
-(`/api/rpc`, `/events`, `/api/notes`) have no Origin check (only the `/pty` WS
-does). The `/api/rpc` allowlist + the teardown contract bound the RPC blast
-radius, but a bridge-issued token + an Origin allowlist on the HTTP routes is
-the next step before the dashboard graduates from localhost-only. Deliberately
-deferred — loopback bind + the PTY Origin check already close the default
-exposure, and a token would add friction to the dev flow with no localhost payoff.
+Remaining gap: the browser-facing HTTP routes still live in the transitional
+bridge. As they move into the daemon web interface, the Origin/token policy,
+RPC allowlist, and event-channel filtering should move with them so browser
+safety is enforced at the daemon-owned seam.
