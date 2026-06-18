@@ -120,11 +120,13 @@ For the full feature manifest, see [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Browser dashboard
 
-The browser dashboard is experimental and is no longer bundled in the default
-npm package. In a source checkout, run it from `packages/kobe-web`; a
-web-enabled distribution should ship separately from the TUI-first package:
+The browser dashboard is experimental and ships with the default npm package.
+Installed packages can start it directly with `kobe web`; source checkouts can
+run the sandbox dev stack from `packages/kobe-web`:
 
 ```bash
+kobe web                 # http://localhost:5174
+
 cd packages/kobe-web
 bun run dev:sandbox      # http://localhost:5173, isolated from production
 ```

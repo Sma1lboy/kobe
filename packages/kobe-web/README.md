@@ -7,13 +7,12 @@ model, daemon channels, route table) lives in
 
 ## Three processes
 
-`node-pty` doesn't work under Bun, and a web crash must never take the daemon
-down — so the dashboard is split into three cooperating processes:
+`node-pty` doesn't work under Bun, and a terminal crash must never take the
+daemon down — so the dashboard is split into three cooperating processes:
 
 - **SPA** — React + TanStack Router, served by Vite in dev (`:5173`).
-- **Bridge** (`server/`) — a standalone Bun HTTP/SSE server (`:5174`) that holds
-  ONE daemon socket (`role: "gui"`) and fronts it. NOT daemon-hosted: it
-  restarts independently and a bug here can't hurt the daemon.
+- **Daemon web transport** — loopback HTTP/SSE routes hosted by the kobe daemon
+  (`:5174` by default for `kobe web`).
 - **PTY sidecar** (`pty-server.mjs`) — a node process (`:5175`) running each
   engine/terminal tab's PTY.
 
@@ -43,14 +42,13 @@ here.
 
 ## Production
 
-The default `@sma1lboy/kobe` package is TUI-first and does not bundle this web
-dashboard. Source checkouts should use `bun run dev` / `bun run dev:sandbox`.
-A future web-enabled distribution can still run `kobe web`: it runs the bridge
-in-process, serves the built SPA from the packaged `dist/web-ui`, and spawns
-the PTY sidecar on `port + 2`:
+The default `@sma1lboy/kobe` package bundles this web dashboard under
+`dist/web-ui`. Source checkouts can use `bun run dev` / `bun run dev:sandbox`;
+installed packages can run `kobe web`, which serves the built SPA through the
+daemon web transport and spawns the PTY sidecar on `port + 2`:
 
 ```bash
-kobe web                 # http://localhost:5173
+kobe web                 # http://localhost:5174
 kobe web --port 5180
 ```
 

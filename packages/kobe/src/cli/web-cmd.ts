@@ -44,8 +44,8 @@ Options:
 
 /**
  * Resolve the built SPA directory. Source checkouts can serve
- * packages/kobe-web/dist after a web build; web-enabled artifacts copy it next
- * to dist. The default published package intentionally does not include it.
+ * packages/kobe-web/dist after a web build; packaged installs serve the copy
+ * emitted into dist/web-ui by the kobe build.
  */
 function resolveStaticDir(): string | undefined {
   const here = fileURLToPath(import.meta.url)
@@ -186,7 +186,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     const staticDir = routesOnly ? undefined : resolveStaticDir()
     if (!routesOnly && !staticDir) {
       throw new Error(
-        "web assets are not bundled in the default kobe package; run `bun run dev` in packages/kobe-web from a source checkout, or use a web-enabled distribution",
+        "web assets are missing from this kobe build; run `bun run build` in packages/kobe, or `bun run dev` in packages/kobe-web from a source checkout",
       )
     }
     await ensureDaemonWeb(port, staticDir)

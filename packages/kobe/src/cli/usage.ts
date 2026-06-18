@@ -18,7 +18,7 @@ export function topLevelUsage(): string {
     "Run with no command to launch the TUI.",
     "",
     "Commands:",
-    "  web [options]           Launch the browser dashboard (requires web-enabled artifact)",
+    "  web [options]           Launch the browser dashboard",
     "  add [path]              Save a repo path for the new-task picker",
     "  adopt [glob]            Import existing git worktrees as tasks",
     "  repo <verb>             Per-repo init script + first prompt (show|set|unset)",

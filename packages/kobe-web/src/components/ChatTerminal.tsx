@@ -59,12 +59,12 @@ const CLAUDE_XTERM_THEME = {
 } as const
 
 const TERMINAL_FONT_FAMILY =
-  '"Kobe Nerd Font", "JetBrainsMono Nerd Font", "MesloLGS NF", "Symbols Nerd Font Mono", "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace'
+  '"JetBrains Mono", "JetBrainsMono Nerd Font", "MesloLGS NF", "Symbols Nerd Font Mono", "SF Mono", ui-monospace, Menlo, monospace'
 
 async function loadTerminalFont(): Promise<void> {
   if (!("fonts" in document)) return
   try {
-    await document.fonts.load(`12px "Kobe Nerd Font"`)
+    await document.fonts.load(`12px "JetBrains Mono"`)
   } catch {
     /* fallback font stack still renders if the bundled font fails */
   }

@@ -19,9 +19,9 @@
  * is just a convenience WRAPPER that runs that npx flow for the user — kobe
  * doesn't bundle or copy the file, so there's nothing to emit here.
  *
- * The default published artifact is TUI-first and does not carry the browser
- * dashboard. Set KOBE_BUILD_WEB=1 when intentionally producing a web-enabled
- * artifact that includes dist/web-ui.
+ * The published artifact carries the browser dashboard alongside the TUI.
+ * `kobe web` serves the built SPA from dist/web-ui through the daemon-owned
+ * web transport.
  */
 
 import { existsSync } from "node:fs"
@@ -32,7 +32,6 @@ const OUT_FILES = ["./dist/cli/index.js"]
 const WEB_PACKAGE_DIR = "../kobe-web"
 const WEB_DIST_DIR = `${WEB_PACKAGE_DIR}/dist`
 const WEB_OUT_DIR = "./dist/web-ui"
-const INCLUDE_WEB_UI = process.env.KOBE_BUILD_WEB === "1"
 const WEB_PTY_SIDE_CAR_FILES = [
   "origin-policy.mjs",
   "pty-scrollback.mjs",
@@ -68,7 +67,7 @@ async function copyWebUi(): Promise<void> {
   }
 }
 
-if (INCLUDE_WEB_UI) await buildWebUi()
+await buildWebUi()
 
 const result = await Bun.build({
   entrypoints: ["./src/cli/index.ts"],
@@ -95,6 +94,6 @@ if (!result.success) {
 }
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
-if (INCLUDE_WEB_UI) await copyWebUi()
+await copyWebUi()
 
 console.log(`built ${OUT_FILES.join(", ")}`)

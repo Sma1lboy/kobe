@@ -8,7 +8,7 @@
   "bin": {
     "kobe": "dist/cli/index.js"
   },
-  "files": ["dist/cli", "dist/*.wav", "README.md", "LICENSE"],
+  "files": ["dist/cli", "dist/web-ui", "dist/*.wav", "README.md", "LICENSE"],
   "publishConfig": {
     "access": "public"
   },
@@ -29,7 +29,7 @@
     "dev:sandbox:reset": "env KOBE_TMUX_SOCKET=kobe-sandbox bun ./src/cli/index.ts kill-sessions",
     "dev:version": "bash ../../scripts/dev-version.sh",
     "build": "bun run scripts/build.ts",
-    "build:with-web": "KOBE_BUILD_WEB=1 bun run scripts/build.ts",
+    "build:with-web": "bun run build",
     "compile": "bun run scripts/compile.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun run test:fast && bun run test:socket",

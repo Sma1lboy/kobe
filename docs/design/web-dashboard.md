@@ -46,9 +46,8 @@ flowchart LR
   WebSocket-attached PTY keyed by a client tab id, kept alive across reconnects
   with a bounded scrollback ring.
 
-The default `@sma1lboy/kobe` package is TUI-first and does not bundle these web
-assets. A future web-enabled distribution can still run `kobe web`; then
-`kobe web`
+The default `@sma1lboy/kobe` package bundles these web assets under
+`dist/web-ui`. `kobe web`
 ([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
 ensures the daemon web transport is available, serves the built SPA from
 `dist/web-ui`, and spawns the PTY sidecar on `port + 2`. In dev,

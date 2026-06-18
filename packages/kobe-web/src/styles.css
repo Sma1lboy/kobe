@@ -1,13 +1,5 @@
 @import "tailwindcss";
 
-@font-face {
-  font-family: "Kobe Nerd Font";
-  src: url("/fonts/JetBrainsMonoNerdFontMono-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: block;
-}
-
 /*
  * kobe web — claude theme (dark).
  * Palette mirrors packages/kobe/src/tui/context/theme/claude.json so the
@@ -33,7 +25,7 @@
   --color-kobe-yellow: #e8c96b;
   --color-kobe-violet: #9b87f5;
 
-  --font-mono: "Kobe Nerd Font", "SF Mono", "JetBrains Mono", "Fira Code", ui-monospace, Menlo, Monaco, "Cascadia Code",
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", ui-monospace, Menlo, Monaco, "Cascadia Code",
     monospace;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
