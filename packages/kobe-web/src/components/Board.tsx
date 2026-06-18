@@ -53,8 +53,11 @@ import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
 import { IssueCard } from "./IssueCard.tsx"
-import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
-import { IssuePeek } from "./IssuePeek.tsx"
+import {
+  IssuePanelSuspense,
+  LazyIssueIntakePanel,
+  LazyIssuePeek,
+} from "./lazy-issue-panels.tsx"
 import { ViewToggle } from "./ViewToggle.tsx"
 
 /** A peek target is repo-scoped: an issue number alone would be ambiguous
@@ -562,22 +565,24 @@ export function Board() {
       })()}
 
       {creatingRepo && (
-        <IssueIntakePanel
-          repoRoot={creatingRepo}
-          open
-          onClose={() => setCreatingRepo(null)}
-          onCreated={(issue, started) => {
-            // Refresh so the new issue lands in the Backlog at once (the
-            // issue.snapshot push can miss the board's repo key via aliasing).
-            if (creatingRepo) refreshIssues([creatingRepo])
-            pushToast(
-              "success",
-              started
-                ? `Story #${issue.id} created — starting its session`
-                : `Story #${issue.id} created`,
-            )
-          }}
-        />
+        <IssuePanelSuspense>
+          <LazyIssueIntakePanel
+            repoRoot={creatingRepo}
+            open
+            onClose={() => setCreatingRepo(null)}
+            onCreated={(issue, started) => {
+              // Refresh so the new issue lands in the Backlog at once (the
+              // issue.snapshot push can miss the board's repo key via aliasing).
+              if (creatingRepo) refreshIssues([creatingRepo])
+              pushToast(
+                "success",
+                started
+                  ? `Story #${issue.id} created — starting its session`
+                  : `Story #${issue.id} created`,
+              )
+            }}
+          />
+        </IssuePanelSuspense>
       )}
 
       {(() => {
@@ -587,58 +592,60 @@ export function Board() {
         )
         if (!entry) return null
         return (
-          <IssuePeek
-            key={`${entry.repo}:${entry.issue.id}`}
-            issue={entry.issue}
-            repoRoot={entry.repo}
-            busy={issueBusy}
-            starting={quickStartingId === entry.issue.id}
-            onClose={() => setPeek(null)}
-            onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
-            onStart={async ({ vendor, effort, watch }) => {
-              const taskId = await doQuickStart(
-                entry.repo,
-                entry.issue,
-                vendor,
-                effort,
-              )
-              // Watch = drop the user straight into the live session;
-              // otherwise spawn-and-stay closes the drawer back to the board.
-              if (watch && taskId) {
-                setPeek(null)
-                openTask(taskId)
-              } else {
-                setPeek(null)
+          <IssuePanelSuspense>
+            <LazyIssuePeek
+              key={`${entry.repo}:${entry.issue.id}`}
+              issue={entry.issue}
+              repoRoot={entry.repo}
+              busy={issueBusy}
+              starting={quickStartingId === entry.issue.id}
+              onClose={() => setPeek(null)}
+              onSave={(patch) => doSaveIssue(entry.repo, entry.issue.id, patch)}
+              onStart={async ({ vendor, effort, watch }) => {
+                const taskId = await doQuickStart(
+                  entry.repo,
+                  entry.issue,
+                  vendor,
+                  effort,
+                )
+                // Watch = drop the user straight into the live session;
+                // otherwise spawn-and-stay closes the drawer back to the board.
+                if (watch && taskId) {
+                  setPeek(null)
+                  openTask(taskId)
+                } else {
+                  setPeek(null)
+                }
+              }}
+              onOpenSession={
+                entry.issue.taskId
+                  ? () => {
+                      const t = entry.issue.taskId
+                      setPeek(null)
+                      if (t) openTask(t)
+                    }
+                  : undefined
               }
-            }}
-            onOpenSession={
-              entry.issue.taskId
-                ? () => {
-                    const t = entry.issue.taskId
-                    setPeek(null)
-                    if (t) openTask(t)
-                  }
-                : undefined
-            }
-            onPromptMerge={
-              entry.issue.taskId
-                ? () => {
-                    const t = entry.issue.taskId
-                    if (!t) return
-                    void promptIssueMerge(t, entry.issue)
-                      .then(() =>
-                        pushToast(
-                          "success",
-                          `Prompt inserted for story #${entry.issue.id}`,
-                        ),
-                      )
-                      .catch((err: unknown) =>
-                        reportError("prompt issue merge", err),
-                      )
-                  }
-                : undefined
-            }
-          />
+              onPromptMerge={
+                entry.issue.taskId
+                  ? () => {
+                      const t = entry.issue.taskId
+                      if (!t) return
+                      void promptIssueMerge(t, entry.issue)
+                        .then(() =>
+                          pushToast(
+                            "success",
+                            `Prompt inserted for story #${entry.issue.id}`,
+                          ),
+                        )
+                        .catch((err: unknown) =>
+                          reportError("prompt issue merge", err),
+                        )
+                    }
+                  : undefined
+              }
+            />
+          </IssuePanelSuspense>
         )
       })()}
 

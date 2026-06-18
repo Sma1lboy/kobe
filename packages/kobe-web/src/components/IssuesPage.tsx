@@ -41,8 +41,11 @@ import { reportError } from "../lib/toast.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { IssueCard } from "./IssueCard.tsx"
-import { IssueIntakePanel } from "./IssueIntakePanel.tsx"
-import { IssuePeek } from "./IssuePeek.tsx"
+import {
+  IssuePanelSuspense,
+  LazyIssueIntakePanel,
+  LazyIssuePeek,
+} from "./lazy-issue-panels.tsx"
 
 export function IssuesPage() {
   const { tasks, hydrated } = useAppState()
@@ -300,50 +303,54 @@ export function IssuesPage() {
         )}
       </div>
 
-      {repo && (
-        <IssueIntakePanel
-          repoRoot={repo}
-          open={intakeOpen}
-          onClose={() => setIntakeOpen(false)}
-          onCreated={(issue, started) => {
-            if (started && issue.taskId) openTaskWorkspace(issue.taskId)
-          }}
-        />
+      {repo && intakeOpen && (
+        <IssuePanelSuspense>
+          <LazyIssueIntakePanel
+            repoRoot={repo}
+            open={intakeOpen}
+            onClose={() => setIntakeOpen(false)}
+            onCreated={(issue, started) => {
+              if (started && issue.taskId) openTaskWorkspace(issue.taskId)
+            }}
+          />
+        </IssuePanelSuspense>
       )}
 
       {repo && peekIssue && (
-        <IssuePeek
-          issue={peekIssue}
-          repoRoot={repo}
-          busy={savingPeek}
-          starting={starting}
-          onClose={() => setPeekId(null)}
-          onSave={onSavePeek}
-          onStart={onStartPeek}
-          onOpenSession={
-            peekIssue.taskId
-              ? () => {
-                  const taskId = peekIssue.taskId
-                  if (!taskId) return
-                  // Materialize the engine tab so the workspace lands on a live
-                  // session rather than an empty pane.
-                  ensureEngineTab(taskId)
-                  openTaskWorkspace(taskId)
-                }
-              : undefined
-          }
-          onPromptMerge={
-            peekIssue.taskId
-              ? () => {
-                  const taskId = peekIssue.taskId
-                  if (!taskId) return
-                  void promptIssueMerge(taskId, peekIssue).catch(
-                    (err: unknown) => reportError("prompt issue merge", err),
-                  )
-                }
-              : undefined
-          }
-        />
+        <IssuePanelSuspense>
+          <LazyIssuePeek
+            issue={peekIssue}
+            repoRoot={repo}
+            busy={savingPeek}
+            starting={starting}
+            onClose={() => setPeekId(null)}
+            onSave={onSavePeek}
+            onStart={onStartPeek}
+            onOpenSession={
+              peekIssue.taskId
+                ? () => {
+                    const taskId = peekIssue.taskId
+                    if (!taskId) return
+                    // Materialize the engine tab so the workspace lands on a live
+                    // session rather than an empty pane.
+                    ensureEngineTab(taskId)
+                    openTaskWorkspace(taskId)
+                  }
+                : undefined
+            }
+            onPromptMerge={
+              peekIssue.taskId
+                ? () => {
+                    const taskId = peekIssue.taskId
+                    if (!taskId) return
+                    void promptIssueMerge(taskId, peekIssue).catch(
+                      (err: unknown) => reportError("prompt issue merge", err),
+                    )
+                  }
+                : undefined
+            }
+          />
+        </IssuePanelSuspense>
       )}
 
       {deleteIssue && (
