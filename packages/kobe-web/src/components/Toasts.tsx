@@ -18,6 +18,14 @@ function toastTone(kind: Toast["kind"]): string {
   }
 }
 
+function toastRole(kind: Toast["kind"]): "alert" | "status" {
+  return kind === "error" ? "alert" : "status"
+}
+
+function toastLive(kind: Toast["kind"]): "assertive" | "polite" {
+  return kind === "error" ? "assertive" : "polite"
+}
+
 export function Toasts() {
   const toasts = useToasts()
   if (toasts.length === 0) return null
@@ -27,6 +35,9 @@ export function Toasts() {
         <div
           key={toast.id}
           className={`pointer-events-auto flex items-start gap-2 border bg-surface px-3 py-2 shadow-lg ${toastTone(toast.kind)}`}
+          role={toastRole(toast.kind)}
+          aria-live={toastLive(toast.kind)}
+          aria-atomic="true"
         >
           <span className="min-w-0 flex-1 break-words text-[12px] leading-relaxed">
             {toast.message}

@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { ErrorBoundary } from "../components/ErrorBoundary.tsx"
+import { GlobalShortcuts } from "../components/GlobalShortcuts.tsx"
 import { attentionCount, documentTitle } from "../lib/document-title.ts"
 import { useAppState } from "../lib/store.ts"
 
@@ -24,6 +25,7 @@ function RootComponent() {
   return (
     <ErrorBoundary>
       <Outlet />
+      <GlobalShortcuts />
     </ErrorBoundary>
   )
 }

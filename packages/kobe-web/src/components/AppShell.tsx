@@ -20,7 +20,13 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { useEngines } from "../lib/engines.ts"
-import { setNotifyNavigate } from "../lib/notify.ts"
+import {
+  closeSettings,
+  openKeyboardHelp,
+  openNewTask,
+  openSettings,
+  useGlobalUiState,
+} from "../lib/global-ui.ts"
 import { tailPath } from "../lib/path-format.ts"
 import {
   applyPrefSort,
@@ -39,13 +45,9 @@ import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { isMixedEngineWorkspace, perRowEngineLabel } from "../lib/vendor.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
-import { CommandPalette } from "./CommandPalette.tsx"
 import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
-import { KeyboardHelp } from "./KeyboardHelp.tsx"
-import { NewTaskDialog } from "./NewTaskDialog.tsx"
 import { SettingsPage } from "./SettingsPage.tsx"
-import { Toasts } from "./Toasts.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { ViewToggle } from "./ViewToggle.tsx"
 import { WorkspaceTabs } from "./WorkspaceTabs.tsx"
@@ -645,45 +647,15 @@ function StatusBar() {
 }
 
 export function AppShell() {
-  const navigate = useNavigate()
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [newTaskOpen, setNewTaskOpen] = useState(false)
+  const { settingsOpen } = useGlobalUiState()
   const [adoptOpen, setAdoptOpen] = useState(false)
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  const [helpOpen, setHelpOpen] = useState(false)
   // The right tools rail is a fixed column at lg+, and a slide-in drawer on
   // narrow windows (where it used to vanish entirely, making rename/changes
   // unreachable on a phone).
   const [toolsOpen, setToolsOpen] = useState(false)
 
-  // Cmd/Ctrl+K toggles the palette; `?` opens help — but only when the user
-  // isn't typing into a field (so "?" in an input types a literal question
-  // mark, like GitHub/Linear).
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault()
-        setPaletteOpen((cur) => !cur)
-        return
-      }
-      if (
-        event.key === "?" &&
-        !event.metaKey &&
-        !event.ctrlKey &&
-        !event.altKey
-      ) {
-        const t = event.target as HTMLElement | null
-        const typing =
-          t &&
-          (t.tagName === "INPUT" ||
-            t.tagName === "TEXTAREA" ||
-            t.isContentEditable)
-        if (!typing) {
-          event.preventDefault()
-          setHelpOpen(true)
-        }
-        return
-      }
       // Escape closes the tools drawer — at the window level because focus is
       // rarely inside the drawer subtree, so a div-scoped onKeyDown wouldn't
       // see it. (The dialogs handle their own Escape; this is just the drawer.)
@@ -693,31 +665,21 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey)
   }, [])
 
-  // Let a notification click jump to its task (lib/notify can't useNavigate).
-  useEffect(() => {
-    setNotifyNavigate((taskId) => {
-      selectTask(taskId)
-      setActiveTaskBestEffort(taskId)
-      void navigate({ to: "/task/$taskId", params: { taskId } })
-    })
-    return () => setNotifyNavigate(null)
-  }, [navigate])
-
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
       <TopBar
         onToggleTools={() => setToolsOpen((cur) => !cur)}
-        onShowHelp={() => setHelpOpen(true)}
+        onShowHelp={openKeyboardHelp}
       />
       <DaemonBanner />
       <div className="flex min-h-0 flex-1">
         <TaskRail
-          onOpenSettings={() => setSettingsOpen(true)}
-          onNewTask={() => setNewTaskOpen(true)}
+          onOpenSettings={openSettings}
+          onNewTask={openNewTask}
           onAdopt={() => setAdoptOpen(true)}
         />
         {settingsOpen ? (
-          <SettingsPage onClose={() => setSettingsOpen(false)} />
+          <SettingsPage onClose={closeSettings} />
         ) : (
           <WorkspaceTabs />
         )}
@@ -749,16 +711,7 @@ export function AppShell() {
         )}
       </div>
       <StatusBar />
-      {newTaskOpen && <NewTaskDialog onClose={() => setNewTaskOpen(false)} />}
       {adoptOpen && <AdoptDialog onClose={() => setAdoptOpen(false)} />}
-      {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
-      <CommandPalette
-        open={paletteOpen}
-        onClose={() => setPaletteOpen(false)}
-        onNewTask={() => setNewTaskOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
-      />
-      <Toasts />
     </div>
   )
 }
