@@ -2,10 +2,10 @@
  * Toast store — the web UI's one error/notice surface. RPC failures used to
  * be swallowed (`.catch(() => {})`) so a failed rename/archive/create looked
  * like nothing happened; every mutation path now reports here instead.
- * Module-level store + useSyncExternalStore, same pattern as store.ts/tabs.ts.
+ * Module-level external store, same persistence semantics as store.ts/tabs.ts.
  */
 
-import { useSyncExternalStore } from "react"
+import { createExternalStore } from "./external-store.ts"
 
 export type ToastKind = "error" | "success" | "info"
 
@@ -18,26 +18,20 @@ export interface Toast {
 const EXPIRE_MS = 5_000
 const MAX_TOASTS = 4
 
-let toasts: readonly Toast[] = []
+const store = createExternalStore<readonly Toast[]>([])
 let seq = 0
-const listeners = new Set<() => void>()
-
-function emit(): void {
-  for (const l of listeners) l()
-}
 
 export function pushToast(kind: ToastKind, message: string): void {
   seq += 1
   const toast: Toast = { id: seq, kind, message }
-  toasts = [...toasts.slice(-(MAX_TOASTS - 1)), toast]
-  emit()
+  store.update((toasts) => [...toasts.slice(-(MAX_TOASTS - 1)), toast])
   window.setTimeout(() => dismissToast(toast.id), EXPIRE_MS)
 }
 
 export function dismissToast(id: number): void {
+  const toasts = store.getSnapshot()
   if (!toasts.some((t) => t.id === id)) return
-  toasts = toasts.filter((t) => t.id !== id)
-  emit()
+  store.replace(toasts.filter((t) => t.id !== id))
 }
 
 /** Standard shape for a failed mutation: `label: cause`. An Error contributes
@@ -54,12 +48,5 @@ export function reportError(label: string, err: unknown): void {
 }
 
 export function useToasts(): readonly Toast[] {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    () => toasts,
-    () => toasts,
-  )
+  return store.useSnapshot()
 }

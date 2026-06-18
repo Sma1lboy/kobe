@@ -12,7 +12,7 @@
  * storage because the TUI's ui-prefs push re-seeds it each session.
  */
 
-import { useSyncExternalStore } from "react"
+import { createExternalStore } from "./external-store.ts"
 import type { TaskSortMode } from "./task-list.ts"
 import type { Bucket } from "./triage.ts"
 
@@ -30,16 +30,14 @@ const initial: RailState = {
   showArchived: false,
 }
 
-let state: RailState = initial
+const store = createExternalStore(initial)
 /** Last ui-prefs sortMode applied — lets applyPrefSort fire only on a CHANGED
  *  pref (rising edge), so an AppShell remount with the same pref no longer
  *  stomps a local sort toggle the way the old mount-effect reset did. */
 let lastAppliedPrefSort: TaskSortMode | null = null
-const listeners = new Set<() => void>()
 
 function set(next: Partial<RailState>): void {
-  state = { ...state, ...next }
-  for (const l of listeners) l()
+  store.update((state) => ({ ...state, ...next }))
 }
 
 export function setRailQuery(query: string): void {
@@ -69,23 +67,15 @@ export function applyPrefSort(prefSort: TaskSortMode | undefined): void {
 
 /** Test-only: restore the pristine module state between cases. */
 export function resetRailState(): void {
-  state = initial
   lastAppliedPrefSort = null
-  for (const l of listeners) l()
+  store.replace(initial)
 }
 
 /** Snapshot accessor (exported for tests; components use useRailState). */
 export function getRailState(): RailState {
-  return state
+  return store.getSnapshot()
 }
 
 export function useRailState(): RailState {
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    getRailState,
-    getRailState,
-  )
+  return store.useSnapshot()
 }

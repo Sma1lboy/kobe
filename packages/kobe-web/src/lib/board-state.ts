@@ -10,7 +10,7 @@
  * outlives the browser session is surprising on a fresh load.
  */
 
-import { useSyncExternalStore } from "react"
+import { createExternalStore } from "./external-store.ts"
 
 interface BoardState {
   /** Free-text card filter (matches #id / title / body). */
@@ -19,47 +19,36 @@ interface BoardState {
   repo: string | null
 }
 
-let state: BoardState = {
+const initial: BoardState = {
   query: "",
   repo: null,
 }
-const listeners = new Set<() => void>()
 
 function set(next: Partial<BoardState>): void {
-  state = { ...state, ...next }
-  for (const l of listeners) l()
+  store.update((state) => ({ ...state, ...next }))
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener)
-  return () => {
-    listeners.delete(listener)
-  }
-}
-
-function getSnapshot(): BoardState {
-  return state
-}
+const store = createExternalStore(initial)
 
 /** Plain read for non-React callers (and tests). */
 export function getBoardState(): BoardState {
-  return state
+  return store.getSnapshot()
 }
 
 export function useBoardState(): BoardState {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  return store.useSnapshot()
 }
 
 export function setBoardQuery(query: string): void {
-  if (query !== state.query) set({ query })
+  if (query !== store.getSnapshot().query) set({ query })
 }
 
 /** Select a project chip (null = all). Composes with the text query. */
 export function setBoardRepo(repo: string | null): void {
-  if (repo !== state.repo) set({ repo })
+  if (repo !== store.getSnapshot().repo) set({ repo })
 }
 
 /** Test-only reset so cases don't leak filter state into each other. */
 export function resetBoardStateForTest(): void {
-  state = { query: "", repo: null }
+  store.replace(initial)
 }

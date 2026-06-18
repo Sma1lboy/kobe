@@ -9,8 +9,8 @@
  * pickers usable against an older bridge that predates the route.
  */
 
-import { useSyncExternalStore } from "react"
 import { api } from "./api-client.ts"
+import { createExternalStore } from "./external-store.ts"
 
 export interface EngineOption {
   id: string
@@ -28,9 +28,8 @@ const FALLBACK: readonly EngineOption[] = [
   { id: "codex", label: "Codex" },
 ]
 
-let engines: readonly EngineOption[] = FALLBACK
+const store = createExternalStore<readonly EngineOption[]>(FALLBACK)
 let fetched = false
-const listeners = new Set<() => void>()
 
 function ensureFetched(): void {
   if (fetched) return
@@ -43,22 +42,23 @@ function ensureFetched(): void {
     )
     .then((json) => {
       if (!Array.isArray(json.engines) || json.engines.length === 0) return
-      engines = json.engines
-        .filter(
-          (e): e is EngineOption =>
-            typeof e?.id === "string" && typeof e?.label === "string",
-        )
-        .map((e) => ({
-          id: e.id,
-          label: e.label,
-          // Keep only a clean string[] when the engine ships effort levels;
-          // drop the field entirely otherwise so callers can `?? []` cleanly.
-          ...(Array.isArray(e.effortLevels) &&
-          e.effortLevels.every((l) => typeof l === "string")
-            ? { effortLevels: e.effortLevels }
-            : {}),
-        }))
-      for (const l of listeners) l()
+      store.replace(
+        json.engines
+          .filter(
+            (e): e is EngineOption =>
+              typeof e?.id === "string" && typeof e?.label === "string",
+          )
+          .map((e) => ({
+            id: e.id,
+            label: e.label,
+            // Keep only a clean string[] when the engine ships effort levels;
+            // drop the field entirely otherwise so callers can `?? []` cleanly.
+            ...(Array.isArray(e.effortLevels) &&
+            e.effortLevels.every((l) => typeof l === "string")
+              ? { effortLevels: e.effortLevels }
+              : {}),
+          })),
+      )
     })
     .catch(() => {
       /* fallback list stays */
@@ -67,14 +67,7 @@ function ensureFetched(): void {
 
 export function useEngines(): readonly EngineOption[] {
   ensureFetched()
-  return useSyncExternalStore(
-    (l) => {
-      listeners.add(l)
-      return () => listeners.delete(l)
-    },
-    () => engines,
-    () => engines,
-  )
+  return store.useSnapshot()
 }
 
 // Vendor-identity rules (engineLabel, the unset-vendor default, the mixed-
