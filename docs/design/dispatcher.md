@@ -19,7 +19,7 @@ flowchart LR
   RPC -- "session.deliver (source: note)" --> Bus((daemon bus))
   D["dispatcher\n(main session)"] -- "kobe api dispatch" --> RPC2[session.deliver RPC]
   RPC2 -- "source: dispatcher" --> Bus
-  Bus -- SSE via bridge --> SPA[web SPA]
+  Bus -- SSE via daemon web transport --> SPA[web SPA]
   SPA -- "ensureEngineTab + /pty/send" --> S[(target task's session)]
 ```
 
@@ -39,7 +39,7 @@ flowchart LR
 
 ## Known v1 limits
 
-- **Delivery requires an open dashboard** (the SPA is the forwarder). The bridge snapshot replays the most recent missed event on the next visit; an event-channel replay is last-one-only.
+- **Delivery requires an open dashboard** (the SPA is the forwarder). The daemon web transport snapshot replays the most recent missed event on the next visit; an event-channel replay is last-one-only.
 - **Claude-only injection**, same as the status protocol.
 - **No persistence/board rail for notes yet** — the dispatcher's transcript is the log. A "Field Notes" board rail + new-task bundling is the natural v2.
 - **Trust is deliberately deferred**: agent-authored text flows into other agents' inputs with no human gate (relays carry provenance prefixes). Revisit before any default-on.

@@ -188,8 +188,7 @@ flowchart TB
   → 保留 override 直到某次 `task.snapshot` 中该卡 status === 预期值才移除(无关
   snapshot 不清);snapshot 显示任务已消失 → 丢弃 override。断线
   (`!daemonConnected || !streamConnected`)禁拖。错误识别:**做** error-name
-  转发——daemon client 把 `frame.error.name` 附到抛出的 Error 上,bridge 在
-  `{ error }` 外加 `name` 字段;daemon 协议不动。
+  转发——daemon web transport 在 `{ error }` 外加 `name` 字段;daemon 协议不动。
 - **R5**:`/board` 顶级路由;筛选 query 放 `lib/board-state.ts` module store
   (issue #7 的同构解法),跨导航存活、刷新清零。
 - **R6**:卡片 = activity dot + 标题(fallback branch/id)+ PR chip + 脏行 ±计数
@@ -285,18 +284,18 @@ flowchart TB
 sequenceDiagram
   participant U as 用户(拖动卡片)
   participant B as Board 组件
-  participant BR as Bridge /api/rpc
+  participant Web as daemon web transport /api/rpc
   participant D as daemon
   U->>B: 拖 task 到 in_review 列
   B->>B: 本地 override(乐观落位)
-  B->>BR: POST {name:"task.status", payload:{taskId, status:"in_review"}}
-  BR->>D: RPC task.status
+  B->>Web: POST {name:"task.status", payload:{taskId, status:"in_review"}}
+  Web->>D: RPC task.status
   alt 合法跳转
-    D-->>BR: ok + 广播 task.snapshot
-    BR-->>B: SSE task.snapshot(该卡 status 已为预期 → 清除 override)
+    D-->>Web: ok + 广播 task.snapshot
+    Web-->>B: SSE task.snapshot(该卡 status 已为预期 → 清除 override)
   else IllegalTransition
-    D-->>BR: error
-    BR-->>B: {error}(回滚 + toast)
+    D-->>Web: error
+    Web-->>B: {error}(回滚 + toast)
   end
   Note over B: 无关 mutation 的 snapshot 不清 override(见 R4)
 ```
@@ -305,7 +304,7 @@ sequenceDiagram
 |---|---|---|---|
 | **M0 研究收口** | R1–R8 全部出产出;R3 含 spike | 本文档 §4 每条有结论;DnD 选型定 | 无 |
 | **M1 只读看板** | `/board` 路由;按 status 分列;卡片含 R6 字段;实时跟随 SSE;入口(顶栏 + 命令面板);分桶/过滤逻辑落 `lib/board.ts` + 单测(R8) | 多任务实况下列与卡片实时正确;移动端可横滚 | 无 |
-| **M2 拖拽换列** | DnD 接入;拖放调 `task.status`;乐观层(R4 清除条件)+ 失败回滚;键盘拖拽;断线禁拖;触屏 fallback(R3) | 拖放即改状态不闪跳;非法跳转回滚有 toast;全键盘可完成一次流转;断线时拖放被禁用 | daemon 协议无;bridge 错误转发或有小改(R4 裁决) |
+| **M2 拖拽换列** | DnD 接入;拖放调 `task.status`;乐观层(R4 清除条件)+ 失败回滚;键盘拖拽;断线禁拖;触屏 fallback(R3) | 拖放即改状态不闪跳;非法跳转回滚有 toast;全键盘可完成一次流转;断线时拖放被禁用 | daemon 协议无;daemon web transport 错误响应或有小改(R4 裁决) |
 | **M3 列内排序 + 打磨** | position 字段 + `task.reorder` RPC(协议 + allowlist + spa 契约测试三表同步);列内拖序;收尾(空列占位、列计数、筛选态持久、done 收纳政策落地) | 列内顺序跨刷新/跨端稳定;契约测试过 | **有**(唯一一次) |
 | **M4 板内 peek 抽屉** | 看板侧拉抽屉内嵌 engine PTY + transcript(R9);卡片次级动作(R6) | 不离开看板可查看/接管会话;关抽屉不杀会话;与工作区双 attach 无冲突 | 无(复用 `/pty` 与 `/api/history`) |
 | **M5 自动流转(opt-in)** | 开工:daemon 规则 turn-start → `backlog → in_progress`;收工:spawn 时注入 system prompt,agent 自报 `in_review` | 单向、绝不 done/canceled、人手最终裁决;默认关 | 无(daemon 规则 + 启动参数注入) |
