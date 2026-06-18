@@ -34,6 +34,7 @@
  */
 
 import { spawnSync } from "node:child_process"
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 
 export interface WorktreeChanges {
   /** Files added, modified, renamed, copied, or untracked. */
@@ -87,7 +88,7 @@ export function readWorktreeChanges(worktreePath: string): WorktreeChanges {
       // poll for every row, so it would race the worktree's engine
       // commits and other panes for the lock. `GIT_OPTIONAL_LOCKS=0`
       // makes this read-only: inspect, don't write, never take the lock.
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: readOnlyGitProcessEnv(),
     })
     if (out.status !== 0 || !out.stdout) return ZERO
     return parsePorcelain(out.stdout)

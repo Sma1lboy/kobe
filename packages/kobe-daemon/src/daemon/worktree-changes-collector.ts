@@ -43,6 +43,7 @@
  * value, never throws, never publishes garbage.
  */
 
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 import {
   type PollCadenceConfig,
   type PollScheduleState,
@@ -83,7 +84,7 @@ export async function runGitStatus(worktreePath: string, signal: AbortSignal): P
   // .git/index.lock from under the engine's own commits.
   const res = await spawnCapture("git", ["status", "--porcelain=v1"], {
     cwd: worktreePath,
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+    env: readOnlyGitProcessEnv(),
     signal,
   })
   if (res.status !== 0) throw new Error("git status failed")

@@ -9,6 +9,7 @@
 
 import type { ExecResult } from "../exec/exec-host.ts"
 import { execHostForWorktreePath } from "../exec/resolve.ts"
+import { READ_ONLY_GIT_ENV } from "../lib/git-env.ts"
 
 export interface WorktreeGitResult {
   readonly stdout: string
@@ -23,8 +24,6 @@ export interface WorktreeContentDeps {
 export interface RunWorktreeGitOptions extends WorktreeContentDeps {
   readonly timeoutMs?: number
 }
-
-const GIT_READ_ENV = { GIT_OPTIONAL_LOCKS: "0" } as const
 
 /**
  * Run `git <args>` in a Worktree via its ExecHost. Never throws for git
@@ -52,7 +51,7 @@ export async function runWorktreeGit(
   try {
     result = await exec.run(["git", ...args], {
       cwd: worktreePath,
-      env: GIT_READ_ENV,
+      env: READ_ONLY_GIT_ENV,
       signal: controller?.signal,
     })
   } catch (err) {

@@ -29,6 +29,7 @@
 
 import { stat } from "node:fs/promises"
 import { join } from "node:path"
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 import { createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 
 /** Kill a ref read that runs longer than this — O(1) commands, tight leash. */
@@ -37,12 +38,6 @@ export const BRANCH_POLL_TIMEOUT_MS = 2_000
 export const BRANCH_SLOW_RETRY_MS = 30_000
 /** Floor between successful polls — matches the sidebar's ~2s tick. */
 export const BRANCH_MIN_POLL_INTERVAL_MS = 1_500
-
-// Uniform pane-side policy: read-only git inspection never takes
-// optional locks. `symbolic-ref`/`rev-parse` don't write the index
-// today, but setting this keeps every pane git call lock-free so a
-// future command swap can't reintroduce `.git/index.lock` races.
-const gitEnv = (): NodeJS.ProcessEnv => ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" })
 
 /**
  * Per-repo `.git/HEAD` fingerprint cache (waste audit). The branch NAME is
@@ -93,7 +88,7 @@ export async function resolveBranchHead(
   let value = ""
   const ref = await spawn("git", ["symbolic-ref", "--short", "HEAD"], {
     cwd: repo,
-    env: gitEnv(),
+    env: readOnlyGitProcessEnv(),
     signal,
   })
   const name = ref.status === 0 ? ref.stdout.trim() : ""
@@ -104,7 +99,7 @@ export async function resolveBranchHead(
     // rev-parse so we don't mislabel an unreadable repo as detached.
     const head = await spawn("git", ["rev-parse", "--verify", "HEAD"], {
       cwd: repo,
-      env: gitEnv(),
+      env: readOnlyGitProcessEnv(),
       signal,
     })
     if (head.status === 0) value = "(detached)"

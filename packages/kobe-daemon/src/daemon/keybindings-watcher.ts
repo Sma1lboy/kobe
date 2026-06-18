@@ -21,11 +21,11 @@
  * each pane is the accepted trade for keeping the daemon keymap-neutral.
  */
 
-import { type FSWatcher, mkdirSync, watch } from "node:fs"
 import { homedir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { basename, join } from "node:path"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
+import { startFileWatchTrigger } from "./file-watch-trigger.ts"
 
 /** Default debounce between a file event and the rev bump+publish. */
 export const DEFAULT_KEYBINDINGS_DEBOUNCE_MS = 200
@@ -61,7 +61,6 @@ export function startKeybindingsWatcher(bus: DaemonEventBus, options: Keybinding
   const debounceMs = options.debounceMs ?? DEFAULT_KEYBINDINGS_DEBOUNCE_MS
   if (debounceMs <= 0) return () => {}
   const filePath = options.path ?? defaultKeybindingsPath()
-  const dir = dirname(filePath)
   // Match both the canonical `.yaml` and the `.yml` fallback spelling.
   const baseYaml = basename(filePath)
   const baseYml = baseYaml.replace(/\.yaml$/, ".yml")
@@ -72,9 +71,7 @@ export function startKeybindingsWatcher(bus: DaemonEventBus, options: Keybinding
   let rev = 0
   bus.publish("keybindings", { rev })
 
-  let timer: ReturnType<typeof setTimeout> | null = null
   const bump = (): void => {
-    timer = null
     try {
       rev += 1
       bus.publish("keybindings", { rev })
@@ -83,34 +80,13 @@ export function startKeybindingsWatcher(bus: DaemonEventBus, options: Keybinding
     }
   }
 
-  let watcher: FSWatcher | null = null
-  try {
-    // The settings dir may not exist on a fresh home; create it so `watch`
-    // has something to attach to (writers mkdir at the write site too).
-    mkdirSync(dir, { recursive: true })
-    watcher = watch(dir, (_event, filename) => {
-      // Only the keybindings file's own events matter. A `null` filename
-      // (platforms that omit it) conservatively counts as a match — the
-      // debounce keeps the extra re-read cheap.
-      if (filename !== null && filename !== baseYaml && filename !== baseYml) return
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(bump, debounceMs)
-      timer.unref?.()
-    })
-    watcher.on("error", (err) => logDaemonError("keybindings-watcher", err))
-  } catch (err) {
-    // No watcher → panes keep the keybindings they read at boot (the
-    // documented degraded mode). The initial publish above still seeds the
-    // channel for subscribers.
-    logDaemonError("keybindings-watcher", err)
-  }
-
-  return () => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    watcher?.close()
-    watcher = null
-  }
+  // No watcher → panes keep the keybindings they read at boot (the documented
+  // degraded mode). The initial publish above still seeds the channel.
+  return startFileWatchTrigger({
+    filePath,
+    matchBasenames: [baseYaml, baseYml],
+    debounceMs,
+    onTrigger: bump,
+    onError: (err) => logDaemonError("keybindings-watcher", err),
+  })
 }

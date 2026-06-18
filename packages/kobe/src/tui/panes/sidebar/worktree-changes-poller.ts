@@ -32,6 +32,7 @@
  * scheduling guards via `src/lib/poll-scheduling.ts`.
  */
 
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 import { computeNextAllowedAt, createBackgroundPoller, spawnCapture } from "../../lib/background-poll"
 import { type WorktreeChanges, parsePorcelain, sameWorktreeChanges } from "./worktree-changes"
 
@@ -60,7 +61,7 @@ const poller = createBackgroundPoller<WorktreeChanges>({
     // under the engine's own commits.
     const res = await spawnCapture("git", ["status", "--porcelain=v1"], {
       cwd: worktreePath,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: readOnlyGitProcessEnv(),
       signal,
     })
     if (res.status !== 0) throw new Error("git status failed")

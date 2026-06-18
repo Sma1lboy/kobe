@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs"
 import path from "node:path"
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 import { spawnCapture } from "../lib/background-poll"
 
 export interface PRPromptState {
@@ -44,7 +45,7 @@ async function git(cwd: string, args: readonly string[]): Promise<string | null>
       // `git status` would otherwise rewrite `.git/index`'s stat cache
       // and take `.git/index.lock`, racing the worktree's engine commits
       // for the lock. `GIT_OPTIONAL_LOCKS=0` keeps it lock-free.
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: readOnlyGitProcessEnv(),
       signal: controller.signal,
     })
     if (controller.signal.aborted) return null

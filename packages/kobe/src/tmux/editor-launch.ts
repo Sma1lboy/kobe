@@ -37,6 +37,7 @@
  *   - `editor.customCommand` e.g. `code -w` / `emacsclient` / `subl -w {file}`
  */
 
+import { readOnlyGitProcessEnv } from "@/lib/git-env"
 import { getPersistedString } from "@/state/repos"
 import {
   AUTO_EDITOR_CANDIDATES,
@@ -189,7 +190,7 @@ export async function fileHasDiff(worktree: string, relPath: string): Promise<bo
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: readOnlyGitProcessEnv(),
     })
     return (await proc.exited) === 1
   } catch {

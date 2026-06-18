@@ -37,11 +37,12 @@
  * `logDaemonError("ui-prefs-watcher", …)` — never fatal to the daemon.
  */
 
-import { type FSWatcher, mkdirSync, readFileSync, watch } from "node:fs"
+import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
-import { basename, dirname, join } from "node:path"
+import { basename, join } from "node:path"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
+import { startFileWatchTrigger } from "./file-watch-trigger.ts"
 import type { UiPrefsPayload } from "./protocol.ts"
 
 /** Default debounce between a state-file event and the read+publish. */
@@ -141,13 +142,11 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
   if (debounceMs <= 0) return () => {}
   const pollMs = options.pollMs ?? DEFAULT_UI_PREFS_POLL_MS
   const statePath = options.statePath ?? defaultUiPrefsStatePath()
-  const stateDir = dirname(statePath)
   const stateFile = basename(statePath)
 
   let last = readUiPrefsFromStateFile(statePath)
   bus.publish("ui-prefs", last)
 
-  let timer: ReturnType<typeof setTimeout> | null = null
   const publishIfChanged = (): void => {
     try {
       const next = readUiPrefsFromStateFile(statePath)
@@ -158,51 +157,15 @@ export function startUiPrefsWatcher(bus: DaemonEventBus, options: UiPrefsWatcher
       logDaemonError("ui-prefs-watcher", err)
     }
   }
-  const schedulePublish = (): void => {
-    if (timer) clearTimeout(timer)
-    timer = setTimeout(() => {
-      timer = null
-      publishIfChanged()
-    }, debounceMs)
-    timer.unref?.()
-  }
-
-  let watcher: FSWatcher | null = null
-  let poll: ReturnType<typeof setInterval> | null = null
-  try {
-    // The dir may not exist yet on a fresh home (the State Store mkdirs at
-    // its first write); create it so `watch` has something to attach to.
-    mkdirSync(stateDir, { recursive: true })
-    watcher = watch(stateDir, (_event, filename) => {
-      // Only the state file's own events matter (the tmp file's create is
-      // always followed by the rename event on the real name). A `null`
-      // filename (platforms that omit it) conservatively counts as a match
-      // — the debounce + changed-only publish make the extra read cheap.
-      if (filename !== null && filename !== stateFile) return
-      schedulePublish()
-    })
-    watcher.on("error", (err) => logDaemonError("ui-prefs-watcher", err))
-  } catch (err) {
-    // No watcher → panes keep the boot-time prefs they read themselves
-    // (the documented degraded mode). The initial publish above still
-    // serves the at-start value to subscribers.
-    logDaemonError("ui-prefs-watcher", err)
-  }
-  if (pollMs > 0) {
-    poll = setInterval(publishIfChanged, pollMs)
-    poll.unref?.()
-  }
-
-  return () => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-    if (poll) {
-      clearInterval(poll)
-      poll = null
-    }
-    watcher?.close()
-    watcher = null
-  }
+  // No watcher → panes keep the boot-time prefs they read themselves (the
+  // documented degraded mode). The initial publish above still serves the
+  // at-start value to subscribers; the poll fallback continues when enabled.
+  return startFileWatchTrigger({
+    filePath: statePath,
+    matchBasenames: [stateFile],
+    debounceMs,
+    pollMs,
+    onTrigger: publishIfChanged,
+    onError: (err) => logDaemonError("ui-prefs-watcher", err),
+  })
 }
