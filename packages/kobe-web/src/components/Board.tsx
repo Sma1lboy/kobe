@@ -99,10 +99,10 @@ function ColumnView({
             type="button"
             onClick={onNewIssue}
             className="ml-auto flex items-center gap-0.5 text-[10px] text-subtle transition-colors hover:text-fg"
-            title="New issue in this project"
+            title="New story in this project"
           >
             <Plus size={11} strokeWidth={2} />
-            <span>New issue</span>
+            <span>New story</span>
           </button>
         )}
       </div>
@@ -143,7 +143,7 @@ function ColumnView({
         )}
         {column.hiddenCount > 0 && (
           <div className="p-2 text-center text-[10px] text-subtle">
-            +{column.hiddenCount} more — finish issues to thin this column
+            +{column.hiddenCount} more — finish stories to thin this column
           </div>
         )}
       </div>
@@ -427,7 +427,7 @@ export function Board() {
             ref={filterRef}
             value={query}
             onChange={(event) => setBoardQuery(event.target.value)}
-            placeholder="Filter issues  ( / )"
+            placeholder="Filter stories  ( / )"
             className="w-44 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
           />
           {query && (
@@ -476,7 +476,7 @@ export function Board() {
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           <span>
-            {shownCount} issue{shownCount === 1 ? "" : "s"}
+            {shownCount} stor{shownCount === 1 ? "y" : "ies"}
           </span>
         </div>
       </header>
@@ -495,7 +495,7 @@ export function Board() {
         ) : shownCount === 0 && filtered && hasAnyCard ? (
           // The text query narrowed every issue away — offer to clear it.
           <div className="text-[12px] leading-relaxed text-subtle">
-            <p>No issues match.</p>
+            <p>No stories match.</p>
             <button
               type="button"
               onClick={() => {
@@ -525,7 +525,7 @@ export function Board() {
         ) : (
           <div className="text-[12px] leading-relaxed text-subtle">
             <p>
-              No projects yet. Create a task from the workspace to track issues
+              No projects yet. Create a task from the workspace to track stories
               against its repo.
             </p>
             <div className="mt-3 flex items-center gap-2">
@@ -541,7 +541,7 @@ export function Board() {
         )}
       </div>
 
-      {/* Floating New-issue entry — the board is the ticket-intake surface, so
+      {/* Floating New-story entry — the board is the story-intake surface, so
           an always-reachable + FAB opens the intake panel for the current
           project. */}
       {(() => {
@@ -551,8 +551,8 @@ export function Board() {
           <button
             type="button"
             onClick={() => setCreatingRepo(target)}
-            title="New issue"
-            aria-label="New issue"
+            title="New story"
+            aria-label="New story"
             className="fixed bottom-6 right-6 z-20 flex h-12 w-12 items-center justify-center rounded-full border border-primary bg-primary text-bg shadow-lg transition-transform hover:scale-105"
           >
             <Plus size={22} strokeWidth={2.2} />
@@ -572,8 +572,8 @@ export function Board() {
             pushToast(
               "success",
               started
-                ? `Issue #${issue.id} created — starting its task`
-                : `Issue #${issue.id} created`,
+                ? `Story #${issue.id} created — starting its session`
+                : `Story #${issue.id} created`,
             )
           }}
         />
@@ -628,7 +628,7 @@ export function Board() {
                       .then(() =>
                         pushToast(
                           "success",
-                          `Prompt inserted for issue #${entry.issue.id}`,
+                          `Prompt inserted for story #${entry.issue.id}`,
                         ),
                       )
                       .catch((err: unknown) =>

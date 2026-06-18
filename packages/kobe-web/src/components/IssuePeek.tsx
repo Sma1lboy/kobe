@@ -1,10 +1,10 @@
 /**
- * IssuePeek — the unified Board's wide ticket-detail drawer onto one issue, and
- * the owner-specified START surface for turning an issue into a task. It rides
+ * IssuePeek — the unified Board's wide story-detail drawer onto one issue, and
+ * the owner-specified START surface for turning a story into a task. It rides
  * the shared {@link SlideOver} chrome in its `wide` two-column shell
  * (right-docked, slide-in, focus-trapped, Esc/backdrop close) and splits into:
  *
- *   - LEFT (primary): the ticket itself — an always-editable title <input> and a
+ *   - LEFT (primary): the story itself — an always-editable title <input> and a
  *     single-surface {@link RichEditor} description. That one Notion-like surface
  *     edits AND renders at once: typing styles inline and pasted/dropped images
  *     upload and appear inline in the same editor. It loads from and emits
@@ -17,7 +17,7 @@
  * Start actions (owner-explicit): an un-started, startable issue gets TWO
  * buttons — "Start in background" (spawn + stay on the board) and "Start &
  * watch" (spawn + open the live session). A linked issue swaps both for a single
- * "Open workspace". A done issue has nothing to start.
+ * "Open session". A done story has nothing to start.
  *
  * RichEditor only inserts images uploaded through the issue-asset endpoint, and
  * markdown.ts only renders those resolved `/api/issue-assets/<hash>/<file>` urls
@@ -50,7 +50,7 @@ export function IssuePeek({
   /** A start spawn is in flight — both start buttons disable. */
   starting: boolean
   onClose: () => void
-  /** Persist the edited ticket; resolves true on success so we can clear dirty. */
+  /** Persist the edited story; resolves true on success so we can clear dirty. */
   onSave: (patch: { title: string; body: string }) => Promise<boolean>
   /** Start the issue on the chosen engine/effort. `watch` opens the live
    *  session immediately; otherwise the spawn stays in the background. */
@@ -66,8 +66,8 @@ export function IssuePeek({
   const [effort, setEffort] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
-  // The issue is already represented by a live task card on the board, so there
-  // is nothing left to start. Done issues likewise have nothing to do.
+  // The story is already represented by a live task card on the board, so there
+  // is nothing left to start. Done stories likewise have nothing to do.
   const linked = Boolean(issue.taskId)
   const startable = canQuickStart(issue.status) && !linked
   const dirty = draftTitle !== issue.title || draftBody !== issue.body
@@ -97,7 +97,7 @@ export function IssuePeek({
   return (
     <SlideOver open wide onClose={onClose} title={title}>
       <div className="flex h-full min-h-0">
-        {/* LEFT — the editable ticket. */}
+        {/* LEFT — the editable story. */}
         <div className="flex min-w-0 flex-1 flex-col gap-3 border-r border-line p-3">
           <div>
             <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -114,7 +114,7 @@ export function IssuePeek({
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="mb-1 flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-                Description
+                Acceptance
               </span>
               <span className="text-[10px] text-subtle">
                 paste or drop images
@@ -128,7 +128,7 @@ export function IssuePeek({
               value={draftBody}
               onChange={setDraftBody}
               repoRoot={repoRoot}
-              placeholder="context, repro, acceptance — paste a screenshot to attach it"
+              placeholder="context, constraints, acceptance criteria — paste a screenshot to attach it"
             />
           </div>
 
@@ -206,17 +206,17 @@ export function IssuePeek({
                   type="button"
                   onClick={() => onOpenSession?.()}
                   disabled={!onOpenSession}
-                  title="Open this issue's running session in the workspace"
+                  title="Open this story's running session in the workspace"
                   className="flex h-8 items-center justify-center gap-1.5 border border-primary bg-inset px-3 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <ExternalLink size={12} strokeWidth={1.8} />
-                  Open workspace
+                  Open session
                 </button>
                 <button
                   type="button"
                   onClick={() => onPromptMerge?.()}
                   disabled={!onPromptMerge || starting}
-                  title="Insert the finish and merge prompt into this issue's task"
+                  title="Insert the finish and merge prompt into this story's task"
                   className="flex h-8 items-center justify-center gap-1.5 border border-line bg-bg px-3 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <GitMerge size={12} strokeWidth={1.8} />
@@ -232,7 +232,7 @@ export function IssuePeek({
                   type="button"
                   disabled={starting}
                   onClick={() => onStart({ vendor, effort, watch: false })}
-                  title="Spawn a kobe task on this issue and stay on the board"
+                  title="Spawn a kobe task session for this story and stay on the board"
                   className="flex h-8 items-center justify-center gap-1.5 border border-line bg-bg px-3 text-[11px] text-muted transition-colors hover:border-primary hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={12} strokeWidth={1.8} />
@@ -242,7 +242,7 @@ export function IssuePeek({
                   type="button"
                   disabled={starting}
                   onClick={() => onStart({ vendor, effort, watch: true })}
-                  title="Spawn a kobe task and open its live session"
+                  title="Spawn a kobe task session and open it"
                   className="flex h-8 items-center justify-center gap-1.5 border border-primary bg-inset px-3 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <Play size={12} strokeWidth={1.8} />
@@ -251,7 +251,7 @@ export function IssuePeek({
               </>
             ) : (
               <p className="text-center text-[10px] text-subtle">
-                Done issues have nothing left to start.
+                Done stories have nothing left to start.
               </p>
             )}
           </div>

@@ -339,10 +339,11 @@ describe("quickStartPrompt", () => {
         body: "It needs 1.21 gigawatts.\nSee the schematic.",
       }),
     )
-    expect(prompt).toContain("kobe issue #42")
+    expect(prompt).toContain("user story #42")
     expect(prompt).toContain("Wire the flux capacitor")
     expect(prompt).toContain("It needs 1.21 gigawatts.\nSee the schematic.")
-    expect(prompt).toContain("insert a final prompt/comment")
+    expect(prompt).toContain("dedicated kobe task session")
+    expect(prompt).toContain("verify the acceptance criteria")
     expect(prompt).toContain(
       "merge the task branch back into the current project's main branch",
     )
@@ -355,7 +356,7 @@ describe("quickStartPrompt", () => {
 
   it("omits the body section when the body is blank", () => {
     const prompt = quickStartPrompt(issue({ id: 7, title: "T", body: "  " }))
-    expect(prompt).toContain("issue #7")
+    expect(prompt).toContain("story #7")
     expect(prompt).not.toContain("\n\n\n")
   })
 })
@@ -363,8 +364,8 @@ describe("quickStartPrompt", () => {
 describe("issueMergePrompt", () => {
   it("asks the linked task to summarize, merge to project main, and mark the issue done", () => {
     const prompt = issueMergePrompt(issue({ id: 9, title: "Ship it" }))
-    expect(prompt).toContain("Finish kobe issue #9")
-    expect(prompt).toContain("Summarize what changed")
+    expect(prompt).toContain("Finish user story #9")
+    expect(prompt).toContain("Verify the acceptance criteria")
     expect(prompt).toContain(
       "merge this task branch back into the current project's main branch",
     )

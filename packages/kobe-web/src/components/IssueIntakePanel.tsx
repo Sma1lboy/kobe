@@ -1,12 +1,12 @@
 /**
  * IssueIntakePanel — the Board's Backlog "New" intake, a SlideOver-based panel
- * for capturing an issue (title + WYSIWYG markdown description) and either
- * banking it or starting it on the spot. Two actions:
+ * for capturing a user story (title + WYSIWYG markdown acceptance/context) and
+ * either banking it or starting its kobe session on the spot. Two actions:
  *
- *   - "Save"                creates the issue only (status `open`).
- *   - "Execute immediately" creates the issue, then quick-starts it on the
- *                           chosen engine/effort (spawn task + first prompt +
- *                           link via Issue.taskId).
+ *   - "Save"          creates the story only (status `open`).
+ *   - "Start session" creates the story, then quick-starts it on the chosen
+ *                     engine/effort (spawn task + first prompt + link via
+ *                     Issue.taskId).
  *
  * The description is a single {@link RichEditor} surface: one Notion-like editor
  * that styles markdown inline as you type and shows pasted/dropped images inline
@@ -85,13 +85,13 @@ export function IssueIntakePanel({
         onClick={() => submit(true)}
         className="border border-primary bg-inset px-3 py-1 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {busy ? "Starting…" : "Execute immediately"}
+        {busy ? "Starting…" : "Start session"}
       </button>
     </div>
   )
 
   return (
-    <SlideOver open={open} onClose={onClose} title="New issue" footer={footer}>
+    <SlideOver open={open} onClose={onClose} title="New story" footer={footer}>
       <div className="flex flex-col gap-3 p-3">
         <div>
           <div className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
@@ -100,7 +100,7 @@ export function IssueIntakePanel({
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="What needs doing?"
+            placeholder="What should the session deliver?"
             // biome-ignore lint/a11y/noAutofocus: the panel exists to type a title; focus belongs there on open.
             autoFocus
             className="w-full border border-line bg-bg px-2 py-1.5 text-[12px] text-fg placeholder:text-subtle focus:border-line-active focus:outline-none"
@@ -110,7 +110,7 @@ export function IssueIntakePanel({
         <div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-subtle">
-              Description
+              Acceptance
             </span>
             <span className="text-[10px] text-subtle">
               paste or drop images
@@ -120,7 +120,7 @@ export function IssueIntakePanel({
             value={body}
             onChange={setBody}
             repoRoot={repoRoot}
-            placeholder="context, repro, acceptance — paste a screenshot to attach it"
+            placeholder="context, constraints, acceptance criteria — paste a screenshot to attach it"
           />
         </div>
 

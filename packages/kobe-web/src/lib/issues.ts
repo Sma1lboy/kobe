@@ -157,9 +157,9 @@ export const STATUS_META: Record<
   IssueStatus,
   { title: string; accent: string }
 > = {
-  open: { title: "Open", accent: "text-kobe-blue" },
-  doing: { title: "Doing", accent: "text-kobe-orange" },
-  hold: { title: "Hold", accent: "text-kobe-yellow" },
+  open: { title: "Backlog", accent: "text-kobe-blue" },
+  doing: { title: "In session", accent: "text-kobe-orange" },
+  hold: { title: "Blocked", accent: "text-kobe-yellow" },
   done: { title: "Done", accent: "text-kobe-green" },
 }
 
@@ -305,11 +305,12 @@ export function resolveIssueRepoSelection(
  * completion through the daemon-owned issue API, not by editing repo files.
  */
 export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
-  const lines = [`Work on kobe issue #${issue.id}: ${issue.title}`, ""]
+  const lines = [`Work on user story #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
   if (body) lines.push(body, "")
   lines.push(
-    "Work in this issue task's worktree. When implementation is ready, insert a final prompt/comment that summarizes what changed and any verification still needed.",
+    "Treat this as the story's dedicated kobe task session: work only in this task worktree, and preserve any repo init instructions already delivered to the session.",
+    "Before finishing, verify the acceptance criteria implied by the story and summarize what changed plus any verification still needed.",
     "Then merge the task branch back into the current project's main branch after the worktree is clean and checks pass.",
     `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
   )
@@ -323,9 +324,9 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
  */
 export function issueMergePrompt(issue: Issue, api = "kobe api"): string {
   return [
-    `Finish kobe issue #${issue.id}: ${issue.title}`,
+    `Finish user story #${issue.id}: ${issue.title}`,
     "",
-    "Summarize what changed and any verification still needed.",
+    "Verify the acceptance criteria implied by the story, then summarize what changed and any verification still needed.",
     "Then merge this task branch back into the current project's main branch after the worktree is clean and checks pass. Resolve conflicts if needed.",
     `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
   ].join("\n")

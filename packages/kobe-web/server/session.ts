@@ -41,7 +41,7 @@ export async function ensureTaskSession(
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   const session = tmuxSessionName(taskId)
   if (!(await sessionExists(session))) {
-    const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "none" })
+    const launchInit = resolveEngineLaunchInit(task.repo ?? "", worktreePath, { kind: "repo-init" })
     const ok = await ensureSession({
       name: session,
       cwd: worktreePath,

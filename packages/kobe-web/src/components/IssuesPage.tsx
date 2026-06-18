@@ -1,9 +1,9 @@
 /**
- * IssuesPage — the standalone `/issues` lens onto the daemon-owned issue
+ * IssuesPage — the standalone `/issues` lens onto the daemon-owned story
  * tracker. It is NOT folded into the Board: it's its own full-screen page in the
  * Board's chrome grammar (back-to-workspace, a BOLD CAPS title, a search filter,
- * project chips, a "New issue" action), then the repo's issues laid out in the
- * four status columns (Open / Doing / Hold / Done).
+ * project chips, a "New story" action), then the repo's issues laid out in the
+ * four status columns (Backlog / In session / Blocked / Done).
  *
  * Data: `useRepoIssues` plumbs the selected repo's issues (an initial GET plus
  * live `issue.snapshot` daemon pushes from any surface — another browser, the
@@ -12,7 +12,7 @@
  * optimistically mutates its own cache.
  *
  * Surfaces:
- *   - IssueIntakePanel — the "New issue" drawer (title + WYSIWYG description,
+ *   - IssueIntakePanel — the "New story" drawer (title + WYSIWYG acceptance,
  *     paste/drop images, Save or Execute-immediately with engine/effort).
  *   - IssuePeek        — the detail drawer (edit title/body, paste images,
  *     quick-start with engine/effort, open the linked session).
@@ -185,7 +185,7 @@ export function IssuesPage() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter issues  ( #id, title, body )"
+            placeholder="Filter stories  ( #id, title, body )"
             className="w-52 bg-transparent text-[12px] text-fg placeholder:text-subtle focus:outline-none"
           />
           {query && (
@@ -229,17 +229,17 @@ export function IssuesPage() {
         )}
         <div className="ml-auto flex items-center gap-3 font-mono text-[11px] text-subtle">
           <span>
-            {total} issue{total === 1 ? "" : "s"}
+            {total} stor{total === 1 ? "y" : "ies"}
           </span>
           <button
             type="button"
             disabled={!repo}
             onClick={() => setIntakeOpen(true)}
             className="flex items-center gap-1.5 border border-primary bg-inset px-2 py-0.5 text-[11px] text-fg transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Capture a new issue"
+            title="Capture a new story"
           >
             <Plus size={13} strokeWidth={1.8} />
-            New issue
+            New story
           </button>
         </div>
       </header>
@@ -247,7 +247,7 @@ export function IssuesPage() {
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden p-4">
         {!repo ? (
           <p className="text-[12px] text-subtle">
-            No projects yet. Create a task from the workspace to track issues
+            No projects yet. Create a task from the workspace to track stories
             against its repo.
           </p>
         ) : !hydrated || (pending && !repoState) ? (
@@ -260,8 +260,8 @@ export function IssuesPage() {
         ) : total === 0 ? (
           <p className="text-[12px] text-subtle">
             {query
-              ? "No issues match your filter."
-              : "No issues yet. Capture one with New issue."}
+              ? "No stories match your filter."
+              : "No stories yet. Capture one with New story."}
           </p>
         ) : (
           <div className="flex h-full min-h-0 gap-4">
