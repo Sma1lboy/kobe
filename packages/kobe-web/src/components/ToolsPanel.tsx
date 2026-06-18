@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
+import { setActiveTask, setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { copyText } from "../lib/clipboard.ts"
 import { useEngines } from "../lib/engines.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -177,7 +178,7 @@ function TaskOverview({ task }: { task: Task | null }) {
       await rpc("task.archive", { taskId: task.id, archived: true })
       clearSelectedTask()
       void navigate({ to: "/" })
-      await rpc("task.setActive", { taskId: null })
+      await setActiveTask(null)
     })
   }
 
@@ -198,7 +199,7 @@ function TaskOverview({ task }: { task: Task | null }) {
         await rpc("task.delete", { taskId: task.id, force })
         clearSelectedTask()
         void navigate({ to: "/" })
-        await rpc("task.setActive", { taskId: null }).catch(() => {})
+        setActiveTaskBestEffort(null)
         pushToast("success", `Deleted "${task.title || task.branch}"`)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

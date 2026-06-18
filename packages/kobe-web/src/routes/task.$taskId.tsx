@@ -9,7 +9,7 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { AppShell } from "../components/AppShell.tsx"
-import { rpc } from "../lib/store.ts"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 
 function TaskRoute() {
@@ -19,7 +19,7 @@ function TaskRoute() {
   useEffect(() => {
     if (!taskId || taskId === selectedTaskId) return
     selectTask(taskId)
-    void rpc("task.setActive", { taskId }).catch(() => {})
+    setActiveTaskBestEffort(taskId)
   }, [taskId, selectedTaskId])
 
   return <AppShell />

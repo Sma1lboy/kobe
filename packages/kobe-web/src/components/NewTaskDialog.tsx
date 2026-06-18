@@ -9,6 +9,7 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { useEngines } from "../lib/engines.ts"
 import { fetchDefaultEngine } from "../lib/settings.ts"
 import { rpc, useAppState } from "../lib/store.ts"
@@ -93,7 +94,7 @@ export function NewTaskDialog({ onClose }: { onClose: () => void }) {
         addTab(taskId)
       }
       void navigate({ to: "/task/$taskId", params: { taskId } })
-      await rpc("task.setActive", { taskId }).catch(() => {})
+      setActiveTaskBestEffort(taskId)
       pushToast(
         "success",
         `Task created: ${task?.title || task?.branch || taskId}`,

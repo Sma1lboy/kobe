@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { activityColor, activityLabel } from "../lib/activity.ts"
 import { useEngines } from "../lib/engines.ts"
 import { setNotifyNavigate } from "../lib/notify.ts"
@@ -247,7 +248,7 @@ function TaskRail({
 
   const open = (id: string): void => {
     selectTask(id)
-    void rpc("task.setActive", { taskId: id }).catch(() => {})
+    setActiveTaskBestEffort(id)
     // Push the deep link so tasks are shareable and back/forward walks the
     // task-switch history.
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
@@ -696,7 +697,7 @@ export function AppShell() {
   useEffect(() => {
     setNotifyNavigate((taskId) => {
       selectTask(taskId)
-      void rpc("task.setActive", { taskId }).catch(() => {})
+      setActiveTaskBestEffort(taskId)
       void navigate({ to: "/task/$taskId", params: { taskId } })
     })
     return () => setNotifyNavigate(null)

@@ -19,10 +19,11 @@ import {
   Settings as SettingsIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { activityColor } from "../lib/activity.ts"
 import { fuzzyScore } from "../lib/fuzzy.ts"
 import { orderTasksForPalette } from "../lib/palette-commands.ts"
-import { rpc, useAppState } from "../lib/store.ts"
+import { useAppState } from "../lib/store.ts"
 import { selectTask, useTabsState } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
 import type { Task } from "../lib/types.ts"
@@ -103,7 +104,7 @@ export function CommandPalette({
         taskId: t.id,
         run: () => {
           selectTask(t.id)
-          void rpc("task.setActive", { taskId: t.id }).catch((err) =>
+          setActiveTaskBestEffort(t.id, (err) =>
             reportError("switch task", err),
           )
           void navigate({ to: "/task/$taskId", params: { taskId: t.id } })

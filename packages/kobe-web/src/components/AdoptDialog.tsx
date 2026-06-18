@@ -8,6 +8,7 @@
 
 import { useNavigate } from "@tanstack/react-router"
 import { useMemo, useRef, useState } from "react"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import { rpc, useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { relativeTimeAgo } from "../lib/time.ts"
@@ -85,7 +86,7 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
         ifExists: "return",
       })
       selectTask(task.id)
-      void rpc("task.setActive", { taskId: task.id }).catch(() => {})
+      setActiveTaskBestEffort(task.id)
       void navigate({ to: "/task/$taskId", params: { taskId: task.id } })
       pushToast("success", `Adopted ${wt.branch || wt.path}`)
       onClose()

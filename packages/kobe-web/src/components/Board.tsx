@@ -24,6 +24,7 @@
 import { useNavigate } from "@tanstack/react-router"
 import { ExternalLink, Plus, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
+import { setActiveTaskBestEffort } from "../lib/active-task.ts"
 import {
   type BoardColumn,
   buildBoardView,
@@ -45,7 +46,7 @@ import {
   resolveIssueRepoSelection,
   updateIssue,
 } from "../lib/issues.ts"
-import { rpc, useAppState } from "../lib/store.ts"
+import { useAppState } from "../lib/store.ts"
 import { selectTask } from "../lib/tabs.ts"
 import { pushToast, reportError } from "../lib/toast.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
@@ -330,7 +331,7 @@ export function Board() {
   // Open a linked issue's task workspace/session.
   const openTask = (id: string): void => {
     selectTask(id)
-    void rpc("task.setActive", { taskId: id }).catch(() => {})
+    setActiveTaskBestEffort(id)
     void navigate({ to: "/task/$taskId", params: { taskId: id } })
   }
 

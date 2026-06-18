@@ -5,6 +5,7 @@
  * plumbing.
  */
 
+import { setActiveTaskBestEffort } from "./active-task.ts"
 import { api } from "./api-client.ts"
 import { labelRepo } from "./board.ts"
 import { fetchDefaultEngine } from "./settings.ts"
@@ -359,7 +360,7 @@ export async function quickStartIssue(
   // Move the daemon's active-task pointer too — every sibling open-task
   // path pairs selectTask with this (Board/NewTaskDialog), and the
   // /task/$taskId route effect won't fire it (selectTask runs first).
-  void rpc("task.setActive", { taskId }).catch(() => {})
+  setActiveTaskBestEffort(taskId)
   // Link issue → task: stamps the issue's taskId, flips it `doing`, and arms
   // the daemon's auto-mirror to `done` when the task completes.
   await linkIssue(repoRoot, issue.id, taskId).catch(() => {})
