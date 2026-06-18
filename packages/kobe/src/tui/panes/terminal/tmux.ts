@@ -57,6 +57,7 @@ import { localSpawnCwd, remoteKeyForRepo } from "@/exec/resolve"
 import type { EngineLaunchInit } from "@/state/repo-init"
 import {
   CHAT_TAB_SESSION_ID_OPTION,
+  KOBE_TMUX_SOCKET,
   killSession,
   runTmux,
   runTmuxCapturing,
@@ -76,7 +77,13 @@ import {
 } from "@/tmux/keybindings"
 import { deliverFirstEngineMessage } from "@/tmux/prompt-delivery"
 import { type ObservedSession, decideSessionAction } from "@/tmux/session-decision"
-import { HIDDEN_TASKS_PANE_OPTION, engineLaunchLine, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
+import {
+  HIDDEN_TASKS_PANE_OPTION,
+  engineLaunchLine,
+  openUrlCommand,
+  shellQuote,
+  shellQuoteArgv,
+} from "@/tmux/session-layout"
 import { applyTmuxChromeTheme } from "@/tui/lib/tmux-border-theme"
 import {
   CHAT_TAB_STATUS_CURRENT_FORMAT,
@@ -630,6 +637,14 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // their event bursts to one run (see layout-coord.ts).
   const captureLayoutCommand = `${envStr}${invStr} capture-layout --session '#{session_name}'`
   const captureLayoutTmuxCommand = `run-shell -b ${shellQuote(captureLayoutCommand)}`
+  // `<prefix> u` = open a URL from the focused pane. iTerm2's Cmd+click reads the
+  // RENDERED grid, so a URL that wraps at the (narrower-than-terminal) tmux pane
+  // boundary is captured half-truncated. `capture-pane -J` joins the visual wrap
+  // back into the full logical line, so the URL survives intact. `#{pane_id}`
+  // expands at fire time → the pane that was focused, before the popup steals
+  // active. fzf when present (filter/pick); else open the most-recent match.
+  // BSD `xargs -I{}` runs nothing on empty input (no stray Finder on cancel/no-match).
+  const openUrlTmuxCommand = openUrlCommand({ tmuxSocket: KOBE_TMUX_SOCKET })
   // `<prefix> f` = quick-create: open the prompt-only quick-task page (the
   // v0.5 quick-fork chord, KOB-74, reborn in the tmux world). `kobe
   // quick-create` opens `kobe quick-task` in its own window, which asks for
@@ -759,6 +774,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...layoutBind("tmux.layout.opsToggle", "ops-toggle"),
     ...layoutBind("tmux.layout.terminalToggle", "terminal-toggle"),
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
+    ["bind-key", "u", "display-popup", "-E", openUrlTmuxCommand],
   ])
 
   // Theme-matched tmux chrome. The tmux defaults (stock green status

@@ -275,6 +275,22 @@ export function updatePageCommand(args: { cliInvocation: readonly string[] }): s
 }
 
 /**
+ * Shell command for the prefix-scoped URL opener. It captures the focused pane
+ * as logical lines (`-J`, so wrapped URLs rejoin), lets the user pick with fzf
+ * when available, and opens the most recent URL otherwise.
+ */
+export function openUrlCommand(args: { readonly tmuxSocket: string; readonly opener?: string }): string {
+  const opener = args.opener ?? "open"
+  return [
+    `tmux -L ${shellQuote(args.tmuxSocket)} capture-pane -Jp -t '#{pane_id}' -S -500`,
+    `grep -oiE 'https?://[^ "'\\''()<>]+'`,
+    "awk '!seen[$0]++'",
+    "{ command -v fzf >/dev/null && fzf --reverse || tail -1; }",
+    `xargs -I{} ${opener} {}`,
+  ].join(" | ")
+}
+
+/**
  * The far-left Tasks pane command — `kobe tasks` (a read-only task
  * list that `switch-client`s between sessions). `cliInvocation` is the
  * argv prefix that runs the kobe CLI (injected for purity/testability).

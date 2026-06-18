@@ -17,6 +17,7 @@ import {
   engineLaunchLine,
   fallbackOpsScript,
   keepAlive,
+  openUrlCommand,
   opsPaneCommand,
   previewWindowCommand,
   shellQuote,
@@ -195,6 +196,22 @@ describe("updatePageCommand", () => {
     expect(updatePageCommand({ cliInvocation: ["/bin/bun", "--conditions=browser", "/abs/cli.ts"] })).toBe(
       "'/bin/bun' '--conditions=browser' '/abs/cli.ts' 'update-page'",
     )
+  })
+})
+
+describe("openUrlCommand", () => {
+  test("captures logical pane lines and opens a selected URL", () => {
+    const cmd = openUrlCommand({ tmuxSocket: "kobe" })
+    expect(cmd).toContain("tmux -L 'kobe' capture-pane -Jp -t '#{pane_id}' -S -500")
+    expect(cmd).toContain("grep -oiE 'https?://")
+    expect(cmd).toContain("awk '!seen[$0]++'")
+    expect(cmd).toContain("command -v fzf >/dev/null && fzf --reverse || tail -1")
+    expect(cmd).toContain("xargs -I{} open {}")
+  })
+
+  test("quotes the tmux socket name because it comes from the environment", () => {
+    expect(openUrlCommand({ tmuxSocket: "kobe sandbox" })).toContain("tmux -L 'kobe sandbox'")
+    expect(openUrlCommand({ tmuxSocket: "it's" })).toContain("tmux -L 'it'\\''s'")
   })
 })
 
