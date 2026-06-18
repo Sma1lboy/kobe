@@ -8,7 +8,7 @@
   "bin": {
     "kobe": "dist/cli/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": ["dist/cli", "dist/web-ui", "dist/*.wav", "README.md", "LICENSE"],
   "publishConfig": {
     "access": "public"
   },

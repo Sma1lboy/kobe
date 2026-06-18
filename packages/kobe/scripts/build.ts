@@ -28,6 +28,12 @@ const OUT_FILES = ["./dist/cli/index.js"]
 const WEB_PACKAGE_DIR = "../kobe-web"
 const WEB_DIST_DIR = `${WEB_PACKAGE_DIR}/dist`
 const WEB_OUT_DIR = "./dist/web-ui"
+const WEB_PTY_SIDE_CAR_FILES = [
+  "origin-policy.mjs",
+  "pty-scrollback.mjs",
+  "pty-session-lifecycle.mjs",
+  "pty-server.mjs",
+]
 
 async function buildWebUi(): Promise<void> {
   if (!existsSync(`${WEB_PACKAGE_DIR}/package.json`)) return
@@ -52,7 +58,7 @@ async function copyWebUi(): Promise<void> {
   // The PTY server runs unbundled under Node, so every sibling module it
   // imports must ship next to it (missing one = ERR_MODULE_NOT_FOUND at
   // `kobe web` startup in the packaged build).
-  for (const file of ["pty-server.mjs", "pty-scrollback.mjs"]) {
+  for (const file of WEB_PTY_SIDE_CAR_FILES) {
     await cp(`${WEB_PACKAGE_DIR}/${file}`, `${WEB_OUT_DIR}/${file}`, { force: true })
   }
 }
@@ -74,6 +80,7 @@ const result = await Bun.build({
   // that dynamic import into dist/index.js, where Bun can no longer
   // resolve the optional platform package under isolated installs.
   external: ["node-pty", "@opentui/core"],
+  minify: true,
 })
 
 if (!result.success) {

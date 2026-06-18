@@ -40,6 +40,7 @@ const result = await Bun.build({
   conditions: ["browser"],
   plugins: [createSolidTransformPlugin()],
   external: ["node-pty"],
+  minify: true,
   compile: { outfile },
 })
 if (!result.success) {
