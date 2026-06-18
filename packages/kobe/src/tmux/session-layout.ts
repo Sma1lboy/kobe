@@ -14,6 +14,8 @@
  * Everything in this file is pure: same inputs → same strings, no IO.
  */
 
+import { quoteShellArg, quoteShellArgv } from "@/lib/shell-command"
+
 /**
  * Far-left Tasks pane width in CELLS — FIXED, not a % of the window
  * (KOB-248). A %-split drifted: the pane's absolute width changed with the
@@ -102,12 +104,12 @@ export function clampPanePercent(percent: number): number | null {
  * single-quote escaping (`'` → `'\''`).
  */
 export function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, "'\\''")}'`
+  return quoteShellArg(s)
 }
 
 /** Shell-quote each argv element and join — a safe command line. */
 export function shellQuoteArgv(argv: readonly string[]): string {
-  return argv.map(shellQuote).join(" ")
+  return quoteShellArgv(argv)
 }
 
 /**

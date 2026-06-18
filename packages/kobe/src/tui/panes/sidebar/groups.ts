@@ -29,6 +29,7 @@
  * only when the upstream task signal or view changes.
  */
 
+import { reconcileStableRows } from "@/tui/lib/stable-rows"
 import type { Task } from "@/types/task"
 import { fuzzyMatch } from "./fuzzy"
 
@@ -223,21 +224,11 @@ export function sameSidebarRowTask(a: Task, b: Task): boolean {
  *   value identity and notifies nobody downstream.
  */
 export function reconcileSidebarRows(prev: readonly SidebarRow[], next: readonly SidebarRow[]): readonly SidebarRow[] {
-  if (prev.length === 0) return next
-  const prevById = new Map<string, SidebarRow>()
-  for (const row of prev) prevById.set(row.task.id, row)
-  let allReused = prev.length === next.length
-  const out: SidebarRow[] = new Array(next.length)
-  for (let i = 0; i < next.length; i++) {
-    const fresh = next[i] as SidebarRow
-    const old = prevById.get(fresh.task.id)
-    if (old && old.flatIndex === fresh.flatIndex && sameSidebarRowTask(old.task, fresh.task)) {
-      out[i] = old
-      if (allReused && prev[i] !== old) allReused = false
-    } else {
-      out[i] = fresh
-      allReused = false
-    }
-  }
-  return allReused ? prev : out
+  return reconcileStableRows(
+    prev,
+    next,
+    (row) => row.task.id,
+    (a, b) => a.flatIndex === b.flatIndex && sameSidebarRowTask(a.task, b.task),
+    { samePosition: true },
+  )
 }

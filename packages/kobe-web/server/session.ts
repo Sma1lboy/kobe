@@ -15,6 +15,7 @@ import {
   withDispatcherProtocol,
   withWorktreeProtocol,
 } from "../../kobe/src/engine/interactive-command.ts"
+import { quoteShellArgv } from "../../kobe/src/lib/shell-command.ts"
 import { resolveEngineLaunchInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
@@ -63,7 +64,7 @@ export async function ensureTaskSession(
  * line that runs in the worktree).
  */
 export function shellQuote(argv: readonly string[]): string {
-  return argv.map((a) => (/^[A-Za-z0-9_/.:=-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ")
+  return quoteShellArgv(argv, { bareSafe: true })
 }
 
 export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {

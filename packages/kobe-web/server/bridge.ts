@@ -58,6 +58,7 @@ import { handleDiffRequest } from "../../kobe/src/web/diff.ts"
 import { handleHistoryRequest } from "../../kobe/src/web/history.ts"
 import { handleNotesRequest } from "../../kobe/src/web/notes.ts"
 import { handleThemesRequest } from "../../kobe/src/web/themes.ts"
+import { allowedHostForBindHost, originAllowed } from "../origin-policy.mjs"
 import { DaemonLink } from "./daemon-link.ts"
 import { handleIssueAssetsRequest } from "./issue-assets-route.ts"
 import { handleIssuesRequest } from "./issues-route.ts"
@@ -103,35 +104,6 @@ export interface RequestHandlerDeps {
    *  cross-origin guard so the documented LAN-exposure override keeps working;
    *  undefined for the default loopback bind. */
   allowedHost?: string
-}
-
-/**
- * Cross-origin guard for the bridge — the same defense the PTY sidecar applies
- * (see pty-server.mjs `LOCAL_ORIGIN`/`verifyClient`). The bridge's mutating
- * routes (`/api/rpc` reaches task.create/delete/archive/rename, `/api/settings`,
- * `/api/issues`, `/api/issue-assets`, `/api/session`) drive real side effects,
- * so a page the user merely visits must not be able to invoke them. A browser
- * always stamps `Origin` on a fetch/EventSource; only loopback pages (or the
- * deliberately-configured LAN host) may pass. This also blunts DNS-rebinding:
- * a rebound `attacker.com → 127.0.0.1` page still carries `Origin: attacker.com`
- * and is rejected. Non-browser clients send no Origin — there's no browser to
- * forge their request — so they're allowed (the daemon socket, `kobe api`, and
- * the port-takeover health probe all hit it Origin-less).
- */
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
-
-function originAllowed(req: Request, allowedHost?: string): boolean {
-  const origin = req.headers.get("origin")
-  if (!origin) return true
-  if (LOCAL_ORIGIN.test(origin)) return true
-  if (allowedHost) {
-    try {
-      if (new URL(origin).hostname === allowedHost) return true
-    } catch {
-      /* malformed Origin → reject */
-    }
-  }
-  return false
 }
 
 function sseResponse(register: (send: SseSend) => () => void): Response {
@@ -407,7 +379,7 @@ export function createRequestHandler(deps: RequestHandlerDeps): (req: Request) =
   return async function handle(req: Request): Promise<Response> {
     const url = new URL(req.url)
     if (url.pathname === WEB_HEALTH_PATH) return new Response(WEB_HEALTH_MARKER)
-    if (!originAllowed(req, deps.allowedHost)) {
+    if (!originAllowed(req.headers.get("origin"), { allowedHost: deps.allowedHost })) {
       return new Response("forbidden: cross-origin request rejected", { status: 403 })
     }
     if (url.pathname === "/events") {
@@ -560,7 +532,7 @@ export async function createBridgeServer(opts: BridgeServerOptions = {}): Promis
   // When deliberately bound to a LAN host, that host's Origin must pass the
   // cross-origin guard too (loopback is always allowed); a loopback bind needs
   // no extra allowance.
-  const allowedHost = LOCAL_ORIGIN.test(`http://${hostname}`) ? undefined : hostname
+  const allowedHost = allowedHostForBindHost(hostname)
   const handle = createRequestHandler({ link, sseSends, staticDir, allowedHost })
   const server = Bun.serve({ port, hostname, idleTimeout: 0, fetch: handle })
 

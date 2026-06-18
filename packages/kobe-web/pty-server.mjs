@@ -16,6 +16,7 @@
 import { createServer } from "node:http"
 import { spawn } from "node-pty"
 import { WebSocketServer } from "ws"
+import { allowedHostForBindHost, originAllowed } from "./origin-policy.mjs"
 import { createScrollback } from "./pty-scrollback.mjs"
 import { createPtySessionManager } from "./pty-session-lifecycle.mjs"
 
@@ -24,6 +25,8 @@ const BRIDGE_PORT = Number.parseInt(process.env.KOBE_BRIDGE_PORT ?? "5174", 10)
 const SCROLLBACK_CAP = 256 * 1024 // bytes of recent output replayed on (re)attach
 const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
+const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
+const ALLOWED_HOST = allowedHostForBindHost(HOST)
 
 function ptyEnv() {
   const { NO_COLOR: _noColor, ...env } = process.env
@@ -71,8 +74,7 @@ const server = createServer((req, res) => {
     // Sending text DRIVES the engine like a keyboard, so unlike /pty/close
     // (best-effort kill) this holds the same origin policy as the WS attach:
     // localhost pages or non-browser clients only.
-    const origin = req.headers.origin
-    if (origin && !LOCAL_ORIGIN.test(origin)) {
+    if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
       res.writeHead(403)
       res.end()
       return
@@ -127,8 +129,7 @@ const server = createServer((req, res) => {
     // DoS the session (tab ids are client-generated/observable), so hold the
     // same origin policy as /pty/send and the WS attach: localhost pages or
     // non-browser clients (no Origin) only.
-    const origin = req.headers.origin
-    if (origin && !LOCAL_ORIGIN.test(origin)) {
+    if (!originAllowed(req.headers.origin, { allowedHost: ALLOWED_HOST })) {
       res.writeHead(403)
       res.end()
       return
@@ -158,15 +159,14 @@ const server = createServer((req, res) => {
 })
 
 // A PTY WS is arbitrary command exec in the worktree, so reject cross-origin
-// upgrades: a browser sends an Origin header, and only localhost pages may
-// attach (defends a malicious local page / DNS-rebinding even on the loopback
-// bind). Non-browser clients (no Origin) are allowed — there's no browser to
-// forge their request.
-const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
+// upgrades: a browser sends an Origin header, and only loopback pages (or the
+// deliberately configured LAN host) may attach. This defends a malicious local
+// page / DNS-rebinding even on the loopback bind. Non-browser clients (no
+// Origin) are allowed — there's no browser to forge their request.
 const wss = new WebSocketServer({
   server,
   path: "/pty",
-  verifyClient: ({ origin }) => !origin || LOCAL_ORIGIN.test(origin),
+  verifyClient: ({ origin }) => originAllowed(origin, { allowedHost: ALLOWED_HOST }),
 })
 
 wss.on("connection", (ws, req) => {
@@ -198,7 +198,6 @@ wss.on("connection", (ws, req) => {
 
 // Bind loopback by default — a PTY is an arbitrary shell/engine in the
 // worktree, so it must never listen on all interfaces. KOBE_WEB_HOST overrides.
-const HOST = process.env.KOBE_WEB_HOST?.trim() || "127.0.0.1"
 server.listen(PORT, HOST, () => {
   process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (bridge :${BRIDGE_PORT})\n`)
 })
