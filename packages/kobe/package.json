@@ -27,6 +27,7 @@
     "dev": "env KOBE_DEV=1 bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:sandbox": "mkdir -p .dev-sandbox/home && env KOBE_DEV=1 KOBE_HOME_DIR=$PWD/.dev-sandbox/home KOBE_TMUX_SOCKET=kobe-sandbox bun --preload @opentui/solid/preload --conditions=browser ./src/cli/index.ts",
     "dev:sandbox:reset": "env KOBE_TMUX_SOCKET=kobe-sandbox bun ./src/cli/index.ts kill-sessions",
+    "dev:version": "bash ../../scripts/dev-version.sh",
     "build": "bun run scripts/build.ts",
     "compile": "bun run scripts/compile.ts",
     "typecheck": "tsc --noEmit",
