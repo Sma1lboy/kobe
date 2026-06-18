@@ -43,8 +43,11 @@ here.
 
 ## Production
 
-`kobe web` (in `packages/kobe`) runs the bridge in-process, serves the built
-SPA from `dist/`, and spawns the PTY sidecar on `port + 2`:
+The default `@sma1lboy/kobe` package is TUI-first and does not bundle this web
+dashboard. Source checkouts should use `bun run dev` / `bun run dev:sandbox`.
+A future web-enabled distribution can still run `kobe web`: it runs the bridge
+in-process, serves the built SPA from the packaged `dist/web-ui`, and spawns
+the PTY sidecar on `port + 2`:
 
 ```bash
 kobe web                 # http://localhost:5173

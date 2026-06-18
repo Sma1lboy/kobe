@@ -2,4 +2,4 @@
 "@sma1lboy/kobe": patch
 ---
 
-Minify the published TUI bundle, publish only current build artifacts, and include every web PTY sidecar module in packaged builds.
+Minify the published TUI bundle and keep web assets out of the default package.

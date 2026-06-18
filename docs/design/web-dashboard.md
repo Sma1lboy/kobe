@@ -44,10 +44,14 @@ flowchart LR
   WebSocket-attached PTY keyed by a client tab id, kept alive across reconnects
   with a bounded scrollback ring.
 
-In production, `kobe web` ([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
+The default `@sma1lboy/kobe` package is TUI-first and does not bundle these web
+assets. A future web-enabled distribution can still run `kobe web`; then
+`kobe web`
+([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
 runs the bridge in-process serving the built SPA from `dist/web-ui`, and spawns
-the PTY sidecar on `port + 2`. In dev, [`dev.ts`](../../packages/kobe-web/dev.ts)
-spawns all three and Vite proxies `/api`, `/events`, `/pty`.
+the PTY sidecar on `port + 2`. In dev,
+[`dev.ts`](../../packages/kobe-web/dev.ts) spawns all three and Vite proxies
+`/api`, `/events`, `/pty`.
 
 ## Daemon channels the SPA consumes
 

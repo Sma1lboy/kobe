@@ -18,7 +18,21 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { WEB_HEALTH_MARKER, WEB_HEALTH_PATH, createBridgeServer } from "kobe-web/server"
+
+type WebServerModule = typeof import("kobe-web/server")
+
+async function loadWebServer(): Promise<WebServerModule> {
+  try {
+    return await import("kobe-web/server")
+  } catch (err) {
+    if (err instanceof Error && !/Cannot find|Could not resolve|not found|Module not found/i.test(err.message)) {
+      throw err
+    }
+    throw new Error(
+      "web bridge runtime is not bundled in the default kobe package; run from packages/kobe-web in a source checkout, or use a web-enabled distribution",
+    )
+  }
+}
 
 /** Which daemon home this `kobe web` is wired to — production `~/.kobe` unless
  *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
@@ -44,10 +58,9 @@ Options:
 `
 
 /**
- * Resolve the built SPA directory shipped with the kobe package. In dev
- * (source tree) the web app lives at ../../kobe-web/dist; once packaged the
- * build step copies it next to dist. Returns undefined if not found so the
- * server falls back to a "not built" message rather than crashing.
+ * Resolve the built SPA directory. Source checkouts can serve
+ * packages/kobe-web/dist after a web build; web-enabled artifacts copy it next
+ * to dist. The default published package intentionally does not include it.
  */
 function resolveStaticDir(): string | undefined {
   const here = fileURLToPath(import.meta.url)
@@ -90,6 +103,7 @@ async function pidsOnPort(port: number): Promise<number[]> {
 }
 
 async function takeoverPtyPort(port: number): Promise<void> {
+  const { WEB_HEALTH_MARKER, WEB_HEALTH_PATH } = await loadWebServer()
   let body: string
   try {
     const res = await fetch(`http://localhost:${port}${WEB_HEALTH_PATH}`, {
@@ -157,10 +171,17 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
   try {
     const bridgeOnly = args.includes("--bridge-only")
     const takeover = !args.includes("--no-takeover")
+    const staticDir = bridgeOnly ? undefined : resolveStaticDir()
+    if (!bridgeOnly && !staticDir) {
+      throw new Error(
+        "web assets are not bundled in the default kobe package; run `bun run dev` in packages/kobe-web from a source checkout, or use a web-enabled distribution",
+      )
+    }
+    const { createBridgeServer } = await loadWebServer()
     const bridge = await createBridgeServer({
       port,
       takeover,
-      staticDir: bridgeOnly ? undefined : resolveStaticDir(),
+      staticDir,
     })
     let pty: PtyProcess | null = null
     let stopped = false

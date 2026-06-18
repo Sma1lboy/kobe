@@ -1,7 +1,7 @@
 /**
  * Public surface of the kobe-web bridge server, consumed two ways:
  *   - `kobe web` (packages/kobe/src/cli/web-cmd.ts) imports it via the
- *     package export `kobe-web/server` and bundles it into the binary.
+ *     package export `kobe-web/server` only when the web command runs.
  *   - dev.ts runs ./main.ts directly (bun --watch) for the source dev loop.
  */
 

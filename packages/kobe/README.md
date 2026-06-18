@@ -120,18 +120,19 @@ For the full feature manifest, see [`CHANGELOG.md`](./CHANGELOG.md).
 
 ## Browser dashboard
 
-kobe also ships a local web UI over the same tasks and sessions, for when you'd
-rather drive things from a browser than the TUI:
+The browser dashboard is experimental and is no longer bundled in the default
+npm package. In a source checkout, run it from `packages/kobe-web`; a
+web-enabled distribution should ship separately from the TUI-first package:
 
 ```bash
-kobe web                 # serves http://localhost:5173
-kobe web --port 5180     # pick a different port
-kobe web --help          # all options (--bridge-only, --no-takeover, …)
+cd packages/kobe-web
+bun run dev:sandbox      # http://localhost:5173, isolated from production
 ```
 
-It connects to the same daemon as the TUI, so tasks created in either surface
-appear in both. The process model, routes, and security posture are documented
-in [`docs/design/web-dashboard.md`](../../docs/design/web-dashboard.md).
+When present, `kobe web` connects to the same daemon as the TUI, so tasks
+created in either surface appear in both. The process model, routes, and
+security posture are documented in
+[`docs/design/web-dashboard.md`](../../docs/design/web-dashboard.md).
 
 ## Custom themes
 

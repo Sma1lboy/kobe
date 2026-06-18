@@ -19,9 +19,9 @@
  *
  * Unlike `build.ts`, `@opentui/core` is *not* external: `--compile`
  * needs to embed the bundled core (and thus the matching native
- * subpackage) into the executable's VFS. `node-pty` stays external as
- * before — it isn't used in production code (we drive PTYs via tmux),
- * only by the test driver.
+ * subpackage) into the executable's VFS. `node-pty` and `kobe-web/server`
+ * stay external: the default binary is TUI-first, and the browser dashboard
+ * is not part of the core artifact.
  *
  * After the kobed → kobe bin merge (KOB-136), the single `kobe` binary
  * also hosts the daemon (`kobe daemon start|stop|status|restart`), so
@@ -39,7 +39,7 @@ const result = await Bun.build({
   entrypoints: ["./src/cli/index.ts"],
   conditions: ["browser"],
   plugins: [createSolidTransformPlugin()],
-  external: ["node-pty"],
+  external: ["node-pty", "kobe-web/server"],
   minify: true,
   compile: { outfile },
 })
