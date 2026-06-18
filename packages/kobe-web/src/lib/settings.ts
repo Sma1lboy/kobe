@@ -1,3 +1,5 @@
+import { api } from "./api-client.ts"
+
 export type FocusAccent = "primary" | "success" | "info"
 export type SettingsSurface = "chattab" | "taskpanel"
 export type EditorKind = "auto" | "vim" | "nvim" | "nano" | "emacs" | "custom"
@@ -38,15 +40,8 @@ export type WebSettingsPatch = Partial<
   removeEngine?: string
 }
 
-async function readJson<T>(res: Response): Promise<T> {
-  const json = (await res.json()) as { error?: string } & T
-  if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`)
-  return json as T
-}
-
 export async function fetchSettings(): Promise<WebSettings> {
-  const res = await fetch("/api/settings")
-  return readJson<WebSettings>(res)
+  return api.get<WebSettings>("/api/settings", { label: "load settings" })
 }
 
 /** Best-effort default engine lookup for task creation entry points. */
@@ -65,10 +60,7 @@ export async function fetchDefaultEngine(): Promise<string | null> {
 export async function saveSettings(
   patch: WebSettingsPatch,
 ): Promise<WebSettings> {
-  const res = await fetch("/api/settings", {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
+  return api.patch<WebSettings>("/api/settings", patch, {
+    label: "save settings",
   })
-  return readJson<WebSettings>(res)
 }

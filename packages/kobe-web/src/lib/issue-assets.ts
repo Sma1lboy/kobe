@@ -6,6 +6,8 @@
  * `safeImageSrc`), so the upload + render paths stay XSS-safe by construction.
  */
 
+import { api } from "./api-client.ts"
+
 /** Server-shaped response from POST /api/issue-assets. */
 interface UploadResponse {
   url: string
@@ -27,17 +29,13 @@ export async function uploadIssueAsset(
   form.append("repoRoot", repoRoot)
   form.append("file", file)
 
-  const res = await fetch("/api/issue-assets", {
-    method: "POST",
-    body: form,
-  })
-
-  if (!res.ok) {
-    const message = (await res.text().catch(() => "")) || res.statusText
-    throw new Error(`Issue asset upload failed: ${message}`)
-  }
-
-  const json = (await res.json()) as Partial<UploadResponse>
+  const json = await api.form<Partial<UploadResponse>>(
+    "/api/issue-assets",
+    form,
+    {
+      label: "Issue asset upload",
+    },
+  )
   if (typeof json?.url !== "string" || json.url.length === 0) {
     throw new Error("Issue asset upload returned no url")
   }

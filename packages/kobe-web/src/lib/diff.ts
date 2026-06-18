@@ -6,6 +6,8 @@
  * from the kobe package, so no server code leaks into the client bundle.
  */
 
+import { api } from "./api-client.ts"
+
 export interface DiffFile {
   /** Repo-relative path (post-rename path for renames). */
   path: string
@@ -51,13 +53,13 @@ export async function fetchDiff(
   worktreePath: string,
   opts: FetchDiffOptions = {},
 ): Promise<DiffResult> {
-  const params = new URLSearchParams({ worktreePath })
-  if (opts.path) params.set("path", opts.path)
-  if (opts.namesOnly) params.set("namesOnly", "1")
-  const res = await fetch(`/api/diff?${params.toString()}`)
-  const json = (await res.json()) as Partial<DiffResult> & { error?: string }
-  if (!res.ok || json.error) {
-    throw new Error(json.error ?? `diff fetch failed (${res.status})`)
-  }
+  const json = await api.get<Partial<DiffResult>>("/api/diff", {
+    query: {
+      worktreePath,
+      path: opts.path,
+      namesOnly: opts.namesOnly ? "1" : undefined,
+    },
+    label: "diff fetch",
+  })
   return { files: json.files ?? [], raw: json.raw ?? "" }
 }

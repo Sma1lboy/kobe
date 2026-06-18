@@ -5,6 +5,8 @@
  * spawn the user's shell in the same worktree.
  */
 
+import { ApiError, api } from "./api-client.ts"
+
 export type PtyMode = "engine" | "shell"
 
 function ptyOrigin(): string {
@@ -43,11 +45,11 @@ export function ptyUrl(
 /** Kill a tab's engine process server-side (when the user closes the tab). */
 export async function closePtyTab(tabId: string): Promise<void> {
   try {
-    await fetch(`${ptyHttpOrigin()}/pty/close`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tab: tabId }),
-    })
+    await api.post<void>(
+      `${ptyHttpOrigin()}/pty/close`,
+      { tab: tabId },
+      { label: "close PTY tab" },
+    )
   } catch {
     /* best-effort — the tab is already gone from the UI */
   }
@@ -66,26 +68,22 @@ export async function sendPtyText(
   taskId: string,
   text: string,
 ): Promise<{ spawned: boolean }> {
-  const res = await fetch(`${ptyHttpOrigin()}/pty/send`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ tab: tabId, taskId, text }),
-  })
-  // Parse defensively: a sidecar that predates this endpoint 404s with an
-  // EMPTY body, and a raw res.json() would surface as a cryptic JSON parse
-  // error instead of the actual problem.
-  let json: { sent?: boolean; spawned?: boolean; error?: string } = {}
   try {
-    json = (await res.json()) as typeof json
-  } catch {
-    if (res.status === 404) {
+    const json = await api.post<{ sent?: boolean; spawned?: boolean }>(
+      `${ptyHttpOrigin()}/pty/send`,
+      { tab: tabId, taskId, text },
+      { label: "send PTY text" },
+    )
+    if (!json.sent) throw new Error("send failed")
+    return { spawned: json.spawned === true }
+  } catch (err) {
+    // A sidecar that predates this endpoint 404s with an empty body; keep the
+    // targeted restart hint instead of surfacing a generic status error.
+    if (err instanceof ApiError && err.status === 404 && !err.detail) {
       throw new Error(
         "the PTY server doesn't know /pty/send — restart `kobe web` (the sidecar doesn't hot-reload)",
       )
     }
+    throw err
   }
-  if (!res.ok || !json.sent) {
-    throw new Error(json.error ?? `send failed (${res.status})`)
-  }
-  return { spawned: json.spawned === true }
 }

@@ -7,6 +7,8 @@
  * the template at send time (lib/review.ts) and are never stored.
  */
 
+import { api } from "./api-client.ts"
+
 export interface QuickPrompts {
   review: string | null
   pr: string | null
@@ -14,16 +16,14 @@ export interface QuickPrompts {
 
 /** Fail-open: a fetch failure means "use the built-in defaults". */
 export async function fetchQuickPrompts(): Promise<QuickPrompts> {
-  try {
-    const res = await fetch("/api/quick-prompts")
-    if (!res.ok) return { review: null, pr: null }
-    const json = (await res.json()) as Partial<QuickPrompts>
-    return {
-      review: typeof json.review === "string" ? json.review : null,
-      pr: typeof json.pr === "string" ? json.pr : null,
-    }
-  } catch {
-    return { review: null, pr: null }
+  const json = await api.getOr<Partial<QuickPrompts>>(
+    "/api/quick-prompts",
+    {},
+    { label: "load quick prompts" },
+  )
+  return {
+    review: typeof json.review === "string" ? json.review : null,
+    pr: typeof json.pr === "string" ? json.pr : null,
   }
 }
 
@@ -31,10 +31,7 @@ export async function saveQuickPrompts(prompts: {
   review: string
   pr: string
 }): Promise<void> {
-  const res = await fetch("/api/quick-prompts", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(prompts),
+  await api.put<void>("/api/quick-prompts", prompts, {
+    label: "save quick prompts",
   })
-  if (!res.ok) throw new Error(`save failed (${res.status})`)
 }

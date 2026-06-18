@@ -10,6 +10,7 @@
  */
 
 import { useSyncExternalStore } from "react"
+import { api } from "./api-client.ts"
 
 export interface EngineOption {
   id: string
@@ -34,10 +35,13 @@ const listeners = new Set<() => void>()
 function ensureFetched(): void {
   if (fetched) return
   fetched = true
-  void fetch("/api/engines")
-    .then(async (res) => {
-      if (!res.ok) return
-      const json = (await res.json()) as { engines?: EngineOption[] }
+  void api
+    .getOr<{ engines?: EngineOption[] }>(
+      "/api/engines",
+      {},
+      { label: "load engines" },
+    )
+    .then((json) => {
       if (!Array.isArray(json.engines) || json.engines.length === 0) return
       engines = json.engines
         .filter(

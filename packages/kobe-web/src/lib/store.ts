@@ -6,6 +6,7 @@
  */
 
 import { useSyncExternalStore } from "react"
+import { api } from "./api-client.ts"
 import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
 import { repoSnapshotAliases } from "./repo-key.ts"
@@ -258,22 +259,10 @@ export async function rpc<T = unknown>(
   name: string,
   payload?: unknown,
 ): Promise<T> {
-  const res = await fetch("/api/rpc", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, payload }),
-  })
-  const json = (await res.json()) as {
+  const json = await api.post<{
     result?: T
     error?: string
     name?: string
-  }
-  if (!res.ok || json.error) {
-    const err = new Error(json.error ?? `rpc ${name} failed (${res.status})`)
-    // The bridge forwards the daemon's error name (e.g.
-    // IllegalTransitionError) so callers can branch without string-matching.
-    if (json.name) err.name = json.name
-    throw err
-  }
+  }>("/api/rpc", { name, payload }, { label: `rpc ${name}` })
   return json.result as T
 }

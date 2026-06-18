@@ -5,6 +5,7 @@
  * plumbing.
  */
 
+import { api } from "./api-client.ts"
 import { labelRepo } from "./board.ts"
 import { fetchDefaultEngine } from "./settings.ts"
 import { rpc } from "./store.ts"
@@ -34,9 +35,9 @@ export interface RepoIssues {
 }
 
 export async function fetchProjects(): Promise<string[]> {
-  const res = await fetch("/api/projects")
-  if (!res.ok) await failWith(res, "load projects")
-  const data = (await res.json()) as { projects?: unknown }
+  const data = await api.get<{ projects?: unknown }>("/api/projects", {
+    label: "load projects",
+  })
   return Array.isArray(data.projects)
     ? data.projects.filter((repo): repo is string => typeof repo === "string")
     : []
@@ -51,32 +52,20 @@ export interface IssueRepoOption {
   readonly count: number
 }
 
-/* ----- fetch helpers ------------------------------------------------------ */
-
-async function failWith(res: Response, what: string): Promise<never> {
-  const detail = await res.text().catch(() => "")
-  throw new Error(
-    `failed to ${what} (${res.status})${detail ? `: ${detail}` : ""}`,
-  )
-}
-
 /** Load a repo's issues. A missing file is NOT an error: `exists: false`. */
 export async function fetchIssues(repoRoot: string): Promise<RepoIssues> {
-  const res = await fetch(
-    `/api/issues?repoRoot=${encodeURIComponent(repoRoot)}`,
-  )
-  if (!res.ok) await failWith(res, "load issues")
-  return (await res.json()) as RepoIssues
+  return api.get<RepoIssues>("/api/issues", {
+    query: { repoRoot },
+    label: "load issues",
+  })
 }
 
 async function postOp(repoRoot: string, op: unknown): Promise<RepoIssues> {
-  const res = await fetch("/api/issues", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ repoRoot, op }),
-  })
-  if (!res.ok) await failWith(res, "update issues")
-  return (await res.json()) as RepoIssues
+  return api.post<RepoIssues>(
+    "/api/issues",
+    { repoRoot, op },
+    { label: "update issues" },
+  )
 }
 
 /** Create an issue (id allocated server-side from nextId, status `open`). */
@@ -134,9 +123,11 @@ export async function deleteIssue(
 }
 
 async function fetchKobeApiInvocation(): Promise<string> {
-  const res = await fetch("/api/cli-invocation")
-  if (!res.ok) return "kobe api"
-  const data = (await res.json()) as { api?: unknown }
+  const data = await api.getOr<{ api?: unknown }>(
+    "/api/cli-invocation",
+    {},
+    { label: "load CLI invocation" },
+  )
   return typeof data.api === "string" && data.api.trim().length > 0
     ? data.api
     : "kobe api"

@@ -4,16 +4,14 @@
  * notes persisted server-side, one file per task.
  */
 
+import { api } from "./api-client.ts"
+
 /** Load the saved markdown for a task. Returns "" if none exists yet. */
 export async function fetchNotes(taskId: string): Promise<string> {
-  const res = await fetch(`/api/notes?taskId=${encodeURIComponent(taskId)}`)
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "")
-    throw new Error(
-      `failed to load notes (${res.status})${detail ? `: ${detail}` : ""}`,
-    )
-  }
-  const data = (await res.json()) as { markdown?: string }
+  const data = await api.get<{ markdown?: string }>("/api/notes", {
+    query: { taskId },
+    label: "load notes",
+  })
   return data.markdown ?? ""
 }
 
@@ -22,15 +20,9 @@ export async function saveNotes(
   taskId: string,
   markdown: string,
 ): Promise<void> {
-  const res = await fetch("/api/notes", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ taskId, markdown }),
-  })
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "")
-    throw new Error(
-      `failed to save notes (${res.status})${detail ? `: ${detail}` : ""}`,
-    )
-  }
+  await api.put<void>(
+    "/api/notes",
+    { taskId, markdown },
+    { label: "save notes" },
+  )
 }
