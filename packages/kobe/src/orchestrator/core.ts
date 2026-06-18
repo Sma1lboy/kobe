@@ -26,7 +26,7 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
-import { getRemoteRepoConfig } from "../state/repos.ts"
+import { getRemoteRepoConfig, isRemoteRepoKey, resolveRepoRoot } from "../state/repos.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -230,28 +230,29 @@ export class Orchestrator {
    * and lives at the top of the sidebar.
    */
   async ensureMainTask(repo: string): Promise<Task> {
-    const existing = this.store.list().find((t) => t.kind === "main" && t.repo === repo)
+    const { repo: normalizedRepo, key } = normalizeMainRepo(repo)
+    const existing = this.store.list().find((t) => t.kind === "main" && normalizeMainRepo(t.repo).key === key)
     if (existing) return existing
-    const inflight = this.mainTaskLocks.get(repo)
+    const inflight = this.mainTaskLocks.get(key)
     if (inflight) return inflight
     const promise = (async () => {
       const created = await this.store.create({
-        repo,
-        title: titleFromRepo(repo),
+        repo: normalizedRepo,
+        title: titleFromRepo(normalizedRepo),
         branch: "",
         // Remote main task lives at the remote basePath, not the ssh:// key.
-        worktreePath: repoWorkingDir(repo),
+        worktreePath: repoWorkingDir(normalizedRepo),
         status: "backlog",
         kind: "main",
         vendor: DEFAULT_TASK_VENDOR,
       })
       return created
     })()
-    this.mainTaskLocks.set(repo, promise)
+    this.mainTaskLocks.set(key, promise)
     try {
       return await promise
     } finally {
-      this.mainTaskLocks.delete(repo)
+      this.mainTaskLocks.delete(key)
     }
   }
 
@@ -607,6 +608,14 @@ export class Orchestrator {
 function titleFromRepo(repo: string): string {
   const segs = repo.split(/[/\\]/).filter(Boolean)
   return segs.length > 0 ? (segs[segs.length - 1] ?? repo) : repo
+}
+
+function normalizeMainRepo(repo: string): { repo: string; key: string } {
+  const normalized = resolveRepoRoot(repo)
+  return {
+    repo: normalized,
+    key: isRemoteRepoKey(normalized) ? normalized : canonPath(normalized),
+  }
 }
 
 /**
