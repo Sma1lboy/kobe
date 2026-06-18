@@ -1,0 +1,32 @@
+schema_version: "1.0"
+portfolio:
+  id: "kobe"
+  name: "kobe"
+  version: "1.0.0"
+brand:
+  id: "kobe"
+  name: "kobe"
+metadata_version: "1.0.0"
+product:
+  category: "terminal developer tool"
+  positioning: "A local-first TUI for running parallel AI coding sessions as git worktrees, tmux sessions, and branches."
+  audience:
+    - "AI coding power users"
+    - "developers who work inside terminals, tmux, SSH, and local devboxes"
+  value_props:
+    - "parallel isolated worktrees"
+    - "persistent tmux sessions"
+    - "terminal-native task switching"
+    - "local-first engine orchestration"
+voice:
+  tone: ["technical", "compressed", "confident", "terminal-native"]
+  avoid: ["generic AI glow", "glossy SaaS cards", "fake dashboards", "basketball references"]
+visual_direction:
+  accepted_styles:
+    - "real TUI panes as the main subject"
+    - "lunar field hardware and mission-control atmosphere"
+    - "warm off-white, clay, graphite, and copper palette with minimal blue signal light"
+  rejected_styles:
+    - "Claude logo or official Anthropic marks"
+    - "abstract robot mascots"
+    - "illegible wall of random terminal text"
