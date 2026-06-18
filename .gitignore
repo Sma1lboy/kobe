@@ -60,3 +60,7 @@ packages/*/.dev-sandbox/
 # commits, CHANGELOG.md, docs/, and docs/issues.json). Keep it local.
 HANDOFF.md
 .gstack/
+/.env
+/outputs/
+/published/
+/releases/

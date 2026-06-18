@@ -1,0 +1,21 @@
+schema_version: "1.0"
+owner:
+  kind: "portfolio"
+  id: "kobe"
+revision: 1
+elements:
+  - id: "lunar-terminal-cockpit"
+    type: "motif"
+    status: "accepted"
+    tags: ["moon", "terminal", "launch"]
+    description: "A rugged moon-surface workstation where the TUI is the mission control interface."
+  - id: "parallel-agent-lanes"
+    type: "composition"
+    status: "accepted"
+    tags: ["multi-agent", "worktree", "tmux"]
+    description: "Several visible terminal lanes show isolated tasks, branches, and engine sessions running side by side."
+  - id: "warm-technical-palette"
+    type: "visual-direction"
+    status: "accepted"
+    tags: ["warm-paper", "clay", "charcoal", "copper"]
+    description: "Warm paper, clay, graphite, and copper tones with restrained blue instrument light."
