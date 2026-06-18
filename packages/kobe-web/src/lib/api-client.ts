@@ -1,5 +1,5 @@
 /**
- * Browser API client for the kobe-web bridge.
+ * Browser API client for the daemon-hosted web transport.
  *
  * Callers describe intent: path, query, JSON body, fallback policy. This module
  * owns the fetch mechanics: query encoding, JSON headers, JSON/text error

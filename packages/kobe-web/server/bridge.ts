@@ -25,6 +25,7 @@
 
 import { existsSync } from "node:fs"
 import { join, normalize } from "node:path"
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { availableEngineIds } from "../../kobe/src/engine/account-detect.ts"
 import {
@@ -84,8 +85,7 @@ type SseSend = (type: string, data: unknown) => void
  * The slice of {@link DaemonLink} the request handler needs — extracted so
  * the route table can be tested against a fake link (no socket, no daemon).
  */
-export interface BridgeLink {
-  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
+export interface BridgeLink extends DaemonRpcClient {
   snapshot(): unknown
 }
 

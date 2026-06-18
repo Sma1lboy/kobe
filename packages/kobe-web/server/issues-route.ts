@@ -1,8 +1,4 @@
-import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
-
-interface RpcLink {
-  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
-}
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 
 const ISSUES_ROUTE = "/api/issues"
 
@@ -35,7 +31,7 @@ function statusForIssueError(err: unknown): number {
   return 500
 }
 
-async function handleGet(link: RpcLink, url: URL): Promise<Response> {
+async function handleGet(link: DaemonRpcClient, url: URL): Promise<Response> {
   const repoRoot = url.searchParams.get("repoRoot")
   if (!repoRoot) return Response.json({ error: "missing repoRoot" }, { status: 400 })
   try {
@@ -45,7 +41,7 @@ async function handleGet(link: RpcLink, url: URL): Promise<Response> {
   }
 }
 
-async function handlePost(link: RpcLink, req: Request): Promise<Response> {
+async function handlePost(link: DaemonRpcClient, req: Request): Promise<Response> {
   let parsed: unknown
   try {
     parsed = await req.json()
@@ -66,7 +62,7 @@ async function handlePost(link: RpcLink, req: Request): Promise<Response> {
   }
 }
 
-export async function handleIssuesRequest(req: Request, url: URL, link: RpcLink): Promise<Response | null> {
+export async function handleIssuesRequest(req: Request, url: URL, link: DaemonRpcClient): Promise<Response | null> {
   if (url.pathname !== ISSUES_ROUTE) return null
   if (req.method === "GET") return handleGet(link, url)
   if (req.method === "POST") return handlePost(link, req)

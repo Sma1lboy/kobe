@@ -37,6 +37,7 @@ import { handleHistoryRequest } from "@/web/history"
 import { handleNotesRequest } from "@/web/notes"
 import { handleThemesRequest } from "@/web/themes"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
+import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
 import {
   createDaemonHandlerRegistry,
@@ -69,13 +70,12 @@ export interface DaemonWebSnapshotState {
   connected: boolean
 }
 
-export interface WebRouteLink {
-  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
+export interface DaemonWebLink extends DaemonRpcClient {
   snapshot(): DaemonWebSnapshotState
 }
 
 export interface RequestHandlerDeps {
-  link: WebRouteLink
+  link: DaemonWebLink
   sseSends: Set<SseSend>
   staticDir?: string
   tearDownSession?: (taskId: string) => void
@@ -88,7 +88,7 @@ export interface DaemonWebServerOptions {
   hostname?: string
   staticDir?: string
   takeover?: boolean
-  link: WebRouteLink
+  link: DaemonWebLink
   onEvent: (sink: (event: ChannelEvent) => void) => () => void
   onSseOpen?: () => () => void
 }
@@ -137,7 +137,7 @@ function sseResponse(register: (send: SseSend) => () => void): Response {
 
 async function rpcResponse(
   req: Request,
-  link: WebRouteLink,
+  link: DaemonWebLink,
   tearDown: (taskId: string) => void,
 ): Promise<Response> {
   try {
@@ -320,7 +320,7 @@ async function settingsPatch(req: Request): Promise<Response> {
   }
 }
 
-async function sessionResponse(req: Request, link: WebRouteLink): Promise<Response> {
+async function sessionResponse(req: Request, link: DaemonWebLink): Promise<Response> {
   try {
     const { taskId } = (await req.json()) as { taskId?: string }
     if (!taskId) return Response.json({ error: "missing taskId" }, { status: 400 })
@@ -332,8 +332,8 @@ async function sessionResponse(req: Request, link: WebRouteLink): Promise<Respon
 
 async function specResponse(
   url: URL,
-  link: WebRouteLink,
-  spec: (link: WebRouteLink, taskId: string) => Promise<{ cwd: string; command: string[] }>,
+  link: DaemonWebLink,
+  spec: (link: DaemonWebLink, taskId: string) => Promise<{ cwd: string; command: string[] }>,
 ): Promise<Response> {
   try {
     const taskId = url.searchParams.get("taskId")
@@ -456,7 +456,7 @@ export function createDirectWebLink(args: {
   bus: DaemonEventBus
   activity: DaemonActivityRegistry
   ctx: (clientId: number) => DaemonHandlerContext
-}): WebRouteLink {
+}): DaemonWebLink {
   const handlers = createDaemonHandlerRegistry()
   return {
     async request<T>(name: DaemonRequestName, payload?: unknown): Promise<T> {

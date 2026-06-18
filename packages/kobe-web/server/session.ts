@@ -19,15 +19,18 @@ import { quoteShellArgv } from "../../kobe/src/lib/shell-command.ts"
 import { resolveEngineLaunchInit } from "../../kobe/src/state/repo-init.ts"
 import { killSession, switchClientBeforeKill } from "../../kobe/src/tmux/client.ts"
 import { ensureSession, sessionExists, tmuxSessionName } from "../../kobe/src/tui/panes/terminal/tmux.ts"
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import type { RpcLink } from "./daemon-link.ts"
 
-async function getTask(link: RpcLink, taskId: string): Promise<SerializedTask> {
+async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
   return task
 }
 
-async function ensureTaskWorktree(link: RpcLink, taskId: string): Promise<{ task: SerializedTask; worktreePath: string }> {
+async function ensureTaskWorktree(
+  link: DaemonRpcClient,
+  taskId: string,
+): Promise<{ task: SerializedTask; worktreePath: string }> {
   const task = await getTask(link, taskId)
   if (task.worktreePath) return { task, worktreePath: task.worktreePath }
   const { worktreePath } = await link.request<{ worktreePath: string | null }>("task.ensureWorktree", { taskId })
@@ -36,7 +39,7 @@ async function ensureTaskWorktree(link: RpcLink, taskId: string): Promise<{ task
 }
 
 export async function ensureTaskSession(
-  link: RpcLink,
+  link: DaemonRpcClient,
   taskId: string,
 ): Promise<{ session: string; worktreePath: string }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
@@ -67,7 +70,7 @@ export function shellQuote(argv: readonly string[]): string {
   return quoteShellArgv(argv, { bareSafe: true })
 }
 
-export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   // Worktree protocol (status self-report + field-note filing) — same
   // injection as the tmux launch path, so the web PTY's engine knows its
@@ -92,7 +95,7 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
   return { cwd: worktreePath, command: [shell, "-ilc", script] }
 }
 
-export async function terminalSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
   const shell = process.env.SHELL?.trim() || "/bin/zsh"
   return { cwd: worktreePath, command: [shell, "-il"] }

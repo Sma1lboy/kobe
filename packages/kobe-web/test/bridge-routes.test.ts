@@ -6,7 +6,7 @@ import {
   createDaemonWebRequestHandler,
   DAEMON_WEB_HEALTH_MARKER,
   DAEMON_WEB_HEALTH_PATH,
-  type WebRouteLink,
+  type DaemonWebLink,
 } from "@sma1lboy/kobe-daemon/daemon/web-server"
 import { patchStateFile } from "../../kobe/src/state/store.ts"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
@@ -24,7 +24,7 @@ interface FakeOpts {
   onRequest?: (name: string, payload: unknown) => unknown
 }
 
-function fakeLink(opts: FakeOpts = {}): WebRouteLink & { calls: Array<{ name: string; payload: unknown }> } {
+function fakeLink(opts: FakeOpts = {}): DaemonWebLink & { calls: Array<{ name: string; payload: unknown }> } {
   const calls: Array<{ name: string; payload: unknown }> = []
   return {
     calls,

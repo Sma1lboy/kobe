@@ -11,19 +11,16 @@ import { quoteShellArgv } from "@/lib/shell-command"
 import { resolveEngineLaunchInit } from "@/state/repo-init"
 import { killSession, switchClientBeforeKill } from "@/tmux/client"
 import { ensureSession, sessionExists, tmuxSessionName } from "@/tui/panes/terminal/tmux"
-import type { DaemonRequestName, SerializedTask } from "./protocol.ts"
+import type { DaemonRpcClient } from "../client/rpc.ts"
+import type { SerializedTask } from "./protocol.ts"
 
-export interface RpcLink {
-  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
-}
-
-async function getTask(link: RpcLink, taskId: string): Promise<SerializedTask> {
+async function getTask(link: DaemonRpcClient, taskId: string): Promise<SerializedTask> {
   const { task } = await link.request<{ task: SerializedTask }>("task.get", { taskId })
   return task
 }
 
 async function ensureTaskWorktree(
-  link: RpcLink,
+  link: DaemonRpcClient,
   taskId: string,
 ): Promise<{ task: SerializedTask; worktreePath: string }> {
   const task = await getTask(link, taskId)
@@ -34,7 +31,7 @@ async function ensureTaskWorktree(
 }
 
 export async function ensureTaskSession(
-  link: RpcLink,
+  link: DaemonRpcClient,
   taskId: string,
 ): Promise<{ session: string; worktreePath: string }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
@@ -58,7 +55,7 @@ export function shellQuote(argv: readonly string[]): string {
   return quoteShellArgv(argv, { bareSafe: true })
 }
 
-export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   const protocolTaskId = task.kind === "main" ? undefined : taskId
   const dispatcherTaskId = task.kind === "main" ? taskId : undefined
@@ -76,7 +73,7 @@ export async function engineSpec(link: RpcLink, taskId: string): Promise<{ cwd: 
   return { cwd: worktreePath, command: [shell, "-ilc", script] }
 }
 
-export async function terminalSpec(link: RpcLink, taskId: string): Promise<{ cwd: string; command: string[] }> {
+export async function terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }> {
   const { worktreePath } = await ensureTaskWorktree(link, taskId)
   const shell = process.env.SHELL?.trim() || "/bin/zsh"
   return { cwd: worktreePath, command: [shell, "-il"] }

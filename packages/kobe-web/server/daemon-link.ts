@@ -19,6 +19,7 @@
 
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import {
   type ChannelPayloads,
@@ -74,16 +75,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/**
- * The minimal link surface the bridge's session/spec routes need — just the
- * RPC call. Extracted so those helpers (and their tests) don't depend on the
- * full {@link DaemonLink} (sockets, reconnect, channel mirror).
- */
-export interface RpcLink {
-  request<T = unknown>(name: DaemonRequestName, payload?: unknown): Promise<T>
-}
-
-export class DaemonLink {
+export class DaemonLink implements DaemonRpcClient {
   private client: KobeDaemonClient | null = null
   private closed = false
   private connected = false

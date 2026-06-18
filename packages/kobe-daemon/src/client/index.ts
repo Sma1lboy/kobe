@@ -10,6 +10,7 @@ import {
   frameToLine,
 } from "../daemon/protocol.ts"
 import { logClientError } from "./client-log.ts"
+import type { DaemonRpcClient } from "./rpc.ts"
 
 export type DaemonEventHandler = (frame: Extract<DaemonFrame, { type: "event" }>) => void
 
@@ -40,7 +41,7 @@ export type LifecycleEvent = "close"
  * blocks further connects so a deliberately torn-down client stays torn
  * down.
  */
-export class KobeDaemonClient {
+export class KobeDaemonClient implements DaemonRpcClient {
   private socket: Socket | null = null
   private buffer = ""
   private nextId = 1

@@ -1,15 +1,16 @@
 /**
- * Bridge client — one EventSource to /events feeds a module-level store
+ * Daemon web client — one EventSource to /events feeds a module-level store
  * that React reads via useSyncExternalStore. Mutations go through rpc()
  * (POST /api/rpc); the daemon's authoritative state comes back as a
  * task.snapshot push, so we never optimistically mutate the store here.
  */
 
+import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { useSyncExternalStore } from "react"
-import { api } from "./api-client.ts"
 import { deliverToSession } from "./dispatch-delivery.ts"
 import { notifyEngineTransition } from "./notify.ts"
 import { repoSnapshotAliases } from "./repo-key.ts"
+import { daemonRpc } from "./rpc-client.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
@@ -256,13 +257,8 @@ export function useAppState(): AppState {
 
 /** Forward a daemon RPC. Resolves with the daemon's result, throws on error. */
 export async function rpc<T = unknown>(
-  name: string,
+  name: DaemonRequestName,
   payload?: unknown,
 ): Promise<T> {
-  const json = await api.post<{
-    result?: T
-    error?: string
-    name?: string
-  }>("/api/rpc", { name, payload }, { label: `rpc ${name}` })
-  return json.result as T
+  return daemonRpc.request<T>(name, payload)
 }
