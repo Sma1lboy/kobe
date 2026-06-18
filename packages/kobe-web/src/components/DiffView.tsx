@@ -21,6 +21,7 @@ import { filterDiffFiles } from "../lib/diff-filter.ts"
 import { diffStat, parseDiffRows } from "../lib/diff-rows.ts"
 import { tailPath } from "../lib/path-format.ts"
 import { useAppState } from "../lib/store.ts"
+import { isWebTransportOffline } from "../lib/web-transport.ts"
 import "./diff-view.css"
 
 /** `+a −d` chip; renders nothing when both are zero. */
@@ -42,11 +43,11 @@ function useChangesKey(worktreePath: string | null): string {
   return counts ? `${counts.added}:${counts.deleted}` : "none"
 }
 
-/** Diff fetch failed. If the bridge/daemon is down a retry can only fail, so
- *  point at the outage; otherwise offer a Retry that re-runs the fetch. */
+/** Diff fetch failed. If the daemon web transport is down a retry can only
+ *  fail, so point at the outage; otherwise offer a Retry that re-runs it. */
 function DiffError({ onRetry }: { onRetry: () => void }) {
   const { daemonConnected, streamConnected } = useAppState()
-  const offline = !daemonConnected || !streamConnected
+  const offline = isWebTransportOffline({ daemonConnected, streamConnected })
   if (offline) {
     return (
       <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">

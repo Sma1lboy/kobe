@@ -252,7 +252,7 @@ All task mutations flow through one writer:
 
 ```
 TUI Client / Tasks pane / kobe web
-  └─> RemoteOrchestrator or web bridge RPC forward
+  └─> RemoteOrchestrator or daemon web transport RPC
         └─> packages/kobe-daemon/src/daemon/server.ts dispatch()
               └─> Orchestrator
                     └─> TaskIndexStore (~/.kobe/tasks.json)
@@ -302,11 +302,10 @@ in-memory UI data, not task lifecycle and not persisted.
 ### Web transport
 
 `kobe web` is an early experimental front-end over the same daemon. The web
-UI owns browser-local workspace tabs. The current kobe-web bridge provides task
-snapshots, safe task RPC, engine/terminal launch specs, notes, and diffs, but
-ADR 0003 makes that bridge transitional: daemon-backed browser routes should
-come directly from the daemon's local web interface. Do not introduce a
-separate web task cache or a second daemon.
+UI owns browser-local workspace tabs. Browser task snapshots, safe task RPC,
+engine/terminal launch specs, notes, and diffs are served by the daemon web
+transport; ADR 0003 keeps the old kobe-web bridge as transitional source only.
+Do not introduce a separate web task cache or a second daemon.
 
 ---
 

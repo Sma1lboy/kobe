@@ -26,6 +26,7 @@ import { useAppState } from "../lib/store.ts"
 import { consumePendingPrompt } from "../lib/tabs.ts"
 import { type PtyMode, ptyUrl } from "../lib/terminal.ts"
 import { xtermTheme } from "../lib/theme.ts"
+import { isWebTransportOffline } from "../lib/web-transport.ts"
 
 // One decoder reused across every WebSocket message — a fresh `new
 // TextDecoder()` per frame (hundreds/sec during engine streaming) was needless
@@ -85,10 +86,13 @@ export function ChatTerminal({
   const wsRef = useRef<WebSocket | null>(null)
   const [status, setStatus] = useState<WsStatus>("connecting")
   // A dropped PTY socket normally means "still running, just detached". But if
-  // the bridge/daemon is actually down, the PTY may be PAUSED — the reassuring
+  // the daemon web transport is down, the PTY may be PAUSED — the reassuring
   // "keeps running" copy would be wrong. Distinguish the two for the close UI.
   const { daemonConnected, streamConnected } = useAppState()
-  const bridgeDown = !daemonConnected || !streamConnected
+  const transportOffline = isWebTransportOffline({
+    daemonConnected,
+    streamConnected,
+  })
   // Bumping the epoch tears the terminal down and re-attaches to the
   // SAME server-side PTY (keyed by tab id) — its scrollback ring replays.
   const [epoch, setEpoch] = useState(0)
@@ -227,8 +231,8 @@ export function ChatTerminal({
       {status === "closed" ? (
         <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-line bg-surface px-2">
           <span className="min-w-0 flex-1 truncate text-[11px] text-kobe-yellow">
-            {bridgeDown
-              ? "Lost connection to the bridge — the session may be paused. Reattach will retry once it's back."
+            {transportOffline
+              ? "Lost connection to the daemon web transport — the session may be paused. Reattach will retry once it's back."
               : "detached — the session keeps running"}
           </span>
           <button

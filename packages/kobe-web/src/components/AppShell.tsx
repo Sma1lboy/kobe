@@ -44,6 +44,7 @@ import { reportError } from "../lib/toast.ts"
 import { type Bucket, matchesStatusFilter } from "../lib/triage.ts"
 import type { EngineState, Task, TaskJob } from "../lib/types.ts"
 import { isMixedEngineWorkspace, perRowEngineLabel } from "../lib/vendor.ts"
+import { webTransportTopBarView } from "../lib/web-transport.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
@@ -557,7 +558,7 @@ function TopBar({
   const task = selectedTaskId
     ? tasks.find((item) => item.id === selectedTaskId)
     : null
-  const ok = daemonConnected && streamConnected
+  const transport = webTransportTopBarView({ daemonConnected, streamConnected })
   return (
     <header
       data-kobe-topbar
@@ -585,22 +586,12 @@ function TopBar({
       <div className="ml-auto flex items-center gap-3 text-[11px] text-subtle">
         <span
           className="hidden items-center gap-1.5 sm:flex"
-          title={
-            !ok && streamConnected
-              ? "Daemon offline — if it doesn't recover, run `kobe doctor` or `kobe reset` in a terminal."
-              : undefined
-          }
+          title={transport.title}
         >
           <span
-            className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
+            className={`h-1.5 w-1.5 rounded-full ${transport.ok ? "bg-kobe-green" : "bg-kobe-yellow"}`}
           />
-          <span>
-            {ok
-              ? "daemon connected"
-              : streamConnected
-                ? "no daemon"
-                : "connecting…"}
-          </span>
+          <span>{transport.label}</span>
         </span>
         <button
           type="button"

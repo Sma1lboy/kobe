@@ -31,6 +31,7 @@ import {
   messageRendersAnything,
   messageSearchText,
 } from "../lib/transcript-search.ts"
+import { isWebTransportOffline } from "../lib/web-transport.ts"
 
 const POLL_MS = 2_500
 const OUTPUT_PREVIEW_CHARS = 600
@@ -208,11 +209,11 @@ export function ChatTranscript({
   /** Accepted for caller compatibility; not rendered in this pane. */
   title?: string
 }) {
-  // The transcript is served by the bridge → daemon; if either is down a fetch
-  // can only fail, so the error view points at the outage instead of offering a
+  // The transcript is served by daemon web transport; if it is down a fetch can
+  // only fail, so the error view points at the outage instead of offering a
   // Retry that can't succeed.
   const { daemonConnected, streamConnected } = useAppState()
-  const offline = !daemonConnected || !streamConnected
+  const offline = isWebTransportOffline({ daemonConnected, streamConnected })
   const [sessions, setSessions] = useState<string[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [followLatest, setFollowLatest] = useState(true)

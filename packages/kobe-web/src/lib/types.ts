@@ -131,8 +131,8 @@ export interface UiPrefs {
   keysCollapsed: boolean
 }
 
-/** Channel push, as the bridge serializes it over SSE. */
-export type BridgeEvent =
+/** Channel push, as the daemon web transport serializes it over SSE. */
+export type WebTransportEvent =
   | { channel: "task.snapshot"; payload: { tasks: Task[] } }
   | { channel: "issue.snapshot"; payload: RepoIssues }
   | { channel: "active-task"; payload: { taskId: string | null } }
@@ -143,13 +143,13 @@ export type BridgeEvent =
   | { channel: "session.deliver"; payload: SessionDeliver }
   | { channel: "ui-prefs"; payload: UiPrefs }
 
-/** Full bootstrap state the bridge sends on connect. */
-export interface BridgeSnapshot {
+/** Full bootstrap state the daemon web transport sends on connect. */
+export interface WebTransportSnapshot {
   tasks: Task[]
   activeTaskId: string | null
   engineStates: Record<string, EngineState>
   update: UpdateInfo | null
-  /** taskId → in-flight job (running only; bridge drops terminal phases). */
+  /** taskId -> in-flight job (running only; terminal phases are dropped). */
   jobs?: Record<string, TaskJob>
   worktreeChanges?: WorktreeChangeCounts
   /** repoRoot → daemon-owned issue state replayed by `issue.snapshot` (web

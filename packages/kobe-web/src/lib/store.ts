@@ -14,8 +14,6 @@ import { daemonRpc } from "./rpc-client.ts"
 import { pruneMissingTasks } from "./tabs.ts"
 import { applyThemeFromPrefs } from "./theme.ts"
 import type {
-  BridgeEvent,
-  BridgeSnapshot,
   EngineState,
   RepoIssues,
   SessionDeliver,
@@ -23,6 +21,8 @@ import type {
   TaskJob,
   UiPrefs,
   UpdateInfo,
+  WebTransportEvent,
+  WebTransportSnapshot,
   WorktreeChangeCounts,
 } from "./types.ts"
 
@@ -45,9 +45,9 @@ export interface AppState {
   uiPrefs: UiPrefs | null
   /** True once the first snapshot has hydrated the store. */
   hydrated: boolean
-  /** The daemon connection behind the bridge is live. */
+  /** The daemon behind the web transport is live. */
   daemonConnected: boolean
-  /** The browser↔bridge SSE stream is open. */
+  /** The browser SSE stream to the daemon web transport is open. */
   streamConnected: boolean
 }
 
@@ -118,7 +118,7 @@ function applyIssueSnapshotEvent(
   snapshot: RepoIssues,
 ): Record<string, RepoIssues> {
   const next = { ...snapshots }
-  // repo-key owns the aliasing contract (shared with the bridge + the hook).
+  // repo-key owns the aliasing contract (shared with server-side route helpers).
   for (const alias of repoSnapshotAliases(tasks, snapshot.repoRoot)) {
     next[alias] = { ...snapshot, repoRoot: alias }
   }
@@ -139,7 +139,7 @@ function applyTaskList(tasks: Task[]): void {
   pruneMissingTasks(live)
 }
 
-function applyEvent(event: BridgeEvent): void {
+function applyEvent(event: WebTransportEvent): void {
   switch (event.channel) {
     case "task.snapshot":
       applyTaskList(event.payload.tasks)
@@ -204,7 +204,7 @@ function ensureStream(): void {
   source = new EventSource("/events")
   source.addEventListener("open", () => set({ streamConnected: true }))
   source.addEventListener("snapshot", (e) => {
-    const snap = JSON.parse((e as MessageEvent).data) as BridgeSnapshot
+    const snap = JSON.parse((e as MessageEvent).data) as WebTransportSnapshot
     set({
       tasks: snap.tasks,
       activeTaskId: snap.activeTaskId,
@@ -226,14 +226,14 @@ function ensureStream(): void {
     if (snap.connected && snap.deliver) void deliverToSession(snap.deliver)
     // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
     // tasks deleted while this browser was away. A disconnected snapshot
-    // carries the bridge's stale mirror; never prune from that.
+    // carries the transport's stale mirror; never prune from that.
     if (snap.connected) {
       const live = new Set(snap.tasks.map((t) => t.id))
       pruneMissingTasks(live)
     }
   })
   source.addEventListener("channel", (e) => {
-    applyEvent(JSON.parse((e as MessageEvent).data) as BridgeEvent)
+    applyEvent(JSON.parse((e as MessageEvent).data) as WebTransportEvent)
     if (!state.daemonConnected) set({ daemonConnected: true })
   })
   source.addEventListener("error", () => set({ streamConnected: false }))

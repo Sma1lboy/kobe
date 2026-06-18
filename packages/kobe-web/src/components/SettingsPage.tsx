@@ -530,7 +530,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
             {error ? (
               <div className="border border-line bg-surface p-4 text-[12px]">
                 <p className="text-subtle">
-                  Couldn't load settings (daemon/bridge offline?)
+                  Couldn't load settings (daemon web transport offline?)
                 </p>
                 <button
                   type="button"
