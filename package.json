@@ -30,5 +30,5 @@
     "@biomejs/biome": "1.9.4",
     "@changesets/cli": "^2.31.0"
   },
-  "trustedDependencies": []
+  "trustedDependencies": ["electron"]
 }
