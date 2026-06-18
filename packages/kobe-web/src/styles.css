@@ -57,6 +57,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html[data-kobe-desktop="true"] [data-kobe-topbar] {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+html[data-kobe-desktop="true"] [data-kobe-topbar] button,
+html[data-kobe-desktop="true"] [data-kobe-topbar] input,
+html[data-kobe-desktop="true"] [data-kobe-topbar] select,
+html[data-kobe-desktop="true"] [data-kobe-topbar] label,
+html[data-kobe-desktop="true"] [data-kobe-topbar] a,
+html[data-kobe-desktop="true"] [data-kobe-topbar] [role="button"] {
+  -webkit-app-region: no-drag;
+}
+
 /* Keep panes scrollable without visible browser chrome. */
 * {
   scrollbar-width: none;

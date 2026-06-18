@@ -40,6 +40,7 @@ import { ensureEngineTab } from "../lib/tabs.ts"
 import { reportError } from "../lib/toast.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
+import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
 import { IssueCard } from "./IssueCard.tsx"
 import {
   IssuePanelSuspense,
@@ -166,7 +167,11 @@ export function IssuesPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
+      <header
+        data-kobe-topbar
+        className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
+      >
+        <DesktopWindowControls />
         <button
           type="button"
           onClick={() => navigate({ to: "/" })}

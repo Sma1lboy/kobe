@@ -2,12 +2,13 @@ import { spawn } from "node:child_process"
 import { createServer } from "node:net"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { app, BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, ipcMain, shell } from "electron"
 
 const here = dirname(fileURLToPath(import.meta.url))
 const packageDir = resolve(here, "..")
 const repoRoot = resolve(packageDir, "../..")
 const webDir = resolve(repoRoot, "packages/kobe-web")
+const preloadPath = resolve(here, "preload.cjs")
 
 let webProcess = null
 let mainWindow = null
@@ -95,7 +96,7 @@ async function startKobeWeb() {
   })
   const url = `http://127.0.0.1:${ports.web}/`
   await waitForUrl(url)
-  return url
+  return `${url}?kobeDesktop=1`
 }
 
 function createWindow(url) {
@@ -105,8 +106,12 @@ function createWindow(url) {
     minWidth: 960,
     minHeight: 640,
     title: "kobe",
-    backgroundColor: "#0b0d10",
+    frame: false,
+    hasShadow: false,
+    transparent: true,
+    backgroundColor: "#00000000",
     webPreferences: {
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -123,6 +128,25 @@ function createWindow(url) {
     mainWindow = null
   })
 }
+
+function windowFromEvent(event) {
+  return BrowserWindow.fromWebContents(event.sender)
+}
+
+ipcMain.on("kobe-window:minimize", (event) => {
+  windowFromEvent(event)?.minimize()
+})
+
+ipcMain.on("kobe-window:close", (event) => {
+  windowFromEvent(event)?.close()
+})
+
+ipcMain.on("kobe-window:toggle-maximize", (event) => {
+  const window = windowFromEvent(event)
+  if (!window) return
+  if (window.isMaximized()) window.unmaximize()
+  else window.maximize()
+})
 
 app.on("window-all-closed", () => {
   stopWebProcess()

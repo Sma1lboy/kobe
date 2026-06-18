@@ -47,6 +47,7 @@ import { isMixedEngineWorkspace, perRowEngineLabel } from "../lib/vendor.ts"
 import { AdoptDialog } from "./AdoptDialog.tsx"
 import { ChangesChip, EngineChip, PrChip } from "./chips.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
+import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
 import { SettingsPage } from "./SettingsPage.tsx"
 import { ToolsPanel } from "./ToolsPanel.tsx"
 import { ViewToggle } from "./ViewToggle.tsx"
@@ -558,7 +559,11 @@ function TopBar({
     : null
   const ok = daemonConnected && streamConnected
   return (
-    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
+    <header
+      data-kobe-topbar
+      className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
+    >
+      <DesktopWindowControls />
       <span className="font-mono text-[13px] font-bold text-primary">
         [kobe]
       </span>

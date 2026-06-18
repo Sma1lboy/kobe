@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "electron .",
     "dev:sandbox": "KOBE_HOME_DIR=../kobe/.dev-sandbox/home KOBE_TMUX_SOCKET=kobe-sandbox electron .",
-    "check": "node --check src/main.mjs"
+    "check": "node --check src/main.mjs && node --check src/preload.cjs"
   },
   "devDependencies": {
     "electron": "^39.2.7"

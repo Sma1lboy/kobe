@@ -52,6 +52,7 @@ import { pushToast, reportError } from "../lib/toast.ts"
 import { useRepoIssues } from "../lib/use-repo-issues.ts"
 import { ConfirmDialog } from "./ConfirmDialog.tsx"
 import { DaemonBanner } from "./DaemonBanner.tsx"
+import { DesktopWindowControls } from "./DesktopWindowControls.tsx"
 import { IssueCard } from "./IssueCard.tsx"
 import {
   IssuePanelSuspense,
@@ -413,7 +414,11 @@ export function Board() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg text-fg">
-      <header className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3">
+      <header
+        data-kobe-topbar
+        className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
+      >
+        <DesktopWindowControls />
         {/* Workspace ↔ Board are peer views — the top-left toggle is the only
             switch between them (no back link). The [kobe] brand mirrors the
             Workspace header so the logo + toggle sit identically in both. */}
