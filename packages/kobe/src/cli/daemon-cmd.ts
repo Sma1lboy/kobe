@@ -30,6 +30,13 @@ function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
   )
 }
 
+function resolveDaemonWebPort(): number | undefined {
+  const raw = process.env.KOBE_DAEMON_WEB_PORT?.trim()
+  if (raw === "0" || raw === "off" || raw === "false") return undefined
+  const value = raw ? Number.parseInt(raw, 10) : 5174
+  return Number.isFinite(value) && value > 0 ? value : 5174
+}
+
 export async function runDaemonSubcommand(argv: readonly string[]): Promise<void> {
   const [command = "status"] = argv
   const socketPath = defaultDaemonSocketPath()
@@ -104,11 +111,15 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     socketPath,
     pidPath,
     homeDir: core.homeDir,
+    webPort: resolveDaemonWebPort(),
+    webHost: process.env.KOBE_WEB_HOST,
+    webStaticDir: process.env.KOBE_DAEMON_WEB_STATIC_DIR,
     onStop: async () => {
       await core.close()
     },
   })
   console.log(`kobe daemon: listening on ${server.socketPath}`)
+  if (server.webPort) console.log(`kobe daemon: web transport listening on http://127.0.0.1:${server.webPort}`)
 
   const shutdown = async () => {
     await server.close()

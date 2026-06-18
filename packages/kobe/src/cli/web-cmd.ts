@@ -1,17 +1,14 @@
 /**
  * `kobe web` — launch the local web UI.
  *
- * Serves the kobe web dashboard on http://localhost:<port> (default 5173).
- * The transitional HTTP/SSE adapter (kobe-web/server) runs in this process
- * and talks to the daemon over the socket protocol. ADR 0003 moves the target
- * seam into the daemon: browser routes backed by daemon state should come from
- * daemon-hosted local HTTP/SSE, not a long-lived bridge. If a prior kobe-web
- * already holds the port it is replaced; a foreign service on the port is
- * reported, not killed.
+ * Serves the kobe web dashboard through the daemon-hosted local HTTP/SSE
+ * transport. Browser routes backed by daemon state come from the daemon
+ * directly; this command only ensures the daemon is reachable and starts the
+ * PTY sidecar.
  *
- *   kobe web                 serve the built SPA on :5173
+ *   kobe web                 serve the built SPA on :5174
  *   kobe web --port 5180     bind a different port
- *   kobe web --bridge-only   bridge routes only (Vite serves the SPA in dev)
+ *   kobe web --routes-only   start only the daemon web routes
  *   kobe web --no-takeover   fail instead of replacing a prior kobe-web
  */
 
@@ -19,21 +16,10 @@ import { existsSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 
-type WebServerModule = typeof import("kobe-web/server")
-
-async function loadWebServer(): Promise<WebServerModule> {
-  try {
-    return await import("kobe-web/server")
-  } catch (err) {
-    if (err instanceof Error && !/Cannot find|Could not resolve|not found|Module not found/i.test(err.message)) {
-      throw err
-    }
-    throw new Error(
-      "web bridge runtime is not bundled in the default kobe package; run from packages/kobe-web in a source checkout, or use a web-enabled distribution",
-    )
-  }
-}
+const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
+const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
 
 /** Which daemon home this `kobe web` is wired to — production `~/.kobe` unless
  *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
@@ -47,14 +33,12 @@ type PtyProcess = ReturnType<typeof Bun.spawn>
 
 const USAGE = `Usage: kobe web [options]
 
-Launch the kobe web UI on http://localhost:<port>.
+Launch the kobe web UI through daemon web transport on http://localhost:<port>.
 
 Options:
-  --port <n>        Port to bind (default 5173).
-  --bridge-only     Serve only bridge routes (/events, /api/rpc);
-                    Vite serves the SPA separately in dev.
-  --no-takeover     Fail if the port is busy instead of replacing a prior
-                    kobe-web instance.
+  --port <n>        Daemon web transport port (default 5174).
+  --routes-only     Routes only; Vite serves the SPA separately.
+  --no-takeover     Reserved for compatibility; daemon owns the web port.
   -h, --help        Show this help.
 `
 
@@ -104,17 +88,16 @@ async function pidsOnPort(port: number): Promise<number[]> {
 }
 
 async function takeoverPtyPort(port: number): Promise<void> {
-  const { WEB_HEALTH_MARKER, WEB_HEALTH_PATH } = await loadWebServer()
   let body: string
   try {
-    const res = await fetch(`http://localhost:${port}${WEB_HEALTH_PATH}`, {
+    const res = await fetch(`http://localhost:${port}${DAEMON_WEB_HEALTH_PATH}`, {
       signal: AbortSignal.timeout(800),
     })
     body = (await res.text()).trim()
   } catch {
     return
   }
-  if (body !== WEB_HEALTH_MARKER) {
+  if (body !== DAEMON_WEB_HEALTH_MARKER) {
     throw new Error(`PTY port ${port} is in use by a non-kobe service; refusing to replace it`)
   }
   const pids = await pidsOnPort(port)
@@ -146,10 +129,38 @@ async function startPtyServer(opts: {
     stderr: "inherit",
     env: {
       ...process.env,
-      KOBE_BRIDGE_PORT: String(opts.webPort),
+      KOBE_DAEMON_WEB_PORT: String(opts.webPort),
       KOBE_PTY_PORT: String(ptyPort),
     },
   })
+}
+
+async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> {
+  process.env.KOBE_DAEMON_WEB_PORT = String(port)
+  if (staticDir) process.env.KOBE_DAEMON_WEB_STATIC_DIR = staticDir
+  await ensureDaemonReachable()
+  let body: string
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}${DAEMON_WEB_HEALTH_PATH}`, {
+      signal: AbortSignal.timeout(1500),
+    })
+    body = (await res.text()).trim()
+  } catch (err) {
+    throw new Error(
+      `daemon web transport is not reachable on :${port}; run \`kobe daemon restart\` so the daemon picks up this build (${err instanceof Error ? err.message : String(err)})`,
+    )
+  }
+  if (body !== DAEMON_WEB_HEALTH_MARKER) {
+    throw new Error(`unexpected daemon web health marker on :${port}: ${body}`)
+  }
+  if (staticDir) {
+    const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) })
+    if (!res.ok) {
+      throw new Error(
+        `daemon web transport is up on :${port} but is not serving web assets; run \`kobe daemon restart\` so it picks up ${staticDir}`,
+      )
+    }
+  }
 }
 
 export async function runWebSubcommand(args: readonly string[]): Promise<void> {
@@ -158,7 +169,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     return
   }
 
-  let port = 5173
+  let port = 5174
   const portIdx = args.indexOf("--port")
   if (portIdx !== -1) {
     const value = Number.parseInt(args[portIdx + 1] ?? "", 10)
@@ -170,20 +181,15 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
   }
 
   try {
-    const bridgeOnly = args.includes("--bridge-only")
+    const routesOnly = args.includes("--routes-only") || args.includes("--bridge-only")
     const takeover = !args.includes("--no-takeover")
-    const staticDir = bridgeOnly ? undefined : resolveStaticDir()
-    if (!bridgeOnly && !staticDir) {
+    const staticDir = routesOnly ? undefined : resolveStaticDir()
+    if (!routesOnly && !staticDir) {
       throw new Error(
         "web assets are not bundled in the default kobe package; run `bun run dev` in packages/kobe-web from a source checkout, or use a web-enabled distribution",
       )
     }
-    const { createBridgeServer } = await loadWebServer()
-    const bridge = await createBridgeServer({
-      port,
-      takeover,
-      staticDir,
-    })
+    await ensureDaemonWeb(port, staticDir)
     let pty: PtyProcess | null = null
     let stopped = false
 
@@ -192,15 +198,14 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
       stopped = true
       pty?.kill()
       pty = null
-      bridge.close()
     }
 
-    if (bridgeOnly) {
-      process.stdout.write(`kobe web bridge listening on http://localhost:${bridge.port} (routes only)\n`)
+    if (routesOnly) {
+      process.stdout.write(`kobe daemon web transport listening on http://localhost:${port} (routes only)\n`)
       process.stdout.write(`  home: ${homeLabel()}\n`)
     } else {
-      pty = await startPtyServer({ webPort: bridge.port, takeover })
-      process.stdout.write(`kobe web → http://localhost:${bridge.port}\n`)
+      pty = await startPtyServer({ webPort: port, takeover })
+      process.stdout.write(`kobe web → http://localhost:${port}\n`)
       process.stdout.write(`  home: ${homeLabel()}\n`)
       if (!pty) {
         process.stderr.write("kobe web: PTY server not found; terminal tabs will be unavailable\n")

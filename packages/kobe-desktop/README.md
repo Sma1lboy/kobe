@@ -12,5 +12,6 @@ bun --filter kobe-desktop dev:sandbox
 ```
 
 The shell starts the existing `packages/kobe-web/dev.ts` stack on a free local
-port block, opens a BrowserWindow, and stops only the web/bridge/PTY child
-processes on exit. It deliberately does not kill the daemon or tmux sessions.
+port block, opens a BrowserWindow, and stops only the web/PTY child processes
+on exit. Browser data goes through the daemon web transport. The shell
+deliberately does not kill the daemon or tmux sessions.

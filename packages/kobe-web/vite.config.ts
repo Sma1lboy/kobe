@@ -5,10 +5,10 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite"
 import viteReact from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
-// `kobe web --bridge-only` asks the daemon to bind HTTP/SSE routes on a
-// sibling port. Vite proxies those routes so the browser sees one origin.
-const bridgePort = process.env.KOBE_BRIDGE_PORT ?? "5174"
-const bridgeTarget = `http://localhost:${bridgePort}`
+// The daemon binds browser-facing HTTP/SSE routes on a sibling port. Vite
+// proxies those routes so the browser sees one origin during development.
+const daemonWebPort = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
+const daemonWebTarget = `http://localhost:${daemonWebPort}`
 // The PTY terminal lives in a separate node process (node-pty doesn't work
 // under bun). Proxy its WebSocket here so the browser stays single-origin.
 const ptyPort = process.env.KOBE_PTY_PORT ?? "5175"
@@ -22,8 +22,8 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true, dedupe: ["react", "react-dom"] },
   server: {
     proxy: {
-      "/api": { target: bridgeTarget, changeOrigin: true },
-      "/events": { target: bridgeTarget, changeOrigin: true, ws: false },
+      "/api": { target: daemonWebTarget, changeOrigin: true },
+      "/events": { target: daemonWebTarget, changeOrigin: true, ws: false },
       "/pty": {
         target: `ws://localhost:${ptyPort}`,
         ws: true,

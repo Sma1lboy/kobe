@@ -25,11 +25,11 @@ import type { RepoIssues } from "./issues-store.ts"
  * rolling upgrade instead of hard-rejecting it. Bump the MIN only on a
  * breaking change.
  *
- * v3: `daemon.web.start` / `daemon.web.stop` removed — the web UI's server
- * moved out of the daemon into a standalone bridge (kobe-web/server) that
- * speaks this protocol as a regular `role: "gui"` subscriber. A v2 client's
- * `kobe web` gets a clear "unknown daemon request" error; everything else
- * still interoperates, so MIN stays 2.
+ * v3: `daemon.web.start` / `daemon.web.stop` removed from the socket protocol.
+ * Browser HTTP/SSE now lives on the daemon-owned web transport instead of a
+ * socket RPC that starts/stops routes. A v2 client's `kobe web` gets a clear
+ * "unknown daemon request" error; everything else still interoperates, so MIN
+ * stays 2.
  */
 export const DAEMON_PROTOCOL_VERSION = 3
 

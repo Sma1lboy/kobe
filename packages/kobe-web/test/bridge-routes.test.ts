@@ -2,18 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { DaemonRequestName } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import {
+  createDaemonWebRequestHandler,
+  DAEMON_WEB_HEALTH_MARKER,
+  DAEMON_WEB_HEALTH_PATH,
+  type WebRouteLink,
+} from "@sma1lboy/kobe-daemon/daemon/web-server"
 import { patchStateFile } from "../../kobe/src/state/store.ts"
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
-import {
-  type BridgeLink,
-  createRequestHandler,
-  WEB_HEALTH_MARKER,
-  WEB_HEALTH_PATH,
-} from "../server/bridge.ts"
 
 /**
- * Integration coverage for the bridge's HTTP route table, driven through
- * createRequestHandler against a FAKE link (no socket, no daemon, no tmux).
+ * Integration coverage for the daemon-hosted web HTTP route table, driven
+ * through createDaemonWebRequestHandler against a FAKE link (no tmux).
  * This is the gate for the whole browser-facing surface: the RPC allowlist +
  * teardown hook, the SSE snapshot/fan-out, the engine/theme routes, and the
  * static/404 fallthrough.
@@ -24,7 +24,7 @@ interface FakeOpts {
   onRequest?: (name: string, payload: unknown) => unknown
 }
 
-function fakeLink(opts: FakeOpts = {}): BridgeLink & { calls: Array<{ name: string; payload: unknown }> } {
+function fakeLink(opts: FakeOpts = {}): WebRouteLink & { calls: Array<{ name: string; payload: unknown }> } {
   const calls: Array<{ name: string; payload: unknown }> = []
   return {
     calls,
@@ -42,7 +42,7 @@ function build(opts: FakeOpts = {}) {
   const link = fakeLink(opts)
   const tearDown = vi.fn()
   const sseSends = new Set<(type: string, data: unknown) => void>()
-  const handle = createRequestHandler({ link, sseSends, tearDownSession: tearDown })
+  const handle = createDaemonWebRequestHandler({ link, sseSends, tearDownSession: tearDown })
   return { handle, link, tearDown, sseSends }
 }
 
@@ -54,11 +54,11 @@ function post(path: string, body: unknown): Request {
   })
 }
 
-describe("bridge request handler", () => {
+describe("daemon web request handler", () => {
   it("serves the health marker", async () => {
     const { handle } = build()
-    const res = await handle(new Request(`http://localhost${WEB_HEALTH_PATH}`))
-    expect(await res.text()).toBe(WEB_HEALTH_MARKER)
+    const res = await handle(new Request(`http://localhost${DAEMON_WEB_HEALTH_PATH}`))
+    expect(await res.text()).toBe(DAEMON_WEB_HEALTH_MARKER)
   })
 
   it("404s an unknown path when no staticDir is set", async () => {
@@ -97,14 +97,14 @@ describe("bridge request handler", () => {
 
     it("allows an Origin-less (non-browser) request through", async () => {
       const { handle } = build()
-      const res = await handle(new Request(`http://localhost${WEB_HEALTH_PATH}`))
-      expect(await res.text()).toBe(WEB_HEALTH_MARKER)
+      const res = await handle(new Request(`http://localhost${DAEMON_WEB_HEALTH_PATH}`))
+      expect(await res.text()).toBe(DAEMON_WEB_HEALTH_MARKER)
     })
 
     it("allows the deliberately-configured LAN host through allowedHost", async () => {
       const link = fakeLink()
       const sseSends = new Set<(type: string, data: unknown) => void>()
-      const handle = createRequestHandler({ link, sseSends, allowedHost: "192.168.1.5" })
+      const handle = createDaemonWebRequestHandler({ link, sseSends, allowedHost: "192.168.1.5" })
       const res = await handle(
         new Request("http://192.168.1.5:5173/api/rpc", {
           method: "POST",
@@ -222,6 +222,22 @@ describe("bridge request handler", () => {
       expect(text).toContain("event: snapshot")
       expect(text).toContain(`"id":"t1"`)
       await reader!.cancel()
+    })
+
+    it("runs the daemon lifetime hook for the SSE stream lifetime", async () => {
+      const link = fakeLink()
+      const sseSends = new Set<(type: string, data: unknown) => void>()
+      const cleanup = vi.fn()
+      const onSseOpen = vi.fn(() => cleanup)
+      const handle = createDaemonWebRequestHandler({ link, sseSends, onSseOpen })
+
+      const res = await handle(new Request("http://localhost/events"))
+      expect(onSseOpen).toHaveBeenCalledTimes(1)
+
+      const reader = res.body?.getReader()
+      await reader!.read()
+      await reader!.cancel()
+      expect(cleanup).toHaveBeenCalledTimes(1)
     })
   })
 

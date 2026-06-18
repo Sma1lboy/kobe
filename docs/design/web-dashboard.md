@@ -3,30 +3,31 @@
 > The browser dashboard for kobe: a terminal-native workspace at
 > `http://localhost:5173`, not a faithful TUI mirror. Source lives in
 > [`packages/kobe-web`](../../packages/kobe-web). This doc is the durable map
-> of its process model, the daemon channels it consumes, and the bridge's
+> of its process model, the daemon channels it consumes, and the daemon-hosted
 > HTTP route table. For the running feature set read the CHANGELOG; for the
 > daemon protocol read [`daemon.md`](./daemon.md).
 
 ## Current dev process split
 
-`node-pty` does not work under Bun, and the current bridge predates the
-daemon-owned web transport decision — so the dev web UI currently starts three
-cooperating processes:
+`node-pty` does not work under Bun, so web development still has a small
+process split. The browser-facing daemon data path is direct: Vite proxies
+`/api` and `/events` to the daemon's local HTTP/SSE transport, while the PTY
+sidecar stays as a Node adapter.
 
 ```mermaid
 flowchart LR
   Browser["Browser SPA<br/>(React + TanStack Router)<br/>:5173"]
   Vite["Vite dev server<br/>:5173 (dev only)"]
-  Bridge["Bridge (Bun, transitional)<br/>kobe-web/server<br/>:5174"]
+  Web["Daemon web transport<br/>packages/kobe-daemon/src/daemon/web-server.ts<br/>:5174"]
   PTY["PTY sidecar (node)<br/>pty-server.mjs<br/>:5175"]
-  Daemon["kobe daemon<br/>(unix socket)"]
+  Daemon["kobe daemon<br/>(task index + event bus)"]
   Engine["claude / codex<br/>(in the worktree)"]
 
-  Browser -->|"/events SSE, /api/* fetch"| Bridge
+  Browser -->|"/events SSE, /api/* fetch"| Web
   Browser -->|"/pty WebSocket"| PTY
-  Vite -.->|"dev: proxies /api,/events,/pty"| Bridge
-  Bridge -->|"role:gui subscribe + RPC<br/>(to be replaced by daemon HTTP/SSE)"| Daemon
-  PTY -->|"fetch engine/terminal spec"| Bridge
+  Vite -.->|"dev: proxies /api,/events,/pty"| Web
+  Web -->|"direct dispatcher + event bus snapshot"| Daemon
+  PTY -->|"fetch engine/terminal spec"| Web
   PTY -->|"spawn"| Engine
 ```
 
@@ -34,13 +35,12 @@ flowchart LR
   store ([`src/lib/store.ts`](../../packages/kobe-web/src/lib/store.ts)); every
   mutation is a `POST /api/rpc`. No optimistic updates — the daemon's
   `task.snapshot` push is the round-trip.
-- **Bridge** ([`server/`](../../packages/kobe-web/server)) — a transitional Bun
-  HTTP/SSE adapter. Holds exactly ONE daemon socket
-  ([`daemon-link.ts`](../../packages/kobe-web/server/daemon-link.ts)),
-  subscribing with `role: "gui"` so an open browser holds the daemon alive
-  like an attached TUI. ADR 0003 moves the target seam into the daemon:
-  browser and desktop hosts should eventually talk directly to daemon-hosted
-  local HTTP/SSE routes.
+- **Daemon web transport**
+  ([`web-server.ts`](../../packages/kobe-daemon/src/daemon/web-server.ts)) —
+  loopback HTTP/SSE routes hosted by the daemon. It dispatches browser RPCs
+  through the same daemon handler registry as the socket protocol, builds the
+  SSE bootstrap snapshot from daemon state, and treats an open browser SSE
+  stream as a GUI lifetime hold.
 - **PTY sidecar** ([`pty-server.mjs`](../../packages/kobe-web/pty-server.mjs)) —
   a node process (node-pty needs node). Each engine/terminal tab is a
   WebSocket-attached PTY keyed by a client tab id, kept alive across reconnects
@@ -50,18 +50,16 @@ The default `@sma1lboy/kobe` package is TUI-first and does not bundle these web
 assets. A future web-enabled distribution can still run `kobe web`; then
 `kobe web`
 ([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
-runs the bridge in-process serving the built SPA from `dist/web-ui`, and spawns
-the PTY sidecar on `port + 2`. In dev,
-[`dev.ts`](../../packages/kobe-web/dev.ts) spawns all three and Vite proxies
-`/api`, `/events`, `/pty`. As the daemon web interface lands, this should shrink
-to Vite plus the daemon interface, with the PTY sidecar remaining only while
-`node-pty` requires a Node adapter.
+ensures the daemon web transport is available, serves the built SPA from
+`dist/web-ui`, and spawns the PTY sidecar on `port + 2`. In dev,
+[`dev.ts`](../../packages/kobe-web/dev.ts) ensures the daemon, starts Vite and
+the PTY sidecar, and lets Vite proxy `/api`, `/events`, `/pty`.
 
 ## Daemon channels the SPA consumes
 
-The bridge subscribes with a channel filter
-([`spa-channels.ts`](../../packages/kobe-web/server/spa-channels.ts)); the
-daemon honors it, so unconsumed channels never cross the socket. A contract
+The daemon web transport exposes only the SPA channel set
+([`spa-channels.ts`](../../packages/kobe-web/server/spa-channels.ts)); no
+standalone bridge socket is involved. A contract
 test (`test/spa-channels.test.ts`) partitions every protocol channel into
 consumed vs dropped so a new channel can't slip through unaccounted.
 
@@ -76,11 +74,11 @@ consumed vs dropped so a new channel can't slip through unaccounted.
 | `ui-prefs` | Theme + sort-mode sync with the TUI — a TUI theme switch restyles open dashboards live. |
 | `keybindings` | **Dropped** — the web has no keymap to re-read. |
 
-## Bridge HTTP route table
+## Daemon Web HTTP Route Table
 
-All routes live in `createRequestHandler`
-([`server/bridge.ts`](../../packages/kobe-web/server/bridge.ts)), extracted from
-`Bun.serve` so the whole surface is unit-testable against a fake link
+All routes live in `createDaemonWebRequestHandler`
+([`web-server.ts`](../../packages/kobe-daemon/src/daemon/web-server.ts)),
+extracted from `Bun.serve` so the whole surface is unit-testable against a fake link
 (`test/bridge-routes.test.ts`).
 
 | Route | Method | Purpose |
@@ -100,20 +98,21 @@ All routes live in `createRequestHandler`
 ### `/api/rpc` is an allowlist, not a denylist
 
 The forwarder admits only the verbs in
-[`rpc-allowlist.ts`](../../packages/kobe-web/server/rpc-allowlist.ts) — a new
+[`web-rpc-allowlist.ts`](../../packages/kobe-daemon/src/daemon/web-rpc-allowlist.ts) — a new
 daemon verb is NOT browser-reachable until added deliberately, and
 connection-scoped (`hello`/`subscribe`), kill-switch (`daemon.stop`), and
 hook-ingest (`engine.reportEvent`/`worktree.reconcile`) verbs are pinned out by
 a contract test (`test/rpc-allowlist.test.ts`).
 
-### Teardown hook — the daemon never touches tmux
+### Teardown Hook
 
-The daemon is the single writer for the task index but never touches tmux. So a
-committed `task.delete` / `task.archive` (when actually archiving) triggers a
-bridge-side `tearDownTaskSession` — killing the task's tmux session and the
-engine inside it. Without this a web delete leaves an orphaned engine running,
-the same bug `kobe api delete` had. Un-archive (`archived: false`) deliberately
-does NOT tear down.
+The daemon is the single writer for the task index. For browser task deletion
+and archive, the daemon web route also performs the matching session cleanup:
+a committed `task.delete` / `task.archive` (when actually archiving) triggers
+`tearDownTaskSession`, killing the task's tmux session and the engine inside
+it. Without this a web delete leaves an orphaned engine running, the same bug
+`kobe api delete` had. Un-archive (`archived: false`) deliberately does NOT
+tear down.
 
 ## SPA routes
 
@@ -209,28 +208,26 @@ Beyond the rail/tabs/tools grammar, the dashboard carries:
   "nothing to review", or a "daemon offline, reconnecting" line — so a fresh or
   disconnected dashboard explains itself rather than looking broken.
 
-Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the bridge `DaemonLink` mirror (engineStates prune + jobs reducer + SSE forward filter, driven through a test seam), `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Board drift guard), `lib/triage.ts` (attention buckets + priority + `matchesStatusFilter` for the rail + Board attention-filter chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest). Plus the bridge route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
+Pure helpers with unit tests: [`lib/diff-rows.ts`](../../packages/kobe-web/src/lib/diff-rows.ts) (gutter + stats), `lib/time.ts` (`relativeTime` + `relativeTimeAgo`), the extracted `shouldNotify` / `resolveEffectiveTheme`, the markdown renderer's escape-first safety, and the reducer layer on both sides — the store's `applyJobEvent` / `isOrphanIdleEngineState` / `pruneByTask`, the daemon web snapshot/reducer seam, `formatError`, and the New Task pending-prompt consume-once handoff. **Component logic lives in React-free lib modules so it's unit-tested away from the `.tsx`:** `lib/activity.ts` (dot color/label, rail↔Board drift guard), `lib/triage.ts` (attention buckets + priority + `matchesStatusFilter` for the rail + Board attention-filter chips), `lib/fuzzy.ts` (command-palette ranking), `lib/task-list.ts` (rail group-order + search), `lib/tool-display.ts` (transcript tool-call labels), `lib/diff-display.ts` (status/row mappers), `lib/diff-filter.ts` (Changes-pane path filter), `lib/path-format.ts` (`tailPath`), `lib/palette-commands.ts` (theme command entries), `lib/transcript-search.ts` (`messageMatchesQuery` + `blockVisible` hide-tools), `lib/scroll.ts` (`isNearBottom` for stick-to-bottom + jump-to-latest). Plus the daemon web route + channel + allowlist contracts and the server-side route guards (notes/diff/history traversal).
 
 ## Dev: production vs sandbox
 
 `bun --filter kobe-web dev` connects to the **production** `~/.kobe` daemon and
 prints a banner saying so. `bun --filter kobe-web dev:sandbox` points
 `KOBE_HOME_DIR` at the TUI's shared `.dev-sandbox/home` (+ the `kobe-sandbox`
-tmux socket) so the bridge, PTY engines, and tmux stay isolated. `bun run test`
+tmux socket) so the daemon web transport, PTY engines, and tmux stay isolated. `bun run test`
 touches no daemon at all — its isolation is unconditional.
 
 ## Security posture (current + gaps)
 
-Both the bridge ([`bridge.ts`](../../packages/kobe-web/server/bridge.ts)) and the
-PTY sidecar ([`pty-server.mjs`](../../packages/kobe-web/pty-server.mjs)) bind
-**`127.0.0.1` by default** (was `0.0.0.0` — Bun/Node's default exposes every
-interface); `KOBE_WEB_HOST` overrides only when a LAN bind is intended. A PTY WS
-is arbitrary command exec in the worktree, so the upgrade enforces a
+Both the daemon web transport and the PTY sidecar
+([`pty-server.mjs`](../../packages/kobe-web/pty-server.mjs)) bind
+**`127.0.0.1` by default**. `KOBE_WEB_HOST` overrides only when a LAN bind is
+intended. A PTY WS is arbitrary command exec in the worktree, so the upgrade enforces a
 **localhost-Origin allowlist** (`localhost`/`127.0.0.1`/`[::1]`) — a browser
 cross-origin upgrade is rejected; a non-browser client (no `Origin`) is allowed
 since there's no ambient browser session to ride.
 
-Remaining gap: the browser-facing HTTP routes still live in the transitional
-bridge. As they move into the daemon web interface, the Origin/token policy,
-RPC allowlist, and event-channel filtering should move with them so browser
-safety is enforced at the daemon-owned seam.
+The browser-facing HTTP routes live at the daemon-owned seam, so the Origin
+policy, RPC allowlist, and event-channel filtering are enforced before a browser
+request reaches daemon state mutation.

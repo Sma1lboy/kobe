@@ -27,8 +27,7 @@ vi.mock("../../kobe/src/state/repo-init.ts", () => ({
   resolveEngineLaunchInit: resolveEngineLaunchInitMock,
 }))
 
-import { engineSpec, ensureTaskSession } from "../server/session.ts"
-import type { RpcLink } from "../server/daemon-link.ts"
+import { engineSpec, ensureTaskSession, type RpcLink } from "@sma1lboy/kobe-daemon/daemon/web-session"
 
 function link(): RpcLink {
   return {

@@ -13,8 +13,8 @@
  *
  * Hard constraint: WIRE COMPATIBILITY. Every entry must produce
  * byte-equivalent success and error payloads to the pre-registry switch for
- * the same inputs — clients parse these shapes (and `kobe-web/server` speaks
- * the same protocol as a socket client). Success payload KEY ORDER is
+ * the same inputs — socket clients and the daemon web transport parse these
+ * shapes. Success payload KEY ORDER is
  * load-bearing for byte equality (`JSON.stringify` preserves insertion
  * order), so handlers keep the exact literal shapes the switch returned,
  * `{}` returns included. Error message wording is part of the contract too
@@ -72,6 +72,8 @@ export interface DaemonHandlerContext {
   readonly daemon: {
     readonly startedAt: Date
     readonly socketPath: string
+    /** Loopback web transport port, when this daemon is exposing browser routes. */
+    readonly webPort?: number
     /** The daemon process pid (reported by `hello` / `daemon.status`). */
     readonly pid: number
     /** Attached-GUI refcount (reported as `attachedClients`). */
@@ -190,6 +192,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           attachedClients: ctx.daemon.guiCount(),
           taskCount: ctx.orch.listTasks().length,
           socketPath: ctx.daemon.socketPath,
+          webPort: ctx.daemon.webPort ?? null,
         }
       },
     },

@@ -1,5 +1,5 @@
+import { shellQuote } from "@sma1lboy/kobe-daemon/daemon/web-session"
 import { describe, expect, it } from "vitest"
-import { shellQuote } from "../server/session.ts"
 
 /**
  * shellQuote builds the engine launch command line that runs in the worktree,

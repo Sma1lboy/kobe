@@ -22,7 +22,13 @@ import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
-import { createDaemonHandlerRegistry, dispatchDaemonRequest, objectPayload, shapeDaemonError } from "./handlers.ts"
+import {
+  createDaemonHandlerRegistry,
+  dispatchDaemonRequest,
+  type DaemonHandlerContext,
+  objectPayload,
+  shapeDaemonError,
+} from "./handlers.ts"
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import {
   DEFAULT_KEYBINDINGS_DEBOUNCE_MS,
@@ -33,6 +39,7 @@ import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
+import { createDirectWebLink, type DaemonWebServer, startDaemonWebServer } from "./web-server.ts"
 import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
@@ -83,12 +90,19 @@ export interface DaemonServerOptions {
   readonly keybindingsDebounceMs?: number
   /** Worktree-changes collector tick in ms; `0` disables. Defaults to {@link DEFAULT_WORKTREE_CHANGES_TICK_MS}. */
   readonly worktreeChangesTickMs?: number
+  /** Optional loopback HTTP/SSE browser transport. Omitted in tests unless explicitly requested. */
+  readonly webPort?: number
+  /** Optional hostname for the browser transport. Defaults to 127.0.0.1. */
+  readonly webHost?: string
+  /** Optional static web UI directory served by the daemon web transport. */
+  readonly webStaticDir?: string
 }
 
 export interface DaemonServer {
   readonly socketPath: string
   readonly pidPath: string
   readonly startedAt: Date
+  readonly webPort?: number
   readonly clients: ReadonlySet<DaemonClientConnection>
   close(): Promise<void>
 }
@@ -135,6 +149,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
   const startedAt = options.startedAt ?? new Date()
   const clients = new Set<ClientState>()
+  const webClients = new Set<{ subscribed: boolean; holdsLifetime: boolean }>()
   let nextClientId = 1
 
   // Refcounted lazy shutdown + collector gate (KOB): the daemon's lifetime is
@@ -153,7 +168,10 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // — lives in DaemonLifetime (lifetime.ts), unit-tested in isolation; the live
   // `clients` set stays its source of truth, so there's no counter to drift.
   const lifetime = new DaemonLifetime({
-    clients: () => clients,
+    clients: function* () {
+      yield* clients
+      yield* webClients
+    },
     idleGraceMs: resolveIdleGraceMs(),
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
   })
@@ -288,14 +306,20 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     () => lifetime.hasSubscribers(),
   )
 
+  let webServer: DaemonWebServer | null = null
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
     startedAt,
+    get webPort() {
+      return webServer?.port
+    },
     clients,
     async close() {
       lifetime.markStopping()
       unsubscribeStore()
+      webServer?.close()
+      webServer = null
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
       stopUiPrefsWatcher()
@@ -343,6 +367,58 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
   // socket (channel replay) — none of which the registry's payload→result
   // shape can express — so it lives here next to the machinery it touches.
   const handlers = createDaemonHandlerRegistry()
+
+  function handlerContext(clientId: number): DaemonHandlerContext {
+    return {
+      orch,
+      bus,
+      activity,
+      issues,
+      daemon: {
+        startedAt,
+        socketPath,
+        webPort: webServer?.port,
+        pid: process.pid,
+        guiCount: () => lifetime.guiCount(),
+        stopSoon,
+      },
+      clientId,
+    }
+  }
+
+  if (options.webPort !== undefined) {
+    const link = createDirectWebLink({
+      orch,
+      bus,
+      activity,
+      ctx: handlerContext,
+    })
+    webServer = await startDaemonWebServer({
+      port: options.webPort,
+      hostname: options.webHost,
+      staticDir: options.webStaticDir,
+      link,
+      onEvent: (sink) => bus.onPublish(sink),
+      onSseOpen: () => {
+        const client = { subscribed: true, holdsLifetime: true }
+        webClients.add(client)
+        lifetime.guiAttached()
+        logDaemonInfo(
+          "conn",
+          `web client subscribed — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui`,
+        )
+        return () => {
+          webClients.delete(client)
+          logDaemonInfo(
+            "conn",
+            `web client disconnected — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui left`,
+          )
+          lifetime.clientDisconnected(true)
+        }
+      },
+    })
+    logDaemonInfo("web", `daemon web transport listening on http://${webServer.hostname}:${webServer.port}`)
+  }
 
   async function dispatch(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<unknown> {
     if (req.name === "subscribe") {
@@ -399,14 +475,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       }
       return {}
     }
-    return dispatchDaemonRequest(handlers, req.name, req.payload, {
-      orch,
-      bus,
-      activity,
-      issues,
-      daemon: { startedAt, socketPath, pid: process.pid, guiCount: () => lifetime.guiCount(), stopSoon },
-      clientId: client.id,
-    })
+    return dispatchDaemonRequest(handlers, req.name, req.payload, handlerContext(client.id))
   }
 
   async function handleRequest(req: Extract<DaemonFrame, { type: "request" }>, client: ClientState): Promise<void> {

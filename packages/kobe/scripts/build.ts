@@ -84,7 +84,7 @@ const result = await Bun.build({
   // @opentui/core-${platform}-${arch} dynamically; bundling core moves
   // that dynamic import into dist/index.js, where Bun can no longer
   // resolve the optional platform package under isolated installs.
-  external: ["node-pty", "@opentui/core", "kobe-web/server"],
+  external: ["node-pty", "@opentui/core"],
   minify: true,
 })
 

@@ -110,46 +110,37 @@ The seams matter:
 | Daemon socket/integration tests | `test/daemon/*.test.ts` |
 | Unit-test type assertions | `test/types/*.test-d.ts` |
 
-### Web transport (daemon target; bridge transitional)
+### Web transport (daemon-owned)
 
-The current browser dashboard backend is a standalone bridge server in
-`packages/kobe-web/server/`, exported as `kobe-web/server`. `kobe web`
-(`src/cli/web-cmd.ts`) runs it in-process; web dev (`kobe-web/dev.ts`) runs
-it under `bun --watch`. This bridge is now a transitional adapter, not the
-target seam. ADR 0003 reverses the old "daemon hosts no web routes" decision:
-daemon-backed browser data and mutations should move to a daemon-hosted local
-HTTP/SSE interface, so the web/desktop chain becomes direct and easier to
-debug.
+The browser dashboard talks directly to a daemon-hosted loopback HTTP/SSE
+transport in `packages/kobe-daemon/src/daemon/web-server.ts`. ADR 0003
+reversed the old "web routes live outside the daemon" decision: daemon-backed
+browser data and mutations now share the daemon handler registry, event bus,
+and lifetime policy instead of crossing a standalone `kobe-web/server` bridge.
 
-Current bridge responsibilities during migration:
+Current daemon web responsibilities:
 
-- The dashboard is experimental and iterates fast; today the bridge restarts
-  without touching the daemon that holds every task. This remains a dev
-  convenience, not an architectural reason to add new daemon-backed routes
-  outside the daemon.
-- Browser state hydrates over the wire: `hello` + `subscribe` channel
-  replay feed a bridge-local mirror that becomes the SSE `snapshot`;
-  channel pushes are forwarded as SSE `channel` events. The link
-  auto-reconnects across daemon restarts (spawn-free retries first, so it
-  never races a `kobe daemon restart` with a second spawn).
-- Browser mutations go through the daemon RPC dispatcher via `/api/rpc`
-  forwarding; the bridge blocks daemon lifecycle calls (`daemon.stop`,
-  `hello`, `subscribe`).
-- Session/launch-spec routes (`/api/session`, `/api/engine-spec`) are
-  built bridge-side with the SAME client-side modules every other host
-  uses (`ensureSession`, `resolveRepoInit`, `interactiveEngineCommand`);
-  task data comes from `task.get` / `task.ensureWorktree` RPCs.
+- Browser state hydrates from a daemon-built `snapshot`, then receives daemon
+  channel pushes as SSE `channel` events. An open browser SSE stream counts as
+  a GUI lifetime hold, so normal lazy-shutdown rules still apply.
+- Browser mutations go through `/api/rpc`, which dispatches to the daemon RPC
+  registry through an explicit web allowlist. Connection-scoped and lifecycle
+  verbs (`hello`, `subscribe`, `daemon.stop`) are not browser-reachable.
+- Session/launch-spec routes (`/api/session`, `/api/engine-spec`,
+  `/api/terminal-spec`) live on the daemon web transport so the PTY sidecar can
+  fetch launch details without a separate adapter process.
 - Web-specific route helpers (`packages/kobe/src/web/notes.ts`,
-  `packages/kobe/src/web/diff.ts`) are feature modules consumed by the
-  bridge. They are not a second daemon, and they must not keep their own
-  task/event cache.
-- The bridge subscribes with `role: "gui"`, so an open dashboard holds the
-  daemon alive through the normal refcount; stopping `kobe web` releases
-  that hold and the normal lazy-shutdown rules apply.
+  `packages/kobe/src/web/diff.ts`, `packages/kobe/src/web/history.ts`,
+  `packages/kobe/src/web/themes.ts`) remain feature modules consumed by the
+  daemon web transport. They are not a second daemon, and they must not keep
+  their own task/event cache.
+- Web dev (`packages/kobe-web/dev.ts`) runs only Vite plus the Node PTY
+  sidecar; Vite proxies `/api` and `/events` to the daemon web port. Desktop
+  uses the same path.
 
-Migration rule: add new daemon-backed browser behaviour to the daemon web
-interface first. Keep the bridge only as compatibility glue until each route
-moves; then delete the adapter.
+Rule: add new daemon-backed browser behaviour to the daemon web interface
+first. Do not add new product behaviour to the legacy `kobe-web/server` bridge
+adapter.
 
 ---
 

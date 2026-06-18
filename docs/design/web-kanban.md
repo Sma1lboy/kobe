@@ -17,8 +17,8 @@
    (`backlog | in_progress | in_review | done | canceled | error`,
    [`task.ts:43`](../../packages/kobe/src/types/task.ts)),与 multica 的 Issue 状态列
    几乎同构;`task.status` RPC 已在 web 放行名单里
-   ([`rpc-allowlist.ts:33`](../../packages/kobe-web/server/rpc-allowlist.ts)),
-   实时管道(daemon → bridge SSE → SPA store)现成。**做到"拖卡片换列"为止,
+   ([`web-rpc-allowlist.ts`](../../packages/kobe-daemon/src/daemon/web-rpc-allowlist.ts)),
+   实时管道(daemon web SSE → SPA store)现成。**做到"拖卡片换列"为止,
    daemon 协议一行都不用改。**
 3. **唯一的硬缺口是列内排序。** `Task` 没有 position 字段,现有 `task.move` 只能在
    侧栏分区内 ±1 挪动。列内自由排序需要新增持久化字段 + 一个 `task.reorder` 类 RPC,
@@ -132,7 +132,7 @@ flowchart TB
 | 能力 | 已有实现 |
 |---|---|
 | 看板形状的状态枚举 | `TaskStatus` 六值,[`task.ts:43`](../../packages/kobe/src/types/task.ts) |
-| 改状态的 RPC | `task.status`,已在 [`WEB_RPC_ALLOWLIST`](../../packages/kobe-web/server/rpc-allowlist.ts) |
+| 改状态的 RPC | `task.status`,已在 [`WEB_RPC_ALLOWLIST`](../../packages/kobe-daemon/src/daemon/web-rpc-allowlist.ts) |
 | 实时推送 | `task.snapshot` / `engine-state` / `worktree.changes` 等 7 频道经 SSE 入 [`store.ts`](../../packages/kobe-web/src/lib/store.ts) |
 | 路由挂载点 | TanStack Router 文件式路由,加 `src/routes/board.tsx` 即得 `/board`(自动 code-split) |
 | 卡片素材 | activity dot([`activity.ts`](../../packages/kobe-web/src/lib/activity.ts))、`prStatus`、脏行计数、vendor |
@@ -147,7 +147,7 @@ flowchart TB
 | store 无乐观更新 | 拖放后卡片要等 daemon 回推才落位,会"跳一下" | R4,可能仅看板局部做乐观层 |
 | 路由级 UI 状态易丢 | issue #7: rail 筛选态在 `/` → `/task/$taskId` 导航时重置 | R5,看板筛选态进 module store 或 URL |
 | `kind: "main"` 任务定位 | 项目根任务不是工作流卡片 | R1 裁决(倾向不入板或单独泳道) |
-| 错误名不过桥 | daemon 会序列化 `name: "IllegalTransitionError"`,但 socket client 抛 `new Error(message)` 丢掉 name,bridge 对一切失败统一回 `{ error: message }` + 500([`bridge.ts`](../../packages/kobe-web/server/bridge.ts))——前端只能脆弱地 string-match | R4 裁决:转发 error name(bridge/client 小改)还是容忍 string-match |
+| 错误名转发 | daemon web route 会保留 `name: "IllegalTransitionError"` 等非普通 Error 名称,前端可按类型分支而不是脆弱地 string-match | R4 已按保留 error name 处理 |
 
 ### 2.4 先例与文档立场
 
@@ -240,8 +240,7 @@ flowchart TB
   最新 snapshot 校验,失效则取消并 toast);双浏览器同拖同卡(接受 last-writer-wins,
   写明即可);**断线防护**——store 已暴露 `daemonConnected` / `streamConnected`,
   任一为 false 时禁用拖放,否则 daemon 重启窗口里的拖动会乐观落位后静默丢失。
-  失败识别:见 §2.3"错误名不过桥"——在此一并裁决转发 `DaemonError.name`(bridge/client
-  小改,daemon 协议不动)还是 string-match;同时留意 `ConcurrencyCapError` 等未来可能
+  失败识别:见 §2.3"错误名转发";同时留意 `ConcurrencyCapError` 等未来可能
   出现的第二种拒绝类型,回滚设计不要写死单一错误。方法:在 store.ts 之外做组件级实验,
   不动全局 store 语义。产出:乐观层归属(组件局部 vs store)+ 清除条件 + 错误转发裁决。
 - **R5 路由与筛选态持有。** `/board` 为顶级路由(与 `/` 并列;原 `/overview`
@@ -398,7 +397,7 @@ owner 拍板把独立 `/issues` 路由折进看板(Option B),顶栏从 Board + I
   [LICENSE](https://github.com/multica-ai/multica/blob/main/LICENSE)(修改版 Apache-2.0,嵌入/托管需商业授权)
 - kobe:[`task.ts`](../../packages/kobe/src/types/task.ts)(TaskStatus)·
   [`protocol.ts`](../../packages/kobe-daemon/src/daemon/protocol.ts)(频道 + RPC)·
-  [`rpc-allowlist.ts`](../../packages/kobe-web/server/rpc-allowlist.ts) ·
+  [`web-rpc-allowlist.ts`](../../packages/kobe-daemon/src/daemon/web-rpc-allowlist.ts) ·
   [`store.ts`](../../packages/kobe-web/src/lib/store.ts) ·
   [`web-dashboard.md`](./web-dashboard.md) · [`tasks.md`](./tasks.md)
 - DnD 候选:[dnd-kit](https://github.com/clauderic/dnd-kit) ·

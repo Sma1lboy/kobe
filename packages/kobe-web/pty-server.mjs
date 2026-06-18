@@ -3,8 +3,8 @@
  * bun, so the live terminals run here as a separate node process).
  *
  * Model: each web PTY tab is identified by a client-generated `tab` id. Its
- * PTY is spawned lazily on first attach (launch spec fetched from the bun
- * bridge by taskId + mode) and kept alive across WebSocket reconnects, so a
+ * PTY is spawned lazily on first attach (launch spec fetched from daemon web
+ * transport by taskId + mode) and kept alive across WebSocket reconnects, so a
  * page refresh re-attaches to the same process. Closing a tab (POST
  * /pty/close) kills its PTY.
  *
@@ -21,7 +21,7 @@ import { createScrollback } from "./pty-scrollback.mjs"
 import { createPtySessionManager } from "./pty-session-lifecycle.mjs"
 
 const PORT = Number.parseInt(process.env.KOBE_PTY_PORT ?? "5175", 10)
-const BRIDGE_PORT = Number.parseInt(process.env.KOBE_BRIDGE_PORT ?? "5174", 10)
+const DAEMON_WEB_PORT = Number.parseInt(process.env.KOBE_DAEMON_WEB_PORT ?? "5174", 10)
 const SCROLLBACK_CAP = 256 * 1024 // bytes of recent output replayed on (re)attach
 const HEALTH_PATH = "/__kobe_web"
 const HEALTH_MARKER = "kobe-web"
@@ -40,7 +40,7 @@ function ptyEnv() {
 
 async function fetchSpec(taskId, mode) {
   const path = mode === "shell" ? "/api/terminal-spec" : "/api/engine-spec"
-  const res = await fetch(`http://localhost:${BRIDGE_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
+  const res = await fetch(`http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error ?? `engine-spec failed (${res.status})`)
   return json // { cwd, command: string[] }
@@ -199,7 +199,7 @@ wss.on("connection", (ws, req) => {
 // Bind loopback by default — a PTY is an arbitrary shell/engine in the
 // worktree, so it must never listen on all interfaces. KOBE_WEB_HOST overrides.
 server.listen(PORT, HOST, () => {
-  process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (bridge :${BRIDGE_PORT})\n`)
+  process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (daemon-web :${DAEMON_WEB_PORT})\n`)
 })
 
 const shutdown = () => {

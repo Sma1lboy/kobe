@@ -1,15 +1,15 @@
-# ADR 0003 - The daemon owns the web transport; the bridge is transitional
+# ADR 0003 - The daemon owns the web transport
 
-- Status: accepted
+- Status: implemented
 - Date: 2026-06-18
 
 ## Context
 
-`kobe web` currently reaches daemon state through a standalone `kobe-web/server`
-bridge. The browser talks HTTP/SSE to the bridge, and the bridge talks JSON-lines
-to the daemon socket. That shape was useful while the dashboard was moving fast:
-web route code could hot-restart without touching the daemon, and the daemon did
-not need to expose browser-facing routes.
+`kobe web` used to reach daemon state through a standalone `kobe-web/server`
+bridge. The browser talked HTTP/SSE to the bridge, and the bridge talked
+JSON-lines to the daemon socket. That shape was useful while the dashboard was
+moving fast: web route code could hot-restart without touching the daemon, and
+the daemon did not need to expose browser-facing routes.
 
 The module has become shallow. Its interface is almost as large as its
 implementation: it owns the HTTP route table, daemon socket subscription,
@@ -20,10 +20,10 @@ HTTP/SSE seam.
 
 ## Decision
 
-The daemon is the long-term owner of the local web transport. Browser and
-desktop front ends should talk directly to a daemon-hosted loopback HTTP/SSE or
-WebSocket interface for daemon-backed data and mutations. The `kobe-web/server`
-bridge is a transitional adapter, not a product seam.
+The daemon is the owner of the local web transport. Browser and desktop front
+ends talk directly to a daemon-hosted loopback HTTP/SSE interface for
+daemon-backed data and mutations. The `kobe-web/server` bridge is not a product
+seam.
 
 The target shape is:
 
@@ -32,11 +32,10 @@ The target shape is:
 - The web SPA and desktop shell use that daemon interface directly.
 - Vite remains a dev-only static asset/HMR host and may proxy to the daemon in
   development.
-- The PTY sidecar may remain a Node adapter while `node-pty` requires Node, but
-  its lifecycle and launch-spec requests should be routed through the daemon
-  interface rather than through a separate bridge.
-- The bridge may keep existing routes during migration, but new daemon-backed
-  browser routes should be added to the daemon interface first.
+- The PTY sidecar remains a Node adapter while `node-pty` requires Node, but
+  its lifecycle and launch-spec requests route through the daemon interface.
+- The legacy bridge code may remain temporarily as dead compatibility source,
+  but new daemon-backed browser routes must be added to the daemon interface.
 
 ## Consequences
 
@@ -49,6 +48,6 @@ The target shape is:
 - Hot-reload convenience is no longer a reason to keep daemon-backed behaviour
   outside the daemon. During development, Vite can reload the SPA while the
   daemon interface stays stable.
-- Migration should happen route-by-route. Start with `/events` and `/api/rpc`,
-  because they are the core daemon-backed paths. Then move session/spec routes,
-  settings/themes/history/notes/diff, and finally static hosting/desktop wiring.
+- The old bridge adapter should not be wired into dev, desktop, CLI, or package
+  builds. Static hosting, dev proxies, PTY launch specs, RPC, and SSE all point
+  at the daemon web transport.

@@ -1,5 +1,5 @@
+import { WEB_RPC_ALLOWLIST, WEB_RPC_ALLOWSET } from "@sma1lboy/kobe-daemon/daemon/web-rpc-allowlist"
 import { describe, expect, it } from "vitest"
-import { WEB_RPC_ALLOWLIST, WEB_RPC_ALLOWSET } from "../server/rpc-allowlist.ts"
 
 /**
  * POST /api/rpc forwards ONLY allowlisted daemon verbs. This test pins the

@@ -25,21 +25,27 @@ function canListen(port) {
   })
 }
 
-async function findPortBlock(start = 5173) {
+async function findPorts(start = 5173, daemonWebPort = 5174) {
+  let webPort = null
   for (let port = start; port < start + 200; port += 1) {
-    if (
-      (await canListen(port)) &&
-      (await canListen(port + 1)) &&
-      (await canListen(port + 2))
-    ) {
+    if (port !== daemonWebPort && (await canListen(port))) {
+      webPort = port
+      break
+    }
+  }
+  if (webPort === null) throw new Error(`no free web port found starting at ${start}`)
+
+  const preferredPty = webPort + 2
+  for (let port = preferredPty; port < preferredPty + 200; port += 1) {
+    if (port !== daemonWebPort && port !== webPort && (await canListen(port))) {
       return {
-        web: port,
-        bridge: port + 1,
-        pty: port + 2,
+        web: webPort,
+        daemonWeb: daemonWebPort,
+        pty: port,
       }
     }
   }
-  throw new Error(`no free 3-port block found starting at ${start}`)
+  throw new Error(`no free PTY port found starting at ${preferredPty}`)
 }
 
 function stopWebProcess() {
@@ -74,13 +80,15 @@ async function waitForUrl(url, timeoutMs = 20_000) {
 }
 
 async function startKobeWeb() {
-  const ports = await findPortBlock(
+  const daemonWebPort = Number.parseInt(process.env.KOBE_DAEMON_WEB_PORT ?? "5174", 10)
+  const ports = await findPorts(
     Number.parseInt(process.env.KOBE_DESKTOP_PORT ?? "5173", 10),
+    daemonWebPort,
   )
   const env = {
     ...process.env,
     KOBE_WEB_PORT: String(ports.web),
-    KOBE_BRIDGE_PORT: String(ports.bridge),
+    KOBE_DAEMON_WEB_PORT: String(ports.daemonWeb),
     KOBE_PTY_PORT: String(ports.pty),
   }
   webProcess = spawn("bun", ["run", "dev.ts"], {
