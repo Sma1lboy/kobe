@@ -1,0 +1,9 @@
+name: "kobe-clean-launch"
+brief: "kobe 首发宣发图普通版：用真实 TUI 截图和克制的大字排版展示 terminal-native parallel agents。"
+style: "clean-product-hero"
+content:
+  headline: "kobe"
+  subject: "a restrained first-launch social hero image for kobe: a clean dark product-promo layout with the provided real kobe TUI screenshot as the main subject; match the left task rail, large central engine pane, right file tree, lower-right shell pane, tmux borders, orange focus accents, keyboard footer, and branch/worktree context; include a large visible launch lockup reading \"kobe\" and \"parallel agents, one terminal\" with the full kobe word fully visible and not cropped; avoid people, moon scenes, hardware props, robots, mascots, and surreal elements"
+deliverables:
+  - id: "hero-card"
+    size: [2400, 1260]

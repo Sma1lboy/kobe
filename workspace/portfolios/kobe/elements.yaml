@@ -18,4 +18,9 @@ elements:
     type: "visual-direction"
     status: "accepted"
     tags: ["warm-paper", "clay", "charcoal", "copper"]
-    description: "Warm paper, clay, graphite, and copper tones with restrained blue instrument light."
+    description: "Warm paper, clay, graphite, copper, and shell tones with restrained blue signal light."
+  - id: "clean-terminal-poster"
+    type: "motif"
+    status: "accepted"
+    tags: ["terminal", "launch", "product"]
+    description: "A restrained product poster where the real TUI screenshot carries the launch message."

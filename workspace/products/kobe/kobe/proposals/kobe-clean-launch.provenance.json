@@ -1,0 +1,23 @@
+{
+  "producer": "codex frontend-design + marketing-harness",
+  "source_brief": "User requested a new restrained launch-promo version using the latest real kobe TUI screenshot, with no weird elements and no narrative scene.",
+  "design_rationale": {
+    "subject": "kobe, a terminal-native orchestrator for parallel AI coding sessions",
+    "audience": "developers who work in tmux, SSH, devboxes, and local terminals",
+    "single_job": "make kobe read as a serious terminal product through the real TUI, not through an invented sci-fi scene",
+    "palette": ["#191713", "#F7F1E8", "#D8C8B0", "#D87857", "#EBBBAC", "#3A342D", "#11161C", "#2F6F9F"],
+    "signature_element": "the real kobe TUI screenshot framed as the main product surface under a large, fully visible kobe title lockup",
+    "revision_note": "This is a new clean-launch version rather than a replacement for the lunar launch version. It removes astronaut, moon, hardware, robot, and surreal elements."
+  },
+  "references_read": [
+    "docs/DESIGN.md",
+    "docs/ARCHITECTURE.md",
+    "docs/HARNESS.md",
+    "docs/KEYBINDINGS.md",
+    "packages/kobe/CHANGELOG.md",
+    "gpt-image references/gallery-ui-ux-mockups.md",
+    "gpt-image references/gallery-typography-and-posters.md",
+    "gpt-image references/craft.md",
+    "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
+  ]
+}
