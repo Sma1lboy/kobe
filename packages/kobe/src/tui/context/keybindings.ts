@@ -317,6 +317,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     hint: { keys: "t", label: "sort", status: false },
   },
   {
+    id: "sidebar.projectFilter",
+    scope: "sidebar",
+    keys: ["ctrl+p"],
+    category: "Sidebar",
+    description: "Cycle task project filter",
+    hint: { keys: "ctrl+p", label: "project", status: false },
+  },
+  {
     id: "sidebar.delete",
     scope: "sidebar",
     keys: ["d"],

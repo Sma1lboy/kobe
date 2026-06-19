@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { buildRows, reconcileSidebarRows, sameSidebarRowTask } from "../../src/tui/panes/sidebar/groups.ts"
+import {
+  buildProjectOptions,
+  buildRows,
+  reconcileSidebarRows,
+  sameSidebarRowTask,
+} from "../../src/tui/panes/sidebar/groups.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -113,6 +118,75 @@ describe("sidebar task ordering", () => {
     )
 
     expect(ids(rows)).toEqual(["project-a", "project-b"])
+  })
+
+  it("keeps project rows visible while filtering regular tasks to one project", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-pochi", title: "pochi", kind: "main", repo: "/repo/pochi" }),
+        task({ id: "kobe-a", title: "kobe a", repo: "/repo/kobe" }),
+        task({ id: "pochi-a", title: "pochi a", repo: "/repo/pochi" }),
+      ],
+      "active",
+      "",
+      "default",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["project-kobe", "project-pochi", "kobe-a"])
+  })
+
+  it("composes project filtering with recent task ordering", () => {
+    const rows = buildRows(
+      [
+        task({ id: "kobe-old", title: "old", repo: "/repo/kobe", updatedAt: "2026-01-01T00:00:00.000Z" }),
+        task({ id: "pochi-new", title: "other", repo: "/repo/pochi", updatedAt: "2026-01-05T00:00:00.000Z" }),
+        task({ id: "kobe-new", title: "new", repo: "/repo/kobe", updatedAt: "2026-01-03T00:00:00.000Z" }),
+      ],
+      "active",
+      "",
+      "recent",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["kobe-new", "kobe-old"])
+  })
+})
+
+describe("sidebar project filter options", () => {
+  it("includes saved project rows even when the current view has no tasks for them", () => {
+    const options = buildProjectOptions(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-pochi", title: "pochi", kind: "main", repo: "/repo/pochi" }),
+        task({ id: "kobe-active", title: "active", repo: "/repo/kobe" }),
+        task({ id: "pochi-archived", title: "archived", repo: "/repo/pochi", archived: true }),
+      ],
+      "active",
+    )
+
+    expect(options).toEqual([
+      { repo: "/repo/kobe", label: "kobe", count: 1 },
+      { repo: "/repo/pochi", label: "pochi", count: 0 },
+    ])
+  })
+
+  it("counts tasks in the active view and disambiguates basename collisions", () => {
+    const options = buildProjectOptions(
+      [
+        task({ id: "project-a", title: "kobe", kind: "main", repo: "/repo/a/kobe" }),
+        task({ id: "project-b", title: "kobe", kind: "main", repo: "/repo/b/kobe" }),
+        task({ id: "task-a", title: "a", repo: "/repo/a/kobe" }),
+        task({ id: "task-b", title: "b", repo: "/repo/b/kobe" }),
+      ],
+      "active",
+    )
+
+    expect(options).toEqual([
+      { repo: "/repo/a/kobe", label: "a/kobe", count: 1 },
+      { repo: "/repo/b/kobe", label: "b/kobe", count: 1 },
+    ])
   })
 })
 

@@ -47,6 +47,7 @@ export type TaskSortMode = "default" | "recent"
  * placeholder, separator) can be added without rewriting the renderer.
  */
 export type SidebarRow = { kind: "task"; task: Task; flatIndex: number }
+export type SidebarProjectOption = { repo: string; label: string; count: number }
 
 /**
  * Filter tasks by the active view. Active view (= "Working session")
@@ -77,6 +78,10 @@ export function filterByView(tasks: readonly Task[], view: SidebarView): Task[] 
  * Search preserves the main → pinned → regular ordering so users
  * filtering inside a long list still see the same predictable shape.
  *
+ * `projectFilter` narrows only regular task rows. Main project rows stay in
+ * their separate PROJECTS section so the filter does not recreate repo
+ * grouping; it just scopes the flat TASKS section.
+ *
  * Why two passes rather than a single sort: the regular-task ordering
  * is owned by the orchestrator (createdAt-derived ULID order), and
  * sorting both groups together would scramble it. A stable partition
@@ -94,9 +99,11 @@ export function buildRows(
   view: SidebarView,
   searchQuery?: string,
   sortMode: TaskSortMode = "default",
+  projectFilter?: string | null,
 ): SidebarRow[] {
   const filteredByView = filterByView(tasks, view)
   const q = searchQuery?.trim() ?? ""
+  const projectKey = projectFilter ? sidebarProjectKey(projectFilter) : null
   const filtered = q
     ? filteredByView.filter((t) => fuzzyMatch(q, `${t.title} ${repoBasename(t.repo)}`))
     : filteredByView
@@ -112,6 +119,7 @@ export function buildRows(
       main.push(t)
       continue
     }
+    if (projectKey && sidebarProjectKey(t.repo) !== projectKey) continue
     if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
@@ -166,9 +174,43 @@ export function repoBasename(repo: string): string {
   return segments[segments.length - 1] ?? repo
 }
 
-function sidebarProjectKey(repo: string): string {
+export function sidebarProjectKey(repo: string): string {
   const trimmed = repo.trim().replace(/[\\/]+$/, "")
   return trimmed || repo
+}
+
+export function sidebarProjectLabel(repo: string, repos: readonly string[]): string {
+  const base = repoBasename(repo)
+  const collides = repos.some((r) => r !== repo && repoBasename(r) === base)
+  if (!collides) return base
+  return repo
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/]+/)
+    .slice(-2)
+    .join("/")
+}
+
+export function buildProjectOptions(tasks: readonly Task[], view: SidebarView): SidebarProjectOption[] {
+  const wantArchived = view === "archived"
+  const byKey = new Map<string, { repo: string; count: number }>()
+  for (const task of tasks) {
+    const key = sidebarProjectKey(task.repo)
+    const next = byKey.get(key) ?? { repo: task.repo, count: 0 }
+    if (task.kind === "main") {
+      next.repo = task.repo
+    } else if (task.archived === wantArchived) {
+      next.count += 1
+    }
+    byKey.set(key, next)
+  }
+  const repos = [...byKey.values()].map((entry) => entry.repo)
+  return [...byKey.values()]
+    .map((entry) => ({
+      repo: entry.repo,
+      label: sidebarProjectLabel(entry.repo, repos),
+      count: entry.count,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 }
 
 /** Extract the flat list of navigable task ids. */
