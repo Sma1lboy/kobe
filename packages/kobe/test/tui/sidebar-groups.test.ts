@@ -85,6 +85,35 @@ describe("sidebar task ordering", () => {
     // alpha before zeta despite zeta being more recent.
     expect(ids(rows)).toEqual(["a", "z", "reg"])
   })
+
+  it("shows one project row when stale duplicate main tasks share a repo", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-a", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-b", title: "kobe copy", kind: "main", repo: "/repo/kobe/" }),
+        task({ id: "regular", title: "task" }),
+      ],
+      "active",
+      "",
+      "default",
+    )
+
+    expect(ids(rows)).toEqual(["project-a", "regular"])
+  })
+
+  it("does not collapse distinct projects just because their basenames match", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-a", title: "kobe", kind: "main", repo: "/repo/a/kobe" }),
+        task({ id: "project-b", title: "kobe", kind: "main", repo: "/repo/b/kobe" }),
+      ],
+      "active",
+      "",
+      "default",
+    )
+
+    expect(ids(rows)).toEqual(["project-a", "project-b"])
+  })
 })
 
 /**

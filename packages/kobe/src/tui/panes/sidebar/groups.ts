@@ -103,9 +103,16 @@ export function buildRows(
   const main: Task[] = []
   const pinnedRegular: Task[] = []
   const regular: Task[] = []
+  const seenMainRepos = new Set<string>()
   for (const t of filtered) {
-    if (t.kind === "main") main.push(t)
-    else if (t.pinned === true) pinnedRegular.push(t)
+    if (t.kind === "main") {
+      const key = sidebarProjectKey(t.repo)
+      if (seenMainRepos.has(key)) continue
+      seenMainRepos.add(key)
+      main.push(t)
+      continue
+    }
+    if (t.pinned === true) pinnedRegular.push(t)
     else regular.push(t)
   }
   // Projects "sit tight": always alphabetised by repo basename so two repos
@@ -157,6 +164,11 @@ function taskTime(task: Task): number {
 export function repoBasename(repo: string): string {
   const segments = repo.split("/").filter(Boolean)
   return segments[segments.length - 1] ?? repo
+}
+
+function sidebarProjectKey(repo: string): string {
+  const trimmed = repo.trim().replace(/[\\/]+$/, "")
+  return trimmed || repo
 }
 
 /** Extract the flat list of navigable task ids. */
