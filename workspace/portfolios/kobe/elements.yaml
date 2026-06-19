@@ -24,3 +24,8 @@ elements:
     status: "accepted"
     tags: ["terminal", "launch", "product"]
     description: "A restrained product poster where the real TUI screenshot carries the launch message."
+  - id: "cafe-laptop-workflow"
+    type: "motif"
+    status: "accepted"
+    tags: ["cafe", "laptop", "terminal", "launch"]
+    description: "A single-person everyday developer scene where the laptop screen clearly shows the kobe TUI."

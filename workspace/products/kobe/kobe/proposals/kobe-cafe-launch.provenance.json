@@ -1,0 +1,19 @@
+{
+  "producer": "codex frontend-design + marketing-harness",
+  "source_brief": "User requested changing the promo image to one person in a cafe with the screen showing kobe.",
+  "design_rationale": {
+    "subject": "kobe, shown as a real terminal workflow on a cafe laptop screen",
+    "audience": "developers who work from laptops, terminals, cafes, SSH sessions, and local devboxes",
+    "single_job": "make kobe feel usable in an everyday developer workflow while keeping the TUI legible on screen",
+    "palette": ["#191713", "#F7F1E8", "#D8C8B0", "#D87857", "#EBBBAC", "#3A342D", "#11161C", "#6F4632", "#E9D7C2", "#2F6F9F"],
+    "signature_element": "a laptop in a quiet cafe with the real kobe TUI visible as the screen content",
+    "revision_note": "This is a new cafe-launch variant rather than a replacement for the existing lunar or clean product-promo variants."
+  },
+  "references_read": [
+    "gpt-image references/gallery-screen-photography.md",
+    "gpt-image references/gallery-photography.md",
+    "gpt-image references/gallery-ui-ux-mockups.md",
+    "gpt-image references/craft.md",
+    "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
+  ]
+}

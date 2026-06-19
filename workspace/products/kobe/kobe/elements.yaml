@@ -37,3 +37,8 @@ elements:
     path: "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
     tags: ["ui-reference", "terminal", "tmux", "clean-launch"]
     description: "Updated kobe terminal workspace screenshot used for the cleaner product-promo variant."
+  - id: "cafe-laptop-use-case"
+    type: "scene"
+    status: "accepted"
+    tags: ["cafe", "laptop", "lifestyle", "launch"]
+    description: "One fictional adult developer working in a quiet cafe with kobe clearly visible on the laptop screen."
