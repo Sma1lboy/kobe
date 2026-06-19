@@ -64,7 +64,6 @@ artifacts:
 policy:
   requireHumanApprovalBeforeRender: true
   requireHumanApprovalBeforePublish: true
-  allowRemoteRuntimeFallback: false
   allowRootWorkspaceBootstrap: false
 ```
 
@@ -94,9 +93,23 @@ harness publish --metadata packages/branding/marketing.harness.yaml --campaign l
 - 2026-06-19: Split metadata defaults so source inputs live under
   `packages/branding/marketing` while only approved static assets and manifests
   land under `packages/branding/public/marketing`.
-- Still open: kobe currently has the whole runtime repo checked out at
-  `.agents/skills/marketing-harness`. Replacing it with only the thin skill
-  payload requires removing or moving the current submodule checkout.
+- 2026-06-19: Removed the submodule's root-level `src` runtime package in
+  `marketing-harness` commit `857c663` and moved the retained runtime into
+  `skills/marketing-harness/scripts/`. The skill now uses bundled scripts
+  instead of ancestor checkout discovery, installed `harness`, or remote `uvx`
+  fallback.
+- 2026-06-19: Removed the Typer package entry point, pydantic/Pillow/boto3
+  dependency shape, style proposal commands, regression command, CDN/release
+  publishing, and implicit model requirement. `provider.model` is optional and
+  is only passed through when a brand lock declares it.
+- 2026-06-19: Moved the example from root `workspace/products/...` to
+  `examples/codefox/packages/branding/marketing`, removed extra multi-product
+  examples and stale LFS attributes, and reduced examples from 1.1 MB to
+  116 KB. Default packaged skill zip is 29.8 KB and still excludes examples.
+- Still open: kobe still vendors the maintainer checkout as a submodule, so
+  root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
+  outside the installable payload. Replacing the submodule with only generated
+  skill payload contents is a separate layout choice.
 
 ### 1. The installed skill is too heavy
 
@@ -106,8 +119,9 @@ The submodule brings a full harness repo into kobe:
 .agents/skills/marketing-harness/
   scripts/
   skills/
-  src/
   tests/
+  pyproject.toml
+  uv.lock
 ```
 
 That is heavier than the expected skill shape. A skill should be a thin
@@ -120,8 +134,8 @@ Why this is a bug:
 
 - It makes a simple agent skill look like an embedded product dependency.
 - The product repo now carries implementation surfaces it does not own.
-- `src/` and tests inside the skill submodule create confusion about where
-  fixes belong and what kobe is expected to maintain.
+- tests and maintainer files inside the skill submodule create confusion about
+  where fixes belong and what kobe is expected to maintain.
 - It makes review harder: the useful skill interface is small, but the
   installed tree is large enough to hide side effects.
 
@@ -129,15 +143,16 @@ Expected fix:
 
 - Publish or expose a slim skill artifact containing only `SKILL.md`, launcher
   scripts, metadata schema, and minimal examples.
-- Keep the Python runtime as a separately versioned tool dependency.
-- If the runtime must live nearby during development, make that a developer
-  checkout mode, not the installed skill shape.
-- Document the boundary: "skill adapter" versus "harness runtime".
+- Keep runtime code under `skills/marketing-harness/scripts/` if it is required
+  for an installed skill.
+- Keep maintainer tests and packaging out of the packaged skill artifact.
+- Document the boundary: "installable skill payload" versus "maintainer
+  checkout".
 
-### 2. Runtime resolution is not reproducible
+### 2. Runtime resolution was not reproducible
 
-The installed skill package does not contain the Python runtime. The launcher
-searches for an ancestor repo, then an installed `harness`, then can run a
+The installed skill package did not contain the Python runtime. The launcher
+searched for an ancestor repo, then an installed `harness`, then could run a
 remote `uvx --from git+https://github.com/CodeFox-Repo/marketing-harness`
 fallback.
 
@@ -147,14 +162,14 @@ Why this is a bug:
 - The remote fallback is not pinned by the product repo.
 - An AI skill can silently run a newer runtime than the reviewed instructions.
 
-Expected fix:
+Fixed behavior:
 
-- Pin the runtime by submodule commit, package lock, or an explicit tool
-  version in metadata.
-- Disable remote runtime fallback unless metadata explicitly allows it.
-- Record the runtime commit/version in `run.lock.json`.
+- The launcher now runs the bundled `scripts/cli.py` from the installed skill.
+- There is no ancestor discovery, PATH `harness` resolution, or remote `uvx`
+  fallback.
+- Direct `python3` validate/render dry-run smoke was verified.
 
-### 3. CodeFox defaults leak into a generic skill
+### 3. CodeFox defaults leaked into a generic skill
 
 The skill instructions and CLI defaults point at
 `workspace/products/codefox/codefox/...`.
@@ -165,13 +180,14 @@ Why this is a bug:
 - Agents may run the wrong campaign or create the wrong directory tree.
 - It blocks repos like kobe from using package-scoped brand assets.
 
-Expected fix:
+Fixed behavior:
 
-- Remove CodeFox defaults from the CLI.
-- Require metadata or explicit `--brand` and `--campaign` paths.
-- Keep CodeFox only as an example fixture.
+- CodeFox defaults were removed from the command path.
+- Metadata or explicit `--brand` and campaign paths are required.
+- CodeFox remains only as a package-local example fixture under
+  `examples/codefox/packages/branding/marketing`.
 
-### 4. The docs and CLI disagree on publish behavior
+### 4. The docs and CLI disagreed on publish behavior
 
 The skill instructions describe local review through the repo channel, but the
 CLI defaults `publish` to the CDN channel.
@@ -181,13 +197,13 @@ Why this is a bug:
 - A user or agent can publish to a higher-risk channel by omission.
 - Review and cost policy is enforced by prose, not command semantics.
 
-Expected fix:
+Fixed behavior:
 
-- Make the safest local channel the default, or require `--channel`.
+- The only supported publish channel is now `repo`.
 - Add a `plan` or `dry-run` command that prints exact writes and destinations.
 - Require an explicit approval flag for live render and publish.
 
-### 5. Bootstrap mutates too much state
+### 5. Bootstrap mutated too much state
 
 The bootstrap script creates root-level directories, edits `.gitignore`,
 appends LFS attributes, and has a destructive example-copy path.
@@ -198,11 +214,11 @@ Why this is a bug:
 - Root-level `workspace/` is not acceptable for kobe.
 - Deletion is especially unsafe for agent-driven workflows.
 
-Expected fix:
+Fixed behavior:
 
-- Make bootstrap create-only and metadata-driven.
-- Never delete existing paths.
-- Print a plan before mutating `.gitignore`, `.gitattributes`, or directories.
+- Bootstrap is create-only, metadata-driven, and dry-run by default.
+- It never deletes existing paths.
+- It no longer edits `.gitignore` or `.gitattributes`.
 
 ### 6. Output value is unclear
 
@@ -222,7 +238,7 @@ Expected fix:
   directory.
 - Keep prompt-heavy run locks out of public assets unless explicitly approved.
 
-### 7. The style producer is too weak to be the default
+### 7. The style producer was too weak to be the default
 
 The local producer is deterministic scaffold logic. It extracts colors and
 fills generic tokens, but it is not a real design producer.
@@ -233,13 +249,13 @@ Why this is a bug:
 - It conflicts with the skill story that design judgment comes from a
   brand/frontend/visual design producer.
 
-Expected fix:
+Fixed behavior:
 
-- Rename local producer behavior to `scaffold`.
-- Do not make it the default creative producer.
-- Prefer ingesting a structured output from an explicit design producer.
+- Built-in style proposal/promote commands were removed from the skill runtime.
+- Agents should use an explicit local design skill or human-provided proposal,
+  then validate and dry-run with marketing-harness.
 
-### 8. The image provider contract is brittle
+### 8. The image provider contract was brittle
 
 The provider locates a `gpt-image` command through environment, PATH, or a
 Codex-home skill path, then crops generated results to the requested size.
@@ -250,13 +266,15 @@ Why this is a bug:
 - Post-generation crop/resize can damage composition and text.
 - Error classification relies on string matching.
 
-Expected fix:
+Fixed behavior:
 
-- Resolve providers through metadata.
-- Make resize/crop policy explicit and opt-in.
-- Record provider command, version, model, and exact post-processing steps.
+- `provider.model` is optional; the marketing skill does not maintain OpenAI
+  model defaults.
+- The provider command is still resolved locally through `gpt-image` or
+  `HARNESS_SKILL_CLI_COMMAND`.
+- Post-generation resize/crop was removed from marketing-harness.
 
-### 9. Example assets have an LFS mismatch
+### 9. Example assets had an LFS mismatch
 
 The example directories contain `.gitattributes` rules for raster assets, but
 the checked-in PNGs are not LFS pointers.
@@ -266,13 +284,13 @@ Why this is a bug:
 - Cloning the submodule can warn that pointer files were expected.
 - Parent repos may appear dirty or require workaround config.
 
-Expected fix:
+Fixed behavior:
 
-- Either migrate example binaries to real LFS objects or remove the LFS attrs
-  from example fixtures.
-- Verify a clean clone with Git LFS enabled and disabled.
+- Removed stale example `.gitattributes` rules while keeping the small example
+  PNG references.
+- Default package still excludes examples.
 
-### 10. Implicit invocation is too broad
+### 10. Implicit invocation was too broad
 
 The skill config allows implicit invocation even though render and publish can
 spend money and mutate files.
@@ -282,10 +300,10 @@ Why this is a bug:
 - A marketing skill has a higher side-effect profile than a pure advice skill.
 - Agents need a narrower trigger boundary before spending API credits.
 
-Expected fix:
+Fixed behavior:
 
-- Keep read-only validation/proposal commands implicit if useful.
-- Require explicit user intent for live render, publish, or bootstrap.
+- Skill metadata disables implicit invocation.
+- Live render and publish remain explicit user-intent workflows in `SKILL.md`.
 
 ## Fix process
 
