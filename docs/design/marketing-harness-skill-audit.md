@@ -21,17 +21,19 @@ That changes the interface contract:
 - Keep raw generated outputs ephemeral unless a human explicitly promotes them.
 
 For kobe, the repo root should not gain a generic `workspace/` tree. Marketing
-inputs and approved public assets should live under a declared package-owned
-location. The likely kobe shape is:
+source inputs and approved public assets should live under declared
+package-owned locations, but not the same one. The likely kobe shape is:
 
 ```text
 packages/branding/
-  public/
-    marketing/
-      brand.lock.yaml
-      campaigns/
-      references/
-      published/
+  marketing/
+    brand.lock.yaml
+    campaigns/
+    references/
+    proposals/
+  public/marketing/
+    <approved assets and manifests>
+  .harness/out/
 ```
 
 The exact directory can change, but it must be supplied by metadata. The
@@ -47,16 +49,16 @@ discover from the product repo:
 project:
   id: kobe
   root: .
-  marketingRoot: packages/branding/public/marketing
+  marketingRoot: packages/branding/marketing
 
 brand:
-  lock: packages/branding/public/marketing/brand.lock.yaml
-  campaigns: packages/branding/public/marketing/campaigns
-  references: packages/branding/public/marketing/references
+  lock: packages/branding/marketing/brand.lock.yaml
+  campaigns: packages/branding/marketing/campaigns
+  references: packages/branding/marketing/references
 
 artifacts:
   scratch: packages/branding/.harness/out
-  approved: packages/branding/public/marketing/published
+  approved: packages/branding/public/marketing
   retainRawRuns: false
 
 policy:
@@ -75,6 +77,26 @@ harness publish --metadata packages/branding/marketing.harness.yaml --campaign l
 ```
 
 ## Bugs and design gaps to record during fixes
+
+### Fix log
+
+- 2026-06-19: Upstream skill/runtime patch started in the
+  `marketing-harness` submodule. The skill adapter now supports metadata-first
+  command expansion, defaults remote runtime fallback off, makes bootstrap
+  dry-run/create-only by default, disables implicit invocation, requires
+  `--brand` at the CLI boundary, and changes CLI publish default to `repo`.
+- 2026-06-19: Verified the default packaged skill zip contains only the thin
+  skill payload and does not include root `src/`, `tests/`, or `examples/`.
+  Package smoke measured 15.2 KB.
+- 2026-06-19: Added a packaging guard so top-level `src/` or `tests/` inside
+  the skill payload is rejected; `scripts/`, `references/`, `assets/`, and
+  `agents/` remain the intended skill directories.
+- 2026-06-19: Split metadata defaults so source inputs live under
+  `packages/branding/marketing` while only approved static assets and manifests
+  land under `packages/branding/public/marketing`.
+- Still open: kobe currently has the whole runtime repo checked out at
+  `.agents/skills/marketing-harness`. Replacing it with only the thin skill
+  payload requires removing or moving the current submodule checkout.
 
 ### 1. The installed skill is too heavy
 
