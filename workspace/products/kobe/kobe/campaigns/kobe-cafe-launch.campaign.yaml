@@ -1,0 +1,9 @@
+name: "kobe-cafe-launch"
+brief: "kobe 首发宣发图咖啡馆版：一个人在咖啡馆使用笔记本，屏幕里清楚显示 kobe TUI。"
+style: "cafe-product-hero"
+content:
+  headline: "kobe"
+  subject: "a first-launch social hero image for kobe: one fictional adult developer sitting alone at a modern quiet cafe table using a laptop; the laptop screen faces the viewer and clearly shows the kobe TUI, with the left task rail, central engine pane, right file tree, lower shell pane, tmux borders, orange focus accents, keyboard footer, and branch/worktree context; keep the cafe believable and restrained with warm daylight, coffee cup, notebook, and subtle background blur; include a small clean launch lockup reading \"kobe\" and \"parallel agents, one terminal\" in safe empty space; avoid extra people, face close-ups, generic dashboards, browser chrome, robots, mascots, and surreal elements"
+deliverables:
+  - id: "hero-card"
+    size: [2400, 1260]

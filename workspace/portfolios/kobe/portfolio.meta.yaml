@@ -19,8 +19,10 @@ visual_direction:
     - "parallel task orchestration"
     - "tmux cockpit"
     - "tmux workspace"
+    - "cafe laptop workflow"
   shared_motifs:
     - "moon-surface field workstation"
     - "dark terminal UI as the product focal point"
     - "large lowercase product typography"
+    - "one-person cafe laptop scene"
     - "thin routing traces between parallel agent lanes"
