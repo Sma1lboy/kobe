@@ -1,4 +1,4 @@
-# kobe Lunar Launch Visual
+# kobe Clean Launch Visual
 
 Create a first-launch promotional image for kobe, a local-first terminal UI for
 running many AI coding sessions at once.
@@ -7,16 +7,18 @@ The subject is not a generic AI dashboard. The image should make the terminal
 product unmistakable: a dark TUI with a task rail, engine pane, ops/diff pane,
 shell pane, tmux-like borders, compact status chips, and parallel worktree lanes.
 
-The launch concept is field computing on the moon: a suited developer or mission
-operator uses kobe from a rugged lunar workstation while Earth hangs in the sky.
-The moon setting should feel like serious engineering hardware, not fantasy.
+The launch concept is a plain, product-first promo card: a real kobe terminal
+workspace, large lowercase "kobe" typography, and the line "parallel agents,
+one terminal". Keep it ordinary and precise rather than cinematic or narrative.
 
 Design notes:
 
-- Palette direction: warm off-white lunar dust, clay, shell pink, graphite, ink,
-  copper, and one restrained blue signal accent.
-- Mood: precise, cinematic, technical, and calm.
-- Signature element: the TUI is reflected in the astronaut visor and repeated on
-  the rugged terminal screen as the actual product surface.
+- Palette direction: warm off-white, clay, shell pink, graphite, ink, and one
+  restrained blue signal accent.
+- Mood: precise, product-led, technical, and calm.
+- Signature element: the provided TUI screenshot is the product surface, framed
+  cleanly and kept legible.
 - Avoid official Claude or Anthropic marks. This can be Claude-like in warmth,
   not a Claude-branded image.
+- Avoid moon scenes, astronauts, people, robots, mascots, hardware props, and
+  generic hologram dashboards.

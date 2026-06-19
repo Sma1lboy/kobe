@@ -14,10 +14,13 @@ voice:
 visual_direction:
   keywords:
     - "warm lunar technology"
+    - "warm terminal technology"
     - "real terminal panes"
     - "parallel task orchestration"
     - "tmux cockpit"
+    - "tmux workspace"
   shared_motifs:
     - "moon-surface field workstation"
     - "dark terminal UI as the product focal point"
+    - "large lowercase product typography"
     - "thin routing traces between parallel agent lanes"

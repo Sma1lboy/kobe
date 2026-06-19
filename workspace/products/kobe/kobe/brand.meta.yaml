@@ -25,8 +25,10 @@ visual_direction:
   accepted_styles:
     - "real TUI panes as the main subject"
     - "lunar field hardware and mission-control atmosphere"
-    - "warm off-white, clay, graphite, and copper palette with minimal blue signal light"
+    - "large clean product-launch typography"
+    - "warm off-white, clay, graphite, copper, and shell palette with minimal blue signal light"
   rejected_styles:
+    - "for clean product-promo variants: moon scenes, astronauts, people, robots, or hardware props"
     - "Claude logo or official Anthropic marks"
     - "abstract robot mascots"
     - "illegible wall of random terminal text"
