@@ -1,0 +1,4 @@
+[submodule ".agents/skills/marketing-harness"]
+	path = .agents/skills/marketing-harness
+	url = https://github.com/CodeFox-Repo/marketing-harness
+	ignore = dirty
