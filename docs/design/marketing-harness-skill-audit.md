@@ -173,6 +173,12 @@ accepted state -> next production
   validate/state/dry-run/live-fail. The first `rtk`-prefixed command failed
   because the sandbox lacked `rtk`, then direct `python3` launcher commands
   completed the smoke.
+- 2026-06-19: Documented the recommended sharing model in `marketing-harness`
+  commit `60248ed`: personal and organization users should fork the upstream
+  skill repo, then clone/install/pin their own fork. The fork owns shared
+  metadata, policy, producer preferences, templates, and install notes; product
+  repos still own product-specific theme locks, campaigns, accepted state, and
+  public assets.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
