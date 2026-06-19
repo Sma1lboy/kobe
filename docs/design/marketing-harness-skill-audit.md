@@ -17,8 +17,10 @@ That changes the interface contract:
 - Inject project-specific paths and policy through YAML or JSON metadata.
 - Prefer one explicit metadata file over many positional CLI defaults.
 - Keep the installed skill thin: instructions plus small adapter scripts.
-- Make every mutating command explain its planned writes before it writes.
+- Avoid user-facing mutating commands for asset intake or promotion.
+- Make every internal mutating helper explain its planned writes before it writes.
 - Keep raw generated outputs ephemeral unless a human explicitly promotes them.
+- Treat accepted assets as durable state for the next production cycle.
 
 For kobe, the repo root should not gain a generic `workspace/` tree. Marketing
 source inputs and approved public assets should live under declared
@@ -29,8 +31,10 @@ packages/branding/
   marketing/
     brand.lock.yaml
     campaigns/
+    plans/
     references/
     proposals/
+    accepted.yaml
   public/marketing/
     <approved assets and manifests>
   .harness/out/
@@ -63,16 +67,20 @@ artifacts:
 
 policy:
   requireHumanApprovalBeforeRender: true
-  requireHumanApprovalBeforePublish: true
+  requireHumanApprovalBeforeStateUpdate: true
   allowRootWorkspaceBootstrap: false
+
+state:
+  plans: packages/branding/marketing/plans
+  accepted: packages/branding/marketing/accepted.yaml
 ```
 
-Scripts should receive this metadata path directly, for example:
+Agents may call bundled scripts as private helpers with this metadata path, but
+the user-facing asset lifecycle is not a command surface. The intended loop is:
 
-```bash
-harness validate --metadata packages/branding/marketing.harness.yaml
-harness render --metadata packages/branding/marketing.harness.yaml --campaign launch
-harness publish --metadata packages/branding/marketing.harness.yaml --campaign launch
+```text
+brand state -> production plan -> generated candidates -> user acceptance ->
+accepted state -> next production
 ```
 
 ## Bugs and design gaps to record during fixes
@@ -106,6 +114,10 @@ harness publish --metadata packages/branding/marketing.harness.yaml --campaign l
   `examples/codefox/packages/branding/marketing`, removed extra multi-product
   examples and stale LFS attributes, and reduced examples from 1.1 MB to
   116 KB. Default packaged skill zip is 29.8 KB and still excludes examples.
+- 2026-06-19: Removed the user-facing asset `publish` command in
+  `marketing-harness` commit `4de1ca9`. The skill now frames durable assets as
+  `planning -> candidates -> user acceptance -> accepted.yaml state -> next
+  production`; scratch outputs are not state.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
@@ -187,21 +199,27 @@ Fixed behavior:
 - CodeFox remains only as a package-local example fixture under
   `examples/codefox/packages/branding/marketing`.
 
-### 4. The docs and CLI disagreed on publish behavior
+### 4. The asset publish command was the wrong state model
 
-The skill instructions describe local review through the repo channel, but the
-CLI defaults `publish` to the CDN channel.
+The skill instructions treated asset promotion as a command flow. Earlier
+runtime behavior also had higher-risk publish channels. That does not match the
+desired agent workflow, where assets should become durable only after planning,
+production, and explicit user acceptance of exact candidates.
 
 Why this is a bug:
 
-- A user or agent can publish to a higher-risk channel by omission.
-- Review and cost policy is enforced by prose, not command semantics.
+- A user or agent can add assets by command instead of through reviewed
+  production state.
+- Review and cost policy is enforced by prose instead of lifecycle state.
+- Generated scratch outputs can be mistaken for approved product assets.
 
 Fixed behavior:
 
-- The only supported publish channel is now `repo`.
-- Add a `plan` or `dry-run` command that prints exact writes and destinations.
-- Require an explicit approval flag for live render and publish.
+- The user-facing `publish` command was removed from the skill runtime.
+- Durable assets flow through plan, generated candidates, explicit user
+  acceptance, and `accepted.yaml`.
+- Acceptance helpers can draft paths/checksums/manifests, but state updates
+  still require the accepted candidate ids or file paths.
 
 ### 5. Bootstrap mutated too much state
 
@@ -220,7 +238,7 @@ Fixed behavior:
 - It never deletes existing paths.
 - It no longer edits `.gitignore` or `.gitattributes`.
 
-### 6. Output value is unclear
+### 6. Output value was unclear
 
 The current flow produces raw run outputs and snapshots, but the raw outputs are
 not necessarily valuable long-term product artifacts.
@@ -229,14 +247,16 @@ Why this is a bug:
 
 - Repos accumulate generated images, prompts, and run locks that may never ship.
 - Reviewers cannot tell which files are approved assets versus scratch output.
-- Published artifacts can carry internal prompts and sidecar content.
+- Accepted artifacts can accidentally carry internal prompts and sidecar
+  content.
 
-Expected fix:
+Fixed behavior:
 
 - Treat raw outputs as scratch by default.
-- Promote only human-approved final assets into the declared public artifact
+- Promote only human-accepted final assets into the declared public artifact
   directory.
-- Keep prompt-heavy run locks out of public assets unless explicitly approved.
+- Record accepted assets in the declared state file for future production.
+- Keep prompt-heavy run locks out of public assets unless explicitly accepted.
 
 ### 7. The style producer was too weak to be the default
 
@@ -292,8 +312,8 @@ Fixed behavior:
 
 ### 10. Implicit invocation was too broad
 
-The skill config allows implicit invocation even though render and publish can
-spend money and mutate files.
+The skill config allowed implicit invocation even though render can spend money
+and accepted-state updates mutate repo files.
 
 Why this is a bug:
 
@@ -303,7 +323,8 @@ Why this is a bug:
 Fixed behavior:
 
 - Skill metadata disables implicit invocation.
-- Live render and publish remain explicit user-intent workflows in `SKILL.md`.
+- Live render and accepted-state updates remain explicit user-intent workflows
+  in `SKILL.md`.
 
 ## Fix process
 
@@ -311,8 +332,9 @@ For every fix, record:
 
 - The bug number above.
 - The changed files.
-- The before/after command behavior.
-- Whether the command is read-only, local-mutating, networked, or publishing.
+- The before/after lifecycle or command behavior.
+- Whether the behavior is read-only, local-mutating, networked, or
+  state-updating.
 - The verification command and result.
 
 Do not close this audit by saying "the skill works" in general. Close items
