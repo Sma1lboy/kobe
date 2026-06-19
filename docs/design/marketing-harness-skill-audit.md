@@ -21,26 +21,27 @@ That changes the interface contract:
 - Make every internal mutating helper explain its planned writes before it writes.
 - Keep raw generated outputs ephemeral unless a human explicitly promotes them.
 - Treat accepted assets as durable state for the next production cycle.
+- Treat the repo asset directory hierarchy as the asset namespace. Do not add a
+  separate portfolio/brand layer for the development workflow.
 
 For kobe, the repo root should not gain a generic `workspace/` tree. Marketing
-source inputs and approved public assets should live under declared
-package-owned locations, but not the same one. The likely kobe shape is:
+source inputs and approved public assets should live under metadata-declared
+repo asset paths, but not the same one. The likely generic shape is:
 
 ```text
-packages/branding/
-  marketing/
-    brand.lock.yaml
-    campaigns/
-    plans/
-    references/
-    proposals/
+assets/marketing/
+  theme.md
+  campaigns/
+  plans/
+  references/
+  proposals/
+  asset-state.yaml
+  accepted.yaml
+public/marketing/
+  <format-or-channel>/
     asset-state.yaml
-    accepted.yaml
-  public/marketing/
-    <format-or-channel>/
-      asset-state.yaml
-    <approved assets and manifests>
-  .harness/out/
+  <approved assets and manifests>
+.harness/marketing/out/
 ```
 
 The exact directory can change, but it must be supplied by metadata. The
@@ -56,25 +57,38 @@ discover from the product repo:
 project:
   id: kobe
   root: .
-  marketingRoot: packages/branding/marketing
+  marketingRoot: assets/marketing
 
 organization:
   id: sma1lboy
   name: Sma1lboy
 
-portfolio:
-  id: kobe
-  name: kobe
-  version: 1.0.0
+theme:
+  path: assets/marketing/theme.md
+  campaigns: assets/marketing/campaigns
+  references: assets/marketing/references
 
-brand:
-  lock: packages/branding/marketing/brand.lock.yaml
-  campaigns: packages/branding/marketing/campaigns
-  references: packages/branding/marketing/references
+producers:
+  image:
+    kind: local-command
+    commandEnv: HARNESS_SKILL_CLI_COMMAND
+    defaultCommand: gpt-image
+  slide:
+    kind: local-skill
+    preferred: []
+    allowAutoInstall: false
+  logo:
+    kind: local-skill
+    preferred: []
+    allowAutoInstall: false
+  social:
+    kind: local-skill
+    preferred: []
+    allowAutoInstall: false
 
 artifacts:
-  scratch: packages/branding/.harness/out
-  approved: packages/branding/public/marketing
+  scratch: .harness/marketing/out
+  approved: public/marketing
   retainRawRuns: false
 
 policy:
@@ -83,15 +97,15 @@ policy:
   allowRootWorkspaceBootstrap: false
 
 state:
-  plans: packages/branding/marketing/plans
-  assetIndex: packages/branding/marketing/asset-state.yaml
-  accepted: packages/branding/marketing/accepted.yaml
+  plans: assets/marketing/plans
+  assetIndex: assets/marketing/asset-state.yaml
+  accepted: assets/marketing/accepted.yaml
   directoryStateFile: asset-state.yaml
 
 sources:
   assetRoots:
-    - packages/branding/marketing
-    - packages/branding/public/marketing
+    - assets/marketing
+    - public/marketing
   relatedRepos: []
 ```
 
@@ -99,7 +113,7 @@ Agents may call bundled scripts as private helpers with this metadata path, but
 the user-facing asset lifecycle is not a command surface. The intended loop is:
 
 ```text
-brand state -> production plan -> generated candidates -> user acceptance ->
+repo visual state -> production plan -> generated candidates -> user acceptance ->
 accepted state -> next production
 ```
 
@@ -118,9 +132,8 @@ accepted state -> next production
 - 2026-06-19: Added a packaging guard so top-level `src/` or `tests/` inside
   the skill payload is rejected; `scripts/`, `references/`, `assets/`, and
   `agents/` remain the intended skill directories.
-- 2026-06-19: Split metadata defaults so source inputs live under
-  `packages/branding/marketing` while only approved static assets and manifests
-  land under `packages/branding/public/marketing`.
+- 2026-06-19: Split metadata defaults so source inputs and approved static
+  assets/manifests do not share one directory.
 - 2026-06-19: Removed the submodule's root-level `src` runtime package in
   `marketing-harness` commit `857c663` and moved the retained runtime into
   `skills/marketing-harness/scripts/`. The skill now uses bundled scripts
@@ -143,6 +156,15 @@ accepted state -> next production
   read metadata-declared asset roots, `asset-state.yaml`, `accepted.yaml`, and
   related local repo state; package smoke measured 34,330 bytes and still
   excludes `src`, `tests`, and `examples`.
+- 2026-06-19: Simplified the public model in `marketing-harness` commit
+  `ecc882d`: removed portfolio/brand terminology from docs/templates, made
+  `theme.md` the single repo visual source with YAML frontmatter, and documented
+  third-party asset producers as local declared capabilities instead of vendored
+  dependencies. Package smoke measured 35,133 bytes and still excludes `src`,
+  `tests`, and `examples`.
+- 2026-06-19: Confirmed kobe maintains only `.agents/skills/marketing-harness`;
+  `.claude/skills/marketing-harness` is a symlink to the installable skill
+  payload under `.agents`.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
@@ -215,12 +237,12 @@ Why this is a bug:
 
 - It makes the skill look generic while still being CodeFox-shaped.
 - Agents may run the wrong campaign or create the wrong directory tree.
-- It blocks repos like kobe from using package-scoped brand assets.
+- It blocks repos like kobe from using repo-scoped asset trees.
 
 Fixed behavior:
 
 - CodeFox defaults were removed from the command path.
-- Metadata or explicit `--brand` and campaign paths are required.
+- Metadata or explicit `--theme` and campaign paths are required.
 - CodeFox remains only as a package-local example fixture under
   `examples/codefox/packages/branding/marketing`.
 
@@ -286,22 +308,22 @@ Fixed behavior:
 ### 6a. State was too local to support org or repo families
 
 The first accepted-state fix only modeled a current repo `accepted.yaml`. That
-does not cover a real org/portfolio workflow where sibling products should
-share visual direction, accepted examples, and directory-specific asset memory.
+does not cover a real org/repo workflow where sibling products should share
+visual direction, accepted examples, and directory-specific asset memory.
 
 Why this is a bug:
 
 - Repo A cannot reliably learn from Repo B/C assets through a short
   description.
 - Asset history stays trapped in one accepted file instead of being readable by
-  directory, product, portfolio, and org.
+  directory, repo, and org.
 - Future banner, landscape, PPT, logo-theme, X/XHS, and social assets cannot
   build from the same global visual view.
 
 Fixed behavior:
 
-- Metadata now declares organization, portfolio, repo asset roots, directory
-  state filename, and related repos.
+- Metadata now declares organization, repo asset roots, directory state
+  filename, and related repos.
 - The read-only `state` preflight aggregates `asset-state.yaml`, `accepted.yaml`,
   local image counts, and related repo state before planning.
 - Directory state is descriptive input for future production; it is not a
@@ -314,9 +336,9 @@ fills generic tokens, but it is not a real design producer.
 
 Why this is a bug:
 
-- It can create plausible-looking but low-value brand locks.
+- It can create plausible-looking but low-value theme updates.
 - It conflicts with the skill story that design judgment comes from a
-  brand/frontend/visual design producer.
+  frontend/visual design producer.
 
 Fixed behavior:
 
