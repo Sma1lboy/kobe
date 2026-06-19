@@ -70,9 +70,9 @@ theme:
 
 producers:
   image:
-    kind: local-command
-    commandEnv: HARNESS_SKILL_CLI_COMMAND
-    defaultCommand: gpt-image
+    kind: external-skill
+    preferred: []
+    allowAutoInstall: false
   slide:
     kind: local-skill
     preferred: []
@@ -165,6 +165,14 @@ accepted state -> next production
 - 2026-06-19: Confirmed kobe maintains only `.agents/skills/marketing-harness`;
   `.claude/skills/marketing-harness` is a symlink to the installable skill
   payload under `.agents`.
+- 2026-06-19: Removed the bundled `gpt-image`/`skill-cli` provider adapter in
+  `marketing-harness` commit `575fd8c`. The harness now exports dry-run
+  context and rejects live generation with an external-producer message; actual
+  image/slide/logo/social production belongs to user-selected producer skills.
+  A Codex headless smoke against a temporary product repo passed
+  validate/state/dry-run/live-fail. The first `rtk`-prefixed command failed
+  because the sandbox lacked `rtk`, then direct `python3` launcher commands
+  completed the smoke.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
