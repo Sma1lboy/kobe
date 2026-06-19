@@ -126,12 +126,6 @@ accepted state -> next production
   command expansion, defaults remote runtime fallback off, makes bootstrap
   dry-run/create-only by default, disables implicit invocation, requires
   `--brand` at the CLI boundary, and changes CLI publish default to `repo`.
-- 2026-06-19: Verified the default packaged skill zip contains only the thin
-  skill payload and does not include root `src/`, `tests/`, or `examples/`.
-  Package smoke measured 15.2 KB.
-- 2026-06-19: Added a packaging guard so top-level `src/` or `tests/` inside
-  the skill payload is rejected; `scripts/`, `references/`, `assets/`, and
-  `agents/` remain the intended skill directories.
 - 2026-06-19: Split metadata defaults so source inputs and approved static
   assets/manifests do not share one directory.
 - 2026-06-19: Removed the submodule's root-level `src` runtime package in
@@ -145,8 +139,8 @@ accepted state -> next production
   is only passed through when a brand lock declares it.
 - 2026-06-19: Moved the example from root `workspace/products/...` to
   `examples/codefox/packages/branding/marketing`, removed extra multi-product
-  examples and stale LFS attributes, and reduced examples from 1.1 MB to
-  116 KB. Default packaged skill zip is 29.8 KB and still excludes examples.
+  examples and stale LFS attributes, and reduced examples from 1.1 MB to 116
+  KB.
 - 2026-06-19: Removed the user-facing asset `publish` command in
   `marketing-harness` commit `4de1ca9`. The skill now frames durable assets as
   `planning -> candidates -> user acceptance -> accepted.yaml state -> next
@@ -154,14 +148,12 @@ accepted state -> next production
 - 2026-06-19: Added org/portfolio/repo/directory asset-state preflight in
   `marketing-harness` commit `ab5b658`. Before production, the skill can now
   read metadata-declared asset roots, `asset-state.yaml`, `accepted.yaml`, and
-  related local repo state; package smoke measured 34,330 bytes and still
-  excludes `src`, `tests`, and `examples`.
+  related local repo state.
 - 2026-06-19: Simplified the public model in `marketing-harness` commit
   `ecc882d`: removed portfolio/brand terminology from docs/templates, made
   `theme.md` the single repo visual source with YAML frontmatter, and documented
   third-party asset producers as local declared capabilities instead of vendored
-  dependencies. Package smoke measured 35,133 bytes and still excludes `src`,
-  `tests`, and `examples`.
+  dependencies.
 - 2026-06-19: Confirmed kobe maintains only `.agents/skills/marketing-harness`;
   `.claude/skills/marketing-harness` is a symlink to the installable skill
   payload under `.agents`.
@@ -181,11 +173,14 @@ accepted state -> next production
   public assets.
 - 2026-06-19: Removed brittle package-shape tests and whitelist validation in
   `marketing-harness` commit `7aa0d47`. Skill payload shape is a human review
-  concern; package automation now only builds the artifact and applies default
-  exclude rules.
+  concern.
+- 2026-06-19: Removed the generated package artifact flow in
+  `marketing-harness` commit `05b06cf` and removed the committed
+  `.agents/skills/marketing-harness.zip` from kobe. The skill is shared from
+  the checked-in payload through a fork, submodule, or local install.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
-  outside the installable payload. Replacing the submodule with only generated
+  outside the installable payload. Replacing the submodule with only checked-in
   skill payload contents is a separate layout choice.
 
 ### 1. The installed skill is too heavy
@@ -218,11 +213,12 @@ Why this is a bug:
 
 Expected fix:
 
-- Publish or expose a slim skill artifact containing only `SKILL.md`, launcher
-  scripts, metadata schema, and minimal examples.
+- Use a pinned fork, submodule, or local install of the checked-in skill
+  payload; do not rely on generated package artifacts.
 - Keep runtime code under `skills/marketing-harness/scripts/` if it is required
   for an installed skill.
-- Keep maintainer tests and packaging out of the packaged skill artifact.
+- Keep maintainer tests and packaging concerns out of the installed skill
+  payload.
 - Document the boundary: "installable skill payload" versus "maintainer
   checkout".
 
