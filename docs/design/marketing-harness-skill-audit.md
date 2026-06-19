@@ -179,6 +179,10 @@ accepted state -> next production
   metadata, policy, producer preferences, templates, and install notes; product
   repos still own product-specific theme locks, campaigns, accepted state, and
   public assets.
+- 2026-06-19: Removed brittle package-shape tests and whitelist validation in
+  `marketing-harness` commit `7aa0d47`. Skill payload shape is a human review
+  concern; package automation now only builds the artifact and applies default
+  exclude rules.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
