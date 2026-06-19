@@ -8,7 +8,11 @@
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"])
 
 export function isLoopbackHost(hostname: unknown): boolean {
-  return LOOPBACK_HOSTS.has(String(hostname ?? "").trim().toLowerCase())
+  return LOOPBACK_HOSTS.has(
+    String(hostname ?? "")
+      .trim()
+      .toLowerCase(),
+  )
 }
 
 export function originHostname(origin: string | null | undefined): string | null {
@@ -27,10 +31,7 @@ export function isLoopbackOrigin(origin: string | null | undefined): boolean {
   return hostname !== null && isLoopbackHost(hostname)
 }
 
-export function originAllowed(
-  origin: string | null | undefined,
-  opts: { allowedHost?: string } = {},
-): boolean {
+export function originAllowed(origin: string | null | undefined, opts: { allowedHost?: string } = {}): boolean {
   if (!origin) return true
   if (isLoopbackOrigin(origin)) return true
   const allowedHost = opts.allowedHost?.trim()

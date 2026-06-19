@@ -23,9 +23,9 @@ import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-p
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
+  type DaemonHandlerContext,
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
-  type DaemonHandlerContext,
   objectPayload,
   shapeDaemonError,
 } from "./handlers.ts"
@@ -39,7 +39,7 @@ import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
-import { createDirectWebLink, type DaemonWebServer, startDaemonWebServer } from "./web-server.ts"
+import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
 import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers

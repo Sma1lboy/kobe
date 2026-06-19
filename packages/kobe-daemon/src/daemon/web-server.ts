@@ -21,36 +21,28 @@ import { loadStateFile, patchStateFile } from "@/state/store"
 import {
   DEFAULT_EDITOR_KIND,
   EDITOR_CUSTOM_KEY,
-  EDITOR_KIND_KEY,
   EDITOR_KINDS,
+  EDITOR_KIND_KEY,
   normalizeEditorKind,
 } from "@/tui/lib/editor-prefs"
-import {
-  DEFAULT_SETTINGS_SURFACE,
-  SETTINGS_SURFACE_KEY,
-  normalizeSettingsSurface,
-} from "@/tui/lib/settings-surface"
+import { DEFAULT_SETTINGS_SURFACE, SETTINGS_SURFACE_KEY, normalizeSettingsSurface } from "@/tui/lib/settings-surface"
 import type { VendorId } from "@/types/task"
 import { BUILTIN_VENDORS, isBuiltinVendor } from "@/types/vendor"
 import { handleDiffRequest } from "@/web/diff"
 import { handleHistoryRequest } from "@/web/history"
 import { handleNotesRequest } from "@/web/notes"
 import { handleThemesRequest } from "@/web/themes"
-import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { DaemonRpcClient } from "../client/rpc.ts"
+import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import type { ChannelEvent, DaemonEventBus } from "./event-bus.ts"
-import {
-  createDaemonHandlerRegistry,
-  dispatchDaemonRequest,
-  type DaemonHandlerContext,
-} from "./handlers.ts"
-import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
-import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
-import { handleIssuesRequest } from "./web-issues-route.ts"
-import { WEB_RPC_ALLOWSET } from "./web-rpc-allowlist.ts"
-import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./web-session.ts"
+import { type DaemonHandlerContext, createDaemonHandlerRegistry, dispatchDaemonRequest } from "./handlers.ts"
 import type { ChannelName, ChannelPayloads, DaemonRequestName, SerializedTask } from "./protocol.ts"
 import { serializeTask } from "./protocol.ts"
+import { handleIssueAssetsRequest } from "./web-issue-assets-route.ts"
+import { handleIssuesRequest } from "./web-issues-route.ts"
+import { allowedHostForBindHost, originAllowed } from "./web-origin.ts"
+import { WEB_RPC_ALLOWSET } from "./web-rpc-allowlist.ts"
+import { engineSpec, ensureTaskSession, tearDownTaskSession, terminalSpec } from "./web-session.ts"
 
 export const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 export const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
@@ -135,11 +127,7 @@ function sseResponse(register: (send: SseSend) => () => void): Response {
   })
 }
 
-async function rpcResponse(
-  req: Request,
-  link: DaemonWebLink,
-  tearDown: (taskId: string) => void,
-): Promise<Response> {
+async function rpcResponse(req: Request, link: DaemonWebLink, tearDown: (taskId: string) => void): Promise<Response> {
   try {
     const { name, payload } = (await req.json()) as { name?: DaemonRequestName; payload?: unknown }
     if (!name) return Response.json({ error: "missing rpc name" }, { status: 400 })
@@ -271,7 +259,8 @@ async function settingsPatch(req: Request): Promise<Response> {
     if (body.settingsSurface === "chattab" || body.settingsSurface === "taskpanel") {
       patch[SETTINGS_SURFACE_KEY] = body.settingsSurface
     }
-    if (EDITOR_KINDS.includes(body.editorKind as (typeof EDITOR_KINDS)[number])) patch[EDITOR_KIND_KEY] = body.editorKind
+    if (EDITOR_KINDS.includes(body.editorKind as (typeof EDITOR_KINDS)[number]))
+      patch[EDITOR_KIND_KEY] = body.editorKind
     putIfString(patch, EDITOR_CUSTOM_KEY, body.editorCustomCommand)
     putIfBool(patch, "experimental.remoteProjects", body.remoteProjects)
     putIfBool(patch, AUTO_STATUS_KEY, body.autoStatus)
@@ -467,11 +456,11 @@ export function createDirectWebLink(args: {
       const issueSnapshots: Record<string, ChannelPayloads["issue.snapshot"]> = {}
       const issue = latest(args.bus, "issue.snapshot")
       if (issue) {
-        for (const alias of repoSnapshotAliases(tasks, issue.repoRoot)) issueSnapshots[alias] = { ...issue, repoRoot: alias }
+        for (const alias of repoSnapshotAliases(tasks, issue.repoRoot))
+          issueSnapshots[alias] = { ...issue, repoRoot: alias }
       }
       const job = latest(args.bus, "task.jobs")
-      const jobs: Record<string, ChannelPayloads["task.jobs"]> =
-        job?.phase === "running" ? { [job.taskId]: job } : {}
+      const jobs: Record<string, ChannelPayloads["task.jobs"]> = job?.phase === "running" ? { [job.taskId]: job } : {}
       return {
         tasks,
         activeTaskId: latest(args.bus, "active-task")?.taskId ?? null,
