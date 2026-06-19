@@ -34,8 +34,11 @@ packages/branding/
     plans/
     references/
     proposals/
+    asset-state.yaml
     accepted.yaml
   public/marketing/
+    <format-or-channel>/
+      asset-state.yaml
     <approved assets and manifests>
   .harness/out/
 ```
@@ -55,6 +58,15 @@ project:
   root: .
   marketingRoot: packages/branding/marketing
 
+organization:
+  id: sma1lboy
+  name: Sma1lboy
+
+portfolio:
+  id: kobe
+  name: kobe
+  version: 1.0.0
+
 brand:
   lock: packages/branding/marketing/brand.lock.yaml
   campaigns: packages/branding/marketing/campaigns
@@ -72,7 +84,15 @@ policy:
 
 state:
   plans: packages/branding/marketing/plans
+  assetIndex: packages/branding/marketing/asset-state.yaml
   accepted: packages/branding/marketing/accepted.yaml
+  directoryStateFile: asset-state.yaml
+
+sources:
+  assetRoots:
+    - packages/branding/marketing
+    - packages/branding/public/marketing
+  relatedRepos: []
 ```
 
 Agents may call bundled scripts as private helpers with this metadata path, but
@@ -118,6 +138,11 @@ accepted state -> next production
   `marketing-harness` commit `4de1ca9`. The skill now frames durable assets as
   `planning -> candidates -> user acceptance -> accepted.yaml state -> next
   production`; scratch outputs are not state.
+- 2026-06-19: Added org/portfolio/repo/directory asset-state preflight in
+  `marketing-harness` commit `ab5b658`. Before production, the skill can now
+  read metadata-declared asset roots, `asset-state.yaml`, `accepted.yaml`, and
+  related local repo state; package smoke measured 34,330 bytes and still
+  excludes `src`, `tests`, and `examples`.
 - Still open: kobe still vendors the maintainer checkout as a submodule, so
   root maintainer files such as `tests/`, `pyproject.toml`, and examples remain
   outside the installable payload. Replacing the submodule with only generated
@@ -257,6 +282,30 @@ Fixed behavior:
   directory.
 - Record accepted assets in the declared state file for future production.
 - Keep prompt-heavy run locks out of public assets unless explicitly accepted.
+
+### 6a. State was too local to support org or repo families
+
+The first accepted-state fix only modeled a current repo `accepted.yaml`. That
+does not cover a real org/portfolio workflow where sibling products should
+share visual direction, accepted examples, and directory-specific asset memory.
+
+Why this is a bug:
+
+- Repo A cannot reliably learn from Repo B/C assets through a short
+  description.
+- Asset history stays trapped in one accepted file instead of being readable by
+  directory, product, portfolio, and org.
+- Future banner, landscape, PPT, logo-theme, X/XHS, and social assets cannot
+  build from the same global visual view.
+
+Fixed behavior:
+
+- Metadata now declares organization, portfolio, repo asset roots, directory
+  state filename, and related repos.
+- The read-only `state` preflight aggregates `asset-state.yaml`, `accepted.yaml`,
+  local image counts, and related repo state before planning.
+- Directory state is descriptive input for future production; it is not a
+  user-facing command surface for adding assets.
 
 ### 7. The style producer was too weak to be the default
 
