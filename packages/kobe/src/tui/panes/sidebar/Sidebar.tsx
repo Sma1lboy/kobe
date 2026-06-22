@@ -93,13 +93,16 @@ void _useTheme
 import { useTheme } from "../../context/theme"
 import { currentBranch, pollCurrentBranch } from "./git-head"
 import {
+  type SidebarProjectOption,
   type SidebarRow,
   type SidebarView,
   type TaskSortMode,
+  buildProjectOptions,
   buildRows,
   flattenIds,
   reconcileSidebarRows,
   repoBasename,
+  sidebarProjectKey,
 } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
@@ -360,6 +363,7 @@ export function Sidebar(props: SidebarProps) {
   // the last filtered match left it.
   const [searchMode, setSearchMode] = createSignal(false)
   const [searchQuery, setSearchQuery] = createSignal("")
+  const [projectFilter, setProjectFilter] = createSignal<string | null>(null)
 
   function enterSearch(): void {
     setSearchQuery("")
@@ -459,9 +463,25 @@ export function Sidebar(props: SidebarProps) {
   // and returns the previous ARRAY when nothing changed at all so the
   // memo's value identity holds and downstream never notifies.
   const sortMode = (): TaskSortMode => props.sortMode?.() ?? "default"
+  const projectOptions = createMemo<readonly SidebarProjectOption[]>(() => buildProjectOptions(props.tasks(), view()))
+  const projectFilterOption = createMemo<SidebarProjectOption | null>(() => {
+    const repo = projectFilter()
+    if (!repo) return null
+    const key = sidebarProjectKey(repo)
+    return projectOptions().find((option) => sidebarProjectKey(option.repo) === key) ?? null
+  })
+  const projectFilterRepo = createMemo(() => projectFilterOption()?.repo ?? null)
+  const projectFilterLabel = createMemo(() => projectFilterOption()?.label ?? "all")
+  const projectFilterCount = createMemo(() => {
+    const option = projectFilterOption()
+    return option ? option.count : projectOptions().reduce((sum, entry) => sum + entry.count, 0)
+  })
   const rows = createMemo<readonly SidebarRow[]>(
     (prev) =>
-      reconcileSidebarRows(prev, buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode())),
+      reconcileSidebarRows(
+        prev,
+        buildRows(props.tasks(), view(), searchMode() ? searchQuery() : "", sortMode(), projectFilterRepo()),
+      ),
     [],
   )
   const flatIds = createMemo(() => flattenIds(rows()))
@@ -477,7 +497,28 @@ export function Sidebar(props: SidebarProps) {
     return idx < 0 ? -1 : r[idx]!.flatIndex
   })
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
-  const totalRows = createMemo(() => flattenIds(buildRows(props.tasks(), view(), "", sortMode())).length)
+  const totalRows = createMemo(
+    () => flattenIds(buildRows(props.tasks(), view(), "", sortMode(), projectFilterRepo())).length,
+  )
+  const hasTaskRows = createMemo(() => rows().some((row) => row.task.kind !== "main"))
+
+  createEffect(() => {
+    const repo = projectFilter()
+    if (repo !== null && (projectOptions().length <= 1 || projectFilterOption() === null)) setProjectFilter(null)
+  })
+
+  function cycleProjectFilter(): void {
+    const options = projectOptions()
+    if (options.length <= 1) {
+      setProjectFilter(null)
+      return
+    }
+    const active = projectFilterRepo()
+    const activeKey = active ? sidebarProjectKey(active) : null
+    const idx = activeKey === null ? -1 : options.findIndex((option) => sidebarProjectKey(option.repo) === activeKey)
+    const next = options[idx + 1]
+    setProjectFilter(next?.repo ?? null)
+  }
 
   // Two-line card budgets. The width accessor is the Shell-driven splitter
   // width in the outer monitor and the live tmux pane width in the Tasks pane
@@ -603,6 +644,19 @@ export function Sidebar(props: SidebarProps) {
     ),
   )
 
+  // Project filter changes replace the visible task universe; reset to the top
+  // of the new scope instead of carrying over an index from the previous repo.
+  createEffect(
+    on(
+      projectFilterRepo,
+      () => {
+        const ids = flatIds()
+        setCursorIndex(ids.length > 0 ? 0 : -1)
+      },
+      { defer: true },
+    ),
+  )
+
   // Reset cursor to 0 on every search query keystroke — keeps the
   // highlight landed on the top match instead of stranding it on a
   // now-hidden row. Only runs while search mode is on.
@@ -656,6 +710,7 @@ export function Sidebar(props: SidebarProps) {
     onPinRequest: (id) => props.onPinRequest?.(id),
     onViewSwitch: (delta) => cycleView(delta),
     onSortModeToggle: () => props.onSortModeToggle?.(),
+    onProjectFilterToggle: () => cycleProjectFilter(),
     searchMode,
     onSearchEnter: () => enterSearch(),
     onSearchExit: (select) => exitSearch(select),
@@ -842,6 +897,34 @@ export function Sidebar(props: SidebarProps) {
           </text>
         </Show>
       </box>
+
+      <Show when={projectOptions().length > 1}>
+        <box
+          flexDirection="row"
+          justifyContent="space-between"
+          gap={1}
+          paddingBottom={1}
+          paddingLeft={1}
+          paddingRight={1}
+          onMouseUp={() => cycleProjectFilter()}
+        >
+          <box flexDirection="row" gap={1}>
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+              Project
+            </text>
+            <text
+              fg={projectFilterRepo() ? theme.primary : theme.textMuted}
+              attributes={projectFilterRepo() ? TextAttributes.BOLD : undefined}
+              wrapMode="none"
+            >
+              {projectFilterLabel()}
+            </text>
+          </box>
+          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+            {projectFilterCount()} {projectFilterCount() === 1 ? "task" : "tasks"}
+          </text>
+        </box>
+      </Show>
 
       {/* Body: scrollable flat task list. Stretches with flexGrow so
          the footer always sits at the bottom. */}
@@ -1121,9 +1204,27 @@ export function Sidebar(props: SidebarProps) {
               <text fg={theme.textMuted}>
                 {searchMode() && searchQuery().trim().length > 0
                   ? "No matching tasks — esc to clear."
-                  : view() === "active"
-                    ? "No active tasks — press n or [+] to create one."
-                    : "No archived tasks."}
+                  : projectFilterRepo()
+                    ? view() === "active"
+                      ? "No active tasks for this project."
+                      : "No archived tasks for this project."
+                    : view() === "active"
+                      ? "No active tasks — press n or [+] to create one."
+                      : "No archived tasks."}
+              </text>
+            </box>
+          </Show>
+          <Show
+            when={
+              projectFilterRepo() &&
+              flatIds().length > 0 &&
+              !hasTaskRows() &&
+              !(searchMode() && searchQuery().trim().length > 0)
+            }
+          >
+            <box paddingTop={1} paddingLeft={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                {view() === "active" ? "No active tasks for this project." : "No archived tasks for this project."}
               </text>
             </box>
           </Show>

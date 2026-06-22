@@ -857,6 +857,7 @@ function ShortcutHints(props: {
       { ids: ["tasks.openWorktree"], label: "open wt" },
       { ids: ["sidebar.delete"], label: "delete" },
       { ids: ["sidebar.view"], label: "views" },
+      { ids: ["sidebar.projectFilter"], label: "project" },
     ]
     const out: Hint[] = []
     for (const row of rows) {

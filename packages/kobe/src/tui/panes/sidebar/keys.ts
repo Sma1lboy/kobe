@@ -112,6 +112,8 @@ export type SidebarBindingsOpts = {
   onViewSwitch?: (delta: -1 | 1) => void
   /** Fires when the user cycles task sort mode (`t`). */
   onSortModeToggle?: () => void
+  /** Fires when the user cycles the project filter (`ctrl+p`). */
+  onProjectFilterToggle?: () => void
   /**
    * Whether the `/`-search filter is currently active. When true, the
    * sidebar's single-letter chords (j/k/g/G/d/a/r/P/m) are de-registered
@@ -243,6 +245,10 @@ export function useSidebarBindings(opts: SidebarBindingsOpts): void {
       "sidebar.sort": () => {
         if (moveModeAccessor()) return
         opts.onSortModeToggle?.()
+      },
+      "sidebar.projectFilter": () => {
+        if (moveModeAccessor()) return
+        opts.onProjectFilterToggle?.()
       },
     }),
   }))
