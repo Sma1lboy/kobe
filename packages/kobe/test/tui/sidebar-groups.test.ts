@@ -5,6 +5,7 @@ import {
   cursorIndexForProjectScope,
   reconcileSidebarRows,
   sameSidebarRowTask,
+  splitSidebarRows,
 } from "../../src/tui/panes/sidebar/groups.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
@@ -152,6 +153,29 @@ describe("sidebar task ordering", () => {
     )
 
     expect(ids(rows)).toEqual(["kobe-new", "kobe-old"])
+  })
+})
+
+describe("sidebar row sections", () => {
+  it("splits projects and tasks without changing their flat cursor indexes", () => {
+    const rows = buildRows(
+      [
+        task({ id: "task-a", title: "task a", repo: "/repo/kobe" }),
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-pochi", title: "pochi", kind: "main", repo: "/repo/pochi" }),
+        task({ id: "task-b", title: "task b", repo: "/repo/pochi" }),
+      ],
+      "active",
+      "",
+      "default",
+    )
+
+    const sections = splitSidebarRows(rows)
+
+    expect(ids(sections.projectRows)).toEqual(["project-kobe", "project-pochi"])
+    expect(ids(sections.taskRows)).toEqual(["task-a", "task-b"])
+    expect(sections.projectRows.map((row) => row.flatIndex)).toEqual([0, 1])
+    expect(sections.taskRows.map((row) => row.flatIndex)).toEqual([2, 3])
   })
 })
 

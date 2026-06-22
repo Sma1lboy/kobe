@@ -901,7 +901,15 @@ function ShortcutHints(props: {
   // instructions for reorder mode, so they always render.
   const folded = () => (props.collapsed?.() ?? false) && !(props.moveMode?.() ?? false)
   return (
-    <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
+    <box
+      flexShrink={0}
+      flexDirection="column"
+      paddingLeft={1}
+      paddingRight={1}
+      paddingTop={1}
+      paddingBottom={1}
+      gap={0}
+    >
       {/* Header doubles as the toggle: `?` chord or a click folds/unfolds.
           The `?▸ / ?▾` tail advertises both the chord and the state. */}
       <text

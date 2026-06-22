@@ -48,6 +48,10 @@ export type TaskSortMode = "default" | "recent"
  */
 export type SidebarRow = { kind: "task"; task: Task; flatIndex: number }
 export type SidebarProjectOption = { repo: string; label: string; count: number }
+export type SidebarRowSections = {
+  projectRows: SidebarRow[]
+  taskRows: SidebarRow[]
+}
 
 /**
  * Filter tasks by the active view. Active view (= "Working session")
@@ -226,6 +230,23 @@ export function cursorIndexForProjectScope(rows: readonly SidebarRow[], projectF
 /** Extract the flat list of navigable task ids. */
 export function flattenIds(rows: readonly SidebarRow[]): string[] {
   return rows.map((r) => r.task.id)
+}
+
+/**
+ * Split the already-ordered flat row list into the two rendered sections.
+ *
+ * The flat list remains the keyboard-navigation source of truth; this helper
+ * is only a render partition so PROJECTS and TASKS can own independent
+ * scrollboxes without changing cursor indexes or row identity.
+ */
+export function splitSidebarRows(rows: readonly SidebarRow[]): SidebarRowSections {
+  const projectRows: SidebarRow[] = []
+  const taskRows: SidebarRow[] = []
+  for (const row of rows) {
+    if (row.task.kind === "main") projectRows.push(row)
+    else taskRows.push(row)
+  }
+  return { projectRows, taskRows }
 }
 
 /**
