@@ -145,14 +145,98 @@ export function tmuxInitialSizeArgs(
   stdout: { columns?: number; rows?: number } = process.stdout,
   env: Record<string, string | undefined> = process.env,
 ): string[] {
+  const size = tmuxInitialClientSize(stdout, env)
+  return size ? ["-x", `${size.columns}`, "-y", `${size.rows}`] : []
+}
+
+export type TmuxClientSize = {
+  readonly columns: number
+  readonly rows: number
+}
+
+export function tmuxInitialClientSize(
+  stdout: { columns?: number; rows?: number } = process.stdout,
+  env: Record<string, string | undefined> = process.env,
+): TmuxClientSize | null {
   const columns = positiveInt(stdout.columns) ?? positiveInt(env.COLUMNS)
   const rows = positiveInt(stdout.rows) ?? positiveInt(env.LINES)
-  return columns && rows ? ["-x", `${columns}`, "-y", `${rows}`] : []
+  return columns && rows ? { columns, rows } : null
 }
 
 function positiveInt(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : Number.NaN
   return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+export type TmuxClientRow = {
+  readonly name: string
+  readonly session: string
+  readonly width: number
+  readonly height: number
+  readonly flags: string
+}
+
+const CLIENT_LIST_FORMAT = "#{client_name}\t#{client_session}\t#{client_width}\t#{client_height}\t#{client_flags}"
+
+export function parseTmuxClientRows(stdout: string): TmuxClientRow[] {
+  const rows: TmuxClientRow[] = []
+  for (const raw of stdout.split("\n")) {
+    const [name, session, widthRaw, heightRaw, flags] = raw.split("\t")
+    const width = positiveInt(widthRaw?.trim())
+    const height = positiveInt(heightRaw?.trim())
+    if (!name?.trim() || !session?.trim() || !width || !height) continue
+    rows.push({
+      name: name.trim(),
+      session: session.trim(),
+      width,
+      height,
+      flags: flags?.trim() ?? "",
+    })
+  }
+  return rows
+}
+
+export function clientsWithConflictingSize(
+  clients: readonly TmuxClientRow[],
+  session: string,
+  desired: TmuxClientSize,
+  opts: { readonly currentClientName?: string } = {},
+): string[] {
+  return clients
+    .filter((client) => client.session === session)
+    .filter((client) => client.name !== opts.currentClientName)
+    .filter((client) => client.width !== desired.columns || client.height !== desired.rows)
+    .map((client) => client.name)
+}
+
+export function tmuxWindowSizeArgsForClient(
+  size: TmuxClientSize,
+  opts: { readonly status: string | undefined },
+): string[] {
+  const contentHeight = Math.max(1, size.rows - (opts.status?.trim() === "on" ? 1 : 0))
+  return ["-x", `${size.columns}`, "-y", `${contentHeight}`]
+}
+
+/**
+ * Keep a second SSH/local monitor from resizing the task window away from the
+ * client we are entering from. tmux still has one grid per session/window, so
+ * clients with different terminal sizes cannot all own the grid at once; marking
+ * the already-attached, conflicting clients `ignore-size` lets them keep viewing
+ * while the actively-entering client drives the size.
+ */
+async function ignoreConflictingSizeClients(
+  session: string,
+  desired: TmuxClientSize | null,
+  opts: { readonly currentClientName?: string } = {},
+): Promise<void> {
+  if (!desired) return
+  const { code, stdout } = await runTmuxCapturing(["list-clients", "-t", `=${session}`, "-F", CLIENT_LIST_FORMAT])
+  if (code !== 0) return
+  const conflicts = clientsWithConflictingSize(parseTmuxClientRows(stdout), session, desired, opts)
+  const commands: (readonly string[])[] = []
+  if (opts.currentClientName) commands.push(["refresh-client", "-f", "!ignore-size", "-t", opts.currentClientName])
+  for (const client of conflicts) commands.push(["refresh-client", "-f", "ignore-size", "-t", client])
+  if (commands.length > 0) await runTmuxSequence(commands)
 }
 
 /**
@@ -174,7 +258,9 @@ export async function prepareWindowForAttach(session: string): Promise<void> {
   // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
   // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
   recordGen(session, "resize")
-  const sizeArgs = tmuxInitialSizeArgs()
+  const clientSize = tmuxInitialClientSize()
+  await ignoreConflictingSizeClients(session, clientSize)
+  const sizeArgs = clientSize ? ["-x", `${clientSize.columns}`, "-y", `${clientSize.rows}`] : []
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)
 }
@@ -186,17 +272,31 @@ export async function prepareWindowForAttach(session: string): Promise<void> {
  * {@link tmuxInitialSizeArgs}: a pane host (the Tasks pane, the quick-task
  * window) has its `process.stdout` sized to its OWN narrow pane, so stdout
  * would fit the target window to the wrong (pane) size. The attached client's
- * window dims are exactly the size tmux gives the target window when this same
- * client `switch-client`s to it. Empty when not inside tmux / size unreadable.
+ * Use the current CLIENT size, not the current WINDOW size. If this client is
+ * already looking at a letterboxed window, `window_width` / `window_height` are
+ * the stale small grid we are trying to escape; `client_width` /
+ * `client_height` are the real terminal size that should drive the target.
  */
-async function attachedWindowSizeArgs(): Promise<string[]> {
-  const { code, stdout } = await runTmuxCapturing(["display-message", "-p", "#{window_width}\t#{window_height}"])
-  if (code !== 0) return []
-  const [w, h] = stdout
-    .trim()
-    .split("\t")
-    .map((s) => Number.parseInt(s, 10))
-  return Number.isInteger(w) && w > 0 && Number.isInteger(h) && h > 0 ? ["-x", `${w}`, "-y", `${h}`] : []
+async function attachedWindowInfo(): Promise<{
+  readonly sizeArgs: string[]
+  readonly clientSize: TmuxClientSize | null
+  readonly clientName: string | undefined
+}> {
+  const { code, stdout } = await runTmuxCapturing([
+    "display-message",
+    "-p",
+    "#{client_name}\t#{client_width}\t#{client_height}\t#{status}",
+  ])
+  if (code !== 0) return { sizeArgs: [], clientSize: null, clientName: undefined }
+  const [clientName, clientWidth, clientHeight, status] = stdout.trim().split("\t")
+  const cw = positiveInt(clientWidth)
+  const ch = positiveInt(clientHeight)
+  const clientSize = cw && ch ? { columns: cw, rows: ch } : null
+  return {
+    sizeArgs: clientSize ? tmuxWindowSizeArgsForClient(clientSize, { status }) : [],
+    clientSize,
+    clientName: clientName?.trim() || undefined,
+  }
 }
 
 /**
@@ -222,7 +322,9 @@ export async function prepareWindowForSwitch(session: string): Promise<void> {
   // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too;
   // this closes the gap before that runs). See healWorkspaceLayout / layout-coord.
   recordGen(session, "resize")
-  const sizeArgs = await attachedWindowSizeArgs()
+  const info = await attachedWindowInfo()
+  await ignoreConflictingSizeClients(session, info.clientSize, { currentClientName: info.clientName })
+  const sizeArgs = info.sizeArgs
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)
 }
@@ -662,10 +764,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // small client on chat-tab B drags chat-tab A down for the big client too,
   // which then squeezes the fixed-width Tasks pane (KOB-248) against a too-narrow
   // window. `aggressive-resize on` scopes the size to the client(s) for which the
-  // window is CURRENT, so each chat-tab window tracks only its own viewer. The
-  // hard tmux limit remains: two clients on the SAME window share one grid, so
-  // the larger one is letterboxed — that case can't be fixed without per-client
-  // sessions (a larger refactor, deferred).
+  // window is CURRENT, so each chat-tab window tracks only its own viewer.
+  // Same-session clients still share one tmux grid; prepareWindowForAttach /
+  // prepareWindowForSwitch mitigate that by marking already-attached clients
+  // with conflicting terminal sizes as `ignore-size`, so passive monitors do not
+  // letterbox the screen being actively entered. True independent same-window
+  // sizes still require per-client sessions (a larger refactor, deferred).
   // Session keys come from the user-resolvable tmux key set (defaults
   // C-q / C-hjkl / C-t / C-S-T / C-[ / C-] / C-w / F2 plus prefix-scoped
   // layout keys; overridable via `~/.kobe/settings/keybindings.yaml`,

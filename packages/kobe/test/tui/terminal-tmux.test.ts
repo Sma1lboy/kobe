@@ -15,11 +15,14 @@ import {
   chatTabCloseBinding,
   chatTabRenameBinding,
   chatTabSwitchBindings,
+  clientsWithConflictingSize,
   focusBindCommand,
   kobeStatusRight,
   parseObservedSession,
+  parseTmuxClientRows,
   tmuxInitialSizeArgs,
   tmuxSessionName,
+  tmuxWindowSizeArgsForClient,
 } from "../../src/tui/panes/terminal/tmux"
 
 describe("tmuxSessionName", () => {
@@ -198,6 +201,50 @@ describe("tmuxInitialSizeArgs", () => {
       "-y",
       "40",
     ])
+  })
+})
+
+describe("tmux client size conflict helpers", () => {
+  test("derives target window size from the current client size", () => {
+    expect(tmuxWindowSizeArgsForClient({ columns: 171, rows: 52 }, { status: "on" })).toEqual(["-x", "171", "-y", "51"])
+    expect(tmuxWindowSizeArgsForClient({ columns: 171, rows: 52 }, { status: "off" })).toEqual([
+      "-x",
+      "171",
+      "-y",
+      "52",
+    ])
+  })
+
+  test("parses client rows from list-clients", () => {
+    expect(
+      parseTmuxClientRows(
+        [
+          "/dev/ttys000\tkobe-a\t171\t52\tattached,focused,UTF-8",
+          "/dev/ttys001\tkobe-a\t120\t31\tattached,UTF-8",
+          "/dev/ttys002\tkobe-b\t90\t25\tattached,UTF-8",
+          "broken\trow",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { name: "/dev/ttys000", session: "kobe-a", width: 171, height: 52, flags: "attached,focused,UTF-8" },
+      { name: "/dev/ttys001", session: "kobe-a", width: 120, height: 31, flags: "attached,UTF-8" },
+      { name: "/dev/ttys002", session: "kobe-b", width: 90, height: 25, flags: "attached,UTF-8" },
+    ])
+  })
+
+  test("selects only other clients on the target session whose terminal size differs", () => {
+    const rows = parseTmuxClientRows(
+      [
+        "/dev/current\tkobe-a\t171\t52\tattached,focused,UTF-8",
+        "/dev/same-size\tkobe-a\t171\t52\tattached,UTF-8",
+        "/dev/small\tkobe-a\t120\t31\tattached,UTF-8",
+        "/dev/other-session\tkobe-b\t120\t31\tattached,UTF-8",
+      ].join("\n"),
+    )
+
+    expect(
+      clientsWithConflictingSize(rows, "kobe-a", { columns: 171, rows: 52 }, { currentClientName: "/dev/current" }),
+    ).toEqual(["/dev/small"])
   })
 })
 
