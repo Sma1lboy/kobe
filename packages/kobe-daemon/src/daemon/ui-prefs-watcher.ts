@@ -101,7 +101,11 @@ export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
   // Tasks-pane `── keys ──` legend fold (`?`); only an explicit `true`
   // collapses, anything else (missing / non-bool) is expanded.
   const keysCollapsed = parsed["tasksPane.keysCollapsed"] === true
-  return { theme, transparentBackground, focusAccent, sortMode, keysCollapsed }
+  const projectFilter =
+    typeof parsed["tasksPane.projectFilter"] === "string" && parsed["tasksPane.projectFilter"].length > 0
+      ? parsed["tasksPane.projectFilter"]
+      : null
+  return { theme, transparentBackground, focusAccent, sortMode, keysCollapsed, projectFilter }
 }
 
 function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
@@ -110,7 +114,8 @@ function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
     a.transparentBackground === b.transparentBackground &&
     a.focusAccent === b.focusAccent &&
     a.sortMode === b.sortMode &&
-    a.keysCollapsed === b.keysCollapsed
+    a.keysCollapsed === b.keysCollapsed &&
+    a.projectFilter === b.projectFilter
   )
 }
 

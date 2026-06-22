@@ -52,6 +52,23 @@ describe("RemoteOrchestrator channel handling", () => {
     expect(orch.activeTaskSignal()()).toBeNull()
   })
 
+  it("reflects projectFilter on the `ui-prefs` channel and tolerates older payloads", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+    expect(orch.uiPrefsSignal()()).toBeNull()
+
+    emit("ui-prefs", { theme: "nord", sortMode: "recent", keysCollapsed: true, projectFilter: "/repo/kobe" })
+    expect(orch.uiPrefsSignal()()).toMatchObject({
+      theme: "nord",
+      sortMode: "recent",
+      keysCollapsed: true,
+      projectFilter: "/repo/kobe",
+    })
+
+    emit("ui-prefs", { theme: "nord" })
+    expect(orch.uiPrefsSignal()()?.projectFilter).toBeNull()
+  })
+
   it("treats a malformed update payload as null", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)

@@ -213,6 +213,16 @@ export function buildProjectOptions(tasks: readonly Task[], view: SidebarView): 
     .sort((a, b) => a.label.localeCompare(b.label))
 }
 
+export function cursorIndexForProjectScope(rows: readonly SidebarRow[], projectFilter?: string | null): number {
+  if (rows.length === 0) return -1
+  if (!projectFilter) return rows[0]?.flatIndex ?? -1
+  const projectKey = sidebarProjectKey(projectFilter)
+  const firstTask = rows.find((row) => row.task.kind !== "main" && sidebarProjectKey(row.task.repo) === projectKey)
+  if (firstTask) return firstTask.flatIndex
+  const projectRow = rows.find((row) => row.task.kind === "main" && sidebarProjectKey(row.task.repo) === projectKey)
+  return projectRow?.flatIndex ?? rows[0]?.flatIndex ?? -1
+}
+
 /** Extract the flat list of navigable task ids. */
 export function flattenIds(rows: readonly SidebarRow[]): string[] {
   return rows.map((r) => r.task.id)

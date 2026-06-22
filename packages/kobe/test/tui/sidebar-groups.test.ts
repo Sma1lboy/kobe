@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   buildProjectOptions,
   buildRows,
+  cursorIndexForProjectScope,
   reconcileSidebarRows,
   sameSidebarRowTask,
 } from "../../src/tui/panes/sidebar/groups.ts"
@@ -187,6 +188,58 @@ describe("sidebar project filter options", () => {
       { repo: "/repo/a/kobe", label: "a/kobe", count: 1 },
       { repo: "/repo/b/kobe", label: "b/kobe", count: 1 },
     ])
+  })
+})
+
+describe("sidebar project filter cursor", () => {
+  it("lands on the first task in the project scope instead of the PROJECTS header rows", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-marketing", title: "marketing", kind: "main", repo: "/repo/marketingharness" }),
+        task({ id: "marketing-a", title: "marketing a", repo: "/repo/marketingharness" }),
+        task({ id: "kobe-a", title: "kobe a", repo: "/repo/kobe" }),
+      ],
+      "active",
+      "",
+      "default",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["project-kobe", "project-marketing", "kobe-a"])
+    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(2)
+  })
+
+  it("falls back to the project main row when the filtered project has no tasks in view", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-marketing", title: "marketing", kind: "main", repo: "/repo/marketingharness" }),
+        task({ id: "marketing-a", title: "marketing a", repo: "/repo/marketingharness" }),
+      ],
+      "active",
+      "",
+      "default",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["project-kobe", "project-marketing"])
+    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(0)
+  })
+
+  it("keeps all-project scope at the top row", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "kobe-a", title: "kobe a", repo: "/repo/kobe" }),
+      ],
+      "active",
+      "",
+      "default",
+      null,
+    )
+
+    expect(cursorIndexForProjectScope(rows, null)).toBe(0)
   })
 })
 

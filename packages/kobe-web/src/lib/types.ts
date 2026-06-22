@@ -129,6 +129,7 @@ export interface UiPrefs {
   focusAccent: string | null
   sortMode: "default" | "recent"
   keysCollapsed: boolean
+  projectFilter?: string | null
 }
 
 /** Channel push, as the daemon web transport serializes it over SSE. */

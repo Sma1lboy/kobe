@@ -85,6 +85,7 @@ describe("readUiPrefsFromStateFile", () => {
       focusAccent: null,
       sortMode: "default",
       keysCollapsed: false,
+      projectFilter: null,
     })
   })
 
@@ -97,6 +98,7 @@ describe("readUiPrefsFromStateFile", () => {
       focusAccent: null,
       sortMode: "default",
       keysCollapsed: false,
+      projectFilter: null,
     })
   })
 
@@ -108,6 +110,7 @@ describe("readUiPrefsFromStateFile", () => {
       focusAccent: null,
       sortMode: "default",
       keysCollapsed: false,
+      projectFilter: null,
     })
   })
 
@@ -124,6 +127,13 @@ describe("readUiPrefsFromStateFile", () => {
     patchStateFile({ "tasksPane.keysCollapsed": false })
     expect(readUiPrefsFromStateFile(statePath).keysCollapsed).toBe(false)
   })
+
+  test("reads tasksPane.projectFilter; only a non-empty string is kept", () => {
+    patchStateFile({ "tasksPane.projectFilter": "/repo/kobe" })
+    expect(readUiPrefsFromStateFile(statePath).projectFilter).toBe("/repo/kobe")
+    patchStateFile({ "tasksPane.projectFilter": "" })
+    expect(readUiPrefsFromStateFile(statePath).projectFilter).toBeNull()
+  })
 })
 
 describe("startUiPrefsWatcher", () => {
@@ -137,6 +147,7 @@ describe("startUiPrefsWatcher", () => {
         focusAccent: "info",
         sortMode: "default",
         keysCollapsed: false,
+        projectFilter: null,
       },
     ])
     // The bus last-value cache is warm — what a `subscribe` replays.
@@ -157,6 +168,7 @@ describe("startUiPrefsWatcher", () => {
       focusAccent: null,
       sortMode: "default",
       keysCollapsed: false,
+      projectFilter: null,
     })
 
     // A write that doesn't move the visual prefs (an unrelated key, then
@@ -175,6 +187,7 @@ describe("startUiPrefsWatcher", () => {
       focusAccent: "success",
       sortMode: "default",
       keysCollapsed: false,
+      projectFilter: null,
     })
   })
 

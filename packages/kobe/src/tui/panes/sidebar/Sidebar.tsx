@@ -99,6 +99,7 @@ import {
   type TaskSortMode,
   buildProjectOptions,
   buildRows,
+  cursorIndexForProjectScope,
   flattenIds,
   reconcileSidebarRows,
   repoBasename,
@@ -170,6 +171,10 @@ export type SidebarProps = {
   sortMode?: Accessor<TaskSortMode>
   /** Cycle the display ordering (`t`). */
   onSortModeToggle?: () => void
+  /** Global project scope for task rows. Defaults to local state for legacy embedders. */
+  projectFilter?: Accessor<string | null>
+  /** Update the global project scope. */
+  onProjectFilterChange?: (repo: string | null) => void
   /**
    * Fires when the `/`-search filter opens or closes. Lifted out of
    * the sidebar so the app-level Shell can gate its sidebar-scoped
@@ -363,7 +368,12 @@ export function Sidebar(props: SidebarProps) {
   // the last filtered match left it.
   const [searchMode, setSearchMode] = createSignal(false)
   const [searchQuery, setSearchQuery] = createSignal("")
-  const [projectFilter, setProjectFilter] = createSignal<string | null>(null)
+  const [localProjectFilter, setLocalProjectFilter] = createSignal<string | null>(null)
+  const projectFilter = (): string | null => props.projectFilter?.() ?? localProjectFilter()
+  const setProjectFilter = (repo: string | null): void => {
+    if (props.onProjectFilterChange) props.onProjectFilterChange(repo)
+    else setLocalProjectFilter(repo)
+  }
 
   function enterSearch(): void {
     setSearchQuery("")
@@ -504,7 +514,10 @@ export function Sidebar(props: SidebarProps) {
 
   createEffect(() => {
     const repo = projectFilter()
-    if (repo !== null && (projectOptions().length <= 1 || projectFilterOption() === null)) setProjectFilter(null)
+    const options = projectOptions()
+    if (repo !== null && options.length > 0 && (options.length <= 1 || projectFilterOption() === null)) {
+      setProjectFilter(null)
+    }
   })
 
   function cycleProjectFilter(): void {
@@ -647,14 +660,7 @@ export function Sidebar(props: SidebarProps) {
   // Project filter changes replace the visible task universe; reset to the top
   // of the new scope instead of carrying over an index from the previous repo.
   createEffect(
-    on(
-      projectFilterRepo,
-      () => {
-        const ids = flatIds()
-        setCursorIndex(ids.length > 0 ? 0 : -1)
-      },
-      { defer: true },
-    ),
+    on(projectFilterRepo, (repo) => setCursorIndex(cursorIndexForProjectScope(rows(), repo)), { defer: true }),
   )
 
   // Reset cursor to 0 on every search query keystroke — keeps the
