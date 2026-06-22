@@ -104,6 +104,7 @@ import {
   reconcileSidebarRows,
   repoBasename,
   sidebarProjectKey,
+  splitSidebarRows,
 } from "./groups"
 import { useSidebarBindings } from "./keys"
 import { spacedTitle, truncateTitle } from "./labels"
@@ -495,22 +496,19 @@ export function Sidebar(props: SidebarProps) {
     [],
   )
   const flatIds = createMemo(() => flattenIds(rows()))
-  // The list is two sections: PROJECTS (the `main` repo-root rows, which
-  // `buildRows` always emits first) then all TASKS (worktrees) flat — NOT
-  // grouped per project (Jackson's call). `firstTaskFlatIndex` is the
-  // flatIndex of the first non-main row; the renderer draws a divider above
-  // it to split the two sections. -1 when there are no tasks (projects only),
-  // and 0 when there are no projects (the divider then never renders).
-  const firstTaskFlatIndex = createMemo(() => {
-    const r = rows()
-    const idx = r.findIndex((row) => row.task.kind !== "main")
-    return idx < 0 ? -1 : r[idx]!.flatIndex
+  const rowSections = createMemo(() => splitSidebarRows(rows()))
+  const projectRows = createMemo(() => rowSections().projectRows)
+  const taskRows = createMemo(() => rowSections().taskRows)
+  const rowByFlatIndex = createMemo(() => {
+    const out = new Map<number, SidebarRow>()
+    for (const row of rows()) out.set(row.flatIndex, row)
+    return out
   })
   // Total unfiltered count for the active view — used to show "N/total" in search mode.
   const totalRows = createMemo(
     () => flattenIds(buildRows(props.tasks(), view(), "", sortMode(), projectFilterRepo())).length,
   )
-  const hasTaskRows = createMemo(() => rows().some((row) => row.task.kind !== "main"))
+  const hasTaskRows = createMemo(() => taskRows().length > 0)
 
   createEffect(() => {
     const repo = projectFilter()
@@ -556,12 +554,17 @@ export function Sidebar(props: SidebarProps) {
   // doesn't render off-screen. Cleared on mouse-out (guarded so a fast
   // row→row move doesn't clear the row we just entered).
   const dims = useTerminalDimensions()
+  // PROJECTS is a separate scroll region above TASKS. Cap it so a repo-heavy
+  // workspace can scroll projects without starving the task list; derive the
+  // cap from terminal cells and clamp it to a small, predictable rail band.
+  const projectScrollMaxHeight = createMemo(() => Math.max(2, Math.min(10, Math.floor(dims().height * 0.25))))
   const [hover, setHover] = createSignal<{ task: Task; x: number; y: number } | null>(null)
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
 
-  // Renderable refs for the scroll machinery below.
-  let scrollRef: ScrollBoxRenderable | undefined
+  // Renderable refs for the split scroll machinery below.
+  let projectScrollRef: ScrollBoxRenderable | undefined
+  let taskScrollRef: ScrollBoxRenderable | undefined
   let outerBoxRef: BoxRenderable | undefined
   const rowEls = new Map<number, BoxRenderable>()
 
@@ -581,23 +584,16 @@ export function Sidebar(props: SidebarProps) {
   })
 
   // ---------- viewport follow ----------
-  // Without this, j/k moved the cursor index but the scrollbox never
-  // followed: once the list outgrew the pane height the highlight walked
-  // straight off the bottom edge and navigation *looked* dead — the
-  // selection was changing, just out of sight. FileTree solves the same
-  // problem by mapping cursorIndex → a y-offset, but it can assume each
-  // row is height-1; our rows vary (project cards are 2 lines, task cards
-  // 3, plus section headers), so index ≠ y. Instead we capture each
-  // rendered row body keyed by its `flatIndex` and lean on the
-  // scrollbox's own geometry-based `scrollChildIntoView`, which reads the
-  // laid-out child/viewport rects and scrolls the minimum needed to bring
-  // the cursor row back inside the window (a no-op when it's already
-  // visible). `rowEls` keys on `flatIndex` for the same reason the row
-  // closures capture it non-reactively: reconcileSidebarRows only reuses a
-  // row element when its flatIndex is unchanged, so the ref re-fires
-  // whenever a row's position actually moves.
+  // The flat cursor still walks one ordered list, but rendering is now split:
+  // PROJECTS and TASKS own separate scrollboxes so a tall task list cannot
+  // push the project area away. Follow the cursor in whichever section owns
+  // the current row. The geometry-based scroll is still important because row
+  // heights vary (project cards are 2 lines; task cards are 3 with spacing).
   createEffect(
     on([cursorIndex, rows], ([i]) => {
+      const row = rowByFlatIndex().get(i)
+      if (!row) return
+      const scrollRef = row.task.kind === "main" ? projectScrollRef : taskScrollRef
       if (!scrollRef) return
       if (scrollRef.viewport.height <= 0) return
       const el = rowEls.get(i)
@@ -728,20 +724,147 @@ export function Sidebar(props: SidebarProps) {
   // TASKS header lifts off the tight project list; the PROJECTS header sits
   // flush under the view tabs.
   const SectionHeader = (p: { label: string; suffix?: string; topPad?: boolean }) => (
-    <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1} paddingTop={p.topPad ? 1 : 0}>
-      <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-        {p.label}
-      </text>
-      <text fg={theme.border} wrapMode="none">
-        {"─".repeat(Math.max(2, effectiveWidth() - 10 - p.label.length - (p.suffix?.length ?? 0)))}
-      </text>
-      <Show when={p.suffix}>
-        <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none">
-          {p.suffix}
-        </text>
+    <box flexDirection="column" flexShrink={0}>
+      <Show when={p.topPad}>
+        <box flexShrink={0}>
+          <text wrapMode="none"> </text>
+        </box>
       </Show>
+      <box flexDirection="row" flexShrink={0} gap={1} paddingLeft={1} paddingRight={1}>
+        <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+          {p.label}
+        </text>
+        <text fg={theme.border} wrapMode="none">
+          {"─".repeat(Math.max(2, effectiveWidth() - 10 - p.label.length - (p.suffix?.length ?? 0)))}
+        </text>
+        <Show when={p.suffix}>
+          <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none">
+            {p.suffix}
+          </text>
+        </Show>
+      </box>
     </box>
   )
+
+  const toneColor = (tone: SidebarTone) => {
+    switch (tone) {
+      case "success":
+        return theme.success
+      case "warning":
+        return theme.warning
+      case "primary":
+        return theme.primary
+      case "error":
+        return theme.error
+      default:
+        return theme.textMuted
+    }
+  }
+
+  const ProjectRowCard = (p: { row: SidebarRow }) => {
+    const task = p.row.task
+    const flatIndex = p.row.flatIndex
+    const isCursor = () => flatIndex === cursorIndex()
+    const isSelected = () => task.id === props.selectedId()
+    const isLive = createMemo(() => {
+      const map = props.chatRunState?.()
+      if (!map) return false
+      const prefix = `${task.id}:`
+      for (const [key, state] of map) {
+        if (state === "running" && key.startsWith(prefix)) return true
+      }
+      return false
+    })
+    const changes = createMemo(
+      () => {
+        const pushed = pickPushedChanges(props.worktreeChanges?.(), task.worktreePath)
+        if (pushed) return pushed
+        branchTick()
+        if (!task.archived) pollWorktreeChanges(task.worktreePath)
+        return worktreeChanges(task.worktreePath)
+      },
+      undefined,
+      { equals: sameWorktreeChanges },
+    )
+    const projectBranch = createMemo(() => {
+      branchTick()
+      pollCurrentBranch(task.repo)
+      return currentBranch(task.repo)
+    })
+    const baseRowView = createMemo(() =>
+      buildSidebarRowView({
+        task,
+        activity: props.engineState?.().get(task.id),
+        job: props.taskJobs?.().get(task.id),
+        live: isLive(),
+        spinnerFrame: 0,
+        subtitleBudget: subtitleBudget(),
+        truncateBranch: truncateBranchLabel,
+        mainBranch: projectBranch(),
+      }),
+    )
+    const rowView = createMemo(() => withSpinnerFrame(baseRowView(), spinnerFrame))
+    const stateColor = () => (!rowView().loading ? theme.primary : toneColor(rowView().tone))
+    const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
+    const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
+
+    return (
+      <box flexDirection="column" gap={0} paddingBottom={0}>
+        {/* biome-ignore lint/a11y/useKeyWithMouseEvents: opentui terminal UI has no DOM focus model — hover here is a pointer-only affordance backed by keyboard nav (j/k + the detail always reachable by selecting the row), so onFocus/onBlur don't apply. */}
+        <box
+          ref={(r: BoxRenderable) => {
+            rowEls.set(flatIndex, r)
+            onCleanup(() => {
+              if (rowEls.get(flatIndex) === r) rowEls.delete(flatIndex)
+            })
+          }}
+          flexDirection="column"
+          gap={0}
+          backgroundColor={isCursor() ? theme.backgroundElement : undefined}
+          onMouseUp={() => {
+            props.onSelect(task.id)
+            if (props.activateOnClick) props.onActivate?.(task.id)
+          }}
+          onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
+          onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
+        >
+          <box flexDirection="row" gap={0}>
+            <text fg={barColor()} wrapMode="none">
+              {barGlyph()}
+            </text>
+            <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
+              <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+                {rowView().projectGlyph}
+              </text>
+              <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
+                {spacedTitle(rowView().titleText, titleBudget())}
+              </text>
+            </box>
+          </box>
+          <box flexDirection="row" gap={0}>
+            <text fg={barColor()} wrapMode="none">
+              {barGlyph()}
+            </text>
+            <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+                {rowView().subtitleText}
+              </text>
+              <Show when={changes().added > 0}>
+                <text fg={theme.success} wrapMode="none">
+                  +{changes().added}
+                </text>
+              </Show>
+              <Show when={changes().deleted > 0}>
+                <text fg={theme.error} wrapMode="none">
+                  −{changes().deleted}
+                </text>
+              </Show>
+            </box>
+          </box>
+        </box>
+      </box>
+    )
+  }
 
   return (
     <box
@@ -932,31 +1055,61 @@ export function Sidebar(props: SidebarProps) {
         </box>
       </Show>
 
-      {/* Body: scrollable flat task list. Stretches with flexGrow so
-         the footer always sits at the bottom. */}
+      {/* Body: split PROJECTS and TASKS into independent scroll regions.
+         The flat cursor list is unchanged, but task overflow no longer pushes
+         the project switcher/rows out of the rail. */}
+      <Show when={projectRows().length > 0}>
+        <box flexDirection="column" flexShrink={0}>
+          <SectionHeader label="PROJECTS" />
+          <scrollbox
+            ref={(r: ScrollBoxRenderable) => {
+              projectScrollRef = r
+            }}
+            flexShrink={0}
+            flexGrow={0}
+            minHeight={0}
+            maxHeight={projectScrollMaxHeight()}
+            stickyScroll={false}
+            verticalScrollbarOptions={{
+              trackOptions: {
+                foregroundColor: "transparent",
+              },
+            }}
+          >
+            <box flexShrink={0} gap={0} paddingRight={1}>
+              <For each={projectRows()}>{(row) => <ProjectRowCard row={row} />}</For>
+            </box>
+          </scrollbox>
+        </box>
+      </Show>
+
+      <SectionHeader
+        label="TASKS"
+        suffix={sortMode() === "default" ? undefined : sortMode()}
+        topPad={projectRows().length > 0}
+      />
       <scrollbox
         ref={(r: ScrollBoxRenderable) => {
-          scrollRef = r
+          taskScrollRef = r
         }}
         flexGrow={1}
         minHeight={0}
+        stickyScroll={false}
         verticalScrollbarOptions={{
           trackOptions: {
             foregroundColor: "transparent",
           },
         }}
       >
-        {/* gap={0} — spacing is per-row: PROJECT rows sit tight as a compact
-            switcher up top, TASK cards each carry a trailing blank line so they
-            read as separate cards, and a divider splits the two sections. */}
+        {/* gap={0} — TASK cards each carry a trailing blank line so they read
+            as separate cards. PROJECT rows live in their own scroll region. */}
         <box flexShrink={0} gap={0} paddingRight={1}>
-          <For each={rows()}>
+          <For each={taskRows()}>
             {(row) => {
               const task = row.task
               const flatIndex = row.flatIndex
               const isCursor = () => flatIndex === cursorIndex()
               const isSelected = () => task.id === props.selectedId()
-              const isMain = task.kind === "main"
               // "Is this task actually streaming a turn right now?"
               // True when the orchestrator holds a live engine handle for
               // ANY of this task's tabs — covers multi-tab tasks where the
@@ -972,20 +1125,6 @@ export function Sidebar(props: SidebarProps) {
                 }
                 return false
               })
-              const toneColor = (tone: SidebarTone) => {
-                switch (tone) {
-                  case "success":
-                    return theme.success
-                  case "warning":
-                    return theme.warning
-                  case "primary":
-                    return theme.primary
-                  case "error":
-                    return theme.error
-                  default:
-                    return theme.textMuted
-                }
-              }
               // Per-row "uncommitted changes" file counts, rendered on
               // the right edge as `+N −M`. PREFERRED source: the daemon's
               // `worktree.changes` pushes (issue #6) — one collector in
@@ -1018,15 +1157,6 @@ export function Sidebar(props: SidebarProps) {
                 undefined,
                 { equals: sameWorktreeChanges },
               )
-              // A `main` (project) row's branch isn't stored on the task — it's
-              // the repo root's live checkout. Resolve it on the same 2s tick as
-              // the change chip, through the same ASYNC poller pattern — even an
-              // O(1) ref read must not spawnSync on the render thread.
-              const projectBranch = createMemo(() => {
-                branchTick()
-                if (isMain) pollCurrentBranch(task.repo)
-                return isMain ? currentBranch(task.repo) : ""
-              })
               // Two-stage view derivation (waste audit). Stage 1 builds
               // everything EXCEPT the animated glyph with a fixed frame —
               // it deliberately does NOT read `spinnerFrame`, so the 10Hz
@@ -1047,34 +1177,18 @@ export function Sidebar(props: SidebarProps) {
                   spinnerFrame: 0,
                   subtitleBudget: subtitleBudget(),
                   truncateBranch: truncateBranchLabel,
-                  mainBranch: projectBranch(),
+                  mainBranch: "",
                 }),
               )
               const rowView = createMemo(() => withSpinnerFrame(baseRowView(), spinnerFrame))
-              const stateColor = () => (isMain && !rowView().loading ? theme.primary : toneColor(rowView().tone))
+              const stateColor = () => toneColor(rowView().tone)
               // Accent edge: focus-accent ▌ on the cursor row, a quieter
               // (dimmed primary) ▌ on the active row when the two differ after
               // j/k nav, a bare space otherwise to hold the gutter.
               const barColor = () => (isCursor() ? theme.focusAccent : isSelected() ? theme.primary : undefined)
               const barGlyph = () => (isCursor() || isSelected() ? "▌" : " ")
-              // Section headers split the two flat sections (NOT per-project
-              // grouping): PROJECTS above the first row when it's a project,
-              // TASKS above the first non-main row. `topPad` lifts the TASKS
-              // header off the tight project list only when projects exist.
-              const showProjectsHeader = () => isMain && flatIndex === 0
-              const showTasksHeader = () => !isMain && flatIndex === firstTaskFlatIndex()
               return (
-                <box flexDirection="column" gap={0} paddingBottom={isMain ? 0 : 1}>
-                  <Show when={showProjectsHeader()}>
-                    <SectionHeader label="PROJECTS" />
-                  </Show>
-                  <Show when={showTasksHeader()}>
-                    <SectionHeader
-                      label="TASKS"
-                      suffix={sortMode() === "default" ? undefined : sortMode()}
-                      topPad={firstTaskFlatIndex() > 0}
-                    />
-                  </Show>
+                <box flexDirection="column" gap={0} paddingBottom={1}>
                   {/* Interactive row body. The cursor row carries a SUBTLE
                       `backgroundElement` tint (a quiet block, not the old
                       solid-terracotta full fill) so badges / branch / `+N −M`
@@ -1102,104 +1216,60 @@ export function Sidebar(props: SidebarProps) {
                     onMouseOver={(e) => setHover({ task, x: e.x, y: e.y })}
                     onMouseOut={() => setHover((h) => (h?.task.id === task.id ? null : h))}
                   >
-                    {/* PROJECT row (a `main` repo-root) — a two-line card like a
-                        task: line 1 = ★ (or spinner while its session is live) +
-                        repo name; line 2 = the repo root's current branch + the
-                        `+N −M` change chip. The repo path lives in the hover. */}
-                    <Show when={isMain}>
-                      {/* Line 1: accent edge + ★/spinner + repo name. */}
-                      <box flexDirection="row" gap={0}>
-                        <text fg={barColor()} wrapMode="none">
-                          {barGlyph()}
-                        </text>
-                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-                          <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {rowView().projectGlyph}
-                          </text>
-                          <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none" flexGrow={1}>
-                            {spacedTitle(rowView().titleText, titleBudget())}
-                          </text>
-                        </box>
-                      </box>
-                      {/* Line 2: accent edge + repo-root branch + change chip,
-                          indented under the name (mirrors the task card's line 2). */}
-                      <box flexDirection="row" gap={0}>
-                        <text fg={barColor()} wrapMode="none">
-                          {barGlyph()}
-                        </text>
-                        <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                            {rowView().subtitleText}
-                          </text>
-                          <Show when={changes().added > 0}>
-                            <text fg={theme.success} wrapMode="none">
-                              +{changes().added}
-                            </text>
-                          </Show>
-                          <Show when={changes().deleted > 0}>
-                            <text fg={theme.error} wrapMode="none">
-                              −{changes().deleted}
-                            </text>
-                          </Show>
-                        </box>
-                      </box>
-                    </Show>
                     {/* TASK row (a worktree) — two-line card. */}
-                    <Show when={!isMain}>
-                      {/* Line 1: accent edge + status badge + title + a
-                          "working" chip while the engine is streaming. */}
-                      <box flexDirection="row" gap={0}>
-                        <text fg={barColor()} wrapMode="none">
-                          {barGlyph()}
+                    {/* Line 1: accent edge + status badge + title + a
+                        "working" chip while the engine is streaming. */}
+                    <box flexDirection="row" gap={0}>
+                      <text fg={barColor()} wrapMode="none">
+                        {barGlyph()}
+                      </text>
+                      <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
+                        <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
+                          {rowView().stateGlyph}
                         </text>
-                        <box flexDirection="row" flexGrow={1} paddingRight={1} gap={0}>
-                          <text fg={stateColor()} attributes={TextAttributes.BOLD} wrapMode="none">
-                            {rowView().stateGlyph}
-                          </text>
-                          <text
-                            fg={theme.text}
-                            attributes={isSelected() || isCursor() ? TextAttributes.BOLD : undefined}
-                            wrapMode="none"
-                            flexGrow={1}
-                          >
-                            {spacedTitle(rowView().titleText, titleBudget())}
-                          </text>
-                          <Show when={props.moveMode?.() && isCursor()}>
-                            <text fg={theme.warning} wrapMode="none">
-                              {" move"}
-                            </text>
-                          </Show>
-                        </box>
-                      </box>
-                      {/* Line 2: accent edge (continues the bar) + subtitle,
-                          indented under the title. Branch (or status word) on
-                          the left, the `+N −M` change chip pushed to the right. */}
-                      <box flexDirection="row" gap={0}>
-                        <text fg={barColor()} wrapMode="none">
-                          {barGlyph()}
+                        <text
+                          fg={theme.text}
+                          attributes={isSelected() || isCursor() ? TextAttributes.BOLD : undefined}
+                          wrapMode="none"
+                          flexGrow={1}
+                        >
+                          {spacedTitle(rowView().titleText, titleBudget())}
                         </text>
-                        <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
-                          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
-                            {rowView().subtitleText}
+                        <Show when={props.moveMode?.() && isCursor()}>
+                          <text fg={theme.warning} wrapMode="none">
+                            {" move"}
                           </text>
-                          <Show when={task.pinned === true}>
-                            <text fg={theme.warning} wrapMode="none">
-                              ▴
-                            </text>
-                          </Show>
-                          <Show when={changes().added > 0}>
-                            <text fg={theme.success} wrapMode="none">
-                              +{changes().added}
-                            </text>
-                          </Show>
-                          <Show when={changes().deleted > 0}>
-                            <text fg={theme.error} wrapMode="none">
-                              −{changes().deleted}
-                            </text>
-                          </Show>
-                        </box>
+                        </Show>
                       </box>
-                    </Show>
+                    </box>
+                    {/* Line 2: accent edge (continues the bar) + subtitle,
+                        indented under the title. Branch (or status word) on
+                        the left, the `+N −M` change chip pushed to the right. */}
+                    <box flexDirection="row" gap={0}>
+                      <text fg={barColor()} wrapMode="none">
+                        {barGlyph()}
+                      </text>
+                      <box flexDirection="row" flexGrow={1} paddingLeft={2} paddingRight={1} gap={1}>
+                        <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none" flexGrow={1}>
+                          {rowView().subtitleText}
+                        </text>
+                        <Show when={task.pinned === true}>
+                          <text fg={theme.warning} wrapMode="none">
+                            ▴
+                          </text>
+                        </Show>
+                        <Show when={changes().added > 0}>
+                          <text fg={theme.success} wrapMode="none">
+                            +{changes().added}
+                          </text>
+                        </Show>
+                        <Show when={changes().deleted > 0}>
+                          <text fg={theme.error} wrapMode="none">
+                            −{changes().deleted}
+                          </text>
+                        </Show>
+                      </box>
+                    </box>
                   </box>
                 </box>
               )
