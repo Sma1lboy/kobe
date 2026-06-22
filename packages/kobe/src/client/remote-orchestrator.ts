@@ -667,6 +667,8 @@ export class RemoteOrchestrator {
         sortMode: p.sortMode === "recent" ? "recent" : "default",
         // Older daemons omit `keysCollapsed` → legend expanded.
         keysCollapsed: p.keysCollapsed === true,
+        // Older daemons omit `projectFilter` → show all projects.
+        projectFilter: typeof p.projectFilter === "string" && p.projectFilter.length > 0 ? p.projectFilter : null,
       })
       return
     }

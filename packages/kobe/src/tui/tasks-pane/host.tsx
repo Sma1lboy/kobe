@@ -159,6 +159,14 @@ function TasksShell(props: {
   const [sortMode, setSortMode] = createSignal<TaskSortMode>(
     kv.get("activeSortMode") === "recent" ? "recent" : "default",
   )
+  const persistedProjectFilter = kv.get("tasksPane.projectFilter")
+  const [projectFilter, setProjectFilterSig] = createSignal<string | null>(
+    typeof persistedProjectFilter === "string" && persistedProjectFilter.length > 0 ? persistedProjectFilter : null,
+  )
+  const setProjectFilter = (repo: string | null) => {
+    setProjectFilterSig(repo)
+    kv.set("tasksPane.projectFilter", repo)
+  }
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
@@ -198,18 +206,20 @@ function TasksShell(props: {
 
   // Visual prefs (theme / transparent / focus accent) are applied
   // centrally — boot + live `ui-prefs` pushes — by host-boot's
-  // UiPrefsSync; this shell no longer re-applies them itself. Sort mode AND
-  // the keys-legend fold ride the SAME `ui-prefs` channel but are
-  // pane-state, not theme-state, so the Tasks pane follows them here: a `t`
-  // / `?` toggle in ANY session lands as a push and re-applies to this pane
-  // too. Changed-only assignment makes the echo of our own write
-  // (round-tripped through the watcher) a no-op. (Sort here; the
-  // keys-legend effect lives next to its signal further down.)
+  // UiPrefsSync; this shell no longer re-applies them itself. Sort mode,
+  // project filter, and the keys-legend fold ride the SAME `ui-prefs`
+  // channel but are pane-state, not theme-state, so the Tasks pane follows
+  // them here: a `t` / `ctrl+p` / `?` toggle in ANY session lands as a push
+  // and re-applies to this pane too. Changed-only assignment makes the echo
+  // of our own write (round-tripped through the watcher) a no-op. (Sort +
+  // project filter here; the keys-legend effect lives next to its signal
+  // further down.)
   createEffect(
     on(
       () => props.orch?.uiPrefsSignal()(),
       (payload) => {
         if (payload && payload.sortMode !== untrack(sortMode)) setSortMode(payload.sortMode)
+        if (payload && payload.projectFilter !== untrack(projectFilter)) setProjectFilterSig(payload.projectFilter)
       },
     ),
   )
@@ -696,6 +706,8 @@ function TasksShell(props: {
           onMoveRequest={(id, delta) => void moveTask(id, delta)}
           onMoveModeExit={() => setMoveMode(false)}
           sortMode={sortMode}
+          projectFilter={projectFilter}
+          onProjectFilterChange={setProjectFilter}
           onSortModeToggle={() => {
             const next: TaskSortMode = sortMode() === "default" ? "recent" : "default"
             // Apply locally for instant feedback, then persist — the kv write
@@ -889,7 +901,15 @@ function ShortcutHints(props: {
   // instructions for reorder mode, so they always render.
   const folded = () => (props.collapsed?.() ?? false) && !(props.moveMode?.() ?? false)
   return (
-    <box flexShrink={0} flexDirection="column" paddingLeft={1} paddingRight={1} paddingTop={1} gap={0}>
+    <box
+      flexShrink={0}
+      flexDirection="column"
+      paddingLeft={1}
+      paddingRight={1}
+      paddingTop={1}
+      paddingBottom={1}
+      gap={0}
+    >
       {/* Header doubles as the toggle: `?` chord or a click folds/unfolds.
           The `?▸ / ?▾` tail advertises both the chord and the state. */}
       <text

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest"
 import {
   buildProjectOptions,
   buildRows,
+  cursorIndexForProjectScope,
   reconcileSidebarRows,
   sameSidebarRowTask,
+  splitSidebarRows,
 } from "../../src/tui/panes/sidebar/groups.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
@@ -154,6 +156,29 @@ describe("sidebar task ordering", () => {
   })
 })
 
+describe("sidebar row sections", () => {
+  it("splits projects and tasks without changing their flat cursor indexes", () => {
+    const rows = buildRows(
+      [
+        task({ id: "task-a", title: "task a", repo: "/repo/kobe" }),
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-pochi", title: "pochi", kind: "main", repo: "/repo/pochi" }),
+        task({ id: "task-b", title: "task b", repo: "/repo/pochi" }),
+      ],
+      "active",
+      "",
+      "default",
+    )
+
+    const sections = splitSidebarRows(rows)
+
+    expect(ids(sections.projectRows)).toEqual(["project-kobe", "project-pochi"])
+    expect(ids(sections.taskRows)).toEqual(["task-a", "task-b"])
+    expect(sections.projectRows.map((row) => row.flatIndex)).toEqual([0, 1])
+    expect(sections.taskRows.map((row) => row.flatIndex)).toEqual([2, 3])
+  })
+})
+
 describe("sidebar project filter options", () => {
   it("includes saved project rows even when the current view has no tasks for them", () => {
     const options = buildProjectOptions(
@@ -187,6 +212,58 @@ describe("sidebar project filter options", () => {
       { repo: "/repo/a/kobe", label: "a/kobe", count: 1 },
       { repo: "/repo/b/kobe", label: "b/kobe", count: 1 },
     ])
+  })
+})
+
+describe("sidebar project filter cursor", () => {
+  it("lands on the first task in the project scope instead of the PROJECTS header rows", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-marketing", title: "marketing", kind: "main", repo: "/repo/marketingharness" }),
+        task({ id: "marketing-a", title: "marketing a", repo: "/repo/marketingharness" }),
+        task({ id: "kobe-a", title: "kobe a", repo: "/repo/kobe" }),
+      ],
+      "active",
+      "",
+      "default",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["project-kobe", "project-marketing", "kobe-a"])
+    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(2)
+  })
+
+  it("falls back to the project main row when the filtered project has no tasks in view", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "project-marketing", title: "marketing", kind: "main", repo: "/repo/marketingharness" }),
+        task({ id: "marketing-a", title: "marketing a", repo: "/repo/marketingharness" }),
+      ],
+      "active",
+      "",
+      "default",
+      "/repo/kobe",
+    )
+
+    expect(ids(rows)).toEqual(["project-kobe", "project-marketing"])
+    expect(cursorIndexForProjectScope(rows, "/repo/kobe")).toBe(0)
+  })
+
+  it("keeps all-project scope at the top row", () => {
+    const rows = buildRows(
+      [
+        task({ id: "project-kobe", title: "kobe", kind: "main", repo: "/repo/kobe" }),
+        task({ id: "kobe-a", title: "kobe a", repo: "/repo/kobe" }),
+      ],
+      "active",
+      "",
+      "default",
+      null,
+    )
+
+    expect(cursorIndexForProjectScope(rows, null)).toBe(0)
   })
 })
 

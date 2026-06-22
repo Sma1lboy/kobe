@@ -209,7 +209,9 @@ export interface ChannelPayloads {
    * same fan-out carries `sortMode`: toggling the Tasks-pane sort (`t`) in
    * one session re-sorts the Tasks pane of EVERY session, instead of only
    * the pane the key was pressed in; `keysCollapsed` likewise syncs the
-   * Tasks-pane `── keys ──` legend fold (`?`) across every session. Last-
+   * Tasks-pane `── keys ──` legend fold (`?`) across every session, and
+   * `projectFilter` syncs the Tasks-pane project scope (`ctrl+p`) so switching
+   * task sessions does not reveal another pane's stale local filter. Last-
    * value replay hydrates a late/reconnecting subscriber. `focusAccent` is
    * the raw slot string (`null` = unset → the default slot); the TUI side
    * validates it — the daemon stays vendor/UI-neutral and just mirrors the
@@ -221,6 +223,7 @@ export interface ChannelPayloads {
     focusAccent: string | null
     sortMode: "default" | "recent"
     keysCollapsed: boolean
+    projectFilter: string | null
   }
   /**
    * "Re-read your keybindings" ping (KOB — live keybinding propagation).
