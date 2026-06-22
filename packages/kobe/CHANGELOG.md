@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.7.34
+
+### Patch Changes
+
+- e398209: Bundle the built web dashboard with the default kobe package and build it as part of `bun run build`. The web UI now imports JetBrains Mono through the Vite bundle via `@fontsource/jetbrains-mono` instead of relying on a checked-in public font file.
+- 7d3b700: Web and desktop now route browser HTTP/SSE traffic directly through the kobe daemon instead of starting a standalone kobe-web bridge process. The daemon owns the web route table, RPC allowlist, SSE snapshot stream, session/spec routes, and optional static hosting; web dev and desktop only start Vite and the Node PTY sidecar.
+- 4c7f5a2: Internal: centralize browser dashboard daemon-web-transport connectivity policy and rename the active SSE snapshot/channel types away from the retired bridge vocabulary.
+- e387a75: Add an experimental `kobe-desktop` workspace: a thin Electron shell that launches the existing `kobe web` dev stack on a free local port block and opens it in a desktop window without changing the daemon, tmux, or web bridge architecture.
+- 2ebd70c: Tasks pane project filtering is now a global UI preference shared across every task session. Pressing `ctrl+p` in one session updates the project scope everywhere, and entering another task no longer reveals that session's stale local filter state.
+
+  The Tasks pane also keeps its collapsed keys legend one row above the tmux status bar and splits sidebar overflow into independent PROJECTS and TASKS scroll regions, so a long task list no longer pushes project rows out of view.
+
+- 22f9866: Internal: repo init prompt delivery now flows through a typed launch-time contract so engine session creation distinguishes repo first messages, explicit user prompts, and no automatic first message without ad hoc init-prompt suppression at each launch path.
+- afffd1e: Minify the published TUI bundle and keep web assets out of the default package.
+- 95bab44: Internal: daemon file-watch mechanics and read-only git environment policy now live behind shared helpers. The keybindings/UI-prefs watchers reuse one directory-watch trigger, and pane/daemon git probes share the same `GIT_OPTIONAL_LOCKS=0` policy module.
+- d2a319b: Internal: shared several duplicated implementation policies behind deeper modules. Shell command quoting now lives in one tested helper, long-lived pane row identity reconciliation is shared by FileTree and Sidebar, and the web bridge plus PTY sidecar use one Origin policy module for loopback/LAN-host checks.
+- fbf12cb: TUI tmux sessions now stop a second differently-sized SSH/local client from letterboxing the active screen. Before attaching or switching into a task, kobe marks already-attached clients with conflicting terminal dimensions as `ignore-size` and sizes the target window from the entering client, so a monitoring terminal no longer shrinks the task grid on the screen you are actively using.
+- 38be0a6: Theme the full kobe tmux chrome instead of only pane borders. The dedicated `-L kobe` tmux server now derives the bottom status/window bar, status-left/right styles, command prompts, copy-mode selection, pane picker colors, and pane borders from the active kobe theme, so switching themes fully restyles the ChatTab bar without touching the user's real tmux server.
+
+  Make live theme propagation reliable when Settings writes the shared state file. The daemon now polls the tiny UI prefs file as a safety net for missed `fs.watch` tmp+rename events, so the selected-theme marker and already-running Tasks/Ops panes converge on the same theme as tmux chrome.
+
+- 37ea989: Tasks pane gains a project filter: press `ctrl+p` or click the Project scope row to cycle between all tasks and each saved project. This keeps PROJECTS as a separate main-session section instead of restoring repo grouping, while the TASKS section narrows to the selected repo and still composes with `/` search, Working/Archives, and recent sort.
+- c36738c: Internal: the tmux URL opener command now lives behind the tested Session Layout module instead of being assembled inline in the imperative session applier. The command shape, fzf fallback, opener, and tmux socket quoting are covered by the existing tmux layout test surface.
+- d9062e0: The Tasks pane now shows only one PROJECTS row for a saved repo even if older state contains duplicate `main` task records, and `ensureMainTask` now dedupes repo-root, subdirectory, symlink-resolved, and trailing-slash variants before creating a new project row.
+- 09d39b7: Centralize the web dashboard's best-effort active-task RPC policy behind a small shared helper.
+- 448749b: Internal: kobe-web bridge requests now go through one typed API client seam. Route clients describe JSON/query/body/fallback intent while shared code owns request construction, JSON/text error extraction, and status-shaped `ApiError`s.
+- a94b37a: Share the web module-store subscription primitive across board filters, rail state, toasts, and engine pickers.
+- afe44b8: Defer the web issue editor panels so the Board and Issues routes no longer eagerly load the rich markdown editor bundle.
+- 22f9866: Refactor the web PTY sidecar session lifecycle behind a dedicated manager while preserving attach, reattach, send, resize, close, and process-exit behavior.
+- f431ece: Web dashboard shortcuts and notifications now mount at the route root, so Board
+  and Issues get Cmd/Ctrl+K, `?` help, New Task, settings navigation, and toast
+  delivery instead of only the workspace shell. Toasts now expose alert/status
+  live regions so errors and notices are announced to assistive tech.
+- dda045f: Web issue starts now read as user stories that spawn kobe sessions, and the web bridge's canonical tmux session path runs the same repo init prompt contract as TUI entry. Web PTY issue prompts still suppress the repo init prompt so explicit story instructions are not duplicated.
+- 9d8fd19: Internal: Worktree content reads now go through one ExecHost-backed module instead of each surface spawning local git or reading local files directly. File tree git status/listing, Ops preview diff/code reads, and the web diff route now share the same local/remote Worktree git path, preserving lock-free `GIT_OPTIONAL_LOCKS=0` reads and the web route's timeout behavior while allowing registered remote Worktree paths to be inspected through SSH.
+
 ## 0.7.33
 
 ### Patch Changes
