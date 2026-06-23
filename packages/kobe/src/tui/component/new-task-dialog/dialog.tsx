@@ -745,6 +745,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={repo()}
               placeholder={props.defaultRepo}
               focused={field() === "repo"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setRepoPicked(false)
                 setRepo(stripNewlines(v))
@@ -800,6 +801,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={baseRef()}
               placeholder={DEFAULT_BASE_REF}
               focused={field() === "baseRef"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setBaseRefTouched(true)
                 setBaseRef(stripNewlines(v))
@@ -871,6 +873,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={cloneUrl()}
               placeholder="https://github.com/user/repo.git"
               focused={field() === "cloneUrl"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => setCloneUrl(stripNewlines(v))}
               onSubmit={() => {
                 if (!cloneUrl().trim()) return
@@ -886,6 +889,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={cloneParent()}
               placeholder="~/"
               focused={field() === "cloneParent"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setCloneParentPicked(false)
                 setCloneParent(stripNewlines(v))
@@ -945,6 +949,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={cloneFolder()}
               placeholder="auto from url"
               focused={field() === "cloneFolder"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setCloneFolderTouched(true)
                 setCloneFolder(stripNewlines(v))
@@ -960,6 +965,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={cloneBaseRef()}
               placeholder={DEFAULT_BASE_REF}
               focused={field() === "cloneBaseRef"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => setCloneBaseRef(stripNewlines(v))}
               // Last field on the clone tab — Enter kicks off the clone +
               // create directly, no second Enter on the Create button.
@@ -984,6 +990,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               value={adoptFilter()}
               placeholder="* — type e.g. feature-* to narrow"
               focused={field() === "adoptFilter"}
+              focusedTextColor={theme.primary}
               onInput={(v: string) => setAdoptFilter(stripNewlines(v))}
               onSubmit={() => toggleAdoptCursor()}
             />
