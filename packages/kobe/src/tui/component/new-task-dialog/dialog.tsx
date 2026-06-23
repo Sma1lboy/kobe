@@ -647,12 +647,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     ],
   }))
 
-  // Focus is shown by an UNDERLINE in the element's own colour — never a
-  // hue change (the accent-on-focus read as "weird"/jumpy). Field labels
-  // stay muted and gain an underline when their field is focused; active
-  // selections (mode tab, engine) keep ▸ + bold + primary and add an
-  // underline only while that selector holds focus.
-  const labelAttrs = (f: Field) => (field() === f ? TextAttributes.UNDERLINE : undefined)
+  // A focused field label goes primary + bold + underline; unfocused
+  // labels stay muted. (Input values, mode tabs, and engine chips are
+  // unchanged.) Active selections (mode tab, engine) keep ▸ + bold +
+  // primary and add an underline only while that selector holds focus.
+  const labelFg = (f: Field) => (field() === f ? theme.primary : theme.textMuted)
+  const labelAttrs = (f: Field) => (field() === f ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
   const selectedAttrs = (selected: boolean, focused: boolean) =>
     selected ? (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD) : undefined
 
@@ -712,7 +712,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             by the underlined `engine` label instead. The ctrl+e hint is
             right-stuck + muted so it reads as a hint, not an engine. */}
         <box gap={0}>
-          <text fg={theme.textMuted} attributes={labelAttrs("engine")}>
+          <text fg={labelFg("engine")} attributes={labelAttrs("engine")}>
             engine
           </text>
           <box flexDirection="row" gap={2}>
@@ -738,14 +738,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "existing"}>
           {/* ── Existing tab body ───────────────────────────────────── */}
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("repo")}>
+            <text fg={labelFg("repo")} attributes={labelAttrs("repo")}>
               repo
             </text>
             <input
               value={repo()}
               placeholder={props.defaultRepo}
               focused={field() === "repo"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setRepoPicked(false)
                 setRepo(stripNewlines(v))
@@ -794,14 +793,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           </Show>
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("baseRef")}>
+            <text fg={labelFg("baseRef")} attributes={labelAttrs("baseRef")}>
               from branch
             </text>
             <input
               value={baseRef()}
               placeholder={DEFAULT_BASE_REF}
               focused={field() === "baseRef"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setBaseRefTouched(true)
                 setBaseRef(stripNewlines(v))
@@ -866,14 +864,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "clone"}>
           {/* ── Clone tab body ──────────────────────────────────────── */}
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("cloneUrl")}>
+            <text fg={labelFg("cloneUrl")} attributes={labelAttrs("cloneUrl")}>
               git url
             </text>
             <input
               value={cloneUrl()}
               placeholder="https://github.com/user/repo.git"
               focused={field() === "cloneUrl"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => setCloneUrl(stripNewlines(v))}
               onSubmit={() => {
                 if (!cloneUrl().trim()) return
@@ -882,14 +879,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             />
           </box>
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("cloneParent")}>
+            <text fg={labelFg("cloneParent")} attributes={labelAttrs("cloneParent")}>
               parent dir
             </text>
             <input
               value={cloneParent()}
               placeholder="~/"
               focused={field() === "cloneParent"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setCloneParentPicked(false)
                 setCloneParent(stripNewlines(v))
@@ -942,14 +938,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           </Show>
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("cloneFolder")}>
+            <text fg={labelFg("cloneFolder")} attributes={labelAttrs("cloneFolder")}>
               folder name
             </text>
             <input
               value={cloneFolder()}
               placeholder="auto from url"
               focused={field() === "cloneFolder"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => {
                 setCloneFolderTouched(true)
                 setCloneFolder(stripNewlines(v))
@@ -958,14 +953,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             />
           </box>
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("cloneBaseRef")}>
+            <text fg={labelFg("cloneBaseRef")} attributes={labelAttrs("cloneBaseRef")}>
               base branch
             </text>
             <input
               value={cloneBaseRef()}
               placeholder={DEFAULT_BASE_REF}
               focused={field() === "cloneBaseRef"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => setCloneBaseRef(stripNewlines(v))}
               // Last field on the clone tab — Enter kicks off the clone +
               // create directly, no second Enter on the Create button.
@@ -983,14 +977,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "adopt"}>
           {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
           <box gap={0}>
-            <text fg={theme.textMuted} attributes={labelAttrs("adoptFilter")}>
+            <text fg={labelFg("adoptFilter")} attributes={labelAttrs("adoptFilter")}>
               filter (path glob)
             </text>
             <input
               value={adoptFilter()}
               placeholder="* — type e.g. feature-* to narrow"
               focused={field() === "adoptFilter"}
-              focusedTextColor={theme.primary}
               onInput={(v: string) => setAdoptFilter(stripNewlines(v))}
               onSubmit={() => toggleAdoptCursor()}
             />
