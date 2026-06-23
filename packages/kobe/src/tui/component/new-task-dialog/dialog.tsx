@@ -704,12 +704,12 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           )
         })()}
-        {/* Engine selector — same label-on-top / options-below shape as the
-            mode strip and the repo/branch fields. Reachable by Tab (field
-            === "engine"); ←/→ cycles while focused, ctrl+e from anywhere,
-            click picks. Only detected vendors are listed. The selected
-            vendor carries a ▸ marker (parallel to the mode strip) and shows
-            accent-when-focused / primary otherwise; the ctrl+e hint is
+        {/* Engine selector — label-on-top / options-below. Reachable by Tab
+            (field === "engine"); ←/→ cycles while focused, ctrl+e from
+            anywhere, click picks. Only detected vendors are listed. The
+            selected vendor is ▸ + bold + primary (no underline — selection
+            is shown by weight+colour); focus of the whole selector is shown
+            by the underlined `engine` label instead. The ctrl+e hint is
             right-stuck + muted so it reads as a hint, not an engine. */}
         <box gap={0}>
           <text fg={theme.textMuted} attributes={labelAttrs("engine")}>
@@ -722,7 +722,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                 return (
                   <text
                     fg={selected() ? theme.primary : theme.textMuted}
-                    attributes={selectedAttrs(selected(), field() === "engine")}
+                    attributes={selected() ? TextAttributes.BOLD : undefined}
                     onMouseUp={() => setVendor(v)}
                   >
                     {selected() ? "▸ " : "  "}
