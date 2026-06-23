@@ -14,7 +14,7 @@
  */
 
 import * as os from "node:os"
-import { expandHome, filterSubdirs, joinDrill, splitPathForDirSuggest } from "@/tui/lib/path-helpers"
+import { expandHome, filterSubdirs, joinDrill, joinPicked, splitPathForDirSuggest } from "@/tui/lib/path-helpers"
 import { describe, expect, it } from "vitest"
 
 describe("expandHome", () => {
@@ -87,5 +87,29 @@ describe("joinDrill", () => {
   it("keeps absolute display when the user typed an absolute path", () => {
     const home = os.homedir()
     expect(joinDrill(`${home}/`, `${home}/`, "code")).toBe(`${home}/code/`)
+  })
+})
+
+describe("joinPicked (select, don't drill — no trailing slash)", () => {
+  it("appends the picked dir WITHOUT a trailing slash so the dropdown collapses", () => {
+    expect(joinPicked("/tmp/", "/tmp/", "repo")).toBe("/tmp/repo")
+  })
+
+  it("rewraps home-relative results in ~/ when the user typed ~", () => {
+    const home = os.homedir()
+    expect(joinPicked("~/", `${home}/`, "code")).toBe("~/code")
+  })
+
+  it("collapses a pick AT the home root back to bare ~", () => {
+    const home = os.homedir()
+    // base is the parent of home, name is home's leaf → out === home.
+    const parent = `${home.slice(0, home.lastIndexOf("/") + 1)}`
+    const leaf = home.slice(home.lastIndexOf("/") + 1)
+    expect(joinPicked("~", parent, leaf)).toBe("~")
+  })
+
+  it("keeps absolute display when the user typed an absolute path", () => {
+    const home = os.homedir()
+    expect(joinPicked(`${home}/`, `${home}/`, "code")).toBe(`${home}/code`)
   })
 })
