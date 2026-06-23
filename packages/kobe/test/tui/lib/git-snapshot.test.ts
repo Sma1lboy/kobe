@@ -55,7 +55,10 @@ describe("validateRepoPath", () => {
     expect(validateRepoPath("")).toBe("repo path is required")
     expect(validateRepoPath(path.join(root, "missing"))).toContain("path does not exist")
     expect(validateRepoPath(plainFile)).toContain("not a directory")
-    expect(validateRepoPath(notRepo)).toContain("not a git repository")
+    // Non-repo: friendly copy that explains the why and hands over the fix.
+    const nonRepo = validateRepoPath(notRepo)
+    expect(nonRepo).toContain("isn't a git repository")
+    expect(nonRepo).toContain("git init")
   })
 
   it("returns null for a usable git repo", () => {
