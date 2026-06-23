@@ -40,6 +40,19 @@ export const DEFAULT_BASE_REF = "main"
  *      both "exists but not a repo" and "exists but git is unhappy"
  *      with a single check.
  */
+/**
+ * Friendly reason for the "exists but isn't a git repo" case. A task is a
+ * `git worktree + engine session + branch`, so for now the source dir must
+ * already be a git repo — `git worktree add` has nothing to branch from
+ * otherwise. Non-git project roots are a planned follow-up; until then we
+ * explain the why and hand the user the exact fix instead of leaking git's
+ * `fatal: not a git repository`. Rendered with word-wrap, so a full
+ * sentence + command is fine here.
+ */
+function notAGitRepoReason(path: string): string {
+  return `This folder isn't a git repository yet, and a task needs a git branch to work in. To fix it, turn ${path} into a repo:  git init && git add -A && git commit -m "init"  — then create the task again. (Working in non-git folders is coming soon.)`
+}
+
 export function validateRepoPath(repo: string): string | null {
   const trimmed = repo.trim()
   if (!trimmed) return "repo path is required"
@@ -58,9 +71,9 @@ export function validateRepoPath(repo: string): string | null {
       timeout: 2000,
       stdio: ["ignore", "pipe", "ignore"],
     })
-    if (out.status !== 0) return `not a git repository: ${trimmed}`
+    if (out.status !== 0) return notAGitRepoReason(trimmed)
   } catch {
-    return `not a git repository: ${trimmed}`
+    return notAGitRepoReason(trimmed)
   }
   return null
 }
