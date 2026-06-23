@@ -35,6 +35,14 @@ kobe opens into a tmux workspace with:
 
 ---
 
+## Choose your AI engine
+
+Use **Settings → Engine** to pick which AI CLI kobe should run for a task: `claude`, `codex`, `gemini`, `copilot`, or your own command.
+
+https://github.com/user-attachments/assets/11fcc3e5-7d20-403d-82df-3e5d156d1dba
+
+---
+
 AI agents are useful one at a time. kobe is for when you want five attempts running at once.
 
 ```text
