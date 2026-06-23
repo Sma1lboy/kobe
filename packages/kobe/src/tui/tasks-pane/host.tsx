@@ -109,6 +109,22 @@ function worktreeCwdUsable(cwd: string | undefined): cwd is string {
   return !!cwd && worktreeUsable(cwd)
 }
 
+/**
+ * Toast text for a failed `ensureWorktree`. The new-task dialog blocks
+ * non-git repos pre-submit, but tasks created via other entry points (CLI,
+ * adopted state) can still reach here with a bare `fatal: not a git
+ * repository`. Translate that into the real reason — a task is a git
+ * worktree + branch, so for now the project must already be a git repo
+ * (non-git roots are a planned follow-up) — instead of leaking git's stderr.
+ */
+function worktreeErrorToast(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  if (/not a git repository/i.test(raw)) {
+    return "This project isn't a git repo yet — a task needs a git branch. Run `git init` (+ a first commit) in the project, then open the task. Non-git support is coming."
+  }
+  return `Couldn't create the worktree: ${raw}`
+}
+
 function TasksShell(props: {
   tasks: Accessor<readonly Task[]>
   initialTaskId?: string
@@ -395,7 +411,7 @@ function TasksShell(props: {
         worktree = await props.orch.ensureWorktree(id)
       } catch (err) {
         console.error("[kobe tasks] task.ensureWorktree failed:", err)
-        notifyError(`Couldn't create worktree: ${err instanceof Error ? err.message : String(err)}`)
+        notifyError(worktreeErrorToast(err))
         return
       }
       await props.reload()
@@ -589,7 +605,7 @@ function TasksShell(props: {
         cwd = await props.orch.ensureWorktree(id)
       } catch (err) {
         console.error("[kobe tasks] task.ensureWorktree failed:", err)
-        notifyError(`Couldn't create worktree: ${err instanceof Error ? err.message : String(err)}`)
+        notifyError(worktreeErrorToast(err))
         return
       }
       await props.reload()
