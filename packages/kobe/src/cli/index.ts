@@ -6,6 +6,7 @@
  *   - `kobe`                    Launch the TUI (default).
  *   - `kobe add [path]`         Save a repo path for the new-task picker.
  *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
+ *   - `kobe export [--csv]`     Print the task list (json/csv/table; daemon-free).
  *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
  *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
  *   - `kobe theme <verb>`       Manage user themes.
@@ -330,6 +331,11 @@ async function main(): Promise<void> {
   }
   if (subcommand === "adopt") {
     await runAdoptSubcommand(rest)
+    return
+  }
+  if (subcommand === "export") {
+    const { runExportSubcommand } = await import("./export-cmd.ts")
+    await runExportSubcommand(rest)
     return
   }
   if (subcommand === "repo") {
