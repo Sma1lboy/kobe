@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.35
+
+### Patch Changes
+
+- 2754844: New-task dialog focus styling. A focused field label (`repo`, `engine`, `from branch`, the clone fields…) is shown primary + bold + underline; unfocused labels stay muted. The active mode tab and selected engine keep their ▸ + bold + primary look (the active mode tab also underlines while the mode selector itself holds focus, and the `claude`/`codex` chips never underline). Input values are left at their default colour. This replaces the earlier accent-hue-on-focus, which read as jumpy.
+- 65ca80b: Reworked the new-task dialog into a single top-to-bottom keyboard flow. The mode tabs (For Existing / New Repo / Adopt) and the engine selector are now real focus stops — the dialog opens on the mode row so ←/→ switches the mode immediately, Tab walks down `mode → engine → repo → branch → Create`, and the Create button moved to the bottom-right where "tab through, then commit" expects it. Picking a directory in the repo / clone-parent pickers now **selects** it (Enter or click) and advances to the next field instead of drilling endlessly into its children; keep typing to browse deeper. Enter on the last field creates the task directly (no second press on Create).
+- cd33272: Friendlier, actionable error when a task's folder isn't a git repo. Instead of leaking git's bare `fatal: not a git repository`, both the new-task dialog's inline validation and the worktree-creation toast now explain why a task needs a git repo and hand over the exact fix (`git init && git add -A && git commit -m "init"`), noting that non-git folders will be supported later.
+
 ## 0.7.34
 
 ### Patch Changes
