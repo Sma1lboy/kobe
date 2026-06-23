@@ -647,6 +647,15 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     ],
   }))
 
+  // Focus is shown by an UNDERLINE in the element's own colour — never a
+  // hue change (the accent-on-focus read as "weird"/jumpy). Field labels
+  // stay muted and gain an underline when their field is focused; active
+  // selections (mode tab, engine) keep ▸ + bold + primary and add an
+  // underline only while that selector holds focus.
+  const labelAttrs = (f: Field) => (field() === f ? TextAttributes.UNDERLINE : undefined)
+  const selectedAttrs = (selected: boolean, focused: boolean) =>
+    selected ? (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD) : undefined
+
   return (
     <box paddingLeft={2} paddingRight={2} gap={0}>
       <box flexDirection="row">
@@ -663,31 +672,31 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         {/* Mode-tab selector. Self-describing phrases, so no label line
             (unlike the engine chips). Reachable by Tab (field === "tabs");
             ←/→ switches the active tab while focused, ctrl+[/] from anywhere,
-            mouse click selects. The active tab shows accent while the
-            selector is focused (so keyboard focus is visible without a text
-            cursor) and primary otherwise. */}
+            mouse click selects. The active tab is always ▸ + bold + primary;
+            an underline (not a colour change) marks it while the mode
+            selector holds focus. */}
         {(() => {
           const tabFocused = () => field() === "tabs"
-          const tabFg = (active: boolean) => (active ? (tabFocused() ? theme.accent : theme.primary) : theme.textMuted)
+          const tabFg = (active: boolean) => (active ? theme.primary : theme.textMuted)
           return (
             <box flexDirection="row" gap={2}>
               <text
                 fg={tabFg(tab() === "existing")}
-                attributes={tab() === "existing" ? TextAttributes.BOLD : undefined}
+                attributes={selectedAttrs(tab() === "existing", tabFocused())}
                 onMouseUp={() => switchToTab("existing")}
               >
                 {tab() === "existing" ? "▸ For Existing" : "  For Existing"}
               </text>
               <text
                 fg={tabFg(tab() === "clone")}
-                attributes={tab() === "clone" ? TextAttributes.BOLD : undefined}
+                attributes={selectedAttrs(tab() === "clone", tabFocused())}
                 onMouseUp={() => switchToTab("clone")}
               >
                 {tab() === "clone" ? "▸ For New Repo" : "  For New Repo"}
               </text>
               <text
                 fg={tabFg(tab() === "adopt")}
-                attributes={tab() === "adopt" ? TextAttributes.BOLD : undefined}
+                attributes={selectedAttrs(tab() === "adopt", tabFocused())}
                 onMouseUp={() => switchToTab("adopt")}
               >
                 {tab() === "adopt" ? "▸ Adopt Worktree" : "  Adopt Worktree"}
@@ -703,15 +712,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             accent-when-focused / primary otherwise; the ctrl+e hint is
             right-stuck + muted so it reads as a hint, not an engine. */}
         <box gap={0}>
-          <text fg={field() === "engine" ? theme.accent : theme.textMuted}>engine</text>
+          <text fg={theme.textMuted} attributes={labelAttrs("engine")}>
+            engine
+          </text>
           <box flexDirection="row" gap={2}>
             <For each={availableVendors()}>
               {(v) => {
                 const selected = () => vendor() === v
                 return (
                   <text
-                    fg={selected() ? (field() === "engine" ? theme.accent : theme.primary) : theme.textMuted}
-                    attributes={selected() ? TextAttributes.BOLD : undefined}
+                    fg={selected() ? theme.primary : theme.textMuted}
+                    attributes={selectedAttrs(selected(), field() === "engine")}
                     onMouseUp={() => setVendor(v)}
                   >
                     {selected() ? "▸ " : "  "}
@@ -727,7 +738,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "existing"}>
           {/* ── Existing tab body ───────────────────────────────────── */}
           <box gap={0}>
-            <text fg={field() === "repo" ? theme.accent : theme.textMuted}>repo</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("repo")}>
+              repo
+            </text>
             <input
               value={repo()}
               placeholder={props.defaultRepo}
@@ -780,7 +793,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           </Show>
           <box gap={0}>
-            <text fg={field() === "baseRef" ? theme.accent : theme.textMuted}>from branch</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("baseRef")}>
+              from branch
+            </text>
             <input
               value={baseRef()}
               placeholder={DEFAULT_BASE_REF}
@@ -849,7 +864,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "clone"}>
           {/* ── Clone tab body ──────────────────────────────────────── */}
           <box gap={0}>
-            <text fg={field() === "cloneUrl" ? theme.accent : theme.textMuted}>git url</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("cloneUrl")}>
+              git url
+            </text>
             <input
               value={cloneUrl()}
               placeholder="https://github.com/user/repo.git"
@@ -862,7 +879,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             />
           </box>
           <box gap={0}>
-            <text fg={field() === "cloneParent" ? theme.accent : theme.textMuted}>parent dir</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("cloneParent")}>
+              parent dir
+            </text>
             <input
               value={cloneParent()}
               placeholder="~/"
@@ -919,7 +938,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             </box>
           </Show>
           <box gap={0}>
-            <text fg={field() === "cloneFolder" ? theme.accent : theme.textMuted}>folder name</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("cloneFolder")}>
+              folder name
+            </text>
             <input
               value={cloneFolder()}
               placeholder="auto from url"
@@ -932,7 +953,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             />
           </box>
           <box gap={0}>
-            <text fg={field() === "cloneBaseRef" ? theme.accent : theme.textMuted}>base branch</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("cloneBaseRef")}>
+              base branch
+            </text>
             <input
               value={cloneBaseRef()}
               placeholder={DEFAULT_BASE_REF}
@@ -954,7 +977,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         <Show when={tab() === "adopt"}>
           {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
           <box gap={0}>
-            <text fg={field() === "adoptFilter" ? theme.accent : theme.textMuted}>filter (path glob)</text>
+            <text fg={theme.textMuted} attributes={labelAttrs("adoptFilter")}>
+              filter (path glob)
+            </text>
             <input
               value={adoptFilter()}
               placeholder="* — type e.g. feature-* to narrow"
