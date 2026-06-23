@@ -64,7 +64,10 @@ export const BracketChip: React.FC = () => {
         <span style={{ color: colors.blue, transform: `translateX(${rightX}px)`, opacity: rightOpacity }}>]</span>
       </div>
       <div style={{ marginTop: 32, color: colors.muted, fontSize: 22, letterSpacing: 4 }}>
-        TUI ORCHESTRATOR FOR CLAUDE CODE
+        TUI ORCHESTRATOR FOR ANY CODING CLI
+      </div>
+      <div style={{ marginTop: 12, color: colors.muted, fontSize: 16, letterSpacing: 3, opacity: 0.7 }}>
+        CLAUDE · CODEX · COPILOT · GEMINI · YOUR OWN
       </div>
     </AbsoluteFill>
   )
