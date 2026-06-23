@@ -76,14 +76,30 @@ export function nextDialogTab(tab: DialogTab): DialogTab {
   return "existing"
 }
 
+/** Reverse cycle for the tab strip: existing → adopt → clone → existing.
+ *  Powers ←/→ navigation when the mode-tab selector is focused. */
+export function prevDialogTab(tab: DialogTab): DialogTab {
+  if (tab === "existing") return "adopt"
+  if (tab === "clone") return "existing"
+  return "clone"
+}
+
 /**
- * Field states for the dialog. The "existing" tab uses `repo` / `baseRef`
- * / `confirm`. The "clone" tab uses `cloneUrl` / `cloneParent` /
- * `cloneFolder` / `cloneBaseRef` / `confirm` — same `confirm` value is
- * shared so the bottom-row Create button works identically on both
- * surfaces. Tab cycling stays inside a single sub-tab's field list.
+ * Field states for the dialog. Two are shared across every sub-tab and
+ * sit at the top of the visual order:
+ *   - `tabs`   — the mode-tab selector (For Existing / New Repo / Adopt).
+ *                ←/→ switches the active sub-tab while it's focused.
+ *   - `engine` — the vendor selector. ←/→ (and ctrl+e from anywhere)
+ *                cycles the engine while it's focused.
+ * Below them each sub-tab has its own inputs: "existing" uses `repo` /
+ * `baseRef`; "clone" uses `cloneUrl` / `cloneParent` / `cloneFolder` /
+ * `cloneBaseRef`; "adopt" uses `adoptFilter`. `confirm` is the bottom-
+ * right Create button, shared by all tabs. Tab walks the whole chain so
+ * the selectors AND the Create button are reachable by keyboard.
  */
 export type Field =
+  | "tabs"
+  | "engine"
   | "repo"
   | "baseRef"
   | "cloneUrl"
@@ -151,15 +167,23 @@ export function stripNewlines(v: string): string {
 }
 
 /**
- * Advance the field-cycle state. Tab walks within the current sub-tab's
- * field list:
- *   existing:   repo → baseRef → confirm → repo
- *   clone:      cloneUrl → cloneParent → cloneFolder → cloneBaseRef → confirm → cloneUrl
+ * Advance the field-cycle state. Tab walks the full chain in visual
+ * order, threading the two shared selectors (`tabs`, `engine`) and the
+ * shared `confirm` button into every sub-tab:
+ *   existing:   tabs → engine → repo → baseRef → confirm → tabs
+ *   clone:      tabs → engine → cloneUrl → cloneParent → cloneFolder → cloneBaseRef → confirm → tabs
+ *   adopt:      tabs → engine → adoptFilter → confirm → tabs
  *
- * `confirm` is shared between both sub-tabs — the caller is responsible
- * for resetting to the right "first field" when the user switches tabs.
+ * The `confirm → tabs → engine → <first input>` trailer is shared, so
+ * tabbing past Create lands back on the selectors rather than stranding
+ * the user. A stale cross-tab input field restarts the active tab's
+ * cycle at its first input.
  */
 export function nextField(field: Field, tab: DialogTab = "existing"): Field {
+  // Shared trailer — the selectors + Create button common to every tab.
+  if (field === "confirm") return "tabs"
+  if (field === "tabs") return "engine"
+  if (field === "engine") return firstFieldFor(tab)
   if (tab === "clone") {
     if (field === "cloneUrl") return "cloneParent"
     if (field === "cloneParent") return "cloneFolder"
@@ -168,7 +192,7 @@ export function nextField(field: Field, tab: DialogTab = "existing"): Field {
     return "cloneUrl"
   }
   if (tab === "adopt") {
-    // Two stops: the glob-filter input and the Create (= Adopt) button.
+    // One input stop (the glob filter) then the Create (= Adopt) button.
     // List navigation is up/down on the rows, not Tab.
     return field === "adoptFilter" ? "confirm" : "adoptFilter"
   }

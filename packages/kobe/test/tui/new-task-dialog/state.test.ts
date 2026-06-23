@@ -30,6 +30,7 @@ import {
   nextDialogTab,
   nextField,
   pickerModeFor,
+  prevDialogTab,
   resolveBaseRef,
   stripNewlines,
   windowAround,
@@ -70,6 +71,14 @@ describe("nextDialogTab (KOB-256: 3-tab cycle)", () => {
   })
 })
 
+describe("prevDialogTab (←/→ reverse cycle on the mode-tab selector)", () => {
+  it("cycles existing → adopt → clone → existing", () => {
+    expect(prevDialogTab("existing")).toBe("adopt")
+    expect(prevDialogTab("adopt")).toBe("clone")
+    expect(prevDialogTab("clone")).toBe("existing")
+  })
+})
+
 describe("pickerModeFor", () => {
   it("stays in saved mode when the input exactly matches a saved repo", () => {
     const cwd = "/home/me/proj"
@@ -99,23 +108,34 @@ describe("computeRepoOptions", () => {
 })
 
 describe("nextField / firstFieldFor (per-tab field cycling)", () => {
-  it("cycles the existing tab: repo → baseRef → confirm → repo", () => {
+  it("cycles the existing tab: tabs → engine → repo → baseRef → confirm → tabs", () => {
     expect(nextField("repo", "existing")).toBe("baseRef")
     expect(nextField("baseRef", "existing")).toBe("confirm")
-    expect(nextField("confirm", "existing")).toBe("repo")
+    expect(nextField("confirm", "existing")).toBe("tabs")
+    expect(nextField("tabs", "existing")).toBe("engine")
+    expect(nextField("engine", "existing")).toBe("repo")
   })
 
-  it("cycles the clone tab through all four inputs to confirm and back", () => {
+  it("cycles the clone tab through the selectors + all four inputs to confirm and back", () => {
+    expect(nextField("engine", "clone")).toBe("cloneUrl")
     expect(nextField("cloneUrl", "clone")).toBe("cloneParent")
     expect(nextField("cloneParent", "clone")).toBe("cloneFolder")
     expect(nextField("cloneFolder", "clone")).toBe("cloneBaseRef")
     expect(nextField("cloneBaseRef", "clone")).toBe("confirm")
-    expect(nextField("confirm", "clone")).toBe("cloneUrl")
+    expect(nextField("confirm", "clone")).toBe("tabs")
   })
 
-  it("toggles the adopt tab between filter and confirm (list nav is up/down)", () => {
+  it("walks the adopt tab tabs → engine → filter → confirm → tabs", () => {
+    expect(nextField("engine", "adopt")).toBe("adoptFilter")
     expect(nextField("adoptFilter", "adopt")).toBe("confirm")
-    expect(nextField("confirm", "adopt")).toBe("adoptFilter")
+    expect(nextField("confirm", "adopt")).toBe("tabs")
+  })
+
+  it("threads the shared selectors + Create through every tab in the same order", () => {
+    // confirm → tabs → engine → <first input> is shared trailer logic.
+    expect(nextField("confirm", "existing")).toBe("tabs")
+    expect(nextField("tabs", "clone")).toBe("engine")
+    expect(nextField("engine", "adopt")).toBe("adoptFilter")
   })
 
   it("recovers a stale cross-tab field by restarting the cycle", () => {

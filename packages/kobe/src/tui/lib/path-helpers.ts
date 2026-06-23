@@ -119,3 +119,21 @@ export function joinDrill(typedValue: string, baseExpanded: string, name: string
   }
   return out
 }
+
+/**
+ * Compose the input value when the user SELECTS a highlighted
+ * subdirectory (Enter / click) rather than drilling into it: the
+ * concrete path with NO trailing slash, so the suggestion dropdown
+ * collapses instead of listing the dir's children. Preserves a typed
+ * `~/` prefix the same way {@link joinDrill} does. Drilling deeper is
+ * still possible by typing (append `/`).
+ */
+export function joinPicked(typedValue: string, baseExpanded: string, name: string): string {
+  const out = baseExpanded + name
+  if (typedValue.startsWith("~")) {
+    const home = os.homedir()
+    if (out === home) return "~"
+    if (out.startsWith(`${home}/`)) return `~${out.slice(home.length)}`
+  }
+  return out
+}
