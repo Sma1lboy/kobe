@@ -22,8 +22,9 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import type { Task, TaskId, TaskIndex, TaskPRStatus, TaskStatus, VendorId } from "../../types/task.ts"
+import type { Task, TaskId, TaskIndex, TaskPRStatus, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
+import { coerceVendorId } from "../../types/vendor.ts"
 import { ulid } from "./ulid.ts"
 
 export interface TaskIndexStoreOptions {
@@ -423,7 +424,7 @@ function coerceTask(value: unknown): Task | null {
     archived,
     pinned: typeof v.pinned === "boolean" ? v.pinned : false,
     kind,
-    vendor: isVendorId(v.vendor) ? v.vendor : DEFAULT_TASK_VENDOR,
+    vendor: coerceVendorId(typeof v.vendor === "string" ? v.vendor : undefined),
     prStatus: coercePRStatus(v.prStatus),
     // Web-board ordering key — must survive the load coercion or every
     // daemon restart silently forgets the user's column order.
@@ -470,10 +471,6 @@ function isPRLifecycleState(v: unknown): v is TaskPRStatus["lifecycle"] {
 
 function isPRCheckState(v: unknown): v is TaskPRStatus["checkState"] {
   return v === "none" || v === "pending" || v === "passing" || v === "failing" || v === "unknown"
-}
-
-function isVendorId(v: unknown): v is VendorId {
-  return v === "claude" || v === "codex"
 }
 
 function isTaskStatus(s: string): s is TaskStatus {
