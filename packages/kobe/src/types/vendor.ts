@@ -59,6 +59,19 @@ export function nextVendorWithin(list: readonly VendorId[], current: VendorId): 
 }
 
 /**
+ * Previous vendor within an arbitrary subset, wrapping around — the
+ * reverse of {@link nextVendorWithin}, powering ←/→ on the new-task
+ * engine selector. A `current` not in the list starts from the last
+ * entry; an empty list returns `current` unchanged.
+ */
+export function prevVendorWithin(list: readonly VendorId[], current: VendorId): VendorId {
+  if (list.length === 0) return current
+  const i = list.indexOf(current)
+  if (i < 0) return list[list.length - 1] ?? current
+  return list[(i - 1 + list.length) % list.length] ?? current
+}
+
+/**
  * Coerce an untrusted string (a CLI flag, a persisted record) to a
  * {@link VendorId}. Engines are now OPEN (users register their own), so a
  * non-empty value passes through as-is — a built-in OR a custom id; the
