@@ -65,7 +65,15 @@ import { useTheme } from "../../context/theme"
 import { type FileStatus, type StatusEntry, type TreeNode, buildTree, listFiles, statusFiles } from "./git"
 import { type FileTreeTab, useFileTreeBindings } from "./keys"
 import { openExternally } from "./open-external"
-import { type Row, flattenTree, reconcileRows, sameFileList, sameStatusEntries, statusRows } from "./rows"
+import {
+  type Row,
+  flattenTree,
+  reconcileRows,
+  sameFileList,
+  sameStatusEntries,
+  statusRows,
+  truncatePathTail,
+} from "./rows"
 
 /**
  * Default width of the pane in terminal cells from the old centre-column
@@ -184,17 +192,6 @@ export function summarizeGitError(raw: string): string {
 const TAB_LABEL: Record<FileTreeTab, string> = {
   all: "All",
   changes: "Changes",
-}
-
-/**
- * Truncate a path keeping its TAIL — the leaf (filename) carries the
- * meaning, so on a narrow pane we drop the leading directories and show
- * `…components/sidebar/Sidebar.tsx` rather than clipping the filename
- * off the right. A leading `…` marks the elided prefix.
- */
-function truncatePathTail(path: string, max: number): string {
-  if (max <= 0 || path.length <= max) return path
-  return `…${path.slice(path.length - Math.max(0, max - 1))}`
 }
 
 export function FileTree(props: FileTreeProps) {
