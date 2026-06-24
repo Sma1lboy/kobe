@@ -62,6 +62,26 @@ export const IN_PROGRESS_SPINNER: readonly string[] = ["⠋", "⠙", "⠹", "⠸
 export const SPINNER_FRAME_MS = 100
 
 /**
+ * The right-stuck PR-check chip for a task's subtitle row (KOB-10). The
+ * daemon's pr-status poller writes `task.prStatus`; this maps its `checkState`
+ * to a single coloured glyph (✓ passing / ✗ failing / • pending). Returns null
+ * for tasks with no PR or no checks configured (`none` / `unknown`) so the row
+ * stays clean. Pure — unit-tested.
+ */
+export function prCheckChip(task: Task): { glyph: string; tone: SidebarTone } | null {
+  switch (task.prStatus?.checkState) {
+    case "passing":
+      return { glyph: "✓", tone: "success" }
+    case "failing":
+      return { glyph: "✗", tone: "error" }
+    case "pending":
+      return { glyph: "•", tone: "warning" }
+    default:
+      return null
+  }
+}
+
+/**
  * Static dim glyph for a custom-engine task with no live signal. A custom
  * engine has no transcript store the monitor can watch (see
  * `monitor/activity.ts`), so its activity badge would otherwise sit on the
