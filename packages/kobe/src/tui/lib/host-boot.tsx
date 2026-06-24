@@ -38,6 +38,7 @@ import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
+import { setLocaleLang } from "../i18n"
 import { DialogProvider } from "../ui/dialog"
 import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
@@ -230,6 +231,12 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
     transparentBackground: props.boot.transparent,
     focusAccent: props.boot.focusAccent,
   })
+  // Language is a module-global reactive value (not part of the theme
+  // target), so it's seeded directly rather than through applyUiPrefs.
+  // This covers every host at boot; switching it live in Settings updates
+  // the same module store in-process. Cross-pane live propagation rides a
+  // later ui-prefs-channel field — for now panes pick up a change on boot.
+  setLocaleLang(props.boot.locale)
 
   // Live subscription. The orchestrator lands in a signal so the effect
   // below — created synchronously under THIS component's owner — starts

@@ -18,6 +18,7 @@
 
 import type { VendorId } from "../../../types/vendor"
 import type { FocusAccentSlot } from "../../context/theme"
+import { LOCALES, type LocaleId } from "../../i18n/catalog"
 
 export type NavLevel = "sidebar" | "body"
 
@@ -32,12 +33,6 @@ export const SECTIONS: ReadonlyArray<{ id: SectionId; label: string }> = [
   { id: "dev", label: "Dev" },
 ]
 
-export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
-  primary: "Primary (brand accent)",
-  success: "Success (legacy green)",
-  info: "Info (cool blue)",
-}
-
 /**
  * One navigable body row. `id` is unique within its section and stable
  * across renders (used by the section views to find a row's index);
@@ -47,6 +42,7 @@ export const FOCUS_ACCENT_LABEL: Record<FocusAccentSlot, string> = {
  */
 export type SettingsRow =
   | { id: string; kind: "theme"; name: string }
+  | { id: string; kind: "language"; locale: LocaleId }
   | { id: "transparent"; kind: "transparent" }
   | { id: string; kind: "focusAccent"; slot: FocusAccentSlot }
   | { id: "toast"; kind: "toast" }
@@ -71,6 +67,10 @@ export type SettingsRowKind = SettingsRow["kind"]
 /** Stable row ids for payload-bearing rows (shared by builders + views). */
 export function themeRowId(name: string): string {
   return `theme:${name}`
+}
+
+export function languageRowId(locale: LocaleId): string {
+  return `language:${locale}`
 }
 
 export function focusAccentRowId(slot: FocusAccentSlot): string {
@@ -103,6 +103,7 @@ export type SettingsRowsInput = {
 export function generalRows(input: Pick<SettingsRowsInput, "themeNames" | "focusAccentSlots">): SettingsRow[] {
   return [
     ...input.themeNames.map((name): SettingsRow => ({ id: themeRowId(name), kind: "theme", name })),
+    ...LOCALES.map((l): SettingsRow => ({ id: languageRowId(l.id), kind: "language", locale: l.id })),
     { id: "transparent", kind: "transparent" },
     ...input.focusAccentSlots.map((slot): SettingsRow => ({ id: focusAccentRowId(slot), kind: "focusAccent", slot })),
     { id: "toast", kind: "toast" },

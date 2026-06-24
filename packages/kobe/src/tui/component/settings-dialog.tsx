@@ -32,6 +32,7 @@ import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
+import { type LocaleId, currentLang, setLocaleLang, t } from "../i18n"
 import {
   DEFAULT_EDITOR_KIND,
   EDITOR_CUSTOM_KEY,
@@ -41,6 +42,7 @@ import {
   normalizeEditorKind,
 } from "../lib/editor-prefs"
 import { useBindings } from "../lib/keymap"
+import { LOCALE_KEY } from "../lib/persisted-ui-prefs"
 import {
   DEFAULT_SETTINGS_SURFACE,
   SETTINGS_SURFACE_KEY,
@@ -162,6 +164,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (themeCtx.selected === name) return
     if (!themeCtx.set(name)) return
     props.kv.set("activeTheme", name)
+    props.onVisualPrefsChange?.()
+  }
+
+  // UI language. Live within this process (setLocaleLang updates the module
+  // store → every t() re-renders) and persisted so other panes pick it up on
+  // their next boot, mirroring how the theme is applied + persisted.
+  function currentLocale(): LocaleId {
+    return currentLang()
+  }
+
+  function selectLanguage(locale: LocaleId): void {
+    if (currentLang() === locale) return
+    setLocaleLang(locale)
+    props.kv.set(LOCALE_KEY, locale)
     props.onVisualPrefsChange?.()
   }
 
@@ -480,6 +496,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
    */
   const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
     theme: (row) => selectTheme(row.name),
+    language: (row) => selectLanguage(row.locale),
     transparent: () => toggleTransparent(),
     focusAccent: (row) => selectFocusAccent(row.slot),
     toast: () => toggleToast(),
@@ -587,10 +604,10 @@ export function SettingsDialog(props: SettingsDialogProps) {
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Settings
+          {t("settings.title")}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => props.onClose()}>
-          esc
+          {t("settings.esc")}
         </text>
       </box>
       <box flexDirection="row" gap={2}>
@@ -605,6 +622,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               themeNames={themeNames}
               setThemeCursor={setThemeCursor}
               selectTheme={selectTheme}
+              currentLocale={currentLocale}
+              selectLanguage={selectLanguage}
               toggleTransparent={toggleTransparent}
               selectFocusAccent={selectFocusAccent}
               toastEnabled={toastEnabled}
@@ -691,11 +710,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         </box>
       </box>
       <box paddingTop={0}>
-        <text fg={theme.textMuted}>
-          {editingFeedback()
-            ? "tab next field · enter send · esc close"
-            : "j/k pick · h/l switch level · enter activate · esc close"}
-        </text>
+        <text fg={theme.textMuted}>{editingFeedback() ? t("settings.nav.feedback") : t("settings.nav.default")}</text>
       </box>
     </box>
   )
