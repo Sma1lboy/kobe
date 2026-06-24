@@ -573,11 +573,12 @@ async function main(): Promise<void> {
       "tasks-restore",
       "ops-toggle",
       "terminal-toggle",
+      "zen-toggle",
       "chat-tab-close",
     ])
     if (!action || !valid.has(action)) {
       console.error(
-        "kobe layout: --action must be one of workspace-split, workspace-close, workspace-reset, tasks-toggle, tasks-restore, ops-toggle, terminal-toggle, chat-tab-close",
+        "kobe layout: --action must be one of workspace-split, workspace-close, workspace-reset, tasks-toggle, tasks-restore, ops-toggle, terminal-toggle, zen-toggle, chat-tab-close",
       )
       process.exit(2)
     }

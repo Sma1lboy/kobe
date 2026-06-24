@@ -60,6 +60,7 @@ describe("generalRows", () => {
       "focusAccent",
       "toast",
       "sound",
+      "zenKeepTasks",
       "surface",
       "surface",
       "editorKind",
@@ -71,20 +72,21 @@ describe("generalRows", () => {
     expect(rows.filter((r) => r.kind === "surface").map((r) => r.surface)).toEqual(["chattab", "taskpanel"])
   })
 
-  it("matches the old offset formula (themeCount + 1 + accentCount + 6) for representative sizes", () => {
+  it("matches the offset formula (themeCount + 1 + accentCount + 7) for representative sizes", () => {
     for (const themeCount of [0, 1, 12, 30]) {
       const themes = Array.from({ length: themeCount }, (_, i) => `theme-${i}`)
       const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
-      expect(rows.length).toBe(themeCount + 1 + SLOTS.length + 6)
+      expect(rows.length).toBe(themeCount + 1 + SLOTS.length + 7)
       // Old transparentRowIndex(themeCount) === themeCount.
       expect(rowIndex(rows, "transparent")).toBe(themeCount)
-      // Old toastRowIndex / soundRowIndex chain.
+      // toastRowIndex / soundRowIndex chain, then the zen toggle, then surfaces + editors.
       expect(rowIndex(rows, "toast")).toBe(themeCount + 1 + SLOTS.length)
       expect(rowIndex(rows, "sound")).toBe(themeCount + 1 + SLOTS.length + 1)
-      expect(rowIndex(rows, surfaceRowId("chattab"))).toBe(themeCount + 1 + SLOTS.length + 2)
-      expect(rowIndex(rows, surfaceRowId("taskpanel"))).toBe(themeCount + 1 + SLOTS.length + 3)
-      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + 1 + SLOTS.length + 4)
-      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + 1 + SLOTS.length + 5)
+      expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + 1 + SLOTS.length + 2)
+      expect(rowIndex(rows, surfaceRowId("chattab"))).toBe(themeCount + 1 + SLOTS.length + 3)
+      expect(rowIndex(rows, surfaceRowId("taskpanel"))).toBe(themeCount + 1 + SLOTS.length + 4)
+      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + 1 + SLOTS.length + 5)
+      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + 1 + SLOTS.length + 6)
     }
   })
 
@@ -168,7 +170,7 @@ describe("sectionRows / bodyRowCount", () => {
     // 12 themes, 3 accents, 2 custom engines, daemon attached.
     const themes = Array.from({ length: 12 }, (_, i) => `t${i}`)
     const inp = input({ themeNames: themes, engineList: [...ALL_VENDORS, "aider", "goose"], hasDaemon: true })
-    expect(bodyRowCount("general", inp)).toBe(12 + 1 + 3 + 6) // 22
+    expect(bodyRowCount("general", inp)).toBe(12 + 1 + 3 + 7) // 23
     expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)
