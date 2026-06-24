@@ -14,6 +14,13 @@ import { capturePaneById, claudePaneId, claudePaneIdStrict, runTmux, sendKeyName
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
+ * Delay between the bracketed paste and the submit Enter so they land as
+ * separate tty reads. Matches the web composer + sidecar `/pty/send` fix
+ * (CHANGELOG 8f6dd64); see {@link pasteAndSubmit}.
+ */
+const SUBMIT_DELAY_MS = 150
+
+/**
  * Wait until a session's engine pane exists and (for a freshly-built
  * session) has painted a stable prompt, so a paste lands in the composer
  * rather than mid-boot.
@@ -54,6 +61,13 @@ export async function pasteAndSubmit(pane: string, text: string): Promise<void> 
   const buffer = `kobe-api-${pane.replace(/[^A-Za-z0-9]/g, "")}`
   await runTmux(["set-buffer", "-b", buffer, "--", text])
   await runTmux(["paste-buffer", "-p", "-d", "-b", buffer, "-t", pane])
+  // Defer the submit Enter so it lands as a SEPARATE tty read from the
+  // bracketed paste. Written back-to-back, the paste's `\e[201~` end-marker
+  // and the `\r` can coalesce into one read and the engine treats the
+  // carriage return as paste content — the prompt then sits unsent in the
+  // composer. The web composer + sidecar `/pty/send` path already split these
+  // (CHANGELOG 8f6dd64); this is the tmux delivery twin.
+  await sleep(SUBMIT_DELAY_MS)
   await sendKeyName(pane, "Enter")
 }
 
