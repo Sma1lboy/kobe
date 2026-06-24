@@ -1,0 +1,5 @@
+---
+"@sma1lboy/kobe": patch
+---
+
+Workspace now follows the terminal when it grows. The pre-attach/pre-switch `resize-window` that fits a task window to the entering client flips tmux's `window-size` to `manual`, so a live terminal resize from small to large no longer auto-grew the window — `window-resized` only fires when the window actually resizes, which a manual-pinned window never does on growth, leaving the UI letterboxed at the old small size until a task switch or reopen. A new `client-resized` hook (`kobe resync-window`) re-pins the active window to the resized client's size and re-heals the rail on every terminal size change, regardless of the manual pin, so the outer frame tracks the terminal while only the inner Tasks rail stays fixed-width. The hook coalesces a resize drag's event burst to one re-pin.

@@ -267,6 +267,14 @@ interface OpsFlags {
   action?: string
   /** tmux window id, used by `kobe layout --action chat-tab-close`. */
   windowId?: string
+  /** Client terminal width (cells), used by `kobe resync-window`. */
+  cols?: string
+  /** Client terminal height (cells), used by `kobe resync-window`. */
+  rows?: string
+  /** tmux `#{status}` value of the resized client, used by `kobe resync-window`. */
+  status?: string
+  /** tmux client name, used by `kobe resync-window`. */
+  client?: string
 }
 
 /** Parse `kobe ops` / `kobe new-chattab` flags. */
@@ -305,6 +313,18 @@ function parseOpsFlags(argv: readonly string[]): OpsFlags {
       i++
     } else if (flag === "--window") {
       flags.windowId = value
+      i++
+    } else if (flag === "--cols") {
+      flags.cols = value
+      i++
+    } else if (flag === "--rows") {
+      flags.rows = value
+      i++
+    } else if (flag === "--status") {
+      flags.status = value
+      i++
+    } else if (flag === "--client") {
+      flags.client = value
       i++
     }
   }
@@ -523,6 +543,30 @@ async function main(): Promise<void> {
     const { healSessionLayout } = await import("../tui/panes/terminal/tmux.ts")
     const { coalesceLayoutWork } = await import("../tui/panes/terminal/layout-coord.ts")
     await coalesceLayoutWork(session, "heal", () => healSessionLayout(session))
+    return
+  }
+  if (subcommand === "resync-window") {
+    // `client-resized` tmux hook handler: re-pin the active window to the size of
+    // the client whose terminal just changed, then heal the rail. Covers the GROW
+    // direction that `window-resized` / `heal-layout` miss — the pre-attach
+    // `resize-window` left the window in `manual` sizing, so a live terminal grow
+    // never fires `window-resized` (see resyncWindowToClient). Client dims arrive
+    // as args; coalesced so a resize-drag's event burst collapses to one re-pin.
+    const flags = parseOpsFlags(rest)
+    const session = flags.session
+    if (!session) {
+      console.error("kobe resync-window: --session <name> is required")
+      process.exit(2)
+    }
+    const cols = Number.parseInt(flags.cols ?? "", 10)
+    const rows = Number.parseInt(flags.rows ?? "", 10)
+    const size =
+      Number.isInteger(cols) && cols > 0 && Number.isInteger(rows) && rows > 0 ? { columns: cols, rows } : null
+    const { resyncWindowToClient } = await import("../tui/panes/terminal/tmux.ts")
+    const { coalesceLayoutWork } = await import("../tui/panes/terminal/layout-coord.ts")
+    await coalesceLayoutWork(session, "resync", () =>
+      resyncWindowToClient(session, { size, status: flags.status, clientName: flags.client }),
+    )
     return
   }
   if (subcommand === "capture-layout") {
