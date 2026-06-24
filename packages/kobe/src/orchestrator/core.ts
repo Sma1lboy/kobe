@@ -26,8 +26,9 @@ import { realpathSync } from "node:fs"
 import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
+import { samePrStatus } from "../monitor/pr-status.ts"
 import { getRemoteRepoConfig, isRemoteRepoKey, resolveRepoRoot } from "../state/repos.ts"
-import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
+import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import {
@@ -448,6 +449,20 @@ export class Orchestrator {
       throw new IllegalTransitionError(task.status, status, task.id)
     }
     await this.store.update(task.id, { status })
+  }
+
+  /**
+   * Set (or clear, with `null`) a task's PR status — driven by the daemon's
+   * `pr-status-collector`. Persisting it on the Task means the snapshot push
+   * already fans the change to every pane + the web board (no new channel),
+   * and it survives a daemon restart. No-op when nothing the UI renders
+   * changed (the collector also pre-diffs, but guard here too so a redundant
+   * call never churns a write + broadcast).
+   */
+  async setPRStatus(id: TaskId | string, prStatus: TaskPRStatus | null): Promise<void> {
+    const task = this.requireTask(id)
+    if (samePrStatus(task.prStatus, prStatus ?? undefined)) return
+    await this.store.update(task.id, { prStatus: prStatus ?? undefined })
   }
 
   /**

@@ -37,6 +37,7 @@ import {
 } from "./keybindings-watcher.ts"
 import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
 import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
@@ -84,6 +85,8 @@ export interface DaemonServerOptions {
   readonly updatePollMs?: number
   /** Auto-title re-scan interval in ms; `0` disables. Defaults to {@link DEFAULT_AUTO_TITLE_POLL_MS}. */
   readonly autoTitlePollMs?: number
+  /** PR-status (`gh pr view`) poll interval in ms; `0` disables. Defaults to {@link DEFAULT_PR_STATUS_POLL_MS}. */
+  readonly prStatusPollMs?: number
   /** UI-prefs watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_UI_PREFS_DEBOUNCE_MS}. */
   readonly uiPrefsDebounceMs?: number
   /** Keybindings watcher debounce in ms; `0` disables. Defaults to {@link DEFAULT_KEYBINDINGS_DEBOUNCE_MS}. */
@@ -306,6 +309,14 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     () => lifetime.hasSubscribers(),
   )
 
+  // PR-status poller (KOB-10): shells `gh pr view` per task with a real branch
+  // and writes the result onto Task.prStatus, which rides the same task push as
+  // every other field. Gated on subscribers so a gui-less daemon never hits the
+  // network for nobody.
+  const stopPrStatusPoller = startPrStatusPoller(orch, options.prStatusPollMs ?? DEFAULT_PR_STATUS_POLL_MS, () =>
+    lifetime.hasSubscribers(),
+  )
+
   let webServer: DaemonWebServer | null = null
   const serverApi: DaemonServer = {
     socketPath,
@@ -322,6 +333,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       webServer = null
       if (updateTimer) clearInterval(updateTimer)
       stopAutoTitlePoller()
+      stopPrStatusPoller()
       stopUiPrefsWatcher()
       stopKeybindingsWatcher()
       stopWorktreeChangesCollector()
