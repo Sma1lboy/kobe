@@ -104,7 +104,12 @@ export async function listFiles(worktreePath: string): Promise<string[]> {
  * like `R  old -> new` — we keep only the "new" path and report `R`.
  */
 export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> {
-  const out = await runGit(["status", "--porcelain"], worktreePath)
+  // `--untracked-files=all`: without it, `git status --porcelain` collapses a
+  // fully-untracked directory into ONE `?? dir/` row, which the Changes tab
+  // then renders as a bare directory (no +/- stats, no file to open). `-uall`
+  // expands it to the individual untracked files — matching the All tab's
+  // `git ls-files --others` enumeration and respecting .gitignore the same way.
+  const out = await runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath)
   const entries = parsePorcelain(out)
   // Merge in `git diff HEAD --numstat` so each row carries +/- counts.
   // Untracked files don't appear in `git diff` output — for those we
@@ -273,6 +278,11 @@ export function parsePorcelain(raw: string): StatusEntry[] {
       if (arrow >= 0) path = path.slice(arrow + " -> ".length)
     }
     if (path.length === 0) continue
+    // Defensive: the Changes tab is a flat list of FILES. `-uall` expands
+    // untracked directories to their files, but skip any trailing-slash dir
+    // row that still slips through (older git, a future flag) so a directory
+    // never renders as a change entry.
+    if (path.endsWith("/")) continue
     out.push({ path, status })
   }
   return out
