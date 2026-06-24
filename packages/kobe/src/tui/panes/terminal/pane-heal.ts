@@ -336,6 +336,42 @@ export async function globalRightColumnResizeArgs(): Promise<string[]> {
  * (`healTaskPaneWidths` + `healRightColumn` + `healKobePaneVersions`)
  * spawned 6 reads plus up to 3 mutation sequences.
  */
+/**
+ * Plan the rail + right-column re-pin commands for a session's workspace panes
+ * WITHOUT running them — the pure layout half of {@link healWorkspaceLayout},
+ * factored out so a caller that ALSO resizes the window (the `client-resized`
+ * resync) can batch the window resize and these pane re-pins into ONE tmux
+ * command sequence. tmux then applies both and repaints once, so the rail never
+ * flashes through its proportionally-reflowed (blown-up) intermediate width.
+ *
+ * `force` skips the "only if it differs" guard. After a `resize-window` the rail
+ * WILL have been reflowed proportionally wider, but a batched caller plans these
+ * commands from the PRE-resize snapshot (the rail still reads its already-pinned
+ * width), so the guard would wrongly skip the re-pin and leave the rail blown
+ * up. Callers that plan against already-settled geometry (the window-resized /
+ * reuse heals) keep the guard to avoid redundant churn.
+ */
+export async function workspaceLayoutPaneCommands(
+  session: string,
+  opts: { readonly force?: boolean } = {},
+): Promise<{ rows: KobePaneRow[] | null; commands: (readonly string[])[] }> {
+  const { tasksWidth, rcArgs } = await globalLayoutPrefs()
+  const rows = await listKobePanes(session)
+  if (!rows) return { rows: null, commands: [] }
+  const commands: (readonly string[])[] = []
+  for (const row of rows) {
+    if (row.role === "tasks" && (opts.force || row.paneWidth !== tasksWidth)) {
+      commands.push(["resize-pane", "-t", row.paneId, "-x", `${tasksWidth}`])
+    }
+  }
+  if (rcArgs.length > 0) {
+    for (const row of rows) {
+      if (row.role === "ops") commands.push(["resize-pane", "-t", row.paneId, ...rcArgs])
+    }
+  }
+  return { rows, commands }
+}
+
 export async function healWorkspaceLayout(
   session: string,
   versions?: { cwd: string; taskId: string | undefined; vendor: string | undefined; vendorChanged?: boolean },
@@ -346,20 +382,9 @@ export async function healWorkspaceLayout(
   // fixing is never mis-captured as a manual drag. This is the single choke
   // point every heal path funnels through (hook, reuse, pre-switch/attach).
   recordGen(session, "resize")
-  const { tasksWidth, rcArgs } = await globalLayoutPrefs()
-  const rows = await listKobePanes(session)
+  const { rows, commands: planned } = await workspaceLayoutPaneCommands(session)
   if (!rows) return
-  const commands: (readonly string[])[] = []
-  for (const row of rows) {
-    if (row.role === "tasks" && row.paneWidth !== tasksWidth) {
-      commands.push(["resize-pane", "-t", row.paneId, "-x", `${tasksWidth}`])
-    }
-  }
-  if (rcArgs.length > 0) {
-    for (const row of rows) {
-      if (row.role === "ops") commands.push(["resize-pane", "-t", row.paneId, ...rcArgs])
-    }
-  }
+  const commands: (readonly string[])[] = [...planned]
   if (versions) {
     commands.push(
       ...respawnCommandsFor(

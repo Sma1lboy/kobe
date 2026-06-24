@@ -98,7 +98,7 @@ import {
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
 import { runLayoutAction } from "./layout-actions"
 import { recordGen } from "./layout-coord"
-import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
+import { healWorkspaceLayout, relaunchEngineInAllWindows, workspaceLayoutPaneCommands } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`direct.ts`, pane hosts) keep their `./tmux` path.
@@ -355,12 +355,18 @@ export async function resyncWindowToClient(
 ): Promise<void> {
   if (!opts.size) return
   // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
-  // it triggers skips this in-flight resize (healWorkspaceLayout re-stamps too).
+  // it triggers skips this in-flight resize.
   recordGen(session, "resize")
   await ignoreConflictingSizeClients(session, opts.size, { currentClientName: opts.clientName })
   const sizeArgs = tmuxWindowSizeArgsForClient(opts.size, { status: opts.status })
-  await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
-  await healWorkspaceLayout(session)
+  // Batch the window resize and the rail/right-column re-pin into ONE tmux
+  // command sequence so tmux repaints once: a separate resize-window (which
+  // reflows the rail proportionally wider) followed by a separate heal (which
+  // snaps it back) paints the blown-up intermediate frame — the visible "flash".
+  // `force` because the re-pins are planned from the PRE-resize snapshot, where
+  // the rail still reads its pinned width (see workspaceLayoutPaneCommands).
+  const { commands } = await workspaceLayoutPaneCommands(session, { force: true })
+  await runTmuxSequence([["resize-window", "-t", `=${session}`, ...sizeArgs], ...commands])
 }
 
 /** Direction flag → the tmux format var that is `1` when the pane sits at that edge. */
