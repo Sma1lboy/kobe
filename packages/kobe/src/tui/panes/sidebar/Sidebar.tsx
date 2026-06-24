@@ -255,7 +255,7 @@ export type SidebarProps = {
  * union; the `[` / `]` keys cycle within this list (currently 2 entries).
  */
 const VIEW_TABS: ReadonlyArray<{ view: SidebarView; label: string }> = [
-  { view: "active", label: "Working session" },
+  { view: "active", label: "Workspace" },
   { view: "archived", label: "Archives" },
 ]
 
@@ -557,7 +557,13 @@ export function Sidebar(props: SidebarProps) {
   // PROJECTS is a separate scroll region above TASKS. Cap it so a repo-heavy
   // workspace can scroll projects without starving the task list; derive the
   // cap from terminal cells and clamp it to a small, predictable rail band.
-  const projectScrollMaxHeight = createMemo(() => Math.max(2, Math.min(10, Math.floor(dims().height * 0.25))))
+  // Then shrink to the actual project rows (each card is 2 lines, no inter-card
+  // gap) so a one-project workspace doesn't reserve the full cap as dead space.
+  const projectScrollMaxHeight = createMemo(() => {
+    const cellCap = Math.max(2, Math.min(10, Math.floor(dims().height * 0.25)))
+    const contentHeight = Math.max(2, projectRows().length * 2)
+    return Math.min(cellCap, contentHeight)
+  })
   const [hover, setHover] = createSignal<{ task: Task; x: number; y: number } | null>(null)
 
   const [cursorIndex, setCursorIndex] = createSignal<number>(-1)
