@@ -424,11 +424,51 @@ export async function sendKeyName(target: string, key: string): Promise<void> {
  * window's status-bar label. When `command` exits (e.g. the pager
  * quits), tmux closes the window and switches back to the previous one.
  */
-export async function newWindow(session: string, opts: { cwd: string; command: string; name?: string }): Promise<void> {
+/**
+ * Window option marking a full-window "surface" page (settings / new-task /
+ * update / quick-task / help). These windows are single-pane kobe pages, not
+ * task workspaces, so the session-global no-prefix navigation chords (Ctrl+Q
+ * back-to-tasks, Ctrl+[/] tab switch, Ctrl+T new tab) must NOT fire there —
+ * they'd yank the user out of a half-filled dialog. The bindings / CLI
+ * handlers read this option and no-op when it's set. See
+ * {@link windowIsSurface} and `chatTabSwitchBindings`.
+ */
+export const SURFACE_WINDOW_OPTION = "@kobe_surface"
+
+export async function newWindow(
+  session: string,
+  opts: { cwd: string; command: string; name?: string; surface?: boolean },
+): Promise<void> {
   const args = ["new-window", "-t", `=${session}`, "-c", opts.cwd]
   if (opts.name) args.push("-n", opts.name)
+  if (opts.surface) {
+    // Capture the new window's id (`-P -F`) so we can tag it precisely rather
+    // than racing on "the active window" after creation.
+    args.push("-P", "-F", "#{window_id}")
+    args.push(opts.command)
+    const { code, stdout } = await runTmuxCapturing(args)
+    const windowId = stdout.trim()
+    if (code === 0 && windowId) await setWindowOption(windowId, SURFACE_WINDOW_OPTION, "1")
+    return
+  }
   args.push(opts.command)
   await runTmux(args)
+}
+
+/**
+ * True when `target` (a window id or session name — the latter resolves to the
+ * session's active window) is a surface page tagged {@link SURFACE_WINDOW_OPTION}.
+ * Used to suppress workspace navigation chords inside settings/new-task/etc.
+ */
+export async function windowIsSurface(target: string): Promise<boolean> {
+  const { code, stdout } = await runTmuxCapturing([
+    "display-message",
+    "-t",
+    target,
+    "-p",
+    `#{${SURFACE_WINDOW_OPTION}}`,
+  ])
+  return code === 0 && stdout.trim() === "1"
 }
 
 /**

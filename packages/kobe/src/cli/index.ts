@@ -415,6 +415,11 @@ async function main(): Promise<void> {
       console.error("kobe new-chattab: --session <name> is required")
       process.exit(2)
     }
+    // Ctrl+T / Ctrl+Shift+T fire from the session-global root table, so they
+    // reach surface pages (new-task / settings / …) too — where opening a new
+    // chat tab would yank the user off a half-filled dialog. No-op there.
+    const { windowIsSurface } = await import("../tmux/client.ts")
+    if (await windowIsSurface(session)) return
     let vendor: VendorId | undefined
     if (flags.vendor !== undefined) {
       // Accept any built-in (claude/codex/copilot) OR a registered custom
@@ -489,6 +494,10 @@ async function main(): Promise<void> {
       console.error("kobe focus-tasks: --session <name> is required")
       process.exit(2)
     }
+    const { windowIsSurface } = await import("../tmux/client.ts")
+    // Ctrl+Q's else-branch (back-to-tasks) reaches surface pages too — a
+    // surface window has no Tasks pane and the user is mid-dialog, so no-op.
+    if (flags.windowId && (await windowIsSurface(flags.windowId))) return
     const { selectTasksPane } = await import("../tui/panes/terminal/tmux.ts")
     await selectTasksPane(session, { windowId: flags.windowId })
     return
