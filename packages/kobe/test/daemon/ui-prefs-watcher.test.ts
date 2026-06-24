@@ -83,6 +83,7 @@ describe("readUiPrefsFromStateFile", () => {
       theme: "claude",
       transparentBackground: false,
       focusAccent: null,
+      locale: "en",
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
@@ -96,6 +97,7 @@ describe("readUiPrefsFromStateFile", () => {
       theme: "claude",
       transparentBackground: false,
       focusAccent: null,
+      locale: "en",
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
@@ -108,6 +110,7 @@ describe("readUiPrefsFromStateFile", () => {
       theme: "nord",
       transparentBackground: true,
       focusAccent: null,
+      locale: "en",
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
@@ -134,6 +137,16 @@ describe("readUiPrefsFromStateFile", () => {
     patchStateFile({ "tasksPane.projectFilter": "" })
     expect(readUiPrefsFromStateFile(statePath).projectFilter).toBeNull()
   })
+
+  test("mirrors locale verbatim (UI-neutral); empty/missing falls back to en", () => {
+    patchStateFile({ locale: "zh" })
+    expect(readUiPrefsFromStateFile(statePath).locale).toBe("zh")
+    // The daemon doesn't validate — an unknown id passes through; the TUI rejects it.
+    patchStateFile({ locale: "klingon" })
+    expect(readUiPrefsFromStateFile(statePath).locale).toBe("klingon")
+    patchStateFile({ locale: "" })
+    expect(readUiPrefsFromStateFile(statePath).locale).toBe("en")
+  })
 })
 
 describe("startUiPrefsWatcher", () => {
@@ -145,6 +158,7 @@ describe("startUiPrefsWatcher", () => {
         theme: "dracula",
         transparentBackground: false,
         focusAccent: "info",
+        locale: "en",
         sortMode: "default",
         keysCollapsed: false,
         projectFilter: null,
@@ -166,6 +180,7 @@ describe("startUiPrefsWatcher", () => {
       theme: "tokyonight",
       transparentBackground: true,
       focusAccent: null,
+      locale: "en",
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,
@@ -185,6 +200,7 @@ describe("startUiPrefsWatcher", () => {
       theme: "tokyonight",
       transparentBackground: true,
       focusAccent: "success",
+      locale: "en",
       sortMode: "default",
       keysCollapsed: false,
       projectFilter: null,

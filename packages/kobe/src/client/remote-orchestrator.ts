@@ -663,6 +663,8 @@ export class RemoteOrchestrator {
         theme: p.theme,
         transparentBackground: p.transparentBackground === true,
         focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
+        // Older daemons omit `locale` → default English; the TUI validates it.
+        locale: typeof p.locale === "string" && p.locale.length > 0 ? p.locale : "en",
         // Older daemons omit `sortMode` → treat as the default ordering.
         sortMode: p.sortMode === "recent" ? "recent" : "default",
         // Older daemons omit `keysCollapsed` → legend expanded.

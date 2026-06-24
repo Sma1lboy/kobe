@@ -38,7 +38,7 @@ import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
-import { setLocaleLang } from "../i18n"
+import { isLocaleId, setLocaleLang } from "../i18n"
 import { DialogProvider } from "../ui/dialog"
 import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
@@ -270,7 +270,13 @@ function UiPrefsSync(props: { boot: PersistedUiPrefs }) {
   })
   createEffect(() => {
     const payload = prefsOrch()?.uiPrefsSignal()()
-    if (payload) applyUiPrefs(target, payload)
+    if (!payload) return
+    applyUiPrefs(target, payload)
+    // Language rides the same live channel: a switch in any session's
+    // Settings re-translates every pane in place (no reboot), the same way
+    // theme/transparent/accent already propagate. setLocaleLang is a no-op
+    // on an unknown id, so a stale/garbage value never wedges a pane.
+    if (isLocaleId(payload.locale)) setLocaleLang(payload.locale)
   })
 
   // Live keybindings (KOB — cross-session keybinding propagation): the
