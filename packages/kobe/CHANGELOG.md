@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.36
+
+### Patch Changes
+
+- 136417f: Add `kobe export` to dump the task list to stdout without a running daemon. It reads `~/.kobe/tasks.json` in process and prints JSON (default), CSV (`--csv`), or an aligned table (`--format table`), so you can pipe tasks into `jq`, open them in a spreadsheet, or glance at them in the terminal — complementing `kobe api list`, which is JSON-only and requires the daemon.
+- e5e7eee: Fix tasks silently reverting to Claude on restart. The task index loader validated the persisted engine against a stale `claude | codex` check, so a Copilot task — or any task using a user-registered custom engine — quietly downgraded back to Claude every time the daemon reloaded `tasks.json`. Loading now preserves any recorded engine (built-in or custom) and only falls back to Claude when no engine was ever recorded, matching the documented vendor-coercion contract.
+- c6a326b: Sidebar polish. The PROJECTS region no longer reserves the full scroll-cap height as dead space when there are only a few projects — it now shrinks to its actual rows (each card is 2 lines) and still scrolls once the rows exceed the cap. The view tab label is shortened from "Working session" to "Workspace" so it stops truncating in the rail.
+- 0af1df2: Full-window surface pages (new-task, settings, update, quick-task, help) no longer respond to the workspace navigation chords. Previously Ctrl+Q (back to tasks), Ctrl+[ / Ctrl+] (switch tab), and Ctrl+T / Ctrl+Shift+T (new tab) fired from the session-global tmux root table even while a surface page was open, yanking you out of a half-filled dialog. These windows now carry a `@kobe_surface` tag; the tab-switch chords no-op there and the new-chattab / back-to-tasks handlers return early. In-pane chords (Ctrl+hjkl) and prefix-gated ones were already harmless on a single-pane surface, and window management (close / rename) is left working.
+
 ## 0.7.35
 
 ### Patch Changes
