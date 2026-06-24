@@ -7,6 +7,7 @@ import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
 import type { EditorKind } from "../../lib/editor-prefs"
 import { FIXED_BINDING_IDS } from "../../lib/keymap-overrides"
 import type { SettingsSurface } from "../../lib/settings-surface"
+import { stripNewlines } from "../new-task-dialog"
 import {
   FOCUS_ACCENT_LABEL,
   type NavLevel,
@@ -31,7 +32,7 @@ export function SettingsSectionSidebar(props: {
 }) {
   const { theme } = useTheme()
   return (
-    <box flexDirection="column" flexShrink={0} width={14} gap={0}>
+    <box flexDirection="column" flexShrink={0} width={14} gap={1}>
       <For each={SECTIONS}>
         {(s, i) => {
           const isSection = () => i() === props.cursor()
@@ -648,22 +649,36 @@ export function AccountsSettingsSection(props: {
   )
 }
 
+/**
+ * Feedback section — a conventional inline form, not a row list. Enter
+ * (or l / click) from the sidebar focuses the `title` input; Tab walks
+ * title → body → Send → back to the sidebar; Enter commits each field
+ * (title → body, body → send) so the whole thing runs on the keyboard
+ * without a modal per field. The parent owns the Tab / Send-Enter
+ * bindings and suppresses its own j/k/h/l nav while this form is
+ * focused so the inputs receive raw keystrokes.
+ */
 export function FeedbackSettingsSection(
   props: CursorSetters & {
     level: Accessor<NavLevel>
     bodyRow: Accessor<number>
     title: Accessor<string>
+    setTitle: (v: string) => void
     body: Accessor<string>
+    setBody: (v: string) => void
     status: Accessor<string>
-    editTitle: () => void
-    editBody: () => void
+    onTitleSubmit: () => void
+    onBodySubmit: () => void
     submit: () => void
   },
 ) {
   const { theme } = useTheme()
-  const titleIsCursor = () => props.level() === "body" && props.bodyRow() === 0
-  const bodyIsCursor = () => props.level() === "body" && props.bodyRow() === 1
-  const submitIsCursor = () => props.level() === "body" && props.bodyRow() === 2
+  const editing = () => props.level() === "body"
+  const titleFocused = () => editing() && props.bodyRow() === 0
+  const bodyFocused = () => editing() && props.bodyRow() === 1
+  const sendFocused = () => editing() && props.bodyRow() === 2
+  const labelFg = (focused: boolean) => (focused ? theme.primary : theme.textMuted)
+  const labelAttrs = (focused: boolean) => (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -673,57 +688,51 @@ export function FeedbackSettingsSection(
         Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to
         Feedback.
       </text>
-      <box flexDirection="column" gap={0}>
-        <box
-          flexDirection="row"
-          gap={1}
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={titleIsCursor() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(0)
-            props.editTitle()
-          }}
-        >
-          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
+      <box flexDirection="column" gap={1}>
+        <box gap={0}>
+          <text fg={labelFg(titleFocused())} attributes={labelAttrs(titleFocused())}>
             title
           </text>
-          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-            {props.title().trim() || "(enter to edit)"}
+          <input
+            value={props.title()}
+            placeholder="Short summary"
+            focused={titleFocused()}
+            onMouseUp={() => {
+              props.setLevel("body")
+              props.setBodyRow(0)
+            }}
+            onInput={(v: string) => props.setTitle(stripNewlines(v))}
+            onSubmit={() => props.onTitleSubmit()}
+          />
+        </box>
+        <box gap={0}>
+          <text fg={labelFg(bodyFocused())} attributes={labelAttrs(bodyFocused())}>
+            description
           </text>
+          <input
+            value={props.body()}
+            placeholder="What happened? (enter sends)"
+            focused={bodyFocused()}
+            onMouseUp={() => {
+              props.setLevel("body")
+              props.setBodyRow(1)
+            }}
+            onInput={(v: string) => props.setBody(stripNewlines(v))}
+            onSubmit={() => props.onBodySubmit()}
+          />
         </box>
         <box
           flexDirection="row"
-          gap={1}
           paddingLeft={1}
           paddingRight={1}
-          backgroundColor={bodyIsCursor() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(1)
-            props.editBody()
-          }}
-        >
-          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
-            body
-          </text>
-          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-            {props.body().trim() || "(enter to edit)"}
-          </text>
-        </box>
-        <box
-          flexDirection="row"
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={submitIsCursor() ? theme.primary : theme.backgroundElement}
+          backgroundColor={sendFocused() ? theme.primary : theme.backgroundElement}
           onMouseUp={() => {
             props.setLevel("body")
             props.setBodyRow(2)
             props.submit()
           }}
         >
-          <text fg={submitIsCursor() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
+          <text fg={sendFocused() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
             [enter] Send to GitHub Discussions
           </text>
         </box>
