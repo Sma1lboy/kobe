@@ -1,0 +1,303 @@
+<!doctype html>
+<!--
+  kobe — recent release page template.
+  Styling block below is the `claude` theme (src/tui/context/theme/claude.json) — keep it verbatim.
+  Fill the regions marked  <!== FILL ... ==>  ; duplicate a `.release` section per version.
+  Newest version gets  <span class="ver-badge today">今天</span> ; older ones a plain date.
+  Each entry: tag = "feat" (green) or "fix" (blue). Keep code/chords/paths verbatim; translate prose.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>kobe · 近期发版速览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* kobe — claude theme (dark) */
+    --bg:            #141413;
+    --bg-raised:     #1A1917;
+    --bg-inset:      #2B2A27;
+    --bg-menu:       #33312E;
+    --border-subtle: #2B2A27;
+    --border:        #3A3835;
+    --border-active: #5C5853;
+    --text:          #EAE7DF;
+    --text-muted:    #A9A39A;
+    --text-subtle:   #6B665F;
+    --primary:       #CC785C;
+    --secondary:     #D4967E;
+    --accent-hover:  #E0AB96;
+    --red:           #D47563;
+    --orange:        #D97757;
+    --yellow:        #E8C96B;
+    --green:         #9ACA86;
+    --blue:          #61AAF2;
+    --violet:        #9B87F5;
+    --added-bg:      #1F2A1F;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--primary); color: var(--bg); }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ── top bar ───────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    background: var(--bg-raised);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: var(--red); }
+  .dot.y { background: var(--yellow); }
+  .dot.g { background: var(--green); }
+  .topbar .title {
+    margin-left: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .topbar .title b { color: var(--text); }
+
+  /* ── hero ──────────────────────────────────────────────── */
+  .hero { padding: 56px 0 36px; border-bottom: 1px dashed var(--border); }
+  .brand {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .brand .k { color: var(--primary); }
+  .brand .cursor {
+    display: inline-block;
+    width: 0.55em; height: 1.05em;
+    background: var(--primary);
+    margin-left: 4px;
+    transform: translateY(3px);
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .tagline {
+    color: var(--text-muted);
+    margin: 14px 0 0;
+    font-size: 14px;
+    max-width: 620px;
+  }
+  .tagline .accent { color: var(--secondary); }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--bg-inset);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+  .chip b { color: var(--text); }
+  .chip.live { border-color: var(--primary); color: var(--secondary); }
+  .chip.live::before {
+    content: "";
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 7px;
+    transform: translateY(-1px);
+    box-shadow: 0 0 7px var(--green);
+  }
+
+  /* ── section header ────────────────────────────────────── */
+  .sec-head {
+    margin: 48px 0 4px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: var(--text-subtle);
+  }
+
+  /* ── release block ─────────────────────────────────────── */
+  .release { margin-top: 28px; }
+  .ver-line {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 10px;
+  }
+  .ver {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--primary);
+  }
+  .ver .pre { color: var(--text-subtle); font-weight: 500; }
+  .ver-date { color: var(--text-subtle); font-size: 12px; }
+  .ver-badge {
+    margin-left: auto;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .ver-badge.today { border-color: var(--primary); color: var(--bg); background: var(--primary); font-weight: 700; }
+
+  /* ── entry ─────────────────────────────────────────────── */
+  .entry {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .entry:last-child { border-bottom: none; }
+
+  .tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-align: center;
+    padding: 3px 0;
+    border-radius: 4px;
+    height: fit-content;
+    margin-top: 3px;
+  }
+  .tag.feat { color: var(--green);  background: rgba(154,202,134,0.12); border:1px solid rgba(154,202,134,0.35); }
+  .tag.fix  { color: var(--blue);   background: rgba(97,170,242,0.10);  border:1px solid rgba(97,170,242,0.30); }
+
+  .entry h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .entry p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13.5px;
+  }
+  .entry .kbd {
+    background: var(--bg-menu);
+    border: 1px solid var(--border-active);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  code, .code {
+    background: var(--bg-inset);
+    color: var(--secondary);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+
+  /* ── footer ────────────────────────────────────────────── */
+  .foot {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px dashed var(--border);
+    color: var(--text-subtle);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .prompt::before { content: "› "; color: var(--primary); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title"><b>kobe</b> — 终端里的多任务 AI 编码工作台 · 发版速览</span>
+  </div>
+
+  <div class="wrap">
+    <header class="hero">
+      <h1 class="brand"><span class="k">kobe</span> 近期发版<span class="cursor"></span></h1>
+      <p class="tagline">
+        本地优先的终端 UI，一屏同时跑很多个 AI 编码会话。每个任务 =
+        <span class="accent">一个 git worktree + 一个引擎会话 + 一个分支</span>。
+        以下是 <b><!== FILL: 版本区间，如 0.7.34 → 0.7.37 ==></b> 这几个版本的用户可见变化。
+      </p>
+      <div class="meta-row">
+        <span class="chip live">最新 <b><!== FILL: 最新版本 ==></b></span>
+        <span class="chip">区间 <b><!== FILL: 区间 ==></b></span>
+        <span class="chip">日期 <b><!== FILL: 日期区间 ==></b></span>
+        <span class="chip">包 <b>@sma1lboy/kobe</b></span>
+      </div>
+    </header>
+
+    <div class="sec-head">RELEASES</div>
+
+    <!-- ===== duplicate this .release block per version, newest first ===== -->
+    <section class="release">
+      <div class="ver-line">
+        <span class="ver"><span class="pre">v</span><!== FILL: 版本号 ==></span>
+        <span class="ver-date"><!== FILL: 发布日期 YYYY-MM-DD ==></span>
+        <!-- newest version only: --> <span class="ver-badge today">今天</span>
+        <!-- older versions: drop the badge, or use <span class="ver-badge">N 天前</span> -->
+      </div>
+
+      <!-- ===== one .entry per user-facing change; tag = feat | fix ===== -->
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3><!== FILL: 标题（中文，code/chord 保留原文）==></h3>
+          <p><!== FILL: 一句话说明。代码用 <code>…</code>，按键用 <span class="kbd">…</span>。==></p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3><!== FILL ==></h3>
+          <p><!== FILL ==></p>
+        </div>
+      </div>
+    </section>
+    <!-- ===== /release ===== -->
+
+    <div class="foot">
+      <span class="prompt">npm i -g @sma1lboy/kobe&nbsp;&nbsp;·&nbsp;&nbsp;kobe</span>
+      <span>Task = git worktree + engine session + branch</span>
+    </div>
+  </div>
+</body>
+</html>
