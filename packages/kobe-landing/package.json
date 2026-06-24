@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@sma1lboy/kobe-landing",
+  "version": "0.0.0",
+  "description": "Marketing landing page for kobe (kobe.sma1lboy.me) — static, deployed to Vercel.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 4321",
+    "deploy": "vercel deploy --prod",
+    "deploy:preview": "vercel deploy"
+  }
+}
