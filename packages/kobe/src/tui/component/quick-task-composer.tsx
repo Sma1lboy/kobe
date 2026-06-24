@@ -18,6 +18,7 @@ import { For, createSignal } from "solid-js"
 import type { VendorId } from "../../types/task"
 import { nextVendorWithin } from "../../types/vendor"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 import { useBindings } from "../lib/keymap"
 import type { DialogContext } from "../ui/dialog"
 import { useDialog } from "../ui/dialog"
@@ -103,18 +104,18 @@ function QuickTaskComposerView(
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {`Quick task · ${props.repoLabel}`}
+          {t("quickTask.title", { repoLabel: props.repoLabel })}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
-          esc
+          {t("quickTask.esc")}
         </text>
       </box>
 
       <box gap={0}>
-        <text fg={fieldColor("prompt")}>prompt</text>
+        <text fg={fieldColor("prompt")}>{t("quickTask.promptLabel")}</text>
         <input
           value={prompt()}
-          placeholder="what should this task do?"
+          placeholder={t("quickTask.promptPlaceholder")}
           focused={field() === "prompt"}
           onInput={(v: string) => setPrompt(stripNewlines(v))}
           onSubmit={() => commit()}
@@ -122,7 +123,7 @@ function QuickTaskComposerView(
       </box>
 
       <box flexDirection="row" gap={2}>
-        <text fg={fieldColor("engine")}>engine</text>
+        <text fg={fieldColor("engine")}>{t("quickTask.engineLabel")}</text>
         <For each={props.engines}>
           {(v) => (
             <text
@@ -140,7 +141,7 @@ function QuickTaskComposerView(
       </box>
 
       <box gap={0}>
-        <text fg={fieldColor("branch")}>branch</text>
+        <text fg={fieldColor("branch")}>{t("quickTask.branchLabel")}</text>
         <input
           value={baseRef()}
           placeholder={props.defaultBaseRef}
@@ -151,7 +152,7 @@ function QuickTaskComposerView(
       </box>
 
       <box paddingBottom={1}>
-        <text fg={theme.textMuted}>enter create · tab field · ctrl+e engine · esc cancel</text>
+        <text fg={theme.textMuted}>{t("quickTask.legend")}</text>
       </box>
     </box>
   )

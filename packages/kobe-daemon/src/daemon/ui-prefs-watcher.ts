@@ -105,7 +105,11 @@ export function readUiPrefsFromStateFile(statePath: string): UiPrefsPayload {
     typeof parsed["tasksPane.projectFilter"] === "string" && parsed["tasksPane.projectFilter"].length > 0
       ? parsed["tasksPane.projectFilter"]
       : null
-  return { theme, transparentBackground, focusAccent, sortMode, keysCollapsed, projectFilter }
+  // Opaque language id — the daemon stays UI-neutral and just mirrors the
+  // file; the TUI validates it against its registered locales (defaulting
+  // to English on anything unknown). Empty/missing → "en".
+  const locale = typeof parsed.locale === "string" && parsed.locale.length > 0 ? parsed.locale : "en"
+  return { theme, transparentBackground, focusAccent, locale, sortMode, keysCollapsed, projectFilter }
 }
 
 function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
@@ -113,6 +117,7 @@ function samePrefs(a: UiPrefsPayload, b: UiPrefsPayload): boolean {
     a.theme === b.theme &&
     a.transparentBackground === b.transparentBackground &&
     a.focusAccent === b.focusAccent &&
+    a.locale === b.locale &&
     a.sortMode === b.sortMode &&
     a.keysCollapsed === b.keysCollapsed &&
     a.projectFilter === b.projectFilter

@@ -32,6 +32,7 @@
     "build:with-web": "bun run build",
     "compile": "bun run scripts/compile.ts",
     "typecheck": "tsc --noEmit",
+    "check-i18n": "bun run scripts/check-i18n.ts",
     "test": "bun run test:fast && bun run test:socket",
     "test:fast": "vitest run --passWithNoTests",
     "test:socket": "KOBE_INCLUDE_SOCKET=1 vitest run test/daemon --pool forks --minWorkers=1 --maxWorkers=1 --passWithNoTests",

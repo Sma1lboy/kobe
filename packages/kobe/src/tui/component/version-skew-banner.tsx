@@ -24,6 +24,7 @@
 import { TextAttributes } from "@opentui/core"
 import { type Accessor, Show } from "solid-js"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 
 export type VersionSkewBannerProps = {
   /** True when the daemon is running a different build than this process. */
@@ -45,8 +46,8 @@ export type VersionSkewBannerProps = {
  * vendor strings.
  */
 export function versionSkewHint(daemonVersion: string | null, clientVersion: string): string {
-  const daemon = daemonVersion ? `v${daemonVersion}` : "an older build"
-  return `daemon is ${daemon} — you launched v${clientVersion}. Run \`kobe daemon restart\` then \`kobe reload\``
+  const daemon = daemonVersion ? `v${daemonVersion}` : t("update.skew.olderBuild")
+  return t("update.skew.hint", { daemon, clientVersion })
 }
 
 export function VersionSkewBanner(props: VersionSkewBannerProps) {
@@ -73,7 +74,7 @@ export function VersionSkewBanner(props: VersionSkewBannerProps) {
             picked out in the accent colour. */}
         <box flexDirection="row" gap={1}>
           <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
-            ⚠ DAEMON OUT OF DATE
+            {t("update.skew.title")}
           </text>
         </box>
         <box flexDirection="row" gap={1}>

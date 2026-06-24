@@ -1,5 +1,6 @@
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
+import { t } from "@/tui/i18n"
 import type { Task, TaskStatus } from "@/types/task"
 import { isBuiltinVendor } from "@/types/vendor"
 import { repoBasename } from "./groups"
@@ -25,16 +26,29 @@ const STATUS_BADGE: Record<TaskStatus, { glyph: string; tone: SidebarTone }> = {
   error: { glyph: "✕", tone: "error" },
 }
 
-const STATUS_LABEL: Record<TaskStatus, string> = {
-  done: "done",
-  in_review: "in review",
-  in_progress: "working",
-  // No "backlog" word: every regular task is born `backlog` and nothing
-  // in the live engine path ever flips it, so surfacing the literal word
-  // lies (KOB). Fall back to the branch / a neutral dash instead.
-  backlog: "—",
-  canceled: "canceled",
-  error: "error",
+/**
+ * Returns a localised subtitle label for the given task status. Called at
+ * render time (inside buildSidebarRowView) so `t()` is always scoped to a
+ * reactive context — never frozen at module load.
+ */
+function statusLabel(status: TaskStatus): string {
+  switch (status) {
+    case "done":
+      return t("tasks.status.done")
+    case "in_review":
+      return t("tasks.status.inReview")
+    case "in_progress":
+      return t("tasks.status.working")
+    case "backlog":
+      // No "backlog" word: every regular task is born `backlog` and nothing
+      // in the live engine path ever flips it, so surfacing the literal word
+      // lies (KOB). Fall back to the branch / a neutral dash instead.
+      return t("tasks.status.backlog")
+    case "canceled":
+      return t("tasks.status.canceled")
+    case "error":
+      return t("tasks.status.error")
+  }
 }
 
 /**
@@ -47,11 +61,11 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
 function activityLabelFor(state: TaskActivityState | undefined): { text: string; tone: SidebarTone } | null {
   switch (state) {
     case "rate_limited":
-      return { text: "rate limited", tone: "warning" }
+      return { text: t("tasks.activity.rateLimited"), tone: "warning" }
     case "permission_needed":
-      return { text: "needs permission", tone: "warning" }
+      return { text: t("tasks.activity.permissionNeeded"), tone: "warning" }
     case "error":
-      return { text: "error", tone: "error" }
+      return { text: t("tasks.activity.error"), tone: "error" }
     default:
       return null
   }
@@ -90,16 +104,24 @@ export function prCheckChip(task: Task): { glyph: string; tone: SidebarTone } | 
  */
 const NO_TRACKING_GLYPH = "·"
 
-/** Muted subtitle shown when a custom-engine task has nothing else to say. */
-const NO_TRACKING_SUBTITLE = "no activity tracking"
+/**
+ * Muted subtitle shown when a custom-engine task has nothing else to say.
+ * Called at render time so `t()` is reactive.
+ */
+function noTrackingSubtitle(): string {
+  return t("tasks.subtitle.noTracking")
+}
 
 /**
  * Subtitle word while a long daemon job runs for the task (today: the
  * `ensureWorktree` `git worktree add`, minute-class on a huge repo). The
  * word + spinner replace the branch — there IS no branch on disk yet while
  * the worktree materialises, so "materializing" is the honest row state.
+ * Called at render time so `t()` is reactive.
  */
-const MATERIALIZING_SUBTITLE = "materializing"
+function materializingSubtitle(): string {
+  return t("tasks.subtitle.materializing")
+}
 
 /**
  * True when this task runs on a user-added (custom) engine, which has no
@@ -175,9 +197,9 @@ export function buildSidebarRowView(opts: {
   // untracked custom engine with no branch — an explicit "no activity
   // tracking" note so the row reads as un-tracked rather than stuck, then
   // the lifecycle label (a neutral dash for `backlog`, never the word).
-  const fallbackSubtitle = untrackedCustomEngine ? NO_TRACKING_SUBTITLE : STATUS_LABEL[task.status]
+  const fallbackSubtitle = untrackedCustomEngine ? noTrackingSubtitle() : statusLabel(task.status)
   const subtitleText = materializing
-    ? opts.truncateBranch(MATERIALIZING_SUBTITLE, opts.subtitleBudget)
+    ? opts.truncateBranch(materializingSubtitle(), opts.subtitleBudget)
     : activityLabel
       ? opts.truncateBranch(activityLabel.text, opts.subtitleBudget)
       : branch.length > 0

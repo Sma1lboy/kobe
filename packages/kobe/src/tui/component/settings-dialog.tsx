@@ -32,6 +32,7 @@ import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
+import { type LocaleId, currentLang, setLocaleLang, t } from "../i18n"
 import {
   DEFAULT_EDITOR_KIND,
   EDITOR_CUSTOM_KEY,
@@ -41,6 +42,7 @@ import {
   normalizeEditorKind,
 } from "../lib/editor-prefs"
 import { useBindings } from "../lib/keymap"
+import { LOCALE_KEY } from "../lib/persisted-ui-prefs"
 import {
   DEFAULT_SETTINGS_SURFACE,
   SETTINGS_SURFACE_KEY,
@@ -162,6 +164,20 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (themeCtx.selected === name) return
     if (!themeCtx.set(name)) return
     props.kv.set("activeTheme", name)
+    props.onVisualPrefsChange?.()
+  }
+
+  // UI language. Live within this process (setLocaleLang updates the module
+  // store → every t() re-renders) and persisted so other panes pick it up on
+  // their next boot, mirroring how the theme is applied + persisted.
+  function currentLocale(): LocaleId {
+    return currentLang()
+  }
+
+  function selectLanguage(locale: LocaleId): void {
+    if (currentLang() === locale) return
+    setLocaleLang(locale)
+    props.kv.set(LOCALE_KEY, locale)
     props.onVisualPrefsChange?.()
   }
 
@@ -409,29 +425,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
     if (cmd) props.kv.set(EDITOR_KIND_KEY, "custom")
   }
 
-  async function editFeedbackTitle(): Promise<void> {
-    const next = await RenameTaskDialog.show(dialog, feedbackTitle(), {
-      dialogTitle: "Feedback title",
-      fieldLabel: "title",
-      submitLabel: "save",
-    })
-    if (next === undefined) return
-    setFeedbackTitle(next)
-    setFeedbackStatus("")
-  }
-
-  async function editFeedbackBody(): Promise<void> {
-    const next = await RenameTaskDialog.show(dialog, feedbackBody(), {
-      dialogTitle: "Feedback body",
-      fieldLabel: "body",
-      submitLabel: "save",
-      allowEmpty: true,
-    })
-    if (next === undefined) return
-    setFeedbackBody(next)
-    setFeedbackStatus("")
-  }
-
   async function sendFeedback(): Promise<void> {
     setFeedbackStatus("submitting...")
     try {
@@ -439,9 +432,29 @@ export function SettingsDialog(props: SettingsDialogProps) {
       setFeedbackStatus(`sent: ${result.url}`)
       setFeedbackTitle("")
       setFeedbackBody("")
+      setBodyRow(0)
     } catch (err) {
       setFeedbackStatus(`error: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
+
+  // The Feedback section is an inline form (title → description → Send),
+  // not a row list. While it holds focus we suspend this dialog's own
+  // j/k/h/l/t nav (it'd swallow keystrokes from the inputs — the same
+  // "l-is-eaten" class the standalone guard handles) and drive the form
+  // with a dedicated Tab cycle + a Send-row Enter binding below.
+  const editingFeedback = () => section() === "feedback" && level() === "body"
+
+  // Tab walks title → description → Send → back to the sidebar (the
+  // keyboard escape hatch, since left/h are owned by the inputs while
+  // editing); Shift+Tab walks it backwards.
+  function feedbackFieldStep(delta: 1 | -1): void {
+    const next = bodyRow() + delta
+    if (next < 0 || next > 2) {
+      setLevel("sidebar")
+      return
+    }
+    setBodyRow(next)
   }
 
   function enterBody(): void {
@@ -483,6 +496,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
    */
   const rowActivators: { [K in SettingsRow["kind"]]: (row: Extract<SettingsRow, { kind: K }>) => void } = {
     theme: (row) => selectTheme(row.name),
+    language: (row) => selectLanguage(row.locale),
     transparent: () => toggleTransparent(),
     focusAccent: (row) => selectFocusAccent(row.slot),
     toast: () => toggleToast(),
@@ -493,8 +507,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
     editorCustom: () => void editEditorCustom(),
     engine: (row) => void editEngine(row.vendor),
     engineAdd: () => void addEngineFlow(), // the trailing "+ Add engine" row
-    feedbackTitle: () => void editFeedbackTitle(),
-    feedbackBody: () => void editFeedbackBody(),
+    feedbackTitle: () => setBodyRow(0),
+    feedbackBody: () => setBodyRow(1),
     feedbackSend: () => void sendFeedback(),
     devReset: () => void confirmResetState(dialog, props.kv, renderer),
     devRestartDaemon: () => void confirmRestartDaemon(dialog, props.orchestrator, renderer),
@@ -515,7 +529,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     // so `l`/`t`/`j`/`k`/`h` reach the input instead of being eaten by
     // this dialog's nav. The overlay surface unmounts us when covered, so
     // there it's always enabled.
-    enabled: !props.standalone || dialog.stack.length === 0,
+    enabled: (!props.standalone || dialog.stack.length === 0) && !editingFeedback(),
     bindings: [
       { key: "down", cmd: () => moveCursor(1) },
       { key: "up", cmd: () => moveCursor(-1) },
@@ -569,14 +583,31 @@ export function SettingsDialog(props: SettingsDialogProps) {
     ],
   }))
 
+  // Feedback-form navigation, live only while that form holds focus.
+  // Tab / Shift+Tab cycle the fields; Enter on the title/description
+  // inputs is left to their own onSubmit (so it isn't swallowed here),
+  // and Enter on the focused Send row commits — gated to bodyRow 2 so it
+  // stays out of the dispatch stack while an input is focused.
+  useBindings(() => ({
+    enabled: editingFeedback(),
+    bindings: [
+      { key: "tab", cmd: () => feedbackFieldStep(1) },
+      { key: "shift+tab", cmd: () => feedbackFieldStep(-1) },
+    ],
+  }))
+  useBindings(() => ({
+    enabled: editingFeedback() && bodyRow() === 2,
+    bindings: [{ key: "return", cmd: () => void sendFeedback() }],
+  }))
+
   return (
     <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Settings
+          {t("settings.title")}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => props.onClose()}>
-          esc
+          {t("settings.esc")}
         </text>
       </box>
       <box flexDirection="row" gap={2}>
@@ -591,6 +622,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               themeNames={themeNames}
               setThemeCursor={setThemeCursor}
               selectTheme={selectTheme}
+              currentLocale={currentLocale}
+              selectLanguage={selectLanguage}
               toggleTransparent={toggleTransparent}
               selectFocusAccent={selectFocusAccent}
               toastEnabled={toastEnabled}
@@ -642,10 +675,18 @@ export function SettingsDialog(props: SettingsDialogProps) {
               setLevel={setLevel}
               setBodyRow={setBodyRow}
               title={feedbackTitle}
+              setTitle={(v) => {
+                setFeedbackTitle(v)
+                setFeedbackStatus("")
+              }}
               body={feedbackBody}
+              setBody={(v) => {
+                setFeedbackBody(v)
+                setFeedbackStatus("")
+              }}
               status={feedbackStatus}
-              editTitle={() => void editFeedbackTitle()}
-              editBody={() => void editFeedbackBody()}
+              onTitleSubmit={() => setBodyRow(1)}
+              onBodySubmit={() => void sendFeedback()}
               submit={() => void sendFeedback()}
             />
           </Show>
@@ -669,7 +710,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
         </box>
       </box>
       <box paddingTop={0}>
-        <text fg={theme.textMuted}>j/k pick · h/l switch level · enter activate · esc close</text>
+        <text fg={theme.textMuted}>{editingFeedback() ? t("settings.nav.feedback") : t("settings.nav.default")}</text>
       </box>
     </box>
   )

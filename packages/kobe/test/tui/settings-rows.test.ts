@@ -32,9 +32,12 @@ import {
   themeRowId,
 } from "../../src/tui/component/settings-dialog/model.ts"
 import type { FocusAccentSlot } from "../../src/tui/context/theme.tsx"
+import { LOCALES } from "../../src/tui/i18n/catalog.ts"
 import { ALL_VENDORS } from "../../src/types/vendor.ts"
 
 const SLOTS: readonly FocusAccentSlot[] = ["primary", "success", "info"]
+/** Language picker rows sit right after the theme list — count them in the offsets. */
+const LANG = LOCALES.length
 
 function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
   return {
@@ -47,13 +50,14 @@ function input(overrides: Partial<SettingsRowsInput> = {}): SettingsRowsInput {
 }
 
 describe("generalRows", () => {
-  it("lays out themes, transparent, accents, toast, sound, surfaces, editor pair — in that order", () => {
+  it("lays out themes, languages, transparent, accents, toast, sound, surfaces, editor pair — in that order", () => {
     const themes = ["a", "b", "c"]
     const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
     expect(rows.map((r) => r.kind)).toEqual([
       "theme",
       "theme",
       "theme",
+      ...LOCALES.map(() => "language" as const),
       "transparent",
       "focusAccent",
       "focusAccent",
@@ -68,33 +72,36 @@ describe("generalRows", () => {
     ])
     // Payload order matches input order, and the two surfaces are ChatTab then Task panel.
     expect(rows.slice(0, 3).map((r) => (r.kind === "theme" ? r.name : "?"))).toEqual(themes)
-    expect(rows.slice(4, 7).map((r) => (r.kind === "focusAccent" ? r.slot : "?"))).toEqual([...SLOTS])
+    expect(rows.filter((r) => r.kind === "language").map((r) => r.locale)).toEqual(LOCALES.map((l) => l.id))
+    expect(
+      rows.slice(3 + LANG + 1, 3 + LANG + 1 + SLOTS.length).map((r) => (r.kind === "focusAccent" ? r.slot : "?")),
+    ).toEqual([...SLOTS])
     expect(rows.filter((r) => r.kind === "surface").map((r) => r.surface)).toEqual(["chattab", "taskpanel"])
   })
 
-  it("matches the offset formula (themeCount + 1 + accentCount + 7) for representative sizes", () => {
+  it("matches the offset formula (themeCount + langCount + 1 + accentCount + 7) for representative sizes", () => {
     for (const themeCount of [0, 1, 12, 30]) {
       const themes = Array.from({ length: themeCount }, (_, i) => `theme-${i}`)
       const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
-      expect(rows.length).toBe(themeCount + 1 + SLOTS.length + 7)
-      // Old transparentRowIndex(themeCount) === themeCount.
-      expect(rowIndex(rows, "transparent")).toBe(themeCount)
+      expect(rows.length).toBe(themeCount + LANG + 1 + SLOTS.length + 7)
+      // transparent sits after the theme list + the language picker.
+      expect(rowIndex(rows, "transparent")).toBe(themeCount + LANG)
       // toastRowIndex / soundRowIndex chain, then the zen toggle, then surfaces + editors.
-      expect(rowIndex(rows, "toast")).toBe(themeCount + 1 + SLOTS.length)
-      expect(rowIndex(rows, "sound")).toBe(themeCount + 1 + SLOTS.length + 1)
-      expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + 1 + SLOTS.length + 2)
-      expect(rowIndex(rows, surfaceRowId("chattab"))).toBe(themeCount + 1 + SLOTS.length + 3)
-      expect(rowIndex(rows, surfaceRowId("taskpanel"))).toBe(themeCount + 1 + SLOTS.length + 4)
-      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + 1 + SLOTS.length + 5)
-      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + 1 + SLOTS.length + 6)
+      expect(rowIndex(rows, "toast")).toBe(themeCount + LANG + 1 + SLOTS.length)
+      expect(rowIndex(rows, "sound")).toBe(themeCount + LANG + 1 + SLOTS.length + 1)
+      expect(rowIndex(rows, "zen-keep-tasks")).toBe(themeCount + LANG + 1 + SLOTS.length + 2)
+      expect(rowIndex(rows, surfaceRowId("chattab"))).toBe(themeCount + LANG + 1 + SLOTS.length + 3)
+      expect(rowIndex(rows, surfaceRowId("taskpanel"))).toBe(themeCount + LANG + 1 + SLOTS.length + 4)
+      expect(rowIndex(rows, "editor-kind")).toBe(themeCount + LANG + 1 + SLOTS.length + 5)
+      expect(rowIndex(rows, "editor-custom")).toBe(themeCount + LANG + 1 + SLOTS.length + 6)
     }
   })
 
-  it("indexes a focus-accent slot by id (old focusAccentRowIndex = themeCount + 1 + slot position)", () => {
+  it("indexes a focus-accent slot by id (focusAccentRowIndex = themeCount + langCount + 1 + slot position)", () => {
     const themes = ["a", "b"]
     const rows = generalRows({ themeNames: themes, focusAccentSlots: SLOTS })
     SLOTS.forEach((slot, i) => {
-      expect(rowIndex(rows, focusAccentRowId(slot))).toBe(themes.length + 1 + i)
+      expect(rowIndex(rows, focusAccentRowId(slot))).toBe(themes.length + LANG + 1 + i)
     })
   })
 })
@@ -170,7 +177,7 @@ describe("sectionRows / bodyRowCount", () => {
     // 12 themes, 3 accents, 2 custom engines, daemon attached.
     const themes = Array.from({ length: 12 }, (_, i) => `t${i}`)
     const inp = input({ themeNames: themes, engineList: [...ALL_VENDORS, "aider", "goose"], hasDaemon: true })
-    expect(bodyRowCount("general", inp)).toBe(12 + 1 + 3 + 7) // 23
+    expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 7) // 12 themes + langs + transparent + 3 accents + 7
     expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
     expect(bodyRowCount("keys", inp)).toBe(0)

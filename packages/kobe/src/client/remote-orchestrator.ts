@@ -663,6 +663,13 @@ export class RemoteOrchestrator {
         theme: p.theme,
         transparentBackground: p.transparentBackground === true,
         focusAccent: typeof p.focusAccent === "string" ? p.focusAccent : null,
+        // Older daemons omit `locale` entirely. Carry "" (UNSET) — NOT "en" —
+        // so the consumer skips it instead of yanking the language back to
+        // English: a pushed payload that never mentioned the language must
+        // not reset it (same "absent fields are skipped" rule applyUiPrefs
+        // follows for theme/accent). Only a real, non-empty locale string
+        // from a current daemon ever changes the language.
+        locale: typeof p.locale === "string" ? p.locale : "",
         // Older daemons omit `sortMode` → treat as the default ordering.
         sortMode: p.sortMode === "recent" ? "recent" : "default",
         // Older daemons omit `keysCollapsed` → legend expanded.
