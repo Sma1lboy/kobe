@@ -221,6 +221,8 @@ export interface ChannelPayloads {
     theme: string
     transparentBackground: boolean
     focusAccent: string | null
+    /** UI language id (`state.json`'s `locale`). Opaque to the daemon — the TUI validates it. */
+    locale: string
     sortMode: "default" | "recent"
     keysCollapsed: boolean
     projectFilter: string | null

@@ -4,17 +4,20 @@ import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus }
 import type { VendorId } from "../../../types/task"
 import { userKeybindingsReport } from "../../context/keybindings-user"
 import { FOCUS_ACCENT_SLOTS, useTheme } from "../../context/theme"
+import { t } from "../../i18n"
+import { LOCALES, type LocaleId } from "../../i18n/catalog"
 import type { EditorKind } from "../../lib/editor-prefs"
 import { FIXED_BINDING_IDS } from "../../lib/keymap-overrides"
 import type { SettingsSurface } from "../../lib/settings-surface"
+import { stripNewlines } from "../new-task-dialog"
 import {
-  FOCUS_ACCENT_LABEL,
   type NavLevel,
   SECTIONS,
   type SectionId,
   devRows,
   focusAccentRowId,
   generalRows,
+  languageRowId,
   rowIndex,
   surfaceRowId,
 } from "./model"
@@ -31,7 +34,7 @@ export function SettingsSectionSidebar(props: {
 }) {
   const { theme } = useTheme()
   return (
-    <box flexDirection="column" flexShrink={0} width={14} gap={0}>
+    <box flexDirection="column" flexShrink={0} width={14} gap={1}>
       <For each={SECTIONS}>
         {(s, i) => {
           const isSection = () => i() === props.cursor()
@@ -48,7 +51,7 @@ export function SettingsSectionSidebar(props: {
                 attributes={isSection() ? TextAttributes.BOLD : undefined}
                 wrapMode="none"
               >
-                {s.label}
+                {t(`settings.sections.${s.id}`)}
               </text>
             </box>
           )
@@ -65,6 +68,8 @@ export function GeneralSettingsSection(
     themeNames: Accessor<readonly string[]>
     setThemeCursor: Setter<number>
     selectTheme: (name: string) => void
+    currentLocale: Accessor<LocaleId>
+    selectLanguage: (locale: LocaleId) => void
     toggleTransparent: () => void
     selectFocusAccent: (slot: (typeof FOCUS_ACCENT_SLOTS)[number]) => void
     toastEnabled: Accessor<boolean>
@@ -107,9 +112,9 @@ export function GeneralSettingsSection(
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Theme
+        {t("settings.general.theme")}
       </text>
-      <text fg={theme.textMuted}>l to enter list · j/k to highlight · enter to apply</text>
+      <text fg={theme.textMuted}>{t("settings.general.themeHint")}</text>
       <box flexDirection="column" gap={0}>
         <For each={props.themeNames()}>
           {(name, i) => {
@@ -144,10 +149,48 @@ export function GeneralSettingsSection(
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Transparent background
+          {t("settings.general.language")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          Drops the renderer's bg fill so the host terminal shows through. `t` toggles.
+          {t("settings.general.languageHint")}
+        </text>
+        <For each={LOCALES}>
+          {(loc) => {
+            const langRow = () => rowIdx(languageRowId(loc.id))
+            const isCursor = () => props.level() === "body" && props.bodyRow() === langRow()
+            const isSelected = () => props.currentLocale() === loc.id
+            return (
+              <box
+                flexDirection="row"
+                gap={1}
+                paddingLeft={1}
+                paddingRight={1}
+                backgroundColor={isCursor() ? theme.primary : undefined}
+                onMouseUp={() => {
+                  props.setLevel("body")
+                  props.setBodyRow(langRow())
+                  props.selectLanguage(loc.id)
+                }}
+              >
+                <text
+                  fg={isCursor() ? theme.selectedListItemText : isSelected() ? theme.accent : theme.text}
+                  attributes={isCursor() || isSelected() ? TextAttributes.BOLD : undefined}
+                  wrapMode="none"
+                >
+                  {isSelected() ? "● " : "  "}
+                  {loc.label}
+                </text>
+              </box>
+            )
+          }}
+        </For>
+      </box>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          {t("settings.general.transparent")}
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          {t("settings.general.transparentHint")}
         </text>
         <box
           flexDirection="row"
@@ -171,16 +214,16 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {themeCtx.transparentBackground ? "[x] on" : "[ ] off"}
+            {themeCtx.transparentBackground ? t("settings.general.on") : t("settings.general.off")}
           </text>
         </box>
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Focus accent
+          {t("settings.general.focusAccent")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          Color of focused pane title, ▌ marker, and split borders.
+          {t("settings.general.focusAccentHint")}
         </text>
         <For each={FOCUS_ACCENT_SLOTS}>
           {(slot) => {
@@ -206,7 +249,7 @@ export function GeneralSettingsSection(
                   wrapMode="none"
                 >
                   {isSelected() ? "● " : "  "}
-                  {FOCUS_ACCENT_LABEL[slot]}
+                  {t(`settings.general.accent${slot.charAt(0).toUpperCase()}${slot.slice(1)}`)}
                 </text>
               </box>
             )
@@ -215,11 +258,10 @@ export function GeneralSettingsSection(
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Notifications
+          {t("settings.general.notifications")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          Fired when a background chat tab finishes or pauses on an approval. Toast = bottom-right popup; Sound =
-          terminal bell + chime. Tab-chip unread dot is always on.
+          {t("settings.general.notificationsHint")}
         </text>
         <box
           flexDirection="row"
@@ -238,7 +280,7 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {props.toastEnabled() ? "[x]" : "[ ]"} Toast
+            {props.toastEnabled() ? "[x]" : "[ ]"} {t("settings.general.toast")}
           </text>
         </box>
         <box
@@ -258,17 +300,16 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {props.soundEnabled() ? "[x]" : "[ ]"} Sound
+            {props.soundEnabled() ? "[x]" : "[ ]"} {t("settings.general.sound")}
           </text>
         </box>
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Zen mode
+          {t("settings.general.zen")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          The `zen` chip (above the file list) and `prefix`+space collapse the ChatTab to the engine pane — hiding the
-          file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.
+          {t("settings.general.zenHint")}
         </text>
         <box
           flexDirection="row"
@@ -289,17 +330,16 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {props.zenKeepsTasks() ? "[x]" : "[ ]"} Keep Tasks pane in zen mode
+            {props.zenKeepsTasks() ? "[x]" : "[ ]"} {t("settings.general.zenKeepTasks")}
           </text>
         </box>
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Settings page
+          {t("settings.general.surface")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          Where Settings and the other full dialogs (new task, rename) open. ChatTab = a dedicated full-window page
-          alongside the engine tabs; Task panel = an overlay inside the left Tasks pane. enter to pick.
+          {t("settings.general.surfaceHint")}
         </text>
         <box
           flexDirection="row"
@@ -324,7 +364,7 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {props.settingsSurface() === "chattab" ? "[x]" : "[ ]"} ChatTab (separate page)
+            {props.settingsSurface() === "chattab" ? "[x]" : "[ ]"} {t("settings.general.surfaceChattab")}
           </text>
         </box>
         <box
@@ -350,18 +390,16 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {props.settingsSurface() === "taskpanel" ? "[x]" : "[ ]"} Task panel (in-pane overlay)
+            {props.settingsSurface() === "taskpanel" ? "[x]" : "[ ]"} {t("settings.general.surfaceTaskpanel")}
           </text>
         </box>
       </box>
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Editor
+          {t("settings.general.editor")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          What `e` opens a file with in the file tree (enter stays the read-only preview). `auto` (default) follows
-          $VISUAL / $EDITOR, else auto-detects nvim / vim / emacs / nano. enter on the row below cycles auto / vim /
-          nvim / nano / emacs / custom; if the editor isn't installed it falls back to the preview.
+          {t("settings.general.editorHint")}
         </text>
         <box
           flexDirection="row"
@@ -380,7 +418,7 @@ export function GeneralSettingsSection(
             attributes={TextAttributes.BOLD}
             wrapMode="none"
           >
-            {`editor: < ${props.editorKind()} >  (enter to change)`}
+            {t("settings.general.editorRow", { kind: props.editorKind() })}
           </text>
         </box>
         <box
@@ -405,7 +443,9 @@ export function GeneralSettingsSection(
             }
             wrapMode="none"
           >
-            {`custom: ${props.editorCustomCommand().trim() || "(unset — enter to edit)"}`}
+            {t("settings.general.editorCustom", {
+              cmd: props.editorCustomCommand().trim() || t("settings.general.editorCustomUnset"),
+            })}
           </text>
         </box>
       </box>
@@ -444,12 +484,10 @@ export function EngineSettingsSection(
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Launch command
+        {t("settings.engines.title")}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        The command each engine's task pane runs. Override a built-in when your binary isn't on PATH as `claude` /
-        `codex` (e.g. it's `cl`) or to pass default flags, or add your own engine. ● = default engine for new tasks
-        (also set by Ctrl+Shift+T). enter edit command · r rename · x reset/remove · d set default.
+        {t("settings.engines.hint")}
       </text>
       <box flexDirection="column" gap={0}>
         <For each={props.vendors}>
@@ -491,7 +529,11 @@ export function EngineSettingsSection(
                   wrapMode="none"
                 >
                   {props.commandText(vendor)}
-                  {props.isDefault(vendor) ? "  (default)" : props.isCustom(vendor) ? "  (custom)" : ""}
+                  {props.isDefault(vendor)
+                    ? t("settings.engines.defaultTag")
+                    : props.isCustom(vendor)
+                      ? t("settings.engines.customTag")
+                      : ""}
                 </text>
               </box>
             )
@@ -515,7 +557,7 @@ export function EngineSettingsSection(
             }
             wrapMode="none"
           >
-            + Add engine
+            {t("settings.engines.addEngine")}
           </text>
         </box>
       </box>
@@ -537,17 +579,17 @@ export function AccountsSettingsSection(props: {
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Accounts
+        {t("settings.accounts.title")}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        Read-only view of locally-detected engine accounts. Login flows land here later.
+        {t("settings.accounts.hint")}
       </text>
       <box flexDirection="column" gap={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
           claude-code
         </text>
         <Show when={props.claudeStatus() === null}>
-          <text fg={theme.textMuted}>Checking…</text>
+          <text fg={theme.textMuted}>{t("settings.accounts.checking")}</text>
         </Show>
         <Show when={props.claudeStatus()}>
           {(s) => (
@@ -561,11 +603,12 @@ export function AccountsSettingsSection(props: {
                   const tail = [a.organization, a.billingType].filter((x): x is string => !!x).join(" · ")
                   return (
                     <text fg={theme.success} wrapMode="word">
-                      {`● Logged in: ${a.email}${tail ? ` (${tail})` : ""}`}
+                      {t("settings.accounts.loggedIn", { email: a.email })}
+                      {tail ? ` (${tail})` : ""}
                     </text>
                   )
                 }
-                return <text fg={theme.textMuted}>○ Not logged in</text>
+                return <text fg={theme.textMuted}>{t("settings.accounts.notLoggedIn")}</text>
               })()}
               <Show when={s().accountError}>
                 {(err) => (
@@ -583,7 +626,7 @@ export function AccountsSettingsSection(props: {
           codex
         </text>
         <Show when={props.codexStatus() === null}>
-          <text fg={theme.textMuted}>Checking…</text>
+          <text fg={theme.textMuted}>{t("settings.accounts.checking")}</text>
         </Show>
         <Show when={props.codexStatus()}>
           {(s) => (
@@ -596,12 +639,14 @@ export function AccountsSettingsSection(props: {
                 if (a.kind === "chatgpt") {
                   return (
                     <text fg={theme.success} wrapMode="word">
-                      {`● ChatGPT login: ${a.email}${a.plan ? ` (${a.plan})` : ""}`}
+                      {t("settings.accounts.chatgptLogin", { email: a.email })}
+                      {a.plan ? ` (${a.plan})` : ""}
                     </text>
                   )
                 }
-                if (a.kind === "apikey") return <text fg={theme.success}>● API key configured</text>
-                return <text fg={theme.textMuted}>○ Not logged in</text>
+                if (a.kind === "apikey")
+                  return <text fg={theme.success}>{t("settings.accounts.apiKeyConfigured")}</text>
+                return <text fg={theme.textMuted}>{t("settings.accounts.notLoggedIn")}</text>
               })()}
               <Show when={s().accountError}>
                 {(err) => (
@@ -619,7 +664,7 @@ export function AccountsSettingsSection(props: {
           copilot
         </text>
         <Show when={props.copilotStatus() === null}>
-          <text fg={theme.textMuted}>Checking…</text>
+          <text fg={theme.textMuted}>{t("settings.accounts.checking")}</text>
         </Show>
         <Show when={props.copilotStatus()}>
           {(s) => (
@@ -629,9 +674,10 @@ export function AccountsSettingsSection(props: {
               </text>
               {(() => {
                 const a = s().account
-                if (a.kind === "token") return <text fg={theme.success}>{`● Token configured (${a.source})`}</text>
-                if (a.kind === "oauth") return <text fg={theme.success}>● Copilot login detected</text>
-                return <text fg={theme.textMuted}>○ Not logged in</text>
+                if (a.kind === "token")
+                  return <text fg={theme.success}>{t("settings.accounts.tokenConfigured", { source: a.source })}</text>
+                if (a.kind === "oauth") return <text fg={theme.success}>{t("settings.accounts.copilotDetected")}</text>
+                return <text fg={theme.textMuted}>{t("settings.accounts.notLoggedIn")}</text>
               })()}
               <Show when={s().accountError}>
                 {(err) => (
@@ -648,83 +694,90 @@ export function AccountsSettingsSection(props: {
   )
 }
 
+/**
+ * Feedback section — a conventional inline form, not a row list. Enter
+ * (or l / click) from the sidebar focuses the `title` input; Tab walks
+ * title → body → Send → back to the sidebar; Enter commits each field
+ * (title → body, body → send) so the whole thing runs on the keyboard
+ * without a modal per field. The parent owns the Tab / Send-Enter
+ * bindings and suppresses its own j/k/h/l nav while this form is
+ * focused so the inputs receive raw keystrokes.
+ */
 export function FeedbackSettingsSection(
   props: CursorSetters & {
     level: Accessor<NavLevel>
     bodyRow: Accessor<number>
     title: Accessor<string>
+    setTitle: (v: string) => void
     body: Accessor<string>
+    setBody: (v: string) => void
     status: Accessor<string>
-    editTitle: () => void
-    editBody: () => void
+    onTitleSubmit: () => void
+    onBodySubmit: () => void
     submit: () => void
   },
 ) {
   const { theme } = useTheme()
-  const titleIsCursor = () => props.level() === "body" && props.bodyRow() === 0
-  const bodyIsCursor = () => props.level() === "body" && props.bodyRow() === 1
-  const submitIsCursor = () => props.level() === "body" && props.bodyRow() === 2
+  const editing = () => props.level() === "body"
+  const titleFocused = () => editing() && props.bodyRow() === 0
+  const bodyFocused = () => editing() && props.bodyRow() === 1
+  const sendFocused = () => editing() && props.bodyRow() === 2
+  const labelFg = (focused: boolean) => (focused ? theme.primary : theme.textMuted)
+  const labelAttrs = (focused: boolean) => (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Feedback
+        {t("settings.feedback.title")}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to
-        Feedback.
+        {t("settings.feedback.hint")}
       </text>
-      <box flexDirection="column" gap={0}>
-        <box
-          flexDirection="row"
-          gap={1}
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={titleIsCursor() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(0)
-            props.editTitle()
-          }}
-        >
-          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
-            title
+      <box flexDirection="column" gap={1}>
+        <box gap={0}>
+          <text fg={labelFg(titleFocused())} attributes={labelAttrs(titleFocused())}>
+            {t("settings.feedback.titleLabel")}
           </text>
-          <text fg={titleIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-            {props.title().trim() || "(enter to edit)"}
-          </text>
+          <input
+            value={props.title()}
+            placeholder={t("settings.feedback.titlePlaceholder")}
+            focused={titleFocused()}
+            onMouseUp={() => {
+              props.setLevel("body")
+              props.setBodyRow(0)
+            }}
+            onInput={(v: string) => props.setTitle(stripNewlines(v))}
+            onSubmit={() => props.onTitleSubmit()}
+          />
         </box>
-        <box
-          flexDirection="row"
-          gap={1}
-          paddingLeft={1}
-          paddingRight={1}
-          backgroundColor={bodyIsCursor() ? theme.primary : undefined}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(1)
-            props.editBody()
-          }}
-        >
-          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.text} attributes={TextAttributes.BOLD}>
-            body
+        <box gap={0}>
+          <text fg={labelFg(bodyFocused())} attributes={labelAttrs(bodyFocused())}>
+            {t("settings.feedback.descriptionLabel")}
           </text>
-          <text fg={bodyIsCursor() ? theme.selectedListItemText : theme.textMuted} wrapMode="none">
-            {props.body().trim() || "(enter to edit)"}
-          </text>
+          <input
+            value={props.body()}
+            placeholder={t("settings.feedback.descriptionPlaceholder")}
+            focused={bodyFocused()}
+            onMouseUp={() => {
+              props.setLevel("body")
+              props.setBodyRow(1)
+            }}
+            onInput={(v: string) => props.setBody(stripNewlines(v))}
+            onSubmit={() => props.onBodySubmit()}
+          />
         </box>
         <box
           flexDirection="row"
           paddingLeft={1}
           paddingRight={1}
-          backgroundColor={submitIsCursor() ? theme.primary : theme.backgroundElement}
+          backgroundColor={sendFocused() ? theme.primary : theme.backgroundElement}
           onMouseUp={() => {
             props.setLevel("body")
             props.setBodyRow(2)
             props.submit()
           }}
         >
-          <text fg={submitIsCursor() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
-            [enter] Send to GitHub Discussions
+          <text fg={sendFocused() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
+            {t("settings.feedback.send")}
           </text>
         </box>
       </box>
@@ -764,12 +817,10 @@ export function DevSettingsSection(
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Reset UI state
+        {t("settings.dev.reset")}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        Clears ~/.config/kobe/state.json and ~/.kobe/tasks.json, then quits kobe — relaunch to start fresh. Working
-        session / Archive lists, pane sizes, theme, model picks all reset. Worktrees on disk and Claude Code session
-        history are not touched.
+        {t("settings.dev.resetHint")}
       </text>
       <box
         flexDirection="row"
@@ -783,18 +834,16 @@ export function DevSettingsSection(
         }}
       >
         <text fg={resetIsCursor() ? theme.selectedListItemText : theme.warning} attributes={TextAttributes.BOLD}>
-          [enter] Reset
+          {t("settings.dev.resetButton")}
         </text>
       </box>
       <Show when={props.hasDaemon}>
         <box flexDirection="column" gap={0} paddingTop={1}>
           <text fg={theme.text} attributes={TextAttributes.BOLD}>
-            Restart backend
+            {t("settings.dev.restart")}
           </text>
           <text fg={theme.textMuted} wrapMode="word">
-            Stops the kobe daemon and quits this kobe window so the next launch spawns a fresh daemon — picks up daemon
-            / orchestrator / engine edits without a process kill. Other attached kobe windows will lose their connection
-            too.
+            {t("settings.dev.restartHint")}
           </text>
           <box
             flexDirection="row"
@@ -808,23 +857,21 @@ export function DevSettingsSection(
             }}
           >
             <text fg={restartIsCursor() ? theme.selectedListItemText : theme.accent} attributes={TextAttributes.BOLD}>
-              [enter] Restart
+              {t("settings.dev.restartButton")}
             </text>
           </box>
         </box>
       </Show>
       <text fg={theme.textMuted} wrapMode="word">
-        Daemon wedged or unresponsive? From a shell, run `kobe doctor` to diagnose, or `kobe reset` to stop the daemon +
-        kill sessions (keeps your tasks). Use `kobe reset --hard` only to also wipe the task index + UI state.
+        {t("settings.dev.doctorHint")}
       </text>
 
       <box flexDirection="column" gap={0} paddingTop={1}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Experimental
+          {t("settings.dev.experimental")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
-          Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven
-          from this local kobe. Unfinished — file/diff panes still degrade for remote. Enables `kobe add --remote`.
+          {t("settings.dev.remoteHint")}
         </text>
         <box
           flexDirection="row"
@@ -841,13 +888,11 @@ export function DevSettingsSection(
             fg={remoteIsCursor() ? theme.selectedListItemText : theme.text}
             attributes={props.remoteProjectsEnabled() ? TextAttributes.BOLD : undefined}
           >
-            {props.remoteProjectsEnabled() ? "[x] Remote projects (on)" : "[ ] Remote projects (off)"}
+            {props.remoteProjectsEnabled() ? t("settings.dev.remoteOn") : t("settings.dev.remoteOff")}
           </text>
         </box>
         <text fg={theme.textMuted} wrapMode="word">
-          Auto status flow: a backlog task moves to in_progress when its engine starts a turn, and new claude sessions
-          get a system-prompt note telling the agent to set in_review itself when the work is done. Never touches
-          done/canceled.
+          {t("settings.dev.autoStatusHint")}
         </text>
         <box
           flexDirection="row"
@@ -864,13 +909,11 @@ export function DevSettingsSection(
             fg={autoStatusIsCursor() ? theme.selectedListItemText : theme.text}
             attributes={props.autoStatusEnabled() ? TextAttributes.BOLD : undefined}
           >
-            {props.autoStatusEnabled() ? "[x] Auto status flow (on)" : "[ ] Auto status flow (off)"}
+            {props.autoStatusEnabled() ? t("settings.dev.autoStatusOn") : t("settings.dev.autoStatusOff")}
           </text>
         </box>
         <text fg={theme.textMuted} wrapMode="word">
-          Field-notes dispatcher: task sessions file one-line gotchas (`kobe api note`), the daemon forwards each to the
-          repo's main session, and that session relays them to the in-flight tasks that benefit (`kobe api dispatch`).
-          Web-hosted sessions receive the relays today.
+          {t("settings.dev.dispatcherHint")}
         </text>
         <box
           flexDirection="row"
@@ -887,7 +930,7 @@ export function DevSettingsSection(
             fg={dispatcherIsCursor() ? theme.selectedListItemText : theme.text}
             attributes={props.dispatcherEnabled() ? TextAttributes.BOLD : undefined}
           >
-            {props.dispatcherEnabled() ? "[x] Field-notes dispatcher (on)" : "[ ] Field-notes dispatcher (off)"}
+            {props.dispatcherEnabled() ? t("settings.dev.dispatcherOn") : t("settings.dev.dispatcherOff")}
           </text>
         </box>
       </box>
@@ -912,25 +955,24 @@ export function KeybindingsSettingsSection() {
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
-        Keybindings
+        {t("settings.keybindings.title")}
       </text>
       <text fg={theme.textMuted} wrapMode="word">
-        Rebind chords by editing the YAML below, then restart kobe (or respawn the pane). Press F1 anywhere for the live
-        keymap with every binding id.
+        {t("settings.keybindings.hint")}
       </text>
       <box flexDirection="column" gap={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD}>
-          Config file
+          {t("settings.keybindings.configFile")}
         </text>
         <text fg={theme.textMuted} wrapMode="word">
           {report.path}
-          {report.exists ? "" : "  (not created yet)"}
+          {report.exists ? "" : t("settings.keybindings.notCreated")}
         </text>
       </box>
       <Show when={!report.exists}>
         <box flexDirection="column" gap={0}>
           <text fg={theme.text} attributes={TextAttributes.BOLD}>
-            Example
+            {t("settings.keybindings.example")}
           </text>
           <text fg={theme.textMuted}>bindings:</text>
           <text fg={theme.textMuted}>{"  chat.fork.new: ctrl+g      # string = one chord"}</text>
@@ -946,10 +988,10 @@ export function KeybindingsSettingsSection() {
       <Show when={report.exists}>
         <box flexDirection="column" gap={0}>
           <text fg={theme.text} attributes={TextAttributes.BOLD}>
-            Overrides applied
+            {t("settings.keybindings.overridesApplied")}
           </text>
           <Show when={report.applied.length === 0}>
-            <text fg={theme.textMuted}>none</text>
+            <text fg={theme.textMuted}>{t("settings.keybindings.none")}</text>
           </Show>
           <For each={report.applied}>
             {(o) => (
@@ -963,7 +1005,7 @@ export function KeybindingsSettingsSection() {
       <Show when={report.warnings.length > 0}>
         <box flexDirection="column" gap={0}>
           <text fg={theme.warning} attributes={TextAttributes.BOLD}>
-            Warnings
+            {t("settings.keybindings.warnings")}
           </text>
           <For each={report.warnings}>
             {(w) => (

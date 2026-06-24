@@ -11,6 +11,7 @@
  * dismissed without an answer (e.g. esc).
  */
 
+import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
 import { For } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -97,7 +98,9 @@ export function DialogConfirm(props: DialogConfirmProps) {
               }}
             >
               <text fg={key === store.active ? theme.selectedListItemText : theme.textMuted}>
-                {titlecase(key === "cancel" ? (props.label ?? key) : (props.confirmLabel ?? key))}
+                {titlecase(
+                  key === "cancel" ? (props.label ?? t("common.cancel")) : (props.confirmLabel ?? t("common.confirm")),
+                )}
               </text>
             </box>
           )}

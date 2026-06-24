@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>kobe · 近期发版速览</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* kobe — claude theme (dark) */
+    --bg:            #141413;
+    --bg-raised:     #1A1917;
+    --bg-inset:      #2B2A27;
+    --bg-menu:       #33312E;
+    --border-subtle: #2B2A27;
+    --border:        #3A3835;
+    --border-active: #5C5853;
+    --text:          #EAE7DF;
+    --text-muted:    #A9A39A;
+    --text-subtle:   #6B665F;
+    --primary:       #CC785C;
+    --secondary:     #D4967E;
+    --accent-hover:  #E0AB96;
+    --red:           #D47563;
+    --orange:        #D97757;
+    --yellow:        #E8C96B;
+    --green:         #9ACA86;
+    --blue:          #61AAF2;
+    --violet:        #9B87F5;
+    --added-bg:      #1F2A1F;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--primary); color: var(--bg); }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  /* ── top bar ───────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    background: var(--bg-raised);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: var(--red); }
+  .dot.y { background: var(--yellow); }
+  .dot.g { background: var(--green); }
+  .topbar .title {
+    margin-left: 8px;
+    color: var(--text-muted);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+  }
+  .topbar .title b { color: var(--text); }
+
+  /* ── hero ──────────────────────────────────────────────── */
+  .hero { padding: 56px 0 36px; border-bottom: 1px dashed var(--border); }
+  .brand {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .brand .k { color: var(--primary); }
+  .brand .cursor {
+    display: inline-block;
+    width: 0.55em; height: 1.05em;
+    background: var(--primary);
+    margin-left: 4px;
+    transform: translateY(3px);
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .tagline {
+    color: var(--text-muted);
+    margin: 14px 0 0;
+    font-size: 14px;
+    max-width: 620px;
+  }
+  .tagline .accent { color: var(--secondary); }
+
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--bg-inset);
+    color: var(--text-muted);
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+  .chip b { color: var(--text); }
+  .chip.live { border-color: var(--primary); color: var(--secondary); }
+  .chip.live::before {
+    content: "";
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 7px;
+    transform: translateY(-1px);
+    box-shadow: 0 0 7px var(--green);
+  }
+
+  /* ── section header ────────────────────────────────────── */
+  .sec-head {
+    margin: 48px 0 4px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: var(--text-subtle);
+  }
+
+  /* ── release block ─────────────────────────────────────── */
+  .release { margin-top: 28px; }
+  .ver-line {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 10px;
+  }
+  .ver {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--primary);
+  }
+  .ver .pre { color: var(--text-subtle); font-weight: 500; }
+  .ver-date { color: var(--text-subtle); font-size: 12px; }
+  .ver-badge {
+    margin-left: auto;
+    font-size: 11px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .ver-badge.today { border-color: var(--primary); color: var(--bg); background: var(--primary); font-weight: 700; }
+
+  /* ── entry ─────────────────────────────────────────────── */
+  .entry {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    gap: 16px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .entry:last-child { border-bottom: none; }
+
+  .tag {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-align: center;
+    padding: 3px 0;
+    border-radius: 4px;
+    height: fit-content;
+    margin-top: 3px;
+  }
+  .tag.feat { color: var(--green);  background: rgba(154,202,134,0.12); border:1px solid rgba(154,202,134,0.35); }
+  .tag.fix  { color: var(--blue);   background: rgba(97,170,242,0.10);  border:1px solid rgba(97,170,242,0.30); }
+
+  .entry h3 {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .entry p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13.5px;
+  }
+  .entry .kbd {
+    background: var(--bg-menu);
+    border: 1px solid var(--border-active);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  code, .code {
+    background: var(--bg-inset);
+    color: var(--secondary);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12.5px;
+  }
+
+  /* ── footer ────────────────────────────────────────────── */
+  .foot {
+    margin-top: 64px;
+    padding-top: 24px;
+    border-top: 1px dashed var(--border);
+    color: var(--text-subtle);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .prompt::before { content: "› "; color: var(--primary); }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="title"><b>kobe</b> — 终端里的多任务 AI 编码工作台 · 发版速览</span>
+  </div>
+
+  <div class="wrap">
+    <header class="hero">
+      <h1 class="brand"><span class="k">kobe</span> 近期发版<span class="cursor"></span></h1>
+      <p class="tagline">
+        本地优先的终端 UI，一屏同时跑很多个 AI 编码会话。每个任务 =
+        <span class="accent">一个 git worktree + 一个引擎会话 + 一个分支</span>。
+        以下是 <b>0.7.34 → 0.7.37</b> 这几个版本的用户可见变化。
+      </p>
+      <div class="meta-row">
+        <span class="chip live">最新 <b>0.7.37</b></span>
+        <span class="chip">区间 <b>0.7.34–0.7.37</b></span>
+        <span class="chip">日期 <b>2026-06-22 → 06-24</b></span>
+        <span class="chip">包 <b>@sma1lboy/kobe</b></span>
+      </div>
+    </header>
+
+    <!-- 0.7.37 ───────────────────────────────────────────── -->
+    <div class="sec-head">RELEASES</div>
+
+    <section class="release">
+      <div class="ver-line">
+        <span class="ver"><span class="pre">v</span>0.7.37</span>
+        <span class="ver-date">2026-06-24</span>
+        <span class="ver-badge today">今天</span>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>Tasks 侧栏实时显示 PR 检查状态 <span class="code">KOB-10</span></h3>
+          <p>守护进程会对每个任务分支轮询 <code>gh pr view</code>(仅 GitHub),把结果写回任务,侧栏行右侧多出一个状态徽标:<b style="color:var(--green)">✓ 通过</b> / <b style="color:var(--red)">✗ 失败</b> / <b>• 进行中</b>,随 CI 推进实时更新,不用离开 TUI。状态会持久化(随快照下发,网页看板也能看到,守护进程重启后仍在),且只在 <code>gh</code> 调用成功时写入——所以掉网或未登录都不会误清已知状态。无 PR 的分支、已合并/关闭的 PR 会退避轮询,无界面挂载时则完全暂停。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>新增 Zen 模式,把 ChatTab 收起到只剩引擎面板</h3>
+          <p>从文件列表上方的 <span class="kbd">zen</span> 标签(在 <span class="kbd">create PR</span> 左边)触发,或用 tmux <span class="kbd">prefix</span>+<span class="kbd">space</span>。它会隐藏文件/Ops 与终端面板;Tasks 栏也会一起隐藏,除非打开新增的「设置 → 通用 → Zen 模式保留 Tasks 面板」开关(默认开,保留的 Tasks 栏便于退出 zen)。再按一次精确还原 zen 隐藏的那些面板,你原本就收起的面板不受影响。Zen 激活时,保留的 Tasks 面板左下角会有一个 <code>☯ ZEN</code> 徽标提示当前模式。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>终端变大时工作区跟随生长,不再闪烁</h3>
+          <p>之前为贴合进入客户端而把窗口 <code>window-size</code> 固定为 <code>manual</code>,导致终端从小拉大时窗口不自动长大,UI 被「信箱化」卡在旧的小尺寸,直到切换或重开任务。新增 <code>client-resized</code> 钩子(<code>kobe resync-window</code>)在每次终端尺寸变化时把活动窗口重新钉到客户端尺寸并修复侧栏;拖拽时的事件风暴被合并为一次重钉,窗口与侧栏的重排打包成一条 tmux 命令一次性重绘——终端长大不再闪过变形的中间帧。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>提示词送进 tmux 引擎面板不再偶发卡在输入框</h3>
+          <p>仓库的 <code>init-prompt.md</code> 首条消息、<code>kobe api send</code> 与快速任务投递都受影响:<code>pasteAndSubmit</code> 把粘贴和提交回车连写,二者可能合并成一次 tty 读取,引擎把回车当成粘贴内容而非提交(与网页 composer / PTY sidecar 之前修过的是同一个问题)。tmux 投递路径现在同样把回车延后 ~150ms 拆开发送。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>文件面板路径按码点截断,不再切坏非 ASCII 文件名</h3>
+          <p>窄面板下 <code>truncatePathTail</code> 之前按 UTF-16 码元截断,会把代理对从中切开,使以 emoji 或星平面字符结尾的路径尾(如 <code>…my-🎉-feature.ts</code>)渲染成 <code>�</code>。现在改为按码点切分(与 <code>orchestrator/title.ts</code> 一致),字符保持完整;函数移入纯逻辑模块 <code>filetree/rows.ts</code> 并补了单测。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>文件面板 Changes 标签不再显示裸目录</h3>
+          <p><code>git status --porcelain</code> 会把整个未跟踪目录折叠成一行 <code>dir/</code>,渲染成没有 +/- 统计、也点不开的目录项。现在改用 <code>--untracked-files=all</code> 运行 <code>git status</code>,把未跟踪目录展开成单个文件(与 All 标签一致并同样遵守 <code>.gitignore</code>);并防御性跳过尾斜杠行,目录再也不会作为变更项出现。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.7.36 ───────────────────────────────────────────── -->
+    <section class="release">
+      <div class="ver-line">
+        <span class="ver"><span class="pre">v</span>0.7.36</span>
+        <span class="ver-date">2026-06-23</span>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>新增 <code>kobe export</code>,无需守护进程导出任务列表</h3>
+          <p>直接在进程内读取 <code>~/.kobe/tasks.json</code> 并打印到 stdout:默认 JSON、<code>--csv</code>、或 <code>--format table</code> 对齐表格。可以把任务管道给 <code>jq</code>、用表格软件打开、或在终端里扫一眼——补足了需要守护进程且只出 JSON 的 <code>kobe api list</code>。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>修复重启后任务静默退回 Claude</h3>
+          <p>任务索引加载器之前用过时的 <code>claude | codex</code> 校验持久化引擎,导致 Copilot 任务——或任何用户自注册的自定义引擎——每次守护进程重载 <code>tasks.json</code> 都被悄悄降级回 Claude。现在加载会保留任何已记录的引擎(内置或自定义),仅当从未记录过引擎时才回退到 Claude。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>侧栏打磨</h3>
+          <p>PROJECTS 区在项目较少时不再占满整个滚动上限留下大片空白,而是收缩到实际行数(每张卡 2 行),行数超过上限时仍可滚动。视图标签从「Working session」缩短为「Workspace」,不再在侧栏被截断。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>整窗页面不再响应工作区导航快捷键</h3>
+          <p>新建任务、设置、更新、快速任务、帮助等整窗页面,之前 <span class="kbd">Ctrl+Q</span>、<span class="kbd">Ctrl+[</span> / <span class="kbd">Ctrl+]</span>、<span class="kbd">Ctrl+T</span> 等会从 tmux 根表触发,把你从填了一半的对话框里拽走。这些窗口现在带 <code>@kobe_surface</code> 标记,相关快捷键在其中变为空操作。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.7.35 ───────────────────────────────────────────── -->
+    <section class="release">
+      <div class="ver-line">
+        <span class="ver"><span class="pre">v</span>0.7.35</span>
+        <span class="ver-date">2026-06-23</span>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>新建任务对话框改为自上而下的单一键盘流</h3>
+          <p>模式标签(For Existing / New Repo / Adopt)和引擎选择器现在都是真正的焦点停靠点:对话框打开时聚焦在模式行,←/→ 立即切换模式,Tab 依次走 <code>模式 → 引擎 → 仓库 → 分支 → 创建</code>,Create 按钮移到右下角。仓库/克隆目录选择器里选目录(Enter 或点击)会<b>选中</b>它并前进到下一字段,而不是无限下钻;继续输入则可深入浏览。在最后一个字段按 Enter 直接创建任务(不用再点一次 Create)。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>新建任务对话框焦点样式</h3>
+          <p>聚焦字段的标签(<code>repo</code>、<code>engine</code>、<code>from branch</code> 等)显示为 primary + 加粗 + 下划线,未聚焦标签保持灰。活动模式标签与选中引擎保持 ▸ + 加粗 + primary;输入值保持默认色。替换了此前「聚焦变强调色」的方案——那种读起来太跳。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag fix">FIX</div>
+        <div>
+          <h3>文件夹不是 git 仓库时,给出更友好、可执行的报错</h3>
+          <p>不再直接抛出 git 的 <code>fatal: not a git repository</code>,新建任务对话框的内联校验和 worktree 创建 toast 都会解释为什么任务需要 git 仓库,并直接给出修复命令 <code>git init &amp;&amp; git add -A &amp;&amp; git commit -m "init"</code>,并说明非 git 文件夹后续会支持。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 0.7.34 ───────────────────────────────────────────── -->
+    <section class="release">
+      <div class="ver-line">
+        <span class="ver"><span class="pre">v</span>0.7.34</span>
+        <span class="ver-date">2026-06-22</span>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>网页 HTTP/SSE 流量直接走守护进程</h3>
+          <p>网页与桌面端不再启动独立的 kobe-web 桥接进程,浏览器流量直接经由 kobe 守护进程。守护进程持有网页路由表、RPC 白名单、SSE 快照流、会话/规格路由与可选静态托管;网页开发和桌面端只需启动 Vite 和 Node PTY sidecar。默认包现在也会捆绑已构建的网页面板,并作为 <code>bun run build</code> 的一部分构建。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>Tasks 面板项目过滤升级为全局 UI 偏好</h3>
+          <p>在任一会话按 <span class="kbd">Ctrl+P</span> 会同步更新所有会话的项目范围,进入另一任务不再露出该会话过时的本地过滤状态。Tasks 面板还把折叠的按键图例固定在 tmux 状态栏上方一行,并将侧栏溢出拆成独立的 PROJECTS 与 TASKS 两个滚动区,长任务列表不再把项目行挤出视野。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>整套 tmux 外观跟随 kobe 主题</h3>
+          <p>专用的 <code>-L kobe</code> tmux 服务器现在从当前主题派生底部状态栏/窗口栏、status-left/right 样式、命令提示、复制模式选区、面板选择器配色与面板边框——切换主题会完整重塑 ChatTab 外观,且不触碰用户真实的 tmux 服务器。同时让设置写入共享状态文件后的主题实时传播更可靠(守护进程轮询小巧的 UI prefs 文件作为兜底)。</p>
+        </div>
+      </div>
+
+      <div class="entry">
+        <div class="tag feat">FEAT</div>
+        <div>
+          <h3>实验性 <code>kobe-desktop</code> 工作区</h3>
+          <p>一个轻量 Electron 外壳:在空闲本地端口段上启动既有的 <code>kobe web</code> 开发栈并在桌面窗口中打开,不改动守护进程、tmux 或网页桥接架构。</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="foot">
+      <span class="prompt">npm i -g @sma1lboy/kobe&nbsp;&nbsp;·&nbsp;&nbsp;kobe</span>
+      <span>Task = git worktree + engine session + branch</span>
+    </div>
+  </div>
+</body>
+</html>

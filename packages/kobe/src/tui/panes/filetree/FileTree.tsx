@@ -58,6 +58,7 @@
  */
 
 import { type FSWatcher, watch } from "node:fs"
+import { t } from "@/tui/i18n"
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js"
@@ -178,20 +179,24 @@ const TABS = ["all", "changes"] as const satisfies readonly FileTreeTab[]
  */
 export function summarizeGitError(raw: string): string {
   const m = raw.toLowerCase()
-  if (m.includes("not a git repository")) return "not a git repository"
-  if (m.includes("does not exist") || m.includes("enoent")) return "worktree path is missing"
-  if (m.includes("permission denied") || m.includes("eacces")) return "permission denied"
-  if (m.includes("git: not found") || m.includes("command not found")) return "git is not installed"
+  if (m.includes("not a git repository")) return t("files.error.notGitRepo")
+  if (m.includes("does not exist") || m.includes("enoent")) return t("files.error.pathMissing")
+  if (m.includes("permission denied") || m.includes("eacces")) return t("files.error.permissionDenied")
+  if (m.includes("git: not found") || m.includes("command not found")) return t("files.error.gitNotInstalled")
   // Fallback: strip the leading `git <args> (cwd=...)` boilerplate.
   const colon = raw.indexOf(": ")
-  if (colon >= 0 && raw.startsWith("git ")) return raw.slice(colon + 2).trim() || "git command failed"
-  return raw.trim() || "git command failed"
+  if (colon >= 0 && raw.startsWith("git ")) return raw.slice(colon + 2).trim() || t("files.error.gitFailed")
+  return raw.trim() || t("files.error.gitFailed")
 }
 
-/** Display label for each tab. */
-const TAB_LABEL: Record<FileTreeTab, string> = {
-  all: "All",
-  changes: "Changes",
+/** Display label for each tab — resolved at render time via t() so language switches are reactive. */
+function tabLabel(tab: FileTreeTab): string {
+  switch (tab) {
+    case "all":
+      return t("files.tabs.all")
+    case "changes":
+      return t("files.tabs.changes")
+  }
 }
 
 export function FileTree(props: FileTreeProps) {
@@ -549,7 +554,7 @@ export function FileTree(props: FileTreeProps) {
                 ☯
               </text>
               <text fg={theme.text} wrapMode="none">
-                zen
+                {t("files.actions.zen")}
               </text>
             </box>
           </Show>
@@ -559,7 +564,7 @@ export function FileTree(props: FileTreeProps) {
                 [P]
               </text>
               <text fg={theme.text} wrapMode="none">
-                create PR
+                {t("files.actions.createPR")}
               </text>
             </box>
           </Show>
@@ -579,7 +584,7 @@ export function FileTree(props: FileTreeProps) {
                   wrapMode="none"
                   onMouseUp={() => setTab(t)}
                 >
-                  {TAB_LABEL[t]}
+                  {tabLabel(t)}
                 </text>
               )
             }}
@@ -604,7 +609,7 @@ export function FileTree(props: FileTreeProps) {
       <Show when={tab() === "changes"}>
         <box flexDirection="column" paddingBottom={1} flexShrink={0} gap={0}>
           <text fg={theme.textMuted} wrapMode="none">
-            M modified · A added · D deleted · ? untracked
+            {t("files.legend.changes")}
           </text>
         </box>
       </Show>
@@ -629,7 +634,7 @@ export function FileTree(props: FileTreeProps) {
       >
         <Show when={props.worktreePath() == null}>
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>(no task — press n to create)</text>
+            <text fg={theme.textMuted}>{t("files.empty.noTask")}</text>
           </box>
         </Show>
 
@@ -639,7 +644,7 @@ export function FileTree(props: FileTreeProps) {
               {summarizeGitError(error() ?? "")}
             </text>
             <text fg={theme.textMuted} wrapMode="word">
-              press r to retry
+              {t("files.error.retryHint")}
             </text>
           </box>
         </Show>
@@ -653,7 +658,7 @@ export function FileTree(props: FileTreeProps) {
           }
         >
           <box paddingTop={1} paddingLeft={1}>
-            <text fg={theme.textMuted}>{tab() === "all" ? "(empty worktree)" : "(no changes — clean worktree)"}</text>
+            <text fg={theme.textMuted}>{tab() === "all" ? t("files.empty.noFiles") : t("files.empty.noChanges")}</text>
           </box>
         </Show>
 
@@ -786,7 +791,7 @@ export function FileTree(props: FileTreeProps) {
       <Show when={props.worktreePath() != null}>
         <box flexDirection="row" paddingTop={1} flexShrink={0}>
           <text fg={theme.textMuted} wrapMode="none">
-            ↵ open
+            {t("files.footer.openHint")}
           </text>
         </box>
       </Show>

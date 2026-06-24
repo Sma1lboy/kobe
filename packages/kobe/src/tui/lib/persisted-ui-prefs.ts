@@ -15,12 +15,18 @@
 import { readFileSync } from "node:fs"
 import { kvStatePath } from "../../env.ts"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, hasTheme } from "../context/theme"
+import { DEFAULT_LOCALE, type LocaleId, isLocaleId } from "../i18n/catalog"
+
+/** state.json key holding the persisted UI language. */
+export const LOCALE_KEY = "locale"
 
 export interface PersistedUiPrefs {
   /** Active theme name, validated against the registry (stale names fall back). */
   readonly theme: string
   readonly transparent: boolean
   readonly focusAccent: FocusAccentSlot | null
+  /** Active UI language, validated against the registered locales. */
+  readonly locale: LocaleId
 }
 
 /**
@@ -38,8 +44,9 @@ export function readPersistedUiPrefs(fallbackTheme: string): PersistedUiPrefs {
       typeof parsed.focusAccent === "string" && (FOCUS_ACCENT_SLOTS as readonly string[]).includes(parsed.focusAccent)
         ? (parsed.focusAccent as FocusAccentSlot)
         : null
-    return { theme, transparent, focusAccent }
+    const locale = isLocaleId(parsed[LOCALE_KEY]) ? parsed[LOCALE_KEY] : DEFAULT_LOCALE
+    return { theme, transparent, focusAccent, locale }
   } catch {
-    return { theme: fallbackTheme, transparent: false, focusAccent: null }
+    return { theme: fallbackTheme, transparent: false, focusAccent: null, locale: DEFAULT_LOCALE }
   }
 }

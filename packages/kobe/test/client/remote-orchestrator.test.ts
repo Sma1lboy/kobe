@@ -69,6 +69,22 @@ describe("RemoteOrchestrator channel handling", () => {
     expect(orch.uiPrefsSignal()()?.projectFilter).toBeNull()
   })
 
+  it("carries an absent `locale` as '' (UNSET), never 'en' — a payload that omits the language must not reset it", () => {
+    const { client, emit } = fakeClient()
+    const orch = new RemoteOrchestrator(client)
+
+    // An older daemon (or any push that predates locale support) omits the
+    // field. Defaulting it to "en" here is what made a stale daemon's echo
+    // yank the just-switched language back to English (the consumer applies
+    // locale only when isLocaleId() passes, and "" fails that → no-op).
+    emit("ui-prefs", { theme: "nord" })
+    expect(orch.uiPrefsSignal()()?.locale).toBe("")
+
+    // A real locale string from a current daemon still rides through.
+    emit("ui-prefs", { theme: "nord", locale: "zh" })
+    expect(orch.uiPrefsSignal()()?.locale).toBe("zh")
+  })
+
   it("treats a malformed update payload as null", () => {
     const { client, emit } = fakeClient()
     const orch = new RemoteOrchestrator(client)
