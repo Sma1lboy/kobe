@@ -45,6 +45,7 @@ import {
   tmuxSessionName,
 } from "@/tmux/client"
 import { ZEN_HIDDEN_PANES_OPTION } from "@/tmux/session-layout"
+import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
@@ -132,9 +133,9 @@ function worktreeCwdUsable(cwd: string | undefined): cwd is string {
 function worktreeErrorToast(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
   if (/not a git repository/i.test(raw)) {
-    return "This project isn't a git repo yet — a task needs a git branch. Run `git init` (+ a first commit) in the project, then open the task. Non-git support is coming."
+    return t("tasks.toast.worktreeErrorNotGit")
   }
-  return `Couldn't create the worktree: ${raw}`
+  return t("tasks.toast.worktreeErrorGeneric", { message: raw })
 }
 
 function TasksShell(props: {
@@ -401,7 +402,7 @@ function TasksShell(props: {
     if (!info?.hasUpdate) {
       // The `u` chord / update chip would otherwise no-op silently when
       // nothing is pending — confirm the up-to-date state instead (#23a).
-      notifyInfo(`Already on the latest version (v${CURRENT_VERSION})`)
+      notifyInfo(t("tasks.toast.alreadyLatest", { version: CURRENT_VERSION }))
       return
     }
     const session = await currentSessionName()
@@ -440,7 +441,7 @@ function TasksShell(props: {
     if (!worktree || !existsSync(worktree)) {
       if (!props.orch) {
         console.error("[kobe tasks] no daemon; cannot materialise worktree")
-        notifyError("No daemon running — can't create the worktree")
+        notifyError(t("tasks.toast.noDaemonWorktree"))
         return
       }
       try {
@@ -456,12 +457,12 @@ function TasksShell(props: {
     const opener = detectWorktreeOpener()
     if (!opener) {
       console.error("[kobe tasks] no editor/opener found; set KOBE_OPEN_EDITOR")
-      notifyError("No editor found — set KOBE_OPEN_EDITOR (e.g. 'code', 'cursor', 'nvim')")
+      notifyError(t("tasks.toast.noEditor"))
       return
     }
     if (!openWorktree(worktree, opener)) {
       console.error(`[kobe tasks] failed to open worktree with ${opener.label}`)
-      notifyError(`Couldn't open worktree with ${opener.label}`)
+      notifyError(t("tasks.toast.openWorktreeFailed", { label: opener.label }))
     }
   }
 
@@ -493,7 +494,7 @@ function TasksShell(props: {
       await props.orch.moveTask(id, delta)
     } catch (err) {
       console.error("[kobe tasks] task.move failed:", err)
-      notifyError(`Couldn't move task: ${err instanceof Error ? err.message : String(err)}`)
+      notifyError(t("tasks.toast.moveTaskFailed", { message: err instanceof Error ? err.message : String(err) }))
       return
     }
     setSelectedId(id)
@@ -634,7 +635,7 @@ function TasksShell(props: {
     if (!worktreeCwdUsable(cwd)) {
       if (!props.orch) {
         console.error("[kobe tasks] no daemon; cannot materialise worktree")
-        notifyError("No daemon running — can't open this task")
+        notifyError(t("tasks.toast.noDaemonOpen"))
         return
       }
       try {
@@ -659,7 +660,7 @@ function TasksShell(props: {
     })
     if (!ready) {
       console.error(`[kobe tasks] failed to start session ${name}`)
-      notifyError("Couldn't start this task's session")
+      notifyError(t("tasks.toast.sessionStartFailed"))
       return
     }
     // Fit + heal to THIS client before switching in (see prepareWindowForSwitch):
@@ -874,9 +875,9 @@ function ShortcutHints(props: {
     const out: Hint[] = []
     const focusChords = res.focus.filter((f): f is NonNullable<typeof f> => f !== null).map((f) => f.chord)
     if (focusChords.length === 4 && focusChords.every((c, i) => c === TMUX_FOCUS_DEFAULTS[i])) {
-      out.push({ k: "ctrl+hjkl", label: "move panes" })
+      out.push({ k: "ctrl+hjkl", label: t("tasks.hints.movePanes") })
     } else if (focusChords.length > 0) {
-      out.push({ k: focusChords[0] as string, label: "move panes" })
+      out.push({ k: focusChords[0] as string, label: t("tasks.hints.movePanes") })
     }
     const layoutGroup = (label: string, ids: readonly (keyof typeof b)[]): void => {
       const chords = ids.map((id) => b[id]?.chord).filter((chord): chord is string => !!chord)
@@ -885,9 +886,17 @@ function ShortcutHints(props: {
     // Trimmed legend: keep pane movement, the tasks→detach chord, and the two
     // tmux-prefix layout groups. Per-tab rows (switch / new / engine / rename /
     // close) live in F1 full help, not the footer.
-    if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: "tasks→detach" })
-    layoutGroup("splits", ["tmux.layout.workspaceSplit", "tmux.layout.workspaceClose", "tmux.layout.workspaceReset"])
-    layoutGroup("panes", ["tmux.layout.tasksToggle", "tmux.layout.opsToggle", "tmux.layout.terminalToggle"])
+    if (b["tmux.detach"]) out.push({ k: b["tmux.detach"].chord, label: t("tasks.hints.detach") })
+    layoutGroup(t("tasks.hints.splits"), [
+      "tmux.layout.workspaceSplit",
+      "tmux.layout.workspaceClose",
+      "tmux.layout.workspaceReset",
+    ])
+    layoutGroup(t("tasks.hints.panes"), [
+      "tmux.layout.tasksToggle",
+      "tmux.layout.opsToggle",
+      "tmux.layout.terminalToggle",
+    ])
     return out
   }
   // Fixed-width key column so labels line up — a terminal-grammar legend
@@ -914,17 +923,17 @@ function ShortcutHints(props: {
     // per-tab tmux chords) is reachable via F1 full help. Order here is the
     // exact order the rows render in.
     const rows: Array<{ ids: readonly string[]; label: string; dimWhenMain?: boolean }> = [
-      { ids: ["help.open"], label: "full help" },
-      { ids: ["task.new"], label: "new task" },
-      { ids: ["settings.open.sidebar"], label: "settings" },
-      { ids: ["sidebar.select"], label: "open" },
+      { ids: ["help.open"], label: t("tasks.hints.fullHelp") },
+      { ids: ["task.new"], label: t("tasks.hints.newTask") },
+      { ids: ["settings.open.sidebar"], label: t("tasks.hints.settings") },
+      { ids: ["sidebar.select"], label: t("tasks.hints.open") },
       // Right arrow re-focuses the current window's engine pane
       // (tasks.focusEngine) — renders as [→] via formatChord's KEY_GLYPH.
-      { ids: ["tasks.focusEngine"], label: "focus engine" },
-      { ids: ["tasks.openWorktree"], label: "open wt" },
-      { ids: ["sidebar.delete"], label: "delete" },
-      { ids: ["sidebar.view"], label: "views" },
-      { ids: ["sidebar.projectFilter"], label: "project" },
+      { ids: ["tasks.focusEngine"], label: t("tasks.hints.focusEngine") },
+      { ids: ["tasks.openWorktree"], label: t("tasks.hints.openWorktree") },
+      { ids: ["sidebar.delete"], label: t("tasks.hints.delete") },
+      { ids: ["sidebar.view"], label: t("tasks.hints.views") },
+      { ids: ["sidebar.projectFilter"], label: t("tasks.hints.project") },
     ]
     const out: Hint[] = []
     for (const row of rows) {
@@ -935,11 +944,11 @@ function ShortcutHints(props: {
     out.push(...tmuxHints())
     return out
   }
-  const MOVE_HINTS: ReadonlyArray<Hint> = [
-    { k: "j/k", label: "reorder" },
-    { k: "enter/esc", label: "done" },
+  const MOVE_HINTS = (): ReadonlyArray<Hint> => [
+    { k: "j/k", label: t("tasks.hints.reorder") },
+    { k: "enter/esc", label: t("tasks.hints.done") },
   ]
-  const hints = () => (props.moveMode?.() ? MOVE_HINTS : defaultHints())
+  const hints = () => (props.moveMode?.() ? MOVE_HINTS() : defaultHints())
   // Width of the description column = the longest label, but CAPPED so a long
   // label can't blow the column out past what the 32-cell Tasks pane (minus the
   // 10-cell keycap column) can hold. Each row right-aligns this fixed-width box
@@ -973,7 +982,7 @@ function ShortcutHints(props: {
         wrapMode="none"
         onMouseUp={() => props.onToggleCollapsed?.()}
       >
-        {folded() ? "── keys ?▸ ──" : "── keys ?▾ ──"}
+        {folded() ? t("tasks.hints.headerFolded") : t("tasks.hints.headerUnfolded")}
       </text>
       <Show when={!folded()}>
         <For each={hints()}>

@@ -16,6 +16,7 @@ import { spawn } from "node:child_process"
 import * as fs from "node:fs"
 import * as path from "node:path"
 import type { Readable } from "node:stream"
+import { t } from "@/tui/i18n"
 import { expandHome } from "../../lib/path-helpers"
 
 type EventedCloneProcess = {
@@ -56,14 +57,14 @@ export function deriveFolderName(url: string): string {
  */
 export function validateGitUrl(url: string): string | null {
   const trimmed = url.trim()
-  if (!trimmed) return "git URL is required"
+  if (!trimmed) return t("newTask.error.gitUrlRequired")
   // Must contain either `://` (https / ssh / git) or `:` (SCP-form), or
   // be a local path. Refuse only completely formless single-token input.
   const hasProtocol = trimmed.includes("://")
   const hasScpSep = trimmed.includes("@") && trimmed.includes(":")
   const hasPathSep = trimmed.includes("/")
   if (!hasProtocol && !hasScpSep && !hasPathSep) {
-    return `does not look like a git URL: ${trimmed}`
+    return t("newTask.error.gitUrlInvalid", { url: trimmed })
   }
   return null
 }
@@ -79,22 +80,22 @@ export function validateGitUrl(url: string): string | null {
  */
 export function validateCloneTarget(parentDir: string, folder: string): string | null {
   const folderTrimmed = folder.trim()
-  if (!folderTrimmed) return "folder name is required"
+  if (!folderTrimmed) return t("newTask.error.folderRequired")
   if (folderTrimmed.includes("/") || folderTrimmed.includes("\\")) {
-    return "folder name cannot contain path separators"
+    return t("newTask.error.folderHasSeparator")
   }
   const parentTrimmed = parentDir.trim()
-  if (!parentTrimmed) return "parent directory is required"
+  if (!parentTrimmed) return t("newTask.error.parentRequired")
   const parentExpanded = expandHome(parentTrimmed)
   let parentStat: fs.Stats
   try {
     parentStat = fs.statSync(parentExpanded)
   } catch {
-    return `parent directory does not exist: ${parentExpanded}`
+    return t("newTask.error.parentNotFound", { path: parentExpanded })
   }
-  if (!parentStat.isDirectory()) return `not a directory: ${parentExpanded}`
+  if (!parentStat.isDirectory()) return t("newTask.error.parentNotDir", { path: parentExpanded })
   const target = path.join(parentExpanded, folderTrimmed)
-  if (fs.existsSync(target)) return `target already exists: ${target}`
+  if (fs.existsSync(target)) return t("newTask.error.targetExists", { path: target })
   return null
 }
 

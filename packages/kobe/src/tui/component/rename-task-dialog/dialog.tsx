@@ -17,6 +17,7 @@
  * sanitiser.
  */
 
+import { t } from "@/tui/i18n"
 import { TextAttributes } from "@opentui/core"
 import { createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
@@ -54,14 +55,14 @@ export function RenameTaskDialogView(props: {
     <box paddingLeft={2} paddingRight={2} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {props.dialogTitle ?? "Rename task"}
+          {props.dialogTitle ?? t("common.rename.defaultTitle")}
         </text>
         <text fg={theme.textMuted} onMouseUp={() => props.onCancel()}>
           esc
         </text>
       </box>
       <box gap={0}>
-        <text fg={theme.accent}>{props.fieldLabel ?? "title"}</text>
+        <text fg={theme.accent}>{props.fieldLabel ?? t("common.rename.defaultFieldLabel")}</text>
         <input
           value={value()}
           placeholder={props.placeholder ?? props.currentTitle}
@@ -71,7 +72,9 @@ export function RenameTaskDialogView(props: {
         />
       </box>
       <box paddingBottom={1}>
-        <text fg={theme.textMuted}>{`enter ${props.submitLabel ?? "rename"} · esc cancel`}</text>
+        <text fg={theme.textMuted}>
+          {t("common.rename.footerHint", { submitLabel: props.submitLabel ?? t("common.rename.defaultSubmitLabel") })}
+        </text>
       </box>
     </box>
   )

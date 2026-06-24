@@ -33,6 +33,7 @@
  * `../../lib/path-helpers.ts`.
  */
 
+import { t } from "@/tui/i18n"
 import { ALL_VENDORS, type VendorId, nextVendorWithin, prevVendorWithin } from "@/types/vendor"
 import type { AdoptableWorktree } from "@/types/worktree"
 import { TextAttributes } from "@opentui/core"
@@ -352,13 +353,13 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     }
     const target = resolveCloneTarget(cloneParent(), cloneFolder())
     setCloneInFlight(true)
-    setCloneProgress(`Cloning into ${target}…`)
+    setCloneProgress(t("newTask.clone.progressInto", { target }))
     const result = await cloneRepo(cloneUrl().trim(), target, (line) => {
       setCloneProgress(line)
     })
     setCloneInFlight(false)
     if (!result.ok) {
-      setSubmitError(`git clone failed: ${result.error}`)
+      setSubmitError(t("newTask.error.cloneFailed", { error: result.error }))
       setField("cloneUrl")
       return
     }
@@ -371,7 +372,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
   function commitAdopt() {
     const list = adoptList()
     if (list.length === 0) {
-      setSubmitError("no adoptable worktrees to import")
+      setSubmitError(t("newTask.error.noAdoptable"))
       return
     }
     const sel = adoptSelected()
@@ -660,7 +661,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     <box paddingLeft={2} paddingRight={2} gap={0}>
       <box flexDirection="row">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          New task
+          {t("newTask.title")}
         </text>
       </box>
       {/* Top section — interactive surface: the sub-tab selector, the
@@ -685,21 +686,21 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                 attributes={selectedAttrs(tab() === "existing", tabFocused())}
                 onMouseUp={() => switchToTab("existing")}
               >
-                {tab() === "existing" ? "▸ For Existing" : "  For Existing"}
+                {tab() === "existing" ? `▸ ${t("newTask.tabs.existing")}` : `  ${t("newTask.tabs.existing")}`}
               </text>
               <text
                 fg={tabFg(tab() === "clone")}
                 attributes={selectedAttrs(tab() === "clone", tabFocused())}
                 onMouseUp={() => switchToTab("clone")}
               >
-                {tab() === "clone" ? "▸ For New Repo" : "  For New Repo"}
+                {tab() === "clone" ? `▸ ${t("newTask.tabs.clone")}` : `  ${t("newTask.tabs.clone")}`}
               </text>
               <text
                 fg={tabFg(tab() === "adopt")}
                 attributes={selectedAttrs(tab() === "adopt", tabFocused())}
                 onMouseUp={() => switchToTab("adopt")}
               >
-                {tab() === "adopt" ? "▸ Adopt Worktree" : "  Adopt Worktree"}
+                {tab() === "adopt" ? `▸ ${t("newTask.tabs.adopt")}` : `  ${t("newTask.tabs.adopt")}`}
               </text>
             </box>
           )
@@ -713,7 +714,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             right-stuck + muted so it reads as a hint, not an engine. */}
         <box gap={0}>
           <text fg={labelFg("engine")} attributes={labelAttrs("engine")}>
-            engine
+            {t("newTask.field.engine")}
           </text>
           <box flexDirection="row" gap={2}>
             <For each={availableVendors()}>
@@ -732,14 +733,14 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               }}
             </For>
             <box flexGrow={1} />
-            <text fg={theme.textMuted}>ctrl+e</text>
+            <text fg={theme.textMuted}>{t("newTask.hint.engineCycle")}</text>
           </box>
         </box>
         <Show when={tab() === "existing"}>
           {/* ── Existing tab body ───────────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("repo")} attributes={labelAttrs("repo")}>
-              repo
+              {t("newTask.field.repo")}
             </text>
             <input
               value={repo()}
@@ -759,7 +760,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             <box gap={0} paddingLeft={2}>
               <Show when={activeWindow().start > 0}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↑ {activeWindow().start} more
+                  {t("newTask.picker.moreAbove", { count: activeWindow().start })}
                 </text>
               </Show>
               <For each={activeWindow().items}>
@@ -769,7 +770,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
                   const isCurrentDir = () => mode() === "saved" && name === props.defaultRepo
                   const isSelected = () => mode() === "saved" && repo().trim() === name
                   const suffix = () => (mode() === "browse" ? "/" : "")
-                  const tag = () => (isCurrentDir() ? "  (current dir)" : "")
+                  const tag = () => (isCurrentDir() ? `  ${t("newTask.hint.currentDir")}` : "")
                   return (
                     <text
                       fg={isCursor() ? theme.primary : isSelected() ? theme.accent : theme.textMuted}
@@ -787,14 +788,16 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               </For>
               <Show when={activeWindow().start + activeWindow().items.length < activeWindow().total}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↓ {activeWindow().total - activeWindow().start - activeWindow().items.length} more
+                  {t("newTask.picker.moreBelow", {
+                    count: activeWindow().total - activeWindow().start - activeWindow().items.length,
+                  })}
                 </text>
               </Show>
             </box>
           </Show>
           <box gap={0}>
             <text fg={labelFg("baseRef")} attributes={labelAttrs("baseRef")}>
-              from branch
+              {t("newTask.field.fromBranch")}
             </text>
             <input
               value={baseRef()}
@@ -817,9 +820,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           <Show when={field() === "baseRef" && branchFiltered().length === 0 && submitError() == null}>
             <box gap={0} paddingLeft={2} paddingBottom={1}>
               <text fg={theme.textMuted} wrapMode="none">
-                {branches().length === 0
-                  ? "(no local branches found — typed text will be used as ref)"
-                  : "(no match — typed text will be used as ref)"}
+                {branches().length === 0 ? t("newTask.hint.noBranchesFound") : t("newTask.hint.noMatchBranch")}
               </text>
             </box>
           </Show>
@@ -827,7 +828,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             <box gap={0} paddingLeft={2} paddingBottom={1}>
               <Show when={branchWindow().start > 0}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↑ {branchWindow().start} more
+                  {t("newTask.picker.moreAbove", { count: branchWindow().start })}
                 </text>
               </Show>
               <For each={branchWindow().items}>
@@ -855,7 +856,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               </For>
               <Show when={branchWindow().start + branchWindow().items.length < branchWindow().total}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↓ {branchWindow().total - branchWindow().start - branchWindow().items.length} more
+                  {t("newTask.picker.moreBelow", {
+                    count: branchWindow().total - branchWindow().start - branchWindow().items.length,
+                  })}
                 </text>
               </Show>
             </box>
@@ -865,7 +868,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           {/* ── Clone tab body ──────────────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("cloneUrl")} attributes={labelAttrs("cloneUrl")}>
-              git url
+              {t("newTask.field.gitUrl")}
             </text>
             <input
               value={cloneUrl()}
@@ -880,7 +883,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </box>
           <box gap={0}>
             <text fg={labelFg("cloneParent")} attributes={labelAttrs("cloneParent")}>
-              parent dir
+              {t("newTask.field.parentDir")}
             </text>
             <input
               value={cloneParent()}
@@ -902,7 +905,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           <Show when={field() === "cloneParent"}>
             <box paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
-                (remembered — next clone defaults to this dir)
+                {t("newTask.hint.remembered")}
               </text>
             </box>
           </Show>
@@ -910,7 +913,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             <box gap={0} paddingLeft={2}>
               <Show when={cloneParentWindow().start > 0}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↑ {cloneParentWindow().start} more
+                  {t("newTask.picker.moreAbove", { count: cloneParentWindow().start })}
                 </text>
               </Show>
               <For each={cloneParentWindow().items}>
@@ -932,18 +935,20 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               </For>
               <Show when={cloneParentWindow().start + cloneParentWindow().items.length < cloneParentWindow().total}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↓ {cloneParentWindow().total - cloneParentWindow().start - cloneParentWindow().items.length} more
+                  {t("newTask.picker.moreBelow", {
+                    count: cloneParentWindow().total - cloneParentWindow().start - cloneParentWindow().items.length,
+                  })}
                 </text>
               </Show>
             </box>
           </Show>
           <box gap={0}>
             <text fg={labelFg("cloneFolder")} attributes={labelAttrs("cloneFolder")}>
-              folder name
+              {t("newTask.field.folderName")}
             </text>
             <input
               value={cloneFolder()}
-              placeholder="auto from url"
+              placeholder={t("newTask.placeholder.folderName")}
               focused={field() === "cloneFolder"}
               onInput={(v: string) => {
                 setCloneFolderTouched(true)
@@ -954,7 +959,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </box>
           <box gap={0}>
             <text fg={labelFg("cloneBaseRef")} attributes={labelAttrs("cloneBaseRef")}>
-              base branch
+              {t("newTask.field.baseBranch")}
             </text>
             <input
               value={cloneBaseRef()}
@@ -969,7 +974,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           <Show when={cloneInFlight()}>
             <box gap={0} paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
-                {cloneProgress() || "Cloning…"}
+                {cloneProgress() || t("newTask.clone.progressFallback")}
               </text>
             </box>
           </Show>
@@ -978,11 +983,11 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           {/* ── Adopt tab body (KOB-256) ────────────────────────────── */}
           <box gap={0}>
             <text fg={labelFg("adoptFilter")} attributes={labelAttrs("adoptFilter")}>
-              filter (path glob)
+              {t("newTask.field.adoptFilter")}
             </text>
             <input
               value={adoptFilter()}
-              placeholder="* — type e.g. feature-* to narrow"
+              placeholder={t("newTask.placeholder.adoptFilter")}
               focused={field() === "adoptFilter"}
               onInput={(v: string) => setAdoptFilter(stripNewlines(v))}
               onSubmit={() => toggleAdoptCursor()}
@@ -990,22 +995,20 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           </box>
           <box paddingLeft={2}>
             <text fg={theme.textMuted} wrapMode="none">
-              repo: {expandHome(repo().trim()) || "(none)"}
+              {t("newTask.adopt.repoLine", { path: expandHome(repo().trim()) || t("newTask.adopt.repoNone") })}
             </text>
           </box>
           <Show when={adoptable.loading}>
             <box paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
-                scanning worktrees…
+                {t("newTask.hint.scanningWorktrees")}
               </text>
             </box>
           </Show>
           <Show when={!adoptable.loading && adoptList().length === 0}>
             <box paddingLeft={2}>
               <text fg={theme.textMuted} wrapMode="none">
-                {(adoptable() ?? []).length === 0
-                  ? "no unlinked worktrees — every git worktree here is already a task"
-                  : "no worktrees match the filter"}
+                {(adoptable() ?? []).length === 0 ? t("newTask.adopt.noUnlinked") : t("newTask.adopt.noMatch")}
               </text>
             </box>
           </Show>
@@ -1013,7 +1016,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
             <box gap={0} paddingLeft={2}>
               <Show when={adoptWindow().start > 0}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↑ {adoptWindow().start} more
+                  {t("newTask.picker.moreAbove", { count: adoptWindow().start })}
                 </text>
               </Show>
               <For each={adoptVisible()}>
@@ -1042,13 +1045,15 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
               </For>
               <Show when={adoptWindow().start + adoptWindow().items.length < adoptWindow().total}>
                 <text fg={theme.textMuted} wrapMode="none">
-                  ↓ {adoptWindow().total - adoptWindow().start - adoptWindow().items.length} more
+                  {t("newTask.picker.moreBelow", {
+                    count: adoptWindow().total - adoptWindow().start - adoptWindow().items.length,
+                  })}
                 </text>
               </Show>
               <text fg={theme.textMuted} wrapMode="none">
                 {adoptSelected().size > 0
-                  ? `${adoptSelected().size} selected · enter toggles · ctrl+a all · Create imports`
-                  : "enter toggles · ctrl+a all · Create imports the highlighted row"}
+                  ? t("newTask.adopt.hintSelected", { count: adoptSelected().size })
+                  : t("newTask.adopt.hintDefault")}
               </text>
             </box>
           </Show>
@@ -1066,13 +1071,17 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
           Enter on the last input of the tab. Shows accent/bold while the
           confirm field is focused so the keyboard anchor is visible. */}
       <box flexDirection="row" justifyContent="space-between" alignItems="center" paddingTop={1} paddingBottom={1}>
-        <text fg={theme.textMuted}>↑↓ pick · tab next field · ←→ switch · enter done · esc cancel</text>
+        <text fg={theme.textMuted}>{t("newTask.hint.legend")}</text>
         <text
           fg={field() === "confirm" ? theme.primary : theme.text}
           attributes={field() === "confirm" ? TextAttributes.BOLD : undefined}
           onMouseUp={() => commit()}
         >
-          {cloneInFlight() ? "[ Cloning… ]" : field() === "confirm" ? "▸ [ Create ]" : "[ Create ]"}
+          {cloneInFlight()
+            ? t("newTask.button.cloning")
+            : field() === "confirm"
+              ? t("newTask.button.createFocused")
+              : t("newTask.button.create")}
         </text>
       </box>
     </box>

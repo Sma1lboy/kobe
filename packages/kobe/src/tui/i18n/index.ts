@@ -67,3 +67,19 @@ export function t(key: string, params?: Record<string, string | number>): string
 export function localeLabel(id: LocaleId): string {
   return LOCALES.find((l) => l.id === id)?.label ?? id
 }
+
+/**
+ * Lookup for the keybinding catalog (`keys.category.*` / `keys.desc.*`),
+ * where the lookup key is itself a binding id like `chat.tab.new` whose dots
+ * would mis-split the generic dotted `t()` path. Indexes the leaf record by
+ * the EXACT key string instead. Reactive via `store.lang`; English fallback,
+ * then the raw key (so an unmapped binding shows its id, never blank).
+ */
+export function tKeys(group: "category" | "desc", key: string): string {
+  const lang = store.lang
+  const read = (cat: Messages): string | undefined => {
+    const leaf = (cat.keys as Record<string, Record<string, string>>)[group]
+    return leaf?.[key]
+  }
+  return read(CATALOGS[lang]) ?? read(CATALOGS.en) ?? key
+}

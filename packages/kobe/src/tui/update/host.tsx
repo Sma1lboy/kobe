@@ -22,6 +22,7 @@ import {
   releasePageUrl,
 } from "../../version.ts"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 
@@ -81,9 +82,14 @@ function UpdatePage() {
   const latest = createMemo(() => info()?.latest ?? CURRENT_VERSION)
   const releaseUrl = createMemo(() => releaseNotes()[0]?.url ?? releasePageUrl(latest()))
   const actions = createMemo<ReadonlyArray<{ id: ActionId; key: string; label: string; detail: string }>>(() => [
-    { id: "update", key: "U", label: "Update now", detail: UPDATE_COMMAND },
-    { id: "release", key: "R", label: "Open release", detail: releaseUrl() ?? "release URL unavailable" },
-    { id: "close", key: "Q", label: "Close", detail: "return to the previous tmux window" },
+    { id: "update", key: "U", label: t("update.actions.updateNow"), detail: UPDATE_COMMAND },
+    {
+      id: "release",
+      key: "R",
+      label: t("update.actions.openRelease"),
+      detail: releaseUrl() ?? t("update.releaseUrlUnavailable"),
+    },
+    { id: "close", key: "Q", label: t("update.actions.close"), detail: t("update.actions.closeDetail") },
   ])
 
   onMount(() => {
@@ -109,14 +115,14 @@ function UpdatePage() {
   function activate(id = selected()): void {
     if (id === "close") process.exit(0)
     if (id === "release") {
-      setStatus(openExternalUrl(releaseUrl()) ? "Opened release page in your browser." : "Could not open release URL.")
+      setStatus(openExternalUrl(releaseUrl()) ? t("update.statusReleaseOpened") : t("update.statusReleaseError"))
       return
     }
     void runUpdater()
   }
 
   async function runUpdater(): Promise<void> {
-    setStatus("Leaving the TUI page and running the updater in this tmux window...")
+    setStatus(t("update.statusRunningUpdater"))
     await new Promise((resolve) => setTimeout(resolve, 30))
     renderer?.destroy()
     process.stdout.write(`\nkobe ${CURRENT_VERSION} -> latest\n`)
@@ -125,11 +131,9 @@ function UpdatePage() {
     const code = result.status ?? (result.error ? 1 : 0)
     if (result.error) process.stderr.write(`\nkobe update: failed to start updater: ${result.error.message}\n`)
     process.stdout.write(
-      code === 0
-        ? "\nkobe update complete. Relaunch kobe to use the new version.\n"
-        : `\nkobe update failed with exit code ${code}.\n`,
+      code === 0 ? `\n${t("update.updateComplete")}\n` : `\n${t("update.updateFailed", { code: String(code) })}\n`,
     )
-    process.stdout.write("Press any key to close this update window.")
+    process.stdout.write(t("update.pressAnyKey"))
     await waitForKeypress()
     process.exit(code)
   }
@@ -160,7 +164,7 @@ function UpdatePage() {
     >
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
-          KOBE UPDATE
+          {t("update.pageTitle")}
         </text>
         <text fg={theme.textMuted} wrapMode="none" onMouseUp={() => activate("close")}>
           q / esc
@@ -169,13 +173,13 @@ function UpdatePage() {
 
       <box flexDirection="row" gap={2} flexShrink={0} paddingTop={1}>
         <text fg={theme.textMuted} wrapMode="none">
-          current
+          {t("update.current")}
         </text>
         <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">
           v{CURRENT_VERSION}
         </text>
         <text fg={theme.textMuted} wrapMode="none">
-          latest
+          {t("update.latest")}
         </text>
         <text fg={info()?.hasUpdate ? theme.warning : theme.success} attributes={TextAttributes.BOLD} wrapMode="none">
           v{latest()}
@@ -223,7 +227,7 @@ function UpdatePage() {
 
       <box flexShrink={0} paddingTop={1}>
         <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-          ── changes from v{CURRENT_VERSION} to v{latest()} ──
+          {t("update.changesSectionHeader", { from: CURRENT_VERSION, to: latest() })}
         </text>
       </box>
       <scrollbox
@@ -236,11 +240,11 @@ function UpdatePage() {
       >
         <box flexDirection="column" paddingRight={1} paddingBottom={1} gap={0}>
           <Show when={loadingNotes()}>
-            <text fg={theme.textMuted}>Loading release notes...</text>
+            <text fg={theme.textMuted}>{t("update.loadingNotes")}</text>
           </Show>
           <Show when={!loadingNotes() && releaseNotes().length === 0}>
             <text fg={theme.textMuted} wrapMode="word">
-              Release notes are unavailable. Use Open release to view the GitHub release page.
+              {t("update.notesUnavailable")}
             </text>
           </Show>
           <For each={releaseNotes()}>

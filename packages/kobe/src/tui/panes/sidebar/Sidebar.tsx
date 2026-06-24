@@ -73,6 +73,7 @@
  */
 
 import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator"
+import { t } from "@/tui/i18n"
 import type { Task } from "@/types/task"
 import type { KeyEvent } from "@opentui/core"
 import { type BoxRenderable, type ScrollBoxRenderable, TextAttributes } from "@opentui/core"
@@ -260,13 +261,21 @@ export type SidebarProps = {
 }
 
 /**
- * Tab labels for the view switcher. Order matches the `SidebarView`
- * union; the `[` / `]` keys cycle within this list (currently 2 entries).
+ * View ids for the view switcher. Order matches the `SidebarView` union;
+ * the `[` / `]` keys cycle within this list (currently 2 entries).
+ * Labels are resolved via `t()` at the render site so they stay reactive.
  */
-const VIEW_TABS: ReadonlyArray<{ view: SidebarView; label: string }> = [
-  { view: "active", label: "Workspace" },
-  { view: "archived", label: "Archives" },
-]
+const VIEW_TABS: ReadonlyArray<{ view: SidebarView }> = [{ view: "active" }, { view: "archived" }]
+
+/** Returns the localised tab label for a given view id. */
+function viewTabLabel(view: SidebarView): string {
+  switch (view) {
+    case "active":
+      return t("tasks.view.workspace")
+    case "archived":
+      return t("tasks.view.archives")
+  }
+}
 
 /**
  * Polling interval (ms) for the per-main-row git branch refresh. The
@@ -984,7 +993,7 @@ export function Sidebar(props: SidebarProps) {
           <Show when={searchQuery().length === 0}>
             <text fg={theme.textMuted} wrapMode="none">
               {" "}
-              fuzzy filter
+              {t("tasks.search.placeholder")}
             </text>
           </Show>
           <Show when={searchQuery().length > 0}>
@@ -1018,7 +1027,7 @@ export function Sidebar(props: SidebarProps) {
                   wrapMode="none"
                   onMouseUp={() => setView(tab.view)}
                 >
-                  {tab.label}
+                  {viewTabLabel(tab.view)}
                 </text>
               )
             }}
@@ -1037,7 +1046,7 @@ export function Sidebar(props: SidebarProps) {
             wrapMode="none"
             onMouseUp={() => props.onSortModeToggle?.()}
           >
-            sort
+            {t("tasks.sort")}
           </text>
         </Show>
       </box>
@@ -1054,7 +1063,7 @@ export function Sidebar(props: SidebarProps) {
         >
           <box flexDirection="row" gap={1}>
             <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-              Project
+              {t("tasks.project.label")}
             </text>
             <text
               fg={projectFilterRepo() ? theme.primary : theme.textMuted}
@@ -1065,7 +1074,8 @@ export function Sidebar(props: SidebarProps) {
             </text>
           </box>
           <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-            {projectFilterCount()} {projectFilterCount() === 1 ? "task" : "tasks"}
+            {projectFilterCount()}{" "}
+            {projectFilterCount() === 1 ? t("tasks.project.taskSingular") : t("tasks.project.taskPlural")}
           </text>
         </box>
       </Show>
@@ -1075,7 +1085,7 @@ export function Sidebar(props: SidebarProps) {
          the project switcher/rows out of the rail. */}
       <Show when={projectRows().length > 0}>
         <box flexDirection="column" flexShrink={0}>
-          <SectionHeader label="PROJECTS" />
+          <SectionHeader label={t("tasks.header.projects")} />
           <scrollbox
             ref={(r: ScrollBoxRenderable) => {
               projectScrollRef = r
@@ -1099,7 +1109,7 @@ export function Sidebar(props: SidebarProps) {
       </Show>
 
       <SectionHeader
-        label="TASKS"
+        label={t("tasks.header.tasks")}
         suffix={sortMode() === "default" ? undefined : sortMode()}
         topPad={projectRows().length > 0}
       />
@@ -1252,7 +1262,7 @@ export function Sidebar(props: SidebarProps) {
                         </text>
                         <Show when={props.moveMode?.() && isCursor()}>
                           <text fg={theme.warning} wrapMode="none">
-                            {" move"}
+                            {t("tasks.moveChip")}
                           </text>
                         </Show>
                       </box>
@@ -1301,14 +1311,14 @@ export function Sidebar(props: SidebarProps) {
             <box paddingTop={1} paddingLeft={1}>
               <text fg={theme.textMuted}>
                 {searchMode() && searchQuery().trim().length > 0
-                  ? "No matching tasks — esc to clear."
+                  ? t("tasks.empty.noMatchSearch")
                   : projectFilterRepo()
                     ? view() === "active"
-                      ? "No active tasks for this project."
-                      : "No archived tasks for this project."
+                      ? t("tasks.empty.noActiveProject")
+                      : t("tasks.empty.noArchivedProject")
                     : view() === "active"
-                      ? "No active tasks — press n or [+] to create one."
-                      : "No archived tasks."}
+                      ? t("tasks.empty.noActive")
+                      : t("tasks.empty.noArchived")}
               </text>
             </box>
           </Show>
@@ -1322,7 +1332,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <box paddingTop={1} paddingLeft={1}>
               <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                {view() === "active" ? "No active tasks for this project." : "No archived tasks for this project."}
+                {view() === "active" ? t("tasks.empty.noActiveProject") : t("tasks.empty.noArchivedProject")}
               </text>
             </box>
           </Show>
@@ -1331,7 +1341,7 @@ export function Sidebar(props: SidebarProps) {
           <Show when={view() === "archived" && flatIds().length > 0}>
             <box paddingTop={1} paddingLeft={1}>
               <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-                a to unarchive
+                {t("tasks.archiveHint")}
               </text>
             </box>
           </Show>

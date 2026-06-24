@@ -41,6 +41,7 @@ import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 import { SyntaxStyle } from "@opentui/core"
 import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
 import { useTheme } from "../context/theme"
+import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree"
@@ -161,7 +162,7 @@ function OpsShell(props: OpsHostArgs) {
     })
   })
   const hasNewActivity = () => primed && latest() > baseline()
-  const cornerBadge = () => (hasNewActivity() ? { text: "● new", active: true } : null)
+  const cornerBadge = () => (hasNewActivity() ? { text: t("ops.badge.newActivity"), active: true } : null)
   function ackActivity(): void {
     setBaseline(latest())
   }
@@ -468,11 +469,13 @@ function PreviewScreen(props: OpsPreviewArgs) {
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <box flexDirection="row" gap={1} paddingLeft={1} paddingRight={1}>
         <text fg={theme.accent}>{props.relPath}</text>
-        <text fg={theme.textMuted}>{data()?.kind === "diff" ? "diff vs HEAD" : "file"}</text>
-        <text fg={theme.textMuted}>· q to close</text>
+        <text fg={theme.textMuted}>
+          {data()?.kind === "diff" ? t("ops.preview.diffVsHead") : t("ops.preview.file")}
+        </text>
+        <text fg={theme.textMuted}>{t("ops.preview.closeHint")}</text>
       </box>
       <box flexGrow={1}>
-        <Show when={data()} fallback={<text fg={theme.textMuted}>loading…</text>}>
+        <Show when={data()} fallback={<text fg={theme.textMuted}>{t("ops.preview.loading")}</text>}>
           {(d) => (
             <Show
               when={d().kind === "diff"}
