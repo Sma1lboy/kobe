@@ -113,6 +113,7 @@ import {
   SPINNER_FRAME_MS,
   type SidebarTone,
   buildSidebarRowView,
+  prCheckChip,
   withSpinnerFrame,
 } from "./row-view"
 import { type WorktreeChanges, pickPushedChanges, sameWorktreeChanges } from "./worktree-changes"
@@ -1271,6 +1272,13 @@ export function Sidebar(props: SidebarProps) {
                           <text fg={theme.warning} wrapMode="none">
                             ▴
                           </text>
+                        </Show>
+                        <Show when={prCheckChip(task)}>
+                          {(chip) => (
+                            <text fg={toneColor(chip().tone)} wrapMode="none">
+                              {chip().glyph}
+                            </text>
+                          )}
                         </Show>
                         <Show when={changes().added > 0}>
                           <text fg={theme.success} wrapMode="none">

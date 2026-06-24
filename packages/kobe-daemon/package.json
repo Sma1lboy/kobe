@@ -21,6 +21,7 @@
     "./daemon/lifecycle": "./src/daemon/lifecycle.ts",
     "./daemon/lifetime": "./src/daemon/lifetime.ts",
     "./daemon/paths": "./src/daemon/paths.ts",
+    "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/server": "./src/daemon/server.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
