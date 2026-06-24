@@ -44,11 +44,23 @@ import {
   sessionExists,
   tmuxSessionName,
 } from "@/tmux/client"
+import { ZEN_HIDDEN_PANES_OPTION } from "@/tmux/session-layout"
 import { TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/solid"
 import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { type Accessor, For, Show, createEffect, createMemo, createSignal, on, onMount, untrack } from "solid-js"
+import {
+  type Accessor,
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  onCleanup,
+  onMount,
+  untrack,
+} from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { homeDir } from "../../env.ts"
@@ -184,6 +196,30 @@ function TasksShell(props: {
     kv.set("tasksPane.projectFilter", repo)
   }
   const [updateInfo, setUpdateInfo] = createSignal<UpdateInfo | null>(null)
+
+  // Zen-mode indicator: poll THIS pane's window for `@kobe_zen_panes` (set by
+  // the zen-toggle layout action while the ChatTab is collapsed to the engine
+  // pane). The Sidebar renders a `☯ ZEN` badge bottom-left when active. A
+  // 1s poll is cheap (one `show-options`, like the prefix probe) and there's
+  // no daemon channel for tmux-local layout state. No-op for a standalone
+  // `kobe tasks` with no `$TMUX_PANE`.
+  const [zenActive, setZenActive] = createSignal(false)
+  {
+    const pane = process.env.TMUX_PANE
+    if (pane) {
+      const pollZen = (): void => {
+        void runTmuxCapturing(["show-options", "-wqv", "-t", pane, ZEN_HIDDEN_PANES_OPTION]).then(
+          ({ code, stdout }) => {
+            setZenActive(code === 0 && stdout.trim().length > 0)
+          },
+        )
+      }
+      pollZen()
+      const zenTimer = setInterval(pollZen, 1000)
+      onCleanup(() => clearInterval(zenTimer))
+    }
+  }
+
   // The Tasks pane OWNS its whole tmux pane (unlike the outer monitor, where the
   // Sidebar is a fixed-width rail beside the workspace). So the embedded Sidebar
   // must FILL the pane, not sit at its default 32-cell rail width — otherwise
@@ -679,6 +715,9 @@ function TasksShell(props: {
           onHeaderStatusClick={() => void openUpdate()}
           // Brand-header `+` new-task button — same flow as the `n` chord.
           onAddTask={() => void createTask()}
+          // Bottom-left `☯ ZEN` badge while this ChatTab is collapsed to the
+          // engine pane (polled from the window's `@kobe_zen_panes` option).
+          zenActive={zenActive}
           // Fill the whole tmux pane and follow live resizes (see `dimensions`
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.

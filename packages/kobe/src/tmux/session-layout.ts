@@ -34,6 +34,12 @@ export const WORKSPACE_AUX_PANE_ROLE = "workspace_aux"
 export const WORKSPACE_SPLIT_MAX_PANES = 4
 export const HIDDEN_TERMINAL_PANE_OPTION = "@kobe_hidden_shell_pane"
 export const HIDDEN_TASKS_PANE_OPTION = "@kobe_hidden_tasks_pane"
+/**
+ * While zen mode is active this window option holds the comma-joined list of
+ * pane roles zen hid (`ops`, `terminal`, `tasks`), so leaving zen restores
+ * exactly those panes and nothing the user had already collapsed themselves.
+ */
+export const ZEN_HIDDEN_PANES_OPTION = "@kobe_zen_panes"
 
 /** Hidden helper session that holds panes broken out of one task session. */
 export function hiddenTerminalSessionName(session: string): string {

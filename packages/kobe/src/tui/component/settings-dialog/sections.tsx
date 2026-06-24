@@ -71,6 +71,8 @@ export function GeneralSettingsSection(
     soundEnabled: Accessor<boolean>
     toggleToast: () => void
     toggleSound: () => void
+    zenKeepsTasks: Accessor<boolean>
+    toggleZenKeepsTasks: () => void
     settingsSurface: Accessor<SettingsSurface>
     selectSurface: (surface: SettingsSurface) => void
     editorKind: Accessor<EditorKind>
@@ -88,6 +90,7 @@ export function GeneralSettingsSection(
   const transparentRow = () => rowIdx("transparent")
   const toastRow = () => rowIdx("toast")
   const soundRow = () => rowIdx("sound")
+  const zenKeepTasksRow = () => rowIdx("zen-keep-tasks")
   const surfaceChattabRow = () => rowIdx(surfaceRowId("chattab"))
   const surfaceTaskpanelRow = () => rowIdx(surfaceRowId("taskpanel"))
   const editorKindRow = () => rowIdx("editor-kind")
@@ -95,6 +98,7 @@ export function GeneralSettingsSection(
   const isTransparentRow = () => props.bodyRow() === transparentRow()
   const isToastRow = () => props.bodyRow() === toastRow()
   const isSoundRow = () => props.bodyRow() === soundRow()
+  const isZenKeepTasksRow = () => props.bodyRow() === zenKeepTasksRow()
   const isSurfaceChattabRow = () => props.bodyRow() === surfaceChattabRow()
   const isSurfaceTaskpanelRow = () => props.bodyRow() === surfaceTaskpanelRow()
   const isEditorKindRow = () => props.bodyRow() === editorKindRow()
@@ -255,6 +259,37 @@ export function GeneralSettingsSection(
             wrapMode="none"
           >
             {props.soundEnabled() ? "[x]" : "[ ]"} Sound
+          </text>
+        </box>
+      </box>
+      <box flexDirection="column" gap={0} paddingTop={1}>
+        <text fg={theme.text} attributes={TextAttributes.BOLD}>
+          Zen mode
+        </text>
+        <text fg={theme.textMuted} wrapMode="word">
+          The `zen` chip (above the file list) and `prefix`+space collapse the ChatTab to the engine pane — hiding the
+          file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.
+        </text>
+        <box
+          flexDirection="row"
+          gap={1}
+          paddingLeft={1}
+          paddingRight={1}
+          backgroundColor={isZenKeepTasksRow() ? theme.primary : undefined}
+          onMouseUp={() => {
+            props.setLevel("body")
+            props.setBodyRow(zenKeepTasksRow())
+            props.toggleZenKeepsTasks()
+          }}
+        >
+          <text
+            fg={
+              isZenKeepTasksRow() ? theme.selectedListItemText : props.zenKeepsTasks() ? theme.accent : theme.textMuted
+            }
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+          >
+            {props.zenKeepsTasks() ? "[x]" : "[ ]"} Keep Tasks pane in zen mode
           </text>
         </box>
       </box>

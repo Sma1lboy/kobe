@@ -105,6 +105,13 @@ export type FileTreeProps = {
    */
   onCreatePR?: () => void
   /**
+   * Optional Ops-pane action: toggle zen mode (collapse the ChatTab to the
+   * engine pane). Rendered as a clickable chip left of Create PR in the same
+   * action row. Entering zen hides this very pane, so the way back out is the
+   * `prefix`-space chord (or the kept Tasks rail) — this chip is enter-only.
+   */
+  onZenToggle?: () => void
+  /**
    * Whether the pane has keyboard focus. Defaults to `() => true` —
    * Wave 3 has no focus manager yet, the integration agent will
    * thread real signals when the 5-pane layout lands.
@@ -535,18 +542,30 @@ export function FileTree(props: FileTreeProps) {
   // ---------- render ----------
   return (
     <box flexDirection="column" flexGrow={1} paddingTop={1} paddingBottom={1} paddingLeft={0} paddingRight={0}>
-      {/* Create PR action row — sits above the All / Changes tabs so it's
-         reachable from both tabs (bound to `p`). */}
-      <Show when={props.onCreatePR}>
-        <box flexDirection="row" justifyContent="flex-end" paddingBottom={1} flexShrink={0}>
-          <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
-            <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-              [P]
-            </text>
-            <text fg={theme.text} wrapMode="none">
-              create PR
-            </text>
-          </box>
+      {/* Action row — sits above the All / Changes tabs so it's reachable
+         from both tabs. Zen toggle sits left of Create PR (bound to `p`). */}
+      <Show when={props.onZenToggle || props.onCreatePR}>
+        <box flexDirection="row" justifyContent="flex-end" gap={2} paddingBottom={1} flexShrink={0}>
+          <Show when={props.onZenToggle}>
+            <box flexDirection="row" gap={1} onMouseUp={() => props.onZenToggle?.()}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+                ☯
+              </text>
+              <text fg={theme.text} wrapMode="none">
+                zen
+              </text>
+            </box>
+          </Show>
+          <Show when={props.onCreatePR}>
+            <box flexDirection="row" gap={1} onMouseUp={() => props.onCreatePR?.()}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+                [P]
+              </text>
+              <text fg={theme.text} wrapMode="none">
+                create PR
+              </text>
+            </box>
+          </Show>
         </box>
       </Show>
       {/* Header: tabs row. Each tab is clickable (sets active), and

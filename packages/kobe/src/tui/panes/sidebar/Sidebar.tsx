@@ -209,6 +209,14 @@ export type SidebarProps = {
    */
   onAddTask?: () => void
   /**
+   * Whether the ChatTab is in Zen mode (the file/terminal panes collapsed to
+   * the engine). When true, a small `☯ ZEN` indicator renders at the rail's
+   * bottom-left so the kept Tasks pane shows the mode and reminds the user of
+   * the `prefix`+space exit chord. Polled from the window's `@kobe_zen_panes`
+   * option by the Tasks-pane host.
+   */
+  zenActive?: Accessor<boolean>
+  /**
    * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
    * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
    * spinner animates only when a row's task has at least one tab in
@@ -1321,6 +1329,18 @@ export function Sidebar(props: SidebarProps) {
           </Show>
         </box>
       </scrollbox>
+
+      {/* Zen-mode indicator, pinned to the rail's bottom-left. The scrollbox
+          above takes flexGrow={1}, so this row sits flush at the bottom. Only
+          rendered while the ChatTab is collapsed to the engine pane — a quiet
+          reminder that `prefix`+space (or the `zen` chip) toggles it back. */}
+      <Show when={props.zenActive?.()}>
+        <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>
+          <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+            ☯ ZEN
+          </text>
+        </box>
+      </Show>
 
       {/* Hover tooltip overlay. Absolute + high zIndex so it floats above the
           rows; anchored just below-right of the cursor and clamped inside the
