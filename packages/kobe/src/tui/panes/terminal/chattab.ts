@@ -64,9 +64,16 @@ import { PANE_VERSION_OPTION, globalRightColumnResizeArgs } from "./pane-heal"
 // C-w / F2); the COMMAND halves are fixed. Builders instead of consts so
 // `~/.kobe/settings/keybindings.yaml` overrides flow through one place.
 export function chatTabSwitchBindings(prevKey: string, nextKey: string) {
+  // Surface pages (settings / new-task / …) tag their window `@kobe_surface`;
+  // switching tabs from inside one would yank the user out of a half-filled
+  // dialog, so the chord no-ops there. `#{?#{@kobe_surface},0,1}` → "0" (false,
+  // skip) on a surface window, "1" (true, switch) everywhere else; with no
+  // else-branch the surface case runs nothing. `previous-window`/`next-window`
+  // are single bare words, so this wraps cleanly with no nested quoting.
+  const guard = "#{?#{@kobe_surface},0,1}"
   return [
-    ["bind-key", "-n", prevKey, "previous-window"],
-    ["bind-key", "-n", nextKey, "next-window"],
+    ["bind-key", "-n", prevKey, "if-shell", "-F", guard, "previous-window"],
+    ["bind-key", "-n", nextKey, "if-shell", "-F", guard, "next-window"],
   ] as const
 }
 
@@ -312,7 +319,7 @@ export async function openSettingsTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} settings`
-  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "settings" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "settings", surface: true })
 }
 
 /**
@@ -330,7 +337,7 @@ export async function openHelpTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} help-page`
-  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "help" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "help", surface: true })
 }
 
 /**
@@ -350,7 +357,7 @@ export async function openNewTaskTab(session: string, defaultRepo?: string): Pro
   const envPrefix = inheritedEnvPrefix()
   const repoArg = defaultRepo ? ` --repo ${shellQuote(defaultRepo)}` : ""
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} new-task${repoArg}`
-  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "new task" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "new task", surface: true })
 }
 
 /**
@@ -365,7 +372,7 @@ export async function openUpdateTab(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${updatePageCommand({ cliInvocation: inv })}`
-  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "update" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "update", surface: true })
 }
 
 /**
@@ -383,7 +390,7 @@ export async function quickCreate(session: string): Promise<void> {
   const inv = kobeCliInvocation()
   const envPrefix = inheritedEnvPrefix()
   const command = `${envPrefix}${inv.map(shellQuote).join(" ")} quick-task --session ${shellQuote(session)}`
-  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "quick task" })
+  await newWindow(session, { cwd: localSpawnCwd(cwd), command, name: "quick task", surface: true })
 }
 
 /**

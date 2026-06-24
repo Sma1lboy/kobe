@@ -42,10 +42,11 @@ describe("attachArgv", () => {
 })
 
 describe("chatTabSwitchBindings", () => {
-  test("maps the resolved prev/next keys to tmux window navigation", () => {
+  test("maps the resolved prev/next keys to tmux window navigation, guarded off on surface pages", () => {
+    const guard = "#{?#{@kobe_surface},0,1}"
     expect(chatTabSwitchBindings("C-[", "C-]")).toEqual([
-      ["bind-key", "-n", "C-[", "previous-window"],
-      ["bind-key", "-n", "C-]", "next-window"],
+      ["bind-key", "-n", "C-[", "if-shell", "-F", guard, "previous-window"],
+      ["bind-key", "-n", "C-]", "if-shell", "-F", guard, "next-window"],
     ])
   })
 })
