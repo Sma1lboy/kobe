@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kobe — parallel coding agents, terminal-native</title>
+<meta name="description" content="kobe is a local-first TUI orchestrator for Claude Code, Codex and more. Run parallel AI coding agents in isolated git worktrees and persistent tmux sessions — from any terminal.">
+<link rel="canonical" href="https://kobe.sma1lboy.me/">
+<meta property="og:title" content="kobe — parallel coding agents, terminal-native">
+<meta property="og:description" content="Run parallel AI coding agents in isolated git worktrees and persistent tmux sessions — from any terminal.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kobe.sma1lboy.me/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#141413;}
+  ::selection{background:rgba(204,120,92,0.3);color:#eae7df}
+  @keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+  .engine-pill{cursor:pointer;border-radius:9px;padding:9px 16px;font-size:13.5px;transition:all .15s;border:1px solid #34302a;background:#1a1917;color:#a39d92;}
+  .engine-pill[data-active="true"]{border-color:rgba(204,120,92,0.5);background:rgba(204,120,92,0.12);color:#e6c1b1;}
+</style>
+</head>
+<body>
+<div style="background:#141413;color:#d6d0c6;font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden;position:relative;">
+
+  <!-- subtle grid bg -->
+  <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:64px 64px;pointer-events:none;mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,#000 30%,transparent 80%);"></div>
+
+  <!-- NAV -->
+  <nav style="position:relative;max-width:1180px;margin:0 auto;padding:26px 40px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-0.01em;">
+      <span style="color:#cc785c;">[</span>
+      <span style="color:#eae7df;">kobe</span>
+      <span style="color:#cc785c;">]</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:30px;font-size:13.5px;color:#8a847a;">
+      <a href="#workspace" style="color:#8a847a;text-decoration:none;">workspace</a>
+      <a href="#why" style="color:#8a847a;text-decoration:none;">why</a>
+      <a href="#engines" style="color:#8a847a;text-decoration:none;">engines</a>
+      <a href="#install" style="color:#8a847a;text-decoration:none;">install</a>
+      <a href="https://github.com/Sma1lboy/kobe" style="color:#eae7df;text-decoration:none;border:1px solid #34302a;padding:7px 14px;border-radius:8px;display:flex;align-items:center;gap:7px;">GitHub <span style="color:#cc785c;">↗</span></a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header style="position:relative;max-width:1180px;margin:0 auto;padding:72px 40px 40px;">
+    <div style="display:inline-flex;align-items:center;gap:9px;border:1px solid #34302a;background:#1a1917;border-radius:999px;padding:6px 14px;font-size:12.5px;color:#8a847a;margin-bottom:34px;">
+      <span style="width:7px;height:7px;border-radius:50%;background:#9aca86;box-shadow:0 0 8px #9aca86;"></span>
+      TUI orchestrator for Claude Code · bun i -g @sma1lboy/kobe
+    </div>
+    <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(40px,6.4vw,76px);line-height:0.98;letter-spacing:-0.03em;max-width:14ch;margin-bottom:26px;color:#eae7df;">
+      Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.
+    </h1>
+    <p style="font-size:17px;line-height:1.6;color:#a39d92;max-width:60ch;margin-bottom:38px;">
+      kobe turns AI coding work into isolated git worktrees and persistent tmux sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
+    </p>
+
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+      <button id="copyBtn" style="display:flex;align-items:center;gap:14px;background:#1a1917;border:1px solid #34302a;border-radius:11px;padding:14px 18px;cursor:pointer;font-family:inherit;font-size:14.5px;color:#eae7df;">
+        <span style="color:#cc785c;">$</span>
+        <span>bun install -g @sma1lboy/kobe</span>
+        <span id="copyLabel" style="color:#6b655c;border-left:1px solid #34302a;padding-left:14px;font-size:12px;">click to copy</span>
+      </button>
+      <a href="https://github.com/Sma1lboy/kobe" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 22px;font-size:14.5px;">Read the docs ↗</a>
+    </div>
+    <div style="font-size:12.5px;color:#6b655c;">Requires Bun ≥ 1.3.11, tmux, and one engine CLI on your PATH.</div>
+  </header>
+
+  <!-- TUI WORKSPACE MOCKUP -->
+  <section id="workspace" style="position:relative;max-width:1180px;margin:48px auto 0;padding:0 40px;">
+    <div style="border:1px solid #2c2823;border-radius:14px;overflow:hidden;background:#171614;box-shadow:0 40px 100px -30px rgba(0,0,0,0.7);">
+      <!-- window chrome -->
+      <div style="display:flex;align-items:center;gap:8px;padding:11px 15px;border-bottom:1px solid #26221d;background:#1a1917;">
+        <span style="width:11px;height:11px;border-radius:50%;background:#cc785c;"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#d6a85c;"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#9aca86;"></span>
+        <span style="margin-left:12px;font-size:12px;color:#6b655c;">ssh devbox — kobe — 178×44</span>
+        <span style="margin-left:auto;font-size:11.5px;color:#cc785c;">● 3 tasks running</span>
+      </div>
+      <!-- pane grid -->
+      <div style="display:grid;grid-template-columns:230px 1fr 290px;height:430px;font-size:12.5px;line-height:1.65;">
+        <!-- TASKS pane -->
+        <div style="border-right:1px solid #26221d;display:flex;flex-direction:column;">
+          <div style="padding:9px 14px;border-bottom:1px solid #26221d;color:#6b655c;letter-spacing:0.08em;font-size:11px;">TASKS</div>
+          <div style="padding:8px;display:flex;flex-direction:column;gap:4px;">
+            <div style="padding:9px 11px;border-radius:7px;background:rgba(204,120,92,0.1);border:1px solid rgba(204,120,92,0.32);">
+              <div style="color:#e6c1b1;display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#9aca86;flex:none;"></span>fix-login-redirect</div>
+              <div style="color:#6b655c;font-size:11px;margin-top:3px;padding-left:16px;">claude · running</div>
+            </div>
+            <div style="padding:9px 11px;border-radius:7px;">
+              <div style="color:#c4bdb1;display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;border:1.5px solid #d6a85c;flex:none;"></span>refactor-auth</div>
+              <div style="color:#6b655c;font-size:11px;margin-top:3px;padding-left:16px;">codex · running</div>
+            </div>
+            <div style="padding:9px 11px;border-radius:7px;">
+              <div style="color:#c4bdb1;display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:linear-gradient(90deg,#9d8be0 50%,transparent 50%);border:1.5px solid #9d8be0;flex:none;"></span>migrate-fastify</div>
+              <div style="color:#6b655c;font-size:11px;margin-top:3px;padding-left:16px;">copilot · running</div>
+            </div>
+            <div style="padding:9px 11px;border-radius:7px;">
+              <div style="color:#7a746b;display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:#3a352e;flex:none;"></span>flaky-test-fix</div>
+              <div style="color:#5a544c;font-size:11px;margin-top:3px;padding-left:16px;">archived</div>
+            </div>
+          </div>
+          <div style="margin-top:auto;padding:10px 14px;border-top:1px solid #26221d;color:#6b655c;font-size:11px;">
+            <span style="color:#cc785c;">n</span> new &nbsp; <span style="color:#cc785c;">a</span> archive
+          </div>
+        </div>
+        <!-- ENGINE pane -->
+        <div style="border-right:1px solid #26221d;display:flex;flex-direction:column;position:relative;overflow:hidden;">
+          <div style="padding:9px 14px;border-bottom:1px solid #26221d;color:#6b655c;letter-spacing:0.08em;font-size:11px;display:flex;justify-content:space-between;">
+            <span>ENGINE — claude</span><span style="color:#9aca86;">● live</span>
+          </div>
+          <div style="padding:15px 16px;flex:1;overflow:hidden;color:#c4bdb1;">
+            <div style="color:#6b655c;">› Fix the login redirect loop on expired sessions.</div>
+            <div style="margin-top:12px;color:#cc785c;">⏺ Reading src/auth/session.ts</div>
+            <div style="color:#a39d92;margin-top:7px;">The guard re-runs before the token refresh<br>resolves. I'll await it once and cache the result.</div>
+            <div style="margin-top:11px;color:#cc785c;">⏺ Edit src/auth/guard.ts <span style="color:#6b655c;">(+34 −51)</span></div>
+            <div style="margin-top:11px;display:flex;align-items:center;gap:8px;">
+              <span style="color:#c4bdb1;">esc to interrupt</span>
+              <span style="width:8px;height:15px;background:#9aca86;display:inline-block;animation:blink 1.1s steps(1) infinite;"></span>
+            </div>
+          </div>
+        </div>
+        <!-- RIGHT col: Ops + Shell -->
+        <div style="display:flex;flex-direction:column;">
+          <div style="flex:1;border-bottom:1px solid #26221d;display:flex;flex-direction:column;">
+            <div style="padding:9px 14px;border-bottom:1px solid #26221d;color:#6b655c;letter-spacing:0.08em;font-size:11px;">OPS — changed files</div>
+            <div style="padding:11px 14px;color:#c4bdb1;">
+              <div><span style="color:#9aca86;">M</span> src/auth/guard.ts</div>
+              <div><span style="color:#9aca86;">M</span> src/auth/session.ts</div>
+              <div><span style="color:#d6a85c;">~</span> src/middleware/index.ts</div>
+              <div style="color:#6b655c;margin-top:9px;">+34 −51 · 3 files</div>
+              <div style="margin-top:10px;padding:7px 10px;border:1px dashed #34302a;border-radius:6px;color:#a39d92;font-size:11px;">↵ open PR prompt</div>
+            </div>
+          </div>
+          <div style="height:140px;display:flex;flex-direction:column;">
+            <div style="padding:9px 14px;border-bottom:1px solid #26221d;color:#6b655c;letter-spacing:0.08em;font-size:11px;">SHELL — worktree</div>
+            <div style="padding:11px 14px;color:#c4bdb1;font-size:11.5px;">
+              <div style="color:#6b655c;">~/.claude/worktrees/fix-login-redirect</div>
+              <div style="margin-top:4px;"><span style="color:#cc785c;">$</span> bun test auth<span style="display:inline-block;width:7px;height:13px;background:#c4bdb1;vertical-align:middle;margin-left:3px;animation:blink 1.1s steps(1) infinite;"></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- equation strip -->
+    <div style="margin-top:22px;display:flex;justify-content:center;">
+      <div style="display:flex;align-items:center;gap:14px;font-size:14px;color:#8a847a;flex-wrap:wrap;justify-content:center;">
+        <span style="color:#6b655c;">one task =</span>
+        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">git worktree</span>
+        <span style="color:#534d45;">+</span>
+        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">tmux session</span>
+        <span style="color:#534d45;">+</span>
+        <span style="border:1px solid #34302a;border-radius:7px;padding:6px 12px;color:#d98c72;">branch</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHY -->
+  <section id="why" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px;">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:42px;flex-wrap:wrap;">
+      <span style="color:#cc785c;font-size:13px;">// why try it</span>
+      <h2 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(28px,3.6vw,40px);letter-spacing:-0.02em;color:#eae7df;">The terminal is the product.</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px;">
+      <div style="border:1px solid #2c2823;background:#1a1917;border-radius:13px;padding:24px;">
+        <div style="width:38px;height:38px;border-radius:9px;border:1px solid #34302a;display:flex;align-items:center;justify-content:center;color:#cc785c;font-size:18px;margin-bottom:18px;">⌁</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;margin-bottom:9px;color:#eae7df;">Made for SSH / devboxes</div>
+        <div style="font-size:13px;line-height:1.65;color:#8a847a;">No browser, VNC, or desktop app. The terminal is the product — it runs where your code already lives.</div>
+      </div>
+      <div style="border:1px solid #2c2823;background:#1a1917;border-radius:13px;padding:24px;">
+        <div style="width:38px;height:38px;border-radius:9px;border:1px solid #34302a;display:flex;align-items:center;justify-content:center;color:#cc785c;font-size:18px;margin-bottom:18px;">∞</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;margin-bottom:9px;color:#eae7df;">Persistent by default</div>
+        <div style="font-size:13px;line-height:1.65;color:#8a847a;">Agents live in tmux, so disconnects do not kill the work. Detach, reattach, pick up exactly where you left off.</div>
+      </div>
+      <div style="border:1px solid #2c2823;background:#1a1917;border-radius:13px;padding:24px;">
+        <div style="width:38px;height:38px;border-radius:9px;border:1px solid #34302a;display:flex;align-items:center;justify-content:center;color:#cc785c;font-size:18px;margin-bottom:18px;">⑃</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;margin-bottom:9px;color:#eae7df;">Safe parallelism</div>
+        <div style="font-size:13px;line-height:1.65;color:#8a847a;">Every attempt gets its own branch and worktree. Run five tries at once without them stepping on each other.</div>
+      </div>
+      <div style="border:1px solid #2c2823;background:#1a1917;border-radius:13px;padding:24px;">
+        <div style="width:38px;height:38px;border-radius:9px;border:1px solid #34302a;display:flex;align-items:center;justify-content:center;color:#cc785c;font-size:18px;margin-bottom:18px;">◇</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;margin-bottom:9px;color:#eae7df;">Real environment</div>
+        <div style="font-size:13px;line-height:1.65;color:#8a847a;">Agents run next to your dependencies, services, credentials, and build cache — not a sandboxed approximation.</div>
+      </div>
+      <div style="border:1px solid #2c2823;background:#1a1917;border-radius:13px;padding:24px;">
+        <div style="width:38px;height:38px;border-radius:9px;border:1px solid #34302a;display:flex;align-items:center;justify-content:center;color:#cc785c;font-size:18px;margin-bottom:18px;">⤳</div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16.5px;margin-bottom:9px;color:#eae7df;">Scriptable fan-out</div>
+        <div style="font-size:13px;line-height:1.65;color:#8a847a;">kobe api lets another agent or shell script spawn more tasks. Automate the whole compare-and-keep loop.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ENGINES -->
+  <section id="engines" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center;">
+      <div>
+        <span style="color:#cc785c;font-size:13px;">// choose your engine</span>
+        <h2 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(28px,3.6vw,40px);letter-spacing:-0.02em;margin:14px 0 18px;color:#eae7df;">Bring whatever CLI you already trust.</h2>
+        <p style="font-size:15px;line-height:1.65;color:#a39d92;margin-bottom:28px;">Settings → Engine picks which AI CLI kobe runs for a task. Switch per task, or point it at your own command. Every attempt gets its own branch and worktree — compare the results, keep the good one, archive the rest.</p>
+        <div id="enginePills" style="display:flex;flex-wrap:wrap;gap:10px;">
+          <div class="engine-pill" data-engine="claude" data-active="true">claude</div>
+          <div class="engine-pill" data-engine="codex" data-active="false">codex</div>
+          <div class="engine-pill" data-engine="gemini" data-active="false">gemini</div>
+          <div class="engine-pill" data-engine="copilot" data-active="false">copilot</div>
+          <div class="engine-pill" data-engine="your own command" data-active="false">your own command</div>
+        </div>
+      </div>
+      <div style="border:1px solid #2c2823;border-radius:13px;background:#171614;overflow:hidden;">
+        <div style="padding:10px 15px;border-bottom:1px solid #26221d;color:#6b655c;font-size:11.5px;">kobe api fan-out</div>
+        <pre style="margin:0;padding:22px;font-size:12.5px;line-height:1.85;color:#c4bdb1;white-space:pre-wrap;"><span style="color:#cc785c;">$</span> kobe api fan-out \
+  <span style="color:#8a847a;">--repo</span> "$PWD" \
+  <span style="color:#8a847a;">--agents</span> <span id="fanoutAgents">claude:3</span> \
+  <span style="color:#8a847a;">--prompt</span> "simplify auth"
+
+<span style="color:#6b655c;">→ spawned <span id="fanoutCount">3</span> parallel tasks,</span>
+<span style="color:#6b655c;">  each in its own worktree + branch</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- INSTALL / CTA -->
+  <section id="install" style="position:relative;max-width:1180px;margin:120px auto 0;padding:0 40px 110px;">
+    <div style="border:1px solid #2c2823;border-radius:18px;background:radial-gradient(ellipse 80% 120% at 50% 0%,rgba(204,120,92,0.1),transparent 70%),#171614;padding:56px 40px;text-align:center;">
+      <h2 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(30px,4.2vw,48px);letter-spacing:-0.02em;margin-bottom:16px;color:#eae7df;">Spin it up where your code lives.</h2>
+      <p style="font-size:15.5px;color:#a39d92;max-width:48ch;margin:0 auto 34px;">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app.</p>
+      <div style="display:inline-flex;flex-direction:column;gap:2px;text-align:left;border:1px solid #34302a;border-radius:12px;background:#141413;padding:18px 22px;font-size:14px;margin-bottom:30px;">
+        <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">ssh</span> devbox</div>
+        <div><span style="color:#6b655c;">$</span> <span style="color:#d98c72;">cd</span> repo</div>
+        <div><span style="color:#6b655c;">$</span> kobe<span style="display:inline-block;width:8px;height:15px;background:#9aca86;vertical-align:middle;margin-left:4px;animation:blink 1.1s steps(1) infinite;"></span></div>
+      </div>
+      <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+        <a href="https://www.npmjs.com/package/@sma1lboy/kobe" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 24px;font-size:14.5px;">Install from npm ↗</a>
+        <a href="https://github.com/Sma1lboy/kobe" style="background:#1a1917;border:1px solid #34302a;color:#eae7df;text-decoration:none;font-weight:500;border-radius:11px;padding:14px 24px;font-size:14.5px;">Star on GitHub ↗</a>
+      </div>
+    </div>
+
+    <!-- footer -->
+    <div style="margin-top:60px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;border-top:1px solid #26221d;padding-top:28px;">
+      <div style="display:flex;align-items:center;gap:9px;color:#6b655c;font-size:13px;font-weight:600;">
+        <span style="color:#cc785c;">[</span><span style="color:#a39d92;">kobe</span><span style="color:#cc785c;">]</span>
+        <span style="font-weight:400;margin-left:4px;">parallel coding agents, terminal-native.</span>
+      </div>
+      <div style="display:flex;gap:24px;font-size:13px;color:#6b655c;">
+        <a href="https://github.com/Sma1lboy/kobe" style="color:#6b655c;text-decoration:none;">GitHub</a>
+        <a href="https://www.npmjs.com/package/@sma1lboy/kobe" style="color:#6b655c;text-decoration:none;">npm</a>
+        <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" style="color:#6b655c;text-decoration:none;">Keybindings</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // copy-to-clipboard for the install command
+  (function () {
+    var btn = document.getElementById('copyBtn');
+    var label = document.getElementById('copyLabel');
+    var timer;
+    btn.addEventListener('click', function () {
+      try {
+        if (navigator.clipboard) navigator.clipboard.writeText('bun install -g @sma1lboy/kobe');
+      } catch (e) {}
+      label.textContent = '✓ copied';
+      clearTimeout(timer);
+      timer = setTimeout(function () { label.textContent = 'click to copy'; }, 1800);
+    });
+  })();
+
+  // engine selector → updates the fan-out command + parallel task count
+  (function () {
+    var fanMap = {
+      'claude': 'claude:3',
+      'codex': 'codex:3',
+      'gemini': 'gemini:3',
+      'copilot': 'copilot:3',
+      'your own command': 'claude:2,codex:1',
+    };
+    var agentsEl = document.getElementById('fanoutAgents');
+    var countEl = document.getElementById('fanoutCount');
+    var pills = document.querySelectorAll('.engine-pill');
+    function count(spec) {
+      return spec.split(',').reduce(function (n, p) {
+        return n + (parseInt(p.split(':')[1], 10) || 0);
+      }, 0);
+    }
+    pills.forEach(function (pill) {
+      pill.addEventListener('click', function () {
+        pills.forEach(function (p) { p.setAttribute('data-active', 'false'); });
+        pill.setAttribute('data-active', 'true');
+        var spec = fanMap[pill.getAttribute('data-engine')] || 'claude:2,codex:1';
+        agentsEl.textContent = spec;
+        countEl.textContent = String(count(spec));
+      });
+    });
+  })();
+</script>
+</body>
+</html>
