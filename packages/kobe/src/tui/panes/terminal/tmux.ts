@@ -831,7 +831,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
           "tmux.layout.workspaceClose",
           "tmux.layout.workspaceReset",
         ),
-        layoutPanes: layoutChordGroup("tmux.layout.tasksToggle", "tmux.layout.opsToggle", "tmux.layout.terminalToggle"),
+        layoutPanes: layoutChordGroup(
+          "tmux.layout.tasksToggle",
+          "tmux.layout.opsToggle",
+          "tmux.layout.terminalToggle",
+          "tmux.layout.zenToggle",
+        ),
       }),
     ],
     ["set-option", "-g", "mouse", "on"],
@@ -877,6 +882,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...layoutBind("tmux.layout.tasksToggle", "tasks-toggle"),
     ...layoutBind("tmux.layout.opsToggle", "ops-toggle"),
     ...layoutBind("tmux.layout.terminalToggle", "terminal-toggle"),
+    ...layoutBind("tmux.layout.zenToggle", "zen-toggle"),
     ["bind-key", "f", "run-shell", `${envStr}${invStr} quick-create --session '#{session_name}'`],
     ["bind-key", "u", "display-popup", "-E", openUrlTmuxCommand],
   ])

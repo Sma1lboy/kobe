@@ -11,6 +11,7 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { localSpawnCwd } from "@/exec/resolve"
+import { zenKeepsTasks } from "@/state/zen"
 import {
   getServerOptions,
   getSessionOptions,
@@ -34,6 +35,7 @@ import {
   TASKS_WIDTH_OPTION,
   WORKSPACE_AUX_PANE_ROLE,
   WORKSPACE_SPLIT_MAX_PANES,
+  ZEN_HIDDEN_PANES_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
   hiddenTerminalSessionName,
@@ -54,6 +56,7 @@ export type LayoutAction =
   | "tasks-restore"
   | "ops-toggle"
   | "terminal-toggle"
+  | "zen-toggle"
   | "chat-tab-close"
 
 export type LayoutPaneRow = {
@@ -692,6 +695,80 @@ async function toggleTerminalPane(session: string, windowId: string): Promise<vo
   await createTerminalPane(session, windowId, rows)
 }
 
+/**
+ * Zen mode: collapse the ChatTab down to the engine pane. Entering hides the
+ * file/Ops pane and the terminal pane — and the Tasks rail too unless the
+ * `zen.keepTasks` preference is on — recording which roles it hid in
+ * {@link ZEN_HIDDEN_PANES_OPTION}. Leaving restores exactly those panes (via
+ * the same hidden-pane machinery the per-pane toggles use), so a pane the user
+ * had already collapsed before zen stays collapsed. Idempotent: a second press
+ * reads the recorded set and reverses it.
+ */
+async function toggleZenMode(session: string, windowId: string): Promise<void> {
+  const active = await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)
+  if (active) {
+    await exitZenMode(session, windowId, active)
+    return
+  }
+  await enterZenMode(session, windowId)
+}
+
+async function enterZenMode(session: string, windowId: string): Promise<void> {
+  const rows = await windowPanes(session, windowId)
+  if (!rows) return
+  const hidden: string[] = []
+
+  const ops = rows.find((row) => row.role === OPS_PANE_ROLE)
+  if (ops) {
+    await runTmux(["kill-pane", "-t", ops.paneId])
+    hidden.push(OPS_PANE_ROLE)
+  }
+
+  const shell = resolveShellPane(rows)
+  if (shell) {
+    await hideTerminalPane(session, windowId, shell)
+    hidden.push(SHELL_PANE_ROLE)
+  }
+
+  if (!zenKeepsTasks()) {
+    const tasks = rows.find((row) => row.role === TASKS_PANE_ROLE)
+    if (tasks) {
+      await hideTasksPane(session, windowId, tasks)
+      hidden.push(TASKS_PANE_ROLE)
+    }
+  }
+
+  if (hidden.length === 0) {
+    await display(windowId, "kobe: already focused — nothing to hide")
+    return
+  }
+  await setActiveWindowOption(windowId, ZEN_HIDDEN_PANES_OPTION, hidden.join(","))
+  await display(windowId, "kobe: Zen mode on")
+}
+
+async function exitZenMode(session: string, windowId: string, recorded: string): Promise<void> {
+  const roles = new Set(recorded.split(",").map((role) => role.trim()))
+
+  // Restore the Tasks rail first (it re-splits off the engine pane on the
+  // left), then the file/Ops pane and terminal which key off the engine /
+  // each other — mirroring the build order so the geometry lands right.
+  if (roles.has(TASKS_PANE_ROLE)) {
+    const hiddenPane = await windowOption(windowId, HIDDEN_TASKS_PANE_OPTION)
+    if (hiddenPane) await restoreHiddenTasksPane(session, windowId, hiddenPane)
+  }
+  if (roles.has(OPS_PANE_ROLE)) {
+    const rows = await windowPanes(session, windowId)
+    if (rows && !rows.some((row) => row.role === OPS_PANE_ROLE)) await toggleOpsPane(session, windowId)
+  }
+  if (roles.has(SHELL_PANE_ROLE)) {
+    const hiddenPane = await windowOption(windowId, HIDDEN_TERMINAL_PANE_OPTION)
+    if (hiddenPane) await restoreHiddenTerminalPane(session, windowId, hiddenPane)
+  }
+
+  await clearActiveWindowOption(windowId, ZEN_HIDDEN_PANES_OPTION)
+  await display(windowId, "kobe: Zen mode off")
+}
+
 async function activeSessionWindowCount(session: string): Promise<number> {
   const { code, stdout } = await runTmuxCapturing(["list-windows", "-t", `=${session}`, "-F", "#{window_id}"])
   if (code !== 0) return 0
@@ -736,6 +813,9 @@ export async function runLayoutAction(
       return
     case "terminal-toggle":
       await toggleTerminalPane(session, windowId)
+      return
+    case "zen-toggle":
+      await toggleZenMode(session, windowId)
       return
     case "chat-tab-close":
       await closeChatTab(session, windowId)

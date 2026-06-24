@@ -516,6 +516,14 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Hide / restore the terminal pane (tmux prefix, then z)",
     hint: { keys: "prefix z", label: "terminal", status: false },
   },
+  {
+    id: "tmux.layout.zenToggle",
+    scope: "global",
+    keys: [],
+    category: "Workspace (tmux)",
+    description: "Zen mode — collapse to the engine pane (tmux prefix, then space)",
+    hint: { keys: "prefix space", label: "zen", status: false },
+  },
 
   // ─── Workspace (chat) ─────────────────────────────────────────────────
   {

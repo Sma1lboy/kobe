@@ -70,6 +70,8 @@ export const TMUX_PREFIX_BINDING_DEFAULTS = {
   "tmux.layout.opsToggle": "o",
   /** Hide/restore the terminal pane while preserving its shell process. */
   "tmux.layout.terminalToggle": "z",
+  /** Zen mode: collapse to the engine pane (file + terminal, and Tasks unless kept). */
+  "tmux.layout.zenToggle": "space",
 } as const
 
 /**

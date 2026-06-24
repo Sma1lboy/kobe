@@ -27,6 +27,7 @@ import { submitFeedback } from "../../lib/feedback"
 import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
+import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
 import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
@@ -200,6 +201,16 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   function toggleSound(): void {
     props.kv.set("notifications.sound.enabled", !soundEnabled())
+  }
+
+  // Zen mode: whether collapsing to the engine pane keeps the Tasks rail.
+  // Default on — see state/zen.ts.
+  function zenKeepsTasks(): boolean {
+    return props.kv.get(ZEN_KEEP_TASKS_KEY, true) !== false
+  }
+
+  function toggleZenKeepsTasks(): void {
+    props.kv.set(ZEN_KEEP_TASKS_KEY, !zenKeepsTasks())
   }
 
   // Experimental: SSH-backed remote projects (off by default). Gates
@@ -476,6 +487,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     focusAccent: (row) => selectFocusAccent(row.slot),
     toast: () => toggleToast(),
     sound: () => toggleSound(),
+    zenKeepTasks: () => toggleZenKeepsTasks(),
     surface: (row) => selectSurface(row.surface),
     editorKind: () => cycleEditorKind(),
     editorCustom: () => void editEditorCustom(),
@@ -585,6 +597,8 @@ export function SettingsDialog(props: SettingsDialogProps) {
               soundEnabled={soundEnabled}
               toggleToast={toggleToast}
               toggleSound={toggleSound}
+              zenKeepsTasks={zenKeepsTasks}
+              toggleZenKeepsTasks={toggleZenKeepsTasks}
               settingsSurface={settingsSurface}
               selectSurface={selectSurface}
               editorKind={editorKind}

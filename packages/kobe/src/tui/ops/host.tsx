@@ -25,9 +25,17 @@ import { createHash } from "node:crypto"
 import { kobeCliInvocation } from "@/cli/invocation"
 import { type ChatTabTurnState, createEngineTurnDetector } from "@/engine/turn-detector"
 import { latestTranscriptMtime } from "@/monitor/activity"
-import { capturePaneById, newWindow, sendKeyName, sendKeys, setWindowOption, tmuxSessionName } from "@/tmux/client"
+import {
+  capturePaneById,
+  newWindow,
+  runTmux,
+  sendKeyName,
+  sendKeys,
+  setWindowOption,
+  tmuxSessionName,
+} from "@/tmux/client"
 import { openInEditor } from "@/tmux/editor-launch"
-import { previewWindowCommand } from "@/tmux/session-layout"
+import { previewWindowCommand, shellQuote, shellQuoteArgv } from "@/tmux/session-layout"
 import type { VendorId } from "@/types/task"
 import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 import { SyntaxStyle } from "@opentui/core"
@@ -36,6 +44,7 @@ import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree"
+import { inheritedEnvPrefix } from "../panes/terminal/launch"
 import { buildPRPrompt } from "./pr-prompt"
 
 export interface OpsHostArgs {
@@ -283,6 +292,21 @@ function OpsShell(props: OpsHostArgs) {
     await sendKeyName(props.targetPane, "Enter")
   }
 
+  // Toggle zen mode for this ChatTab's tmux session. Entering zen kills THIS
+  // pane (the file/Ops pane the chip lives in), so we must NOT run the action
+  // in-process — SIGHUP would abort it after only the Ops pane was hidden,
+  // leaving the terminal up. Hand it to tmux `run-shell -b` instead (same path
+  // the `prefix`-space chord uses): the tmux server runs it detached from any
+  // pane, so it survives this pane's death and completes every hide/restore.
+  // A standalone `kobe ops` (no task id) has no session to act on.
+  function toggleZen(): void {
+    if (!props.taskId) return
+    const session = tmuxSessionName(props.taskId)
+    const inv = kobeCliInvocation()
+    const cmd = `${inheritedEnvPrefix()}${shellQuoteArgv(inv)} layout --session ${shellQuote(session)} --action zen-toggle`
+    void runTmux(["run-shell", "-b", cmd])
+  }
+
   return (
     <box flexDirection="column" flexGrow={1} backgroundColor={theme.background}>
       <FileTree
@@ -291,6 +315,7 @@ function OpsShell(props: OpsHostArgs) {
         onOpenFile={openFile}
         onMention={injectMention}
         onCreatePR={() => void createPR()}
+        onZenToggle={props.taskId ? toggleZen : undefined}
         cornerBadge={cornerBadge}
         onRefresh={ackActivity}
       />
