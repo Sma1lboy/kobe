@@ -13,7 +13,13 @@
  */
 
 import { describe, expect, test } from "vitest"
-import { type Row, reconcileRows, sameFileList, sameStatusEntries } from "../../src/tui/panes/filetree/rows"
+import {
+  type Row,
+  reconcileRows,
+  sameFileList,
+  sameStatusEntries,
+  truncatePathTail,
+} from "../../src/tui/panes/filetree/rows"
 
 function file(path: string, depth = 0): Row {
   return { kind: "file", path, name: path.split("/").pop() ?? path, depth }
@@ -86,5 +92,27 @@ describe("content-equality signal guards", () => {
     expect(sameStatusEntries(a, [{ path: "a.ts", status: "M", added: 1, deleted: 0 }])).toBe(true)
     expect(sameStatusEntries(a, [{ path: "a.ts", status: "M", added: 2, deleted: 0 }])).toBe(false)
     expect(sameStatusEntries(a, null)).toBe(false)
+  })
+})
+
+describe("truncatePathTail", () => {
+  test("returns the path unchanged when it fits the budget", () => {
+    expect(truncatePathTail("src/a.ts", 20)).toBe("src/a.ts")
+    expect(truncatePathTail("src/a.ts", 8)).toBe("src/a.ts")
+  })
+
+  test("keeps the tail (leaf) and marks the elided prefix with a leading …", () => {
+    expect(truncatePathTail("components/sidebar/Sidebar.tsx", 14)).toBe("…r/Sidebar.tsx")
+  })
+
+  test("never bisects a surrogate pair — emoji stay intact", () => {
+    // Each 🎉 is one code point but two UTF-16 code units. Counting by code
+    // point keeps the tail on a character boundary; the old `.slice` by
+    // .length would start mid-emoji and emit a lone surrogate (→ �).
+    expect(truncatePathTail("src/aaaaa-🎉🎉🎉.ts", 8)).toBe("…-🎉🎉🎉.ts")
+  })
+
+  test("max <= 0 returns the path untouched", () => {
+    expect(truncatePathTail("a/b/c.ts", 0)).toBe("a/b/c.ts")
   })
 })
