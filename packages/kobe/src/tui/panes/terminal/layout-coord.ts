@@ -39,8 +39,9 @@ import { join } from "node:path"
 import { kobeStateDir } from "@/env"
 
 /**
- * Gen-file suffixes. `heal` / `capture` are coalesce-nonce protocols (one per
- * trailing-debounce). `resize` is a pure recency timestamp — stamped by EVERY
+ * Gen-file suffixes. `heal` / `capture` / `resync` are coalesce-nonce protocols
+ * (one run per trailing-debounce); `resync` collapses a `client-resized` drag
+ * burst to one window re-pin. `resize` is a pure recency timestamp — stamped by EVERY
  * heal path (the `healWorkspaceLayout` choke point + the direct pre-switch /
  * pre-attach resizes), read by the capture guard ({@link genAgeMs}) so a
  * terminal-resize reflow is never mis-captured as a manual drag. Keeping it a
@@ -48,7 +49,7 @@ import { kobeStateDir } from "@/env"
  * the coalesce protocol, so reusing it for recency would let a re-stamp clobber
  * an in-flight coalesce decision.
  */
-export type LayoutCoordKind = "heal" | "capture" | "resize"
+export type LayoutCoordKind = "heal" | "capture" | "resize" | "resync"
 
 /**
  * Trailing-debounce window. A hook firing waits this long for a quieter

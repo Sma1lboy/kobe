@@ -98,7 +98,7 @@ import {
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
 import { runLayoutAction } from "./layout-actions"
 import { recordGen } from "./layout-coord"
-import { healWorkspaceLayout, relaunchEngineInAllWindows } from "./pane-heal"
+import { healWorkspaceLayout, relaunchEngineInAllWindows, workspaceLayoutPaneCommands } from "./pane-heal"
 
 // Re-export the shared identity/lifecycle helpers so existing importers
 // (`direct.ts`, pane hosts) keep their `./tmux` path.
@@ -327,6 +327,46 @@ export async function prepareWindowForSwitch(session: string): Promise<void> {
   const sizeArgs = info.sizeArgs
   if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${session}`, ...sizeArgs])
   await healWorkspaceLayout(session)
+}
+
+/**
+ * Re-pin a session's active window to the size of the client that just resized
+ * — the `client-resized` tmux hook handler.
+ *
+ * `prepareWindowForAttach` / `prepareWindowForSwitch` call `resize-window`,
+ * which flips the window's `window-size` to `manual` (verified on tmux 3.6). The
+ * window then no longer auto-grows when the terminal grows, so `window-resized`
+ * — which fires only when the window ACTUALLY resizes — never runs for the grow
+ * direction, and the UI stays letterboxed at the old (smaller) size until the
+ * next task switch or a reopen. `client-resized` fires on every terminal size
+ * change regardless of the manual pin, so we re-apply the resize-window here
+ * (the outer frame follows the terminal) and heal the rail (the inner layout
+ * stays pinned). The client size arrives as explicit args: the hook's detached
+ * `run-shell -b` is not attached to a client, so it cannot read `#{client_*}`
+ * from its own `display-message`. No-op when the size is unknown.
+ */
+export async function resyncWindowToClient(
+  session: string,
+  opts: {
+    readonly size: TmuxClientSize | null
+    readonly status: string | undefined
+    readonly clientName?: string
+  },
+): Promise<void> {
+  if (!opts.size) return
+  // Stamp `resize` BEFORE the resize-window so a `window-layout-changed` capture
+  // it triggers skips this in-flight resize.
+  recordGen(session, "resize")
+  await ignoreConflictingSizeClients(session, opts.size, { currentClientName: opts.clientName })
+  const sizeArgs = tmuxWindowSizeArgsForClient(opts.size, { status: opts.status })
+  // Batch the window resize and the rail/right-column re-pin into ONE tmux
+  // command sequence so tmux repaints once: a separate resize-window (which
+  // reflows the rail proportionally wider) followed by a separate heal (which
+  // snaps it back) paints the blown-up intermediate frame — the visible "flash".
+  // `force` because the re-pins are planned from the PRE-resize snapshot, where
+  // the rail still reads its pinned width (see workspaceLayoutPaneCommands).
+  const { commands } = await workspaceLayoutPaneCommands(session, { force: true })
+  await runTmuxSequence([["resize-window", "-t", `=${session}`, ...sizeArgs], ...commands])
 }
 
 /** Direction flag → the tmux format var that is `1` when the pane sits at that edge. */
@@ -728,6 +768,17 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // can't re-trigger the hook. `heal-layout` is a no-op for role-less sessions.
   const healLayoutCommand = `${envStr}${invStr} heal-layout --session '#{session_name}'`
   const healLayoutTmuxCommand = `run-shell -b ${shellQuote(healLayoutCommand)}`
+  // `client-resized` companion to the `window-resized` heal. The pre-attach /
+  // pre-switch `resize-window` flips the window to `manual` sizing, so a LIVE
+  // terminal GROW no longer auto-resizes the window and `window-resized` never
+  // fires for it — the UI stays letterboxed small until a task switch or reopen.
+  // `client-resized` fires on every terminal size change regardless of the pin,
+  // so we re-pin the window to the new client size (outer frame follows the
+  // terminal) and heal the rail. Client dims are passed as ARGS: the detached
+  // `-b` shell isn't attached to a client, so it can't read its own
+  // `#{client_*}`. `resync-window` coalesces the drag's burst to one re-pin.
+  const resyncWindowCommand = `${envStr}${invStr} resync-window --session '#{session_name}' --client '#{client_name}' --cols '#{client_width}' --rows '#{client_height}' --status '#{status}'`
+  const resyncWindowTmuxCommand = `run-shell -b ${shellQuote(resyncWindowCommand)}`
   // Capture a manual rail / right-column drag the moment it happens, on
   // `window-layout-changed` (which fires on a pane resize, unlike
   // `window-resized`). Without this, a drag was only persisted into the global
@@ -841,6 +892,7 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ],
     ["set-option", "-g", "mouse", "on"],
     ["set-hook", "-g", "window-resized", healLayoutTmuxCommand],
+    ["set-hook", "-g", "client-resized", resyncWindowTmuxCommand],
     ["set-hook", "-g", "window-layout-changed", captureLayoutTmuxCommand],
     ...unbinds,
     // Two-stage: on the Tasks pane → detach (the old exit); anywhere else →
