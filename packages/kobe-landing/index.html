@@ -28,6 +28,13 @@
   .why-row.rev .txt{order:2}.why-row.rev .illo{order:1}
   @media(max-width:760px){.why-row{grid-template-columns:1fr;gap:24px;margin-bottom:44px;}.why-row .txt,.why-row.rev .txt{order:1}.why-row .illo,.why-row.rev .illo{order:2}}
   @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
+  .hero-grid{display:grid;grid-template-columns:1.02fr 0.98fr;gap:50px;align-items:center;}
+  .hero-art{position:relative;display:flex;justify-content:center;}
+  .hero-art .halo{position:absolute;inset:-8% -4%;background:radial-gradient(ellipse 62% 62% at 58% 50%,rgba(204,120,92,0.20),transparent 70%);filter:blur(10px);pointer-events:none;}
+  .hero-art img{position:relative;width:100%;max-width:560px;border-radius:12px;animation:floaty 6s ease-in-out infinite;}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:34px;}.hero-art img{max-width:480px;}}
+  @media(prefers-reduced-motion:reduce){.hero-art img{animation:none;}}
 </style>
 </head>
 <body>
@@ -60,23 +67,31 @@
   </nav>
 
   <!-- HERO -->
-  <header style="position:relative;max-width:1180px;margin:0 auto;padding:72px 40px 40px;">
-    <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(40px,6.4vw,76px);line-height:0.98;letter-spacing:-0.03em;max-width:14ch;margin-bottom:26px;color:#eae7df;">
-      Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.
-    </h1>
-    <p style="font-size:17px;line-height:1.6;color:#a39d92;max-width:60ch;margin-bottom:38px;">
-      kobe turns AI coding work into isolated git worktrees and persistent tmux sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
-    </p>
+  <header style="position:relative;max-width:1180px;margin:0 auto;padding:60px 40px 40px;">
+    <div class="hero-grid">
+      <div>
+        <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(38px,5vw,62px);line-height:1.0;letter-spacing:-0.03em;margin-bottom:24px;color:#eae7df;">
+          Run parallel coding agents from any <span style="color:#cc785c;">terminal</span>.
+        </h1>
+        <p style="font-size:16.5px;line-height:1.6;color:#a39d92;max-width:48ch;margin-bottom:34px;">
+          kobe turns AI coding work into isolated git worktrees and persistent tmux sessions. AI agents are useful one at a time — kobe is for when you want five attempts running at once.
+        </p>
 
-    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
-      <button id="copyBtn" style="display:flex;align-items:center;gap:14px;background:#1a1917;border:1px solid #34302a;border-radius:11px;padding:14px 18px;cursor:pointer;font-family:inherit;font-size:14.5px;color:#eae7df;">
-        <span style="color:#cc785c;">$</span>
-        <span>bun install -g @sma1lboy/kobe</span>
-        <span id="copyLabel" style="color:#6b655c;border-left:1px solid #34302a;padding-left:14px;font-size:12px;">click to copy</span>
-      </button>
-      <a href="https://github.com/Sma1lboy/kobe#readme" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 22px;font-size:14.5px;">Get started ↗</a>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+          <button id="copyBtn" style="display:flex;align-items:center;gap:14px;background:#1a1917;border:1px solid #34302a;border-radius:11px;padding:14px 18px;cursor:pointer;font-family:inherit;font-size:14.5px;color:#eae7df;">
+            <span style="color:#cc785c;">$</span>
+            <span>bun install -g @sma1lboy/kobe</span>
+            <span id="copyLabel" style="color:#6b655c;border-left:1px solid #34302a;padding-left:14px;font-size:12px;">click to copy</span>
+          </button>
+          <a href="https://github.com/Sma1lboy/kobe#readme" style="background:#cc785c;color:#1a0f0a;text-decoration:none;font-weight:600;border-radius:11px;padding:14px 22px;font-size:14.5px;">Get started ↗</a>
+        </div>
+        <div style="font-size:12.5px;color:#6b655c;">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11, tmux, and one engine CLI on your PATH.</div>
+      </div>
+      <div class="hero-art">
+        <div class="halo"></div>
+        <img src="assets/task-streams.gif" alt="kobe — parallel task streams converging into one orchestrator" width="1200" height="600" />
+      </div>
     </div>
-    <div style="font-size:12.5px;color:#6b655c;">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11, tmux, and one engine CLI on your PATH.</div>
   </header>
 
   <!-- TUI WORKSPACE MOCKUP -->
