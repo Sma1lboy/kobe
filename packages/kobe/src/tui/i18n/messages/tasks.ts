@@ -22,7 +22,6 @@ export const en = {
   sort: "sort",
   /** Project filter row */
   project: {
-    label: "Project",
     taskSingular: "task",
     taskPlural: "tasks",
   },
@@ -111,7 +110,6 @@ export const zh: typeof en = {
   },
   sort: "排序",
   project: {
-    label: "项目",
     taskSingular: "个任务",
     taskPlural: "个任务",
   },
