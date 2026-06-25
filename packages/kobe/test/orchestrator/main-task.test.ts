@@ -6,24 +6,33 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
+import { addSavedRepo, getSavedRepos } from "../../src/state/repos.ts"
 
 const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
 
 let tmpRoot: string
 let repo: string
 let orch: Orchestrator
+let originalHome: string | undefined
 
 beforeEach(async () => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-main-task-"))
   repo = path.join(tmpRoot, "repo")
   const r = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (r.status !== 0) throw new Error(`repo-init.sh failed: ${r.stderr}\n${r.stdout}`)
+  // Isolate the shared state.json (savedRepos) that forgetProject mutates so
+  // tests never touch the developer's real ~/.config/kobe.
+  originalHome = process.env.KOBE_HOME_DIR
+  process.env.KOBE_HOME_DIR = path.join(tmpRoot, "home")
   const store = new TaskIndexStore({ homeDir: path.join(tmpRoot, "home") })
   await store.load()
   orch = new Orchestrator({ store, worktrees: new GitWorktreeManager() })
 })
 
 afterEach(() => {
+  // biome-ignore lint/performance/noDelete: env cleanup must fully unset when the var was unset before the test (assigning undefined leaves the string "undefined").
+  if (originalHome === undefined) delete process.env.KOBE_HOME_DIR
+  else process.env.KOBE_HOME_DIR = originalHome
   try {
     fs.rmSync(tmpRoot, { recursive: true, force: true })
   } catch {
@@ -53,5 +62,40 @@ describe("ensureMainTask", () => {
 
     expect(second.id).toBe(first.id)
     expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(1)
+  })
+})
+
+describe("forgetProject", () => {
+  test("un-saves the repo and drops its main row, keeping child tasks", async () => {
+    addSavedRepo(repo)
+    await orch.ensureMainTask(repo)
+    const child = await orch.createTask({ repo, title: "work", vendor: "claude" })
+    expect(getSavedRepos()).toContain(repo)
+    expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(1)
+
+    await orch.forgetProject(repo)
+
+    expect(getSavedRepos()).not.toContain(repo)
+    expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(0)
+    // The repo dir and the real task under it survive — forget is non-destructive.
+    expect(orch.getTask(child.id)?.id).toBe(child.id)
+    expect(fs.existsSync(repo)).toBe(true)
+  })
+
+  test("matches a subdirectory input the same way addSavedRepo normalized it", async () => {
+    const subdir = path.join(repo, "packages", "x")
+    fs.mkdirSync(subdir, { recursive: true })
+    addSavedRepo(repo)
+    await orch.ensureMainTask(repo)
+
+    await orch.forgetProject(subdir)
+
+    expect(getSavedRepos()).not.toContain(repo)
+    expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(0)
+  })
+
+  test("idempotent: forgetting a never-saved repo no-ops", async () => {
+    await expect(orch.forgetProject(repo)).resolves.toBeUndefined()
+    expect(orch.listTasks().filter((t) => t.kind === "main")).toHaveLength(0)
   })
 })

@@ -117,7 +117,7 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
     process.stderr.write(`kobe remove: unknown flag "${arg}"\n\n${REMOVE_USAGE}`)
     process.exit(2)
   }
-  const { getSavedRepos, removeSavedRepo, resolveRepoRoot } = await import("../state/repos.ts")
+  const { getSavedRepos, resolveRepoRoot } = await import("../state/repos.ts")
   const saved = getSavedRepos()
   if (saved.length === 0) {
     console.log("no saved projects to remove.")
@@ -140,8 +140,20 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
     for (const p of saved) process.stderr.write(`  ${p}\n`)
     process.exit(1)
   }
-  const result = removeSavedRepo(target)
-  console.log(`removed ${result.path} (${result.total} saved repo${result.total === 1 ? "" : "s"} left)`)
+  // forgetProject un-saves the repo AND drops the synthetic main task that
+  // projects it into the sidebar — removeSavedRepo alone left an orphan main
+  // row behind (it lives in the daemon-owned task index, not state.json).
+  // Prefer a RUNNING daemon so a live TUI updates; fall back to in-process.
+  const { connectIfRunning } = await import("@sma1lboy/kobe-daemon/client/daemon-process")
+  const client = await connectIfRunning()
+  try {
+    if (client) await client.request("project.forget", { repo: target })
+    else await (await openLocalOrchestrator()).forgetProject(target)
+  } finally {
+    client?.close()
+  }
+  const remaining = getSavedRepos().length
+  console.log(`removed ${target} (${remaining} saved repo${remaining === 1 ? "" : "s"} left)`)
 }
 
 /**

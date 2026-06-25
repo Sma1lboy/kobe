@@ -106,6 +106,7 @@ export type DaemonRequestName =
   // push per batch; the TUI never reads `position`.
   | "task.reorder"
   | "task.ensureMain"
+  | "project.forget"
   | "task.ensureWorktree"
   | "task.setActive"
   | "issue.list"
