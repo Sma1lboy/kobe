@@ -505,6 +505,10 @@ export function Sidebar(props: SidebarProps) {
     const option = projectFilterOption()
     return option ? option.count : projectOptions().reduce((sum, entry) => sum + entry.count, 0)
   })
+  const projectFilterCountLabel = createMemo(() => {
+    const count = projectFilterCount()
+    return `${count} ${count === 1 ? t("tasks.project.taskSingular") : t("tasks.project.taskPlural")}`
+  })
   const rows = createMemo<readonly SidebarRow[]>(
     (prev) =>
       reconcileSidebarRows(
@@ -1051,41 +1055,52 @@ export function Sidebar(props: SidebarProps) {
         </Show>
       </box>
 
-      <Show when={projectOptions().length > 1}>
-        <box
-          flexDirection="row"
-          justifyContent="space-between"
-          gap={1}
-          paddingBottom={1}
-          paddingLeft={1}
-          paddingRight={1}
-          onMouseUp={() => cycleProjectFilter()}
-        >
-          <box flexDirection="row" gap={1}>
-            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-              {t("tasks.project.label")}
-            </text>
-            <text
-              fg={projectFilterRepo() ? theme.primary : theme.textMuted}
-              attributes={projectFilterRepo() ? TextAttributes.BOLD : undefined}
-              wrapMode="none"
-            >
-              {projectFilterLabel()}
-            </text>
-          </box>
-          <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
-            {projectFilterCount()}{" "}
-            {projectFilterCount() === 1 ? t("tasks.project.taskSingular") : t("tasks.project.taskPlural")}
-          </text>
-        </box>
-      </Show>
-
       {/* Body: split PROJECTS and TASKS into independent scroll regions.
          The flat cursor list is unchanged, but task overflow no longer pushes
          the project switcher/rows out of the rail. */}
       <Show when={projectRows().length > 0}>
         <box flexDirection="column" flexShrink={0}>
-          <SectionHeader label={t("tasks.header.projects")} />
+          {/* PROJECTS header doubles as the project filter: clicking cycles the
+             active filter; the current filter label + matching task count ride
+             on the same row instead of a separate line above. */}
+          <box
+            flexDirection="row"
+            flexShrink={0}
+            gap={1}
+            paddingLeft={1}
+            paddingRight={1}
+            onMouseUp={() => cycleProjectFilter()}
+          >
+            <text fg={theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
+              {t("tasks.header.projects")}
+            </text>
+            <Show when={projectOptions().length > 1}>
+              <text
+                fg={projectFilterRepo() ? theme.primary : theme.textMuted}
+                attributes={projectFilterRepo() ? TextAttributes.BOLD : undefined}
+                wrapMode="none"
+              >
+                {projectFilterLabel()}
+              </text>
+            </Show>
+            <text fg={theme.border} wrapMode="none">
+              {"─".repeat(
+                Math.max(
+                  2,
+                  effectiveWidth() -
+                    10 -
+                    t("tasks.header.projects").length -
+                    (projectOptions().length > 1 ? projectFilterLabel().length + 1 : 0) -
+                    (projectOptions().length > 1 ? projectFilterCountLabel().length + 1 : 0),
+                ),
+              )}
+            </text>
+            <Show when={projectOptions().length > 1}>
+              <text fg={theme.textMuted} attributes={TextAttributes.DIM} wrapMode="none">
+                {projectFilterCountLabel()}
+              </text>
+            </Show>
+          </box>
           <scrollbox
             ref={(r: ScrollBoxRenderable) => {
               projectScrollRef = r
