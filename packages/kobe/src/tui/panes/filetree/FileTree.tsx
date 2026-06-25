@@ -551,7 +551,7 @@ export function FileTree(props: FileTreeProps) {
           <Show when={props.onZenToggle}>
             <box flexDirection="row" gap={1} onMouseUp={() => props.onZenToggle?.()}>
               <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
-                ☯
+                [~]
               </text>
               <text fg={theme.text} wrapMode="none">
                 {t("files.actions.zen")}
