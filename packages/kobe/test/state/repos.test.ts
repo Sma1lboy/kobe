@@ -19,6 +19,7 @@
  *   - The total in `AddResult` matches the post-write list size.
  */
 
+import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -29,6 +30,7 @@ import {
   getCustomEngineIds,
   getRemoteRepoConfig,
   getSavedRepos,
+  isGitRepo,
   removeSavedRepo,
   statePath,
 } from "../../src/state/repos.ts"
@@ -52,6 +54,38 @@ afterEach(() => {
 describe("statePath", () => {
   test("resolves under KOBE_HOME_DIR", () => {
     expect(statePath()).toBe(path.join(tmpHome, ".config", "kobe", "state.json"))
+  })
+})
+
+describe("isGitRepo", () => {
+  test("true inside a real git work tree (and its subdirectories)", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-gitrepo-"))
+    try {
+      expect(spawnSync("git", ["init"], { cwd: repo }).status).toBe(0)
+      expect(isGitRepo(repo)).toBe(true)
+      const sub = path.join(repo, "packages", "x")
+      fs.mkdirSync(sub, { recursive: true })
+      expect(isGitRepo(sub)).toBe(true)
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true })
+    }
+  })
+
+  test("false for an existing directory that is not a git repo", () => {
+    const plain = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-plain-"))
+    try {
+      expect(isGitRepo(plain)).toBe(false)
+    } finally {
+      fs.rmSync(plain, { recursive: true, force: true })
+    }
+  })
+
+  test("false for a path that does not exist (the `kobe add ,` case)", () => {
+    expect(isGitRepo(path.join(os.tmpdir(), "kobe-does-not-exist", ","))).toBe(false)
+  })
+
+  test("false for a remote (ssh://) key — validated by the remote-add flow", () => {
+    expect(isGitRepo("ssh://user@host:22/srv/repo")).toBe(false)
   })
 })
 

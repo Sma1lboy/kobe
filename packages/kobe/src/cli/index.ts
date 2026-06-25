@@ -65,7 +65,16 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
     process.exit(2)
   }
   const target = resolve(process.cwd(), arg && arg.length > 0 ? arg : ".")
-  const { addSavedRepo } = await import("../state/repos.ts")
+  const { addSavedRepo, isGitRepo } = await import("../state/repos.ts")
+  // A saved project must be a real local git repository — reject garbage
+  // paths (e.g. `kobe add ,`, which resolves to a non-existent dir) before
+  // they pollute the picker and become un-deletable synthetic rows.
+  if (!isGitRepo(target)) {
+    process.stderr.write(
+      `kobe add: "${arg && arg.length > 0 ? arg : "."}" is not a git repository (resolved to ${target}).\n`,
+    )
+    process.exit(1)
+  }
   const result = addSavedRepo(target)
   if (result.added) {
     console.log(`added ${result.path} (${result.total} saved repo${result.total === 1 ? "" : "s"} total)`)
