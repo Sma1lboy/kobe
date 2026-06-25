@@ -29,12 +29,13 @@
   @media(max-width:760px){.why-row{grid-template-columns:1fr;gap:24px;margin-bottom:44px;}.why-row .txt,.why-row.rev .txt{order:1}.why-row .illo,.why-row.rev .illo{order:2}}
   @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none;}}
   .hero-grid{display:grid;grid-template-columns:1.02fr 0.98fr;gap:50px;align-items:center;}
-  .hero-art{position:relative;display:flex;justify-content:center;}
-  .hero-art .halo{position:absolute;inset:-8% -4%;background:radial-gradient(ellipse 62% 62% at 58% 50%,rgba(204,120,92,0.20),transparent 70%);filter:blur(10px);pointer-events:none;}
-  .hero-art img{position:relative;width:100%;max-width:560px;border-radius:12px;animation:floaty 6s ease-in-out infinite;}
+  .hero-art{position:relative;display:flex;justify-content:center;align-items:center;}
+  .hero-art .halo{position:absolute;inset:-12% -6%;background:radial-gradient(ellipse 60% 58% at 55% 50%,rgba(204,120,92,0.18),transparent 70%);filter:blur(12px);pointer-events:none;}
+  .hero-art .frame{position:relative;width:100%;max-width:600px;aspect-ratio:1200/430;overflow:hidden;border-radius:12px;animation:floaty 6s ease-in-out infinite;}
+  .hero-art img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;}
   @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-  @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:34px;}.hero-art img{max-width:480px;}}
-  @media(prefers-reduced-motion:reduce){.hero-art img{animation:none;}}
+  @media(max-width:860px){.hero-grid{grid-template-columns:1fr;gap:30px;}.hero-art .frame{max-width:520px;aspect-ratio:auto;}.hero-art img{height:auto;}}
+  @media(prefers-reduced-motion:reduce){.hero-art .frame{animation:none;}}
 </style>
 </head>
 <body>
@@ -89,7 +90,7 @@
       </div>
       <div class="hero-art">
         <div class="halo"></div>
-        <img src="assets/task-streams.gif" alt="kobe — parallel task streams converging into one orchestrator" width="1200" height="600" />
+        <div class="frame"><img src="assets/task-streams.gif" alt="kobe — parallel task streams converging into one orchestrator" width="1200" height="630" /></div>
       </div>
     </div>
   </header>
