@@ -1,9 +1,10 @@
 /**
- * Zen mode — a one-shot "focus the engine" layout toggle that hides the
+ * Zen mode — a session-wide "focus the engine" layout toggle that hides the
  * file/Ops pane and the terminal pane (and, when this switch is off, the
- * Tasks rail too), leaving the engine/chat pane to fill the ChatTab. The
- * toggle itself lives in `tui/panes/terminal/layout-actions.ts`; this module
- * owns only the persisted preference.
+ * Tasks rail too) across EVERY ChatTab, leaving each engine/chat pane to fill
+ * its window. The toggle itself (and its session-global on/off flag) lives in
+ * `tui/panes/terminal/layout-actions.ts`; this module owns only the persisted
+ * `zen.keepTasks` preference.
  *
  * Stored in the shared state.json (the Settings dialog's KV writes the same
  * file) and read fresh at each toggle so flipping it needs no daemon restart.

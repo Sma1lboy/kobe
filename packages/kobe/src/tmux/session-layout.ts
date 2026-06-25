@@ -41,6 +41,15 @@ export const HIDDEN_TASKS_PANE_OPTION = "@kobe_hidden_tasks_pane"
  */
 export const ZEN_HIDDEN_PANES_OPTION = "@kobe_zen_panes"
 
+/**
+ * Session-scoped flag marking zen mode as ON for the WHOLE session (every
+ * ChatTab), not just one window. When set, the zen toggle collapses/expands
+ * all engine ChatTabs at once, and a freshly created ChatTab opens collapsed
+ * too — so zen survives tab switches and new tabs. Per-window restore detail
+ * still lives in {@link ZEN_HIDDEN_PANES_OPTION} on each window.
+ */
+export const ZEN_SESSION_OPTION = "@kobe_zen"
+
 /** Hidden helper session that holds panes broken out of one task session. */
 export function hiddenTerminalSessionName(session: string): string {
   const safe = session.replace(/[^A-Za-z0-9_-]/g, "")
