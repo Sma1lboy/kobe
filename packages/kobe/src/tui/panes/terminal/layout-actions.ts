@@ -14,11 +14,13 @@ import { localSpawnCwd } from "@/exec/resolve"
 import { zenKeepsTasks } from "@/state/zen"
 import {
   getServerOptions,
+  getSessionOption,
   getSessionOptions,
   runTmux,
   runTmuxCapturing,
   runTmuxSequence,
   sessionExists,
+  setSessionOption,
 } from "@/tmux/client"
 import {
   CLAUDE_PANE_PERCENT,
@@ -36,6 +38,7 @@ import {
   WORKSPACE_AUX_PANE_ROLE,
   WORKSPACE_SPLIT_MAX_PANES,
   ZEN_HIDDEN_PANES_OPTION,
+  ZEN_SESSION_OPTION,
   clampPanePercent,
   clampTasksPaneWidth,
   hiddenTerminalSessionName,
@@ -696,20 +699,70 @@ async function toggleTerminalPane(session: string, windowId: string): Promise<vo
 }
 
 /**
- * Zen mode: collapse the ChatTab down to the engine pane. Entering hides the
- * file/Ops pane and the terminal pane — and the Tasks rail too unless the
- * `zen.keepTasks` preference is on — recording which roles it hid in
- * {@link ZEN_HIDDEN_PANES_OPTION}. Leaving restores exactly those panes (via
- * the same hidden-pane machinery the per-pane toggles use), so a pane the user
- * had already collapsed before zen stays collapsed. Idempotent: a second press
- * reads the recorded set and reverses it.
+ * Zen mode is SESSION-GLOBAL: one toggle collapses every engine ChatTab in the
+ * session down to its engine pane, and a freshly created ChatTab opens collapsed
+ * too (see {@link applyZenToNewWindow}), so zen survives tab switches and new
+ * tabs. The on/off state lives in the session option {@link ZEN_SESSION_OPTION};
+ * each window still records WHICH roles it hid in {@link ZEN_HIDDEN_PANES_OPTION}
+ * so leaving zen restores exactly those panes and nothing the user had already
+ * collapsed themselves. Idempotent: a second toggle reverses it across all tabs.
  */
-async function toggleZenMode(session: string, windowId: string): Promise<void> {
-  const active = await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)
-  if (active) {
-    await exitZenMode(session, windowId, active)
+async function toggleZenSession(session: string): Promise<void> {
+  const on = (await getSessionOption(session, ZEN_SESSION_OPTION)).length > 0
+  if (on) {
+    await exitZenSession(session)
     return
   }
+  await enterZenSession(session)
+}
+
+/** Window ids of the session, in tmux order. */
+async function sessionWindowIds(session: string): Promise<string[]> {
+  const { code, stdout } = await runTmuxCapturing(["list-windows", "-t", `=${session}`, "-F", "#{window_id}"])
+  if (code !== 0) return []
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
+/** A window is an engine ChatTab (not a Settings/help/new-task surface) iff it has an engine pane. */
+async function windowHasEnginePane(session: string, windowId: string): Promise<boolean> {
+  const rows = await windowPanes(session, windowId)
+  return !!rows?.some((row) => row.role === ENGINE_PANE_ROLE)
+}
+
+async function enterZenSession(session: string): Promise<void> {
+  const windowIds = await sessionWindowIds(session)
+  for (const windowId of windowIds) {
+    if (!(await windowHasEnginePane(session, windowId))) continue
+    if (await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)) continue // already collapsed
+    await enterZenMode(session, windowId)
+  }
+  await setSessionOption(session, ZEN_SESSION_OPTION, "1")
+  await display(`=${session}`, "kobe: Zen mode on — all tabs")
+}
+
+async function exitZenSession(session: string): Promise<void> {
+  const windowIds = await sessionWindowIds(session)
+  for (const windowId of windowIds) {
+    const recorded = await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)
+    if (recorded) await exitZenMode(session, windowId, recorded)
+  }
+  await runTmux(["set-option", "-u", "-t", session, ZEN_SESSION_OPTION])
+  await display(`=${session}`, "kobe: Zen mode off — all tabs")
+}
+
+/**
+ * Collapse a freshly built ChatTab if the session is in zen mode, so new tabs
+ * (Ctrl+T / quick-create) and tabs the user switches to stay focused. No-op
+ * when zen is off or the window is already collapsed. Called by `newChatTab`
+ * after its panes are built.
+ */
+export async function applyZenToNewWindow(session: string, windowId: string): Promise<void> {
+  if ((await getSessionOption(session, ZEN_SESSION_OPTION)).length === 0) return
+  if (await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)) return
+  if (!(await windowHasEnginePane(session, windowId))) return
   await enterZenMode(session, windowId)
 }
 
@@ -815,7 +868,8 @@ export async function runLayoutAction(
       await toggleTerminalPane(session, windowId)
       return
     case "zen-toggle":
-      await toggleZenMode(session, windowId)
+      // Zen is session-global: ignore the per-window target and toggle every tab.
+      await toggleZenSession(session)
       return
     case "chat-tab-close":
       await closeChatTab(session, windowId)

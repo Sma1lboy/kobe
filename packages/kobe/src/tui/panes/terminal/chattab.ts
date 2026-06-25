@@ -57,6 +57,7 @@ import type { VendorId } from "@/types/task"
 import { ALL_VENDORS } from "@/types/vendor"
 import { CURRENT_VERSION } from "@/version"
 import { REMOTE_KEY_OPTION, inheritedEnvPrefix, wrapEngineLaunch } from "./launch"
+import { applyZenToNewWindow } from "./layout-actions"
 import { PANE_VERSION_OPTION, globalRightColumnResizeArgs } from "./pane-heal"
 
 // ChatTab binding builders. The KEY argument comes from the user-
@@ -300,6 +301,10 @@ export async function newChatTab(session: string, vendorOverride?: VendorId): Pr
   if (!claudePane) return
   if (launch.sessionId) await setWindowOption(claudePane, CHAT_TAB_SESSION_ID_OPTION, launch.sessionId)
   await buildPanesAround(claudePane, { cwd, taskId, inv, vendor })
+  // If the session is in (global) zen mode, open this new tab collapsed too.
+  const { stdout: winOut } = await runTmuxCapturing(["display-message", "-p", "-t", claudePane, "#{window_id}"])
+  const windowId = winOut.trim()
+  if (windowId) await applyZenToNewWindow(session, windowId)
 }
 
 /**
