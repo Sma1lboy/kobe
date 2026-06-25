@@ -143,12 +143,44 @@ export async function numstatFiles(worktreePath: string): Promise<NumstatEntry[]
 }
 
 /**
+ * Reconstruct the post-rename path from a `git diff --numstat` path field.
+ *
+ * numstat renders a rename/copy with ` => ` (NOT porcelain's ` -> `), and
+ * compacts the unchanged segments around the change into `{old => new}`
+ * braces:
+ *   - `src/{old.txt => new.txt}` → `src/new.txt`   (common prefix + suffix)
+ *   - `{dir => other}/x.txt`     → `other/x.txt`
+ *   - `root1.txt => root2.txt`   → `root2.txt`      (no common segment, no braces)
+ *
+ * Returning the canonical NEW path is what lets {@link statusFiles} key the
+ * numstat counts by the same path the porcelain `R` row reports — without
+ * this the brace/`=>` text was kept verbatim, never matched the status
+ * entry, and renamed files showed no +/- line counts in the Changes tab.
+ * A plain (non-rename) path has no ` => ` and is returned unchanged.
+ */
+function numstatRenamePath(field: string): string {
+  const open = field.indexOf("{")
+  if (open >= 0) {
+    const close = field.indexOf("}", open)
+    const sep = field.indexOf(" => ", open)
+    if (close > open && sep >= 0 && sep < close) {
+      const newSeg = field.slice(sep + " => ".length, close)
+      return field.slice(0, open) + newSeg + field.slice(close + 1)
+    }
+  }
+  const arrow = field.indexOf(" => ")
+  if (arrow >= 0) return field.slice(arrow + " => ".length)
+  return field
+}
+
+/**
  * Pure parser for `git diff --numstat` output. Each line is:
  *   `<added>\t<deleted>\t<path>`
  * Binary files use `-\t-\tpath` — we surface those as `null` counts.
- * Renames look like `<a>\t<d>\told -> new` (or with `{}` braces depending
- * on git config); we keep the raw path text because the porcelain status
- * row carries the canonical post-rename path already.
+ * Renames look like `<a>\t<d>\tsrc/{old => new}` (numstat uses ` => `, not
+ * porcelain's ` -> `, and brace-compacts the unchanged segments); we resolve
+ * them to the canonical post-rename path so the counts key by the same path
+ * the porcelain status row reports.
  */
 export function parseNumstat(raw: string): NumstatEntry[] {
   const lines = raw.split("\n").map((l) => l.replace(/\r$/, ""))
@@ -161,10 +193,7 @@ export function parseNumstat(raw: string): NumstatEntry[] {
     if (tab2 < 0) continue
     const a = line.slice(0, tab1)
     const d = line.slice(tab1 + 1, tab2)
-    let path = line.slice(tab2 + 1)
-    // Rename forms: "old -> new" or "{old => new}".
-    const arrow = path.indexOf(" -> ")
-    if (arrow >= 0) path = path.slice(arrow + " -> ".length)
+    const path = numstatRenamePath(line.slice(tab2 + 1))
     const added = a === "-" ? null : Number.parseInt(a, 10)
     const deleted = d === "-" ? null : Number.parseInt(d, 10)
     if (path.length === 0) continue
