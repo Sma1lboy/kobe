@@ -19,6 +19,7 @@ export function topLevelUsage(): string {
     "",
     "Commands:",
     "  web [options]           Launch the browser dashboard",
+    "  completions <shell>     Generate shell completion script (bash/zsh/fish)",
     "  add [path]              Save a repo path for the new-task picker",
     "  adopt [glob]            Import existing git worktrees as tasks",
     "  export [--csv|--json]   Print the task list (json/csv/table; daemon-free)",

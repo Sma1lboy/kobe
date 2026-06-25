@@ -4,6 +4,7 @@
  *
  * Subcommands surface:
  *   - `kobe`                    Launch the TUI (default).
+ *   - `kobe completions <shell> Generate shell completion script (bash/zsh/fish).
  *   - `kobe add [path]`         Save a repo path for the new-task picker.
  *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
  *   - `kobe export [--csv]`     Print the task list (json/csv/table; daemon-free).
@@ -347,6 +348,11 @@ async function main(): Promise<void> {
 
   if (subcommand === "add") {
     await runAddSubcommand(rest)
+    return
+  }
+  if (subcommand === "completions") {
+    const { runCompletionsSubcommand } = await import("./completions-cmd.ts")
+    await runCompletionsSubcommand(rest)
     return
   }
   if (subcommand === "adopt") {
