@@ -9,7 +9,7 @@ export const en = {
     changes: "Changes",
   },
   actions: {
-    zen: "zen",
+    zen: "Zen",
     createPR: "create PR",
   },
   legend: {
