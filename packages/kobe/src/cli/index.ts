@@ -5,6 +5,7 @@
  * Subcommands surface:
  *   - `kobe`                    Launch the TUI (default).
  *   - `kobe add [path]`         Save a repo path for the new-task picker.
+ *   - `kobe remove [path]`      Forget a saved project (inverse of `add`; non-destructive).
  *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
  *   - `kobe export [--csv]`     Print the task list (json/csv/table; daemon-free).
  *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
@@ -75,6 +76,63 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
   // yet linked to a task, most-recently-active first (KOB-256). A plain
   // repo with no extra worktrees imports nothing.
   await adoptAllWorktrees(result.path)
+}
+
+const REMOVE_USAGE =
+  "Usage: kobe remove [path]\n\n" +
+  "Forget a saved project (drop it from the new-task picker). Non-destructive:\n" +
+  "the repo's files, worktrees, branches and tasks all stay on disk. A remote\n" +
+  "(ssh://) project also has its stored connection config dropped.\n\n" +
+  "  path defaults to the current directory. Pass an exact saved entry (e.g. a\n" +
+  "  remote `ssh://user@host` key) to remove it verbatim. Run with no match to\n" +
+  "  print the current saved projects.\n"
+
+/**
+ * `kobe remove [path]` — the inverse of `kobe add`: forget a saved project.
+ *
+ * Matching is forgiving because the stored entries are git-toplevel absolute
+ * paths (or synthetic `ssh://` keys for remote projects), while the user may
+ * type a relative path, a subdirectory, or the exact stored string. We try, in
+ * order: an exact match against the saved list (so a literal/garbage entry like
+ * `","` or a remote URL is removable verbatim), then the git-toplevel of the
+ * resolved path, then the plain resolved absolute path. On no match we print the
+ * saved list so the user can copy the exact entry to remove.
+ */
+async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
+  const arg = rest[0]
+  if (arg === "--help" || arg === "-h" || arg === "help") {
+    process.stdout.write(REMOVE_USAGE)
+    return
+  }
+  if (arg?.startsWith("-")) {
+    process.stderr.write(`kobe remove: unknown flag "${arg}"\n\n${REMOVE_USAGE}`)
+    process.exit(2)
+  }
+  const { getSavedRepos, removeSavedRepo, resolveRepoRoot } = await import("../state/repos.ts")
+  const saved = getSavedRepos()
+  if (saved.length === 0) {
+    console.log("no saved projects to remove.")
+    return
+  }
+  const raw = arg && arg.length > 0 ? arg : "."
+  // Candidate targets, most-specific first; the first one present in the saved
+  // list wins. resolveRepoRoot shells git, so only compute it when needed.
+  const target = saved.includes(raw)
+    ? raw
+    : (() => {
+        const abs = resolve(process.cwd(), raw)
+        const top = resolveRepoRoot(abs)
+        if (saved.includes(top)) return top
+        if (saved.includes(abs)) return abs
+        return null
+      })()
+  if (target === null) {
+    process.stderr.write(`kobe remove: "${raw}" is not a saved project.\n\nSaved projects:\n`)
+    for (const p of saved) process.stderr.write(`  ${p}\n`)
+    process.exit(1)
+  }
+  const result = removeSavedRepo(target)
+  console.log(`removed ${result.path} (${result.total} saved repo${result.total === 1 ? "" : "s"} left)`)
 }
 
 /**
@@ -347,6 +405,10 @@ async function main(): Promise<void> {
 
   if (subcommand === "add") {
     await runAddSubcommand(rest)
+    return
+  }
+  if (subcommand === "remove") {
+    await runRemoveSubcommand(rest)
     return
   }
   if (subcommand === "adopt") {

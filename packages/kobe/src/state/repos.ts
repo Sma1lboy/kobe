@@ -283,6 +283,18 @@ export function removeSavedRepo(absPath: string): RemoveResult {
       return false // nothing to remove — leave the file untouched
     }
     state.savedRepos = cur.filter((p) => p !== absPath)
+    // For a remote project (`ssh://…` key) also drop its connection config so
+    // we don't leave an orphan `remoteRepos` entry pointing at a project the
+    // user just forgot. The OS-keychain password (a separate, destructive side
+    // effect) is intentionally left untouched.
+    if (isRemoteRepoKey(absPath)) {
+      const remotes = readRemoteRepos(state)
+      if (absPath in remotes) {
+        const next = { ...remotes }
+        delete next[absPath]
+        state.remoteRepos = next
+      }
+    }
     result = { removed: true, path: absPath, total: cur.length - 1 }
     return undefined
   })

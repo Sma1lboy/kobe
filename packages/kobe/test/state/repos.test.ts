@@ -23,7 +23,15 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { addSavedRepo, getCustomEngineIds, getSavedRepos, removeSavedRepo, statePath } from "../../src/state/repos.ts"
+import {
+  addRemoteRepo,
+  addSavedRepo,
+  getCustomEngineIds,
+  getRemoteRepoConfig,
+  getSavedRepos,
+  removeSavedRepo,
+  statePath,
+} from "../../src/state/repos.ts"
 
 let tmpHome: string
 let originalHome: string | undefined
@@ -199,5 +207,15 @@ describe("removeSavedRepo (KOB-15)", () => {
     addSavedRepo("/d")
     removeSavedRepo("/b")
     expect(getSavedRepos()).toEqual(["/a", "/c", "/d"])
+  })
+
+  test("removing a remote project also drops its remoteRepos config (no orphan)", () => {
+    const { key } = addRemoteRepo({ host: "box", user: "jc", basePath: "/srv/work", auth: { kind: "key" } })
+    expect(getSavedRepos()).toContain(key)
+    expect(getRemoteRepoConfig(key)).not.toBeNull()
+    const r = removeSavedRepo(key)
+    expect(r.removed).toBe(true)
+    expect(getSavedRepos()).not.toContain(key)
+    expect(getRemoteRepoConfig(key)).toBeNull()
   })
 })
