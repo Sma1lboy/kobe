@@ -13,6 +13,7 @@ describe("topLevelUsage", () => {
     for (const cmd of [
       "web",
       "add",
+      "remove",
       "adopt",
       "repo",
       "api",

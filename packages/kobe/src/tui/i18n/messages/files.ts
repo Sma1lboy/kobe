@@ -9,8 +9,8 @@ export const en = {
     changes: "Changes",
   },
   actions: {
-    zen: "zen",
-    createPR: "create PR",
+    zen: "Zen",
+    createPR: "Create PR",
   },
   legend: {
     changes: "M modified · A added · D deleted · ? untracked",

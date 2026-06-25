@@ -51,6 +51,7 @@ type OrchMock = {
   deleteTask: ReturnType<typeof vi.fn>
   setArchived: ReturnType<typeof vi.fn>
   setActiveTask: ReturnType<typeof vi.fn>
+  forgetProject: ReturnType<typeof vi.fn>
 }
 
 function makeOrch(overrides: Partial<OrchMock> = {}): OrchMock {
@@ -58,6 +59,7 @@ function makeOrch(overrides: Partial<OrchMock> = {}): OrchMock {
     deleteTask: vi.fn(async () => {}),
     setArchived: vi.fn(async () => {}),
     setActiveTask: vi.fn(async () => {}),
+    forgetProject: vi.fn(async () => {}),
     ...overrides,
   }
 }
@@ -179,6 +181,51 @@ describe("deleteTaskFlow — dirty-worktree branch", () => {
     expect(switchClientBeforeKill).toHaveBeenCalledWith("kobe-t1", "kobe-t2")
     expect(orch.setActiveTask).toHaveBeenCalledWith("t2")
     expect(killSession).toHaveBeenCalledWith("kobe-t1")
+  })
+})
+
+describe("deleteTaskFlow — project (main) row", () => {
+  test("forgets the project instead of deleting, no worktree teardown", async () => {
+    const tasks = [
+      makeTask({ id: "m1", kind: "main", repo: "/repos/alpha", title: "alpha", worktreePath: "/repos/alpha" }),
+    ]
+    const orch = makeOrch()
+    const { ctx, confirm, reload } = makeCtx({ tasks, orch, confirms: [true] })
+
+    await deleteTaskFlow(ctx, "m1")
+
+    // Project-specific copy (the "remove" verb, not "delete").
+    expect(confirm.mock.calls[0]?.[0]).toMatchObject({ title: `Remove project "alpha"?`, confirmLabel: "remove" })
+    expect(orch.forgetProject).toHaveBeenCalledWith("/repos/alpha")
+    // Never routes to deleteTask (which refuses main rows) or kills a session.
+    expect(orch.deleteTask).not.toHaveBeenCalled()
+    expect(killSession).not.toHaveBeenCalled()
+    expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  test("declined confirm leaves the project in place", async () => {
+    const tasks = [makeTask({ id: "m1", kind: "main", repo: "/repos/alpha" })]
+    const orch = makeOrch()
+    const { ctx } = makeCtx({ tasks, orch, confirms: [false] })
+
+    await deleteTaskFlow(ctx, "m1")
+
+    expect(orch.forgetProject).not.toHaveBeenCalled()
+  })
+
+  test("forget failure surfaces a toast and skips reload", async () => {
+    const tasks = [makeTask({ id: "m1", kind: "main", repo: "/repos/alpha" })]
+    const orch = makeOrch({
+      forgetProject: vi.fn(async () => {
+        throw new Error("daemon exploded")
+      }),
+    })
+    const { ctx, notifyError, reload } = makeCtx({ tasks, orch, confirms: [true] })
+
+    await deleteTaskFlow(ctx, "m1")
+
+    expect(notifyError).toHaveBeenCalledWith("Couldn't remove: daemon exploded")
+    expect(reload).not.toHaveBeenCalled()
   })
 })
 

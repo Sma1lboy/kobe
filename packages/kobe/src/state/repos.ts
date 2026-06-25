@@ -62,6 +62,26 @@ export function resolveRepoRoot(absPath: string): string {
 }
 
 /**
+ * Whether `absPath` points inside a local git work tree. `kobe add` uses this
+ * to reject a non-repo argument before it pollutes the saved-projects picker:
+ * `kobe add ,` resolves `,` to a directory that doesn't exist (or isn't a
+ * repo), and without this guard the garbage path was stored verbatim and then
+ * couldn't be deleted from the TUI (it surfaced as a synthetic main row that
+ * `deleteTask` refuses). A missing/!-repo `cwd` makes `git` exit non-zero (or
+ * `spawnSync` error with a null status), so both cases return false. Remote
+ * (`ssh://…`) keys are validated by the remote-add flow, not here.
+ */
+export function isGitRepo(absPath: string): boolean {
+  if (isRemoteRepoKey(absPath)) return false
+  const r = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
+    cwd: absPath,
+    encoding: "utf8",
+    shell: false,
+  })
+  return r.status === 0 && (r.stdout ?? "").trim() === "true"
+}
+
+/**
  * Resolve a local path to the repository's PRIMARY checkout. `git rev-parse
  * --show-toplevel` returns the linked worktree when called from a task
  * worktree; scripted task creation wants the source repo instead so new tasks
@@ -283,6 +303,18 @@ export function removeSavedRepo(absPath: string): RemoveResult {
       return false // nothing to remove — leave the file untouched
     }
     state.savedRepos = cur.filter((p) => p !== absPath)
+    // For a remote project (`ssh://…` key) also drop its connection config so
+    // we don't leave an orphan `remoteRepos` entry pointing at a project the
+    // user just forgot. The OS-keychain password (a separate, destructive side
+    // effect) is intentionally left untouched.
+    if (isRemoteRepoKey(absPath)) {
+      const remotes = readRemoteRepos(state)
+      if (absPath in remotes) {
+        const next = { ...remotes }
+        delete next[absPath]
+        state.remoteRepos = next
+      }
+    }
     result = { removed: true, path: absPath, total: cur.length - 1 }
     return undefined
   })

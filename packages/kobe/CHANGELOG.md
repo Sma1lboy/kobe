@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.41
+
+### Patch Changes
+
+- a6198ca: `kobe add <path>` now rejects a path that isn't a local git repository instead of saving it verbatim. Before this, `kobe add ,` (where `,` resolves to a non-existent directory) silently stored the garbage path as a saved project — which then surfaced as a synthetic main row in the PROJECTS sidebar that couldn't be deleted (`deleteTask` refuses main rows, so it failed with a confusing error). Add validates with `git rev-parse --is-inside-work-tree` and exits non-zero with a clear message; an already-saved garbage entry can still be cleared with `kobe remove`.
+- 1f69472: Deleting a project (the `kind: "main"` row) now works from the TUI, and removing a project no longer leaves an orphan row behind. Pressing `d` on a project row used to route to `deleteTask`, which refuses main rows — so it just failed with a confusing error (e.g. `connect ENOENT …`). It now runs a non-destructive "forget project" flow: un-save the repo and drop its synthetic main row, while the repo's files, branches, worktrees, and any real tasks under it stay on disk. `kobe remove` got the same fix end-to-end — previously it dropped the saved-repos entry but left the main task in the daemon-owned index, so the project kept showing up. Both paths now go through a new `forgetProject` orchestrator method (and `project.forget` RPC), matching by the canonical git-toplevel key so a subdirectory or differently-realpathed input still hits the stored entry.
+
+## 0.7.40
+
+### Patch Changes
+
+- 649a2b7: Add `kobe remove [path]` — the inverse of `kobe add`. It forgets a saved project (drops it from the new-task picker) without touching anything on disk: the repo's files, worktrees, branches and tasks all stay. Matching is forgiving — pass a relative path, a subdirectory, or the exact stored entry (so a stray/garbage entry or a remote `ssh://user@host` key is removable verbatim); run with no match to print the current saved projects so you can copy the exact one. Removing a remote project also drops its stored connection config so no orphan `remoteRepos` entry is left behind. Until now there was no way — TUI or CLI — to remove a saved project.
+
 ## 0.7.39
 
 ### Patch Changes

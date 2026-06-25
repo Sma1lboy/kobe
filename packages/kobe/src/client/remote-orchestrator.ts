@@ -536,6 +536,10 @@ export class RemoteOrchestrator {
     return res.worktreePath
   }
 
+  async forgetProject(repo: string): Promise<void> {
+    await this.client.request("project.forget", { repo })
+  }
+
   async setTitle(id: TaskId | string, title: string): Promise<void> {
     await this.client.request("task.rename", { taskId: String(id), title })
   }
