@@ -270,6 +270,29 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   if (!ctx.orch) return
   const task = ctx.tasks().find((t) => t.id === taskId)
   if (!task) return
+  // A "project" row is a synthetic `kind: "main"` task projecting a saved
+  // repo. It has no worktree of its own to destroy, and `deleteTask` refuses
+  // it (CannotDeleteMainTaskError) — pressing `d` on it used to just error.
+  // Route it to forget-project instead: un-save the repo + drop the main row,
+  // leaving the repo and any real tasks under it on disk.
+  if (task.kind === "main") {
+    const ok = await ctx.confirm({
+      title: `Remove project "${task.title}"?`,
+      body: "Forgets it from the projects list. The repo, its branches, worktrees, and any tasks under it stay on disk — re-add it with `kobe add`.",
+      cancelLabel: "cancel",
+      confirmLabel: "remove",
+    })
+    if (!ok) return
+    try {
+      await ctx.orch.forgetProject(task.repo)
+    } catch (err) {
+      ctx.logger.error(`${ctx.logPrefix} forget project failed:`, err)
+      ctx.notifyError?.(`Couldn't remove: ${err instanceof Error ? err.message : String(err)}`)
+      return
+    }
+    await ctx.reload?.()
+    return
+  }
   const ok = await ctx.confirm({
     title: `Delete "${task.title}"?`,
     body: "Removes the task entry and its worktree. The tmux session (if any) is killed.",

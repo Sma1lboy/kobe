@@ -356,6 +356,14 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
       },
     },
     {
+      name: "project.forget",
+      async handle(payload, ctx) {
+        const repo = requireString(payload, "repo")
+        await ctx.orch.forgetProject(repo)
+        return {}
+      },
+    },
+    {
       name: "task.ensureWorktree",
       async handle(payload, ctx) {
         const taskId = requireString(payload, "taskId")

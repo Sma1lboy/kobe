@@ -27,7 +27,13 @@ import { basename, resolve } from "node:path"
 import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
 import { samePrStatus } from "../monitor/pr-status.ts"
-import { getRemoteRepoConfig, isRemoteRepoKey, resolveRepoRoot } from "../state/repos.ts"
+import {
+  getRemoteRepoConfig,
+  getSavedRepos,
+  isRemoteRepoKey,
+  removeSavedRepo,
+  resolveRepoRoot,
+} from "../state/repos.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
@@ -509,6 +515,45 @@ export class Orchestrator {
     await this.store.remove(task.id)
     this.pendingBaseRefs.delete(task.id)
     this.worktreeLocks.delete(task.id)
+  }
+
+  /**
+   * Forget a saved project: drop it from `savedRepos` (and, for a remote
+   * `ssh://` project, its stored connection config) AND remove the synthetic
+   * `kind: "main"` row that projects it into the sidebar. Non-destructive —
+   * the repo's files, branches, and its non-main task worktrees all stay on
+   * disk; only the picker entry + the project header row go away.
+   *
+   * This is the inverse of {@link ensureMainTask} and the one supported way to
+   * remove a main row: {@link deleteTask} deliberately refuses main rows
+   * (throws {@link CannotDeleteMainTaskError}) because they are a projection
+   * of `savedRepos`, not real work. Without this, un-saving a repo left an
+   * orphaned main task in the index — the row stayed, un-deletable, and a
+   * garbage `kobe add` entry (e.g. `kobe add ,`) could never be cleared.
+   *
+   * The main task's `worktreePath` is the repo root itself (see
+   * {@link ensureMainTask}), so we remove ONLY the index entry — never a
+   * `git worktree remove`. Idempotent: forgetting an already-forgotten /
+   * never-saved repo just no-ops.
+   */
+  async forgetProject(repo: string): Promise<void> {
+    if (!repo) throw new Error("forgetProject: repo is required")
+    // Match by the canonical main-repo key (realpath of the git toplevel, or
+    // the verbatim ssh:// key) so a subdir / differently-realpathed input
+    // (`/var` vs `/private/var` on macOS) still hits the stored savedRepos
+    // entry and the stored main task — the two are written in different forms
+    // (caller path vs git output), so a plain string compare misses.
+    const key = normalizeMainRepo(repo).key
+    for (const saved of getSavedRepos()) {
+      if (normalizeMainRepo(saved).key === key) removeSavedRepo(saved)
+    }
+    for (const task of this.store.list()) {
+      if (task.kind !== "main") continue
+      if (normalizeMainRepo(task.repo).key !== key) continue
+      await this.store.remove(task.id)
+      this.pendingBaseRefs.delete(task.id)
+      this.worktreeLocks.delete(task.id)
+    }
   }
 
   /**
