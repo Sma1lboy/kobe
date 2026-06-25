@@ -10,7 +10,7 @@ export const en = {
   },
   actions: {
     zen: "Zen",
-    createPR: "create PR",
+    createPR: "Create PR",
   },
   legend: {
     changes: "M modified · A added · D deleted · ? untracked",
