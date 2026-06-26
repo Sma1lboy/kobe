@@ -1,0 +1,9 @@
+name: init-preview
+brief: "Image-first init preview for kobe using local TUI and branding references."
+style: clean-product-hero
+content:
+  headline: kobe
+  subject: "A restrained product-first launch card for kobe. Make the provided real kobe TUI screenshot the dominant surface, keep the word kobe fully visible, and include the supporting copy parallel agents, one terminal. No people, no planet scene, no mascots, no fake browser dashboard."
+deliverables:
+  - id: hero-card
+    size: [1200, 630]

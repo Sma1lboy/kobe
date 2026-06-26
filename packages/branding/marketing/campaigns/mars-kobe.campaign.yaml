@@ -1,0 +1,9 @@
+name: mars-kobe
+brief: "Create one cinematic hero image showing kobe being used on Mars, with the actual kobe TUI as the dominant product surface."
+style: mars-launch-hero
+content:
+  headline: kobe
+  subject: "On Mars, a suited adult mission operator uses a rugged field terminal running kobe. The terminal screen is large, crisp, and clearly based on the provided kobe TUI references: left task rail, central engine pane, file tree, shell pane, tmux-style borders, clay-orange focus accents, and monospace terminal text. The environment is rust-red Martian terrain with believable habitat hardware and cable harnesses. Render only sparse exact marketing text: kobe and parallel agents, one terminal."
+deliverables:
+  - id: mars-hero
+    size: [2400, 1264]
