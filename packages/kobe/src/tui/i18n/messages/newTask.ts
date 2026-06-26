@@ -50,6 +50,9 @@ export const en = {
     noMatch: "no worktrees match the filter",
     hintSelected: "{count} selected · enter toggles · ctrl+a all · Create imports",
     hintDefault: "enter toggles · ctrl+a all · Create imports the highlighted row",
+    summaryAll: "Adopted {count} worktree(s)",
+    summaryPartial: "Adopted {done}/{total} worktrees — the rest failed (see log)",
+    summaryNone: "Couldn't adopt any worktree: {error}",
   },
 
   clone: {
@@ -124,6 +127,9 @@ export const zh: typeof en = {
     noMatch: "没有 worktree 匹配此过滤条件",
     hintSelected: "已选 {count} 项 · enter 切换选中 · ctrl+a 全选 · 创建 导入",
     hintDefault: "enter 切换选中 · ctrl+a 全选 · 创建 将导入高亮行",
+    summaryAll: "已接管 {count} 个 worktree",
+    summaryPartial: "已接管 {done}/{total} 个 worktree — 其余失败（详见日志）",
+    summaryNone: "没有 worktree 接管成功：{error}",
   },
 
   clone: {
