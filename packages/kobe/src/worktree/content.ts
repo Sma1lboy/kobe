@@ -23,6 +23,13 @@ export interface WorktreeContentDeps {
 
 export interface RunWorktreeGitOptions extends WorktreeContentDeps {
   readonly timeoutMs?: number
+  /**
+   * Caller cancellation. Combined with the internal timeout (if any) so
+   * aborting the signal kills the underlying subprocess — lets UI panes
+   * cancel an in-flight `git` read when the tab/worktree changes out from
+   * under them instead of stacking overlapping subprocesses.
+   */
+  readonly signal?: AbortSignal
 }
 
 /**
@@ -47,12 +54,18 @@ export async function runWorktreeGit(
         controller.abort()
       }, options.timeoutMs)
     : null
+  // Fold the caller's signal in with the timeout controller so either
+  // source aborts the subprocess.
+  const signal =
+    controller && options.signal
+      ? AbortSignal.any([controller.signal, options.signal])
+      : (controller?.signal ?? options.signal)
   let result: ExecResult
   try {
     result = await exec.run(["git", ...args], {
       cwd: worktreePath,
       env: READ_ONLY_GIT_ENV,
-      signal: controller?.signal,
+      signal,
     })
   } catch (err) {
     if (timer) clearTimeout(timer)

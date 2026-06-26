@@ -243,7 +243,7 @@ export function FileTree(props: FileTreeProps) {
    * switch — re-fetching every time the user pings 1/2/1/2 would be
    * wasteful and disorienting.
    */
-  async function refetch(currentTab: FileTreeTab, path: string | null): Promise<void> {
+  async function refetch(currentTab: FileTreeTab, path: string | null, signal?: AbortSignal): Promise<void> {
     const seq = ++fetchSeq
     if (path == null) {
       setAllFiles(null)
@@ -254,15 +254,18 @@ export function FileTree(props: FileTreeProps) {
     setError(null)
     try {
       if (currentTab === "all") {
-        const files = await listFiles(path)
-        if (seq !== fetchSeq || props.worktreePath() !== path) return
+        const files = await listFiles(path, signal)
+        if (signal?.aborted || seq !== fetchSeq || props.worktreePath() !== path) return
         setAllFiles(files)
       } else if (currentTab === "changes") {
-        const entries = await statusFiles(path)
-        if (seq !== fetchSeq || props.worktreePath() !== path) return
+        const entries = await statusFiles(path, signal)
+        if (signal?.aborted || seq !== fetchSeq || props.worktreePath() !== path) return
         setChanges(entries)
       }
     } catch (err) {
+      // An aborted fetch (tab/worktree changed out from under us) throws
+      // via the killed subprocess — swallow it, the next run owns state.
+      if (signal?.aborted) return
       const message = err instanceof Error ? err.message : String(err)
       if (seq === fetchSeq && props.worktreePath() === path) setError(message)
     }
@@ -277,7 +280,11 @@ export function FileTree(props: FileTreeProps) {
       setError(null)
       setCursorIndex(0)
       setExpandedDirs(new Set<string>())
-      await refetch(tab(), path)
+      // Abort the in-flight git read if the worktree changes again before
+      // it resolves, so rapid task-switches don't stack subprocesses.
+      const controller = new AbortController()
+      onCleanup(() => controller.abort())
+      await refetch(tab(), path, controller.signal)
     }),
   )
 
@@ -323,17 +330,23 @@ export function FileTree(props: FileTreeProps) {
       if (path == null) return
       // Reset cursor on tab switch — different row count, different list.
       setCursorIndex(0)
+      // Abort an overlapping git read when the tab switches or another
+      // refresh tick lands before this one resolves — without this, a
+      // rapid 1/2/1/2 or repeated `r` stacks live subprocesses even
+      // though `fetchSeq` already drops their stale writes.
+      const controller = new AbortController()
+      onCleanup(() => controller.abort())
       // For an explicit refresh tick > 0 we always re-fetch even if
       // data is loaded.
       const tickVal = refreshTick()
       const isExplicitRefresh = tickVal > 0
       if (currentTab === "all") {
         if (allFiles() == null || isExplicitRefresh) {
-          await refetch("all", path)
+          await refetch("all", path, controller.signal)
         }
       } else if (currentTab === "changes") {
         if (changes() == null || isExplicitRefresh) {
-          await refetch("changes", path)
+          await refetch("changes", path, controller.signal)
         }
       }
     }),
