@@ -56,9 +56,9 @@ export type NumstatEntry = {
 }
 
 /** Internal helper — drives Worktree content git, throws on non-zero. */
-async function runGit(args: readonly string[], cwd: string): Promise<string> {
+async function runGit(args: readonly string[], cwd: string, signal?: AbortSignal): Promise<string> {
   if (!cwd) throw new Error("git(): cwd is required")
-  const result = await runWorktreeGit(cwd, args)
+  const result = await runWorktreeGit(cwd, args, { signal })
   const exitCode = result.status ?? -1
   if (exitCode !== 0) {
     const stderr = (result.stderr ?? "").trim()
@@ -78,8 +78,12 @@ async function runGit(args: readonly string[], cwd: string): Promise<string> {
  * alphabetical, but we sort defensively in case a future flag changes
  * that).
  */
-export async function listFiles(worktreePath: string): Promise<string[]> {
-  const out = await runGit(["ls-files", "--cached", "--others", "--exclude-standard", "--full-name"], worktreePath)
+export async function listFiles(worktreePath: string, signal?: AbortSignal): Promise<string[]> {
+  const out = await runGit(
+    ["ls-files", "--cached", "--others", "--exclude-standard", "--full-name"],
+    worktreePath,
+    signal,
+  )
   const lines = out.split("\n").map((l) => l.replace(/\r$/, ""))
   // De-dup: --cached + --others can in theory list the same file twice
   // when the working tree has both an index entry and an untracked
@@ -103,13 +107,13 @@ export async function listFiles(worktreePath: string): Promise<string[]> {
  * space, else the index status (X). Untracked stays `?`. Renames look
  * like `R  old -> new` — we keep only the "new" path and report `R`.
  */
-export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> {
+export async function statusFiles(worktreePath: string, signal?: AbortSignal): Promise<StatusEntry[]> {
   // `--untracked-files=all`: without it, `git status --porcelain` collapses a
   // fully-untracked directory into ONE `?? dir/` row, which the Changes tab
   // then renders as a bare directory (no +/- stats, no file to open). `-uall`
   // expands it to the individual untracked files — matching the All tab's
   // `git ls-files --others` enumeration and respecting .gitignore the same way.
-  const out = await runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath)
+  const out = await runGit(["status", "--porcelain", "--untracked-files=all"], worktreePath, signal)
   const entries = parsePorcelain(out)
   // Merge in `git diff HEAD --numstat` so each row carries +/- counts.
   // Untracked files don't appear in `git diff` output — for those we
@@ -118,7 +122,7 @@ export async function statusFiles(worktreePath: string): Promise<StatusEntry[]> 
   // handles missing stats by rendering blanks.
   let stats: Map<string, { added: number | null; deleted: number | null }> | null = null
   try {
-    const diffOut = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath)
+    const diffOut = await runGit(["diff", "--no-color", "--numstat", "HEAD"], worktreePath, signal)
     stats = new Map(parseNumstat(diffOut).map((n) => [n.path, { added: n.added, deleted: n.deleted }]))
   } catch {
     // No HEAD yet (initial commit), or other diff failure — skip

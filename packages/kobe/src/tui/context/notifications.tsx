@@ -27,6 +27,7 @@
  */
 
 import { type Accessor, type ParentProps, createContext, createSignal, useContext } from "solid-js"
+import { createManagedTimeouts } from "../lib/managed-timeout"
 import { pulse as pulseSound } from "../lib/sound"
 import { useKV } from "./kv"
 
@@ -67,6 +68,10 @@ export function NotificationsProvider(props: ParentProps) {
   const kv = useKV()
   const [toasts, setToasts] = createSignal<readonly Toast[]>([])
   const [unread, setUnread] = createSignal<ReadonlyMap<string, NotificationKind>>(new Map())
+  // Toast auto-dismiss timers are owner-scoped: any still-pending timer
+  // is cleared when the provider unmounts so `dismiss()` never runs
+  // against a torn-down signal.
+  const timeouts = createManagedTimeouts()
   let counter = 0
 
   function notify(input: NotifyInput): void {
@@ -109,7 +114,7 @@ export function NotificationsProvider(props: ParentProps) {
         title: input.title,
       }
       setToasts((prev) => [...prev, toast])
-      setTimeout(() => dismiss(id), TOAST_DURATION_MS)
+      timeouts.set(() => dismiss(id), TOAST_DURATION_MS)
     }
   }
 

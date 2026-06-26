@@ -24,6 +24,7 @@ import { type JSX, type ParentProps, Show, batch, createContext, useContext } fr
 import { createStore } from "solid-js/store"
 import { useTheme } from "../context/theme"
 import { useBindings } from "../lib/keymap"
+import { createManagedTimeouts } from "../lib/managed-timeout"
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 
@@ -136,9 +137,13 @@ function init() {
 
   const renderer = useRenderer()
   let focus: Renderable | null = null
+  // Deferred refocus is owner-scoped so a provider teardown between the
+  // dialog closing and this 1ms timer cancels it — otherwise `.focus()`
+  // can land on a renderable that was destroyed in the same tick.
+  const timeouts = createManagedTimeouts()
 
   function refocus() {
-    setTimeout(() => {
+    timeouts.set(() => {
       if (!focus) return
       if (focus.isDestroyed) return
       function find(item: Renderable): boolean {
