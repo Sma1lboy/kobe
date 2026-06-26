@@ -110,3 +110,44 @@ export function logClientError(subsystem: string, err: unknown): void {
   const e = coerceError(err)
   append(formatClientEntry(subsystem, e.stack ?? e.message))
 }
+
+let onRejection: ((reason: unknown) => void) | undefined
+let onException: ((err: Error) => void) | undefined
+
+/**
+ * Install the pane host's `unhandledRejection` / `uncaughtException` net —
+ * the client-side mirror of `daemon/crash-log.ts`'s
+ * {@link installDaemonCrashHandlers}.
+ *
+ * Each `kobe <pane>` subcommand is its own opentui process with ~69
+ * fire-and-forget `void someAsync()` call sites across `src/tui/`. With NO
+ * handler registered, Bun/Node's default for a single stray rejected promise
+ * (a poll tick reading a worktree that vanished, a daemon socket dropping
+ * mid-handler) is to terminate the process — dropping the whole pane to a raw
+ * shell. Registering these flips the default: the incident is *logged* to
+ * `client.log` (the alternate-screen-safe sink) tagged `crash-net`, and the
+ * pane keeps running. A single rejected fire-and-forget must degrade
+ * gracefully, not kill the pane.
+ *
+ * Idempotent: a second call is a no-op so a misbehaving caller can't stack
+ * duplicate handlers.
+ */
+export function installClientCrashHandlers(): void {
+  if (onRejection || onException) return
+  onRejection = (reason) => logClientError("crash-net", reason)
+  onException = (err) => logClientError("crash-net", err)
+  process.on("unhandledRejection", onRejection)
+  process.on("uncaughtException", onException)
+}
+
+/**
+ * Test-only: remove exactly the handlers this module installed (never
+ * `removeAllListeners`, which would also strip the test runner's own
+ * handlers) and clear the idempotency latch.
+ */
+export function resetClientCrashHandlersForTest(): void {
+  if (onRejection) process.off("unhandledRejection", onRejection)
+  if (onException) process.off("uncaughtException", onException)
+  onRejection = undefined
+  onException = undefined
+}

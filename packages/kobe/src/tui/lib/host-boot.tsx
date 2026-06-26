@@ -28,8 +28,12 @@
  */
 
 import { render } from "@opentui/solid"
-import { setClientLogContext } from "@sma1lboy/kobe-daemon/client/client-log"
-import { type JSX, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import {
+  installClientCrashHandlers,
+  logClientError,
+  setClientLogContext,
+} from "@sma1lboy/kobe-daemon/client/client-log"
+import { ErrorBoundary, type JSX, createEffect, createSignal, onCleanup, onMount } from "solid-js"
 import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { FocusProvider } from "../context/focus"
@@ -38,7 +42,7 @@ import { KVProvider } from "../context/kv"
 import { NotificationsProvider } from "../context/notifications"
 import { ThemeProvider, addTheme, useTheme } from "../context/theme"
 import { loadUserThemes } from "../context/theme/loader"
-import { isLocaleId, setLocaleLang } from "../i18n"
+import { isLocaleId, setLocaleLang, t } from "../i18n"
 import { DialogProvider } from "../ui/dialog"
 import { type UiPrefsTarget, applyUiPrefs } from "./apply-ui-prefs"
 import { type PersistedUiPrefs, readPersistedUiPrefs } from "./persisted-ui-prefs"
@@ -113,6 +117,14 @@ export interface BootPaneHostOpts {
  */
 function applyHostBootSteps(logContext?: string): void {
   if (logContext) setClientLogContext(logContext)
+  // Process-level crash net, FIRST — before any boot step can spawn a
+  // fire-and-forget. Each pane is its own opentui process with no
+  // unhandledRejection/uncaughtException handler of its own; the default is
+  // to terminate, dropping the pane to a raw shell on a single stray
+  // rejected promise. This flips that to a logged-and-survive default
+  // (mirrors the daemon's `installDaemonCrashHandlers`). The render tree's
+  // own throws are caught separately by the <ErrorBoundary> in bootPaneHost.
+  installClientCrashHandlers()
   applyUserKeybindings()
   for (const { name, theme } of loadUserThemes()) {
     addTheme(name, theme)
@@ -162,6 +174,32 @@ function HostProviders(props: {
     <ThemeProvider mode="dark" theme={props.theme}>
       {withKv()}
     </ThemeProvider>
+  )
+}
+
+/**
+ * The themed fallback rendered when the host's view tree throws during render
+ * (Solid's `<ErrorBoundary>` catches synchronous render/effect errors — the
+ * crash-net `installClientCrashHandlers` covers fire-and-forget rejections,
+ * the other half of the same "a pane must not die to a raw shell" goal).
+ *
+ * It logs the error once (to `client.log`, the only sink visible under tmux's
+ * alternate screen) and paints a minimal, theme-aware placeholder instead of
+ * letting the process exit. Lives INSIDE `HostProviders`, so `useTheme()` and
+ * `t()` are available; kept dependency-light (a plain box of text) so the
+ * fallback itself can't throw. Errors during render don't auto-recover, so no
+ * `reset` is wired — the user reloads the pane.
+ */
+function PaneCrashFallback(props: { error: unknown }) {
+  const { theme } = useTheme()
+  // Log once on mount, not during render (render can re-run; an effect fires
+  // exactly once for this mounted fallback).
+  onMount(() => logClientError("pane-crash", props.error))
+  return (
+    <box flexDirection="column" flexGrow={1} backgroundColor={theme.background} paddingLeft={1} paddingTop={1} gap={1}>
+      <text fg={theme.error}>{t("common.paneCrash.title")}</text>
+      <text fg={theme.textMuted}>{t("common.paneCrash.hint")}</text>
+    </box>
   )
 }
 
@@ -321,7 +359,7 @@ export async function bootPaneHost(opts: BootPaneHostOpts): Promise<void> {
     () => (
       <HostProviders theme={prefs.theme} kv={kv} focus={focus} notifications={notifications}>
         <UiPrefsSync boot={prefs} />
-        {screen.root()}
+        <ErrorBoundary fallback={(err) => <PaneCrashFallback error={err} />}>{screen.root()}</ErrorBoundary>
       </HostProviders>
     ),
     hostRenderOptions(screen.onDestroy),

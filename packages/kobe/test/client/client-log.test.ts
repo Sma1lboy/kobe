@@ -4,7 +4,9 @@ import { join } from "node:path"
 import {
   flushClientLog,
   formatClientEntry,
+  installClientCrashHandlers,
   logClient,
+  resetClientCrashHandlersForTest,
   setClientLogContext,
 } from "@sma1lboy/kobe-daemon/client/client-log"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -53,6 +55,42 @@ describe("client-log", () => {
       expect(lines[0]).toContain("client ops [reconnect] ")
       expect(lines[0]).toContain("daemon socket closed")
       expect(lines[1]).toContain("reconnected after 2 attempts")
+    })
+  })
+
+  /**
+   * The pane crash net: each `kobe <pane>` process used to terminate on a
+   * single stray rejected fire-and-forget. These lock that the handlers are
+   * installed exactly once (idempotent) and remove cleanly, mirroring the
+   * daemon's `crash-log` contract.
+   */
+  describe("crash handlers", () => {
+    afterEach(() => resetClientCrashHandlersForTest())
+
+    it("registers one unhandledRejection + one uncaughtException handler", () => {
+      const rejBefore = process.listenerCount("unhandledRejection")
+      const excBefore = process.listenerCount("uncaughtException")
+      installClientCrashHandlers()
+      expect(process.listenerCount("unhandledRejection")).toBe(rejBefore + 1)
+      expect(process.listenerCount("uncaughtException")).toBe(excBefore + 1)
+    })
+
+    it("is idempotent — a second install adds no further handlers", () => {
+      installClientCrashHandlers()
+      const rej = process.listenerCount("unhandledRejection")
+      const exc = process.listenerCount("uncaughtException")
+      installClientCrashHandlers()
+      expect(process.listenerCount("unhandledRejection")).toBe(rej)
+      expect(process.listenerCount("uncaughtException")).toBe(exc)
+    })
+
+    it("resetForTest removes exactly the handlers it installed", () => {
+      const rejBaseline = process.listenerCount("unhandledRejection")
+      const excBaseline = process.listenerCount("uncaughtException")
+      installClientCrashHandlers()
+      resetClientCrashHandlersForTest()
+      expect(process.listenerCount("unhandledRejection")).toBe(rejBaseline)
+      expect(process.listenerCount("uncaughtException")).toBe(excBaseline)
     })
   })
 })
