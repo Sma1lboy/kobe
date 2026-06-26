@@ -2,5 +2,19 @@ schema_version: "1.0"
 owner:
   kind: brand
   id: kobe
-revision: 1
-accepted: []
+revision: 2
+accepted:
+  - id: mars-kobe-mars-hero-2026-06-26
+    kind: artifact
+    campaign: mars-kobe
+    asset_id: mars-hero
+    path: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
+    manifest: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/manifest.json
+    run_lock: packages/branding/.harness/out/mars-kobe/run.lock.json
+    checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
+    tags:
+      - mars-kobe
+      - hero
+      - terminal-first
+      - accepted
+    notes: Accepted by the user after review. Keep the Mars scene campaign-specific; preserve the screen-first product hierarchy in future variants.
