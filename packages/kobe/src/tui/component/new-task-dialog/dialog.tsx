@@ -542,9 +542,9 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
         cmd: () => switchToTab(nextDialogTab(tab())),
       },
       {
-        // Ctrl+[ → previous sub-tab. With two tabs this toggles too.
+        // Ctrl+[ → previous sub-tab (reverse of Ctrl+]).
         key: "ctrl+[",
-        cmd: () => switchToTab(nextDialogTab(tab())),
+        cmd: () => switchToTab(prevDialogTab(tab())),
       },
       {
         // Ctrl+E cycles the engine vendor within the detected set.
