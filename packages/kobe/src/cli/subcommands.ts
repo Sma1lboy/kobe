@@ -1,9 +1,12 @@
 /**
- * Top-level kobe subcommands (user-facing).
+ * Top-level kobe subcommands (user-facing) — the source `kobe completions`
+ * reads to build its shell completion scripts.
  *
- * Kept as one array so `kobe completions` and the CLI dispatch can share
- * the same source of truth (and so adding a subcommand updates completions
- * in one place).
+ * This must stay in lock-step with the command list rendered by
+ * {@link ./usage.ts}'s `topLevelUsage()` (the `kobe --help` text). That
+ * invariant is enforced by a test (`test/cli/usage.test.ts`), so adding or
+ * removing a public subcommand fails CI until both lists agree — they are NOT
+ * auto-derived from the `index.ts` dispatch, so the test is what catches drift.
  *
  * Internal subcommands fired by tmux key bindings (`new-chattab`,
  * `quick-create`, `quick-task`, `focus-tasks`, `heal-layout`,
