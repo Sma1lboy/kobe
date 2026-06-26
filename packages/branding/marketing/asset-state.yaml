@@ -2,7 +2,7 @@ schema_version: "1.0"
 owner:
   kind: brand
   id: kobe
-revision: 1
+revision: 2
 assets:
   - id: kobe-tui-actual
     kind: reference
@@ -40,6 +40,16 @@ assets:
     checksum_sha256: 8785ab52e8da0cc32c95aa4a7e6ed058c304c941b992c1cc30efef50cd89cd4a
     role: existing wordmark grammar
     status: active
+  - id: mars-kobe-mars-hero-2026-06-26
+    kind: artifact
+    path: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
+    campaign: mars-kobe
+    asset_id: mars-hero
+    width: 2400
+    height: 1264
+    checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
+    role: accepted Mars field-computing hero image
+    status: accepted
 patterns:
   - id: terminal-first
     description: The real kobe TUI should be the dominant readable product surface.
@@ -47,3 +57,5 @@ patterns:
     description: Use kobe and parallel agents, one terminal as the primary visible marketing text.
   - id: no-vendor-marks
     description: Avoid official Anthropic or Claude marks outside incidental terminal UI text from screenshots.
+  - id: mars-field-terminal-hero
+    description: For campaign-specific sci-fi field scenes, keep kobe's terminal screen dominant and readable, with the human/operator smaller than the product surface.
