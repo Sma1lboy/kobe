@@ -20,6 +20,7 @@ import { availableEngineIds } from "@/engine/account-detect"
 import { engineDisplayName } from "@/engine/interactive-command"
 import { DIRTY_WORKTREE_CODE } from "@/orchestrator/errors"
 import { addSavedRepo, getSavedRepos } from "@/state/repos"
+import { t } from "@/tui/i18n"
 import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "@/types/task"
 import { nextVendorWithin } from "@/types/vendor"
 import type { NewTaskDialogOptions, NewTaskInput } from "../component/new-task-dialog"
@@ -465,31 +466,49 @@ export async function createTaskFlow(ctx: CreateTaskContext): Promise<void> {
   // raised in the catch below.
   ctx.notifyInfo?.("Creating task…")
   let createdId: string | undefined
-  try {
-    if (result.mode === "adopt") {
-      // Adopt: import one or more existing worktrees as tasks, then focus
-      // the last one (KOB-256).
-      for (const w of result.adopt) {
-        const t = await orch.adoptWorktree({
+  if (result.mode === "adopt") {
+    // Adopt: import one or more existing worktrees as tasks, focusing the last
+    // success (KOB-256). Each adopt is independent — collect per-item results
+    // so a later failure can't bury the ones that DID persist behind a generic
+    // "couldn't create" toast (they'd be silently invisible). Surface a real
+    // N/M summary instead.
+    const total = result.adopt.length
+    let adopted = 0
+    let firstError: string | undefined
+    for (const w of result.adopt) {
+      try {
+        const task = await orch.adoptWorktree({
           repo: result.repo,
           worktreePath: w.worktreePath,
           branch: w.branch,
           vendor: result.vendor,
         })
-        createdId = t.id
+        createdId = task.id
+        adopted++
+      } catch (err) {
+        if (firstError === undefined) firstError = err instanceof Error ? err.message : String(err)
+        ctx.logger.error(`${ctx.logPrefix} adoptWorktree failed for ${w.worktreePath}:`, err)
       }
-    } else {
+    }
+    if (adopted === 0) {
+      ctx.notifyError?.(t("newTask.adopt.summaryNone", { error: firstError ?? "" }))
+      return
+    }
+    if (adopted < total) ctx.notifyInfo?.(t("newTask.adopt.summaryPartial", { done: adopted, total }))
+    else ctx.notifyInfo?.(t("newTask.adopt.summaryAll", { count: adopted }))
+  } else {
+    try {
       const task = await orch.createTask({
         repo: result.repo,
         baseRef: result.baseRef,
         vendor: result.vendor,
       })
       createdId = task.id
+    } catch (err) {
+      ctx.logger.error(`${ctx.logPrefix} task.create failed:`, err)
+      ctx.notifyError?.(`Couldn't create task: ${err instanceof Error ? err.message : String(err)}`)
+      return
     }
-  } catch (err) {
-    ctx.logger.error(`${ctx.logPrefix} task.create/adopt failed:`, err)
-    ctx.notifyError?.(`Couldn't create task: ${err instanceof Error ? err.message : String(err)}`)
-    return
   }
   await ctx.reload?.()
   // Land the cursor on the new task, then enter it — `n` should drop the user
