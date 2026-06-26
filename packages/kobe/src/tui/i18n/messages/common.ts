@@ -6,6 +6,12 @@
 export const en = {
   cancel: "Cancel",
   confirm: "Confirm",
+  /** Fallback shown when a pane's render tree throws, replacing the raw
+   *  shell the process used to drop to. */
+  paneCrash: {
+    title: "This pane crashed",
+    hint: "Reload it from the Tasks pane (the error was logged to client.log).",
+  },
   rename: {
     defaultTitle: "Rename task",
     defaultFieldLabel: "title",
@@ -19,6 +25,10 @@ export const en = {
 export const zh: typeof en = {
   cancel: "取消",
   confirm: "确认",
+  paneCrash: {
+    title: "此面板已崩溃",
+    hint: "请从任务面板重新加载（错误已记录到 client.log）。",
+  },
   rename: {
     defaultTitle: "重命名任务",
     defaultFieldLabel: "名称",
