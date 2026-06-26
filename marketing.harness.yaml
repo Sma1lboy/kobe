@@ -1,0 +1,48 @@
+project:
+  id: kobe
+  root: .
+  marketingRoot: packages/branding/marketing
+
+organization:
+  id: kobe
+  name: kobe
+
+skillDistribution:
+  upstream: sma1lboy/brand-studio
+  fork: sma1lboy/brand-studio
+  scope: repo
+  ref: pr-12
+
+theme:
+  path: packages/branding/marketing/theme.md
+  campaigns: packages/branding/marketing/campaigns
+  references: packages/branding/marketing/references
+
+skills:
+  image: gpt-image
+  design: frontend-design
+
+campaign:
+  name: mars-kobe
+  path: packages/branding/marketing/campaigns/mars-kobe.campaign.yaml
+
+artifacts:
+  scratch: packages/branding/.harness/out
+  approved: docs/assets/brand
+
+state:
+  plans: packages/branding/marketing/plans
+  assetIndex: packages/branding/marketing/asset-state.yaml
+  accepted: packages/branding/marketing/accepted.yaml
+  directoryStateFile: asset-state.yaml
+
+sources:
+  assetRoots:
+    - packages/branding/marketing
+    - docs/assets/brand
+  relatedRepos: []
+
+policy:
+  requireHumanApprovalBeforeRender: true
+  requireHumanApprovalBeforeStateUpdate: true
+  allowRootWorkspaceBootstrap: false

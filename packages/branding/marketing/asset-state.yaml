@@ -1,0 +1,49 @@
+schema_version: "1.0"
+owner:
+  kind: brand
+  id: kobe
+revision: 1
+assets:
+  - id: kobe-tui-actual
+    kind: reference
+    path: packages/branding/marketing/references/kobe-tui-actual.png
+    source: workspace/products/kobe/kobe/references/kobe-tui-actual.png
+    width: 3016
+    height: 1742
+    checksum_sha256: 5bf841573ba936995cd69c6794eb1b025a2d96b1889a4d2a532d4b7fdf54bbb4
+    role: canonical live TUI screenshot
+    status: active
+  - id: kobe-tui-clean
+    kind: reference
+    path: packages/branding/marketing/references/kobe-tui-clean.png
+    source: workspace/products/kobe/kobe/references/kobe-tui-clean.png
+    width: 3024
+    height: 1632
+    checksum_sha256: 1dc081812e613b373d5be8066e55a8302055a6a05b12f4dfe0196285d660a703
+    role: clean TUI product screenshot
+    status: active
+  - id: pane-grid
+    kind: reference
+    path: packages/branding/marketing/references/pane-grid.png
+    source: docs/assets/brand/pane-grid.png
+    width: 1200
+    height: 800
+    checksum_sha256: 19210406a83f329f5d4efdb7779f011e0dcdb472b849b4eb4b47c86bddffcc0c
+    role: existing brand motion still
+    status: active
+  - id: bracket-chip
+    kind: reference
+    path: packages/branding/marketing/references/bracket-chip.png
+    source: docs/assets/brand/bracket-chip.png
+    width: 1200
+    height: 630
+    checksum_sha256: 8785ab52e8da0cc32c95aa4a7e6ed058c304c941b992c1cc30efef50cd89cd4a
+    role: existing wordmark grammar
+    status: active
+patterns:
+  - id: terminal-first
+    description: The real kobe TUI should be the dominant readable product surface.
+  - id: sparse-copy
+    description: Use kobe and parallel agents, one terminal as the primary visible marketing text.
+  - id: no-vendor-marks
+    description: Avoid official Anthropic or Claude marks outside incidental terminal UI text from screenshots.

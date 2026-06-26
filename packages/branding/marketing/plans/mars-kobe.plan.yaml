@@ -1,0 +1,27 @@
+schema_version: "1.0"
+campaign: mars-kobe
+status: produced-pending-review
+created_at: "2026-06-26T14:14:04Z"
+producer:
+  skill: gpt-image
+  model: gpt-image-2
+  output_format: png
+inputs:
+  theme: packages/branding/marketing/theme.md
+  campaign: packages/branding/marketing/campaigns/mars-kobe.campaign.yaml
+  references:
+    - packages/branding/marketing/references/kobe-tui-actual.png
+    - packages/branding/marketing/references/pane-grid.png
+output:
+  scratch: packages/branding/.harness/out/mars-kobe/mars-hero.png
+  approved: docs/assets/brand
+generated:
+  path: packages/branding/.harness/out/mars-kobe/mars-hero.png
+  width: 2400
+  height: 1264
+  checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
+checks:
+  - Brand Studio validate must pass.
+  - Brand Studio dry-run must write run.lock.json and manifest.json.
+  - Generated PNG must be visually inspected before any approval-state update.
+  - Do not move the generated asset into docs/assets/brand until human approval.
