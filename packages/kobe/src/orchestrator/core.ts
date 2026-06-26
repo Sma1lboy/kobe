@@ -36,7 +36,7 @@ import {
 } from "../state/repos.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
-import type { AdoptableWorktree } from "../types/worktree.ts"
+import type { AdoptableWorktree, WorktreeInfo } from "../types/worktree.ts"
 import {
   CannotDeleteMainTaskError,
   DirtyWorktreeError,
@@ -103,8 +103,14 @@ export class Orchestrator {
   private readonly activeTaskAcc: Accessor<string | null>
   private readonly setActiveTaskSig: (next: string | null) => void
   private readonly unsubscribeStore: TaskIndexUnsubscribe
-  /** Per-repo lock so concurrent `ensureWorktree` calls don't race. */
-  private readonly worktreeLocks = new Map<TaskId, Promise<void>>()
+  /**
+   * Per-task lock so concurrent `ensureWorktree` calls don't race. The
+   * resolved value is the created worktree path, so a waiter reads the result
+   * from the shared promise instead of re-fetching the task after the lock —
+   * which would throw {@link TaskNotFoundError} if a concurrent delete landed
+   * in that window even though the worktree was created fine.
+   */
+  private readonly worktreeLocks = new Map<TaskId, Promise<string>>()
   /** Lock for `ensureMainTask` so concurrent calls don't double-create. */
   private readonly mainTaskLocks = new Map<string, Promise<Task>>()
 
@@ -275,42 +281,75 @@ export class Orchestrator {
     const task = this.requireTask(id)
     if (task.kind === "main") return repoWorkingDir(task.repo)
     if (task.worktreePath) return task.worktreePath
+    // A concurrent caller already in flight: await ITS result (the created
+    // path) rather than re-reading the store afterwards. Returning the shared
+    // promise both dedupes the work and is delete-safe — see worktreeLocks.
     const inflight = this.worktreeLocks.get(task.id)
-    if (inflight) {
-      await inflight
-      const refreshed = this.requireTask(task.id)
-      return refreshed.worktreePath
-    }
-    const work = (async () => {
-      const slug = await this.slugs.allocate(task.repo)
-      try {
-        const branch = task.branch || autoBranch(task.title, task.id)
-        const baseRef = this.pendingBaseRefs.get(task.id)
-        const info = await this.worktrees.createForTask({
-          repo: task.repo,
-          slug,
-          branch,
-          baseRef,
-        })
-        this.slugs.commit(task.repo, slug)
-        this.pendingBaseRefs.delete(task.id)
-        await this.store.update(task.id, {
-          worktreePath: info.path,
-          branch,
-        })
-      } catch (err) {
-        this.slugs.cancel(task.repo, slug)
-        throw err
-      }
-    })()
+    if (inflight) return inflight
+    const work = this.createWorktree(task)
     this.worktreeLocks.set(task.id, work)
     try {
-      await work
+      return await work
     } finally {
       this.worktreeLocks.delete(task.id)
     }
-    const finalTask = this.requireTask(task.id)
-    return finalTask.worktreePath
+  }
+
+  /**
+   * Allocate a slug, create the worktree, persist the path/branch. Self-cleaning
+   * and safe to retry: every partial-failure path rolls back so we never leave
+   * an orphan (a worktree on disk + a committed slug + a task whose
+   * `worktreePath` stayed empty, which would force a manual `rm` on the next
+   * attempt).
+   *
+   * Ordering is load-bearing: the slug is committed ONLY after `store.update`
+   * succeeds. Until then any failure — git error, or the task being deleted out
+   * from under us so the write throws — removes the just-created worktree and
+   * frees the slug. Returns the created path directly (not a store re-read) so
+   * a delete that lands the instant after creation can't turn a success into a
+   * spurious {@link TaskNotFoundError}.
+   */
+  private async createWorktree(task: Task): Promise<string> {
+    const slug = await this.slugs.allocate(task.repo)
+    const branch = task.branch || autoBranch(task.title, task.id)
+    const baseRef = this.pendingBaseRefs.get(task.id)
+    let info: WorktreeInfo
+    try {
+      info = await this.worktrees.createForTask({ repo: task.repo, slug, branch, baseRef })
+    } catch (err) {
+      // Nothing persisted yet — just free the slug for the next attempt.
+      this.slugs.cancel(task.repo, slug)
+      throw err
+    }
+    // The worktree now exists on disk. Persist its path BEFORE committing the
+    // slug; if the write fails (or the task was deleted concurrently, so the
+    // delete flow saw an empty `worktreePath` and skipped cleanup) we must roll
+    // the worktree back ourselves, or it becomes invisible on-disk debris.
+    try {
+      await this.store.update(task.id, { worktreePath: info.path, branch })
+    } catch (err) {
+      await this.rollbackWorktree(info.path)
+      this.slugs.cancel(task.repo, slug)
+      throw err
+    }
+    this.slugs.commit(task.repo, slug)
+    this.pendingBaseRefs.delete(task.id)
+    return info.path
+  }
+
+  /**
+   * Best-effort removal of a worktree we just created but couldn't persist.
+   * `force` because it's a brand-new checkout with no user work to protect, and
+   * a clean rollback matters more than the dirty-guard here. A failure is
+   * logged, not thrown — the caller already has the real (persist) error and we
+   * don't want to mask it.
+   */
+  private async rollbackWorktree(worktreePath: string): Promise<void> {
+    try {
+      await this.worktrees.remove(worktreePath, { force: true })
+    } catch (err) {
+      console.error(`[kobe] ensureWorktree rollback failed for ${worktreePath}:`, err)
+    }
   }
 
   /** Rename a task. Empty / whitespace-only titles are rejected. */
