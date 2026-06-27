@@ -1,0 +1,26 @@
+schema_version: "1.0"
+id: mc-end-kobe
+created_at: "2026-06-27T03:26:08Z"
+objective: "Run a PR12 Brand Studio production-environment test for kobe in an MC End-inspired field-computing scene."
+inputs:
+  theme: packages/branding/marketing/theme.md
+  campaign: packages/branding/marketing/campaigns/mc-end-kobe.campaign.yaml
+  asset_index: packages/branding/marketing/asset-state.yaml
+  accepted_corpus: packages/branding/marketing/accepted.yaml
+  references:
+    - packages/branding/marketing/references/kobe-tui-actual.png
+    - packages/branding/marketing/references/pane-grid.png
+sources:
+  repo:
+    id: kobe
+    theme_version: 1.2.0
+  related_products: []
+deliverables:
+  - id: mc-end-hero
+    size: [1536, 1024]
+acceptance_criteria:
+  - Brand Studio PR12 state and validate pass against the real kobe marketing state.
+  - Dry-run writes manifest and run.lock under the real kobe scratch directory.
+  - Live candidate is written to scratch only.
+  - No accepted state update unless the user accepts the candidate.
+status: planned
