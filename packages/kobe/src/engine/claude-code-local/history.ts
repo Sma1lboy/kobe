@@ -36,7 +36,7 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { appendFile, mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readdir, stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
@@ -320,14 +320,25 @@ function isObject(v: unknown): v is Record<string, unknown> {
  * prompt, so the model is blind to whatever the user had been saying.
  * The fix is to rescue the prompt into the JSONL ourselves on stop.
  *
- * Merge-vs-append rule: scan backwards for the most recent
- * conversational (user/assistant) record. If it's a user record (an
- * earlier kill that already rescued a prompt, with no assistant reply
- * since), concatenate this prompt into its content rather than
- * appending a second consecutive user record — back-to-back user
- * turns are not a shape the model API accepts after a `--resume`.
- * If it's an assistant record (or the file is empty), append a
- * fresh user record.
+ * Append-only — this never rewrites the file. Scan backwards for the
+ * most recent conversational (user/assistant) record to decide how to
+ * chain the new record:
+ *   - assistant record (or empty file): append a fresh user record
+ *     chained to it (`parentUuid` = that record's `uuid`).
+ *   - user record (an earlier kill that already rescued a prompt, with
+ *     no assistant reply since): coalesce — carry that turn's text
+ *     forward into the new record and chain to its PARENT, superseding
+ *     it as a same-parent sibling. claude's `--resume` walker follows
+ *     the newest leaf, so the model sees ONE coalesced user turn (never
+ *     two back-to-back user records — a shape the API rejects), and the
+ *     older sibling is left on disk untouched.
+ *
+ * Why append-only: the engine is mid-stop when this runs and claude may
+ * still be flushing buffered records to the same JSONL. The previous
+ * read-all-then-`writeFile`-the-whole-file merge clobbered any record
+ * flushed after our read snapshot. `appendFile` (O_APPEND) writes at the
+ * live EOF, so concurrent flushes survive; a stale snapshot can only
+ * mis-chain `parentUuid`, never lose data.
  *
  * File-not-exists is tolerated: claude may have died before its very
  * first record landed; we create the parent directory and write the
@@ -370,8 +381,7 @@ export async function appendInterruptedUserPrompt(
 
   // Scan backwards for the most recent user/assistant record. Skip
   // non-conversational records (tool results, summaries, etc.) so the
-  // merge check looks at semantic turns, not file-tail noise.
-  let lastConvIdx = -1
+  // coalesce check looks at semantic turns, not file-tail noise.
   let lastConvRecord: Record<string, unknown> | null = null
   let lastConvRole: "user" | "assistant" | null = null
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -387,7 +397,6 @@ export async function appendInterruptedUserPrompt(
     const inner = isObject(parsed.message) ? (parsed.message as Record<string, unknown>) : parsed
     const role = inner.role
     if (role === "user" || role === "assistant") {
-      lastConvIdx = i
       lastConvRecord = parsed
       lastConvRole = role
       break
@@ -396,31 +405,43 @@ export async function appendInterruptedUserPrompt(
 
   const now = new Date().toISOString()
 
-  if (lastConvRole === "user" && lastConvRecord && lastConvIdx >= 0) {
+  // Append-only — NEVER rewrite the file. The previous implementation
+  // edited the prior user record in place and `writeFile`-rewrote the
+  // WHOLE file from this in-memory snapshot. That snapshot is taken while
+  // the engine is mid-stop and claude may still be flushing buffered
+  // records (an assistant reply, tool results) to the same JSONL; a
+  // full-file rewrite would truncate anything flushed after our read →
+  // silent data loss. `appendFile` writes at the current EOF (O_APPEND),
+  // so a concurrent flush is preserved no matter when it lands; a stale
+  // snapshot can now only mis-chain `parentUuid`, never destroy records.
+  let content = prompt
+  let parentUuid = lastConvRecord && typeof lastConvRecord.uuid === "string" ? (lastConvRecord.uuid as string) : null
+
+  if (lastConvRole === "user" && lastConvRecord) {
     const inner = isObject(lastConvRecord.message)
       ? (lastConvRecord.message as Record<string, unknown>)
       : lastConvRecord
     const existing = typeof inner.content === "string" ? inner.content : ""
-    // Idempotency / race-safety: claude may have flushed the user
-    // record just before our SIGTERM landed (or a prior rescue call
-    // already merged this same prompt). Skip if the last user record
-    // already ends with our prompt — re-injecting would double up
-    // the message in the model's context.
+    // Idempotency / race-safety: claude may have flushed the user record
+    // just before our SIGTERM landed (or a prior rescue already coalesced
+    // this same prompt). Skip if the last user record already ends with
+    // our prompt — re-injecting would double it in the model's context.
     if (existing === prompt || existing.endsWith(`\n\n${prompt}`)) return
-    // Merge into the prior rescued-user record. Concatenating with a
-    // blank-line separator keeps each prompt readable as its own
-    // paragraph; the model sees them as a single user turn.
-    inner.content = existing.length > 0 ? `${existing}\n\n${prompt}` : prompt
-    lastConvRecord.timestamp = now
-    lines[lastConvIdx] = JSON.stringify(lastConvRecord)
-    await writeFile(filePath, `${lines.join("\n")}\n`)
-    return
+    // Coalesce: carry the prior user turn's text forward (blank-line
+    // separated) and chain the new record to the prior turn's PARENT, so
+    // it supersedes the un-replied user turn as a same-parent sibling
+    // rather than following it. claude's `--resume` walker follows the
+    // newest leaf for a given parent (the standard rewind/branch model,
+    // see the DAG note on `sortByTimestamp`), so the model sees ONE
+    // coalesced user turn — never two back-to-back user records — while
+    // the older sibling stays on disk untouched (no clobber).
+    content = existing.length > 0 ? `${existing}\n\n${prompt}` : prompt
+    parentUuid = typeof lastConvRecord.parentUuid === "string" ? (lastConvRecord.parentUuid as string) : null
   }
 
-  const parentUuid = lastConvRecord && typeof lastConvRecord.uuid === "string" ? (lastConvRecord.uuid as string) : null
   const record = {
     type: "user",
-    message: { role: "user", content: prompt },
+    message: { role: "user", content },
     uuid: randomUUID(),
     parentUuid,
     sessionId,
