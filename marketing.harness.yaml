@@ -9,9 +9,9 @@ organization:
 
 skillDistribution:
   upstream: sma1lboy/brand-studio
-  fork: sma1lboy/brand-studio
+  fork: CodeFox-Repo/brand-studio
   scope: repo
-  ref: pr-12
+  ref: main
 
 theme:
   path: packages/branding/marketing/theme.md
