@@ -99,7 +99,7 @@ import {
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
-import { syncSessionZen } from "../panes/terminal/layout-actions.ts"
+import { runLayoutAction, syncSessionZen } from "../panes/terminal/layout-actions.ts"
 import {
   captureGlobalLayout,
   ensureSession,
@@ -728,6 +728,14 @@ function TasksShell(props: {
           // Bottom-left `☯ ZEN` badge while this ChatTab is collapsed to the
           // engine pane (polled from the window's `@kobe_zen_panes` option).
           zenActive={zenActive}
+          // Clicking the `☯ ZEN` badge exits zen (mouse counterpart to the
+          // prefix+space chord). Global toggle, so every project follows.
+          onZenClick={() => {
+            void (async () => {
+              const session = await currentSessionName()
+              if (session) await runLayoutAction(session, "zen-toggle")
+            })()
+          }}
           // Fill the whole tmux pane and follow live resizes (see `dimensions`
           // above). Without an explicit width the Sidebar pins to its 32-cell
           // rail default and leaves the rest of a widened pane blank.
