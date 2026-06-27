@@ -856,6 +856,12 @@ export function Sidebar(props: SidebarProps) {
           gap={0}
           backgroundColor={isCursor() ? theme.backgroundElement : undefined}
           onMouseUp={() => {
+            // A click moves the cursor (the visual "selected pointer") to the
+            // clicked row directly — it must not depend on onSelect, which a
+            // task-bound pane no-ops to pin its highlight. Without this, after
+            // j/k navigates away, clicking a row (even the pane's own task)
+            // couldn't bring the pointer back.
+            setCursorIndex(flatIndex)
             props.onSelect(task.id)
             if (props.activateOnClick) props.onActivate?.(task.id)
           }}
@@ -1256,6 +1262,10 @@ export function Sidebar(props: SidebarProps) {
                     gap={0}
                     backgroundColor={isCursor() ? theme.backgroundElement : undefined}
                     onMouseUp={() => {
+                      // Click moves the cursor directly (see the project-row
+                      // handler above) — decoupled from onSelect so it works in
+                      // a task-bound pane that no-ops onSelect to pin its row.
+                      setCursorIndex(flatIndex)
                       props.onSelect(task.id)
                       if (props.activateOnClick) props.onActivate?.(task.id)
                     }}
