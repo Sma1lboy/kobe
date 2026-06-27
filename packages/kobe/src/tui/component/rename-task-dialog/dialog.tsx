@@ -22,7 +22,7 @@ import { TextAttributes } from "@opentui/core"
 import { createSignal } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useDialog } from "../../ui/dialog"
-import { stripNewlines } from "../new-task-dialog"
+import { isBlankText, stripNewlines } from "../new-task-dialog"
 
 export function RenameTaskDialogView(props: {
   currentTitle: string
@@ -46,7 +46,10 @@ export function RenameTaskDialogView(props: {
 
   function commit() {
     const v = value().trim()
-    if (!v && !props.allowEmpty) return
+    // `isBlankText` (not `!v`) so a title made only of full-width spaces
+    // `　` (common when typing Chinese) counts as empty — `.trim()` does
+    // not strip `U+3000`, so `!v` would wrongly accept it.
+    if (isBlankText(v) && !props.allowEmpty) return
     props.onSubmit(v)
     dialog.clear()
   }
