@@ -13,11 +13,14 @@ export interface PtyLike {
   write(data: string): void
   resize(cols: number, rows: number): void
   kill(): void
+  pause?(): void
+  resume?(): void
 }
 
 export interface PtySocketLike {
   OPEN: number
   readyState: number
+  bufferedAmount?: number
   send(data: string): void
   close(code?: number, reason?: string): void
   on(event: "message", cb: (raw: { toString(): string }) => void): void
@@ -41,10 +44,18 @@ export interface PtySessionManagerOptions {
   scrollbackCap: number
   env: NodeJS.ProcessEnv | Record<string, string> | (() => NodeJS.ProcessEnv | Record<string, string>)
   setTimeoutFn?: (cb: () => void, ms: number) => unknown
+  setIntervalFn?: (cb: () => void, ms: number) => unknown
+  clearIntervalFn?: (handle: unknown) => void
   submitDelays?: {
     spawnedPasteMs: number
     existingPasteMs: number
     enterMs: number
+  }
+  maxSessions?: number
+  backpressure?: {
+    highWaterBytes: number
+    lowWaterBytes: number
+    drainPollMs: number
   }
 }
 
@@ -74,3 +85,25 @@ export interface PtySessionManager {
 }
 
 export function createPtySessionManager(options: PtySessionManagerOptions): PtySessionManager
+
+export function pickEvictableTab(
+  sessions: Iterable<[string, { sockets: { size: number } }]>,
+): string | null
+
+/** Only the buffer-state fields are read, so the helpers accept any socket-ish
+ *  object (the live `ws` socket and test doubles both satisfy this). */
+export interface PtyBufferSocket {
+  OPEN: number
+  readyState: number
+  bufferedAmount?: number
+}
+
+export function shouldPausePty(
+  sockets: Iterable<PtyBufferSocket>,
+  highWaterBytes: number,
+): boolean
+
+export function shouldResumePty(
+  sockets: Iterable<PtyBufferSocket>,
+  lowWaterBytes: number,
+): boolean
