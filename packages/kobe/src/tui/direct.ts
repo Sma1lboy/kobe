@@ -24,6 +24,7 @@ import {
 import { ensureFallbackSession } from "../tmux/client.ts"
 import type { Task } from "../types/task.ts"
 import { applyTmuxChromeTheme } from "./lib/tmux-border-theme.ts"
+import { syncSessionZen } from "./panes/terminal/layout-actions.ts"
 import {
   attachArgv,
   ensureSession,
@@ -127,6 +128,9 @@ export async function startDirectTmux(): Promise<void> {
       // Fallback sessions skip ensureSession's server-nicety block, so
       // apply the theme-matched tmux chrome here before attaching.
       await applyTmuxChromeTheme()
+      // Reconcile to the global zen intent before the fit so the home session
+      // attaches in the right layout (no-op on windows without an engine pane).
+      await syncSessionZen(home)
       // Fit + heal the window before attaching so the first frame is correct
       // (no reflow flash on attach — see prepareWindowForAttach).
       await prepareWindowForAttach(home)
@@ -162,6 +166,9 @@ export async function startDirectTmux(): Promise<void> {
     // themes since the server last saw an apply — refresh before attach.
     await applyTmuxChromeTheme()
 
+    // Reconcile to the global zen intent before the fit, so attaching a project
+    // directly inherits zen (its tmux session was never toggled itself).
+    await syncSessionZen(name)
     // Fit the window to this terminal and heal the layout BEFORE attaching, so
     // the first painted frame is already correct — no reflow "flash" where the
     // rail blows up on attach and the window-resized hook snaps it back a beat

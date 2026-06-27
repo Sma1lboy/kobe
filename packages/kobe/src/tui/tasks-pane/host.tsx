@@ -99,6 +99,7 @@ import {
 import { detectWorktreeOpener, openWorktree } from "../lib/worktree-opener"
 import { Sidebar } from "../panes/sidebar/Sidebar"
 import type { TaskSortMode } from "../panes/sidebar/groups"
+import { syncSessionZen } from "../panes/terminal/layout-actions.ts"
 import {
   captureGlobalLayout,
   ensureSession,
@@ -612,6 +613,11 @@ function TasksShell(props: {
           launchInit,
         })
       }
+      // Reconcile the target session to the global zen intent BEFORE fitting, so
+      // a project you switch to inherits zen (each task is its own tmux session,
+      // so the toggle alone never reached it) and the fit accounts for the
+      // collapsed layout instead of reflowing after the switch.
+      await syncSessionZen(name)
       // Fit + heal the target to THIS client before switching in, so it doesn't
       // reflow on screen (see prepareWindowForSwitch — this is the in-tmux
       // counterpart to direct.ts's pre-attach fit).
@@ -657,6 +663,9 @@ function TasksShell(props: {
       notifyError(t("tasks.toast.sessionStartFailed"))
       return
     }
+    // Reconcile the freshly built session to the global zen intent before the
+    // fit (see the running-session branch above for why).
+    await syncSessionZen(name)
     // Fit + heal to THIS client before switching in (see prepareWindowForSwitch):
     // the session was just built detached at the host pane's narrow stdout size,
     // so without this the full-terminal switch reflows it on screen.
