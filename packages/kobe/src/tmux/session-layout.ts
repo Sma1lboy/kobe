@@ -175,10 +175,10 @@ export function homeWelcomeCommand(): string {
 
 export interface EngineInitLaunch {
   /**
-   * Raw shell to run before the engine. Runs in the SAME shell that execs
-   * the engine (a `{ …; }` group, NOT a `( … )` subshell) so any `export`
-   * reaches the engine. Already a shell snippet (e.g. `sh .kobe/init.sh`
-   * or a user override) — not shell-quoted.
+   * Raw shell to run before the engine. Already a shell snippet (e.g.
+   * `sh .kobe/init.sh` or a user override) — not shell-quoted. It is run
+   * under a watchdog (see {@link engineLaunchLine}) so a hang can't wedge
+   * task entry, yet any `export` it makes still reaches the engine.
    */
   readonly initScript?: string
   /**
@@ -187,30 +187,115 @@ export interface EngineInitLaunch {
    * Omit to run the init script on every (re)launch.
    */
   readonly markerPath?: string
+  /**
+   * Watchdog budget for the init script in SECONDS. On expiry the init
+   * subtree is killed and the launch continues to the engine. Omit for
+   * {@link REPO_INIT_TIMEOUT_SECONDS}.
+   */
+  readonly timeoutSeconds?: number
 }
 
 /**
- * Build the pane-0 launch line: optional init script, then the engine,
- * then a keep-alive shell. The whole thing is handed to tmux as a single
- * command string and run via its own `sh -c`.
+ * Default watchdog budget (seconds) for a repo's `.kobe/init.sh`.
  *
- * The init script runs in a brace group so its `export`s propagate to the
- * engine; `$?` after the group gates the marker touch so a failed init
- * (e.g. offline `pnpm install`) is retried next launch instead of being
- * marked done.
+ * Sized for a real cold-cache install/build (the common heavy init: `npm
+ * ci`, `pnpm install`, `cargo build`) to finish, while still bounding an
+ * outright hang — an infinite loop, a network stall, or an interactive
+ * `read`/password prompt that would otherwise block `tmux new-session`
+ * forever and leave the task permanently unenterable. 120s is the ceiling,
+ * not a target: a healthy init returns in well under it.
+ */
+export const REPO_INIT_TIMEOUT_SECONDS = 120
+
+/** Sane bounds for an init-watchdog budget (seconds). */
+export const REPO_INIT_TIMEOUT_MIN_SECONDS = 5
+export const REPO_INIT_TIMEOUT_MAX_SECONDS = 3600
+
+/**
+ * Resolve the init-watchdog budget from a raw override (env/string),
+ * clamped to the sane range. Garbage / unset → the default. Kept pure so
+ * the env escape hatch (`KOBE_REPO_INIT_TIMEOUT_SECONDS`) is unit-testable
+ * without spawning a shell.
+ */
+export function resolveRepoInitTimeoutSeconds(raw?: string | number | null): number {
+  const n = typeof raw === "number" ? raw : raw == null ? Number.NaN : Number.parseInt(raw, 10)
+  if (!Number.isFinite(n)) return REPO_INIT_TIMEOUT_SECONDS
+  return Math.max(REPO_INIT_TIMEOUT_MIN_SECONDS, Math.min(REPO_INIT_TIMEOUT_MAX_SECONDS, Math.round(n)))
+}
+
+/**
+ * Bound the init snippet with a POSIX-portable watchdog so a hang can't
+ * wedge task entry. macOS ships no GNU `timeout(1)` and the snippet runs
+ * inside a plain `sh -c` under tmux, so we hand-roll it: run the init in a
+ * backgrounded subshell with stdin from `/dev/null` (an interactive
+ * `read`/password prompt gets EOF instead of blocking forever), arm a
+ * `sleep N && kill` watchdog (TERM, then KILL after a 2s grace), and
+ * `wait`. On a clean finish the watchdog is cancelled.
+ *
+ * The "SAME shell so `export`s reach the engine" contract is preserved
+ * across the subshell boundary: on success the subshell dumps its exported
+ * environment (`export -p`) to a temp file that the OUTER shell sources, so
+ * the engine — `exec`'d later in that same outer shell — still sees the
+ * init's exports. On timeout or non-zero exit nothing is sourced, a legible
+ * banner is printed, and `__kobe_init_rc` is left non-zero so the caller's
+ * marker touch is skipped (init retried next launch).
+ */
+function boundedInitGroup(script: string, timeoutSeconds: number): string {
+  const n = String(timeoutSeconds)
+  // Literal UTF-8 ⚠ glyph; only `\n` and `%s` are printf-interpreted, no
+  // stray `%` in the prose, so the format strings are safe under plain sh.
+  const timeoutBanner =
+    "\\n  ⚠ Repo init (.kobe/init.sh) timed out after %ss and was killed; continuing to the engine.\\n\\n"
+  const failBanner = "\\n  ⚠ Repo init (.kobe/init.sh) failed (code %s); continuing to the engine.\\n\\n"
+  return [
+    `__kobe_init_env="\${TMPDIR:-/tmp}/kobe-init-env.$$"`,
+    `__kobe_init_to="\${TMPDIR:-/tmp}/kobe-init-timeout.$$"`,
+    `rm -f "$__kobe_init_env" "$__kobe_init_to" 2>/dev/null`,
+    "(",
+    script,
+    "__kobe_init_ec=$?",
+    `export -p > "$__kobe_init_env" 2>/dev/null`,
+    "exit $__kobe_init_ec",
+    ") </dev/null &",
+    "__kobe_init_pid=$!",
+    `( sleep ${n}; : > "$__kobe_init_to"; kill -TERM "$__kobe_init_pid" 2>/dev/null; sleep 2; kill -KILL "$__kobe_init_pid" 2>/dev/null ) &`,
+    "__kobe_init_wd=$!",
+    `wait "$__kobe_init_pid" 2>/dev/null; __kobe_init_rc=$?`,
+    // Cancel + reap the watchdog. The `wait` reaps it synchronously so a
+    // shell with job control (bash as /bin/sh on macOS) doesn't print an
+    // async "Terminated" notice into the pane.
+    `kill "$__kobe_init_wd" 2>/dev/null; wait "$__kobe_init_wd" 2>/dev/null`,
+    `if [ -f "$__kobe_init_to" ]; then __kobe_init_rc=124; printf '${timeoutBanner}' '${n}';`,
+    `elif [ "$__kobe_init_rc" -eq 0 ]; then [ -f "$__kobe_init_env" ] && . "$__kobe_init_env" 2>/dev/null;`,
+    `else printf '${failBanner}' "$__kobe_init_rc"; fi`,
+    `rm -f "$__kobe_init_env" "$__kobe_init_to" 2>/dev/null`,
+  ].join("\n")
+}
+
+/**
+ * Build the pane-0 launch line: optional init script (watchdog-bounded),
+ * then the engine, then a keep-alive shell. The whole thing is handed to
+ * tmux as a single command string and run via its own `sh -c`.
+ *
+ * The init script is bounded by {@link boundedInitGroup} so a hang can't
+ * wedge task entry; `$__kobe_init_rc` after it gates the marker touch so a
+ * failed/timed-out init (e.g. offline `pnpm install`) is retried next
+ * launch instead of being marked done. A failed/timed-out init never blocks
+ * the engine — the task always becomes enterable.
  */
 export function engineLaunchLine(engineCmd: string, init?: EngineInitLaunch): string {
   const tail = keepAlive(engineCmd)
   const script = init?.initScript?.trim()
   if (!script) return tail
-  const group = ["{", script, "}"].join("\n")
+  const timeoutSeconds = resolveRepoInitTimeoutSeconds(init?.timeoutSeconds)
+  const group = boundedInitGroup(script, timeoutSeconds)
   if (init?.markerPath) {
     const marker = shQuote(init.markerPath)
     const markerDir = shQuote(markerDirOf(init.markerPath))
     return [
       `if [ ! -f ${marker} ]; then`,
       group,
-      `if [ $? -eq 0 ]; then mkdir -p ${markerDir} && : > ${marker}; fi`,
+      `if [ "$__kobe_init_rc" -eq 0 ]; then mkdir -p ${markerDir} && : > ${marker}; fi`,
       "fi",
       tail,
     ].join("\n")
