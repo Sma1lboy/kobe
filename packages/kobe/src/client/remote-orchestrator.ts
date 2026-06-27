@@ -61,6 +61,26 @@ export interface TaskJobState {
 export type WorktreeChangesMap = ReadonlyMap<string, WorktreeChanges>
 
 /**
+ * Compact, bounded description of a dropped event payload for `client.log` —
+ * enough to diagnose a malformed daemon frame (the type, and a short prefix of
+ * its stringified form) without dumping a huge object into the log. Used only
+ * on the drop paths in {@link RemoteOrchestrator.handleEvent}.
+ */
+function describePayload(value: unknown): string {
+  if (value === undefined) return "undefined"
+  if (value === null) return "null"
+  const type = Array.isArray(value) ? "array" : typeof value
+  let text: string
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value)
+  } catch {
+    text = String(value)
+  }
+  if (text.length > 120) text = `${text.slice(0, 120)}…`
+  return `${type}:${text}`
+}
+
+/**
  * Parse a `worktree.changes` wire payload into a path→counts map.
  * Returns `null` for a malformed payload (the event is then ignored —
  * never clobber a good map with garbage). Exported for unit tests.
@@ -606,6 +626,10 @@ export class RemoteOrchestrator {
         this.setTasks(value.map(deserializeTask))
         this.pruneEngineState(value)
         this.pruneTaskJobs(value)
+      } else {
+        // Dropping this leaves the task list frozen at the last good snapshot;
+        // log the anomaly so a stuck-list incident is diagnosable.
+        logClientError("orch", `dropped task.snapshot event: tasks is not an array (got ${describePayload(value)})`)
       }
       return
     }
@@ -621,7 +645,13 @@ export class RemoteOrchestrator {
     }
     if (name === "engine-state") {
       const p = payload as { taskId?: string; state?: TaskActivityState; detail?: EngineActivityDetail; at?: number }
-      if (typeof p?.taskId !== "string" || typeof p.state !== "string") return
+      if (typeof p?.taskId !== "string" || typeof p.state !== "string") {
+        logClientError(
+          "orch",
+          `dropped engine-state event: taskId/state must be strings (taskId=${describePayload(p?.taskId)}, state=${describePayload(p?.state)})`,
+        )
+        return
+      }
       // Accumulate per-task into a fresh Map (new ref → Solid re-renders).
       const next = new Map(this.engineStateAcc())
       if (p.state === "idle") next.delete(p.taskId)
@@ -631,7 +661,13 @@ export class RemoteOrchestrator {
     }
     if (name === "task.jobs") {
       const p = payload as { taskId?: string; kind?: string; phase?: string } | undefined
-      if (typeof p?.taskId !== "string" || p.kind !== "ensureWorktree") return
+      if (typeof p?.taskId !== "string" || p.kind !== "ensureWorktree") {
+        logClientError(
+          "orch",
+          `dropped task.jobs event: expected string taskId + kind "ensureWorktree" (taskId=${describePayload(p?.taskId)}, kind=${describePayload(p?.kind)})`,
+        )
+        return
+      }
       const current = this.taskJobsAcc()
       if (p.phase === "running") {
         const next = new Map(current)
@@ -651,7 +687,14 @@ export class RemoteOrchestrator {
     }
     if (name === "worktree.changes") {
       const next = parseWorktreeChangesPayload(payload)
-      if (!next) return // malformed → never clobber a good map
+      if (!next) {
+        // malformed → never clobber a good map, but log the drop.
+        logClientError(
+          "orch",
+          `dropped worktree.changes event: malformed changes payload (${describePayload(payload)})`,
+        )
+        return
+      }
       // Value-equality gate: an unchanged republish (bus replay across a
       // reconnect, or a daemon publish that round-trips to the same counts)
       // must not swap the map reference and re-render every sidebar row.
@@ -662,7 +705,10 @@ export class RemoteOrchestrator {
     }
     if (name === "ui-prefs") {
       const p = payload as Partial<UiPrefsPayload> | undefined
-      if (typeof p?.theme !== "string") return
+      if (typeof p?.theme !== "string") {
+        logClientError("orch", `dropped ui-prefs event: theme must be a string (got ${describePayload(p?.theme)})`)
+        return
+      }
       this.setUiPrefsSig({
         theme: p.theme,
         transparentBackground: p.transparentBackground === true,
@@ -685,7 +731,10 @@ export class RemoteOrchestrator {
     }
     if (name === "keybindings") {
       const p = payload as { rev?: number } | undefined
-      if (typeof p?.rev !== "number") return
+      if (typeof p?.rev !== "number") {
+        logClientError("orch", `dropped keybindings event: rev must be a number (got ${describePayload(p?.rev)})`)
+        return
+      }
       this.setKeybindingsRevSig(p.rev)
       return
     }

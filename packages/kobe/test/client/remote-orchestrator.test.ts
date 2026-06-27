@@ -1,10 +1,19 @@
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import {
   RemoteOrchestrator,
   parseWorktreeChangesPayload,
   sameWorktreeChangesMap,
 } from "../../src/client/remote-orchestrator.ts"
+
+// Spy on the client-side logger so the malformed-event tests can assert the
+// drop is RECORDED (to client.log) instead of silently swallowed. Real
+// implementations of every other export are preserved.
+const { logClientError } = vi.hoisted(() => ({ logClientError: vi.fn() }))
+vi.mock("@sma1lboy/kobe-daemon/client/client-log", async (importActual) => ({
+  ...(await importActual<typeof import("@sma1lboy/kobe-daemon/client/client-log")>()),
+  logClientError,
+}))
 
 /**
  * Minimal fake daemon client: RemoteOrchestrator only needs `on("*", …)`
@@ -265,6 +274,80 @@ describe("RemoteOrchestrator channel handling", () => {
       emit("worktree.changes", { changes: "nope" })
       emit("worktree.changes", { changes: { "/wt/a": { added: "two", deleted: 0 } } })
       expect(orch.worktreeChangesSignal()()).toBe(before)
+    })
+  })
+
+  // Stability fix H: a malformed daemon frame must still be DROPPED (never
+  // acted on), but the drop has to leave a diagnosable trail in client.log
+  // instead of freezing a signal at its last good value with nothing to show
+  // for it. Each guard-failure path logs exactly one tagged line.
+  describe("malformed events are logged before being dropped", () => {
+    beforeEach(() => logClientError.mockClear())
+
+    it("logs (and drops) a task.snapshot whose tasks is not an array", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("task.snapshot", { tasks: "nope" })
+      expect(orch.tasksSignal()().length).toBe(0)
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("task.snapshot"))
+    })
+
+    it("logs (and drops) an engine-state with non-string fields", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("engine-state", { taskId: 7, state: "running" })
+      expect(orch.engineStateSignal()().size).toBe(0)
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("engine-state"))
+    })
+
+    it("logs (and drops) a task.jobs with the wrong kind", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("task.jobs", { taskId: "t1", kind: "somethingElse", phase: "running" })
+      expect(orch.taskJobsSignal()().size).toBe(0)
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("task.jobs"))
+    })
+
+    it("logs (and drops) a malformed worktree.changes without clobbering a good map", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("worktree.changes", { changes: { "/wt/a": { added: 1, deleted: 0 } } })
+      logClientError.mockClear()
+      const before = orch.worktreeChangesSignal()()
+      emit("worktree.changes", { changes: "nope" })
+      expect(orch.worktreeChangesSignal()()).toBe(before)
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("worktree.changes"))
+    })
+
+    it("logs (and drops) a ui-prefs without a string theme", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("ui-prefs", { theme: 42 })
+      expect(orch.uiPrefsSignal()()).toBeNull()
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("ui-prefs"))
+    })
+
+    it("logs (and drops) a keybindings without a numeric rev", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("keybindings", { rev: "1" })
+      expect(orch.keybindingsRevSignal()()).toBeNull()
+      expect(logClientError).toHaveBeenCalledTimes(1)
+      expect(logClientError).toHaveBeenCalledWith("orch", expect.stringContaining("keybindings"))
+    })
+
+    it("keeps the happy path silent — a well-formed event logs nothing", () => {
+      const { client, emit } = fakeClient()
+      const orch = new RemoteOrchestrator(client)
+      emit("active-task", { taskId: "t1" })
+      emit("ui-prefs", { theme: "nord" })
+      emit("keybindings", { rev: 3 })
+      expect(logClientError).not.toHaveBeenCalled()
     })
   })
 })
