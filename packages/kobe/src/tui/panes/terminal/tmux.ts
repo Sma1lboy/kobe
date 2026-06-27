@@ -537,6 +537,20 @@ async function observeSession(name: string): Promise<ObservedSession | null> {
   return parseObservedSession(stdout)
 }
 
+/**
+ * The vendor a live session is ACTUALLY running, from its `@kobe_vendor`
+ * tag — `null` when no session exists (or it carries no tag). Lets a launcher
+ * reconcile a task's persisted vendor to reality before `ensureSession`, so a
+ * stale persisted vendor can't trigger a destructive `respawn-engine` of a
+ * healthy engine pane (e.g. a main task frozen at "claude" wiping a running
+ * codex session on restart).
+ */
+export async function observeSessionVendor(name: string): Promise<string | null> {
+  const observed = await observeSession(name)
+  const v = observed?.vendor.trim()
+  return v ? v : null
+}
+
 async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   const launchInit = opts.launchInit
   // (Engine activity hooks are NOT installed here — they live in the user's

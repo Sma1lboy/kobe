@@ -28,6 +28,8 @@ import type { Accessor } from "solid-js"
 import { createSignal } from "solid-js"
 import { samePrStatus } from "../monitor/pr-status.ts"
 import {
+  getCustomEngineIds,
+  getPersistedString,
   getRemoteRepoConfig,
   getSavedRepos,
   isRemoteRepoKey,
@@ -36,6 +38,7 @@ import {
 } from "../state/repos.ts"
 import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../types/task.ts"
+import { resolvePersistedVendor } from "../types/vendor.ts"
 import type { AdoptableWorktree, WorktreeInfo } from "../types/worktree.ts"
 import {
   CannotDeleteMainTaskError,
@@ -249,6 +252,11 @@ export class Orchestrator {
     const inflight = this.mainTaskLocks.get(key)
     if (inflight) return inflight
     const promise = (async () => {
+      // Follow the user's configured default engine (`lastSelectedVendor`, the
+      // same key new-task / quick-task read) instead of hardcoding "claude", so
+      // a project's main chat opens with the default engine. Falls back to
+      // DEFAULT_TASK_VENDOR when unset/invalid.
+      const vendor = resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
       const created = await this.store.create({
         repo: normalizedRepo,
         title: titleFromRepo(normalizedRepo),
@@ -257,7 +265,7 @@ export class Orchestrator {
         worktreePath: repoWorkingDir(normalizedRepo),
         status: "backlog",
         kind: "main",
-        vendor: DEFAULT_TASK_VENDOR,
+        vendor,
       })
       return created
     })()
