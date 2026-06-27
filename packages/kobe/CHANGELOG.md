@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.7.45
+
+### Patch Changes
+
+- 8cebff3: fix: stop the activity watchdog from idling a still-running task mid-turn
+
+  The daemon's engine-activity badge armed a fixed ~10min lapse timer for any non-idle state and idled the task when it fired. But a long single agent turn emits only `turn-start` … `Stop` over many minutes with no hook events in between, so the timer fired mid-turn and wrongly dropped a working agent's badge to idle. The watchdog now probes the engine's transcript mtime before lapsing: a write within the trailing staleness window means the turn is alive (re-arm a heartbeat instead of idling), while a genuinely silent engine (missed Stop / hung process) still lapses. The probe is filesystem-only and best-effort — failure falls back to the old lapse behavior, never crashing the daemon.
+
+- c4037a8: refactor: back the daemon file-watch trigger with chokidar
+
+  Replace the hand-rolled `node:fs.watch` + manual polling safety-net in the
+  shared file-watch trigger with chokidar, which handles the cross-platform
+  fs-event edge cases (macOS rename/inode churn, rapid bursts, atomic saves)
+  the bespoke poll was compensating for. The exported signature, basename
+  filtering, debounce, and `stop()` teardown are unchanged, so the ui-prefs and
+  keybindings watchers are untouched.
+
+- 184511c: fix: pane heal tolerates a pane that vanished mid-heal
+
+  The workspace/version heal reads a pane snapshot, then runs one batched `respawn-pane … ; resize-pane …` tmux sequence against those ids. tmux halts a `cmd ; cmd …` sequence on the first failure, so a pane closed (tab close / task delete) between the snapshot and execution made its `respawn-pane -t <gone>` error and silently abort the heal of every later pane that tick. The heal now re-lists panes immediately before the batch and drops commands for any pane that no longer exists, so one vanished pane can no longer cancel the heal of the others. Only paid when the heal has work to do — a healthy switch (no commands) keeps its exact behavior and spawn count.
+
+- 5ef48a3: perf: daemon-collect transcript activity instead of polling it per Ops pane
+
+  Every `kobe ops` pane used to stat the engine transcript dir (the `● new` badge) and re-parse the newest session JSONL (the ChatTab "done" chip) on its own timers — W ChatTabs × K transcripts of duplicated filesystem churn at rest. The daemon now runs one `transcript.activity` collector for the shareable filesystem half (newest mtime + the engine-owned completion marker) and fans it out; the per-window `tmux capture-pane` quiescence check and `@kobe_tab_state` write stay in-process. Old/stale daemons without the channel fall back to the pane's local polling verbatim, and the badge/done-chip behavior is unchanged.
+
+- baf710a: fix: make the interrupted-prompt rescue writer append-only (no transcript clobber)
+
+  `appendInterruptedUserPrompt` ran during `engine.stop`, while the just-SIGTERM'd claude process may still be flushing buffered records to the same session JSONL. The merge path read the whole file into memory, spliced, and `writeFile`-rewrote it — truncating any record flushed after the read snapshot (a half-written assistant reply or tool result), silently losing data. It now only ever `appendFile`s: a coalesced un-replied user turn is written as a same-parent sibling that supersedes the prior turn (claude `--resume` follows the newest leaf, so the model still sees one user turn), and concurrent flushes are preserved no matter when they land.
+
+- 11033f1: fix: harden the kobe-web dashboard and PTY sidecar
+
+  The browser dashboard now self-heals after a daemon restart: the SSE client nulls out a CLOSED EventSource (so the next subscribe re-opens instead of wedging on "connecting…") and drives a bounded backoff reconnect, and every `snapshot`/`channel` frame is shape-validated before it touches the store so a malformed/partial frame is dropped+logged instead of crashing on the next `.map`/`.find`. The node-pty sidecar caps concurrent sessions (evicting the oldest unwatched tab, rejecting when all are in active use) and applies PTY→WebSocket backpressure (pausing a flooding pty once any socket saturates, resuming once every socket drains) so a runaway terminal can't grow node memory unbounded.
+
 ## 0.7.44
 
 ### Patch Changes
