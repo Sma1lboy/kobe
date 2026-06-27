@@ -13,6 +13,7 @@
 import { describe, expect, test } from "vitest"
 import {
   type KobePaneRow,
+  classifyRelaunchOutcome,
   paneIdsByRole,
   parseKobePaneRows,
   planPaneHeals,
@@ -197,5 +198,30 @@ describe("planPaneHeals — force (the settings refresh)", () => {
   test("still ignores engine and untagged panes", () => {
     const rows = [row("@1", "%0", "claude", "")]
     expect(planPaneHeals(rows, opts)).toEqual([])
+  })
+})
+
+describe("classifyRelaunchOutcome", () => {
+  // The all-or-nothing aggregation that gates the `@kobe_vendor` tag: the tag is
+  // a single session-scoped fact, so it may only advance to the new vendor when
+  // EVERY window's engine pane respawned. tmux halts a batched `cmd ; cmd …`
+  // sequence on the first failure and exits non-zero, so a non-zero aggregate
+  // code means at least one window did not switch — the tag must stay put.
+  test("no engine pane found → rebuild signal, regardless of code", () => {
+    expect(classifyRelaunchOutcome(0, 0)).toBe("no-engine-pane")
+    expect(classifyRelaunchOutcome(0, 1)).toBe("no-engine-pane")
+  })
+
+  test("engine panes found and the batched respawn succeeded → switched", () => {
+    expect(classifyRelaunchOutcome(1, 0)).toBe("switched")
+    expect(classifyRelaunchOutcome(3, 0)).toBe("switched")
+  })
+
+  test("a failed respawn in any window → respawn-failed, so the tag is NOT advanced", () => {
+    // One window of three failing surfaces as a non-zero aggregate exit code;
+    // the caller leaves the prior @kobe_vendor tag rather than claim the switch.
+    expect(classifyRelaunchOutcome(3, 1)).toBe("respawn-failed")
+    expect(classifyRelaunchOutcome(1, 1)).toBe("respawn-failed")
+    expect(classifyRelaunchOutcome(2, 127)).toBe("respawn-failed")
   })
 })
