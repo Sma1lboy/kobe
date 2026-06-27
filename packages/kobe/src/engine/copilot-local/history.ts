@@ -1,8 +1,9 @@
-import { readFile, readdir, rm, stat } from "node:fs/promises"
+import { readdir, rm, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
+import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
 import { copilotUsageToSnapshot } from "./usage"
 
 export interface CopilotHistoryDeps {
@@ -27,7 +28,9 @@ const defaultDeps: CopilotHistoryDeps = {
     }
   },
   async readFile(p) {
-    return await readFile(p, "utf8")
+    // Size-bounded: an oversize/corrupt events.jsonl degrades to "" rather
+    // than slurping a multi-GB file into memory.
+    return await readTextFileBounded(p)
   },
   stat,
   async rm(p) {
@@ -173,6 +176,7 @@ export function parseEvents(
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    if (!isJsonlLineWithinBound(trimmed)) continue
     let record: unknown
     try {
       record = JSON.parse(trimmed)

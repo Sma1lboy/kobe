@@ -25,11 +25,12 @@
  * whole result.
  */
 
-import { readFile, readdir, stat, unlink } from "node:fs/promises"
+import { readdir, stat, unlink } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { ContentBlock } from "@/types/content"
 import type { EngineHistory, EngineUsageSnapshot, Message } from "@/types/engine"
+import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
 import { normalizeCodexContent } from "./normalize"
 import { isSyntheticCodexUserRow } from "./synthetic"
 import { codexUsageToSnapshot } from "./usage"
@@ -55,10 +56,25 @@ const defaultDeps: HistoryDeps = {
     }
   },
   async readFile(p) {
-    return await readFile(p, "utf8")
+    // Size-bounded: an oversize/corrupt rollout degrades to "" rather than
+    // slurping a multi-GB file into memory.
+    return await readTextFileBounded(p)
   },
   stat,
 }
+
+/**
+ * Cap on rollout paths {@link listRolloutFiles} will collect from the date
+ * tree. Consistent with the other `MAX_*` scan caps below, this guards the
+ * traversal against a pathological/corrupt `~/.codex/sessions` tree with an
+ * unbounded number of entries. Newest-first ordering means recent sessions are
+ * always covered; older ones past the cap are dropped (noted once, see below).
+ * Set well above any realistic session count so normal history is untouched.
+ */
+const MAX_ROLLOUT_FILES = 5000
+
+/** Warn-once guard so the 1.5–4s pollers don't spam the truncation note. */
+let warnedRolloutTruncation = false
 
 /**
  * Scan the date tree, newest first. Returns absolute paths to rollout
@@ -81,7 +97,18 @@ export async function listRolloutFiles(deps: HistoryDeps = defaultDeps): Promise
         // Files within a day: lexicographic == chronological (filename
         // begins with the ISO timestamp), so reversed = newest first.
         files.sort().reverse()
-        for (const f of files) out.push(path.join(dp, f))
+        for (const f of files) {
+          out.push(path.join(dp, f))
+          if (out.length >= MAX_ROLLOUT_FILES) {
+            if (!warnedRolloutTruncation) {
+              warnedRolloutTruncation = true
+              console.warn(
+                `[codex history] rollout scan truncated at ${MAX_ROLLOUT_FILES} files; older sessions may be omitted`,
+              )
+            }
+            return out
+          }
+        }
       }
     }
   }
@@ -114,6 +141,8 @@ export function rolloutCwd(raw: string): string {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    // A mega first line is treated as "no parseable meta" — same as malformed.
+    if (!isJsonlLineWithinBound(trimmed)) return ""
     try {
       const rec = JSON.parse(trimmed) as { type?: string; payload?: { cwd?: string } }
       if (rec.type === "session_meta") return rec.payload?.cwd ?? ""
@@ -291,6 +320,7 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    if (!isJsonlLineWithinBound(trimmed)) continue
     let parsed: unknown
     try {
       parsed = JSON.parse(trimmed)
@@ -483,6 +513,7 @@ export function deriveCodexUsageMetrics(raw: string): EngineUsageSnapshot | unde
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    if (!isJsonlLineWithinBound(trimmed)) continue
     let parsed: unknown
     try {
       parsed = JSON.parse(trimmed)
