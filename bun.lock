@@ -26,7 +26,7 @@
     },
     "packages/kobe": {
       "name": "@sma1lboy/kobe",
-      "version": "0.7.43",
+      "version": "0.7.44",
       "bin": {
         "kobe": "dist/cli/index.js",
       },
@@ -34,6 +34,7 @@
         "@ansi-tools/parser": "^1.0.15",
         "@opentui/core": "0.2.4",
         "@opentui/solid": "0.2.4",
+        "node-pty": "^1.1.0",
         "solid-js": "1.9.13",
         "ws": "^8.18.0",
       },
@@ -45,7 +46,6 @@
         "@types/node": "25.6.2",
         "knip": "^6.14.2",
         "kobe-web": "workspace:*",
-        "node-pty": "^1.1.0",
         "typescript": "5.8.2",
         "vitest": "2.1.9",
       },
