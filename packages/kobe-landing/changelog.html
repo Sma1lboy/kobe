@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kobe — changelog</title>
-<meta name="description" content="Release notes for kobe — the local-first TUI orchestrator for parallel AI coding agents. Every version, pulled live from GitHub.">
+<meta name="description" content="Release notes for kobe — the local-first TUI orchestrator for parallel AI coding agents. Every version, pulled live from GitHub, in English or Chinese.">
 <link rel="canonical" href="https://kobe.sma1lboy.me/changelog">
 <meta property="og:title" content="kobe — changelog">
-<meta property="og:description" content="Release notes for kobe, pulled live from GitHub.">
+<meta property="og:description" content="Release notes for kobe, pulled live from GitHub. English / 中文.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kobe.sma1lboy.me/changelog">
 <meta name="twitter:card" content="summary_large_image">
@@ -19,26 +19,33 @@
   body{background:#141413;}
   ::selection{background:rgba(204,120,92,0.3);color:#eae7df}
   a{color:inherit;}
+  /* language toggle */
+  .lang{display:inline-flex;border:1px solid #34302a;border-radius:9px;overflow:hidden;background:#1a1917;}
+  .lang button{font-family:inherit;font-size:12.5px;cursor:pointer;border:0;background:transparent;color:#8a847a;padding:6px 14px;transition:all .15s;}
+  .lang button[aria-pressed="true"]{background:rgba(204,120,92,0.14);color:#e6c1b1;}
   /* release timeline */
-  .rel{position:relative;padding:0 0 8px 0;}
+  .rel{position:relative;}
   .rel-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
   .rel-tag{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.02em;color:#eae7df;text-decoration:none;}
   .rel-tag:hover{color:#cc785c;}
   .rel-date{font-size:12.5px;color:#6b655c;}
   .rel-badge{font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(214,168,92,0.4);background:rgba(214,168,92,0.1);color:#d6a85c;border-radius:6px;padding:3px 8px;}
   .rel-badge.latest{border-color:rgba(154,202,134,0.45);background:rgba(154,202,134,0.08);color:#9aca86;}
-  .rel-body{border:1px solid #2c2823;border-radius:13px;background:#171614;padding:22px 26px;}
-  .rn-h{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:#cc785c;margin:18px 0 12px;}
-  .rn-h:first-child{margin-top:0;}
-  .rn-ul{list-style:none;display:flex;flex-direction:column;gap:11px;}
-  .rn-ul li{position:relative;padding-left:20px;font-size:14px;line-height:1.6;color:#bdb6aa;}
-  .rn-ul li::before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:50%;background:#cc785c;opacity:0.7;}
-  .rn-p{font-size:14px;line-height:1.6;color:#bdb6aa;margin:10px 0;}
-  .rn-ul code,.rn-p code,.rn-ul li code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 6px;color:#e6c1b1;}
-  .rn-ul strong,.rn-p strong{color:#eae7df;font-weight:600;}
-  .rn-ul a,.rn-p a{color:#d98c72;text-decoration:none;border-bottom:1px solid rgba(217,140,114,0.3);}
-  .rn-ul a:hover,.rn-p a:hover{color:#e6c1b1;}
-  @media(max-width:760px){.rel-body{padding:18px 18px;}.rel-tag{font-size:21px;}}
+  .rel-body{border:1px solid #2c2823;border-radius:13px;background:#171614;padding:8px 26px;}
+  .rn-h{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:#cc785c;margin:20px 0 4px;}
+  .rn-ul{list-style:none;}
+  /* each bullet is its own clearly-separated row */
+  .rn-li{position:relative;padding:15px 0 15px 26px;font-size:14px;line-height:1.66;color:#c4bdb1;border-top:1px solid #211f1c;}
+  .rn-li:first-child{border-top:0;}
+  .rn-li::before{content:"";position:absolute;left:3px;top:23px;width:7px;height:7px;border-radius:2px;background:#cc785c;opacity:0.85;transform:rotate(45deg);}
+  .rn-li.tr-loading{opacity:0.45;}
+  .rn-p{font-size:14px;line-height:1.66;color:#bdb6aa;padding:12px 0;}
+  .rn-li code,.rn-p code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 6px;color:#e6c1b1;}
+  .rn-li strong,.rn-p strong{color:#eae7df;font-weight:600;}
+  .rn-li a,.rn-p a{color:#d98c72;text-decoration:none;border-bottom:1px solid rgba(217,140,114,0.3);}
+  .rn-li a:hover,.rn-p a:hover{color:#e6c1b1;}
+  html[data-lang="zh"] .rn-li,html[data-lang="zh"] .rn-p{font-family:'JetBrains Mono','PingFang SC','Microsoft YaHei',sans-serif;}
+  @media(max-width:760px){.rel-body{padding:6px 18px;}.rel-tag{font-size:21px;}}
 </style>
 </head>
 <body>
@@ -73,8 +80,14 @@
   <!-- HEADER -->
   <header style="position:relative;max-width:880px;margin:0 auto;padding:50px 40px 30px;">
     <span style="color:#cc785c;font-size:13px;">// releases</span>
-    <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(34px,4.6vw,52px);line-height:1.02;letter-spacing:-0.03em;margin:12px 0 16px;color:#eae7df;">Changelog</h1>
-    <p style="font-size:15.5px;line-height:1.6;color:#a39d92;max-width:56ch;">Every kobe release, pulled live from GitHub. <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#e6c1b1;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 7px;">bun install -g @sma1lboy/kobe</code> to update.</p>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin:12px 0 16px;">
+      <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(34px,4.6vw,52px);line-height:1.02;letter-spacing:-0.03em;color:#eae7df;">Changelog</h1>
+      <div class="lang" role="group" aria-label="language">
+        <button id="langEn" aria-pressed="true">EN</button>
+        <button id="langZh" aria-pressed="false">中文</button>
+      </div>
+    </div>
+    <p id="sub" style="font-size:15.5px;line-height:1.6;color:#a39d92;max-width:56ch;">Every kobe release, pulled live from GitHub. <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#e6c1b1;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 7px;">bun install -g @sma1lboy/kobe</code> to update.</p>
   </header>
 
   <!-- TIMELINE -->
@@ -112,69 +125,144 @@
       .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
   })();
 
-  // release timeline — fetched live from the GitHub Releases API, rendered with a
-  // tiny markdown subset (headings / bullets / code / bold / links) that the
-  // changeset-generated notes use. No build step: a new release shows up here
-  // the moment GitHub publishes it.
+  // ── Changelog: live GitHub releases, EN/中文 with a localStorage translation cache ──
   (function () {
     var host = document.getElementById('releases');
     var loading = document.getElementById('loading');
     if (!host) return;
 
+    var LANG = 'en';
+    try { if (localStorage.getItem('kobe_lang') === 'zh') LANG = 'zh'; } catch (e) {}
+
+    // ---- tiny markdown (inline) for the EN render ----
     function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-    function inline(s) {
+    function inlineHtml(s) {
       s = esc(s);
       s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
       s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
       return s;
     }
-    function mdToHtml(md) {
-      var lines = String(md || '').split(/\r?\n/), out = [], inList = false;
-      function closeList() { if (inList) { out.push('</ul>'); inList = false; } }
+    // plain text (markdown stripped) — the translation source
+    function plain(s) {
+      return String(s).replace(/`([^`]+)`/g, '$1').replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '$1').trim();
+    }
+
+    // ---- parse a release body into ordered segments ----
+    function parse(md) {
+      var lines = String(md || '').split(/\r?\n/), segs = [];
       for (var i = 0; i < lines.length; i++) {
         var ln = lines[i];
-        var h = ln.match(/^\s*(#{1,6})\s+(.*)$/);
-        if (h) { closeList(); out.push('<div class="rn-h">' + inline(h[2]) + '</div>'); continue; }
-        var li = ln.match(/^\s*[-*]\s+(.*)$/);
-        if (li) { if (!inList) { out.push('<ul class="rn-ul">'); inList = true; } out.push('<li>' + inline(li[1]) + '</li>'); continue; }
-        if (ln.trim() === '') { closeList(); continue; }
-        closeList(); out.push('<p class="rn-p">' + inline(ln) + '</p>');
+        var h = ln.match(/^\s*(#{1,6})\s+(.*)$/); if (h) { segs.push({ t: 'h', raw: h[2] }); continue; }
+        var li = ln.match(/^\s*[-*]\s+(.*)$/); if (li) { segs.push({ t: 'li', raw: li[1] }); continue; }
+        if (ln.trim() === '') continue;
+        segs.push({ t: 'p', raw: ln });
       }
-      closeList();
-      return out.join('') || '<p class="rn-p" style="color:#6b655c;">No notes for this release.</p>';
+      return segs;
     }
-    function fmtDate(iso) {
-      try { return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
-      catch (e) { return ''; }
+
+    function bodyHtml(segs) {
+      var out = [], inList = false;
+      function close() { if (inList) { out.push('</ul>'); inList = false; } }
+      for (var i = 0; i < segs.length; i++) {
+        var s = segs[i], src = esc(plain(s.raw));
+        if (s.t === 'h') { close(); out.push('<div class="rn-h" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</div>'); }
+        else if (s.t === 'li') { if (!inList) { out.push('<ul class="rn-ul">'); inList = true; } out.push('<li class="rn-li" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</li>'); }
+        else { close(); out.push('<p class="rn-p" data-src="' + src + '" data-en="' + esc(inlineHtml(s.raw)) + '">' + inlineHtml(s.raw) + '</p>'); }
+      }
+      close();
+      return out.join('') || '<p class="rn-p" style="color:#6b655c;">—</p>';
     }
+
+    function fmtDate(iso) { try { return new Date(iso).toLocaleDateString(LANG === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return ''; } }
+
+    // ---- translation: gtx (primary) → MyMemory (fallback), localStorage-cached ----
+    var KNOWN = { 'patch changes': '补丁更新', 'minor changes': '次要更新', 'major changes': '重大更新' };
+    function hash(s) { var h = 5381, i = s.length; while (i) h = (h * 33) ^ s.charCodeAt(--i); return (h >>> 0).toString(36); }
+    function cacheGet(t) { try { return localStorage.getItem('trzh:' + hash(t)); } catch (e) { return null; } }
+    function cacheSet(t, v) { try { localStorage.setItem('trzh:' + hash(t), v); } catch (e) {} }
+    function translate(text) {
+      text = text.trim(); if (!text) return Promise.resolve('');
+      var known = KNOWN[text.toLowerCase()]; if (known) return Promise.resolve(known);
+      var hit = cacheGet(text); if (hit !== null) return Promise.resolve(hit);
+      var q = encodeURIComponent(text);
+      return fetch('https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-CN&dt=t&q=' + q)
+        .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+        .then(function (d) { var t = (d[0] || []).map(function (s) { return s[0]; }).join(''); if (!t) throw 0; cacheSet(text, t); return t; })
+        .catch(function () {
+          return fetch('https://api.mymemory.translated.net/get?langpair=en|zh-CN&q=' + q)
+            .then(function (r) { return r.json(); })
+            .then(function (d) { var t = d && d.responseData && d.responseData.translatedText; if (t) cacheSet(text, t); return t || null; })
+            .catch(function () { return null; });
+        });
+    }
+
+    // translate the [data-src] nodes inside one card (lazy, cache-first, concurrency-bounded)
+    function translateCard(card) {
+      if (LANG !== 'zh' || card.dataset.trDone === '1') return;
+      card.dataset.trDone = '1';
+      var nodes = [].slice.call(card.querySelectorAll('[data-src]'));
+      var idx = 0;
+      function next() {
+        if (LANG !== 'zh') return;
+        var node = nodes[idx++]; if (!node) return;
+        var src = node.getAttribute('data-src');
+        node.classList.add('tr-loading');
+        translate(src).then(function (t) {
+          if (LANG === 'zh') node.textContent = t || node.textContent;
+          node.classList.remove('tr-loading');
+          next();
+        });
+      }
+      // two in flight keeps it snappy without hammering the free endpoint
+      next(); next();
+    }
+
+    // restore a card to English (instant, no network)
+    function enCard(card) {
+      card.dataset.trDone = '';
+      [].slice.call(card.querySelectorAll('[data-src]')).forEach(function (n) {
+        n.classList.remove('tr-loading');
+        n.innerHTML = n.getAttribute('data-en');
+      });
+    }
+
+    var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (ents) {
+      ents.forEach(function (e) { if (e.isIntersecting) translateCard(e.target); });
+    }, { rootMargin: '200px 0px' }) : null;
+
+    function applyLang() {
+      document.documentElement.setAttribute('data-lang', LANG);
+      document.getElementById('langEn').setAttribute('aria-pressed', LANG === 'en' ? 'true' : 'false');
+      document.getElementById('langZh').setAttribute('aria-pressed', LANG === 'zh' ? 'true' : 'false');
+      try { localStorage.setItem('kobe_lang', LANG); } catch (e) {}
+      var cards = [].slice.call(document.querySelectorAll('.rel'));
+      if (LANG === 'en') { cards.forEach(enCard); }
+      else { cards.forEach(function (c) { if (io) io.observe(c); else translateCard(c); }); }
+    }
+
+    document.getElementById('langEn').addEventListener('click', function () { if (LANG === 'en') return; LANG = 'en'; applyLang(); });
+    document.getElementById('langZh').addEventListener('click', function () { if (LANG === 'zh') return; LANG = 'zh'; applyLang(); });
 
     fetch('https://api.github.com/repos/Sma1lboy/kobe/releases?per_page=100')
       .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(function (rels) {
-        if (!Array.isArray(rels) || rels.length === 0) {
-          loading.innerHTML = 'No releases yet. See <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub</a>.';
-          return;
-        }
-        var html = rels.map(function (rel, idx) {
+        if (!Array.isArray(rels) || !rels.length) { loading.innerHTML = 'No releases yet. See <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub</a>.'; return; }
+        host.innerHTML = rels.map(function (rel, idx) {
           var tag = esc(rel.tag_name || rel.name || '');
-          var badge = idx === 0
-            ? '<span class="rel-badge latest">latest</span>'
-            : (rel.prerelease ? '<span class="rel-badge">prerelease</span>' : '');
+          var badge = idx === 0 ? '<span class="rel-badge latest">latest</span>' : (rel.prerelease ? '<span class="rel-badge">prerelease</span>' : '');
           return '<article class="rel">' +
             '<div class="rel-head">' +
               '<a class="rel-tag" href="' + esc(rel.html_url || '#') + '" target="_blank" rel="noopener">' + tag + '</a>' +
-              badge +
-              '<span class="rel-date">' + fmtDate(rel.published_at || rel.created_at) + '</span>' +
+              badge + '<span class="rel-date">' + fmtDate(rel.published_at || rel.created_at) + '</span>' +
             '</div>' +
-            '<div class="rel-body">' + mdToHtml(rel.body) + '</div>' +
+            '<div class="rel-body">' + bodyHtml(parse(rel.body)) + '</div>' +
           '</article>';
         }).join('');
-        host.innerHTML = html;
+        applyLang();
       })
-      .catch(function () {
-        loading.innerHTML = 'Couldn’t load releases (GitHub API). See the full list on <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub ↗</a>.';
-      });
+      .catch(function () { loading.innerHTML = 'Couldn’t load releases (GitHub API). See the full list on <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub ↗</a>.'; });
   })();
 </script>
 </body>
