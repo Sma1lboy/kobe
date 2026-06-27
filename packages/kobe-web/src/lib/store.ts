@@ -197,46 +197,155 @@ function applyEvent(event: WebTransportEvent): void {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/** Validate the shape of a `snapshot` frame before applying it. The SSE frame
+ *  is untrusted bytes: a malformed/partial frame (e.g. `tasks` not an array)
+ *  would crash the store on the next `.map`/`.find`, wedging the dashboard. We
+ *  guard the load-bearing fields (the ones the store immediately iterates) and
+ *  drop the whole frame if any is wrong, mirroring how the TUI client refuses
+ *  malformed events instead of trusting the wire. Returns the typed snapshot on
+ *  success, `null` on a malformed frame (caller logs + drops). Exported for
+ *  tests. */
+export function validateSnapshot(raw: unknown): WebTransportSnapshot | null {
+  if (!isRecord(raw)) return null
+  if (!Array.isArray(raw.tasks)) return null
+  if (typeof raw.activeTaskId !== "string" && raw.activeTaskId !== null) {
+    return null
+  }
+  if (!isRecord(raw.engineStates)) return null
+  if (typeof raw.connected !== "boolean") return null
+  // Optional maps, when present, must be objects (the store spreads/iterates
+  // them); a present-but-wrong type is as fatal as a bad `tasks`.
+  for (const key of [
+    "jobs",
+    "worktreeChanges",
+    "issueSnapshots",
+  ] as const) {
+    if (raw[key] !== undefined && !isRecord(raw[key])) return null
+  }
+  if (raw.uiPrefs !== undefined && raw.uiPrefs !== null && !isRecord(raw.uiPrefs)) {
+    return null
+  }
+  return raw as unknown as WebTransportSnapshot
+}
+
+/** Bounded exponential backoff for SSE auto-reconnect: 500ms, 1s, 2s, 4s, …
+ *  capped at 10s. `attempt` is 0-based (0 = first retry). Exported for tests. */
+export function reconnectDelay(attempt: number): number {
+  const base = 500
+  const cap = 10_000
+  return Math.min(cap, base * 2 ** Math.max(0, attempt))
+}
+
 let source: EventSource | null = null
+let reconnectAttempts = 0
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+/** A stream is "live enough" to reuse when its EventSource exists and hasn't
+ *  reached CLOSED — CONNECTING (the browser's own retry) and OPEN both count.
+ *  Once CLOSED, the source is dead and must be replaced; the old code's bare
+ *  `if (source) return` left a CLOSED source assigned, so after a daemon
+ *  restart every later subscribe()/ensureStream() early-returned and the
+ *  dashboard wedged on "connecting…" until a full browser refresh. */
+function isStreamReusable(s: EventSource | null): boolean {
+  return s !== null && s.readyState !== EventSource.CLOSED
+}
+
+function applySnapshot(snap: WebTransportSnapshot): void {
+  reconnectAttempts = 0
+  set({
+    tasks: snap.tasks,
+    activeTaskId: snap.activeTaskId,
+    engineStates: snap.engineStates,
+    update: snap.update,
+    jobs: snap.jobs ?? {},
+    worktreeChanges: snap.worktreeChanges ?? {},
+    issueSnapshots: snap.issueSnapshots ?? {},
+    deliver: snap.deliver ?? null,
+    uiPrefs: snap.uiPrefs ?? null,
+    hydrated: true,
+    daemonConnected: snap.connected,
+    streamConnected: true,
+  })
+  if (snap.uiPrefs) applyThemeFromPrefs(snap.uiPrefs.theme)
+  // A snapshot replays the most recent session.deliver — forward it too
+  // (the forwarder's `at` dedupe makes a re-replay a no-op), so a deliver
+  // published while no browser was open still lands on the next visit.
+  if (snap.connected && snap.deliver) void deliverToSession(snap.deliver)
+  // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
+  // tasks deleted while this browser was away. A disconnected snapshot
+  // carries the transport's stale mirror; never prune from that.
+  if (snap.connected) {
+    const live = new Set(snap.tasks.map((t) => t.id))
+    pruneMissingTasks(live)
+  }
+}
+
+function scheduleReconnect(): void {
+  if (reconnectTimer !== null) return
+  const delay = reconnectDelay(reconnectAttempts)
+  reconnectAttempts += 1
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    // Only reconnect while React still cares; with no listeners the next
+    // subscribe() will re-open lazily anyway.
+    if (listeners.size > 0) ensureStream()
+  }, delay)
+}
 
 function ensureStream(): void {
-  if (source) return
+  if (isStreamReusable(source)) return
   source = new EventSource("/events")
-  source.addEventListener("open", () => set({ streamConnected: true }))
+  source.addEventListener("open", () => {
+    reconnectAttempts = 0
+    set({ streamConnected: true })
+  })
   source.addEventListener("snapshot", (e) => {
-    const snap = JSON.parse((e as MessageEvent).data) as WebTransportSnapshot
-    set({
-      tasks: snap.tasks,
-      activeTaskId: snap.activeTaskId,
-      engineStates: snap.engineStates,
-      update: snap.update,
-      jobs: snap.jobs ?? {},
-      worktreeChanges: snap.worktreeChanges ?? {},
-      issueSnapshots: snap.issueSnapshots ?? {},
-      deliver: snap.deliver ?? null,
-      uiPrefs: snap.uiPrefs ?? null,
-      hydrated: true,
-      daemonConnected: snap.connected,
-      streamConnected: true,
-    })
-    if (snap.uiPrefs) applyThemeFromPrefs(snap.uiPrefs.theme)
-    // A snapshot replays the most recent session.deliver — forward it too
-    // (the forwarder's `at` dedupe makes a re-replay a no-op), so a deliver
-    // published while no browser was open still lands on the next visit.
-    if (snap.connected && snap.deliver) void deliverToSession(snap.deliver)
-    // Snapshot from a LIVE daemon is authoritative — sweep tabs/PTYs of
-    // tasks deleted while this browser was away. A disconnected snapshot
-    // carries the transport's stale mirror; never prune from that.
-    if (snap.connected) {
-      const live = new Set(snap.tasks.map((t) => t.id))
-      pruneMissingTasks(live)
+    let parsed: unknown
+    try {
+      parsed = JSON.parse((e as MessageEvent).data)
+    } catch {
+      console.warn("[store] dropped unparseable snapshot frame")
+      return
     }
+    const snap = validateSnapshot(parsed)
+    if (!snap) {
+      console.warn("[store] dropped malformed snapshot frame")
+      return
+    }
+    applySnapshot(snap)
   })
   source.addEventListener("channel", (e) => {
-    applyEvent(JSON.parse((e as MessageEvent).data) as WebTransportEvent)
+    let event: unknown
+    try {
+      event = JSON.parse((e as MessageEvent).data)
+    } catch {
+      console.warn("[store] dropped unparseable channel frame")
+      return
+    }
+    if (!isRecord(event) || typeof event.channel !== "string") {
+      console.warn("[store] dropped malformed channel frame")
+      return
+    }
+    applyEvent(event as WebTransportEvent)
     if (!state.daemonConnected) set({ daemonConnected: true })
   })
-  source.addEventListener("error", () => set({ streamConnected: false }))
+  source.addEventListener("error", () => {
+    set({ streamConnected: false })
+    // EventSource auto-reconnects from CONNECTING on its own; only when it
+    // reaches CLOSED (the daemon dropped the stream and the browser gave up)
+    // must we replace it. Null it out so isStreamReusable lets a fresh open
+    // through, then drive a bounded backoff so the dashboard self-heals after
+    // a daemon restart instead of wedging until a manual refresh.
+    if (source && source.readyState === EventSource.CLOSED) {
+      source.close()
+      source = null
+      scheduleReconnect()
+    }
+  })
 }
 
 export function subscribe(listener: () => void): () => void {
