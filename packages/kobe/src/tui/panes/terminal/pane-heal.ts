@@ -220,14 +220,44 @@ function respawnCommandsFor(
 }
 
 /**
+ * Outcome of an in-place engine respawn across all windows:
+ *   - `"switched"` — every window's engine pane respawned on the new vendor;
+ *     the caller may now advance the session's `@kobe_vendor` tag.
+ *   - `"no-engine-pane"` — no engine pane was found to respawn; the caller
+ *     falls back to a full session rebuild.
+ *   - `"respawn-failed"` — engine panes were found but the batched respawn
+ *     reported a tmux error, so the switch did NOT fully land. The caller must
+ *     NOT advance `@kobe_vendor` (it would then claim a vendor that isn't
+ *     running in the windows that failed); the stale tag drives a retry on the
+ *     next `ensureSession`.
+ */
+export type RelaunchEngineResult = "switched" | "no-engine-pane" | "respawn-failed"
+
+/**
+ * Classify a vendor-switch respawn from the two facts the applier observes:
+ * how many engine panes were found, and the exit code of the SINGLE batched
+ * respawn invocation. Pure so the all-or-nothing aggregation — a partial
+ * respawn must never advance the `@kobe_vendor` tag — is unit-testable without
+ * a live tmux server. tmux halts a `cmd ; cmd …` sequence on the first failure
+ * and exits non-zero, so a non-zero code means at least one window's engine
+ * respawn did not land.
+ */
+export function classifyRelaunchOutcome(enginePaneCount: number, sequenceExitCode: number): RelaunchEngineResult {
+  if (enginePaneCount === 0) return "no-engine-pane"
+  return sequenceExitCode === 0 ? "switched" : "respawn-failed"
+}
+
+/**
  * Relaunch the engine (claude/codex) pane in EVERY window of the session
  * in place via `respawn-pane`, preserving the windows and their other
  * panes (and each pane's id + `@kobe_role` tag, so the Ops pane's
- * `--target-pane` keeps pointing at a live pane). Returns `true` if at
- * least one engine pane was respawned, `false` if none was found (caller
- * then falls back to a full rebuild). Used to apply a vendor switch to a
- * multi-window session without `kill-session` dropping sibling chat tabs
- * (KOB-232).
+ * `--target-pane` keeps pointing at a live pane). Returns a
+ * {@link RelaunchEngineResult}: `"switched"` only when ALL windows respawned
+ * cleanly, `"no-engine-pane"` when none was found (caller rebuilds), or
+ * `"respawn-failed"` when the batched respawn reported a tmux error (caller
+ * leaves the prior `@kobe_vendor` tag rather than falsely claiming the switch).
+ * Used to apply a vendor switch to a multi-window session without
+ * `kill-session` dropping sibling chat tabs (KOB-232).
  *
  * Engine identity is re-woven PER WINDOW, exactly like the two fresh launch
  * paths (`ensureSession`'s create branch + `newChatTab`). The pre-fix code
@@ -246,15 +276,15 @@ export async function relaunchEngineInAllWindows(
   command: readonly string[],
   remoteKey?: string,
   vendor?: string,
-): Promise<boolean> {
+): Promise<RelaunchEngineResult> {
   const rows = await listKobePanes(session)
-  if (!rows) return false
+  if (!rows) return "no-engine-pane"
   // Each engine pane carries its window id, so we can re-pin that window's
   // `@kobe_session_id` to the freshly woven UUID. `paneIdsByRole` would drop
   // the window id, so filter the rows directly (first claude pane per row order
   // — there is one engine pane per window).
   const enginePanes = rows.filter((r) => r.role === "claude")
-  if (enginePanes.length === 0) return false
+  if (enginePanes.length === 0) return "no-engine-pane"
   const localCwd = localSpawnCwd(cwd)
   const commands: (readonly string[])[] = []
   for (const pane of enginePanes) {
@@ -275,10 +305,15 @@ export async function relaunchEngineInAllWindows(
         : ["set-window-option", "-u", "-t", pane.paneId, CHAT_TAB_SESSION_ID_OPTION],
     )
   }
-  // One tmux invocation for all windows (per-pane exit codes were never
-  // consulted here, so batching loses no error detection).
-  await runTmuxSequence(commands)
-  return true
+  // One tmux invocation for all windows. tmux runs `cmd ; cmd …` in order and
+  // HALTS on the first failure, exiting non-zero — so a single aggregate exit
+  // code is a faithful all-or-nothing signal: zero means every window's engine
+  // pane respawned, non-zero means at least one did not (and the windows after
+  // it never ran). The caller uses this to decide whether to advance the
+  // session's single `@kobe_vendor` tag, so a partial respawn can't leave the
+  // tag claiming a vendor that some window isn't actually running.
+  const code = await runTmuxSequence(commands)
+  return classifyRelaunchOutcome(enginePanes.length, code)
 }
 
 /** The user's global layout prefs (rail width + right-column %), ONE tmux spawn. */
