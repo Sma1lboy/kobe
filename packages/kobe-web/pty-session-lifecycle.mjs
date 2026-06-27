@@ -12,6 +12,55 @@ const DEFAULT_SUBMIT_DELAYS = {
   enterMs: 150,
 }
 
+// A browser opening /pty?tab=<id> with ever-new tab ids would otherwise spawn
+// node-pty processes without bound. Cap concurrent sessions; spawning past the
+// cap evicts the oldest session with no attached sockets, and rejects when every
+// session is being actively viewed.
+const DEFAULT_MAX_SESSIONS = 64
+
+// PTY→WebSocket backpressure: a flooding pty (`yes`) outruns a slow browser, so
+// node buffers the unsent bytes (ws.bufferedAmount) without bound. Pause the pty
+// once any socket's buffer crosses the high-water mark and resume once every
+// socket has drained back under the low-water mark.
+const DEFAULT_BACKPRESSURE = {
+  highWaterBytes: 1 << 20, // 1 MiB queued to a socket → pause the pty
+  lowWaterBytes: 1 << 18, // 256 KiB → resume once all sockets are back under
+  drainPollMs: 50,
+}
+
+/** First session (insertion order) with no attached sockets — the safest to
+ *  evict under cap pressure since no browser is watching it. Returns null when
+ *  every session is actively viewed (caller rejects the new spawn). Exported
+ *  for tests. */
+export function pickEvictableTab(sessions) {
+  for (const [tabId, entry] of sessions) {
+    if (entry.sockets.size === 0) return tabId
+  }
+  return null
+}
+
+/** Pause the pty when ANY open socket has more than `highWaterBytes` queued —
+ *  one slow client is enough to grow node memory unbounded. Exported for tests. */
+export function shouldPausePty(sockets, highWaterBytes) {
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN && ws.bufferedAmount > highWaterBytes) {
+      return true
+    }
+  }
+  return false
+}
+
+/** Resume only when EVERY open socket has drained back under `lowWaterBytes`
+ *  (an empty socket set resumes immediately). Exported for tests. */
+export function shouldResumePty(sockets, lowWaterBytes) {
+  for (const ws of sockets) {
+    if (ws.readyState === ws.OPEN && ws.bufferedAmount > lowWaterBytes) {
+      return false
+    }
+  }
+  return true
+}
+
 export function createPtySessionManager({
   fetchSpec,
   spawnPty,
@@ -19,14 +68,58 @@ export function createPtySessionManager({
   scrollbackCap,
   env,
   setTimeoutFn = setTimeout,
+  setIntervalFn = setInterval,
+  clearIntervalFn = clearInterval,
   submitDelays = DEFAULT_SUBMIT_DELAYS,
+  maxSessions = DEFAULT_MAX_SESSIONS,
+  backpressure = DEFAULT_BACKPRESSURE,
 }) {
   /** @type {Map<string, { pty: any, scrollback: ReturnType<createScrollback>, sockets: Set<any> }>} */
   const sessions = new Map()
   /** @type {Map<string, Promise<any>>} */
   const pendingSpawns = new Map()
 
+  /** Pause the pty once a socket is saturated and poll for drain to resume.
+   *  Idempotent: a second saturation while already paused is a no-op. */
+  function applyBackpressure(entry) {
+    if (entry.paused) return
+    if (!shouldPausePty(entry.sockets, backpressure.highWaterBytes)) return
+    entry.paused = true
+    try {
+      entry.pty.pause?.()
+    } catch {
+      /* engine died — onExit clears the entry */
+    }
+    if (entry.drainTimer !== null) return
+    entry.drainTimer = setIntervalFn(() => {
+      if (!shouldResumePty(entry.sockets, backpressure.lowWaterBytes)) return
+      clearDrainTimer(entry)
+      entry.paused = false
+      try {
+        entry.pty.resume?.()
+      } catch {
+        /* engine died — onExit clears the entry */
+      }
+    }, backpressure.drainPollMs)
+  }
+
+  function clearDrainTimer(entry) {
+    if (entry.drainTimer !== null) {
+      clearIntervalFn(entry.drainTimer)
+      entry.drainTimer = null
+    }
+  }
+
   function spawnSession(tabId, spec, cols, rows) {
+    // Enforce the session cap before allocating another process: evict the
+    // oldest unwatched session, or reject when every session is in active use.
+    if (sessions.size >= maxSessions && !sessions.has(tabId)) {
+      const victim = pickEvictableTab(sessions)
+      if (victim === null) {
+        throw new Error(`pty session limit reached (${maxSessions})`)
+      }
+      closeSession(victim)
+    }
     const [cmd, ...args] = spec.command
     const spawnEnv = typeof env === "function" ? env() : env
     const pty = spawnPty(cmd, args, {
@@ -40,14 +133,18 @@ export function createPtySessionManager({
       pty,
       scrollback: createScrollback(scrollbackCap),
       sockets: new Set(),
+      paused: false,
+      drainTimer: null,
     }
     pty.onData((data) => {
       entry.scrollback.push(data)
       for (const ws of entry.sockets) {
         if (ws.readyState === ws.OPEN) ws.send(data)
       }
+      applyBackpressure(entry)
     })
     pty.onExit(() => {
+      clearDrainTimer(entry)
       for (const ws of entry.sockets) {
         if (ws.readyState === ws.OPEN) ws.close(1000, "engine exited")
       }
@@ -116,6 +213,7 @@ export function createPtySessionManager({
   function closeSession(tabId) {
     const entry = sessions.get(tabId)
     if (!entry) return false
+    clearDrainTimer(entry)
     try {
       entry.pty.kill()
     } catch {
@@ -155,6 +253,7 @@ export function createPtySessionManager({
 
   function shutdown() {
     for (const entry of sessions.values()) {
+      clearDrainTimer(entry)
       try {
         entry.pty.kill()
       } catch {
