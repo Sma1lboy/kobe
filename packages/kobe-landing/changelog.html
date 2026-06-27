@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kobe — changelog</title>
+<meta name="description" content="Release notes for kobe — the local-first TUI orchestrator for parallel AI coding agents. Every version, pulled live from GitHub.">
+<link rel="canonical" href="https://kobe.sma1lboy.me/changelog">
+<meta property="og:title" content="kobe — changelog">
+<meta property="og:description" content="Release notes for kobe, pulled live from GitHub.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kobe.sma1lboy.me/changelog">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#141413;}
+  ::selection{background:rgba(204,120,92,0.3);color:#eae7df}
+  a{color:inherit;}
+  /* release timeline */
+  .rel{position:relative;padding:0 0 8px 0;}
+  .rel-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+  .rel-tag{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;letter-spacing:-0.02em;color:#eae7df;text-decoration:none;}
+  .rel-tag:hover{color:#cc785c;}
+  .rel-date{font-size:12.5px;color:#6b655c;}
+  .rel-badge{font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;border:1px solid rgba(214,168,92,0.4);background:rgba(214,168,92,0.1);color:#d6a85c;border-radius:6px;padding:3px 8px;}
+  .rel-badge.latest{border-color:rgba(154,202,134,0.45);background:rgba(154,202,134,0.08);color:#9aca86;}
+  .rel-body{border:1px solid #2c2823;border-radius:13px;background:#171614;padding:22px 26px;}
+  .rn-h{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:#cc785c;margin:18px 0 12px;}
+  .rn-h:first-child{margin-top:0;}
+  .rn-ul{list-style:none;display:flex;flex-direction:column;gap:11px;}
+  .rn-ul li{position:relative;padding-left:20px;font-size:14px;line-height:1.6;color:#bdb6aa;}
+  .rn-ul li::before{content:"";position:absolute;left:2px;top:9px;width:6px;height:6px;border-radius:50%;background:#cc785c;opacity:0.7;}
+  .rn-p{font-size:14px;line-height:1.6;color:#bdb6aa;margin:10px 0;}
+  .rn-ul code,.rn-p code,.rn-ul li code{font-family:'JetBrains Mono',monospace;font-size:12.5px;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 6px;color:#e6c1b1;}
+  .rn-ul strong,.rn-p strong{color:#eae7df;font-weight:600;}
+  .rn-ul a,.rn-p a{color:#d98c72;text-decoration:none;border-bottom:1px solid rgba(217,140,114,0.3);}
+  .rn-ul a:hover,.rn-p a:hover{color:#e6c1b1;}
+  @media(max-width:760px){.rel-body{padding:18px 18px;}.rel-tag{font-size:21px;}}
+</style>
+</head>
+<body>
+<div style="background:#141413;color:#d6d0c6;font-family:'JetBrains Mono',monospace;min-height:100vh;overflow-x:hidden;position:relative;">
+
+  <!-- subtle grid bg -->
+  <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.015) 1px,transparent 1px);background-size:64px 64px;pointer-events:none;mask-image:radial-gradient(ellipse 90% 60% at 50% 0%,#000 30%,transparent 80%);"></div>
+
+  <!-- NAV -->
+  <nav style="position:relative;max-width:1180px;margin:0 auto;padding:26px 40px;display:flex;align-items:center;justify-content:space-between;">
+    <a href="/" style="display:flex;align-items:center;gap:9px;font-weight:700;font-size:18px;letter-spacing:-0.01em;text-decoration:none;">
+      <span style="color:#cc785c;">[</span>
+      <span style="color:#eae7df;">kobe</span>
+      <span style="color:#cc785c;">]</span>
+    </a>
+    <div style="display:flex;align-items:center;gap:30px;font-size:13.5px;color:#8a847a;">
+      <a href="/#workspace" style="color:#8a847a;text-decoration:none;">workspace</a>
+      <a href="/#why" style="color:#8a847a;text-decoration:none;">why</a>
+      <a href="/#engines" style="color:#8a847a;text-decoration:none;">engines</a>
+      <a href="/changelog" style="color:#e6c1b1;text-decoration:none;">changelog</a>
+      <a href="https://github.com/Sma1lboy/kobe" target="_blank" rel="noopener" style="color:#eae7df;text-decoration:none;border:1px solid #34302a;padding:7px 12px;border-radius:8px;display:flex;align-items:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" style="flex:none;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
+        <span style="display:flex;align-items:center;gap:4px;border-left:1px solid #34302a;padding-left:8px;color:#a39d92;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="#d6a85c" aria-hidden="true" style="flex:none;"><path d="M8 .25l2.06 4.18 4.61.67-3.34 3.25.79 4.6L8 10.97l-4.12 2.17.79-4.6L1.33 5.1l4.61-.67L8 .25z"/></svg>
+          <span id="starCount">–</span>
+        </span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- HEADER -->
+  <header style="position:relative;max-width:880px;margin:0 auto;padding:50px 40px 30px;">
+    <span style="color:#cc785c;font-size:13px;">// releases</span>
+    <h1 style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:clamp(34px,4.6vw,52px);line-height:1.02;letter-spacing:-0.03em;margin:12px 0 16px;color:#eae7df;">Changelog</h1>
+    <p style="font-size:15.5px;line-height:1.6;color:#a39d92;max-width:56ch;">Every kobe release, pulled live from GitHub. <code style="font-family:'JetBrains Mono',monospace;font-size:13px;color:#e6c1b1;background:#211f1c;border:1px solid #322d27;border-radius:5px;padding:1px 7px;">bun install -g @sma1lboy/kobe</code> to update.</p>
+  </header>
+
+  <!-- TIMELINE -->
+  <main style="position:relative;max-width:880px;margin:0 auto;padding:0 40px 110px;">
+    <div id="releases" style="display:flex;flex-direction:column;gap:40px;">
+      <div id="loading" style="color:#6b655c;font-size:14px;padding:20px 0;">Loading releases…</div>
+    </div>
+
+    <!-- footer -->
+    <div style="margin-top:70px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:18px;border-top:1px solid #26221d;padding-top:28px;">
+      <a href="/" style="display:flex;align-items:center;gap:9px;color:#6b655c;font-size:13px;font-weight:600;text-decoration:none;">
+        <span style="color:#cc785c;">[</span><span style="color:#a39d92;">kobe</span><span style="color:#cc785c;">]</span>
+        <span style="font-weight:400;margin-left:4px;">parallel coding agents, terminal-native.</span>
+      </a>
+      <div style="display:flex;gap:24px;font-size:13px;color:#6b655c;">
+        <a href="https://github.com/Sma1lboy/kobe/releases" target="_blank" rel="noopener" style="color:#6b655c;text-decoration:none;">All releases ↗</a>
+        <a href="https://www.npmjs.com/package/@sma1lboy/kobe" style="color:#6b655c;text-decoration:none;">npm</a>
+        <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" style="color:#6b655c;text-decoration:none;">Keybindings</a>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+  // live GitHub star count (shared with the home page; cache for instant paint)
+  (function () {
+    var el = document.getElementById('starCount');
+    if (!el) return;
+    function render(n) { el.textContent = n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n); }
+    try { var c = JSON.parse(localStorage.getItem('kobe_stars') || 'null'); if (c && typeof c.n === 'number') render(c.n); } catch (e) {}
+    fetch('https://api.github.com/repos/Sma1lboy/kobe')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (!d || typeof d.stargazers_count !== 'number') return; render(d.stargazers_count); try { localStorage.setItem('kobe_stars', JSON.stringify({ n: d.stargazers_count })); } catch (e) {} })
+      .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
+  })();
+
+  // release timeline — fetched live from the GitHub Releases API, rendered with a
+  // tiny markdown subset (headings / bullets / code / bold / links) that the
+  // changeset-generated notes use. No build step: a new release shows up here
+  // the moment GitHub publishes it.
+  (function () {
+    var host = document.getElementById('releases');
+    var loading = document.getElementById('loading');
+    if (!host) return;
+
+    function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function inline(s) {
+      s = esc(s);
+      s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      return s;
+    }
+    function mdToHtml(md) {
+      var lines = String(md || '').split(/\r?\n/), out = [], inList = false;
+      function closeList() { if (inList) { out.push('</ul>'); inList = false; } }
+      for (var i = 0; i < lines.length; i++) {
+        var ln = lines[i];
+        var h = ln.match(/^\s*(#{1,6})\s+(.*)$/);
+        if (h) { closeList(); out.push('<div class="rn-h">' + inline(h[2]) + '</div>'); continue; }
+        var li = ln.match(/^\s*[-*]\s+(.*)$/);
+        if (li) { if (!inList) { out.push('<ul class="rn-ul">'); inList = true; } out.push('<li>' + inline(li[1]) + '</li>'); continue; }
+        if (ln.trim() === '') { closeList(); continue; }
+        closeList(); out.push('<p class="rn-p">' + inline(ln) + '</p>');
+      }
+      closeList();
+      return out.join('') || '<p class="rn-p" style="color:#6b655c;">No notes for this release.</p>';
+    }
+    function fmtDate(iso) {
+      try { return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }); }
+      catch (e) { return ''; }
+    }
+
+    fetch('https://api.github.com/repos/Sma1lboy/kobe/releases?per_page=100')
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (rels) {
+        if (!Array.isArray(rels) || rels.length === 0) {
+          loading.innerHTML = 'No releases yet. See <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub</a>.';
+          return;
+        }
+        var html = rels.map(function (rel, idx) {
+          var tag = esc(rel.tag_name || rel.name || '');
+          var badge = idx === 0
+            ? '<span class="rel-badge latest">latest</span>'
+            : (rel.prerelease ? '<span class="rel-badge">prerelease</span>' : '');
+          return '<article class="rel">' +
+            '<div class="rel-head">' +
+              '<a class="rel-tag" href="' + esc(rel.html_url || '#') + '" target="_blank" rel="noopener">' + tag + '</a>' +
+              badge +
+              '<span class="rel-date">' + fmtDate(rel.published_at || rel.created_at) + '</span>' +
+            '</div>' +
+            '<div class="rel-body">' + mdToHtml(rel.body) + '</div>' +
+          '</article>';
+        }).join('');
+        host.innerHTML = html;
+      })
+      .catch(function () {
+        loading.innerHTML = 'Couldn’t load releases (GitHub API). See the full list on <a href="https://github.com/Sma1lboy/kobe/releases" style="color:#d98c72;">GitHub ↗</a>.';
+      });
+  })();
+</script>
+</body>
+</html>
