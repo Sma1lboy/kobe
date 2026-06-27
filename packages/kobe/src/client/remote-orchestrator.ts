@@ -111,6 +111,63 @@ export function sameWorktreeChangesMap(a: WorktreeChangesMap, b: WorktreeChanges
   return true
 }
 
+/**
+ * One worktree's daemon-collected transcript facts (perf — deduplicate
+ * per-Ops-pane polling), from the `transcript.activity` channel: the newest
+ * engine-transcript mtime (drives the Ops pane's `● new` badge) plus the
+ * engine-owned latest-completion marker (drives the ChatTab "done" chip).
+ * The per-window tmux quiescence check stays in the Ops pane — this is only
+ * the shareable filesystem half.
+ */
+export interface TranscriptActivity {
+  readonly mtimeMs: number
+  readonly completionId: string | null
+  readonly completionAt: number
+}
+
+/**
+ * Daemon-collected transcript facts keyed by worktree path, from the
+ * `transcript.activity` channel. `null` means "no daemon-collected data":
+ * either the daemon predates the channel (absent from `hello.capabilities`)
+ * or `init()` hasn't completed — the Ops pane then falls back to its local
+ * mtime/completion polling.
+ */
+export type TranscriptActivityMap = ReadonlyMap<string, TranscriptActivity>
+
+/**
+ * Parse a `transcript.activity` wire payload into a path→facts map. Returns
+ * `null` for a malformed payload (the event is then ignored — never clobber
+ * a good map with garbage). Exported for unit tests.
+ */
+export function parseTranscriptActivityPayload(payload: unknown): Map<string, TranscriptActivity> | null {
+  const activity = (payload as { activity?: unknown } | undefined)?.activity
+  if (!activity || typeof activity !== "object" || Array.isArray(activity)) return null
+  const map = new Map<string, TranscriptActivity>()
+  for (const [path, value] of Object.entries(activity as Record<string, unknown>)) {
+    const v = value as { mtimeMs?: unknown; completionId?: unknown; completionAt?: unknown } | undefined
+    if (typeof v?.mtimeMs !== "number" || typeof v.completionAt !== "number") return null
+    if (v.completionId !== null && typeof v.completionId !== "string") return null
+    map.set(path, { mtimeMs: v.mtimeMs, completionId: v.completionId, completionAt: v.completionAt })
+  }
+  return map
+}
+
+/** Entry-wise value equality for two transcript-activity maps. Exported for unit tests. */
+export function sameTranscriptActivityMap(a: TranscriptActivityMap, b: TranscriptActivityMap): boolean {
+  if (a.size !== b.size) return false
+  for (const [path, v] of a) {
+    const other = b.get(path)
+    if (
+      !other ||
+      other.mtimeMs !== v.mtimeMs ||
+      other.completionId !== v.completionId ||
+      other.completionAt !== v.completionAt
+    )
+      return false
+  }
+  return true
+}
+
 export type KobeOrchestrator = Orchestrator | RemoteOrchestrator
 
 /**
@@ -166,6 +223,8 @@ export class RemoteOrchestrator {
   private readonly setTaskJobsSig: (next: ReadonlyMap<string, TaskJobState>) => void
   private readonly worktreeChangesAcc: Accessor<WorktreeChangesMap | null>
   private readonly setWorktreeChangesSig: (next: WorktreeChangesMap | null) => void
+  private readonly transcriptActivityAcc: Accessor<TranscriptActivityMap | null>
+  private readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   private readonly uiPrefsAcc: Accessor<UiPrefsPayload | null>
   private readonly setUiPrefsSig: (next: UiPrefsPayload | null) => void
   private readonly keybindingsRevAcc: Accessor<number | null>
@@ -193,6 +252,7 @@ export class RemoteOrchestrator {
     const [engineState, setEngineState] = createSignal<ReadonlyMap<string, TaskEngineState>>(new Map())
     const [taskJobs, setTaskJobs] = createSignal<ReadonlyMap<string, TaskJobState>>(new Map())
     const [worktreeChanges, setWorktreeChanges] = createSignal<WorktreeChangesMap | null>(null)
+    const [transcriptActivity, setTranscriptActivity] = createSignal<TranscriptActivityMap | null>(null)
     const [uiPrefs, setUiPrefs] = createSignal<UiPrefsPayload | null>(null)
     const [keybindingsRev, setKeybindingsRev] = createSignal<number | null>(null)
     const [connectionState, setConnectionState] = createSignal<DaemonConnectionState>("online")
@@ -210,6 +270,8 @@ export class RemoteOrchestrator {
     this.setTaskJobsSig = (next) => setTaskJobs(() => next)
     this.worktreeChangesAcc = worktreeChanges
     this.setWorktreeChangesSig = (next) => setWorktreeChanges(() => next)
+    this.transcriptActivityAcc = transcriptActivity
+    this.setTranscriptActivitySig = (next) => setTranscriptActivity(() => next)
     this.uiPrefsAcc = uiPrefs
     this.setUiPrefsSig = (next) => setUiPrefs(() => next)
     this.keybindingsRevAcc = keybindingsRev
@@ -352,6 +414,18 @@ export class RemoteOrchestrator {
     } else {
       this.setWorktreeChangesSig(null)
     }
+    // Daemon-collected transcript activity (perf — deduplicate per-Ops-pane
+    // polling): same rolling-upgrade gate as `worktree.changes` above. A
+    // capable daemon → seed an EMPTY map (not null) so the Ops pane trusts
+    // pushes and stops its local mtime/completion probes; an old daemon
+    // without the capability resets the signal to null so the pane's local
+    // polling engages cleanly — including after a reconnect that downgraded
+    // daemons.
+    if (hello.capabilities?.includes("transcript.activity")) {
+      if (this.transcriptActivityAcc() === null) this.setTranscriptActivitySig(new Map())
+    } else {
+      this.setTranscriptActivitySig(null)
+    }
     this.setConnectionState("online")
     logClient("orch", `subscribed as ${this.role} (${this.tasksAcc().length} tasks)`)
   }
@@ -461,6 +535,22 @@ export class RemoteOrchestrator {
    */
   worktreeChangesSignal(): Accessor<WorktreeChangesMap | null> {
     return this.worktreeChangesAcc
+  }
+
+  /**
+   * Daemon-collected transcript facts keyed by worktree path, pushed live on
+   * the `transcript.activity` channel (perf — deduplicate per-Ops-pane
+   * polling). Each entry carries the newest transcript mtime (the `● new`
+   * badge source) + the engine-owned latest-completion marker (the ChatTab
+   * "done" chip source). `null` = no daemon-collected data (old daemon
+   * without the channel, or before `init()`): the Ops pane falls back to its
+   * local mtime/completion probes; non-null means "render pushes, stat/parse
+   * zero transcripts". Like `worktree.changes`, each push REPLACES the whole
+   * map (the daemon drops deleted/archived entries itself), so stale keys
+   * cannot accumulate in a long-lived pane.
+   */
+  transcriptActivitySignal(): Accessor<TranscriptActivityMap | null> {
+    return this.transcriptActivityAcc
   }
 
   /**
@@ -701,6 +791,24 @@ export class RemoteOrchestrator {
       const current = this.worktreeChangesAcc()
       if (current && sameWorktreeChangesMap(current, next)) return
       this.setWorktreeChangesSig(next)
+      return
+    }
+    if (name === "transcript.activity") {
+      const next = parseTranscriptActivityPayload(payload)
+      if (!next) {
+        // malformed → never clobber a good map, but log the drop.
+        logClientError(
+          "orch",
+          `dropped transcript.activity event: malformed activity payload (${describePayload(payload)})`,
+        )
+        return
+      }
+      // Value-equality gate: an unchanged republish (bus replay across a
+      // reconnect, or a daemon publish that round-trips to the same facts)
+      // must not swap the map reference and re-run every Ops pane effect.
+      const current = this.transcriptActivityAcc()
+      if (current && sameTranscriptActivityMap(current, next)) return
+      this.setTranscriptActivitySig(next)
       return
     }
     if (name === "ui-prefs") {
