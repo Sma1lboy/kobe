@@ -167,6 +167,22 @@ export function stripNewlines(v: string): string {
 }
 
 /**
+ * Is a required free-text field effectively empty?
+ *
+ * `true` when the string carries no non-whitespace character. Unlike a
+ * bare `value.trim() === ""` guard, this rejects strings made only of
+ * Unicode whitespace that `String.prototype.trim()` does NOT strip — most
+ * importantly the full-width / ideographic space `U+3000` (`　`), which a
+ * Chinese keyboard emits constantly. JS `\s` (and thus `\S`) already covers
+ * `U+3000`, `U+00A0`, `U+2000–U+200A`, etc., so a prompt/title of only
+ * those spaces is correctly treated as blank instead of slipping past the
+ * submit guard as a real value.
+ */
+export function isBlankText(v: string): boolean {
+  return !/\S/u.test(v)
+}
+
+/**
  * Advance the field-cycle state. Tab walks the full chain in visual
  * order, threading the two shared selectors (`tabs`, `engine`) and the
  * shared `confirm` button into every sub-tab:
