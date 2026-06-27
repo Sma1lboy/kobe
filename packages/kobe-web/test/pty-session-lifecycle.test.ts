@@ -1,7 +1,12 @@
 import { EventEmitter } from "node:events"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { createScrollback } from "../pty-scrollback.mjs"
-import { createPtySessionManager } from "../pty-session-lifecycle.mjs"
+import {
+  createPtySessionManager,
+  pickEvictableTab,
+  shouldPausePty,
+  shouldResumePty,
+} from "../pty-session-lifecycle.mjs"
 
 class FakePty {
   data: ((data: string) => void) | null = null
@@ -9,6 +14,9 @@ class FakePty {
   writes: string[] = []
   resizes: Array<{ cols: number; rows: number }> = []
   killed = false
+  paused = false
+  pauseCount = 0
+  resumeCount = 0
 
   onData(cb: (data: string) => void): void {
     this.data = cb
@@ -24,6 +32,16 @@ class FakePty {
 
   resize(cols: number, rows: number): void {
     this.resizes.push({ cols, rows })
+  }
+
+  pause(): void {
+    this.paused = true
+    this.pauseCount += 1
+  }
+
+  resume(): void {
+    this.paused = false
+    this.resumeCount += 1
   }
 
   kill(): void {
@@ -42,6 +60,7 @@ class FakePty {
 class FakeSocket extends EventEmitter {
   OPEN = 1
   readyState = this.OPEN
+  bufferedAmount = 0
   sent: string[] = []
   closes: Array<{ code?: number; reason?: string }> = []
 
@@ -260,5 +279,133 @@ describe("createPtySessionManager", () => {
     expect(ptys.map((pty) => pty.killed)).toEqual([true, true])
     expect(manager.sessionCount()).toBe(0)
     expect(manager.pendingSpawnCount()).toBe(0)
+  })
+
+  it("evicts the oldest unwatched session when the cap is hit", async () => {
+    const { manager, ptys } = setup({ maxSessions: 2 })
+    await manager.ensureSession("a", "task-a", "engine", 80, 24)
+    await manager.ensureSession("b", "task-b", "engine", 80, 24)
+
+    // Third tab over the cap of 2: oldest (a, no sockets) is killed + evicted.
+    await manager.ensureSession("c", "task-c", "engine", 80, 24)
+
+    expect(manager.sessionCount()).toBe(2)
+    expect(ptys[0].killed).toBe(true)
+    expect(manager.closeSession("a")).toBe(false)
+    expect(manager.closeSession("c")).toBe(true)
+  })
+
+  it("rejects a new session when every session is actively viewed", async () => {
+    const { manager } = setup({ maxSessions: 2 })
+    const a = new FakeSocket()
+    const b = new FakeSocket()
+    await manager.attachSocket({ ws: a, tabId: "a", taskId: "task-a", mode: "engine", cols: 80, rows: 24 })
+    await manager.attachSocket({ ws: b, tabId: "b", taskId: "task-b", mode: "engine", cols: 80, rows: 24 })
+
+    const c = new FakeSocket()
+    await expect(
+      manager.attachSocket({ ws: c, tabId: "c", taskId: "task-c", mode: "engine", cols: 80, rows: 24 }),
+    ).rejects.toThrow(/session limit reached/)
+    expect(manager.sessionCount()).toBe(2)
+  })
+
+  it("re-attaching an existing tab at the cap does not evict", async () => {
+    const { manager } = setup({ maxSessions: 2 })
+    await manager.ensureSession("a", "task-a", "engine", 80, 24)
+    await manager.ensureSession("b", "task-b", "engine", 80, 24)
+
+    // ensureSession("a") returns the existing entry — no spawn, no eviction.
+    await manager.ensureSession("a", "task-a", "engine", 80, 24)
+    expect(manager.sessionCount()).toBe(2)
+    expect(manager.closeSession("b")).toBe(true)
+  })
+
+  it("pauses the pty when a socket saturates and resumes once it drains", async () => {
+    vi.useFakeTimers()
+    const { manager, ptys } = setup({
+      backpressure: { highWaterBytes: 100, lowWaterBytes: 50, drainPollMs: 10 },
+    })
+    const ws = new FakeSocket()
+    await manager.attachSocket({ ws, tabId: "tab", taskId: "task", mode: "engine", cols: 80, rows: 24 })
+
+    ws.bufferedAmount = 200
+    ptys[0].emitData("flood")
+    expect(ptys[0].paused).toBe(true)
+    expect(ptys[0].pauseCount).toBe(1)
+
+    // A second flood while already paused must not re-pause.
+    ptys[0].emitData("more")
+    expect(ptys[0].pauseCount).toBe(1)
+
+    // Still saturated → no resume on the drain poll.
+    vi.advanceTimersByTime(10)
+    expect(ptys[0].paused).toBe(true)
+
+    // Drained back under the low-water mark → resume on the next poll.
+    ws.bufferedAmount = 0
+    vi.advanceTimersByTime(10)
+    expect(ptys[0].paused).toBe(false)
+    expect(ptys[0].resumeCount).toBe(1)
+  })
+
+  it("does not pause while sockets stay under the high-water mark", async () => {
+    vi.useFakeTimers()
+    const { manager, ptys } = setup({
+      backpressure: { highWaterBytes: 100, lowWaterBytes: 50, drainPollMs: 10 },
+    })
+    const ws = new FakeSocket()
+    await manager.attachSocket({ ws, tabId: "tab", taskId: "task", mode: "engine", cols: 80, rows: 24 })
+
+    ws.bufferedAmount = 80
+    ptys[0].emitData("ok")
+    expect(ptys[0].paused).toBe(false)
+    expect(ptys[0].pauseCount).toBe(0)
+  })
+})
+
+describe("pickEvictableTab", () => {
+  it("returns the first session (insertion order) with no sockets", () => {
+    const sessions = new Map<string, { sockets: Set<unknown> }>([
+      ["a", { sockets: new Set(["s"]) }],
+      ["b", { sockets: new Set() }],
+      ["c", { sockets: new Set() }],
+    ])
+    expect(pickEvictableTab(sessions)).toBe("b")
+  })
+
+  it("returns null when every session is actively viewed", () => {
+    const sessions = new Map<string, { sockets: Set<unknown> }>([
+      ["a", { sockets: new Set(["s"]) }],
+    ])
+    expect(pickEvictableTab(sessions)).toBeNull()
+    expect(pickEvictableTab(new Map())).toBeNull()
+  })
+})
+
+describe("shouldPausePty / shouldResumePty", () => {
+  const sock = (bufferedAmount: number, open = true) => ({
+    OPEN: 1,
+    readyState: open ? 1 : 3,
+    bufferedAmount,
+  })
+
+  it("pauses when ANY open socket is over the high-water mark", () => {
+    expect(shouldPausePty([sock(50), sock(200)], 100)).toBe(true)
+    expect(shouldPausePty([sock(50), sock(90)], 100)).toBe(false)
+    expect(shouldPausePty([], 100)).toBe(false)
+  })
+
+  it("ignores closed sockets when deciding to pause", () => {
+    expect(shouldPausePty([sock(999, false)], 100)).toBe(false)
+  })
+
+  it("resumes only when EVERY open socket is under the low-water mark", () => {
+    expect(shouldResumePty([sock(10), sock(40)], 50)).toBe(true)
+    expect(shouldResumePty([sock(10), sock(60)], 50)).toBe(false)
+    expect(shouldResumePty([], 50)).toBe(true)
+  })
+
+  it("ignores closed sockets when deciding to resume", () => {
+    expect(shouldResumePty([sock(999, false)], 50)).toBe(true)
   })
 })
