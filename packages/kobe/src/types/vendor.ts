@@ -83,3 +83,25 @@ export function coerceVendorId(value: string | undefined): VendorId {
   const v = value?.trim()
   return v && v.length > 0 ? v : "claude"
 }
+
+/**
+ * Validate an untrusted PERSISTED vendor id (e.g. `lastSelectedVendor` read
+ * from state.json) against the set of vendors kobe can actually launch: the
+ * three built-ins PLUS the user's registered custom engines. Unlike
+ * {@link coerceVendorId} (which only rejects empty), this rejects a corrupt or
+ * typo'd value — one that is neither a built-in nor a registered custom id —
+ * and falls back to `"claude"` ({@link DEFAULT_TASK_VENDOR} in `types/task.ts`)
+ * rather than letting a bogus id flow into engine selection as the chosen
+ * default and silently fail to launch a missing binary.
+ *
+ * Pass the user's `customEngineIds` registry (see
+ * `state/repos.ts#getCustomEngineIds`) so a real custom engine id passes
+ * through; omit it (defaults to `[]`) when only built-ins should be accepted.
+ */
+export function resolvePersistedVendor(value: string | undefined, customEngineIds: readonly string[] = []): VendorId {
+  const v = value?.trim()
+  if (!v) return "claude"
+  if (isBuiltinVendor(v)) return v
+  if (customEngineIds.includes(v)) return v
+  return "claude"
+}

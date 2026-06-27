@@ -24,8 +24,15 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
-import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
-import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
+import {
+  addSavedRepo,
+  getCustomEngineIds,
+  getPersistedString,
+  getSavedRepos,
+  setPersistedString,
+} from "../../state/repos.ts"
+import type { Task } from "../../types/task.ts"
+import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { NewTaskDialog } from "../component/new-task-dialog"
 import { useTheme } from "../context/theme"
 import { bootPaneHost } from "../lib/host-boot"
@@ -50,7 +57,7 @@ export function NewTaskPage(props: NewTaskHostArgs & { orchestrator: RemoteOrche
   async function run(): Promise<void> {
     const repos = getSavedRepos()
     const defaultRepo = props.defaultRepo || repos[0] || process.cwd()
-    const defaultVendor = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+    const defaultVendor = resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
     const availableVendors = await availableEngineIds()
     const orch = props.orchestrator
 

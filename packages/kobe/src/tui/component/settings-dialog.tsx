@@ -28,8 +28,8 @@ import { AUTO_STATUS_KEY } from "../../state/auto-status"
 import { DISPATCHER_KEY } from "../../state/dispatcher"
 import { getPersistedString, setPersistedString } from "../../state/repos"
 import { ZEN_KEEP_TASKS_KEY } from "../../state/zen"
-import { DEFAULT_TASK_VENDOR, type VendorId } from "../../types/task"
-import { ALL_VENDORS, isBuiltinVendor } from "../../types/vendor"
+import type { VendorId } from "../../types/task"
+import { ALL_VENDORS, isBuiltinVendor, resolvePersistedVendor } from "../../types/vendor"
 import type { KVContext } from "../context/kv"
 import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../context/theme"
 import { type LocaleId, currentLang, setLocaleLang, t } from "../i18n"
@@ -306,7 +306,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   // open (getPersistedString) so a default set via Ctrl+Shift+T in another
   // process is reflected here; `d` on an engine row sets it (the ● marker).
   const [defaultEngine, setDefaultEngineSig] = createSignal<VendorId>(
-    (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR,
+    resolvePersistedVendor(getPersistedString("lastSelectedVendor"), customEngines()),
   )
   function isDefaultEngine(vendor: VendorId): boolean {
     return defaultEngine() === vendor
