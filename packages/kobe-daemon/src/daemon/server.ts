@@ -20,6 +20,7 @@ import type { Orchestrator } from "@/orchestrator/core"
 import { type UpdateInfo, checkLatestVersion } from "@/version"
 import { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
+import { ClientWriter } from "./client-writer.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
 import {
@@ -117,6 +118,14 @@ export interface DaemonClientConnection {
 
 type ClientState = DaemonClientConnection & {
   socket: Socket
+  /**
+   * Backpressure-aware writer for this socket (fix E). Every server→client
+   * frame goes through it so a slow/stalled client buffers in a bounded
+   * per-client queue (oldest droppable frames shed past the high-water mark)
+   * instead of letting Node queue unbounded heap on the long-lived daemon.
+   * Lifecycle/response frames are never dropped. See {@link ClientWriter}.
+   */
+  writer: ClientWriter
   buffer: string
   /** True once the client has called `subscribe` (broadcast target). */
   subscribed: boolean
@@ -205,6 +214,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       id: nextClientId++,
       connectedAt: new Date(),
       socket,
+      writer: new ClientWriter(socket),
       buffer: "",
       subscribed: false,
       holdsLifetime: false,
@@ -538,8 +548,21 @@ export async function readPidFile(pidPath: string): Promise<number | null> {
   }
 }
 
-function writeFrame(client: Pick<ClientState, "socket">, frame: DaemonFrame): void {
-  client.socket.write(frameToLine(frame))
+/**
+ * Critical frames are never dropped under backpressure (fix E): the
+ * `daemon.stopping` lifecycle signal (every client must learn the daemon is
+ * going down) and every RPC `response` (dropping one would hang the client's
+ * pending request). Channel `event` frames are droppable — the bus
+ * last-value-coalesces them, so a dropped intermediate is superseded by the
+ * next publish.
+ */
+function isCriticalFrame(frame: DaemonFrame): boolean {
+  if (frame.type === "event") return frame.name === "daemon.stopping"
+  return true
+}
+
+function writeFrame(client: Pick<ClientState, "writer">, frame: DaemonFrame): void {
+  client.writer.write(frameToLine(frame), isCriticalFrame(frame))
 }
 
 function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void {
@@ -554,11 +577,16 @@ function broadcast(clients: ReadonlySet<ClientState>, frame: DaemonFrame): void 
   // `daemon.stopping` lifecycle frame is NOT a channel — it bypasses the
   // filter so every subscriber learns the daemon is going down.
   const channel = frame.type === "event" && frame.name !== "daemon.stopping" ? (frame.name as ChannelName) : null
+  // Backpressure (fix E): each client's writer obeys its own socket's drain
+  // signal and buffers in a bounded per-client queue, so one slow client can
+  // neither stall the fan-out for healthy clients nor grow the daemon heap
+  // unbounded. Critical-ness is identical for all clients, so compute it once.
+  const critical = isCriticalFrame(frame)
   let line: string | null = null
   for (const client of clients) {
     if (!client.subscribed && frame.type === "event") continue
     if (channel && client.channels && !client.channels.has(channel)) continue
     line ??= frameToLine(frame)
-    client.socket.write(line)
+    client.writer.write(line, critical)
   }
 }
