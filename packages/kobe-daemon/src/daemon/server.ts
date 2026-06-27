@@ -40,6 +40,10 @@ import { DaemonLifetime } from "./lifetime.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { DEFAULT_PR_STATUS_POLL_MS, startPrStatusPoller } from "./pr-status-collector.ts"
 import { type ChannelName, type DaemonFrame, frameToLine, normalizeChannelFilter, serializeTask } from "./protocol.ts"
+import {
+  DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
+  startTranscriptActivityCollector,
+} from "./transcript-activity-collector.ts"
 import { DEFAULT_UI_PREFS_DEBOUNCE_MS, defaultUiPrefsStatePath, startUiPrefsWatcher } from "./ui-prefs-watcher.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
 import { DEFAULT_WORKTREE_CHANGES_TICK_MS, startWorktreeChangesCollector } from "./worktree-changes-collector.ts"
@@ -94,6 +98,8 @@ export interface DaemonServerOptions {
   readonly keybindingsDebounceMs?: number
   /** Worktree-changes collector tick in ms; `0` disables. Defaults to {@link DEFAULT_WORKTREE_CHANGES_TICK_MS}. */
   readonly worktreeChangesTickMs?: number
+  /** Transcript-activity collector tick in ms; `0` disables. Defaults to {@link DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS}. */
+  readonly transcriptActivityTickMs?: number
   /** Optional loopback HTTP/SSE browser transport. Omitted in tests unless explicitly requested. */
   readonly webPort?: number
   /** Optional hostname for the browser transport. Defaults to 127.0.0.1. */
@@ -319,6 +325,23 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     () => lifetime.hasSubscribers(),
   )
 
+  // Single transcript-activity collector (perf — deduplicate per-Ops-pane
+  // polling): the daemon runs the guarded FILESYSTEM probes (newest
+  // transcript mtime + the engine-owned completion marker) for every
+  // non-archived local worktree and publishes the full map on the
+  // `transcript.activity` channel, so Ops panes render pushes instead of
+  // each stat'ing + parsing the transcript store on their own timers. The
+  // per-window tmux capture-pane quiescence check + @kobe_tab_state write
+  // stay in-process (the daemon never touches tmux). Panes detect the
+  // channel via `hello.capabilities` and keep their local probes only as
+  // the no-daemon / old-daemon fallback.
+  const stopTranscriptActivityCollector = startTranscriptActivityCollector(
+    orch,
+    bus,
+    options.transcriptActivityTickMs ?? DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS,
+    () => lifetime.hasSubscribers(),
+  )
+
   // PR-status poller (KOB-10): shells `gh pr view` per task with a real branch
   // and writes the result onto Task.prStatus, which rides the same task push as
   // every other field. Gated on subscribers so a gui-less daemon never hits the
@@ -347,6 +370,7 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
       stopUiPrefsWatcher()
       stopKeybindingsWatcher()
       stopWorktreeChangesCollector()
+      stopTranscriptActivityCollector()
       activity.close()
       // tmux is intentionally untouched here: closing the daemon never tears
       // down task sessions. Session teardown lives ONLY in `kobe reset` /

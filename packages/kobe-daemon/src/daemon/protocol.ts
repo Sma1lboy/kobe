@@ -284,6 +284,33 @@ export interface ChannelPayloads {
     changes: Record<string, { added: number; deleted: number }>
   }
   /**
+   * Engine-transcript activity for every collected worktree (perf —
+   * deduplicate per-Ops-pane polling). Today EVERY `kobe ops` pane stat'd
+   * the engine's transcript dir + parsed its JSONL on its own 1.5–2.5s
+   * timer (the `● new` badge's mtime probe + the ChatTab "done" chip's
+   * completion-marker read) — W ChatTabs × K transcripts of duplicated
+   * filesystem churn at total rest. The daemon now runs ONE collector
+   * (`daemon/transcript-activity-collector.ts`) doing the shareable,
+   * FILESYSTEM half — newest transcript mtime + the engine-owned completion
+   * marker — and fans it out here. The per-window `tmux capture-pane`
+   * quiescence check + `@kobe_tab_state` write STAY in the Ops pane process
+   * (the daemon must never touch tmux), so this channel carries only the
+   * fs-derived facts a window combines with its local pane hash.
+   *
+   * Same FULL-map-replace contract as `worktree.changes`: keys are absolute
+   * LOCAL worktree paths, the payload is the whole map republished only when
+   * an entry changed, archived/remote tasks are never collected, and a
+   * deleted/archived task's entry drops on the next tick. `completionId` is
+   * the engine's opaque latest-completion marker id (`null` when the vendor
+   * has none or none exists yet); `completionAt` is its epoch-ms timestamp
+   * (`0` when absent). A `Record` (not a Map) — JSON wire payload. Clients
+   * on an older daemon (channel absent from `hello.capabilities`) fall back
+   * to the Ops pane's local polling.
+   */
+  "transcript.activity": {
+    activity: Record<string, { mtimeMs: number; completionId: string | null; completionAt: number }>
+  }
+  /**
    * Text addressed INTO a task's live engine session (docs/design/
    * dispatcher.md). The daemon never owns delivery — engines are hosted
    * by front-ends (tmux panes, the web PTY sidecar), so this channel is
@@ -322,6 +349,9 @@ export type TaskJobsPayload = ChannelPayloads["task.jobs"]
 /** The `worktree.changes` channel payload — daemon-collected change counts. */
 export type WorktreeChangesPayload = ChannelPayloads["worktree.changes"]
 
+/** The `transcript.activity` channel payload — daemon-collected transcript facts. */
+export type TranscriptActivityPayload = ChannelPayloads["transcript.activity"]
+
 /** A push-channel name (a key of {@link ChannelPayloads}). */
 export type ChannelName = keyof ChannelPayloads
 
@@ -336,6 +366,7 @@ export const CHANNEL_NAMES: readonly ChannelName[] = [
   "keybindings",
   "task.jobs",
   "worktree.changes",
+  "transcript.activity",
   "session.deliver",
 ]
 
