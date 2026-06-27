@@ -14,26 +14,44 @@
  * GitHub only (KOB-10): the runner is `gh`, so remote (`ssh://`) projects and
  * non-GitHub remotes simply yield no PR and are cheap no-ops.
  *
- * Cost control — a per-task backoff map keyed off the outcome:
+ * Cost control — a per-task schedule keyed off the outcome:
  *   - has an open PR  → re-poll at tick cadence (checks move).
  *   - merged / closed → {@link SETTLED_BACKOFF_MS} (the PR is done).
- *   - no PR / `gh` unavailable → {@link NO_PR_BACKOFF_MS} (a branch rarely
- *                       sprouts a PR between ticks, and a missing/unauthed `gh`
- *                       must not turn into a per-task spawn every tick).
+ *   - no PR (gh ran, said none) → {@link NO_PR_BACKOFF_MS} (a branch rarely
+ *                       sprouts a PR between ticks).
+ *   - `gh`/transport ERROR (missing, unauthed, timeout, network, bad JSON) →
+ *                       EXPONENTIAL backoff capped at {@link PR_FAILURE_CAP_MS},
+ *                       so a persistent failure (gh missing) stops re-spawning
+ *                       at full rate, and the failure kind is logged so it's
+ *                       diagnosable rather than silently collapsing to "no PR".
+ *   - no GitHub remote (deterministic) → {@link NO_REMOTE_BACKOFF_MS} long idle
+ *                       cadence (it will never have a GitHub PR — no retry storm).
+ * Every scheduled delay is JITTERED ({@link PR_POLL_JITTER_RATIO}) so N tasks
+ * coming due together (a network reconnect re-arming every task) don't poll in
+ * lockstep.
  *
  * A status is only ever WRITTEN from a successful `gh pr view` (exit 0 with a
- * PR number); any other outcome keeps the last value, so a transient
+ * PR number); an error or empty keeps the last value, so a transient
  * auth/network blip never clobbers a known chip. Best-effort + sequential
  * (gentle on the subprocess budget); a per-task failure is logged, never
  * fatal, never blocks the other tasks in the pass.
  */
 
-import { spawnCapture } from "@/lib/poll-scheduling"
-import { GH_PR_VIEW_FIELDS, type GhPrView, mapGhPrView, samePrStatus } from "@/monitor/pr-status"
+import { spawn } from "node:child_process"
+import {
+  GH_PR_VIEW_FIELDS,
+  type GhPrView,
+  type PrBackoffConfig,
+  type PrViewErrorKind,
+  classifyGhFailure,
+  mapGhPrView,
+  nextPrPoll,
+  samePrStatus,
+} from "@/monitor/pr-status"
 import type { Orchestrator } from "@/orchestrator/core"
 import { isRemoteRepoKey } from "@/state/repos"
 import type { Task } from "@/types/task"
-import { logDaemonError } from "./crash-log.ts"
+import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 
 /** Default re-scan cadence. PR checks move on the order of seconds-to-minutes;
  * 30s is responsive without hammering `gh` (which hits the network). */
@@ -42,38 +60,104 @@ export const DEFAULT_PR_STATUS_POLL_MS = 30_000
 export const NO_PR_BACKOFF_MS = 5 * 60_000
 /** Re-poll backoff once a PR is merged/closed — effectively done. */
 export const SETTLED_BACKOFF_MS = 10 * 60_000
+/** First transient-failure backoff (doubles per consecutive failure). */
+export const PR_FAILURE_BASE_MS = DEFAULT_PR_STATUS_POLL_MS
+/** Cap on the exponential failure backoff — a persistently broken `gh`
+ * (missing/unauthed) settles here instead of spawning every tick. */
+export const PR_FAILURE_CAP_MS = 15 * 60_000
+/** Deterministic "no GitHub remote" idle cadence — this repo will never have a
+ * GitHub PR, so re-checking it more than rarely is pure waste. */
+export const NO_REMOTE_BACKOFF_MS = 30 * 60_000
+/** ± jitter ratio on every scheduled delay (de-syncs N tasks after a reconnect). */
+export const PR_POLL_JITTER_RATIO = 0.2
 /** Kill a `gh pr view` that hangs past this (network stall). */
 export const PR_VIEW_TIMEOUT_MS = 10_000
 
 /**
- * The outcome of one `gh pr view`. `pr` = a parsed payload (the only case that
- * writes a status); `empty` = no usable PR — branch has none, `gh` is missing/
- * unauthed, the call timed out, or the JSON didn't parse. We deliberately don't
- * try to distinguish "no PR" from "transient error" (`gh` doesn't give us a
- * clean signal without stderr), so `empty` never clears a known status — it
- * just backs off.
+ * The outcome of one `gh pr view`:
+ *   - `pr`    — a parsed payload (the only case that WRITES a status).
+ *   - `empty` — gh ran and there is genuinely no PR for the branch.
+ *   - `error` — a `gh`/transport failure (typed by {@link PrViewErrorKind}):
+ *               gh missing/unauthed, a timeout, a network blip, bad JSON, or no
+ *               GitHub remote. Distinguishing this from `empty` is the whole
+ *               point — an error keeps the last status + logs *why* it's stale,
+ *               instead of masquerading as "no PR".
  */
-export type PrViewResult = { kind: "pr"; view: GhPrView } | { kind: "empty" }
+export type PrViewResult =
+  | { kind: "pr"; view: GhPrView }
+  | { kind: "empty" }
+  | { kind: "error"; error: PrViewErrorKind }
 
 /** Runs `gh pr view` for a branch in a worktree. Injectable for tests. */
 export type PrViewRunner = (worktreePath: string, branch: string) => Promise<PrViewResult>
 
+interface GhSpawnResult {
+  readonly status: number | null
+  readonly stdout: string
+  readonly stderr: string
+  /** The child failed to spawn (ENOENT etc.) and it was NOT our abort. */
+  readonly spawnError: boolean
+}
+
+/** Spawn `gh` capturing stdout AND stderr (needed to classify the failure).
+ * Never rejects: a spawn error or abort resolves with `status: null` so the
+ * caller branches on the captured signals rather than a thrown error. */
+function spawnGh(args: readonly string[], cwd: string, signal: AbortSignal): Promise<GhSpawnResult> {
+  return new Promise((resolve) => {
+    let out = ""
+    let err = ""
+    let settled = false
+    const finish = (status: number | null, spawnError: boolean): void => {
+      if (settled) return
+      settled = true
+      resolve({ status, stdout: out, stderr: err, spawnError })
+    }
+    const child = spawn("gh", args.slice(), {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      signal,
+      killSignal: "SIGKILL",
+    })
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      out += String(chunk)
+    })
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      err += String(chunk)
+    })
+    // An abort (our timeout) also surfaces as an `error` event — don't count
+    // that as a spawn failure; the caller reads `timedOut` separately.
+    child.on("error", () => finish(null, !signal.aborted))
+    child.on("close", (code) => finish(code, false))
+  })
+}
+
 /** The real runner. Exit 0 with parseable JSON carrying a PR number → `pr`;
- * everything else (no PR, gh missing/unauthed, timeout, bad JSON) → `empty`.
- * `spawnCapture` never throws — a spawn failure resolves with `status: null`. */
+ * exit 0 + no number, or a recognized "no PR" stderr → `empty`; everything
+ * else (gh missing/unauthed, timeout, network, bad JSON, no remote) → a typed
+ * `error`. Never throws. */
 export const runGhPrView: PrViewRunner = async (worktreePath, branch) => {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), PR_VIEW_TIMEOUT_MS)
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, PR_VIEW_TIMEOUT_MS)
   try {
-    const res = await spawnCapture("gh", ["pr", "view", branch, "--json", GH_PR_VIEW_FIELDS], {
-      cwd: worktreePath,
-      signal: controller.signal,
+    const res = await spawnGh(["pr", "view", branch, "--json", GH_PR_VIEW_FIELDS], worktreePath, controller.signal)
+    if (res.status === 0 && !timedOut) {
+      try {
+        const view = JSON.parse(res.stdout) as GhPrView
+        return typeof view.number === "number" ? { kind: "pr", view } : { kind: "empty" }
+      } catch {
+        return classifyGhFailure({ parseError: true })
+      }
+    }
+    return classifyGhFailure({
+      spawnError: res.spawnError,
+      timedOut,
+      exitCode: res.status,
+      stderr: res.stderr,
     })
-    if (res.status !== 0) return { kind: "empty" }
-    const view = JSON.parse(res.stdout) as GhPrView
-    return typeof view.number === "number" ? { kind: "pr", view } : { kind: "empty" }
-  } catch {
-    return { kind: "empty" } // bad JSON / abort
   } finally {
     clearTimeout(timer)
   }
@@ -89,8 +173,16 @@ export function isPrPollable(task: Task): boolean {
   return true
 }
 
-/** Next-allowed-at backoff, keyed by task id. */
-export type PrPollSchedule = Map<string, number>
+/** Per-task scheduling state: next-allowed-at + the consecutive-failure streak
+ * that drives exponential backoff. Reset to `failures: 0` on any success / empty
+ * / no-remote. */
+export interface PrPollEntry {
+  readonly nextAllowedAt: number
+  readonly failures: number
+}
+
+/** Per-task schedule, keyed by task id. Carried across passes by the live poller. */
+export type PrPollSchedule = Map<string, PrPollEntry>
 
 export interface PrStatusPassOptions {
   readonly run: PrViewRunner
@@ -101,6 +193,9 @@ export interface PrStatusPassOptions {
   /** Per-task backoff state, carried across passes by the live poller. */
   readonly schedule: PrPollSchedule
   readonly tickMs?: number
+  /** `Math.random`-style source for jitter. Injected so tests are deterministic
+   * (`() => 0.5` cancels the jitter to the exact base delay). */
+  readonly rand?: () => number
 }
 
 /**
@@ -110,20 +205,46 @@ export interface PrStatusPassOptions {
  */
 export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOptions): Promise<string[]> {
   const tickMs = opts.tickMs ?? DEFAULT_PR_STATUS_POLL_MS
+  const rand = opts.rand
+  const cfg: PrBackoffConfig = {
+    tickMs,
+    settledMs: SETTLED_BACKOFF_MS,
+    noPrMs: NO_PR_BACKOFF_MS,
+    noRemoteMs: NO_REMOTE_BACKOFF_MS,
+    failureBaseMs: PR_FAILURE_BASE_MS,
+    failureCapMs: PR_FAILURE_CAP_MS,
+    jitterRatio: PR_POLL_JITTER_RATIO,
+  }
   const changed: string[] = []
   for (const task of orch.listTasks()) {
     if (!isPrPollable(task)) {
       opts.schedule.delete(task.id) // forget backoff for now-ineligible tasks
       continue
     }
-    const due = opts.schedule.get(task.id) ?? 0
-    if (opts.now < due) continue
+    const entry = opts.schedule.get(task.id)
+    if (entry && opts.now < entry.nextAllowedAt) continue
+    const prevFailures = entry?.failures ?? 0
     try {
       const result = await opts.run(task.worktreePath, task.branch)
+      if (result.kind === "error") {
+        // A real gh/transport failure — NOT "no PR". Keep the last value (don't
+        // clobber a good chip with a transient blip), log why it's stale so it's
+        // diagnosable, and back off (exponential for transients; a long idle
+        // cadence for the deterministic no-remote case).
+        logDaemonInfo(
+          "pr-status-poller",
+          `gh pr view failed (${result.error}) for task ${task.id} [${task.branch}] — keeping last PR status, backing off`,
+        )
+        opts.schedule.set(
+          task.id,
+          nextPrPoll({ kind: "error", error: result.error }, prevFailures, opts.now, cfg, rand),
+        )
+        continue
+      }
       if (result.kind === "empty") {
-        // No usable PR (none yet, or gh unavailable). Keep the last value;
-        // back off so a missing/unauthed gh isn't spawned every tick.
-        opts.schedule.set(task.id, opts.now + NO_PR_BACKOFF_MS)
+        // gh ran and there is genuinely no PR yet. Keep the last value; back off
+        // (a branch rarely sprouts a PR between ticks).
+        opts.schedule.set(task.id, nextPrPoll({ kind: "empty" }, prevFailures, opts.now, cfg, rand))
         continue
       }
       const next = mapGhPrView(result.view, opts.at)
@@ -140,10 +261,12 @@ export async function runPrStatusPass(orch: Orchestrator, opts: PrStatusPassOpti
       }
       // A merged/closed PR is done — poll it rarely; an open one tracks checks.
       const settled = next?.lifecycle === "merged" || next?.lifecycle === "closed"
-      opts.schedule.set(task.id, opts.now + (settled ? SETTLED_BACKOFF_MS : tickMs))
+      opts.schedule.set(task.id, nextPrPoll({ kind: "pr", settled }, prevFailures, opts.now, cfg, rand))
     } catch (err) {
+      // The injected runner threw (the real one never does). Treat as a
+      // transient error so it backs off rather than hammering.
       logDaemonError("pr-status-poller", err)
-      opts.schedule.set(task.id, opts.now + tickMs)
+      opts.schedule.set(task.id, nextPrPoll({ kind: "error", error: "network" }, prevFailures, opts.now, cfg, rand))
     }
   }
   return changed

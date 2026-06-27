@@ -12,6 +12,7 @@
  * `provider: "github"`.
  */
 
+import { applyJitter, exponentialBackoff } from "@/lib/poll-scheduling"
 import type { PRCheckState, PRLifecycleState, TaskPRStatus } from "@/types/task"
 
 /** The `--json` field set the collector requests from `gh pr view`. */
@@ -146,6 +147,170 @@ export function samePrStatus(a: TaskPRStatus | undefined, b: TaskPRStatus | unde
     a.reviewDecision === b.reviewDecision &&
     a.mergeable === b.mergeable
   )
+}
+
+// ---------------------------------------------------------------------------
+// Failure classification + adaptive backoff (the "gh broke" vs "no PR" split).
+//
+// The poller used to collapse every non-success `gh pr view` — gh missing,
+// unauthed, a network stall, a rate-limit, malformed JSON, no GitHub remote —
+// into the same "no PR" result, so a broken `gh` was indistinguishable from a
+// branch that simply has no PR yet and the user got no signal. These pure
+// helpers split a failure into a genuine `empty` (gh ran, said no PR) vs a
+// typed transport/tooling `error`, and compute the next poll delay so a
+// persistent failure backs off (and a deterministic "no GitHub remote" settles
+// to a long idle cadence) instead of re-spawning `gh` at full rate.
+// ---------------------------------------------------------------------------
+
+/**
+ * The diagnosable kinds of `gh pr view` failure. Distinct from a genuine "no
+ * PR for this branch" (that's `empty`), so the daemon can log *why* PR status
+ * is unavailable and back off appropriately:
+ *   - `missing-binary` — `gh` is not on PATH (deterministic-ish; backoff caps it).
+ *   - `auth`           — not logged in / bad credentials (`gh auth login`).
+ *   - `timeout`        — our own abort fired (the network stalled).
+ *   - `network`        — DNS / connection / TLS / rate-limit failure.
+ *   - `parse`          — exit 0 but the JSON didn't parse.
+ *   - `no-remote`      — the worktree has no GitHub remote at all. DETERMINISTIC:
+ *                        this repo will never sprout a GitHub PR, so it settles
+ *                        to a long idle cadence rather than retrying with backoff.
+ */
+export type PrViewErrorKind = "missing-binary" | "auth" | "timeout" | "network" | "parse" | "no-remote"
+
+/** The raw signals from one non-success `gh pr view` run, fed to {@link classifyGhFailure}. */
+export interface GhFailureSignals {
+  /** The child failed to spawn (e.g. ENOENT) — and it was NOT our abort. */
+  readonly spawnError?: boolean
+  /** Our timeout aborted the run. */
+  readonly timedOut?: boolean
+  /** Exit code when the process actually ran (null on spawn error / abort). */
+  readonly exitCode?: number | null
+  /** Captured stderr (matched case-insensitively). */
+  readonly stderr?: string
+  /** `JSON.parse` threw on a zero-exit stdout. */
+  readonly parseError?: boolean
+}
+
+/** stderr fragments (lowercase) that mean "this repo has no GitHub remote". */
+const NO_REMOTE_PATTERNS = [
+  "none of the git remotes",
+  "no git remote",
+  "to use github cli in a github repository",
+  "not a github repository",
+]
+/** stderr fragments that mean "gh is not authenticated". */
+const AUTH_PATTERNS = [
+  "gh auth login",
+  "authentication required",
+  "not logged in",
+  "http 401",
+  "bad credentials",
+  "requires authentication",
+]
+/** stderr fragments that mean a transient network / transport problem. */
+const NETWORK_PATTERNS = [
+  "could not resolve host",
+  "no such host",
+  "dial tcp",
+  "connection refused",
+  "connection reset",
+  "network is unreachable",
+  "i/o timeout",
+  "timeout",
+  "tls handshake",
+  "http 5",
+  "rate limit",
+  "try again",
+]
+/** stderr fragments that mean a genuine "no PR for this branch" (not an error). */
+const NO_PR_PATTERNS = ["no pull requests found", "no open pull requests", "no pull request found"]
+
+function matchesAny(haystack: string, needles: readonly string[]): boolean {
+  return needles.some((n) => haystack.includes(n))
+}
+
+/**
+ * Classify a non-success `gh pr view` run as either a genuine `empty` (gh ran
+ * and there is no PR for the branch) or a typed transport/tooling `error`.
+ * Pure + unit-tested. We detect the breakage modes explicitly; an unrecognized
+ * non-zero exit defaults to `empty`, matching gh's dominant exit-1 "no PR"
+ * case, so we never turn a real "no PR" into a sticky error.
+ */
+export function classifyGhFailure(s: GhFailureSignals): { kind: "empty" } | { kind: "error"; error: PrViewErrorKind } {
+  if (s.parseError) return { kind: "error", error: "parse" }
+  if (s.timedOut) return { kind: "error", error: "timeout" }
+  if (s.spawnError) return { kind: "error", error: "missing-binary" }
+  const err = (s.stderr ?? "").toLowerCase()
+  if (matchesAny(err, NO_PR_PATTERNS)) return { kind: "empty" }
+  if (matchesAny(err, NO_REMOTE_PATTERNS)) return { kind: "error", error: "no-remote" }
+  if (matchesAny(err, AUTH_PATTERNS)) return { kind: "error", error: "auth" }
+  if (matchesAny(err, NETWORK_PATTERNS)) return { kind: "error", error: "network" }
+  return { kind: "empty" }
+}
+
+/** Cadence knobs for {@link nextPrPoll}. All ms; clock domain is the caller's. */
+export interface PrBackoffConfig {
+  /** Normal re-scan cadence for an open PR (checks move). */
+  readonly tickMs: number
+  /** A merged/closed PR is done — poll it rarely. */
+  readonly settledMs: number
+  /** A branch with a genuine "no PR yet". */
+  readonly noPrMs: number
+  /** Deterministic "no GitHub remote" — long idle cadence, no retry storm. */
+  readonly noRemoteMs: number
+  /** First transient-failure backoff (typically the tick cadence). */
+  readonly failureBaseMs: number
+  /** Upper bound on exponential failure backoff. */
+  readonly failureCapMs: number
+  /** ± jitter ratio applied to every scheduled delay (0..1). */
+  readonly jitterRatio: number
+}
+
+/** What one poll produced — drives the next delay + failure-streak bookkeeping. */
+export type PrPollOutcome =
+  | { kind: "pr"; settled: boolean }
+  | { kind: "empty" }
+  | { kind: "error"; error: PrViewErrorKind }
+
+/** Per-task scheduling state carried across passes. */
+export interface PrPollDecision {
+  /** Earliest the task may be polled again (caller's `now` + jittered delay). */
+  readonly nextAllowedAt: number
+  /** Consecutive transient failures — 0 after any success/empty/no-remote. */
+  readonly failures: number
+}
+
+/**
+ * Decide when a task may next be polled, given the latest outcome and its prior
+ * consecutive-failure streak. Pure + deterministic (inject `rand` for tests):
+ *   - success / genuine empty → reset the streak, jittered base cadence.
+ *   - `no-remote` (deterministic) → reset the streak, settle to the long idle
+ *     cadence (it will never have a GitHub PR — don't retry with backoff).
+ *   - any other error → grow the streak, exponential-backoff capped at
+ *     `failureCapMs`, so a persistent failure (gh missing/unauthed) stops
+ *     re-spawning at full rate.
+ * Jitter is applied to every delay so N tasks coming due together (e.g. after a
+ * network reconnect) don't poll in lockstep.
+ */
+export function nextPrPoll(
+  outcome: PrPollOutcome,
+  prevFailures: number,
+  now: number,
+  cfg: PrBackoffConfig,
+  rand: () => number = Math.random,
+): PrPollDecision {
+  const at = (delay: number): number => now + applyJitter(delay, cfg.jitterRatio, rand)
+  if (outcome.kind === "pr") {
+    return { nextAllowedAt: at(outcome.settled ? cfg.settledMs : cfg.tickMs), failures: 0 }
+  }
+  if (outcome.kind === "empty") {
+    return { nextAllowedAt: at(cfg.noPrMs), failures: 0 }
+  }
+  if (outcome.error === "no-remote") {
+    return { nextAllowedAt: at(cfg.noRemoteMs), failures: 0 }
+  }
+  const failures = prevFailures + 1
+  return { nextAllowedAt: at(exponentialBackoff(cfg.failureBaseMs, failures - 1, cfg.failureCapMs)), failures }
 }
 
 /**

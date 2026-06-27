@@ -9,7 +9,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import {
+  DEFAULT_PR_STATUS_POLL_MS,
   NO_PR_BACKOFF_MS,
+  NO_REMOTE_BACKOFF_MS,
+  PR_FAILURE_BASE_MS,
   type PrPollSchedule,
   type PrViewResult,
   type PrViewRunner,
@@ -64,6 +67,9 @@ function prRunner(state: string, checkConclusion: string): PrViewRunner {
 
 const emptyRunner: PrViewRunner = async () => ({ kind: "empty" })
 
+/** Cancel jitter (rand 0.5 → no offset) so the scheduled delays are exact. */
+const noJitter = (): number => 0.5
+
 describe("isPrPollable", () => {
   const base: Task = {
     id: toTaskId("t1"),
@@ -99,6 +105,7 @@ describe("runPrStatusPass", () => {
       now: 1_000,
       at: "2026-06-24T00:00:00.000Z",
       schedule,
+      rand: noJitter,
     })
     expect(changed).toEqual([id])
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing")
@@ -108,13 +115,14 @@ describe("runPrStatusPass", () => {
   test("a second pass with the same status reports no change (samePrStatus)", async () => {
     const id = await makeTask()
     const schedule: PrPollSchedule = new Map()
-    await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 0, at: "t1", schedule })
+    await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 0, at: "t1", schedule, rand: noJitter })
     // Advance past the backoff so the task is due again.
     const changed = await runPrStatusPass(orch, {
       run: prRunner("OPEN", "SUCCESS"),
       now: 10_000_000,
       at: "t2",
       schedule,
+      rand: noJitter,
     })
     expect(changed).toEqual([])
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing")
@@ -128,13 +136,13 @@ describe("runPrStatusPass", () => {
       calls++
       return { kind: "pr", view: { number: 7, state: "OPEN", statusCheckRollup: [{ state: "PENDING" }] } }
     }
-    await runPrStatusPass(orch, { run: counting, now: 1_000, at: "t1", schedule, tickMs: 30_000 })
+    await runPrStatusPass(orch, { run: counting, now: 1_000, at: "t1", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(1)
     // Immediately again — still inside the 30s backoff window → skipped.
-    await runPrStatusPass(orch, { run: counting, now: 5_000, at: "t2", schedule, tickMs: 30_000 })
+    await runPrStatusPass(orch, { run: counting, now: 5_000, at: "t2", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(1)
     // Past the window → polled again.
-    await runPrStatusPass(orch, { run: counting, now: 40_000, at: "t3", schedule, tickMs: 30_000 })
+    await runPrStatusPass(orch, { run: counting, now: 40_000, at: "t3", schedule, tickMs: 30_000, rand: noJitter })
     expect(calls).toBe(2)
     expect(id).toBeTruthy()
   })
@@ -142,27 +150,40 @@ describe("runPrStatusPass", () => {
   test("empty result keeps the last value and applies the no-PR backoff", async () => {
     const id = await makeTask()
     const schedule: PrPollSchedule = new Map()
-    await runPrStatusPass(orch, { run: prRunner("OPEN", "FAILURE"), now: 0, at: "t1", schedule })
+    await runPrStatusPass(orch, { run: prRunner("OPEN", "FAILURE"), now: 0, at: "t1", schedule, rand: noJitter })
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("failing")
-    // gh now returns nothing usable — must NOT clear the known status.
-    await runPrStatusPass(orch, { run: emptyRunner, now: 10_000_000, at: "t2", schedule })
+    // gh ran but the branch has no PR — must NOT clear the known status.
+    await runPrStatusPass(orch, { run: emptyRunner, now: 10_000_000, at: "t2", schedule, rand: noJitter })
     expect(orch.getTask(id)?.prStatus?.checkState).toBe("failing")
-    expect(schedule.get(id)).toBe(10_000_000 + NO_PR_BACKOFF_MS)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(10_000_000 + NO_PR_BACKOFF_MS)
   })
 
   test("a merged PR gets the long settled backoff", async () => {
     const id = await makeTask()
     const schedule: PrPollSchedule = new Map()
-    await runPrStatusPass(orch, { run: prRunner("MERGED", "SUCCESS"), now: 0, at: "t1", schedule, tickMs: 30_000 })
+    await runPrStatusPass(orch, {
+      run: prRunner("MERGED", "SUCCESS"),
+      now: 0,
+      at: "t1",
+      schedule,
+      tickMs: 30_000,
+      rand: noJitter,
+    })
     expect(orch.getTask(id)?.prStatus?.lifecycle).toBe("merged")
-    expect(schedule.get(id)).toBe(0 + SETTLED_BACKOFF_MS)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(0 + SETTLED_BACKOFF_MS)
   })
 
   test("skips archived tasks and forgets their backoff", async () => {
     const id = await makeTask()
-    const schedule: PrPollSchedule = new Map([[id, 0]])
+    const schedule: PrPollSchedule = new Map([[id, { nextAllowedAt: 0, failures: 0 }]])
     await store.update(id, { archived: true })
-    const changed = await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 1_000, at: "t1", schedule })
+    const changed = await runPrStatusPass(orch, {
+      run: prRunner("OPEN", "SUCCESS"),
+      now: 1_000,
+      at: "t1",
+      schedule,
+      rand: noJitter,
+    })
     expect(changed).toEqual([])
     expect(schedule.has(id)).toBe(false)
   })
@@ -183,5 +204,48 @@ describe("runPrStatusPass", () => {
     expect(changed).toEqual([ok])
     expect(orch.getTask(boom)?.prStatus).toBeUndefined()
     expect(orch.getTask(ok)?.prStatus?.checkState).toBe("passing")
+  })
+
+  test("a gh ERROR keeps the last status and backs off exponentially (not as 'no PR')", async () => {
+    const id = await makeTask()
+    const schedule: PrPollSchedule = new Map()
+    // Seed a known-good chip.
+    await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: 0, at: "t1", schedule, rand: noJitter })
+    expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing")
+
+    const authError: PrViewRunner = async () => ({ kind: "error", error: "auth" })
+    // First failure: keep the chip, back off by the base interval, streak = 1.
+    await runPrStatusPass(orch, { run: authError, now: 10_000_000, at: "t2", schedule, rand: noJitter })
+    expect(orch.getTask(id)?.prStatus?.checkState).toBe("passing") // NOT cleared
+    expect(schedule.get(id)?.failures).toBe(1)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(10_000_000 + PR_FAILURE_BASE_MS)
+
+    // Second consecutive failure: streak = 2, backoff doubles.
+    const due = schedule.get(id)?.nextAllowedAt ?? 0
+    await runPrStatusPass(orch, { run: authError, now: due, at: "t3", schedule, rand: noJitter })
+    expect(schedule.get(id)?.failures).toBe(2)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(due + PR_FAILURE_BASE_MS * 2)
+  })
+
+  test("a success after failures resets the backoff streak", async () => {
+    const id = await makeTask()
+    const schedule: PrPollSchedule = new Map()
+    const netError: PrViewRunner = async () => ({ kind: "error", error: "network" })
+    await runPrStatusPass(orch, { run: netError, now: 0, at: "t1", schedule, rand: noJitter })
+    expect(schedule.get(id)?.failures).toBe(1)
+    const due = schedule.get(id)?.nextAllowedAt ?? 0
+    await runPrStatusPass(orch, { run: prRunner("OPEN", "SUCCESS"), now: due, at: "t2", schedule, rand: noJitter })
+    expect(schedule.get(id)?.failures).toBe(0)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(due + DEFAULT_PR_STATUS_POLL_MS)
+  })
+
+  test("no-remote settles to the long idle cadence with no failure streak", async () => {
+    const id = await makeTask()
+    const schedule: PrPollSchedule = new Map()
+    const noRemote: PrViewRunner = async () => ({ kind: "error", error: "no-remote" })
+    await runPrStatusPass(orch, { run: noRemote, now: 1_000, at: "t1", schedule, rand: noJitter })
+    expect(schedule.get(id)?.failures).toBe(0)
+    expect(schedule.get(id)?.nextAllowedAt).toBe(1_000 + NO_REMOTE_BACKOFF_MS)
+    expect(orch.getTask(id)?.prStatus).toBeUndefined()
   })
 })
