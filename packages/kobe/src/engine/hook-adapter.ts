@@ -14,8 +14,9 @@
  * task (`daemon/cwd-task.ts`). Adding a new engine = a new adapter file; no
  * neutral code changes.
  *
- * Claude is the first real implementation; Codex/Copilot are stubs until their
- * hook formats are wired (the interface is what keeps that change local).
+ * Claude + Codex are real implementations (both use the same settings.json hook
+ * shape, shared in `./json-hooks`); Copilot is a stub until its hook format is
+ * wired (the interface is what keeps that change local).
  */
 
 import type { VendorId } from "../types/vendor.ts"
@@ -26,6 +27,14 @@ export interface EngineHookAdapter {
   readonly vendor: VendorId
   /** Whether this engine has a wired hook mechanism (false → install is a no-op). */
   supportsHooks(): boolean
+  /**
+   * The engine's GLOBAL hook settings file (`~/.claude/settings.json` for
+   * Claude, `~/.codex/hooks.json` for Codex) — the path the install/remove
+   * methods write. The adapter owns this because the file lives in the engine's
+   * own config dir, not kobe's. Only consulted when {@link supportsHooks} is
+   * true; a no-op adapter may return "".
+   */
+  globalSettingsPath(): string
   /**
    * FIRE-time half of the adapter's translation (install time maps vendor
    * hook events to neutral verbs; this maps the vendor's stdin payload to
@@ -97,6 +106,9 @@ export class NoopHookAdapter implements EngineHookAdapter {
   constructor(readonly vendor: VendorId) {}
   supportsHooks(): boolean {
     return false
+  }
+  globalSettingsPath(): string {
+    return "" // no wired hooks → never consulted
   }
   activityDetailFromPayload(): EngineActivityDetail | undefined {
     return undefined // no wired hooks → no payload this adapter understands

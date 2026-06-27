@@ -271,15 +271,19 @@ function persistedSyncPath(stored: string | undefined): string | undefined {
  */
 export async function ensureGlobalKobeHooks(): Promise<void> {
   try {
-    // 1. Activity hooks + the creation-time worktree-watch hook — both global.
-    const globalPath = globalSettingsPath()
+    // 1. Activity hooks + the creation-time worktree-watch hook — both global,
+    //    each written into the ENGINE's own settings file (Claude's
+    //    ~/.claude/settings.json, Codex's ~/.codex/hooks.json) so every session
+    //    of that engine reports.
     for (const a of activityHookAdapters()) {
-      await a.installActivityHooks(globalPath)
+      const enginePath = a.globalSettingsPath()
+      if (!enginePath) continue
+      await a.installActivityHooks(enginePath)
       // PostToolUse(Bash) observer: a `git worktree add` in ANY session adopts
       // the new worktree as a task immediately (no session needed). Pure
       // observer — unlike the removed WorktreeCreate provider hook, it can't
       // break `claude --worktree`.
-      await a.installWorktreeWatchHook(globalPath)
+      await a.installWorktreeWatchHook(enginePath)
     }
     // 2. Remove the removed WorktreeCreate hook wherever it was ever written.
     await cleanupWorktreeSyncHook()
