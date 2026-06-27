@@ -9,6 +9,9 @@ import { describe, expect, test } from "vitest"
 import {
   PANE_PERCENT_MAX,
   PANE_PERCENT_MIN,
+  REPO_INIT_TIMEOUT_MAX_SECONDS,
+  REPO_INIT_TIMEOUT_MIN_SECONDS,
+  REPO_INIT_TIMEOUT_SECONDS,
   TASKS_PANE_WIDTH,
   TASKS_PANE_WIDTH_MAX,
   TASKS_PANE_WIDTH_MIN,
@@ -20,6 +23,7 @@ import {
   openUrlCommand,
   opsPaneCommand,
   previewWindowCommand,
+  resolveRepoInitTimeoutSeconds,
   shellQuote,
   shellQuoteArgv,
   tasksPaneCommand,
@@ -233,11 +237,21 @@ describe("engineLaunchLine", () => {
     expect(engineLaunchLine(engine, { initScript: "   " })).toBe(keepAlive(engine))
   })
 
-  test("init without a marker runs every launch, in a brace group (not a subshell)", () => {
+  test("init without a marker is watchdog-bounded and runs every launch", () => {
     const line = engineLaunchLine(engine, { initScript: "export FOO=1" })
-    // brace group so `export` reaches the engine — NOT a `( … )` subshell.
-    expect(line).toContain("{\nexport FOO=1\n}")
-    expect(line).not.toContain("(\nexport FOO=1\n)")
+    // the init body runs in a backgrounded subshell with stdin from /dev/null
+    // so an interactive `read`/password prompt can't block forever.
+    expect(line).toContain("(\nexport FOO=1\n__kobe_init_ec=$?")
+    expect(line).toContain(") </dev/null &")
+    // sleep N && TERM-then-KILL watchdog bounds the run (no GNU timeout(1)).
+    expect(line).toContain(`sleep ${REPO_INIT_TIMEOUT_SECONDS};`)
+    expect(line).toContain('kill -TERM "$__kobe_init_pid"')
+    expect(line).toContain('kill -KILL "$__kobe_init_pid"')
+    expect(line).toContain('wait "$__kobe_init_pid"')
+    // export contract preserved across the subshell: dump + source so the
+    // engine still sees the init's exports.
+    expect(line).toContain('export -p > "$__kobe_init_env"')
+    expect(line).toContain('. "$__kobe_init_env"')
     // engine + keepAlive tail still present, and no marker guard.
     expect(line.endsWith(keepAlive(engine))).toBe(true)
     expect(line).not.toContain("[ ! -f")
@@ -250,15 +264,38 @@ describe("engineLaunchLine", () => {
     })
     // guard: run only when the marker is absent
     expect(line).toContain("if [ ! -f '/home/.kobe/worktree-init/ab' ]; then")
-    // success-gate the touch ($? after the group), and mkdir the parent
+    // success-gate the touch (watchdog rc, not bare $?: timeout/fail won't
+    // mark the worktree done), and mkdir the parent
     expect(line).toContain(
-      "if [ $? -eq 0 ]; then mkdir -p '/home/.kobe/worktree-init' && : > '/home/.kobe/worktree-init/ab'; fi",
+      "if [ \"$__kobe_init_rc\" -eq 0 ]; then mkdir -p '/home/.kobe/worktree-init' && : > '/home/.kobe/worktree-init/ab'; fi",
     )
     expect(line.endsWith(keepAlive(engine))).toBe(true)
+  })
+
+  test("a custom timeout overrides the default budget, clamped to the sane range", () => {
+    expect(engineLaunchLine(engine, { initScript: "x", timeoutSeconds: 30 })).toContain("sleep 30;")
+    // below the floor clamps up, above the ceiling clamps down
+    expect(engineLaunchLine(engine, { initScript: "x", timeoutSeconds: 1 })).toContain(
+      `sleep ${REPO_INIT_TIMEOUT_MIN_SECONDS};`,
+    )
+    expect(engineLaunchLine(engine, { initScript: "x", timeoutSeconds: 999999 })).toContain(
+      `sleep ${REPO_INIT_TIMEOUT_MAX_SECONDS};`,
+    )
   })
 
   test("single-quotes in the marker path are escaped", () => {
     const line = engineLaunchLine(engine, { initScript: "x", markerPath: "/a'b/m" })
     expect(line).toContain("'/a'\\''b/m'")
+  })
+})
+
+describe("resolveRepoInitTimeoutSeconds", () => {
+  test("defaults on unset / garbage and clamps to the sane range", () => {
+    expect(resolveRepoInitTimeoutSeconds()).toBe(REPO_INIT_TIMEOUT_SECONDS)
+    expect(resolveRepoInitTimeoutSeconds(null)).toBe(REPO_INIT_TIMEOUT_SECONDS)
+    expect(resolveRepoInitTimeoutSeconds("not-a-number")).toBe(REPO_INIT_TIMEOUT_SECONDS)
+    expect(resolveRepoInitTimeoutSeconds("45")).toBe(45)
+    expect(resolveRepoInitTimeoutSeconds(2)).toBe(REPO_INIT_TIMEOUT_MIN_SECONDS)
+    expect(resolveRepoInitTimeoutSeconds(10 ** 9)).toBe(REPO_INIT_TIMEOUT_MAX_SECONDS)
   })
 })

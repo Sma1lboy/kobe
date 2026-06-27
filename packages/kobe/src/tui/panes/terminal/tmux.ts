@@ -81,6 +81,7 @@ import {
   HIDDEN_TASKS_PANE_OPTION,
   engineLaunchLine,
   openUrlCommand,
+  resolveRepoInitTimeoutSeconds,
   shellQuote,
   shellQuoteArgv,
 } from "@/tmux/session-layout"
@@ -663,6 +664,9 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     engineLaunchLine(engineCmd, {
       initScript: remoteKey ? undefined : launchInit?.initScript,
       markerPath: !remoteKey && launchInit?.initScript ? worktreeInitMarkerPath(opts.cwd) : undefined,
+      // Operator escape hatch for an unusually slow (or fast-fail) init —
+      // clamped + defaulted by the resolver; unset keeps the 120s default.
+      timeoutSeconds: resolveRepoInitTimeoutSeconds(process.env.KOBE_REPO_INIT_TIMEOUT_SECONDS),
     }),
   ])
   const pane0 = r0.stdout.trim()
