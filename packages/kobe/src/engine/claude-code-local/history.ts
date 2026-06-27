@@ -36,10 +36,11 @@
  */
 
 import { randomUUID } from "node:crypto"
-import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises"
+import { appendFile, mkdir, readdir, stat, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 import type { Message } from "@/types/engine"
+import { isJsonlLineWithinBound, readTextFileBounded } from "../file-bounds"
 import { normalizeClaudeContent } from "./normalize"
 import { isClaudeCommandBreadcrumb, isSyntheticClaudeRecord } from "./synthetic"
 
@@ -65,7 +66,9 @@ const defaultDeps: HistoryDeps = {
     }
   },
   async readFile(p) {
-    return await readFile(p, "utf8")
+    // Size-bounded: an oversize/corrupt transcript degrades to "" (an empty
+    // session) rather than slurping a multi-GB file into memory.
+    return await readTextFileBounded(p)
   },
   async pathExists(p) {
     try {
@@ -235,6 +238,9 @@ export function parseJsonl(raw: string, sessionId: string): Message[] {
   for (const line of raw.split("\n")) {
     const trimmed = line.trim()
     if (!trimmed) continue
+    // Skip a pathological mega-line before parsing — same outcome as a
+    // malformed line, but without risking a hang in JSON.parse.
+    if (!isJsonlLineWithinBound(trimmed)) continue
     let parsed: unknown
     try {
       parsed = JSON.parse(trimmed)
@@ -352,7 +358,10 @@ export async function appendInterruptedUserPrompt(
 
   let lines: string[] = []
   try {
-    const raw = await readFile(filePath, "utf8")
+    // Size-bounded: an oversize/corrupt transcript degrades to "" (we then
+    // append a fresh rescue record instead of trying to merge) rather than
+    // loading a giant file just to scan its tail.
+    const raw = await readTextFileBounded(filePath)
     lines = raw.split("\n").filter((l) => l.length > 0)
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
@@ -366,9 +375,11 @@ export async function appendInterruptedUserPrompt(
   let lastConvRecord: Record<string, unknown> | null = null
   let lastConvRole: "user" | "assistant" | null = null
   for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] as string
+    if (!isJsonlLineWithinBound(line)) continue
     let parsed: unknown
     try {
-      parsed = JSON.parse(lines[i] as string)
+      parsed = JSON.parse(line)
     } catch {
       continue
     }

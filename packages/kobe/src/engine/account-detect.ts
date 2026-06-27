@@ -39,7 +39,6 @@
  * logged in".
  */
 
-import { readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import path from "node:path"
 import { getCustomEngineIds } from "@/state/repos"
@@ -47,6 +46,7 @@ import type { VendorId } from "@/types/vendor"
 import { ClaudeBinaryNotFoundError, findClaudeBinary } from "./claude-code-local/binary"
 import { CodexBinaryNotFoundError, findCodexBinary } from "./codex-local/binary"
 import { CopilotBinaryNotFoundError, findCopilotBinary } from "./copilot-local/binary"
+import { readTextFileSyncBounded } from "./file-bounds"
 
 export type ClaudeAccount =
   | {
@@ -86,15 +86,11 @@ export interface DetectDeps {
 
 const defaultDeps: DetectDeps = {
   readFile(p: string): string | null {
-    try {
-      // Guard against directory-not-readable cases. statSync first means
-      // we get a cleaner ENOENT signal than readFile's mixed errors.
-      statSync(p)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null
-      throw err
-    }
-    return readFileSync(p, "utf8")
+    // statSync-then-read (cleaner ENOENT signal than readFile's mixed errors)
+    // PLUS a size ceiling: an oversize/corrupt credential file degrades to the
+    // same `null` ("not detected") result as a missing one — never an OOM,
+    // never a thrown error into the Accounts UI, never a logged secret.
+    return readTextFileSyncBounded(p)
   },
   env(name) {
     return process.env[name]
