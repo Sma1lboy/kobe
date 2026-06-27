@@ -25,7 +25,10 @@ const SPA_CONSUMED = [
 ] as const
 
 // The daemon channels the SPA deliberately drops — bytes it never renders.
-const SPA_DROPPED = ["keybindings"] as const
+// `transcript.activity` is the TUI Ops-pane signal (tmux per-window turn
+// detection + badge mtime); the SPA has no tmux ChatTabs and renders activity
+// from `engine-state`, so it drops it.
+const SPA_DROPPED = ["keybindings", "transcript.activity"] as const
 
 describe("SPA_CHANNELS whitelist", () => {
   it("is exactly the channels the SPA reducer consumes", () => {
