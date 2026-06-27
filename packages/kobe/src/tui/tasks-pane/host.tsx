@@ -68,9 +68,10 @@ import { homeDir } from "../../env.ts"
 import { worktreeUsable } from "../../exec/resolve.ts"
 import { TaskIndexStore } from "../../orchestrator/index/store.ts"
 import { resolveEngineLaunchInit } from "../../state/repo-init.ts"
-import { getPersistedString, setPersistedString } from "../../state/repos.ts"
+import { getCustomEngineIds, getPersistedString, setPersistedString } from "../../state/repos.ts"
 import { TMUX_FOCUS_DEFAULTS, resolveUserTmuxKeys } from "../../tmux/keybindings.ts"
-import type { Task, VendorId } from "../../types/task.ts"
+import type { Task } from "../../types/task.ts"
+import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../../version.ts"
 import { HelpDialog } from "../component/help-dialog"
 import { NewTaskDialog } from "../component/new-task-dialog"
@@ -326,7 +327,7 @@ function TasksShell(props: {
     },
     // This pane uses disk-only persistence (no in-process kv store), so the
     // atomic disk write is sufficient — no onRepoSaved kv mirror needed.
-    lastVendor: () => getPersistedString("lastSelectedVendor") as VendorId | undefined,
+    lastVendor: () => resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds()),
     rememberVendor: (vendor) => setPersistedString("lastSelectedVendor", vendor),
     // Same surface preference as Settings (default chattab): open the
     // new-task flow as a dedicated full-window page in a new tmux tab.
