@@ -219,6 +219,12 @@ export type SidebarProps = {
    */
   zenActive?: Accessor<boolean>
   /**
+   * Click handler for the `☯ ZEN` badge — toggles zen back off (the mouse
+   * counterpart to the `prefix`+space exit chord). Wired by the Tasks-pane
+   * host to the global zen toggle.
+   */
+  onZenClick?: () => void
+  /**
    * Live per-tab engine state, keyed by `${taskId}:${tabId}` (see
    * {@link chatRunStateKey} in `orchestrator/core.ts`). The sidebar
    * spinner animates only when a row's task has at least one tab in
@@ -1369,7 +1375,12 @@ export function Sidebar(props: SidebarProps) {
           reminder that `prefix`+space (or the `zen` chip) toggles it back. */}
       <Show when={props.zenActive?.()}>
         <box flexShrink={0} paddingLeft={1} paddingRight={1} paddingTop={1}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD} wrapMode="none">
+          <text
+            fg={theme.accent}
+            attributes={TextAttributes.BOLD}
+            wrapMode="none"
+            onMouseUp={() => props.onZenClick?.()}
+          >
             ☯ ZEN
           </text>
         </box>

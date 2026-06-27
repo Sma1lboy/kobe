@@ -11,7 +11,7 @@
 
 import { kobeCliInvocation } from "@/cli/invocation"
 import { localSpawnCwd } from "@/exec/resolve"
-import { zenKeepsTasks } from "@/state/zen"
+import { setZenActive, zenIsActive, zenKeepsTasks } from "@/state/zen"
 import {
   getServerOptions,
   getSessionOption,
@@ -708,12 +708,32 @@ async function toggleTerminalPane(session: string, windowId: string): Promise<vo
  * collapsed themselves. Idempotent: a second toggle reverses it across all tabs.
  */
 async function toggleZenSession(session: string): Promise<void> {
-  const on = (await getSessionOption(session, ZEN_SESSION_OPTION)).length > 0
+  // Zen is a GLOBAL toggle: flip the persisted intent (so every other project's
+  // session follows when entered, via syncSessionZen) and apply it to THIS
+  // session right now. The per-session `@kobe_zen` option remains the local
+  // "is this session collapsed" record that enter/exit set.
+  const on = zenIsActive()
+  setZenActive(!on)
   if (on) {
     await exitZenSession(session)
     return
   }
   await enterZenSession(session)
+}
+
+/**
+ * Reconcile one session's layout to the GLOBAL zen intent. Called when entering
+ * a session (switchTo / initial attach) so a project you switch to inherits the
+ * global on/off state even though its tmux session was never toggled directly.
+ * No-op when the session already matches (idempotent) or doesn't exist.
+ */
+export async function syncSessionZen(session: string): Promise<void> {
+  if (!(await sessionExists(session))) return
+  const want = zenIsActive()
+  const has = (await getSessionOption(session, ZEN_SESSION_OPTION)).length > 0
+  if (want === has) return
+  if (want) await enterZenSession(session)
+  else await exitZenSession(session)
 }
 
 /** Window ids of the session, in tmux order. */
@@ -760,7 +780,13 @@ async function exitZenSession(session: string): Promise<void> {
  * after its panes are built.
  */
 export async function applyZenToNewWindow(session: string, windowId: string): Promise<void> {
-  if ((await getSessionOption(session, ZEN_SESSION_OPTION)).length === 0) return
+  const sessionZen = (await getSessionOption(session, ZEN_SESSION_OPTION)).length > 0
+  // Collapse when this session is already in zen OR the GLOBAL intent is on (a
+  // freshly created session — e.g. a never-entered task's first window — has no
+  // session option yet but should still inherit global zen). Seed the session
+  // option so its later tabs collapse too.
+  if (!sessionZen && !zenIsActive()) return
+  if (!sessionZen) await setSessionOption(session, ZEN_SESSION_OPTION, "1")
   if (await windowOption(windowId, ZEN_HIDDEN_PANES_OPTION)) return
   if (!(await windowHasEnginePane(session, windowId))) return
   await enterZenMode(session, windowId)
