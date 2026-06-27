@@ -62,6 +62,31 @@ export function shouldPoll(state: { inFlight: boolean; nextAllowedAt: number }, 
 }
 
 /**
+ * Spread a delay by ± `ratio` so many keys coming due together (e.g. after a
+ * network reconnect re-arms every poller at once) don't fire in lockstep.
+ * `ratio` is clamped to `[0, 1]`; the result lands in
+ * `[delayMs·(1−ratio), delayMs·(1+ratio))` and is never negative. `rand`
+ * defaults to `Math.random` and is injectable so tests are deterministic
+ * (`() => 0.5` yields exactly `delayMs`, the no-jitter midpoint). Pure.
+ */
+export function applyJitter(delayMs: number, ratio: number, rand: () => number = Math.random): number {
+  const r = Math.max(0, Math.min(1, ratio))
+  const offset = (rand() * 2 - 1) * delayMs * r
+  return Math.max(0, delayMs + offset)
+}
+
+/**
+ * Exponential backoff capped at `capMs`: `baseMs · 2^attempt`, with `attempt`
+ * the zero-based retry index (0 → `baseMs`, 1 → `2·baseMs`, …). Negative
+ * attempts clamp to `baseMs`; the result never exceeds `capMs`. Pure —
+ * exported for unit tests.
+ */
+export function exponentialBackoff(baseMs: number, attempt: number, capMs: number): number {
+  if (attempt <= 0) return Math.min(baseMs, capMs)
+  return Math.min(baseMs * 2 ** attempt, capMs)
+}
+
+/**
  * Maybe start one guarded background run for a key's schedule state.
  * Returns `false` (no run) when the guards say no — in flight, or inside
  * the cadence/backoff window. Otherwise marks the state in-flight, runs
