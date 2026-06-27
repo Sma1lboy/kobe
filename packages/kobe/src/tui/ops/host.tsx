@@ -39,13 +39,21 @@ import { previewWindowCommand, shellQuote, shellQuoteArgv } from "@/tmux/session
 import type { VendorId } from "@/types/task"
 import { readWorktreeFile, runWorktreeGit } from "@/worktree/content"
 import { SyntaxStyle } from "@opentui/core"
-import { Show, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { Show, createEffect, createResource, createSignal, onCleanup, onMount } from "solid-js"
+import { connectPaneOrchestrator } from "../../client/connect-pane-orchestrator"
+import type { RemoteOrchestrator, TranscriptActivity } from "../../client/remote-orchestrator"
 import { useTheme } from "../context/theme"
 import { t } from "../i18n"
 import { bootPaneHost } from "../lib/host-boot"
 import { useBindings } from "../lib/keymap"
 import { FileTree } from "../panes/filetree"
 import { inheritedEnvPrefix } from "../panes/terminal/launch"
+import {
+  ACTIVITY_POLL_MIN_MS,
+  TURN_STATUS_POLL_MS,
+  nextActivityPollDelay,
+  nextTurnStatusPollDelay,
+} from "./activity-poll"
 import { buildPRPrompt } from "./pr-prompt"
 
 export interface OpsHostArgs {
@@ -57,40 +65,14 @@ export interface OpsHostArgs {
   readonly vendor: VendorId
 }
 
-/**
- * How often the Ops pane polls the engine transcript for new activity.
- *
- * The probe (`latestTranscriptMtime`) is NOT free: for claude it readdir's the
- * worktree's `~/.claude/projects/<encoded>/` dir and stats every `.jsonl` in it
- * — and that dir grows unboundedly (every ChatTab forces a fresh `--session-id`,
- * so a long-lived worktree accumulates dozens of transcripts). Each ChatTab runs
- * its own Ops pane, so W tabs × K transcripts of stat churn every tick — even at
- * total rest. So we ADAPTIVELY back off: poll at {@link ACTIVITY_POLL_MIN_MS}
- * while the engine is writing, and after {@link ACTIVITY_IDLE_RAMP_POLLS}
- * unchanged reads ramp the interval toward {@link ACTIVITY_POLL_MAX_MS} (an idle
- * pane is the common steady state). Any mtime advance snaps it back to the fast
- * interval, so the `● new` badge still lights promptly once work resumes — the
- * only cost is that a long-idle pane notices the FIRST new write up to the
- * backed-off interval later, which is invisible for an idle ChatTab.
- */
-const ACTIVITY_POLL_MIN_MS = 2500
-const ACTIVITY_POLL_MAX_MS = 20000
-/** Unchanged reads before each step up; the interval doubles per step. */
-const ACTIVITY_IDLE_RAMP_POLLS = 3
-const TURN_STATUS_POLL_MS = 1500
+// Poll-cadence constants + the pure backoff curves live in `./activity-poll`
+// (host.tsx can't be imported under vitest — it pulls @opentui render assets —
+// so the testable math is factored out). The daemon's `transcript.activity`
+// channel now does the shareable filesystem half; these cadences govern only
+// the local fallback (badge mtime probe) and the always-in-process tmux
+// capture-pane quiescence poll.
 const STABLE_POLLS_FOR_DONE = 2
 const CHAT_TAB_STATE_OPTION = "@kobe_tab_state"
-
-/**
- * Next activity-poll delay from the current one + how many consecutive reads
- * have seen no change. Pure (no IO) so the backoff curve is unit-testable:
- * the fast floor while active, doubling toward the cap once idle past the ramp
- * threshold. Exported for tests.
- */
-export function nextActivityPollDelay(currentMs: number, idleStreak: number): number {
-  if (idleStreak < ACTIVITY_IDLE_RAMP_POLLS) return ACTIVITY_POLL_MIN_MS
-  return Math.min(currentMs * 2, ACTIVITY_POLL_MAX_MS)
-}
 
 function OpsShell(props: OpsHostArgs) {
   const { theme } = useTheme()
@@ -99,17 +81,79 @@ function OpsShell(props: OpsHostArgs) {
   // centrally — boot + live `ui-prefs` pushes — by host-boot's
   // UiPrefsSync; this shell no longer re-applies them itself.
 
-  // New-activity badge (KOB-254). v0.6 has no chat-stream "done" signal
-  // and we explicitly don't parse the tmux pane, so we poll the engine's
-  // own transcript store (the JSONL the cost dashboard reads) and light
-  // a corner badge when its newest mtime advances past what we last
-  // acknowledged. `baseline` starts at "now's newest" so a pane that
-  // mounts onto an already-busy task doesn't flash stale activity; it's
-  // pushed forward on each `r` refresh (the user's "I've looked").
+  // ONE scoped pane orchestrator for the daemon's `transcript.activity`
+  // channel (perf — deduplicate per-Ops-pane polling). The daemon runs a
+  // single collector that does the SHAREABLE filesystem half — newest
+  // transcript mtime + the engine-owned completion marker — for every
+  // worktree; this pane reads its worktree's slice instead of stat'ing +
+  // parsing the transcript store on its own timers. Non-spawning + leak-
+  // guarded, the same pattern host-boot's UiPrefsSync uses: a helper pane
+  // must never resurrect an idle-stopped daemon, and a connect that resolves
+  // after cleanup is disposed on the spot. When there's no daemon (null
+  // orchestrator) OR the daemon predates the channel (signal stays null), the
+  // local fallback below engages verbatim — the per-window tmux capture-pane
+  // quiescence check + @kobe_tab_state write ALWAYS stay in this process.
+  const [activityOrch, setActivityOrch] = createSignal<RemoteOrchestrator | null>(null)
+  let orchDisposed = false
+  onMount(() => {
+    void (async () => {
+      const remote = await connectPaneOrchestrator({ logTag: "ops-activity", channels: ["transcript.activity"] })
+      if (!remote) return
+      if (orchDisposed) {
+        remote.dispose()
+        return
+      }
+      setActivityOrch(remote)
+    })()
+  })
+  onCleanup(() => {
+    orchDisposed = true
+    activityOrch()?.dispose()
+  })
+  // The daemon-collected facts for THIS worktree, or `null` when there's no
+  // daemon-collected data (no daemon yet, or an old daemon without the
+  // channel) — that null is the fallback trigger throughout this component.
+  const sharedActivityMap = () => activityOrch()?.transcriptActivitySignal()() ?? null
+  const sharedEntry = (): TranscriptActivity | null => sharedActivityMap()?.get(props.worktree) ?? null
+
+  // New-activity badge (KOB-254). v0.6 has no chat-stream "done" signal and
+  // we explicitly don't parse the tmux pane, so the engine's own transcript
+  // store (the JSONL the cost dashboard reads) is the source: light a corner
+  // badge when its newest mtime advances past what we last acknowledged.
+  // `baseline` starts at "now's newest" so a pane that mounts onto an
+  // already-busy task doesn't flash stale activity; it's pushed forward on
+  // each `r` refresh (the user's "I've looked"). The mtime SOURCE is the
+  // daemon's `transcript.activity` push when available, falling back to the
+  // local `latestTranscriptMtime` probe only when no daemon-collected data
+  // exists.
   const [baseline, setBaseline] = createSignal(0)
   const [latest, setLatest] = createSignal(0)
   let primed = false
-  onMount(() => {
+
+  // Shared-source badge: read the daemon-pushed mtime for this worktree. Seed
+  // the baseline on the first NON-ZERO mtime (an empty/just-connected map
+  // reads 0 — not real activity), then track advances. Inactive (returns
+  // early) whenever there's no daemon-collected data, leaving the local
+  // fallback effect below in charge.
+  createEffect(() => {
+    const map = sharedActivityMap()
+    if (!map) return
+    const mtime = map.get(props.worktree)?.mtimeMs ?? 0
+    if (!primed && mtime > 0) {
+      primed = true
+      setBaseline(mtime)
+    }
+    setLatest(mtime)
+  })
+
+  // Local fallback badge poll — runs ONLY while there's no daemon-collected
+  // data (`sharedActivityMap()` null: no daemon, or an old daemon without the
+  // channel). Verbatim the pre-daemon adaptive-backoff loop. The effect tears
+  // it down the instant the daemon channel becomes available (Solid runs the
+  // prior run's onCleanup before re-running) and restarts it if a reconnect
+  // downgrades to a daemon without the channel.
+  createEffect(() => {
+    if (sharedActivityMap() !== null) return
     let disposed = false
     let timer: ReturnType<typeof setTimeout> | undefined
     // Adaptive backoff state: the current poll delay + how many consecutive
@@ -172,15 +216,37 @@ function OpsShell(props: OpsHostArgs) {
   // This pane owns only the tmux-local quiescence check for its paired
   // engine pane, so sibling ChatTabs on the same worktree don't report done
   // unless THIS window actually changed.
+  //
+  // The `tmux capture-pane` hash + the `@kobe_tab_state` `setWindowOption`
+  // write STAY strictly in-process — the daemon never touches tmux. What
+  // moved daemon-side is the COMPLETION read: when the `transcript.activity`
+  // channel is live we take the engine-owned `completionId` from the shared
+  // push instead of re-parsing the JSONL here, and back the capture-pane
+  // interval off while the shared transcript is quiescent. With no daemon-
+  // collected data we keep the pre-daemon behavior verbatim: a fixed 1.5s
+  // capture-pane interval + a local `detector.latestCompletion` read.
   onMount(() => {
     if (!props.targetPane) return
+    // Construct the detector unconditionally: `supportsCompletionMarkers()` is
+    // a pure synchronous flag (no IO) needed in both modes, and the fallback
+    // path still calls `latestCompletion`. In shared mode `latestCompletion`
+    // is never called — the daemon owns that read.
     const detector = createEngineTurnDetector(props.vendor)
     let disposed = false
     let baselineCompletionId: string | null = null
+    let baselinePrimed = false
     let paneHash = ""
     let observedPaneActivity = false
     let stablePolls = 0
     let published: ChatTabTurnState | null = null
+    // Adaptive capture-pane cadence (shared mode only): ramps up while the
+    // shared transcript is quiescent, snaps back when its mtime advances.
+    let delayMs = TURN_STATUS_POLL_MS
+    let lastSharedMtime = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    /** Whether the daemon is publishing transcript activity for this worktree. */
+    const usingShared = (): boolean => sharedActivityMap() !== null
 
     async function publish(state: ChatTabTurnState): Promise<void> {
       if (state === published) return
@@ -188,10 +254,17 @@ function OpsShell(props: OpsHostArgs) {
       await setWindowOption(props.targetPane!, CHAT_TAB_STATE_OPTION, state)
     }
 
+    /** Latest completion id — from the shared push when available, else a local read. */
+    async function latestCompletionId(): Promise<string | null> {
+      if (usingShared()) return sharedEntry()?.completionId ?? null
+      return (await detector.latestCompletion(props.worktree))?.id ?? null
+    }
+
     async function prime(): Promise<void> {
       try {
         paneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
-        baselineCompletionId = (await detector.latestCompletion(props.worktree))?.id ?? null
+        baselineCompletionId = await latestCompletionId()
+        baselinePrimed = true
         await publish(detector.supportsCompletionMarkers() ? "idle" : "unknown")
       } catch {
         // See the activity poll above: transient failures during the
@@ -201,9 +274,22 @@ function OpsShell(props: OpsHostArgs) {
     }
 
     async function poll(): Promise<void> {
+      const shared = usingShared()
       try {
         const nextPaneHash = fingerprint(await capturePaneById(props.targetPane!, 80))
         if (disposed) return
+        // Lazily seed the baseline if shared activity arrived only after
+        // prime ran with no entry — so the first daemon-pushed completion
+        // isn't mistaken for a fresh "done".
+        if (shared && !baselinePrimed) {
+          baselineCompletionId = sharedEntry()?.completionId ?? null
+          baselinePrimed = true
+        }
+        // Track shared-transcript mtime advance for the adaptive cadence.
+        const sharedMtime = shared ? (sharedEntry()?.mtimeMs ?? 0) : 0
+        const mtimeAdvanced = sharedMtime > lastSharedMtime
+        if (sharedMtime > lastSharedMtime) lastSharedMtime = sharedMtime
+
         if (nextPaneHash !== paneHash) {
           paneHash = nextPaneHash
           observedPaneActivity = true
@@ -213,29 +299,37 @@ function OpsShell(props: OpsHostArgs) {
           stablePolls++
         }
 
-        if (!detector.supportsCompletionMarkers() || !observedPaneActivity || stablePolls < STABLE_POLLS_FOR_DONE)
-          return
-
-        const marker = await detector.latestCompletion(props.worktree)
-        if (disposed || !marker || marker.id === baselineCompletionId) return
-        baselineCompletionId = marker.id
-        observedPaneActivity = false
-        stablePolls = 0
-        await publish("done")
+        if (detector.supportsCompletionMarkers() && observedPaneActivity && stablePolls >= STABLE_POLLS_FOR_DONE) {
+          const completionId = await latestCompletionId()
+          // Done rule unchanged: a NEW completion id past the baseline, with
+          // the pane having gone quiescent, means the turn finished.
+          if (!disposed && completionId !== null && completionId !== baselineCompletionId) {
+            baselineCompletionId = completionId
+            observedPaneActivity = false
+            stablePolls = 0
+            await publish("done")
+          }
+        }
+        // Cadence: shared mode ramps the capture-pane interval while idle;
+        // fallback keeps the fixed 1.5s tick.
+        delayMs = shared ? nextTurnStatusPollDelay(delayMs, mtimeAdvanced, published) : TURN_STATUS_POLL_MS
       } catch {
         // capturePaneById / publish (setWindowOption) fire tmux against
         // `props.targetPane` — once the task is deleted that pane and its
         // session are torn down, so these reject mid-flight. Swallow so a
         // teardown race degrades to a quiet no-op instead of crashing the
         // Ops pane to a shell with a stack dump (the reported bug).
+        delayMs = TURN_STATUS_POLL_MS
+      } finally {
+        if (!disposed) timer = setTimeout(() => void poll(), delayMs)
       }
     }
 
     void prime()
-    const timer = setInterval(() => void poll(), TURN_STATUS_POLL_MS)
+    timer = setTimeout(() => void poll(), TURN_STATUS_POLL_MS)
     onCleanup(() => {
       disposed = true
-      clearInterval(timer)
+      if (timer) clearTimeout(timer)
     })
   })
 

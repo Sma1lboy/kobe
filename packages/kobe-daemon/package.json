@@ -25,6 +25,7 @@
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
     "./daemon/server": "./src/daemon/server.ts",
+    "./daemon/transcript-activity-collector": "./src/daemon/transcript-activity-collector.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
     "./daemon/web-rpc-allowlist": "./src/daemon/web-rpc-allowlist.ts",
     "./daemon/web-server": "./src/daemon/web-server.ts",
