@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.48
+
+### Patch Changes
+
+- bf82cc8: Opening a task whose tmux session wasn't running no longer lands with all panes squished to near-even widths. The session was created at the Tasks-pane host's narrow pty width and its panes were split at that size, so growing the window to the real terminal later only redistributed proportionally — the fixed-width sidebar rail ballooned and the layout went uniform. The window is now fitted to the real client size before the panes are split, so a cold-opened task shows the intended proportions (narrow rail, wide chat, right column) from the first frame.
+- cc42ccb: Deleting the active task no longer flashes a window resize. The delete path switches the client to the next task (or kobe-home) before killing the old session, but unlike the normal switch/enter paths it skipped the pre-switch fit, so it landed on a session still sized to another client and reflowed. It now fits + heals the target first, matching `switchTo`/`jumpToTask`.
+- 342b862: A project's main chat now follows your configured default engine instead of always opening on Claude. The main task's engine was frozen to "claude" the moment the project was first added and never re-read the default, so setting the default to codex had no effect on existing projects. Worse, on a daemon restart the stale "claude" vendor would win the vendor-drift check and respawn a healthy running codex session back to Claude, wiping the open chat tabs. The launcher now reconciles before starting the session: it adopts the vendor a live session is actually running (so a restart never clobbers it), and falls back to the global default when no session is up (so cold-opening an existing project honors the default). Newly added projects also create their main task on the default engine.
+
 ## 0.7.47
 
 ### Patch Changes
