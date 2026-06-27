@@ -30,10 +30,17 @@ import { onMount } from "solid-js"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { availableEngineIds } from "../../engine/account-detect.ts"
 import { engineDisplayName } from "../../engine/interactive-command.ts"
-import { addSavedRepo, getPersistedString, getSavedRepos, setPersistedString } from "../../state/repos.ts"
+import {
+  addSavedRepo,
+  getCustomEngineIds,
+  getPersistedString,
+  getSavedRepos,
+  setPersistedString,
+} from "../../state/repos.ts"
 import { getSessionOptions, tmuxSessionName } from "../../tmux/client.ts"
 import { pasteAndSubmit, waitForEnginePane } from "../../tmux/prompt-delivery.ts"
-import { DEFAULT_TASK_VENDOR, type Task, type VendorId } from "../../types/task.ts"
+import type { Task, VendorId } from "../../types/task.ts"
+import { resolvePersistedVendor } from "../../types/vendor.ts"
 import { QuickTaskComposer } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
 import { DEFAULT_BASE_REF, getCurrentBranch } from "../lib/git-snapshot.ts"
@@ -82,7 +89,7 @@ async function resolveQuickTaskContext(
   // Engine: last-selected vendor, clamped to a detected one. With nothing
   // detected we keep the preference (the dialog-less path can't ask).
   const detected = await availableEngineIds()
-  const pref = (getPersistedString("lastSelectedVendor") as VendorId | undefined) ?? DEFAULT_TASK_VENDOR
+  const pref = resolvePersistedVendor(getPersistedString("lastSelectedVendor"), getCustomEngineIds())
   const vendor: VendorId = detected.length === 0 || detected.includes(pref) ? pref : (detected[0] ?? pref)
   const baseRef = getCurrentBranch(expandHome(repo)) ?? DEFAULT_BASE_REF
   // The composer needs at least the chosen vendor to render its chip even when

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { ALL_VENDORS, coerceVendorId, isBuiltinVendor, nextVendor, nextVendorWithin } from "../../src/types/vendor.ts"
+import {
+  ALL_VENDORS,
+  coerceVendorId,
+  isBuiltinVendor,
+  nextVendor,
+  nextVendorWithin,
+  resolvePersistedVendor,
+} from "../../src/types/vendor.ts"
 
 describe("nextVendor", () => {
   it("walks ALL_VENDORS in order and wraps", () => {
@@ -58,5 +65,32 @@ describe("coerceVendorId", () => {
     expect(coerceVendorId(undefined)).toBe("claude")
     expect(coerceVendorId("")).toBe("claude")
     expect(coerceVendorId("   ")).toBe("claude")
+  })
+})
+
+describe("resolvePersistedVendor", () => {
+  it("passes a built-in through unchanged", () => {
+    expect(resolvePersistedVendor("codex")).toBe("codex")
+    expect(resolvePersistedVendor("copilot")).toBe("copilot")
+    expect(resolvePersistedVendor("  claude ")).toBe("claude")
+  })
+
+  it("passes a registered custom engine id through", () => {
+    expect(resolvePersistedVendor("aider", ["aider"])).toBe("aider")
+    expect(resolvePersistedVendor("  my-engine ", ["my-engine"])).toBe("my-engine")
+  })
+
+  it("falls back to claude for an unregistered / typo'd value", () => {
+    // garbage that is neither a built-in nor a known custom id
+    expect(resolvePersistedVendor("clade")).toBe("claude")
+    expect(resolvePersistedVendor("aider")).toBe("claude") // not in the (empty) custom registry
+    expect(resolvePersistedVendor("aider", ["other-engine"])).toBe("claude")
+  })
+
+  it("falls back to claude for empty/absent", () => {
+    expect(resolvePersistedVendor(undefined)).toBe("claude")
+    expect(resolvePersistedVendor("")).toBe("claude")
+    expect(resolvePersistedVendor("   ")).toBe("claude")
+    expect(resolvePersistedVendor(undefined, ["aider"])).toBe("claude")
   })
 })
