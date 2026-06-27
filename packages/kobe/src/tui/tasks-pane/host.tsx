@@ -231,30 +231,23 @@ function TasksShell(props: {
   // pane on every resize.
   const dimensions = useTerminalDimensions()
 
-  // Follow the SHARED active-task focus pushed on the daemon's `active-task`
-  // channel: whichever task was last switched/entered into (from ANY session
-  // or the outer monitor) is the one highlighted here, so every Tasks pane
-  // shows the same focus instead of its own last click (KOB-247). Local
-  // clicks still set selectedId optimistically; this keeps it consistent.
+  // Shared active-task focus (the daemon's `active-task` channel, KOB-247) is
+  // followed ONLY by a HOME pane (no initialTaskId) — the navigational surface
+  // where selecting a row IS the focus, so it should mirror whatever was last
+  // entered from any session.
   //
-  // One guard: a pane SPAWNED for a task session (initialTaskId set) is the
-  // pane for THAT task — its own session's task is the authority for the
-  // initial highlight. But `switchTo` publishes setActiveTask(id) only AFTER
-  // `switch-client`, so when this freshly-built pane first subscribes the
-  // daemon replays the PRE-switch active-task value. Applying it would clobber
-  // our correct initialTaskId selection back to the previously-entered row
-  // (often the top one) for a frame, until our own setActiveTask lands. So we
-  // ignore replayed values until the channel CONFIRMS our own task, then
-  // resume following shared focus normally. Home panes (no initialTaskId)
-  // never enter the guard and behave exactly as before.
-  let activeConfirmed = !props.initialTaskId
+  // A pane SPAWNED for a task session (initialTaskId set) represents exactly
+  // ONE task: its engine/chat is pinned to that task and never swaps. Following
+  // shared focus made such a pane LIE — click a sibling project to jump to it
+  // and this (now backgrounded) pane's highlight stuck on the sibling while its
+  // chat still showed its own task. So a task-bound pane pins its highlight to
+  // its own task and does NOT follow the channel; entering another task is a
+  // jump (switchTo), not a re-selection of THIS pane. (Origin: KOB-247 scoped
+  // shared focus to all panes; this narrows it back to the home pane.)
   createEffect(() => {
+    if (props.initialTaskId) return
     const active = props.orch?.activeTaskSignal()()
     if (!active) return
-    if (!activeConfirmed) {
-      if (active !== props.initialTaskId) return
-      activeConfirmed = true
-    }
     setSelectedId(active)
   })
 
@@ -709,7 +702,13 @@ function TasksShell(props: {
         <Sidebar
           tasks={props.tasks}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          // A task-bound pane pins its highlight to its OWN task: picking
+          // another row JUMPS to it (onActivate → switchTo) without repointing
+          // this pane's persistent selection, which is what left a backgrounded
+          // pane showing a sibling's row. The home pane selects normally.
+          // Internal flows (create→selectTask, move, delete-reselect) still
+          // drive setSelectedId directly, so they're unaffected.
+          onSelect={props.initialTaskId ? () => {} : setSelectedId}
           onActivate={(id) => void switchTo(id)}
           activateOnClick
           // Brand-header version/update chip (replaces the footer system block).
