@@ -1,0 +1,9 @@
+name: mc-end-kobe
+brief: "Production-environment Brand Studio PR12 test for kobe: show kobe being used in an MC End-inspired scene."
+style: mc-end-launch-hero
+content:
+  headline: kobe
+  subject: "In an MC End-inspired voxel dimension, a developer uses kobe on a rugged field terminal. The terminal screen is large, crisp, and clearly based on the provided kobe TUI references: left task rail, central engine pane, file tree, shell pane, tmux-style borders, clay-orange focus accents, and monospace terminal text. The environment has pale end-stone terrain, obsidian-black floating islands, violet void haze, and distant blocky towers. Render sparse exact marketing text only: kobe and parallel agents, one terminal."
+deliverables:
+  - id: mc-end-hero
+    size: [1536, 1024]

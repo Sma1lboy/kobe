@@ -8,7 +8,7 @@ portfolio:
   name: kobe
   version: 1.0.0
 
-version: 1.1.0
+version: 1.2.0
 
 producer:
   id: gpt-image
@@ -46,6 +46,9 @@ global:
     mars-field-computing:
       $value: "cinematic Mars field-computing launch image, rust-red Martian surface and pale dusty sky, rugged terminal workstation on a compact field table, suited adult mission operator using the terminal, rover hardware and cable harnesses in the midground, believable habitat equipment, tactile dust, hard sunlight, screen glow reflected subtly in the visor"
       $type: "text"
+    mc-end-field-computing:
+      $value: "cinematic block-based End dimension field-computing launch image, pale end-stone terrain, obsidian-black floating islands, violet void sky haze, angular voxel geometry, distant blocky towers with purple beacon glow, rugged terminal workstation on a compact field table, developer using the terminal, screen glow on blocky terrain, no official game logo or copied game UI"
+      $type: "text"
     clean-product-promo:
       $value: "restrained product launch poster for a terminal developer tool, no narrative scene, no characters, no props. Use a simple editorial composition: matte dark graphite background, one large real terminal product surface, warm clay accents, generous negative space, and a clear poster-like headline and subtitle lockup"
       $type: "text"
@@ -60,6 +63,9 @@ global:
       $type: "text"
     cinematic-craft:
       $value: "wide high-resolution hero image, pulled-back medium-wide camera rather than close-up, terminal screen is the dominant object, human operator is smaller in the right-side midground and occupies no more than about 22 percent of canvas width, helmet is much smaller than the terminal screen and does not touch the top or right frame edge, screen-first product framing, strong horizon silhouette, crisp visor reflection of terminal panes, tactile suit fabric, brushed metal workstation, controlled dust texture, sharp foreground, restrained atmospheric glow"
+      $type: "text"
+    voxel-craft:
+      $value: "landscape game-key-art composition with crisp voxel/block geometry, readable terrain planes, deep purple atmospheric depth, screen-first product framing, the kobe terminal is the largest readable object, developer/operator is secondary and does not cover the UI, no game HUD, no official game logo, no watermark"
       $type: "text"
     product-craft:
       $value: "ordinary clean promotional image, product-first framing, screenshot shown in a precise terminal window or floating screen plane with subtle shadow, sharp foreground, crisp UI structure, restrained texture, no people, no planet, no hardware, no cinematic environment, no surreal elements"
@@ -95,6 +101,24 @@ alias:
           - "{global.color.signal-blue}"
         typography: "{global.typography.display-face}; {global.typography.terminal-face}"
         negative: "{global.negative.global-exclude}"
+        references:
+          - "{global.reference.actual-tui}"
+          - "{global.reference.pane-grid}"
+    mc-end-launch-hero:
+      $type: "composite"
+      $value:
+        prompt: "{global.style-fragment.mc-end-field-computing}, {global.style-fragment.tui-product-focus}, {global.style-fragment.warm-technical-palette}, {global.style-fragment.launch-hierarchy}, {global.style-fragment.voxel-craft}"
+        palette:
+          - "{global.color.ink}"
+          - "{global.color.paper}"
+          - "{global.color.warm-stone}"
+          - "{global.color.clay}"
+          - "{global.color.shell}"
+          - "{global.color.graphite}"
+          - "{global.color.copper}"
+          - "{global.color.signal-blue}"
+        typography: "{global.typography.display-face}; {global.typography.terminal-face}"
+        negative: "{global.negative.global-exclude}, official Minecraft logo, copied Minecraft UI, fake game HUD, Enderman as main subject, terminal screen smaller than character, unreadable terminal wall"
         references:
           - "{global.reference.actual-tui}"
           - "{global.reference.pane-grid}"
@@ -139,4 +163,4 @@ alias:
 
 This theme is the source of truth for Brand Studio image prompts for kobe. Campaigns should describe product moments and campaign-specific content only; reusable visual grammar lives in the YAML frontmatter.
 
-The Mars field-computing direction is intentionally limited to the `mars-launch-hero` alias because it is a requested campaign scene. The default launch/product aliases remain clean and product-first.
+The Mars and MC End field-computing directions are intentionally limited to their campaign aliases because they are requested scene tests. The default launch/product aliases remain clean and product-first.
