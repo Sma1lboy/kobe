@@ -27,6 +27,7 @@ import {
   filterBranches,
   filterRepos,
   firstFieldFor,
+  isBlankText,
   nextDialogTab,
   nextField,
   pickerModeFor,
@@ -212,5 +213,28 @@ describe("stripNewlines (opentui input sanitizer)", () => {
     expect(stripNewlines("foo\n")).toBe("foo")
     expect(stripNewlines("foo\r\nbar\n")).toBe("foobar")
     expect(stripNewlines("clean")).toBe("clean")
+  })
+})
+
+describe("isBlankText (empty required-field guard)", () => {
+  it("treats no-non-whitespace strings as blank, including CJK whitespace", () => {
+    // The bug this guards: a prompt/title of only a full-width space `　`
+    // (U+3000) — emitted constantly by Chinese IMEs — must NOT pass the
+    // submit guard. `.trim()` does not strip U+3000, so `!value.trim()`
+    // wrongly accepted it; `isBlankText` (via `\S`) correctly rejects it.
+    expect(isBlankText("")).toBe(true)
+    expect(isBlankText(" ")).toBe(true)
+    expect(isBlankText("\t  \n")).toBe(true)
+    expect(isBlankText("　")).toBe(true) // U+3000 full-width / ideographic space
+    expect(isBlankText("　　")).toBe(true)
+    expect(isBlankText("　\t")).toBe(true) // full-width space + ASCII tab
+    expect(isBlankText(" ")).toBe(true) // no-break space
+  })
+
+  it("treats any non-whitespace content as non-blank", () => {
+    expect(isBlankText("hi")).toBe(false)
+    expect(isBlankText(" 中文 ")).toBe(false) // CJK content with ASCII padding
+    expect(isBlankText("　中文　")).toBe(false) // CJK content padded with full-width spaces
+    expect(isBlankText(".")).toBe(false)
   })
 })

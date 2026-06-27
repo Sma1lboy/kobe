@@ -26,7 +26,7 @@ import { NewTaskDialogView } from "./dialog"
 import type { NewTaskInput } from "./state"
 
 export type { NewTaskInput } from "./state"
-export { stripNewlines } from "./state"
+export { isBlankText, stripNewlines } from "./state"
 
 export type NewTaskDialogOptions = {
   /**

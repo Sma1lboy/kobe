@@ -1,5 +1,5 @@
-import { TextAttributes } from "@opentui/core"
-import { type Accessor, For, type Setter, Show } from "solid-js"
+import { TextAttributes, type TextareaRenderable } from "@opentui/core"
+import { type Accessor, For, type Setter, Show, createEffect } from "solid-js"
 import type { ClaudeAccount, CodexAccount, CopilotAccount, EngineAccountStatus } from "../../../engine/account-detect"
 import type { VendorId } from "../../../types/task"
 import { userKeybindingsReport } from "../../context/keybindings-user"
@@ -697,11 +697,22 @@ export function AccountsSettingsSection(props: {
 /**
  * Feedback section — a conventional inline form, not a row list. Enter
  * (or l / click) from the sidebar focuses the `title` input; Tab walks
- * title → body → Send → back to the sidebar; Enter commits each field
- * (title → body, body → send) so the whole thing runs on the keyboard
- * without a modal per field. The parent owns the Tab / Send-Enter
- * bindings and suppresses its own j/k/h/l nav while this form is
- * focused so the inputs receive raw keystrokes.
+ * title → body → Send → back to the sidebar. Enter advances title → body;
+ * the body is a multi-line `<textarea>`, so Enter there inserts a newline
+ * (a bug report wants paragraphs), and the user Tabs to Send to commit.
+ * The parent owns the Tab / Send-Enter bindings and suppresses its own
+ * j/k/h/l nav while this form is focused so the inputs receive raw
+ * keystrokes (the Send-row Enter binding is gated to bodyRow 2, so it
+ * never steals the body textarea's Enter).
+ *
+ * The body uses `<textarea>` rather than `<input>` deliberately:
+ * opentui's `<input>` (InputRenderable) strips newlines inside the native
+ * widget on paste AND insert, so a multi-line pasted description was
+ * silently collapsed to one line — pure data loss. `<textarea>` keeps the
+ * newlines. It's an uncontrolled edit buffer (no reactive `value`/`onInput`
+ * like `<input>`): we seed it once via `initialValue`, mirror edits back
+ * into the signal through `onContentChange` (reading `plainText`), and
+ * clear the buffer directly when the form resets after a send.
  */
 export function FeedbackSettingsSection(
   props: CursorSetters & {
@@ -713,7 +724,6 @@ export function FeedbackSettingsSection(
     setBody: (v: string) => void
     status: Accessor<string>
     onTitleSubmit: () => void
-    onBodySubmit: () => void
     submit: () => void
   },
 ) {
@@ -724,6 +734,18 @@ export function FeedbackSettingsSection(
   const sendFocused = () => editing() && props.bodyRow() === 2
   const labelFg = (focused: boolean) => (focused ? theme.primary : theme.textMuted)
   const labelAttrs = (focused: boolean) => (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : undefined)
+
+  // The body is an uncontrolled <textarea>, so an external reset (the
+  // parent clears `feedbackBody` after a successful send) won't empty the
+  // widget on its own. Clear the edit buffer when the signal goes blank
+  // while the widget still holds text; the resulting onContentChange sets
+  // the signal to "" too, so the guard makes this a one-shot (no loop).
+  let bodyEl: TextareaRenderable | undefined
+  createEffect(() => {
+    if (props.body() === "" && bodyEl && bodyEl.plainText !== "") {
+      bodyEl.setText("")
+    }
+  })
   return (
     <box flexDirection="column" gap={1}>
       <text fg={theme.text} attributes={TextAttributes.BOLD}>
@@ -753,16 +775,20 @@ export function FeedbackSettingsSection(
           <text fg={labelFg(bodyFocused())} attributes={labelAttrs(bodyFocused())}>
             {t("settings.feedback.descriptionLabel")}
           </text>
-          <input
-            value={props.body()}
+          <textarea
+            ref={(el) => {
+              bodyEl = el
+            }}
+            initialValue={props.body()}
             placeholder={t("settings.feedback.descriptionPlaceholder")}
             focused={bodyFocused()}
+            height={4}
+            wrapMode="word"
             onMouseUp={() => {
               props.setLevel("body")
               props.setBodyRow(1)
             }}
-            onInput={(v: string) => props.setBody(stripNewlines(v))}
-            onSubmit={() => props.onBodySubmit()}
+            onContentChange={() => props.setBody(bodyEl?.plainText ?? "")}
           />
         </box>
         <box

@@ -584,10 +584,11 @@ export function SettingsDialog(props: SettingsDialogProps) {
   }))
 
   // Feedback-form navigation, live only while that form holds focus.
-  // Tab / Shift+Tab cycle the fields; Enter on the title/description
-  // inputs is left to their own onSubmit (so it isn't swallowed here),
-  // and Enter on the focused Send row commits — gated to bodyRow 2 so it
-  // stays out of the dispatch stack while an input is focused.
+  // Tab / Shift+Tab cycle the fields; Enter on the title input is left to
+  // its own onSubmit (advance to body, so it isn't swallowed here); Enter
+  // in the body textarea inserts a newline (no binding intercepts it at
+  // bodyRow 1); and Enter on the focused Send row commits — gated to
+  // bodyRow 2 so it stays out of the dispatch stack while a field is focused.
   useBindings(() => ({
     enabled: editingFeedback(),
     bindings: [
@@ -686,7 +687,6 @@ export function SettingsDialog(props: SettingsDialogProps) {
               }}
               status={feedbackStatus}
               onTitleSubmit={() => setBodyRow(1)}
-              onBodySubmit={() => void sendFeedback()}
               submit={() => void sendFeedback()}
             />
           </Show>
