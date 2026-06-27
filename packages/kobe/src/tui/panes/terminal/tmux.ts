@@ -572,7 +572,12 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
   // when no engine pane is found to respawn — that fact is only knowable
   // here at apply time, so it's the applier's fallback, not the decision's.
   if (action.kind === "respawn-engine") {
-    if (await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey, opts.vendor)) {
+    const relaunch = await relaunchEngineInAllWindows(opts.name, opts.cwd, opts.command, remoteKey, opts.vendor)
+    if (relaunch === "switched") {
+      // Advance the session's `@kobe_vendor` tag ONLY now that every window's
+      // engine pane respawned on the new vendor — the tag is a single
+      // session-scoped fact the Ops panes (and `decideSessionAction`) trust to
+      // describe what's actually running, so a partial respawn must not move it.
       if (opts.vendor) await setSessionOption(opts.name, "@kobe_vendor", opts.vendor)
       // `vendorChanged` forces every window's Ops pane to respawn so its baked
       // `--vendor` flag (and the transcript store its activity badge + turn
@@ -586,6 +591,19 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
       })
       return true
     }
+    if (relaunch === "respawn-failed") {
+      // A respawn in some window failed (tmux already logged the error and
+      // halted the sequence). The session still exists and is usable, so we
+      // do NOT kill+rebuild — that would drop the sibling chat tabs the
+      // in-place respawn exists to preserve (KOB-232). We also leave the prior
+      // `@kobe_vendor` tag untouched rather than falsely claim the switch; the
+      // tag still mismatching the task's vendor means the next `ensureSession`
+      // re-enters this respawn branch and retries. Heal layout WITHOUT
+      // `vendorChanged` so the Ops panes stay aligned with the tag we kept.
+      await healWorkspaceLayout(opts.name, { cwd: opts.cwd, taskId: opts.taskId, vendor: opts.vendor })
+      return true
+    }
+    // relaunch === "no-engine-pane" → fall through to the rebuild path below.
   }
 
   // Rebuild (or a respawn that found no engine pane): kill, then fall
