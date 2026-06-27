@@ -16,9 +16,11 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, type Socket, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
+import { latestTranscriptMtime } from "@/monitor/activity"
 import type { Orchestrator } from "@/orchestrator/core"
+import { DEFAULT_TASK_VENDOR } from "@/types/task"
 import { type UpdateInfo, checkLatestVersion } from "@/version"
-import { DaemonActivityRegistry } from "./activity-registry.ts"
+import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { ClientWriter } from "./client-writer.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
@@ -204,7 +206,20 @@ export async function startDaemonServer(orch: Orchestrator, options: DaemonServe
     broadcast(clients, { type: "event", name: event.channel, payload: event.payload })
   })
 
-  const activity = new DaemonActivityRegistry(bus)
+  // Liveness probe for the activity watchdog: resolve taskId → worktree +
+  // vendor via the orchestrator, then read the engine's newest transcript
+  // mtime (the same fs-only history reader auto-title uses — no tmux, no
+  // subprocess). A long single turn writes tool output to its transcript
+  // even though it emits no hook events between turn-start and Stop, so this
+  // mtime is the signal that distinguishes "still working" from a missed
+  // Stop. Best-effort: any failure resolves `undefined` ⇒ the watchdog
+  // lapses to idle as before, never crashing the daemon.
+  const livenessAt: ActivityLivenessProbe = async (taskId) => {
+    const task = orch.getTask(taskId)
+    if (!task?.worktreePath) return undefined
+    return latestTranscriptMtime(task.vendor ?? DEFAULT_TASK_VENDOR, task.worktreePath)
+  }
+  const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
 
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
