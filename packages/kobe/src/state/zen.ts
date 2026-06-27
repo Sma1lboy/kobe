@@ -12,11 +12,33 @@
  * `prefix`-chord are always reachable to leave zen again.
  */
 
-import { loadStateFile } from "./store.ts"
+import { loadStateFile, patchStateFile } from "./store.ts"
 
 export const ZEN_KEEP_TASKS_KEY = "zen.keepTasks"
 
 /** Whether zen mode preserves the Tasks rail. Default `true`. */
 export function zenKeepsTasks(): boolean {
   return loadStateFile()[ZEN_KEEP_TASKS_KEY] !== false
+}
+
+/**
+ * GLOBAL on/off intent for zen mode. Each kobe task is its OWN tmux session
+ * (`kobe-<taskId>`), so the per-session `@kobe_zen` option only collapses the
+ * session you toggled it in — switching to another project (another session)
+ * lost zen. This persisted flag is the cross-session source of truth: the
+ * toggle flips it, and entering any session (`switchTo` / initial attach)
+ * reconciles that session's layout to it (see `syncSessionZen`). Stored in the
+ * shared state.json and read fresh, so flipping it needs no daemon restart.
+ * Default OFF.
+ */
+export const ZEN_ACTIVE_KEY = "zen.active"
+
+/** Whether zen mode is globally on (across every project's session). */
+export function zenIsActive(): boolean {
+  return loadStateFile()[ZEN_ACTIVE_KEY] === true
+}
+
+/** Persist the global zen on/off intent. */
+export function setZenActive(on: boolean): void {
+  patchStateFile({ [ZEN_ACTIVE_KEY]: on })
 }
