@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.47
+
+### Patch Changes
+
+- 0f574d2: The `☯ ZEN` badge in the Tasks rail is now clickable — click it to exit zen mode, the mouse counterpart to the `prefix`+space chord. Since zen is global, exiting from the badge turns it off for every project.
+- 9c1ac3e: Zen mode is now global across every project. Each task is its own tmux session, so toggling zen previously only collapsed the session you were in; switching to another project lost it. Zen on/off is now a persisted intent that every project's session reconciles to when you enter or attach it — turn it on once and all projects open focused.
+- 41ac154: Tasks pane: a task-bound pane now keeps its sidebar highlight on its own task instead of following the shared active-task focus. Jumping to a sibling project (click/Enter) no longer leaves the backgrounded pane highlighting that sibling while its chat still shows its own task — only the navigational home pane mirrors shared focus now.
+
 ## 0.7.46
 
 ### Patch Changes
