@@ -686,6 +686,21 @@ async function ensureSessionImpl(opts: EnsureSessionOpts): Promise<boolean> {
     ...(remoteKey ? ([["set-option", "-t", opts.name, REMOTE_KEY_OPTION, remoteKey]] as const) : []),
   ])
 
+  // Size the window to the REAL terminal BEFORE splitting. When spawned from
+  // inside a tmux pane (the Tasks-pane "open task" path), `new-session -x/-y`
+  // above read this host's narrow pane stdout, so the window was born at the
+  // rail width. Splitting at that tiny size bakes in a degenerate layout:
+  // growing the window to the real client later (prepareWindowForSwitch) only
+  // redistributes proportionally, so the fixed 32-cell rail balloons and every
+  // pane ends up near-even (the "all panes the same size" cold-open bug). Fit
+  // the still-detached window to the attached client's dims first so the splits
+  // land at the right geometry. No-op outside tmux (direct.ts already created
+  // the session at the real terminal size — process.stdout IS the terminal).
+  if (process.env.TMUX) {
+    const { sizeArgs } = await attachedWindowInfo()
+    if (sizeArgs.length > 0) await runTmux(["resize-window", "-t", `=${opts.name}`, ...sizeArgs])
+  }
+
   await buildPanesAround(pane0, {
     cwd: opts.cwd,
     taskId: opts.taskId,
