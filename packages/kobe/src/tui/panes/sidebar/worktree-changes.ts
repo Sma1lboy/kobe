@@ -35,6 +35,7 @@
 
 import { spawnSync } from "node:child_process"
 import { readOnlyGitProcessEnv } from "@/lib/git-env"
+import { parsePorcelainRows } from "@/lib/git-parsers"
 
 export interface WorktreeChanges {
   /** Files added, modified, renamed, copied, or untracked. */
@@ -97,19 +98,21 @@ export function readWorktreeChanges(worktreePath: string): WorktreeChanges {
   }
 }
 
-/** Exported for unit tests. */
+/**
+ * Aggregate porcelain output into `+N −M` counts. Exported for unit tests.
+ *
+ * Parsing (the `XY <path>` shape, branch-header skip, C-string unquoting,
+ * rename resolution) is delegated to the shared {@link parsePorcelainRows};
+ * this helper only classifies each row by its raw status pair: a `D` in
+ * EITHER column counts as a deletion, everything else (M, A, R, C, T, U, ??)
+ * as an addition. A rename is one porcelain row → one `added` event, as
+ * before — the shared parser preserves the raw `x`/`y` chars so this
+ * classification is byte-for-byte the same as the old inline scan.
+ */
 export function parsePorcelain(text: string): WorktreeChanges {
   let added = 0
   let deleted = 0
-  for (const line of text.split("\n")) {
-    if (!line || line.startsWith("##")) continue
-    // Porcelain v1 entries are `XY <path>` where X is the index status
-    // and Y is the worktree status. `??` is untracked. We classify a
-    // row as `deleted` if either column is `D`; everything else (M, A,
-    // R, C, T, U, ??) counts as `added`. Renames appear on a single
-    // line — still one file event, so a single count.
-    const x = line.charAt(0)
-    const y = line.charAt(1)
+  for (const { x, y } of parsePorcelainRows(text)) {
     if (x === "D" || y === "D") deleted += 1
     else added += 1
   }
