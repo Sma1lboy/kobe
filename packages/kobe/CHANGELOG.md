@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.46
+
+### Patch Changes
+
+- 2e96b24: fix: stop dropping multi-line paste and full-width-space prompts in input fields
+
+  The feedback "description" field used an opentui `<input>`, which strips
+  newlines inside the native widget on paste — so a multi-line pasted bug report
+  was silently collapsed to one line. It is now a `<textarea>` that preserves
+  paragraph structure (enter inserts a newline; tab moves to Send), while the
+  single-line fields (title, branch, repo, prompt) keep stripping newlines.
+
+  The quick-task prompt and rename-task title guards also accepted a prompt/title
+  made only of a full-width space `　` (U+3000), which `String.prototype.trim()`
+  does not strip — submitting an empty-looking task. Both now reject any value
+  with no non-whitespace character via a shared `isBlankText` predicate.
+
+- 73b0788: Pane-aware mouse drag now copies to the system clipboard. The tmux workspace enables `set-clipboard on` and binds copy-mode finish actions (drag-release plus `y`/Enter) to `copy-pipe-and-cancel` via the platform clipboard tool (pbcopy / wl-copy / xclip / xsel), so a normal left-drag selection reaches the OS clipboard without falling back to Option+drag (which bled across panes). Falls back to OSC 52 when no local clipboard tool is found.
+
 ## 0.7.45
 
 ### Patch Changes
