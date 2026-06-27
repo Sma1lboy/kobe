@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "kind": "approved_manifest",
+  "campaign": "mc-end-kobe",
+  "generated_at": "2026-06-27T03:43:16.230476+00:00",
+  "assets": [
+    {
+      "id": "mc-end-hero",
+      "file": "mc-end-hero.png",
+      "path": "docs/assets/brand/mc-end-kobe/mc-end-hero.png",
+      "source_path": "packages/branding/.harness/out/mc-end-kobe/mc-end-hero.png",
+      "run_lock": "packages/branding/.harness/out/mc-end-kobe/run.lock.json",
+      "size": [
+        1536,
+        1024
+      ],
+      "mime_type": "image/png",
+      "checksum_sha256": "a310ec7f45b10991f7918fd12ea5768da1a089c171bf024f67dcea5b697fdb9a"
+    }
+  ]
+}

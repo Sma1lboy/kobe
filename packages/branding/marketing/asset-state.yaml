@@ -1,61 +1,81 @@
 schema_version: "1.0"
 owner:
-  kind: brand
-  id: kobe
-revision: 2
+  kind: "brand"
+  id: "kobe"
+revision: 3
 assets:
-  - id: kobe-tui-actual
-    kind: reference
-    path: packages/branding/marketing/references/kobe-tui-actual.png
-    source: workspace/products/kobe/kobe/references/kobe-tui-actual.png
+  - id: "kobe-tui-actual"
+    kind: "reference"
+    path: "packages/branding/marketing/references/kobe-tui-actual.png"
+    source: "workspace/products/kobe/kobe/references/kobe-tui-actual.png"
     width: 3016
     height: 1742
-    checksum_sha256: 5bf841573ba936995cd69c6794eb1b025a2d96b1889a4d2a532d4b7fdf54bbb4
-    role: canonical live TUI screenshot
-    status: active
-  - id: kobe-tui-clean
-    kind: reference
-    path: packages/branding/marketing/references/kobe-tui-clean.png
-    source: workspace/products/kobe/kobe/references/kobe-tui-clean.png
+    checksum_sha256: "5bf841573ba936995cd69c6794eb1b025a2d96b1889a4d2a532d4b7fdf54bbb4"
+    role: "canonical live TUI screenshot"
+    status: "active"
+  - id: "kobe-tui-clean"
+    kind: "reference"
+    path: "packages/branding/marketing/references/kobe-tui-clean.png"
+    source: "workspace/products/kobe/kobe/references/kobe-tui-clean.png"
     width: 3024
     height: 1632
-    checksum_sha256: 1dc081812e613b373d5be8066e55a8302055a6a05b12f4dfe0196285d660a703
-    role: clean TUI product screenshot
-    status: active
-  - id: pane-grid
-    kind: reference
-    path: packages/branding/marketing/references/pane-grid.png
-    source: docs/assets/brand/pane-grid.png
+    checksum_sha256: "1dc081812e613b373d5be8066e55a8302055a6a05b12f4dfe0196285d660a703"
+    role: "clean TUI product screenshot"
+    status: "active"
+  - id: "pane-grid"
+    kind: "reference"
+    path: "packages/branding/marketing/references/pane-grid.png"
+    source: "docs/assets/brand/pane-grid.png"
     width: 1200
     height: 800
-    checksum_sha256: 19210406a83f329f5d4efdb7779f011e0dcdb472b849b4eb4b47c86bddffcc0c
-    role: existing brand motion still
-    status: active
-  - id: bracket-chip
-    kind: reference
-    path: packages/branding/marketing/references/bracket-chip.png
-    source: docs/assets/brand/bracket-chip.png
+    checksum_sha256: "19210406a83f329f5d4efdb7779f011e0dcdb472b849b4eb4b47c86bddffcc0c"
+    role: "existing brand motion still"
+    status: "active"
+  - id: "bracket-chip"
+    kind: "reference"
+    path: "packages/branding/marketing/references/bracket-chip.png"
+    source: "docs/assets/brand/bracket-chip.png"
     width: 1200
     height: 630
-    checksum_sha256: 8785ab52e8da0cc32c95aa4a7e6ed058c304c941b992c1cc30efef50cd89cd4a
-    role: existing wordmark grammar
-    status: active
-  - id: mars-kobe-mars-hero-2026-06-26
-    kind: artifact
-    path: docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png
-    campaign: mars-kobe
-    asset_id: mars-hero
+    checksum_sha256: "8785ab52e8da0cc32c95aa4a7e6ed058c304c941b992c1cc30efef50cd89cd4a"
+    role: "existing wordmark grammar"
+    status: "active"
+  - id: "mars-kobe-mars-hero-2026-06-26"
+    kind: "artifact"
+    path: "docs/assets/brand/repos/kobe/1.1.0/artifacts/mars-kobe/mars-hero.png"
+    campaign: "mars-kobe"
+    asset_id: "mars-hero"
     width: 2400
     height: 1264
-    checksum_sha256: 50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79
-    role: accepted Mars field-computing hero image
-    status: accepted
+    checksum_sha256: "50d0bd7620833cbecd479f79a36afdc957d7546b004ed871dcac689d6fb50c79"
+    role: "accepted Mars field-computing hero image"
+    status: "accepted"
+  - id: "mc-end-kobe-mc-end-hero"
+    path: "docs/assets/brand/mc-end-kobe/mc-end-hero.png"
+    kind: "artifact"
+    campaign: "mc-end-kobe"
+    asset_id: "mc-end-hero"
+    size:
+      - 1536
+      - 1024
+    mime_type: "image/png"
+    checksum_sha256: "a310ec7f45b10991f7918fd12ea5768da1a089c171bf024f67dcea5b697fdb9a"
+    tags:
+      - "mc-end-kobe"
+      - "hero"
+      - "terminal-first"
+      - "accepted"
+      - "mc-end-hero"
+    role: "accepted MC End field-computing hero image"
+    status: "accepted"
 patterns:
-  - id: terminal-first
-    description: The real kobe TUI should be the dominant readable product surface.
-  - id: sparse-copy
-    description: Use kobe and parallel agents, one terminal as the primary visible marketing text.
-  - id: no-vendor-marks
-    description: Avoid official Anthropic or Claude marks outside incidental terminal UI text from screenshots.
-  - id: mars-field-terminal-hero
-    description: For campaign-specific sci-fi field scenes, keep kobe's terminal screen dominant and readable, with the human/operator smaller than the product surface.
+  - id: "terminal-first"
+    description: "The real kobe TUI should be the dominant readable product surface."
+  - id: "sparse-copy"
+    description: "Use kobe and parallel agents, one terminal as the primary visible marketing text."
+  - id: "no-vendor-marks"
+    description: "Avoid official Anthropic or Claude marks outside incidental terminal UI text from screenshots."
+  - id: "mars-field-terminal-hero"
+    description: "For campaign-specific sci-fi field scenes, keep kobe's terminal screen dominant and readable, with the human/operator smaller than the product surface."
+  - id: "voxel-field-terminal-hero"
+    description: "For MC End-inspired voxel scenes, keep the environment campaign-specific, avoid official game marks, and preserve kobe's terminal screen as the primary readable subject."
